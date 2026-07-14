@@ -305,6 +305,33 @@ match = { ext = ".entrypoint" }
     assert discovered[0].source == "entry-point:entrypoint-plugin"
 
 
+def test_entry_point_reports_directory_without_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = tmp_path / "incomplete-entrypoint-plugin"
+    plugin_dir.mkdir()
+    module_name = "metabrowser_test_incomplete_entrypoint_plugin"
+    module = ModuleType(module_name)
+    cast(Any, module).plugin_dir = lambda: plugin_dir
+    monkeypatch.setitem(sys.modules, module_name, module)
+    entry_point = importlib.metadata.EntryPoint(
+        name="incomplete-entrypoint-plugin",
+        value=f"{module_name}:plugin_dir",
+        group="metabrowser.plugins",
+    )
+    monkeypatch.setattr(
+        importlib.metadata,
+        "entry_points",
+        lambda **_kwargs: [entry_point],
+    )
+
+    discovered = _discover_entry_point_plugins()
+
+    assert discovered == [
+        f"entry-point incomplete-entrypoint-plugin: {plugin_dir}/manifest.toml missing"
+    ]
+
+
 # ── Classifier ─────────────────────────────────────────────
 
 

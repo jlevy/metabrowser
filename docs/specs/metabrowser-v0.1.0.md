@@ -82,7 +82,8 @@ Connect trusted publishing without a package token.
   strict BasedPyright, correctness-oriented Ruff rules, recommended Biome rules, strict
   TypeScript check-JS, exact npm locks, Lefthook, and SHA-pinned actions
 - [x] Apply CLI configuration before server initialization, call the documented plugin
-  entry-point factory, and enforce JavaScript-only operator-directory plugins
+  entry-point factory, report incomplete installed plugins, and enforce JavaScript-only
+  operator-directory plugins
 - [x] Reject duplicate data-hook routes before server startup so manifest order cannot
   silently shadow a plugin endpoint
 - [x] Normalize and validate plugin paths across commands and direct server imports,
@@ -133,7 +134,7 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 611 Python and browser contract tests pass
+- 612 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no repository-only
   tbd or agent metadata
 - An isolated uv environment installs the wheel and exercises its command, packaged

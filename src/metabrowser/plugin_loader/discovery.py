@@ -146,7 +146,9 @@ def _discover_entry_point_plugins() -> list[LoadedPlugin | str]:
             found.append(f"entry-point {ep.name}: {exc}")
             continue
         result = _try_load_plugin(plugin_dir, source=f"entry-point:{ep.name}")
-        if result is not None:
+        if result is None:
+            found.append(f"entry-point {ep.name}: {plugin_dir}/manifest.toml missing")
+        else:
             found.append(result)
     return found
 
