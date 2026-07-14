@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -108,6 +109,36 @@ def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch)
     assert seen["view"] == "rendered"
     assert seen["frontmatter"] == {"title": "Test"}
     assert seen["theme_mode"] == "system"
+
+
+def test_kpress_render_route_uses_logical_size_for_gzip(tmp_path: Path, monkeypatch) -> None:
+    server._set_root_dir(tmp_path)
+    content = "# Heading\n" + ("Repeated content.\n" * 200)
+    compressed = gzip.compress(content.encode())
+    source = tmp_path / "doc.md.gz"
+    source.write_bytes(compressed)
+    seen: dict[str, Any] = {}
+
+    def _fake_render(**kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        return {
+            "type": "kpress-rendered-document",
+            "html": '<article class="kpress kpress-doc">ok</article>',
+            "profile": "document",
+            "printable": True,
+            "assets": _empty_asset_manifest(),
+            "diagnostics": [],
+        }
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _fake_render)
+    response = asyncio.run(
+        server.api_kpress_render(_request(query={"path": "doc.md.gz", "view": "rendered"}))
+    )
+
+    assert response.status_code == 200
+    assert seen["source_text"] == content
+    assert seen["size"] == len(content.encode())
+    assert seen["size"] > source.stat().st_size
 
 
 def test_kpress_static_asset_serving_and_304(tmp_path: Path) -> None:

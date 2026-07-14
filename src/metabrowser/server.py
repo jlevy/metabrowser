@@ -1347,7 +1347,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             view=view,
             ext=ext,
             mtime_hash=mtime_hash,
-            size=disk_size,
+            size=logical_size,
             frontmatter=frontmatter,
             frontmatter_error=frontmatter_error,
             profile=profile,
