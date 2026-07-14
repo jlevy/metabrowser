@@ -156,6 +156,11 @@ def serve(
     If ROOT is a file, automatically split into parent directory + --path.
     Use --path to deep-link directly to a file within the root directory.
     """
+    # Dotenv is operator configuration for the entire command. Apply it before
+    # log-level selection, plugin discovery, or path expansion so values such
+    # as HOME affect every bootstrap step consistently with ``walk``.
+    _load_dotenv_chain()
+
     # Must run before ``from metabrowser import server`` below — the
     # server module configures logging at import time from the env var.
     _apply_log_level(log_level)
@@ -174,9 +179,9 @@ def serve(
     if not resolved.is_dir():
         raise CLIError(f"{resolved} is not a directory")
 
-    # Load the dotenv chain and normalize env/CLI plugin directories before
-    # the discovery layer first runs at server-module import. This is the same
-    # path resolution and validation used by ``metabrowser plugins``.
+    # Normalize env/CLI plugin directories before the discovery layer first
+    # runs at server-module import. This is the same path resolution and
+    # validation used by ``metabrowser plugins``.
     extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
     os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
         str(plugin_dir) for plugin_dir in extra_plugin_dirs

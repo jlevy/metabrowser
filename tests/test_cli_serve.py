@@ -165,6 +165,29 @@ def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:
     assert f"Serving {root.resolve()}" in result.output
 
 
+def test_serve_loads_dotenv_before_expanding_home_relative_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "dotenv-home"
+    root = home / "artifacts"
+    root.mkdir(parents=True)
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    (workdir / ".env").write_text(f"HOME={home}\n")
+    monkeypatch.chdir(workdir)
+    monkeypatch.delenv("HOME", raising=False)
+
+    with (
+        patch("uvicorn.run") as run_server,
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = runner.invoke(_app, ["serve", "~/artifacts", "--no-open"])
+
+    assert result.exit_code == 0, result.exception
+    run_server.assert_called_once()
+    assert f"Serving {root.resolve()}" in result.output
+
+
 def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:
     root = tmp_path / "artifacts"
     root.mkdir()
