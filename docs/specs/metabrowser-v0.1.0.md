@@ -90,8 +90,8 @@ Connect trusted publishing without a package token.
   platform-neutral browser launching for remote mode
 - [x] Expand home-relative served roots and reject traversal or symlink paths from both
   server deep links and standalone tree walks when they resolve outside the root
-- [x] Anchor repository hooks to the git root and delegate legacy module execution to
-  the canonical CLI before server bootstrap side effects
+- [x] Anchor Codex hooks to the git root and Claude hooks to the project root, and
+  delegate legacy module execution to the canonical CLI before bootstrap side effects
 - [x] Keep optional GitHub CLI setup non-fatal on unsupported platforms and enforce the
   repository’s exact tbd v0.4.0 pin across generated agent guidance
 - [x] Isolate test discovery from operator plugin environment variables before tests
@@ -133,7 +133,7 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 610 Python and browser contract tests pass
+- 611 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no repository-only
   tbd or agent metadata
 - An isolated uv environment installs the wheel and exercises its command, packaged

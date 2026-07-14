@@ -50,6 +50,20 @@ def test_codex_hook_commands_anchor_to_repository_root() -> None:
     assert all("bash .codex/" not in command for command in commands)
 
 
+def test_claude_hook_commands_anchor_to_project_root() -> None:
+    payload = json.loads((ROOT / ".claude" / "settings.json").read_text())
+    commands = [
+        hook["command"]
+        for groups in payload["hooks"].values()
+        for group in groups
+        for hook in group["hooks"]
+    ]
+
+    assert commands
+    assert all('"$CLAUDE_PROJECT_DIR"' in command for command in commands)
+    assert all("bash .claude/" not in command for command in commands)
+
+
 def test_agent_tbd_skills_use_repository_version_pin() -> None:
     for relative in (".agents/skills/tbd/SKILL.md", ".claude/skills/tbd/SKILL.md"):
         text = (ROOT / relative).read_text(encoding="utf-8")
