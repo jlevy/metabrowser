@@ -70,14 +70,14 @@ build = [
     "uv-dynamic-versioning==0.14.0",
 ]
 dev = [
-    "basedpyright>=1.39.3",
+    "basedpyright>=1.39.9",
     "codespell>=2.4.2",
     "httpx2>=2.5.0",
-    "pytest>=9.0.3",
+    "pytest>=9.1.1",
     "pytest-sugar>=1.1.1",
-    "pytest-timeout>=2.3.1",
+    "pytest-timeout>=2.4.0",
     "rich>=15.0.0",
-    "ruff>=0.15.12",
+    "ruff>=0.15.20",
 ]
 
 [project.scripts]
@@ -115,6 +115,9 @@ exclude = [
     "/AGENTS.md",
     "/CLAUDE.md",
     "/skills-lock.json",
+    "/.venv/",
+    "/dist/",
+    "/node_modules/",
 ]
 
 [tool.hatch.build.targets.wheel]

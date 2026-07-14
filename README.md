@@ -100,8 +100,9 @@ make format
 make verify
 ```
 
-`make verify` runs check-only formatting and lint gates, the complete test suite, a
-wheel build, artifact inspection, and an isolated wheel-import smoke test.
+`make verify` runs check-only formatting and lint gates, the complete test suite,
+locked-graph vulnerability audits, wheel and source builds, artifact inspection, and an
+isolated wheel-import smoke test.
 See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 ## Documentation

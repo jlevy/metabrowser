@@ -18,7 +18,8 @@ make verify
 
 `make verify` is the required handoff gate.
 It includes formatting checks, Python and browser lint, type checks, public-hygiene
-checks, tests, distribution inspection, and isolated installed-wheel smoke tests.
+checks, tests, locked Python and npm vulnerability audits, distribution inspection, and
+isolated installed-wheel smoke tests.
 `make install` installs both committed dependency locks.
 Run `make hooks-install` once per checkout to install the Lefthook pre-commit and
 pre-push gates.

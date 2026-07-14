@@ -1913,7 +1913,7 @@ function recentBaseApplyOp(op) {
   }
   if (op.op === "upsert") {
     var e = op.entry;
-    if (!e || e.type !== "file") {
+    if (e?.type !== "file") {
       return false;
     }
     var dict = recentEntryFromFsEntry(e);
@@ -1993,7 +1993,7 @@ function recentEntriesFromBase(opts) {
 
   var matches = [];
   recentBaseEntries.forEach((entry) => {
-    if (!entry || entry.type !== "file") {
+    if (entry?.type !== "file") {
       return;
     }
     if ((entry.mtime || 0) < minMtime) {
@@ -2524,7 +2524,7 @@ function renderBadges(data) {
 }
 
 function renderTextPreviewControls(data) {
-  if (!data || data.type !== "text" || typeof data.bytes_read !== "number") {
+  if (data?.type !== "text" || typeof data.bytes_read !== "number") {
     return "";
   }
   if (!data.content_truncated && data.bytes_read >= (data.size || 0)) {
@@ -3024,14 +3024,14 @@ function maybeOpenLiveStream(path, data) {
   // file's writer is still alive per the activity poll. Anything else
   // is wasted overhead — and the server would close immediately on a
   // dead writer anyway.
-  if (!data || data.type !== "jsonl") {
+  if (data?.type !== "jsonl") {
     return;
   }
   if (currentLiveStream) {
     return;
   }
   var info = activeFiles.get(path);
-  if (!info || info.pid_alive === false) {
+  if (info === undefined || info.pid_alive === false) {
     return;
   }
   openLiveStream(path, data.bytes_read || 0);

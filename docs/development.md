@@ -7,7 +7,7 @@ tests.
 
 ## Set Up
 
-Install uv using the
+Install uv 0.11.21 or newer using the
 [official uv instructions](https://docs.astral.sh/uv/getting-started/installation/),
 install Node 24.18.0 or a newer Node 24 release with npm 11.10 or newer, clone the
 repository, and run:
@@ -42,8 +42,8 @@ make test
 # Run every release gate, including the built-wheel smoke test.
 make verify
 
-# Audit the locked JavaScript toolchain for known vulnerabilities.
-npm audit --audit-level=moderate
+# Audit the frozen Python and npm dependency graphs.
+make audit
 
 # Run a targeted test.
 uv run pytest tests/test_plugin_loader.py::test_classifier_priority_wins
@@ -54,8 +54,10 @@ uv run metabrowser serve ./tests/fixtures --no-open
 
 `make lint` applies the ordinary auto-fixes and then runs policy and public-hygiene
 checks. `make verify` is the handoff standard before a pull request or release.
-Its isolated wheel smoke test exercises the installed command, packaged assets, built-in
-plugin discovery, and KPress rendering.
+It also audits both locked dependency graphs.
+Its artifact gate rejects local environments, build trees, and repository-only metadata
+before an isolated wheel smoke test exercises the installed command, packaged assets,
+built-in plugin discovery, and KPress rendering.
 
 ## Dependencies
 

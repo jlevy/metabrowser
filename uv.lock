@@ -484,14 +484,14 @@ build = [
     { name = "uv-dynamic-versioning", specifier = "==0.14.0" },
 ]
 dev = [
-    { name = "basedpyright", specifier = ">=1.39.3" },
+    { name = "basedpyright", specifier = ">=1.39.9" },
     { name = "codespell", specifier = ">=2.4.2" },
     { name = "httpx2", specifier = ">=2.5.0" },
-    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-sugar", specifier = ">=1.1.1" },
-    { name = "pytest-timeout", specifier = ">=2.3.1" },
+    { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "rich", specifier = ">=15.0.0" },
-    { name = "ruff", specifier = ">=0.15.12" },
+    { name = "ruff", specifier = ">=0.15.20" },
 ]
 
 [[package]]

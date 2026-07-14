@@ -12,7 +12,13 @@ export UV_EXCLUDE_NEWER
 UV_CONFIG_FILE ?= $(CURDIR)/uv.toml
 export UV_CONFIG_FILE
 
-.PHONY: default install hooks-install format format-markdown lint lint-check test lock upgrade build verify clean
+# Some managed agent environments export pnpm-style npm variables that npm 11
+# treats as unknown configuration. Repository policy lives in .npmrc, so prevent
+# those ambient aliases from adding warnings or changing command behavior.
+unexport NPM_CONFIG_FROZEN_LOCKFILE
+unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
+
+.PHONY: default install hooks-install format format-markdown lint lint-check test audit lock upgrade build verify clean
 
 default: install format lint test
 
@@ -50,6 +56,10 @@ lint-check:
 test:
 	uv run pytest
 
+audit:
+	npm audit --audit-level=moderate
+	uv --preview-features audit-command audit --frozen
+
 lock:
 	uv lock
 
@@ -61,7 +71,7 @@ build:
 	uv build --clear --no-build-isolation
 	uv run python -m devtools.check_distribution
 
-verify: install lint-check test build
+verify: install lint-check test audit build
 
 clean:
 	-rm -rf dist/

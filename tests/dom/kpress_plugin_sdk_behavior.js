@@ -246,13 +246,13 @@ async function check_fetchKpressRender_aborts_previous() {
 
   const [firstResult, secondResult] = await Promise.all([firstPromise, secondPromise]);
 
-  if (!firstFetchSignal || firstFetchSignal.aborted !== true) {
+  if (firstFetchSignal?.aborted !== true) {
     return {
       ok: false,
       detail: "first fetch's AbortSignal.aborted was not true after the second call",
     };
   }
-  if (!firstResult || firstResult.error !== "AbortError") {
+  if (firstResult?.error !== "AbortError") {
     return {
       ok: false,
       detail: `first fetch did not reject with AbortError, got ${JSON.stringify(firstResult)}`,

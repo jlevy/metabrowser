@@ -42,9 +42,6 @@ jobs:
       - name: Run the complete release gate
         run: make verify
 
-      - name: Audit npm dependencies
-        run: npm audit --audit-level=moderate
-
       - name: Verify release tag and package version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}

@@ -62,8 +62,8 @@ If publication succeeds with a defective artifact, fix the defect and publish a 
 patch version; do not delete and reuse the version.
 
 If the workflow fails before publication, fix the workflow or trusted-publisher
-configuration on a branch, rerun all gates and the npm audit, and create the release
-only from the validated commit.
+configuration on a branch, rerun `make verify`, and create the release only from the
+validated commit.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

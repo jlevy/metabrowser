@@ -12,7 +12,16 @@ from devtools.public_hygiene import find_hygiene_findings
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
-REPOSITORY_ONLY_PARTS = {".agents", ".claude", ".codex", ".github", ".tbd"}
+REPOSITORY_ONLY_PARTS = {
+    ".agents",
+    ".claude",
+    ".codex",
+    ".github",
+    ".tbd",
+    ".venv",
+    "dist",
+    "node_modules",
+}
 REPOSITORY_ONLY_NAMES = {".copier-answers.yml", "AGENTS.md", "CLAUDE.md", "skills-lock.json"}
 
 

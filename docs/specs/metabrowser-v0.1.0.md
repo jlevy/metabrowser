@@ -119,7 +119,7 @@ Connect trusted publishing without a package token.
 - Run Ruff, BasedPyright, codespell, npm policy, Biome, TypeScript check-JS, Flowmark,
   and public-hygiene checks
 - Install Python and JavaScript tooling from committed locks, run JavaScript tools with
-  `npx --no-install`, and audit the npm lock for moderate-or-higher vulnerabilities
+  `npx --no-install`, and audit both frozen dependency graphs for known vulnerabilities
 - Run the full pytest and browser contract suites on every supported Python version
 - Build and inspect the source distribution and wheel
 - Install the wheel in an isolated uv environment and import the package
@@ -136,9 +136,10 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 616 Python and browser contract tests pass
-- The source distribution and wheel contain the required assets and no repository-only
-  tbd or agent metadata
+- 617 Python and browser contract tests pass
+- The source distribution and wheel contain the required assets and no local
+  environments, build trees, or repository-only tbd and agent metadata
+- The frozen Python and npm dependency graphs have no known vulnerabilities
 - An isolated uv environment installs the wheel and exercises its command, packaged
   assets, built-in plugins, and KPress rendering
 

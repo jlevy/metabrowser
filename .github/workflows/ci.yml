@@ -45,8 +45,8 @@ jobs:
       - name: Run quality gates
         run: make lint-check
 
-      - name: Audit npm dependencies
-        run: npm audit --audit-level=moderate
+      - name: Audit locked dependencies
+        run: make audit
 
   test:
     strategy:

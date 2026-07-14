@@ -17,9 +17,17 @@ SETUP_UV_SHA = "fac544c07dec837d0ccb6301d7b5580bf5edae39"
 SETUP_NODE_SHA = "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e"
 UV_VERSION = "0.11.25"
 UV_LINUX_CHECKSUM = "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
+BUILD_PINS = ["hatchling==1.30.1", "uv-dynamic-versioning==0.14.0"]
+PYTHON_TOOL_FLOORS = {
+    "basedpyright>=1.39.9",
+    "codespell>=2.4.2",
+    "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
+    "ruff>=0.15.20",
+}
 NPM_TOOL_PINS = {
-    "@biomejs/biome": "2.4.14",
-    "lefthook": "2.1.6",
+    "@biomejs/biome": "2.5.1",
+    "lefthook": "2.1.9",
     "typescript": "6.0.3",
 }
 FLOWMARK_VERSION = "0.3.1"
@@ -30,6 +38,7 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
     """Raise when package or tool configuration bypasses repository policy."""
     npmrc = (root / ".npmrc").read_text(encoding="utf-8")
     required_npmrc = {
+        "engine-strict=true",
         "ignore-scripts=true",
         f"min-release-age={NPM_MIN_RELEASE_AGE_DAYS}",
         "package-lock=true",
@@ -43,7 +52,15 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
     dependencies = pyproject["project"]["dependencies"]
     if "kpress==0.1.0" not in dependencies:
         raise RuntimeError("MetaBrowser must require exact kpress==0.1.0")
+    if pyproject["dependency-groups"].get("build") != BUILD_PINS:
+        raise RuntimeError("the build dependency group must contain the exact backend pins")
+    if pyproject["build-system"].get("requires") != BUILD_PINS:
+        raise RuntimeError("the isolated build system must contain the exact backend pins")
+    if not PYTHON_TOOL_FLOORS.issubset(pyproject["dependency-groups"].get("dev", [])):
+        raise RuntimeError("the development group must preserve the reviewed Python tool floors")
     uv_toml = tomllib.loads((root / "uv.toml").read_text(encoding="utf-8"))
+    if uv_toml.get("required-version") != ">=0.11.21":
+        raise RuntimeError("uv.toml must preserve the reviewed uv version floor")
     if uv_toml.get("exclude-newer") != "14 days":
         raise RuntimeError("uv.toml must preserve the 14-day cool-off")
     expected_exceptions = {
@@ -119,6 +136,12 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         raise RuntimeError("npm tools must never fetch packages during lint or type checking")
     if "npm ci" not in tooling_text:
         raise RuntimeError("CI and local setup must install the committed npm lock")
+    required_audit_commands = (
+        "npm audit --audit-level=moderate",
+        "uv --preview-features audit-command audit --frozen",
+    )
+    if any(command not in tooling_text for command in required_audit_commands):
+        raise RuntimeError("the audit gate must inspect the locked npm and Python graphs")
     if "@latest" in tooling_text:
         raise RuntimeError("tooling must not use @latest")
 
@@ -163,7 +186,6 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         "environment: pypi",
         "ref: ${{ github.event.release.tag_name }}",
         "run: make verify",
-        "npm audit --audit-level=moderate",
         "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
         "metabrowser.__version__",
         "uv publish --trusted-publishing always",
