@@ -7,9 +7,8 @@ Discovery has three sources, in this order:
    ``manifest.toml``. These ship with metabrowser; always loaded.
 2. **Python entry-point plugins** — every ``metabrowser.plugins`` entry
    point declared in any installed Python package's ``pyproject.toml``.
-   The entry point's value is a ``module:plugin_dir_name`` reference;
-   the plugin directory is resolved via
-   ``importlib.resources.files(module) / plugin_dir_name``.
+   The entry point's value is a ``module:callable`` reference; the callable
+   returns the directory containing ``manifest.toml``.
 3. **Operator-supplied plugin directories** — every subdirectory of
    each path in ``extra_dirs`` that contains a ``manifest.toml``. The
    CLI populates this list from the ``--plugins-dir`` flag (repeatable)
@@ -31,8 +30,10 @@ import importlib
 import importlib.metadata
 import importlib.resources
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from metabrowser.plugin_loader.manifest import PluginManifest, load_manifest
 
@@ -131,14 +132,17 @@ def _discover_entry_point_plugins() -> list[LoadedPlugin | str]:
     for ep in eps:
         try:
             module_name, _, attr = ep.value.partition(":")
-            if not module_name:
-                found.append(f"entry-point {ep.name}: invalid value '{ep.value}'")
-                continue
+            if not module_name or not attr:
+                raise ValueError(
+                    f"invalid value {ep.value!r}; expected an importable module:callable"
+                )
             module = importlib.import_module(module_name)
-            sub_dir = getattr(module, attr) if attr else ""
-            anchor = importlib.resources.files(module_name)
-            plugin_dir = Path(str(anchor / sub_dir)) if sub_dir else Path(str(anchor))
-        except (ImportError, ModuleNotFoundError, AttributeError) as exc:
+            factory_obj = getattr(module, attr)
+            if not callable(factory_obj):
+                raise TypeError(f"{ep.value} is not callable")
+            factory = cast(Callable[[], str | Path], factory_obj)
+            plugin_dir = Path(factory()).expanduser().resolve()
+        except Exception as exc:
             found.append(f"entry-point {ep.name}: {exc}")
             continue
         result = _try_load_plugin(plugin_dir, source=f"entry-point:{ep.name}")

@@ -15,7 +15,10 @@ more trouble than it is worth here.
 
 from __future__ import annotations
 
+import importlib.metadata
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 import pytest
@@ -29,7 +32,12 @@ from metabrowser.plugin_loader.classify import (
     build_classifier,
     collect_folder_markers,
 )
-from metabrowser.plugin_loader.discovery import _try_load_plugin, discover_plugins
+from metabrowser.plugin_loader.discovery import (
+    LoadedPlugin,
+    _discover_entry_point_plugins,
+    _try_load_plugin,
+    discover_plugins,
+)
 from metabrowser.plugin_loader.manifest import (
     DataHookSpec,
     KindMatch,
@@ -245,6 +253,43 @@ match = { ext = ".myk" }
     result = discover_plugins(extra_dirs=[extra])
     names = [p.name for p in result.plugins]
     assert "myplug" in names
+
+
+def test_entry_point_calls_documented_plugin_dir_factory(
+    make_plugin_dir, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = make_plugin_dir(
+        "entrypoint-plugin",
+        """
+[plugin]
+name = "entrypoint-plugin"
+
+[[kind]]
+id = "entrypoint-kind"
+match = { ext = ".entrypoint" }
+""",
+    )
+    module_name = "metabrowser_test_entrypoint_plugin"
+    module = ModuleType(module_name)
+    cast(Any, module).plugin_dir = lambda: plugin_dir
+    monkeypatch.setitem(sys.modules, module_name, module)
+    entry_point = importlib.metadata.EntryPoint(
+        name="entrypoint-plugin",
+        value=f"{module_name}:plugin_dir",
+        group="metabrowser.plugins",
+    )
+    monkeypatch.setattr(
+        importlib.metadata,
+        "entry_points",
+        lambda **_kwargs: [entry_point],
+    )
+
+    discovered = _discover_entry_point_plugins()
+
+    assert len(discovered) == 1
+    assert isinstance(discovered[0], LoadedPlugin)
+    assert discovered[0].static_root == plugin_dir.resolve()
+    assert discovered[0].source == "entry-point:entrypoint-plugin"
 
 
 # ── Classifier ─────────────────────────────────────────────

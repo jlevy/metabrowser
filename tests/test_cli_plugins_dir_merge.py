@@ -64,7 +64,7 @@ def test_env_var_alone_loads_plugin(tmp_path: Path) -> None:
     assert "from-env" in names
 
 
-def test_env_var_and_cli_both_loaded(tmp_path: Path) -> None:
+def test_env_var_and_cli_configure_server_before_import(tmp_path: Path) -> None:
     """When both sources name distinct dirs, plugins from both load.
 
     This exercises the CLI's argv-merge path: simulate ``metabrowser serve
@@ -90,7 +90,7 @@ def test_env_var_and_cli_both_loaded(tmp_path: Path) -> None:
     # function directly and inspecting os.environ AFTER it ran the
     # merge. Cheaper than spinning up uvicorn + tearing it down.
     wrapper = (
-        "import os, sys, json\n"
+        "import os, sys, json, logging\n"
         "from pathlib import Path\n"
         "from unittest.mock import patch\n"
         f"served_root = Path({str(served_root)!r})\n"
@@ -108,8 +108,14 @@ def test_env_var_and_cli_both_loaded(tmp_path: Path) -> None:
         "        host='127.0.0.1',\n"
         "        no_open=True,\n"
         "        plugins_dir=[cli_root],\n"
+        "        log_level='DEBUG',\n"
         "    )\n"
-        "print(json.dumps(os.environ['METABROWSER_PLUGINS_DIRS']))\n"
+        "import metabrowser.server as server\n"
+        "print(json.dumps({\n"
+        "    'plugin_dirs': os.environ['METABROWSER_PLUGINS_DIRS'],\n"
+        "    'plugin_names': [p.name for p in server._LOADED_PLUGINS],\n"
+        "    'log_level': logging.getLogger('metabrowser').level,\n"
+        "}))\n"
     )
 
     env = os.environ.copy()
@@ -127,12 +133,16 @@ def test_env_var_and_cli_both_loaded(tmp_path: Path) -> None:
         f"subprocess failed: stdout={result.stdout!r} stderr={result.stderr!r}"
     )
     last_line = result.stdout.strip().splitlines()[-1]
-    merged = json.loads(last_line)
+    observed = json.loads(last_line)
+    merged = observed["plugin_dirs"]
     parts = merged.split(os.pathsep)
     assert str(env_root) in parts, f"env_root should appear: {merged!r}"
     assert str(cli_root.resolve()) in parts, f"cli_root should appear: {merged!r}"
     # Order: env first, CLI second.
     assert parts.index(str(env_root)) < parts.index(str(cli_root.resolve()))
+    assert "from-env" in observed["plugin_names"]
+    assert "from-cli" in observed["plugin_names"]
+    assert observed["log_level"] == 10  # logging.DEBUG
 
 
 def test_cli_dedupes_overlap_with_env(tmp_path: Path) -> None:

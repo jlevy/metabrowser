@@ -33,8 +33,9 @@ metabrowser plugins doctor
 metabrowser plugins doctor --plugins-dir ./examples
 ```
 
-`doctor` validates manifests, `index.js` files, data-hook imports, and high-priority
-kind conflicts. It exits nonzero when any problem is found.
+`doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
+operator-directory JavaScript-only boundaries, and high-priority kind conflicts.
+It exits nonzero when any problem is found.
 
 ## Minimal Plugin
 

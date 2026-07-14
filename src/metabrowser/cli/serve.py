@@ -32,7 +32,6 @@ from urllib.parse import quote, urlsplit
 import typer
 import uvicorn
 
-from metabrowser import server
 from metabrowser.cli.plugins import plugins_app
 from metabrowser.cli.remote import remote as _remote_command
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
@@ -193,9 +192,7 @@ def serve(
     # server module configures logging at import time from the env var.
     _apply_log_level(log_level)
 
-    # Resolve the root path BEFORE importing server — module-load discovery
-    # needs METABROWSER_ROOT set so it finds <served-root>/.metabrowser/plugins/.
-    # File-as-ROOT shorthand: a file ROOT collapses to its parent directory.
+    # Resolve file-as-ROOT shorthand before server initialization.
     resolved = root.resolve()
     if resolved.is_file():
         if path:
@@ -236,6 +233,11 @@ def serve(
         target = resolved / path
         if not target.exists():
             raise CLIError(f"--path target does not exist: {target}")
+
+    # Server import performs logging setup and plugin discovery. Keep it after
+    # dotenv loading, CLI log-level application, and plugin-dir merging so all
+    # startup configuration is visible on the first import.
+    from metabrowser import server
 
     try:
         actual_port = find_available_local_port(host, range(port, port + DEFAULT_PORT_SEARCH_COUNT))

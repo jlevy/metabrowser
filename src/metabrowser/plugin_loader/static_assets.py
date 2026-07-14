@@ -191,6 +191,13 @@ def build_plugin_routes(plugins: list[LoadedPlugin]) -> list[Route]:
         ),
     ]
     for plugin in plugins:
+        if plugin.source.startswith("local:") and plugin.manifest.data_hook:
+            LOG.warning(
+                "metabrowser local plugin '%s' declares Python data hooks; "
+                "operator-directory plugins are JavaScript-only, so the hooks are ignored",
+                plugin.name,
+            )
+            continue
         for hook in plugin.manifest.data_hook:
             try:
                 handler = _make_data_hook_handler(plugin, hook.route)

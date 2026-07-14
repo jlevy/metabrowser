@@ -62,8 +62,8 @@ def test_plugins_doctor_exits_zero_on_clean_install() -> None:
     assert "OK" in result.stdout
 
 
-def test_plugins_doctor_flags_broken_plugin(tmp_path: Path) -> None:
-    """A plugin under --plugins-dir with a broken sidekick reference flags."""
+def test_plugins_doctor_rejects_local_python_data_hook(tmp_path: Path) -> None:
+    """Operator-directory plugins are JavaScript-only."""
     pdir = tmp_path / "broken"
     pdir.mkdir()
     (pdir / "manifest.toml").write_text(
@@ -85,4 +85,4 @@ sidekick = "nonexistent.module:nope"
     result = _runner.invoke(plugins_app, ["doctor", "--plugins-dir", str(tmp_path)])
     assert result.exit_code != 0
     assert "broken" in result.stdout
-    assert "nonexistent.module" in result.stdout
+    assert "JavaScript-only" in result.stdout

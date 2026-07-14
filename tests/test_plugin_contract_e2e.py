@@ -37,7 +37,7 @@ def _ensure_fixture_importable() -> None:
 def plugin_app() -> TestClient:
     """A Starlette app with both fixture plugins mounted via build_plugin_routes."""
     pure = _try_load_plugin(_FIXTURES / "sample_plugin", source="local:test")
-    side = _try_load_plugin(_FIXTURES / "sidekick_sample", source="local:test")
+    side = _try_load_plugin(_FIXTURES / "sidekick_sample", source="entry-point:test")
     assert pure is not None and not isinstance(pure, str), pure
     assert side is not None and not isinstance(side, str), side
     routes = build_plugin_routes([pure, side])
@@ -97,6 +97,17 @@ def test_data_hook_404_for_pure_js_plugin(plugin_app: TestClient) -> None:
     # The pure-JS plugin doesn't declare any data hooks — no route is mounted.
     resp = plugin_app.get("/api/plugin/sample/anything")
     assert resp.status_code == 404
+
+
+def test_local_plugin_data_hooks_are_not_mounted() -> None:
+    local = _try_load_plugin(_FIXTURES / "sidekick_sample", source="local:test")
+    assert local is not None and not isinstance(local, str), local
+    app = Starlette(routes=build_plugin_routes([local]))
+
+    with TestClient(app) as client:
+        response = client.get("/api/plugin/sidekick-sample/echo")
+
+    assert response.status_code == 404
 
 
 def test_data_hook_exception_returns_degraded_warning(plugin_app: TestClient) -> None:

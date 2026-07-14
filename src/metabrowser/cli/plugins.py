@@ -223,6 +223,13 @@ def cmd_doctor(
 
     # Per-plugin: sidekick imports resolve.
     for p in result.plugins:
+        if p.source.startswith("local:") and p.manifest.data_hook:
+            problems.append(
+                f"plugin '{p.name}' declares Python data hooks, but operator-directory "
+                "plugins are JavaScript-only; package the plugin behind an installed "
+                "metabrowser.plugins entry point"
+            )
+            continue
         for hook in p.manifest.data_hook:
             module_name, _, attr = hook.sidekick.partition(":")
             try:
