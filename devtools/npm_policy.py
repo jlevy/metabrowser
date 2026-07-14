@@ -23,6 +23,7 @@ NPM_TOOL_PINS = {
     "typescript": "6.0.3",
 }
 FLOWMARK_VERSION = "0.3.1"
+TBD_VERSION = "0.4.0"
 
 
 def verify_repo_package_policy(root: Path = ROOT) -> None:
@@ -120,6 +121,15 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         raise RuntimeError("CI and local setup must install the committed npm lock")
     if "@latest" in tooling_text:
         raise RuntimeError("tooling must not use @latest")
+
+    agent_tbd_paths = [
+        root / ".agents/skills/tbd/SKILL.md",
+        root / ".claude/skills/tbd/SKILL.md",
+    ]
+    for path in agent_tbd_paths:
+        text = path.read_text(encoding="utf-8")
+        if f"get-tbd@{TBD_VERSION}" not in text or "@latest" in text:
+            raise RuntimeError(f"{path.relative_to(root)} must pin get-tbd@{TBD_VERSION}")
 
     workflow_paths = sorted((root / ".github" / "workflows").glob("*.yml"))
     workflow_text = "\n".join(path.read_text(encoding="utf-8") for path in workflow_paths)

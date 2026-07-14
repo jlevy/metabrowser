@@ -1223,7 +1223,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # use it directly via ctx.frontmatter without re-parsing client-side.
         # Malformed YAML fences must NOT silently fall through to markdown;
         # surface the parse error on the response so the operator sees it
-        # (per docs/general/guidelines/development-rules.md no-silent-fallback).
+        # instead of quietly substituting an empty frontmatter object.
         frontmatter: dict[str, Any] | None = None
         frontmatter_error: str | None = None
         if ext == ".md":

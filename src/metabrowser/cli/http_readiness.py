@@ -46,7 +46,7 @@ def wait_for_http_ok_then(
             response = conn.getresponse()
             last_status = response.status
             response.read(256)
-            if 200 <= response.status < 400:
+            if 200 <= response.status < 300:
                 on_ready()
                 return
             if 400 <= response.status < 500:

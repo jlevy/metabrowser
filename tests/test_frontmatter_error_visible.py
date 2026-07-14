@@ -1,9 +1,8 @@
 """Malformed frontmatter must surface a visible error, not silent fallback.
 
-Per docs/general/guidelines/development-rules.md (no-silent-fallback):
-parse failures must be either raised or recorded as visible per-file
-errors, not silently substituted with defaults. A `.md` file with a
-broken YAML frontmatter block must:
+Parse failures must be either raised or recorded as visible per-file errors, not
+silently substituted with defaults. A `.md` file with a broken YAML frontmatter block
+must:
 
 1. Have ``ctx.frontmatter_parse_error`` set to the parse-error string;
 2. Show up on the /api/file response as ``frontmatter_error``;

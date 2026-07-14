@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+from pathlib import Path
 
 from devtools.public_hygiene import ROOT, _text_files, find_hygiene_findings
 
@@ -15,6 +18,14 @@ def test_private_plan_path_is_rejected() -> None:
     private_plan_path = "docs" + "/project/specs/active/example.md"
 
     assert find_hygiene_findings("README.md", private_plan_path) == [
+        "README.md:1: private plan path"
+    ]
+
+
+def test_private_guidance_path_is_rejected() -> None:
+    private_guidance_path = "docs" + "/general/guidelines/example.md"
+
+    assert find_hygiene_findings("README.md", private_guidance_path) == [
         "README.md:1: private plan path"
     ]
 
@@ -37,3 +48,55 @@ def test_codex_hook_commands_anchor_to_repository_root() -> None:
     assert commands
     assert all("$(git rev-parse --show-toplevel)" in command for command in commands)
     assert all("bash .codex/" not in command for command in commands)
+
+
+def test_agent_tbd_skills_use_repository_version_pin() -> None:
+    for relative in (".agents/skills/tbd/SKILL.md", ".claude/skills/tbd/SKILL.md"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        assert "get-tbd@0.4.0" in text
+        assert "@latest" not in text
+
+
+def test_gh_setup_skips_unsupported_platform_without_failing(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_uname = fake_bin / "uname"
+    fake_uname.write_text(
+        "#!/bin/bash\n"
+        'if [ "${1:-}" = "-s" ]; then\n'
+        '  printf "Windows_NT\\n"\n'
+        "else\n"
+        '  printf "x86_64\\n"\n'
+        "fi\n",
+        encoding="utf-8",
+    )
+    fake_uname.chmod(0o755)
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        "command() {\n"
+        '  if [ "${1:-}" = "-v" ] && [ "${2:-}" = "gh" ]; then return 1; fi\n'
+        '  builtin command "$@"\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "BASH_ENV": str(bash_env),
+            "HOME": str(tmp_path / "home"),
+            "PATH": f"{fake_bin}:{env['PATH']}",
+        }
+    )
+
+    for relative in (".claude/scripts/ensure-gh-cli.sh", ".codex/ensure-gh-cli.sh"):
+        result = subprocess.run(
+            ["/bin/bash", str(ROOT / relative)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "skipping automatic installation" in result.stdout

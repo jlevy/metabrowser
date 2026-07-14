@@ -157,3 +157,21 @@ def test_wait_for_http_ok_then_open_does_not_open_on_404() -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_wait_for_http_ok_then_open_does_not_open_on_redirect() -> None:
+    """A redirect is not proof that the MetaBrowser shell is ready."""
+    server, port = _start_http_server(status=302)
+    try:
+        with patch.object(serve_module, "webbrowser") as wb:
+            wb.Error = Exception
+            serve_module._wait_for_http_ok_then_open(
+                "127.0.0.1",
+                port,
+                "http://x",
+                timeout_s=0.2,
+            )
+            assert not wb.open.called
+    finally:
+        server.shutdown()
+        server.server_close()
