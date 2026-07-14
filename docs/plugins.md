@@ -14,6 +14,8 @@ MetaBrowser discovers plugins in this order:
 
 Later plugins win plugin-name collisions.
 Kind classifiers use explicit priorities and stable discovery order as a tiebreaker.
+Configured directories expand `~`, resolve to canonical paths, must exist, and are
+deduplicated after environment entries are ordered before command-line entries.
 
 The served root and a user’s home directory are not automatic plugin sources.
 This is a security boundary: browsing data must not cause its JavaScript to execute in

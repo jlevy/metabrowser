@@ -82,3 +82,47 @@ def test_ssh_tunnel_helper_unchanged() -> None:
     tunnel_idx = cmd.index("-L")
     assert cmd[tunnel_idx + 1] == "8411:localhost:8412"
     assert "metabrowser serve" in cmd[-1]
+
+
+def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:
+    """Auto-open must not depend on the macOS-only ``open`` executable."""
+    popen_calls: list[list[str]] = []
+
+    class _FakeProc:
+        returncode = 0
+
+        def poll(self):
+            return None
+
+        def wait(self):
+            return 0
+
+        def send_signal(self, sig):
+            pass
+
+    def _fake_popen(cmd, *args, **kwargs):
+        popen_calls.append(list(cmd))
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(remote, "_probe_remote_free_port", lambda *a, **kw: 8412)
+    monkeypatch.setattr(remote, "find_available_local_port", lambda *a, **kw: 8411)
+
+    with (
+        patch.object(remote, "webbrowser", create=True) as browser,
+        patch.object(remote.signal, "signal"),
+        patch.object(remote.time, "sleep"),
+    ):
+        remote.remote(
+            host="user@vm",
+            path="/runs",
+            base_port=8411,
+            no_open=False,
+            ssh_options="",
+            gcp=False,
+            zone="",
+            project="",
+        )
+
+    browser.open.assert_called_once_with("http://localhost:8411", new=2)
+    assert len(popen_calls) == 1

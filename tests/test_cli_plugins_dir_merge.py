@@ -64,6 +64,58 @@ def test_env_var_alone_loads_plugin(tmp_path: Path) -> None:
     assert "from-env" in names
 
 
+def test_serve_expands_env_plugin_paths_before_server_import(tmp_path: Path) -> None:
+    """The serve path normalizes env-only directories just like plugins commands."""
+    served_root = tmp_path / "served"
+    served_root.mkdir()
+
+    home = tmp_path / "home"
+    env_root = home / "plugins"
+    env_root.mkdir(parents=True)
+    _make_plugin(env_root, "from-expanded-env")
+
+    wrapper = (
+        "import json, os\n"
+        "from pathlib import Path\n"
+        "from unittest.mock import patch\n"
+        f"served_root = Path({str(served_root)!r})\n"
+        "from metabrowser.cli.serve import serve\n"
+        "with (\n"
+        "    patch('uvicorn.run'),\n"
+        "    patch('metabrowser.cli.serve.find_available_local_port', return_value=8411),\n"
+        "    patch('threading.Thread'),\n"
+        "):\n"
+        "    serve(\n"
+        "        root=served_root, path='', port=8411, host='127.0.0.1',\n"
+        "        no_open=True, plugins_dir=None, log_level='',\n"
+        "    )\n"
+        "import metabrowser.server as server\n"
+        "print(json.dumps({\n"
+        "    'plugin_dirs': os.environ['METABROWSER_PLUGINS_DIRS'],\n"
+        "    'plugin_names': [p.name for p in server._LOADED_PLUGINS],\n"
+        "}))\n"
+    )
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["METABROWSER_PLUGINS_DIRS"] = "~/plugins"
+
+    result = subprocess.run(
+        [sys.executable, "-c", wrapper],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"subprocess failed: stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    observed = json.loads(result.stdout.strip().splitlines()[-1])
+    assert observed["plugin_dirs"] == str(env_root.resolve())
+    assert "from-expanded-env" in observed["plugin_names"]
+
+
 def test_env_var_and_cli_configure_server_before_import(tmp_path: Path) -> None:
     """When both sources name distinct dirs, plugins from both load.
 

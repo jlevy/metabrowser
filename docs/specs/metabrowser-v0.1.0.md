@@ -85,6 +85,8 @@ Connect trusted publishing without a package token.
   entry-point factory, and enforce JavaScript-only operator-directory plugins
 - [x] Reject duplicate data-hook routes before server startup so manifest order cannot
   silently shadow a plugin endpoint
+- [x] Normalize plugin paths consistently across commands, load dotenv configuration for
+  non-server walks, and use the platform-neutral browser launcher for remote mode
 - [x] Add public documentation for installation, development, architecture, plugins,
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
@@ -122,13 +124,14 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 595 Python and browser contract tests pass
+- 598 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no repository-only
   tbd or agent metadata
 - An isolated uv environment installs the wheel and exercises its command, packaged
   assets, built-in plugins, and KPress rendering
 
-GitHub Actions results remain pending until the branch is pushed.
+The pull request is ready to merge only when its latest commit has green lint,
+distribution, and Python 3.12 through 3.14 jobs.
 
 ## Rollout Plan
 

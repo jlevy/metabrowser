@@ -32,6 +32,7 @@ from urllib.parse import quote, urlsplit
 import typer
 import uvicorn
 
+from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.cli.plugins import plugins_app
 from metabrowser.cli.remote import remote as _remote_command
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
@@ -206,28 +207,13 @@ def serve(
     if not resolved.is_dir():
         raise CLIError(f"{resolved} is not a directory")
 
-    # Bootstrap: walk up from cwd to find .env / .env.local; values
-    # land in os.environ before the discovery layer runs at server-
-    # module import. Plugin authors / workspaces opt into custom plugin
-    # directories by writing METABROWSER_PLUGINS_DIRS=… into the .env.
-    _load_dotenv_chain()
-
-    # CLI flags are additive over a pre-set METABROWSER_PLUGINS_DIRS so
-    # an operator who exports the env var in their shell rc (or .env)
-    # and ALSO passes --plugins-dir gets dirs from both sources. Order:
-    # env-var dirs first, then CLI dirs (deduped after expanduser/resolve).
-    if plugins_dir:
-        env_dirs = [
-            d for d in os.environ.get("METABROWSER_PLUGINS_DIRS", "").split(os.pathsep) if d
-        ]
-        cli_dirs = [str(p.expanduser().resolve()) for p in plugins_dir]
-        seen: set[str] = set()
-        merged: list[str] = []
-        for d in [*env_dirs, *cli_dirs]:
-            if d not in seen:
-                merged.append(d)
-                seen.add(d)
-        os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(merged)
+    # Load the dotenv chain and normalize env/CLI plugin directories before
+    # the discovery layer first runs at server-module import. This is the same
+    # path resolution and validation used by ``metabrowser plugins``.
+    extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
+    os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
+        str(plugin_dir) for plugin_dir in extra_plugin_dirs
+    )
 
     if path:
         target = resolved / path
@@ -320,6 +306,7 @@ def walk(
     Pair with ``--log-level debug`` to trace the walk.
     """
 
+    _load_dotenv_chain()
     _apply_log_level(log_level)
     _configure_walk_logging()
 

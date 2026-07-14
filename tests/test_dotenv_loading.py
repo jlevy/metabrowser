@@ -14,6 +14,7 @@ values).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -105,3 +106,37 @@ def test_dotenv_drives_plugin_discovery(tmp_path: Path) -> None:
     last_line = result.stdout.strip().splitlines()[-1]
     names = json.loads(last_line)
     assert "envloaded" in names, f"`.env` should drive plugin discovery; loaded plugins: {names}"
+
+
+def test_walk_loads_dotenv_before_configuring_logging(tmp_path: Path) -> None:
+    """The non-server walk command honors the same dotenv chain as other commands."""
+    root = tmp_path / "runs"
+    root.mkdir()
+    cwd = tmp_path / "workdir"
+    cwd.mkdir()
+    (cwd / ".env").write_text("METABROWSER_LOG_LEVEL=DEBUG\n")
+
+    code = (
+        "import logging\n"
+        "from pathlib import Path\n"
+        "from metabrowser.cli.serve import walk\n"
+        f"root = Path({str(root)!r})\n"
+        "walk(root, fmt='text', stream=False, subpath='', detail='summary', "
+        "log_level='', max_depth=20, max_files=100)\n"
+        "print(logging.getLogger('metabrowser').level)\n"
+    )
+    env = os.environ.copy()
+    env.pop("METABROWSER_LOG_LEVEL", None)
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"subprocess failed: stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    assert result.stdout.strip().splitlines()[-1] == str(logging.DEBUG)

@@ -17,6 +17,7 @@ import signal
 import subprocess
 import sys
 import time
+import webbrowser
 
 import typer
 
@@ -159,11 +160,13 @@ def remote(
     if not no_open:
         time.sleep(3)
         if proc.poll() is None:
-            subprocess.Popen(
-                ["open", url],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            try:
+                webbrowser.open(url, new=2)
+            except (webbrowser.Error, OSError) as exc:
+                typer.echo(
+                    f"Could not auto-open browser ({exc}); visit {url} manually.",
+                    err=True,
+                )
 
     proc.wait()
 

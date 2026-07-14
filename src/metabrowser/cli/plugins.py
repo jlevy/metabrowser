@@ -20,13 +20,12 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 import sys
 from pathlib import Path
 
 import typer
 
-from metabrowser.dotenv import load_dotenv_chain
+from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.errors import CLIError
 from metabrowser.plugin_loader.discovery import LoadedPlugin, discover_plugins
 
@@ -36,32 +35,6 @@ plugins_app = typer.Typer(
     help="Inspect metabrowser plugin discovery (list / show / doctor).",
     no_args_is_help=True,
 )
-
-
-def _resolve_extra_dirs(plugins_dir: list[Path] | None) -> list[Path]:
-    """Combine ``--plugins-dir`` flags with ``METABROWSER_PLUGINS_DIRS`` env var.
-
-    Loads ``.env`` / ``.env.local`` first so a workspace's pinned
-    ``METABROWSER_PLUGINS_DIRS`` flows in even when invoked from a
-    subdirectory. Order: env-var dirs first, then CLI flags. Duplicates
-    deduped; non-existent dirs raise CLIError to fail loud.
-    """
-    load_dotenv_chain()
-    env_value = os.environ.get("METABROWSER_PLUGINS_DIRS", "")
-    env_paths = [Path(p) for p in env_value.split(os.pathsep) if p]
-    cli_paths = list(plugins_dir or [])
-
-    seen: set[str] = set()
-    out: list[Path] = []
-    for d in [*env_paths, *cli_paths]:
-        rd = d.expanduser().resolve()
-        if not rd.is_dir():
-            raise CLIError(f"plugin directory not a directory: {d}")
-        if str(rd) in seen:
-            continue
-        seen.add(str(rd))
-        out.append(rd)
-    return out
 
 
 def _format_table(rows: list[list[str]], headers: list[str]) -> str:
@@ -94,7 +67,7 @@ def cmd_list(
     as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
 ) -> None:
     """List every discovered plugin (name, source, kinds, view count, hooks)."""
-    extra = _resolve_extra_dirs(plugins_dir)
+    extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
 
     if as_json:
@@ -152,7 +125,7 @@ def cmd_show(
     ),
 ) -> None:
     """Print the full resolved manifest for one plugin."""
-    extra = _resolve_extra_dirs(plugins_dir)
+    extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
 
     plugin = next((p for p in result.plugins if p.name == name), None)
@@ -201,7 +174,7 @@ def cmd_doctor(
     ),
 ) -> None:
     """Validate every discovered plugin. Exit non-zero on any problem."""
-    extra = _resolve_extra_dirs(plugins_dir)
+    extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
 
     problems: list[str] = list(result.errors)
