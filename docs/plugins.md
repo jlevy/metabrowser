@@ -176,6 +176,7 @@ sidekick = "example_plugin.sidekick:summary_handler"
 
 The handler receives a Starlette `Request` and may return a response or JSON-compatible
 data according to the route adapter.
+Each `route` must be a unique single path segment within its plugin manifest.
 The route is mounted at:
 
 ```text

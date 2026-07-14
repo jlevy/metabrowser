@@ -83,6 +83,8 @@ Connect trusted publishing without a package token.
   TypeScript check-JS, exact npm locks, Lefthook, and SHA-pinned actions
 - [x] Apply CLI configuration before server initialization, call the documented plugin
   entry-point factory, and enforce JavaScript-only operator-directory plugins
+- [x] Reject duplicate data-hook routes before server startup so manifest order cannot
+  silently shadow a plugin endpoint
 - [x] Add public documentation for installation, development, architecture, plugins,
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
@@ -120,7 +122,7 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 594 Python and browser contract tests pass
+- 595 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no repository-only
   tbd or agent metadata
 - An isolated uv environment installs the wheel and exercises its command, packaged

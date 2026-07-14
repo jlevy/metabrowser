@@ -308,8 +308,12 @@ class PluginManifest(BaseModel):
                     f"kind '{kind}' has multiple default views: {ids}; only one allowed"
                 )
 
-        # Sidekick references must be in module:callable form.
+        # Data-hook routes must be unique within a plugin; Starlette resolves
+        # duplicate paths in registration order, which would silently make
+        # every later hook for the same route unreachable.
+        hook_route_counts: dict[str, int] = {}
         for dh in self.data_hook:
+            hook_route_counts[dh.route] = hook_route_counts.get(dh.route, 0) + 1
             if ":" not in dh.sidekick:
                 problems.append(
                     f"data_hook '{dh.route}' has malformed sidekick "
@@ -318,6 +322,11 @@ class PluginManifest(BaseModel):
             if "/" in dh.route:
                 problems.append(
                     f"data_hook route '{dh.route}' contains '/'; routes are single segments"
+                )
+        for route, count in hook_route_counts.items():
+            if count > 1:
+                problems.append(
+                    f"data_hook route '{route}' appears {count} times; routes must be unique"
                 )
 
         # extra_scripts / extra_styles entries must be plain filenames

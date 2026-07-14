@@ -200,6 +200,19 @@ def test_manifest_rejects_slashed_route() -> None:
     assert any("'/'" in p for p in problems)
 
 
+def test_manifest_rejects_duplicate_data_hook_routes() -> None:
+    manifest = PluginManifest(
+        plugin=PluginInfo(name="p"),
+        kind=[KindRule(id="x", match=KindMatch(ext=".x"))],
+        data_hook=[
+            DataHookSpec(route="same", sidekick="m:first"),
+            DataHookSpec(route="same", sidekick="m:second"),
+        ],
+    )
+    problems = manifest.validate_consistency()
+    assert any("data_hook route 'same' appears 2 times" in p for p in problems)
+
+
 # ── Discovery ───────────────────────────────────────────────
 
 
