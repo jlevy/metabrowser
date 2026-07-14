@@ -553,7 +553,8 @@ def test_slow_request_middleware_skips_long_lived_paths() -> None:
 
 def test_browser_open_handles_os_errors() -> None:
     """Headless launchers often raise OSError rather than webbrowser.Error."""
-    proc_source = Path(proc_browser.__file__).read_text()
-    serve_source = Path(proc_browser.__file__).parent.joinpath("cli", "serve.py").read_text()
-    assert "except (webbrowser.Error, OSError)" in proc_source
+    cli_dir = Path(proc_browser.__file__).parent / "cli"
+    serve_source = (cli_dir / "serve.py").read_text()
+    remote_source = (cli_dir / "remote.py").read_text()
     assert "except (webbrowser.Error, OSError)" in serve_source
+    assert "except (webbrowser.Error, OSError)" in remote_source

@@ -27,7 +27,16 @@ Usage::
 
 from __future__ import annotations
 
-import argparse
+# ``python -m metabrowser.server`` is a compatibility spelling for the
+# canonical CLI. Delegate before this module performs logging or plugin
+# discovery so both entry points use the same dotenv, path, and readiness
+# bootstrap.
+if __name__ == "__main__":
+    from metabrowser.cli.serve import main as _cli_main
+
+    _cli_main()
+    raise SystemExit
+
 import asyncio
 import datetime as _dt
 import json as _json
@@ -40,7 +49,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
-import uvicorn
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -97,9 +105,9 @@ from metabrowser.paths_safe import (
     _safe_subdir,
     _set_root_dir,
 )
+from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
-from metabrowser.server_utils import DEFAULT_PORT_SEARCH_COUNT, find_available_local_port
-from metabrowser.settings import DEFAULT_BROWSER_PORT, RECENT_WINDOW_SECONDS, client_settings_dict
+from metabrowser.settings import RECENT_WINDOW_SECONDS, client_settings_dict
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
     _IGNORE_CACHE,
@@ -274,7 +282,6 @@ __all__ = [
     "classify_by_ext",
     "classify_file_kind",
     "index",
-    "main",
     "raw_file",
     "register_file_kind_detector",
     "routes",
@@ -1700,9 +1707,9 @@ from metabrowser.tree import (
 _extra_plugin_dirs: list[Path] = []
 _env_dirs = os.environ.get("METABROWSER_PLUGINS_DIRS", "")
 if _env_dirs:
-    _extra_plugin_dirs = [
-        Path(path).expanduser().resolve() for path in _env_dirs.split(os.pathsep) if path
-    ]
+    _extra_plugin_dirs = normalize_plugin_dirs(
+        Path(path) for path in _env_dirs.split(os.pathsep) if path
+    )
 
 _DISCOVERY = discover_plugins(
     extra_dirs=_extra_plugin_dirs or None,
@@ -1937,54 +1944,3 @@ add_inventory_routes(app)
 
 
 # ── CLI entry point ─────────────────────────────────────────────
-
-
-def main() -> None:
-
-    parser = argparse.ArgumentParser(description="Metabrowser")
-    parser.add_argument("root", nargs="?", default=".", help="Root directory to serve")
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=DEFAULT_BROWSER_PORT,
-        help=f"Port (default: {DEFAULT_BROWSER_PORT})",
-    )
-    parser.add_argument("--host", default="127.0.0.1", help="Host (default: 127.0.0.1)")
-    parser.add_argument("--no-open", action="store_true", help="Don't open browser")
-    args = parser.parse_args()
-
-    _set_root_dir(Path(args.root).resolve())
-    if not _paths_safe.ROOT_DIR.is_dir():
-        print(f"Error: {_paths_safe.ROOT_DIR} is not a directory")
-        sys.exit(1)
-
-    try:
-        actual_port = find_available_local_port(
-            args.host, range(args.port, args.port + DEFAULT_PORT_SEARCH_COUNT)
-        )
-    except RuntimeError as exc:
-        print(f"Error: {exc}")
-        sys.exit(1)
-
-    url = f"http://{args.host}:{actual_port}"
-    print(f"Serving {_paths_safe.ROOT_DIR} at {url}")
-
-    if not args.no_open:
-        # ``webbrowser`` dispatches to the right per-platform launcher
-        # (``open`` on macOS, ``xdg-open`` on Linux, ``start`` on Windows).
-        # Wrap in try/except so a missing browser doesn't kill the server,
-        # but surface the failure so the operator knows why nothing
-        # happened (silent passes hide config issues like a headless VM
-        # without ``$BROWSER`` set).
-        import webbrowser
-
-        try:
-            webbrowser.open(url, new=2)
-        except (webbrowser.Error, OSError) as exc:
-            print(f"Could not auto-open browser ({exc}); visit {url} manually.")
-
-    uvicorn.run(app, host=args.host, port=actual_port, log_level="warning")
-
-
-if __name__ == "__main__":
-    main()

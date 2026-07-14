@@ -13,6 +13,8 @@ subcommand name.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 from typing import Protocol
 from unittest.mock import patch
@@ -183,3 +185,17 @@ def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:
         assert isinstance(result.exception, CLIError)
         assert "outside the served root" in str(result.exception)
         run_server.assert_not_called()
+
+
+def test_server_module_execution_delegates_to_canonical_cli() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "metabrowser.server", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "plugins" in result.stdout
+    assert "remote" in result.stdout

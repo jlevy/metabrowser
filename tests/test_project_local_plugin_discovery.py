@@ -121,6 +121,23 @@ def test_server_import_expands_env_plugin_paths(tmp_path: Path) -> None:
     assert "expanded-env-demo" in names
 
 
+def test_server_import_rejects_missing_env_plugin_path(tmp_path: Path) -> None:
+    """Direct server imports fail loudly for invalid operator configuration."""
+    env = os.environ.copy()
+    env["METABROWSER_PLUGINS_DIRS"] = str(tmp_path / "missing-plugins")
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import metabrowser.server"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "plugin directory not a directory" in result.stderr
+
+
 def test_user_home_plugins_dir_is_not_auto_discovered(tmp_path: Path, monkeypatch) -> None:
     """A plugin in ~/.metabrowser/plugins/ must not load by default either.
 
