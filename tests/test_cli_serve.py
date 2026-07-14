@@ -187,6 +187,23 @@ def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:
         run_server.assert_not_called()
 
 
+def test_walk_rejects_subpaths_outside_root(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside")
+    (root / "outside-link").symlink_to(outside)
+
+    for path in ("../outside.txt", "outside-link"):
+        result = runner.invoke(
+            _app,
+            ["walk", str(root), "--format", "json", "--path", path],
+        )
+
+        assert isinstance(result.exception, CLIError)
+        assert "outside the served root" in str(result.exception)
+
+
 def test_server_module_execution_delegates_to_canonical_cli() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "metabrowser.server", "--help"],

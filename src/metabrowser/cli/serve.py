@@ -84,6 +84,15 @@ def _wait_for_http_ok_then_open(
 _VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
 
+def _validate_contained_path(root: Path, requested: str) -> None:
+    """Require a requested path to exist within the resolved root."""
+    target = (root / requested).resolve()
+    if not target.is_relative_to(root):
+        raise CLIError(f"--path target is outside the served root: {requested}")
+    if not target.exists():
+        raise CLIError(f"--path target does not exist: {target}")
+
+
 def _apply_log_level(level: str | None) -> None:
     """Export ``METABROWSER_LOG_LEVEL`` so the logging setup at server
     import (``server._setup_perf_logging``) and the walk command pick
@@ -173,11 +182,7 @@ def serve(
     )
 
     if path:
-        target = (resolved / path).resolve()
-        if not target.is_relative_to(resolved):
-            raise CLIError(f"--path target is outside the served root: {path}")
-        if not target.exists():
-            raise CLIError(f"--path target does not exist: {target}")
+        _validate_contained_path(resolved, path)
 
     # Server import performs logging setup and plugin discovery. Keep it after
     # dotenv loading, CLI log-level application, and plugin-dir merging so all
@@ -274,6 +279,8 @@ def walk(
         raise CLIError(f"{resolved} is not a directory")
     if fmt not in FORMATS:
         raise CLIError(f"invalid --format {fmt!r}; expected one of {', '.join(FORMATS)}")
+    if subpath:
+        _validate_contained_path(resolved, subpath)
 
     if fmt == "text":
         if detail not in DETAIL_LEVELS:

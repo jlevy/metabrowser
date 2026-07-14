@@ -88,10 +88,12 @@ Connect trusted publishing without a package token.
 - [x] Normalize and validate plugin paths across commands and direct server imports,
   load dotenv configuration for non-server walks, and use readiness-gated,
   platform-neutral browser launching for remote mode
-- [x] Expand home-relative served roots and reject traversal or symlink deep links that
-  resolve outside the served root
+- [x] Expand home-relative served roots and reject traversal or symlink paths from both
+  server deep links and standalone tree walks when they resolve outside the root
 - [x] Anchor repository hooks to the git root and delegate legacy module execution to
   the canonical CLI before server bootstrap side effects
+- [x] Isolate test discovery from operator plugin environment variables before tests
+  import the server
 - [x] Add public documentation for installation, development, architecture, plugins,
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
@@ -129,7 +131,7 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 604 Python and browser contract tests pass
+- 606 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no repository-only
   tbd or agent metadata
 - An isolated uv environment installs the wheel and exercises its command, packaged

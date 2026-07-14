@@ -138,6 +138,33 @@ def test_server_import_rejects_missing_env_plugin_path(tmp_path: Path) -> None:
     assert "plugin directory not a directory" in result.stderr
 
 
+def test_pytest_collection_ignores_operator_plugin_env(tmp_path: Path) -> None:
+    """Repository tests must not inherit an operator's plugin configuration."""
+    env = os.environ.copy()
+    env["METABROWSER_PLUGINS_DIRS"] = str(tmp_path / "missing-plugins")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-q",
+            "tests/test_api_file_frontmatter.py",
+        ],
+        cwd=Path(__file__).parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, (
+        f"pytest collection failed: stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
 def test_user_home_plugins_dir_is_not_auto_discovered(tmp_path: Path, monkeypatch) -> None:
     """A plugin in ~/.metabrowser/plugins/ must not load by default either.
 
