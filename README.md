@@ -57,6 +57,8 @@ The server binds to `127.0.0.1:8411` by default.
 If that port is occupied, MetaBrowser walks a bounded range to find the next available
 port. Use `--host` and `--port` to override the defaults; review the security
 implications before exposing a served root beyond localhost.
+Remote mode also waits for the tunneled HTTP endpoint to become ready before opening the
+local browser.
 
 ## Built-In Views
 

@@ -86,7 +86,8 @@ Connect trusted publishing without a package token.
 - [x] Reject duplicate data-hook routes before server startup so manifest order cannot
   silently shadow a plugin endpoint
 - [x] Normalize plugin paths consistently across commands, load dotenv configuration for
-  non-server walks, and use the platform-neutral browser launcher for remote mode
+  non-server walks, and use readiness-gated, platform-neutral browser launching for
+  remote mode
 - [x] Add public documentation for installation, development, architecture, plugins,
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix

@@ -19,19 +19,18 @@ Examples:
 
 from __future__ import annotations
 
-import http.client
 import logging
 import os
 import sys
 import threading
-import time
 import webbrowser
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 import typer
 import uvicorn
 
+from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.cli.plugins import plugins_app
 from metabrowser.cli.remote import remote as _remote_command
@@ -43,16 +42,6 @@ from metabrowser.server_utils import (
 )
 from metabrowser.settings import DEFAULT_BROWSER_PORT
 from metabrowser.walk import DETAIL_LEVELS, FORMATS, dump_tree, stream_dump_lines, walk_report
-
-
-def _readiness_path(url: str) -> str:
-    """Return the HTTP path to probe before auto-opening ``url``."""
-
-    parsed = urlsplit(url)
-    path = parsed.path or "/"
-    if parsed.query:
-        path += f"?{parsed.query}"
-    return path
 
 
 def _open_browser(url: str) -> None:
@@ -82,45 +71,13 @@ def _wait_for_http_ok_then_open(
     route so auto-open never puts the operator in a broken browser tab.
     On timeout or 4xx/5xx, print the URL and leave the browser closed.
     """
-    deadline = time.monotonic() + timeout_s
-    path = _readiness_path(url)
-    last_error: BaseException | None = None
-    last_status: int | None = None
-    while time.monotonic() < deadline:
-        conn: http.client.HTTPConnection | None = None
-        try:
-            conn = http.client.HTTPConnection(host, port, timeout=0.2)
-            conn.request("GET", path, headers={"Connection": "close"})
-            resp = conn.getresponse()
-            last_status = resp.status
-            resp.read(256)
-            if 200 <= resp.status < 400:
-                _open_browser(url)
-                return
-            if 400 <= resp.status < 500:
-                typer.echo(
-                    f"Server returned HTTP {resp.status} for {url}; not opening browser.",
-                    err=True,
-                )
-                return
-            time.sleep(0.05)
-        except OSError as exc:
-            last_error = exc
-            time.sleep(0.05)
-        except http.client.HTTPException as exc:
-            last_error = exc
-            time.sleep(0.05)
-        finally:
-            if conn is not None:
-                conn.close()
-
-    detail = f"last HTTP status {last_status}" if last_status is not None else "no HTTP response"
-    if last_error is not None:
-        detail = f"{detail}; {last_error}"
-    typer.echo(
-        f"Server did not serve HTTP OK at {url} within {timeout_s}s ({detail}); "
-        "not opening browser automatically.",
-        err=True,
+    wait_for_http_ok_then(
+        host,
+        port,
+        url,
+        on_ready=lambda: _open_browser(url),
+        on_error=lambda message: typer.echo(message, err=True),
+        timeout_s=timeout_s,
     )
 
 

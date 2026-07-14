@@ -16,11 +16,11 @@ import shlex
 import signal
 import subprocess
 import sys
-import time
 import webbrowser
 
 import typer
 
+from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.ssh_utils import (
     build_ssh_command,
     build_ssh_tunnel_command,
@@ -33,6 +33,13 @@ from metabrowser.server_utils import (
     remote_port_probe_script,
 )
 from metabrowser.settings import DEFAULT_BROWSER_PORT
+
+
+def _open_browser(url: str) -> None:
+    try:
+        webbrowser.open(url, new=2)
+    except (webbrowser.Error, OSError) as exc:
+        typer.echo(f"Could not auto-open browser ({exc}); visit {url} manually.", err=True)
 
 
 def _probe_remote_free_port(
@@ -158,15 +165,14 @@ def remote(
     signal.signal(signal.SIGTERM, _forward_signal)  # type: ignore[arg-type]
 
     if not no_open:
-        time.sleep(3)
-        if proc.poll() is None:
-            try:
-                webbrowser.open(url, new=2)
-            except (webbrowser.Error, OSError) as exc:
-                typer.echo(
-                    f"Could not auto-open browser ({exc}); visit {url} manually.",
-                    err=True,
-                )
+        wait_for_http_ok_then(
+            "127.0.0.1",
+            local_port,
+            url,
+            on_ready=lambda: _open_browser(url) if proc.poll() is None else None,
+            on_error=lambda message: typer.echo(message, err=True),
+            is_cancelled=lambda: proc.poll() is not None,
+        )
 
     proc.wait()
 

@@ -110,9 +110,10 @@ def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:
 
     with (
         patch.object(remote, "webbrowser", create=True) as browser,
+        patch.object(remote, "wait_for_http_ok_then", create=True) as wait_for_ready,
         patch.object(remote.signal, "signal"),
-        patch.object(remote.time, "sleep"),
     ):
+        wait_for_ready.side_effect = lambda *args, **kwargs: kwargs["on_ready"]()
         remote.remote(
             host="user@vm",
             path="/runs",
@@ -124,5 +125,11 @@ def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:
             project="",
         )
 
+    wait_for_ready.assert_called_once()
+    assert wait_for_ready.call_args.args == (
+        "127.0.0.1",
+        8411,
+        "http://localhost:8411",
+    )
     browser.open.assert_called_once_with("http://localhost:8411", new=2)
     assert len(popen_calls) == 1
