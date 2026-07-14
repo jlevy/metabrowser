@@ -151,7 +151,7 @@ def serve(
     _apply_log_level(log_level)
 
     # Resolve file-as-ROOT shorthand before server initialization.
-    resolved = root.resolve()
+    resolved = root.expanduser().resolve()
     if resolved.is_file():
         if path:
             raise CLIError(
@@ -173,7 +173,9 @@ def serve(
     )
 
     if path:
-        target = resolved / path
+        target = (resolved / path).resolve()
+        if not target.is_relative_to(resolved):
+            raise CLIError(f"--path target is outside the served root: {path}")
         if not target.exists():
             raise CLIError(f"--path target does not exist: {target}")
 

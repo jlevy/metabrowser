@@ -13,7 +13,9 @@ subcommand name.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol
+from unittest.mock import patch
 
 from click import unstyle
 from typer.testing import CliRunner
@@ -142,3 +144,42 @@ def test_cli_bare_form_rewrite_routes_to_serve() -> None:
 
     assert isinstance(result.exception, CLIError)
     assert "not a directory" in str(result.exception)
+
+
+def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    root = home / "artifacts"
+    root.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+
+    with (
+        patch("uvicorn.run") as run_server,
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = runner.invoke(_app, ["serve", "~/artifacts", "--no-open"])
+
+    assert result.exit_code == 0, result.exception
+    run_server.assert_called_once()
+    assert f"Serving {root.resolve()}" in result.output
+
+
+def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside")
+    (root / "outside-link").symlink_to(outside)
+
+    for path in ("../outside.txt", "outside-link"):
+        with (
+            patch("uvicorn.run") as run_server,
+            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        ):
+            result = runner.invoke(
+                _app,
+                ["serve", str(root), "--path", path, "--no-open"],
+            )
+
+        assert isinstance(result.exception, CLIError)
+        assert "outside the served root" in str(result.exception)
+        run_server.assert_not_called()
