@@ -35,12 +35,12 @@
     var c = cssVar(color);
     var m = c.match(/^hsla?\(([^/)]+?)(?:\s*\/\s*[^)]+)?\)$/i);
     if (m) {
-      return "hsl(" + m[1].trim() + " / " + alpha + ")";
+      return `hsl(${m[1].trim()} / ${alpha})`;
     }
     if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c)) {
       var hex = Math.round(alpha * 255).toString(16);
       if (hex.length < 2) {
-        hex = "0" + hex;
+        hex = `0${hex}`;
       }
       return c.slice(0, 7) + hex;
     }
@@ -142,7 +142,7 @@
     var childKeys = Object.keys(children);
     var hasChildren = childKeys.length > 0;
     var colorClass = TALLY_COLORS[label] || "";
-    var countHtml = '<span class="tally-count ' + colorClass + '">' + count + "</span>";
+    var countHtml = `<span class="tally-count ${colorClass}">${count}</span>`;
 
     if (!hasChildren) {
       return (
@@ -167,7 +167,7 @@
       "</span>" +
       countHtml +
       "</div>";
-    html += '<div class="tally-children' + (startCollapsed ? " collapsed" : "") + '">';
+    html += `<div class="tally-children${startCollapsed ? " collapsed" : ""}">`;
     for (var i = 0; i < childKeys.length; i++) {
       var k = childKeys[i];
       var child = children[k];
@@ -196,8 +196,8 @@
         var section = document.createElement("div");
         section.className = "charts-section";
 
-        for (var i = 0; i < charts.length; i++) {
-          var spec = charts[i];
+        for (let chartIndex = 0; chartIndex < charts.length; chartIndex++) {
+          var spec = charts[chartIndex];
           var titleEl = document.createElement("div");
           titleEl.className = "chart-title";
           titleEl.textContent = spec.title;
@@ -348,7 +348,7 @@
       config.options.plugins.annotation = { annotations: {} };
       for (var t = 0; t < spec.thresholds.length; t++) {
         var th = spec.thresholds[t];
-        config.options.plugins.annotation.annotations["th" + t] = {
+        config.options.plugins.annotation.annotations[`th${t}`] = {
           type: "line",
           yMin: th.value,
           yMax: th.value,
@@ -375,7 +375,7 @@
       for (var a = 0; a < spec.annotations.length; a++) {
         var ann = spec.annotations[a];
         var color = ann.color || cssVar("--chart-annotation-default");
-        config.options.plugins.annotation.annotations["ann" + a] = {
+        config.options.plugins.annotation.annotations[`ann${a}`] = {
           type: "line",
           xMin: ann.x,
           xMax: ann.x,
@@ -419,7 +419,7 @@
 
     try {
       return new Chart(canvas, config);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }

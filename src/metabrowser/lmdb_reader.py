@@ -123,7 +123,7 @@ def decode_value(subdb: str, key: bytes, value: bytes) -> tuple[Any, str]:
             if predicate(subdb, key, value):
                 decoded = decode(value)
                 return decoded, getattr(decode, "__name__", "custom")
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Custom decoders are best-effort; fall through to the default chain.
             continue
 
@@ -137,7 +137,7 @@ def decode_value(subdb: str, key: bytes, value: bytes) -> tuple[Any, str]:
     ):
         try:
             return decoder(value), label
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
 
     return _to_hex_preview(value), "hex"
@@ -169,7 +169,7 @@ class LmdbReader:
 
     def open(self) -> None:
         try:
-            import lmdb  # noqa: PLC0415 -- guarded import (optional dep / circular)
+            import lmdb
         except ImportError as exc:
             raise RuntimeError(
                 "lmdb support not installed; reinstall metabrowser to pick up the lmdb dep"
@@ -248,7 +248,7 @@ class LmdbReader:
                 try:
                     env.open_db(key, txn=txn, create=False)
                     names.append(key.decode("utf-8", errors="replace"))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     continue
         return names
 

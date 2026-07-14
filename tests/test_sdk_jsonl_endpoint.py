@@ -36,7 +36,7 @@ class _FakeQuery:
 
 
 def test_api_file_returns_jsonl_envelope(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     log = tmp_path / "session.jsonl"
     log.write_text(_AGENT_LOG)
 

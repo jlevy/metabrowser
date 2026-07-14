@@ -33,8 +33,9 @@ def _render_index_html() -> str:
             return default
 
     class _FakeReq:
-        query_params = _FakeQuery()
-        headers: dict[str, str] = {}
+        def __init__(self) -> None:
+            self.query_params = _FakeQuery()
+            self.headers: dict[str, str] = {}
 
     resp = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)
@@ -270,7 +271,7 @@ def test_window_chip_click_dedups_against_current_window() -> None:
     # in renderRecentControls).
     handler_start = js.index("closest(\"[data-action='recent-window']\")")
     handler_block = js[handler_start : handler_start + 600]
-    assert "if (w === currentRecentWindow) return;" in handler_block
+    assert "if (w === currentRecentWindow)" in handler_block
 
 
 def test_load_recent_locks_window_synchronously_first() -> None:
@@ -300,15 +301,15 @@ def test_set_selected_path_helper_exists_and_is_used() -> None:
     # revealInTree.
     fn_start = js.index("function setSelectedPath(path)")
     fn_block = js[fn_start : fn_start + 800]
-    assert 'querySelectorAll(".tree-item.selected")' in fn_block
-    assert 'querySelectorAll(".tree-item")' in fn_block
+    assert 'queryHtmlAll(".tree-item.selected")' in fn_block
+    assert 'queryHtmlAll(".tree-item")' in fn_block
 
 
 def test_set_selected_path_clears_when_path_falsy() -> None:
     js = _read_app_js()
     fn_start = js.index("function setSelectedPath(path)")
     fn_block = js[fn_start : fn_start + 800]
-    assert "if (!path) return;" in fn_block
+    assert "if (!path)" in fn_block
 
 
 def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
@@ -349,7 +350,7 @@ def test_render_tree_nodes_explicit_expanded_overrides_default() -> None:
     js = _read_app_js()
     fn_start = js.index("function renderTreeNodes(nodes, isRoot, options)")
     fn_block = js[fn_start : fn_start + 2500]
-    assert '(typeof node.expanded === "boolean") ? node.expanded : defaultExpanded' in fn_block
+    assert 'typeof node.expanded === "boolean" ? node.expanded : defaultExpanded' in fn_block
 
 
 # ── CSS (P3.2 / P3.8) ────────────────────────────────────────
@@ -398,6 +399,6 @@ def test_find_root_readme_targets_tab_files_panel() -> None:
 
 def test_dom_content_loaded_calls_init_nav_tabs() -> None:
     js = _read_app_js()
-    handler_start = js.rindex('addEventListener("DOMContentLoaded", async function')
+    handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     handler_block = js[handler_start : handler_start + 3000]
     assert "initNavTabs();" in handler_block

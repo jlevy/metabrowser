@@ -20,11 +20,11 @@ def echo_handler(request: Request) -> JSONResponse:
     )
 
 
-def explode_handler(request: Request) -> JSONResponse:  # noqa: ARG001
+def explode_handler(request: Request) -> JSONResponse:
     """Handler that raises so tests can assert graceful data-hook degradation."""
     raise RuntimeError("boom")
 
 
-def explicit_500_handler(request: Request) -> JSONResponse:  # noqa: ARG001
+def explicit_500_handler(request: Request) -> JSONResponse:
     """Handler that returns an explicit 500 response."""
     return JSONResponse({"error": "explicit boom"}, status_code=500)

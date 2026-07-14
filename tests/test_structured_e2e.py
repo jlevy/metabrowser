@@ -29,7 +29,7 @@ _STRUCTURED_DIR = (
 
 @pytest.fixture
 def structured_app(tmp_path: Path) -> TestClient:
-    paths_safe._set_root_dir(tmp_path)  # noqa: SLF001
+    paths_safe._set_root_dir(tmp_path)
     plugin = _try_load_plugin(_STRUCTURED_DIR, source="builtin:test")
     assert plugin is not None and not isinstance(plugin, str), plugin
     routes = build_plugin_routes([plugin])

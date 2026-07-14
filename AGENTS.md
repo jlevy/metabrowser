@@ -19,6 +19,9 @@ make verify
 `make verify` is the required handoff gate.
 It includes formatting checks, Python and browser lint, type checks, public-hygiene
 checks, tests, distribution inspection, and isolated installed-wheel smoke tests.
+`make install` installs both committed dependency locks.
+Run `make hooks-install` once per checkout to install the Lefthook pre-commit and
+pre-push gates.
 
 ## Python and Dependencies
 
@@ -27,7 +30,7 @@ checks, tests, distribution inspection, and isolated installed-wheel smoke tests
 - Read [SUPPLY-CHAIN-SECURITY.md](SUPPLY-CHAIN-SECURITY.md) before any dependency or
   tool change.
 - Preserve the 14-day cool-off and exact first-party exceptions.
-  Commit `uv.lock`.
+  Commit `uv.lock` and `package-lock.json` when their dependencies change.
 - Support the Python range in `pyproject.toml` and add complete annotations to changed
   code.
 - Reuse the package’s safe-path, gzip, inventory, projection, and plugin helpers.
@@ -43,6 +46,8 @@ checks, tests, distribution inspection, and isolated installed-wheel smoke tests
 - Give new renderer state a disposal path and test lazy mounting and replacement.
 - Use design tokens instead of local color literals in core components.
 - Run Biome and TypeScript check-JS through the Make targets for browser changes.
+- Keep new browser modules under the fully strict `tsconfig.json` gate.
+  Do not expand the explicit legacy allowlist without a documented reason.
 
 ## Documentation and Public Hygiene
 

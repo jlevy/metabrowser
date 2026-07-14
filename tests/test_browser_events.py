@@ -158,9 +158,9 @@ def test_encode_heartbeat_comment_minimal_keepalive() -> None:
 # ── Round-trip per event variant ────────────────────────────────
 
 
-from typing import Any  # noqa: E402
+from typing import Any
 
-from metabrowser.events import StreamEvent  # noqa: E402
+from metabrowser.events import StreamEvent
 
 
 def _round_trip(event: StreamEvent) -> dict[str, Any]:

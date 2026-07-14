@@ -1,14 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
   "files": {
-    "includes": [
-      "**",
-      "!**/dist",
-      "!**/vendor",
-      "!**/*.min.js",
-      "!**/*.min.css",
-      "!src/metabrowser/static/app.js"
-    ]
+    "includes": ["**", "!**/dist", "!**/vendor", "!**/*.min.js", "!**/*.min.css"]
   },
   "formatter": {
     "enabled": true,
@@ -28,17 +21,10 @@
       "recommended": true,
       "style": {
         "useBlockStatements": "error",
-        "useTemplate": "off",
         "noDescendingSpecificity": "off"
       },
       "correctness": {
-        "noInnerDeclarations": "off",
-        "noUnusedVariables": "off",
-        "noUnusedImports": "off",
-        "noUnusedFunctionParameters": "off"
-      },
-      "suspicious": {
-        "noRedeclare": "off"
+        "noInnerDeclarations": "off"
       }
     }
   },

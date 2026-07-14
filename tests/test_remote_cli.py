@@ -8,6 +8,7 @@ explicit and insulates this command from any future routing change.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 from unittest.mock import patch
 
@@ -46,22 +47,18 @@ def test_remote_inner_command_uses_explicit_serve_subcommand(monkeypatch) -> Non
     with (
         patch.object(remote, "webbrowser", create=True),
         patch.object(remote, "signal", create=True),
+        contextlib.suppress(Exception),
     ):
-        try:
-            remote.remote(
-                host="user@vm",
-                path="/runs",
-                base_port=8411,
-                no_open=True,
-                ssh_options="",
-                gcp=False,
-                zone="",
-                project="",
-            )
-        except Exception:
-            # Some forwarding/teardown may explode under the mocks; the
-            # only thing this test cares about is the inner command.
-            pass
+        remote.remote(
+            host="user@vm",
+            path="/runs",
+            base_port=8411,
+            no_open=True,
+            ssh_options="",
+            gcp=False,
+            zone="",
+            project="",
+        )
 
     cmd = captured["cmd"]
     assert cmd[0] == "ssh"

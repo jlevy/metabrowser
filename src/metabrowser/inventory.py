@@ -74,13 +74,13 @@ from metabrowser.walker import (
     DEFAULT_MAX_FILES,
     DEFAULT_REFRESH_TTL_S,
     WALKER_EMIT_BATCH,
-    walk_tree,  # noqa: F401  — re-exported for tests
+    walk_tree,
 )
 from metabrowser.walker import (
     build_gitignore_check_for as _build_gitignore_check_for,
 )
 from metabrowser.walker import (
-    depth_of as _depth_of,  # noqa: F401  — re-exported for tests
+    depth_of as _depth_of,
 )
 from metabrowser.walker import (
     rel_path as _rel_path,  # noqa: F401  — re-exported for tests

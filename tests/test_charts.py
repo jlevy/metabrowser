@@ -17,11 +17,10 @@ from metabrowser.charts import (
 
 def _write_jsonl(events: Sequence[object]) -> Path:
     """Write events to a temporary JSONL file and return the path."""
-    f = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
-    for ev in events:
-        f.write(json.dumps(ev) + "\n")
-    f.close()
-    return Path(f.name)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as file:
+        for event in events:
+            file.write(json.dumps(event) + "\n")
+        return Path(file.name)
 
 
 CLAUDE_EVENTS = [

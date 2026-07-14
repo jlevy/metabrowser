@@ -72,14 +72,14 @@ class FileContext:
     """
 
     __slots__ = (
-        "path",
-        "ext",
-        "adapter",
         "_frontmatter_cache",
         "_frontmatter_loaded",
         "_frontmatter_parse_error",
         "_yaml_top_level_cache",
         "_yaml_top_level_loaded",
+        "adapter",
+        "ext",
+        "path",
     )
 
     def __init__(self, path: Path, ext: str, adapter: str | None = None) -> None:
@@ -133,7 +133,7 @@ class FileContext:
             # Import locally so the classifier can call this without
             # forcing a pyyaml import on the hot path of agent-log or
             # markdown classification.
-            from metabrowser.plugin_loader.classify import (  # noqa: PLC0415 -- pre-existing local import; needs review
+            from metabrowser.plugin_loader.classify import (
                 _yaml_top_level,
             )
 

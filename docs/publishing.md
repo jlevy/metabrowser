@@ -12,7 +12,7 @@ Create a pending trusted publisher for:
 - GitHub owner: `jlevy`;
 - GitHub repository: `metabrowser`;
 - workflow: `publish.yml`;
-- environment: blank unless the workflow is later changed to use one.
+- environment: `pypi`.
 
 The repository must be public before the first trusted-publisher release if required by
 the selected PyPI configuration.
@@ -33,6 +33,8 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
 4. Review changes since the previous release and choose a semantic version.
 
 5. Create a GitHub release with a `vX.Y.Z` tag.
+   The workflow checks out that exact tag, rejects non-semantic tags, and verifies that
+   the derived package version matches before publishing.
 
 6. Watch the `Publish to PyPI` workflow through completion.
 
@@ -60,8 +62,8 @@ If publication succeeds with a defective artifact, fix the defect and publish a 
 patch version; do not delete and reuse the version.
 
 If the workflow fails before publication, fix the workflow or trusted-publisher
-configuration on a branch, rerun all gates, and create the release only from the
-validated commit.
+configuration on a branch, rerun all gates and the npm audit, and create the release
+only from the validated commit.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

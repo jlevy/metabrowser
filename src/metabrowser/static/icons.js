@@ -16,7 +16,7 @@
 // ICON_SVG.withClass(name, cls) to inject it at render time — the
 // same raw "doc" shape then serves a .md file in the tree AND a dep
 // artifact in the graph without copy-paste.
-(function () {
+(() => {
   var SA =
     'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
@@ -35,7 +35,7 @@
       "<svg " +
       SA +
       '><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>',
-    alignLeft: "<svg " + SA + '><path d="M21 5H3"/><path d="M15 12H3"/><path d="M17 19H3"/></svg>', // Lucide `align-left`
+    alignLeft: `<svg ${SA}><path d="M21 5H3"/><path d="M15 12H3"/><path d="M17 19H3"/></svg>`, // Lucide `align-left`
     list: // Lucide `list`
       "<svg " +
       SA +
@@ -114,11 +114,10 @@
     if (!svg || !cls) {
       return svg || "";
     }
-    return svg.replace("<svg ", '<svg class="' + cls + '" ');
+    return svg.replace("<svg ", `<svg class="${cls}" `);
   };
 
-  var g =
-    typeof window !== "undefined" ? window : typeof globalThis !== "undefined" ? globalThis : this;
+  var g = typeof window !== "undefined" ? window : globalThis;
   if (g) {
     g.MetabrowserIcons = ICONS;
   }

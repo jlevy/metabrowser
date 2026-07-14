@@ -74,7 +74,7 @@ def test_manifest_rejects_slashed_extra_style() -> None:
 
 def test_index_emits_extra_scripts_in_declared_order(tmp_path: Path) -> None:
     """Loader emits one <script> tag per extra_scripts entry, in order, before index.js."""
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     fake_manifest = PluginManifest.model_validate(
         {
             "plugin": {

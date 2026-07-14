@@ -12,12 +12,16 @@ export UV_EXCLUDE_NEWER
 UV_CONFIG_FILE ?= $(CURDIR)/uv.toml
 export UV_CONFIG_FILE
 
-.PHONY: default install format lint lint-check test lock upgrade build verify clean
+.PHONY: default install hooks-install format format-markdown lint lint-check test lock upgrade build verify clean
 
 default: install format lint test
 
 install:
 	uv sync --all-extras --all-groups --frozen
+	npm ci --silent
+
+hooks-install: install
+	npx --no-install lefthook install
 
 lint:
 	uv run python devtools/lint.py
@@ -25,11 +29,16 @@ lint:
 	uv run python devtools/public_hygiene.py
 
 format:
-	uvx --exclude-newer-package 'flowmark-rs=2026-05-31T00:00:00Z' flowmark-rs@0.3.1 --auto --inplace --nobackup .
+	$(MAKE) format-markdown
 	uv run ruff check --fix src tests devtools
 	uv run ruff format src tests devtools
-	# Pinned wrappers invoke @biomejs/biome@2.4.14 and typescript@6.0.3.
-	uv run python -m devtools.biome format --write src/metabrowser/static src/metabrowser/builtin_plugins tests/dom
+	# Locked wrappers invoke the exact tools in package-lock.json without fetching.
+	uv run python -m devtools.biome format --write \
+		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom \
+		biome.json package.json tsconfig.json tsconfig.legacy.json
+
+format-markdown:
+	uvx --exclude-newer-package 'flowmark-rs=2026-05-31T00:00:00Z' flowmark-rs@0.3.1 --auto --inplace --nobackup .
 
 # Check-only lint, matching CI (does not modify files).
 lint-check:
@@ -48,11 +57,11 @@ upgrade:
 	uv lock --upgrade
 	uv sync --all-extras --all-groups --frozen
 
-build: install
+build:
 	uv build --clear --no-build-isolation
 	uv run python -m devtools.check_distribution
 
-verify: lint-check test build
+verify: install lint-check test build
 
 clean:
 	-rm -rf dist/

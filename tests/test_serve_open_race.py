@@ -24,12 +24,12 @@ from metabrowser.cli import serve as serve_module
 class _ReadyHandler(BaseHTTPRequestHandler):
     status = 200
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         self.send_response(self.status)
         self.end_headers()
         self.wfile.write(b"ok")
 
-    def log_message(self, format: str, *_args: object) -> None:  # noqa: A002
+    def log_message(self, format: str, *_args: object) -> None:
         return
 
 

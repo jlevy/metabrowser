@@ -45,10 +45,8 @@
     try {
       data = await mb.fetchPluginData("lmdb", "keys", { path: ctx.path });
     } catch (e) {
-      container.innerHTML =
-        '<div class="mb-plugin-lmdb-error">Failed to load keys: ' +
-        escapeHtml(e?.message ? e.message : e) +
-        "</div>";
+      const message = e instanceof Error ? e.message : String(e);
+      container.innerHTML = `<div class="mb-plugin-lmdb-error">Failed to load keys: ${escapeHtml(message)}</div>`;
       return;
     }
     const rows = data?.keys || [];
@@ -93,10 +91,8 @@
     try {
       data = await mb.fetchPluginData("lmdb", "stats", { path: ctx.path });
     } catch (e) {
-      container.innerHTML =
-        '<div class="mb-plugin-lmdb-error">Failed to load stats: ' +
-        escapeHtml(e?.message ? e.message : e) +
-        "</div>";
+      const message = e instanceof Error ? e.message : String(e);
+      container.innerHTML = `<div class="mb-plugin-lmdb-error">Failed to load stats: ${escapeHtml(message)}</div>`;
       return;
     }
     const rows = (data?.subdbs || [])

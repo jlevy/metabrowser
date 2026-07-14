@@ -13,7 +13,7 @@ from metabrowser.gz_io import ArtifactPath
 
 async def charts_handler(request: Request) -> JSONResponse:
     """Return tally and chart data for a supported coding-agent JSONL log."""
-    from metabrowser.server import _safe_path  # noqa: PLC0415 -- avoids server import cycle
+    from metabrowser.server import _safe_path
 
     subpath = request.query_params.get("path", "")
     target = _safe_path(subpath)

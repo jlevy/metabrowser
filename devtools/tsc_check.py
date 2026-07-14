@@ -5,24 +5,17 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from devtools.npm_policy import NPM_TOOL_PINS, npm_env
-
-TYPESCRIPT_VERSION = NPM_TOOL_PINS["typescript"]
+from devtools.npm_tools import npx_no_install
 
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    cmd = [
-        "npx",
-        "--yes",
-        "--package",
-        f"typescript@{TYPESCRIPT_VERSION}",
-        "tsc",
-        "--noEmit",
-        "-p",
-        "tsconfig.json",
-    ]
-    return subprocess.run(cmd, cwd=root, check=False, env=npm_env()).returncode
+    for config in ("tsconfig.json", "tsconfig.legacy.json"):
+        cmd = npx_no_install(root, "tsc", "--noEmit", "-p", config)
+        result = subprocess.run(cmd, cwd=root, check=False)
+        if result.returncode != 0:
+            return result.returncode
+    return 0
 
 
 if __name__ == "__main__":

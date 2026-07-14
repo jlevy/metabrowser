@@ -551,7 +551,7 @@ def _build_inventory_tree(
     """
 
     # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (  # noqa: PLC0415 -- circular-import guard
+    from metabrowser.inventory import (
         get_instance as get_inventory,
     )
 
@@ -686,7 +686,7 @@ def inventory_has_data() -> bool:
     inventory-backed and filesystem-walked tree responses."""
 
     # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (  # noqa: PLC0415 -- circular-import guard
+    from metabrowser.inventory import (
         get_instance as get_inventory,
     )
 
@@ -699,7 +699,7 @@ def inventory_status() -> str:
     'truncated'."""
 
     # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (  # noqa: PLC0415 -- circular-import guard
+    from metabrowser.inventory import (
         get_instance as get_inventory,
     )
 

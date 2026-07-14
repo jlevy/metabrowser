@@ -129,37 +129,40 @@ async def build_lifespan(
     inventory = get_inventory()
     root = root_provider()
     walker_task: asyncio.Task[None] | None = None
+    gitignore_task: asyncio.Task[None] | None = None
     active_task: asyncio.Task[None] | None = None
     watcher_task: asyncio.Task[None] | None = None
     if isinstance(root, Path):
         try:
             walker_task = inventory.start(root)
             LOG.info("inventory pre-warm started at %s", root)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Never crash startup because the pre-warm fell over —
             # the lazy path can rebuild on first user action and
             # an unhealthy inventory shouldn't take down the
             # process.
             LOG.exception("inventory pre-warm failed to start")
+
         # Pre-warm the .gitignore filter so the first /api/tree
         # doesn't pay the ~1.5 s parse cost. Background-only; the
         # request path builds it lazily if pre-warm hasn't finished.
-        try:
-            from metabrowser.tree import (  # noqa: PLC0415 -- guarded import (optional dep / circular)
-                build_gitignore_check,
-            )
+        async def prewarm_gitignore() -> None:
+            try:
+                from metabrowser.tree import build_gitignore_check
 
-            asyncio.create_task(
-                asyncio.to_thread(build_gitignore_check, root),
-                name="metabrowser-gitignore-prewarm",
-            )
-        except Exception:  # noqa: BLE001
-            LOG.exception("gitignore pre-warm failed to start")
+                await asyncio.to_thread(build_gitignore_check, root)
+            except Exception:
+                LOG.exception("gitignore pre-warm failed")
+
+        gitignore_task = asyncio.create_task(
+            prewarm_gitignore(),
+            name="metabrowser-gitignore-prewarm",
+        )
         # Spawn the active-file tracker; it pushes fs.change ops
         # into the inventory whenever a tracked file's active
         # state flips. Replaces /api/activity polling.
         try:
-            from metabrowser.active_tracker import (  # noqa: PLC0415 -- guarded import (optional dep / circular)
+            from metabrowser.active_tracker import (
                 run_active_tracker,
             )
 
@@ -167,13 +170,13 @@ async def build_lifespan(
                 run_active_tracker(root=root),
                 name="metabrowser-active-tracker",
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             LOG.exception("active tracker failed to start")
         # Spawn the filesystem watcher (native on local mounts,
         # polling on NFS / FUSE). Keeps the inventory in sync
         # with on-disk state without a Phase-4 writer event log.
         try:
-            from metabrowser.watch_backends import (  # noqa: PLC0415 -- guarded import (optional dep / circular)
+            from metabrowser.watch_backends import (
                 run_watcher,
             )
 
@@ -181,13 +184,13 @@ async def build_lifespan(
                 run_watcher(root=root),
                 name="metabrowser-fs-watcher",
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             LOG.exception("fs watcher failed to start")
 
     try:
         yield
     finally:
-        for t in (walker_task, active_task, watcher_task):
+        for t in (walker_task, gitignore_task, active_task, watcher_task):
             if t is not None and not t.done():
                 t.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -279,7 +282,7 @@ class _EventBus:
                     backoff = 0.5
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 LOG.exception("events bus relay crashed; restarting in %.1fs", backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
@@ -678,7 +681,7 @@ async def api_capabilities(request: Request) -> JSONResponse:
             backends_payload = [{"prefix": ".", "mode": mode, "reason": reason}]
         else:
             backends_payload = [{"prefix": ".", "mode": "polling", "reason": "no-root-set"}]
-    except Exception:  # noqa: BLE001
+    except Exception:
         LOG.exception("capabilities: fs-type detection failed; reporting polling fallback")
         backends_payload = [{"prefix": ".", "mode": "polling", "reason": "fs-type-detect-failed"}]
 

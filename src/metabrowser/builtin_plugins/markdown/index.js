@@ -47,7 +47,7 @@
           truncationWarning +
           mb.wrapWithCopy(
             '<pre class="code-block"><code class="language-yaml">' +
-              mb.escapeHtml("---\n" + fmText + "\n---") +
+              mb.escapeHtml(`---\n${fmText}\n---`) +
               "</code></pre>" +
               '<pre class="code-block"><code class="language-markdown">' +
               mb.escapeHtml(bodyText) +
@@ -73,17 +73,17 @@
     const rows = diagnostics
       .map((d) => {
         if (typeof d === "string") {
-          return "<dt>message</dt><dd>" + mb.escapeHtml(d) + "</dd>";
+          return `<dt>message</dt><dd>${mb.escapeHtml(d)}</dd>`;
         }
         const entries = [];
         if (d.type) {
-          entries.push("<dt>type</dt><dd>" + mb.escapeHtml(String(d.type)) + "</dd>");
+          entries.push(`<dt>type</dt><dd>${mb.escapeHtml(String(d.type))}</dd>`);
         }
         if (d.message) {
-          entries.push("<dt>message</dt><dd>" + mb.escapeHtml(String(d.message)) + "</dd>");
+          entries.push(`<dt>message</dt><dd>${mb.escapeHtml(String(d.message))}</dd>`);
         }
         if (d.severity) {
-          entries.push("<dt>severity</dt><dd>" + mb.escapeHtml(String(d.severity)) + "</dd>");
+          entries.push(`<dt>severity</dt><dd>${mb.escapeHtml(String(d.severity))}</dd>`);
         }
         return entries.join("");
       })
@@ -126,7 +126,7 @@
     const diagnostics = payload.diagnostics || [];
     const message =
       (payload.error || "KPress render failed") +
-      (payload.detail ? ": " + payload.detail : err?.message ? ": " + err.message : "");
+      (payload.detail ? `: ${payload.detail}` : err?.message ? `: ${err.message}` : "");
     return (
       '<div class="metabrowser-kpress-render-error" role="alert">' +
       "<strong>KPress render failed.</strong>" +

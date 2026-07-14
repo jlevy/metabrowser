@@ -285,13 +285,13 @@ async def _emit_for_path(
     # past the first.
     try:
         gi_check, git_root = await asyncio.to_thread(build_gitignore_check, root)
-    except Exception:  # noqa: BLE001
+    except Exception:
         gi_check, git_root = None, None
     gitignored = False
     if gi_check is not None and git_root is not None:
         try:
             gitignored = bool(gi_check(p, is_dir=False))
-        except Exception:  # noqa: BLE001
+        except Exception:
             gitignored = False
 
     entry = FsEntry.for_stat(
@@ -311,7 +311,7 @@ async def _emit_for_path(
     # stay in step with the same edge.
     try:
         projection_invalidate_path(p)
-    except Exception:  # noqa: BLE001
+    except Exception:
         LOG.exception("watcher: projection invalidate failed for %s", p)
     inventory.emit_event(ProjectionInvalidate(path=rel, projection="*"))
     LOG.debug(
@@ -354,7 +354,7 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
             for change_type, abs_path in changes:
                 try:
                     await _emit_for_path(inventory, root, abs_path, change_type)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     LOG.exception("watcher emit failed for %s", abs_path)
     except asyncio.CancelledError:
         LOG.info("watcher cancelled")

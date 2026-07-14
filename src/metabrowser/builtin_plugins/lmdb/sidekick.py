@@ -89,7 +89,7 @@ def _value_preview(decoded: Any, decoder_used: str) -> str:
         text = str(decoded)
     else:
         try:
-            import json  # noqa: PLC0415 -- guarded import (optional dep / circular)
+            import json
 
             text = json.dumps(decoded, ensure_ascii=False, default=str)
         except (TypeError, ValueError):
@@ -142,7 +142,7 @@ def keys_handler(request: Request) -> JSONResponse:
                 )
             if next_cursor is not None:
                 next_cursor_hex = next_cursor.hex()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         LOG.warning("lmdb keys handler failed: %s", exc)
         return JSONResponse({"error": str(exc), "path": raw_path}, status_code=500)
 
@@ -167,7 +167,7 @@ def entry_handler(request: Request) -> JSONResponse:
     try:
         with LmdbReader(str(env_dir)) as reader:
             value = reader.get(raw_key, subdb=subdb)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         LOG.warning("lmdb entry handler failed: %s", exc)
         return JSONResponse({"error": str(exc), "path": raw_path}, status_code=500)
 
@@ -217,12 +217,12 @@ def stats_handler(request: Request) -> JSONResponse:
             for name in subdb_names:
                 try:
                     s = reader.stats(subdb=name)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     continue
                 per_subdb.append({"name": name, "entries": s.entries, "depth": s.depth})
                 total += s.entries
             size_bytes = main.map_size
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         LOG.warning("lmdb stats handler failed: %s", exc)
         return JSONResponse({"error": str(exc), "path": raw_path}, status_code=500)
 

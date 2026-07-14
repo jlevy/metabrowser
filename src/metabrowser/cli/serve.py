@@ -166,7 +166,7 @@ def serve(
     port: int = typer.Option(DEFAULT_BROWSER_PORT, "--port", help="Server port"),
     host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
     no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open browser"),
-    plugins_dir: list[Path] | None = typer.Option(  # noqa: B008
+    plugins_dir: list[Path] | None = typer.Option(
         None,
         "--plugins-dir",
         help=(
@@ -346,7 +346,7 @@ def walk(
             ):
                 typer.echo(line)
 
-        import asyncio  # noqa: PLC0415 -- pre-existing local import; needs review
+        import asyncio
 
         asyncio.run(_emit())
         return

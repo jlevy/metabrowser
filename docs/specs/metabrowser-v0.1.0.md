@@ -78,6 +78,9 @@ Connect trusted publishing without a package token.
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
 - [x] Add CI, tag-driven publishing, dependency policy, and artifact inspection
+- [x] Align Python and JavaScript quality gates with KPress and tbd guidance using
+  strict BasedPyright, correctness-oriented Ruff rules, recommended Biome rules, strict
+  TypeScript check-JS, exact npm locks, Lefthook, and SHA-pinned actions
 - [x] Add public documentation for installation, development, architecture, plugins,
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
@@ -97,6 +100,8 @@ Connect trusted publishing without a package token.
 
 - Run Ruff, BasedPyright, codespell, npm policy, Biome, TypeScript check-JS, Flowmark,
   and public-hygiene checks
+- Install Python and JavaScript tooling from committed locks, run JavaScript tools with
+  `npx --no-install`, and audit the npm lock for moderate-or-higher vulnerabilities
 - Run the full pytest and browser contract suites on every supported Python version
 - Build and inspect the source distribution and wheel
 - Install the wheel in an isolated uv environment and import the package
@@ -110,9 +115,10 @@ Connect trusted publishing without a package token.
 The complete local `make verify` gate passes on the initial pull-request tree:
 
 - Ruff and BasedPyright report no diagnostics
-- Biome and TypeScript check-JS pass for browser code
+- Biome passes for every shipped browser module, and TypeScript check-JS passes for both
+  the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 591 Python and browser contract tests pass
+- 592 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no repository-only
   tbd or agent metadata
 - An isolated uv environment installs the wheel and exercises its command, packaged
@@ -136,6 +142,7 @@ GitHub Actions results remain pending until the branch is pushed.
 - Supported Python: 3.12 through 3.14
 - Markdown renderer: exact `kpress==0.1.0`
 - Dependency manager and build workflow: uv and simple-modern-uv
+- Browser development toolchain: exact npm lock with Node 24.18.0 and npm 11.10 or newer
 - Issue prefix: `mb-`
 
 ## References

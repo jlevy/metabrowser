@@ -21,12 +21,10 @@ def _styles_css() -> str:
 # ── Helpers exist ─────────────────────────────────────────────────
 
 
-def test_get_logical_ext_helper_defined() -> None:
+def test_tree_uses_server_logical_ext_metadata() -> None:
     js = _app_js()
-    assert "function getLogicalExt(entry)" in js
-    # Falls back to getExt(name) when the field is absent — backwards
-    # compatible with responses that don't carry logical_ext yet.
-    assert "if (entry && entry.logical_ext) return entry.logical_ext;" in js
+    assert "node.logical_ext" in js
+    assert 'data-logical-ext="' in js
 
 
 def test_get_logical_name_strips_gz_suffix() -> None:
@@ -35,8 +33,8 @@ def test_get_logical_name_strips_gz_suffix() -> None:
     # The strip path keys off both `compressed` AND `.gz` suffix so a
     # non-gz file with a name ending in literal ".gz" doesn't get
     # silently truncated.
-    assert "entry.compressed" in js
-    assert 'entry.name.toLowerCase().endsWith(".gz")' in js
+    assert "entry?.compressed" in js
+    assert 'entry.name?.toLowerCase().endsWith(".gz")' in js
 
 
 # ── Dispatch sites use logical name ───────────────────────────────
@@ -79,7 +77,7 @@ def test_render_badges_emits_compressed_badge_for_compressed_files() -> None:
     """Preview-pane file header gets a Compressed (or Gzip) badge whenever
     the server response says ``compressed: true``."""
     js = _app_js()
-    assert "if (data && data.compressed)" in js
+    assert "if (data?.compressed)" in js
     assert "badge-compressed" in js
 
 

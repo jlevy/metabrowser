@@ -10,11 +10,16 @@ def _browser_app_js() -> str:
     return (repo_root / "src" / "metabrowser" / "static" / "app.js").read_text()
 
 
+def _browser_asset(relative_path: str) -> str:
+    repo_root = Path(__file__).resolve().parents[1]
+    return (repo_root / "src" / "metabrowser" / relative_path).read_text()
+
+
 def test_tree_subtree_fetches_remain_depth_bounded() -> None:
     js = _browser_app_js()
 
     assert "TREE_SUBTREE_FETCH_DEPTH" in js
-    assert '"&depth=" + TREE_SUBTREE_FETCH_DEPTH' in js
+    assert "&depth=${TREE_SUBTREE_FETCH_DEPTH}" in js
 
 
 def test_hover_prefetch_skips_expensive_file_types() -> None:
@@ -39,3 +44,19 @@ def test_activity_polling_retired_no_longer_referenced() -> None:
     js = _browser_app_js()
     assert "setInterval(pollActivity" not in js
     assert "data.poll_interval_ms !== activityPollDelayMs" not in js
+
+
+def test_generated_html_handlers_keep_their_global_names() -> None:
+    """Static analysis cannot see function names embedded in generated HTML."""
+    app = _browser_app_js()
+    sdk = _browser_asset("static/plugin_sdk.js")
+    agent_log = _browser_asset("builtin_plugins/agent_log/index.js")
+
+    assert 'onclick="loadMoreCurrentText()"' in app
+    assert "async function loadMoreCurrentText()" in app
+    assert 'onclick="copyPath(this,' in app
+    assert "function copyPath(btn, path)" in app
+    assert 'onclick="copyContent(this)"' in sdk
+    assert "function copyContent(btn)" in app
+    assert 'onclick="toggleEvent(this)"' in agent_log
+    assert "function toggleEvent(header)" in app

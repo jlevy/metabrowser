@@ -264,9 +264,9 @@ async def build_tree_envelope(
     # ``asyncio.run`` loop (e.g. a second dump in the same process).
     # Rebind it to the current loop so ``wait_until_done`` doesn't raise
     # "bound to a different event loop".
-    inv._done_event = asyncio.Event()  # noqa: SLF001
-    inv._max_depth = max_depth  # noqa: SLF001  (debug tool drives the singleton directly)
-    inv._max_files = max_files  # noqa: SLF001
+    inv._done_event = asyncio.Event()
+    inv._max_depth = max_depth
+    inv._max_files = max_files
     inv.start(root)
     await inv.wait_until_done(timeout=timeout)
     tree = _build_inventory_tree(parent_rel=subpath, max_depth=max_depth, root_abs=root)

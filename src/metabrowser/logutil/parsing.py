@@ -178,7 +178,7 @@ def _parse_json(line: str) -> dict[str, Any] | None:
 def _format_tool_params(inp: dict[str, Any]) -> str:
     """Extract key tool input params for compact display."""
     key_params = [
-        f"{k}={str(inp[k])}"
+        f"{k}={inp[k]!s}"
         for k in ("command", "file_path", "pattern", "prompt", "path", "query", "content")
         if k in inp
     ]
@@ -277,7 +277,7 @@ class ClaudeLogParser:
                     kind="system",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[system:{subtype}] {str(event)}",
+                    summary=f"[system:{subtype}] {event!s}",
                     raw=event,
                 )
             ]
@@ -318,7 +318,7 @@ class ClaudeLogParser:
                 kind=etype,
                 adapter=self.adapter_name,
                 timestamp=ts,
-                summary=f"[{etype}] {str(event)}",
+                summary=f"[{etype}] {event!s}",
                 raw=event,
             )
         ]
@@ -334,7 +334,7 @@ class ClaudeLogParser:
                     kind="text",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[text] {str(content)}",
+                    summary=f"[text] {content!s}",
                     raw=event,
                 )
             ]
@@ -403,7 +403,7 @@ class ClaudeLogParser:
                     kind="text",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[assistant] {str(blocks)}",
+                    summary=f"[assistant] {blocks!s}",
                     raw=event,
                 )
             ]
@@ -417,7 +417,7 @@ class ClaudeLogParser:
                     kind="text",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[user] {str(content)}",
+                    summary=f"[user] {content!s}",
                     raw=event,
                 )
             ]
@@ -462,7 +462,7 @@ class ClaudeLogParser:
                     kind="text",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[user] {str(user_blocks)}",
+                    summary=f"[user] {user_blocks!s}",
                     raw=event,
                 )
             ]
@@ -490,7 +490,7 @@ class ClaudeLogParser:
                     kind="result",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[FAIL]{cost_str}{dur_str} {str(error_msg)}",
+                    summary=f"[FAIL]{cost_str}{dur_str} {error_msg!s}",
                     is_error=True,
                     is_done=True,
                     cost_usd=cost_usd,
@@ -621,7 +621,7 @@ class GeminiLogParser:
                 kind=etype,
                 adapter=self.adapter_name,
                 timestamp=ts,
-                summary=f"[{etype}] {str(event)}",
+                summary=f"[{etype}] {event!s}",
                 raw=event,
             )
         )
@@ -664,7 +664,7 @@ class GeminiLogParser:
                     kind="text",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[user] {str(content)}",
+                    summary=f"[user] {content!s}",
                     raw=event,
                 )
             )
@@ -682,7 +682,7 @@ class GeminiLogParser:
                 kind="text",
                 adapter=self.adapter_name,
                 timestamp=ts,
-                summary=f"[text] {str(content)}",
+                summary=f"[text] {content!s}",
                 raw=event,
             )
         )
@@ -715,7 +715,7 @@ class GeminiLogParser:
                     kind="result",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[FAIL]{cost_str}{dur_str}{extra} {str(error_msg)}",
+                    summary=f"[FAIL]{cost_str}{dur_str}{extra} {error_msg!s}",
                     is_error=True,
                     is_done=True,
                     cost_usd=cost_usd,

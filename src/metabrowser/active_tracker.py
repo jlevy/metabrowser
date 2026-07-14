@@ -183,7 +183,7 @@ async def run_active_tracker(
         while True:
             try:
                 await _tick(inventory, root, quiet_counters)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 LOG.exception("active tracker tick failed; continuing")
             await asyncio.sleep(interval_s)
     except asyncio.CancelledError:

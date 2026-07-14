@@ -45,7 +45,7 @@ def test_kpress_render_invalid_request_maps_to_400(tmp_path: Path, monkeypatch) 
     profile.
     """
 
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Doc\n")
 
     def _bad(**_kwargs: Any) -> dict[str, Any]:
@@ -64,7 +64,7 @@ def test_kpress_render_invalid_request_maps_to_400(tmp_path: Path, monkeypatch) 
 
 
 def test_kpress_render_rejects_path_traversal(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     response = asyncio.run(
         server.api_kpress_render(_request(query={"path": "../outside.md", "view": "rendered"}))
     )
@@ -72,7 +72,7 @@ def test_kpress_render_rejects_path_traversal(tmp_path: Path) -> None:
 
 
 def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("---\ntitle: Test\n---\n# Heading\n")
     seen: dict[str, Any] = {}
 

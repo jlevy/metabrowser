@@ -12,7 +12,29 @@ SRC_PATHS = ["src", "tests", "devtools"]
 DOC_PATHS = [
     str(path)
     for path in sorted(Path(".").rglob("*.md"))
-    if not any(part in {".agents", ".claude", ".git", ".tbd", ".venv"} for part in path.parts)
+    if not any(
+        part
+        in {
+            ".agents",
+            ".claude",
+            ".git",
+            ".pytest_cache",
+            ".tbd",
+            ".venv",
+            "dist",
+            "node_modules",
+        }
+        for part in path.parts
+    )
+]
+BIOME_PATHS = [
+    "src/metabrowser/static",
+    "src/metabrowser/builtin_plugins",
+    "tests/dom",
+    "biome.json",
+    "package.json",
+    "tsconfig.json",
+    "tsconfig.legacy.json",
 ]
 
 
@@ -38,17 +60,12 @@ def main() -> int:
         errcount += run(["ruff", "check", "--fix", *SRC_PATHS])
         errcount += run(["ruff", "format", *SRC_PATHS])
     errcount += run(["basedpyright", "--stats", *SRC_PATHS])
-    biome_args = [
-        sys.executable,
-        "-m",
-        "devtools.biome",
-        "check",
-        "src/metabrowser/static",
-        "src/metabrowser/builtin_plugins",
-        "tests/dom",
-    ]
-    if not args.check:
-        biome_args.insert(4, "--write")
+    biome_args = [sys.executable, "-m", "devtools.biome"]
+    if args.check:
+        biome_args.append("ci")
+    else:
+        biome_args.extend(["check", "--write", "--unsafe"])
+    biome_args.extend(BIOME_PATHS)
     errcount += run(biome_args)
     errcount += run([sys.executable, "-m", "devtools.tsc_check"])
 

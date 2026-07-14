@@ -26,6 +26,7 @@
     console.error("metabrowser structured plugin: preview.js / tree.js did not initialize");
     return;
   }
+  const renderInlineTree = tree.renderInlineTree;
 
   // Track the currently mounted tree-view instance so dispose can
   // tear down its scroll listener when the preview pane is replaced.
@@ -58,10 +59,8 @@
         if (!container.isConnected) {
           return;
         }
-        container.innerHTML =
-          '<div class="preview-empty">Failed to load: ' +
-          mb.escapeHtml(String(err?.message ? err.message : err)) +
-          "</div>";
+        const message = err instanceof Error ? err.message : String(err);
+        container.innerHTML = `<div class="preview-empty">Failed to load: ${mb.escapeHtml(message)}</div>`;
         return;
       }
       if (!container.isConnected) {
@@ -101,7 +100,7 @@
       container.innerHTML = "";
       container.appendChild(wrapper);
 
-      _activeTreeHandle = tree.renderInlineTree(treeMount, data.parsed, {
+      _activeTreeHandle = renderInlineTree(treeMount, data.parsed, {
         virtualize: true,
         // Auto-expand budget. The JsonViewer reference picked 8 for a
         // sidebar embed; the structured browser is a full pane. With
@@ -131,7 +130,9 @@
     mb.builtins = {};
   }
   mb.builtins.structured = {
-    renderInlineTree: tree.renderInlineTree,
+    renderSource: renderSourceFallback,
+    renderTree: renderTree,
+    renderInlineTree: renderInlineTree,
     materializeRows: tree.materializeRows,
     formatValue: preview.formatValue,
     generateStructuredPreview: preview.generateStructuredPreview,

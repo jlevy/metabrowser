@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_PARTS = {".git", ".venv", "dist", "__pycache__"}
+SKIP_PARTS = {".git", ".venv", "dist", "node_modules", "__pycache__"}
 SKIP_ROOTS = (ROOT / ".tbd" / "docs",)
 BANNED_TOKEN_HASHES: dict[str, str] = {
     "31523fdddcd5294e2bc6cc775fba79e2597e6d45bc0a995c548493038ebea33f": "private name",

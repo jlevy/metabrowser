@@ -97,7 +97,7 @@ def test_verbose_request_log_logs_every_request() -> None:
     """When verbose=True, every request gets an INFO line — not just slow ones."""
     handler = _attach_capture()
     try:
-        mw = server._SlowRequestLogMiddleware(  # noqa: SLF001
+        mw = server._SlowRequestLogMiddleware(
             app=None,
             threshold_ms=10000,  # high enough that nothing trips it
             verbose=True,
@@ -119,7 +119,7 @@ def test_default_mode_only_logs_slow_requests() -> None:
     """verbose=False (the default): a fast request emits NO line."""
     handler = _attach_capture()
     try:
-        mw = server._SlowRequestLogMiddleware(  # noqa: SLF001
+        mw = server._SlowRequestLogMiddleware(
             app=None,
             threshold_ms=10000,
             verbose=False,
@@ -141,7 +141,7 @@ def test_default_mode_logs_slow_request_warning() -> None:
     """
     handler = _attach_capture()
     try:
-        mw = server._SlowRequestLogMiddleware(  # noqa: SLF001
+        mw = server._SlowRequestLogMiddleware(
             app=None,
             threshold_ms=1,
             verbose=False,
@@ -156,7 +156,7 @@ def test_default_mode_logs_slow_request_warning() -> None:
 def test_debug_tasks_route_is_gated(monkeypatch) -> None:
     """Without METABROWSER_DEBUG=1 the route returns 404 with an explainer."""
     monkeypatch.delenv("METABROWSER_DEBUG", raising=False)
-    response = asyncio.run(server._debug_tasks(Mock()))  # noqa: SLF001
+    response = asyncio.run(server._debug_tasks(Mock()))
     assert response.status_code == 404
     payload = json.loads(bytes(response.body))
     assert "METABROWSER_DEBUG=1" in payload["error"]
@@ -175,7 +175,7 @@ def test_debug_tasks_route_returns_task_snapshot(monkeypatch) -> None:
 
         sleep_task = asyncio.create_task(sleeper(), name="test-sleeper")
         try:
-            response = await server._debug_tasks(Mock())  # noqa: SLF001
+            response = await server._debug_tasks(Mock())
             return json.loads(bytes(response.body))
         finally:
             sleep_task.cancel()
@@ -209,7 +209,7 @@ def test_response_carries_server_timing_header() -> None:
         await trapped_send({"type": "http.response.start", "status": 200, "headers": []})
         await trapped_send({"type": "http.response.body", "body": b"x", "more_body": False})
 
-    mw = server._SlowRequestLogMiddleware(app=fake_app)  # noqa: SLF001
+    mw = server._SlowRequestLogMiddleware(app=fake_app)
 
     sent: list[dict[str, Any]] = []
 
@@ -234,7 +234,7 @@ def test_slow_request_warning_includes_arrival_epoch() -> None:
     can correlate against perf.js timestamps without flipping verbose."""
     handler = _attach_capture()
     try:
-        mw = server._SlowRequestLogMiddleware(  # noqa: SLF001
+        mw = server._SlowRequestLogMiddleware(
             app=None,
             threshold_ms=1,
             verbose=False,

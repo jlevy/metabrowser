@@ -68,28 +68,28 @@ type MetabrowserPluginData = {
 };
 
 type StructuredBuiltins = {
-  calculateOptimalExpansion?: (...args: Array<unknown>) => unknown;
-  formatValue?: (...args: Array<unknown>) => unknown;
-  generateStructuredPreview?: (...args: Array<unknown>) => unknown;
-  materializeRows?: (...args: Array<unknown>) => unknown;
+  calculateOptimalExpansion: (...args: Array<unknown>) => unknown;
+  formatValue: (...args: Array<unknown>) => unknown;
+  generateStructuredPreview: (...args: Array<unknown>) => unknown;
+  materializeRows: (...args: Array<unknown>) => unknown;
   renderInlineTree(
     container: HTMLElement,
     data: unknown,
     options?: Record<string, unknown>,
   ): DisposableHandle | undefined;
-  renderSource?: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
-  renderTree?: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+  renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+  renderTree: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
 type AgentLogBuiltins = {
-  renderCharts?: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
-  renderLog?: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
-  renderLogEvent?: (container: HTMLElement, event: unknown) => unknown;
-  renderRaw?: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+  renderCharts: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+  renderLog: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+  renderLogEvent: (container: HTMLElement, event: unknown) => unknown;
+  renderRaw: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
 type TextBuiltins = {
-  renderSource?: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+  renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
 type MetabrowserBuiltins = {
@@ -102,7 +102,7 @@ type MetabrowserBuiltins = {
 };
 
 type MetabrowserSdk = {
-  builtins?: MetabrowserBuiltins;
+  builtins: MetabrowserBuiltins;
   escapeHtml(value: string): string;
   fetchKpressRender(
     ctx: MetabrowserRenderContext,
@@ -114,7 +114,8 @@ type MetabrowserSdk = {
     endpoint: string,
     params: Record<string, unknown>,
   ): Promise<MetabrowserPluginData>;
-  formatSize?(value: number): string;
+  formatSize(value: number): string;
+  getRegisteredView(kind: string, view: string): MetabrowserViewSpec | undefined;
   icons: Record<string, string>;
   isLargeTextPreview(data: Record<string, unknown>): boolean;
   kpressInitToc(container: HTMLElement): () => void;
@@ -127,13 +128,13 @@ type MetabrowserSdk = {
 };
 
 type StructuredPreviewGlobal = {
-  calculateOptimalExpansion?: (...args: Array<unknown>) => unknown;
-  formatValue?: (...args: Array<unknown>) => unknown;
-  generateStructuredPreview?: (...args: Array<unknown>) => unknown;
+  calculateOptimalExpansion: (...args: Array<unknown>) => unknown;
+  formatValue: (...args: Array<unknown>) => unknown;
+  generateStructuredPreview: (...args: Array<unknown>) => unknown;
 };
 
 type StructuredTreeGlobal = {
-  materializeRows?: (...args: Array<unknown>) => unknown;
+  materializeRows: (...args: Array<unknown>) => unknown;
   renderInlineTree: (
     container: HTMLElement,
     data: unknown,
@@ -142,17 +143,48 @@ type StructuredTreeGlobal = {
 };
 
 declare global {
+  var hljs: {
+    highlightElement(element: Element): void;
+  };
+
   var Chart: new (
     canvas: HTMLCanvasElement,
     config: Record<string, unknown>,
   ) => MetabrowserChartInstance;
 
+  interface Element {
+    _metabrowserMount?: (() => void) | null;
+  }
+
   interface Window {
     __structuredPreview?: StructuredPreviewGlobal;
     __structuredTree?: StructuredTreeGlobal;
     MetabrowserCharts?: MetabrowserChartRuntime;
+    MetabrowserDebug?: {
+      clearFileCache(path?: string): void;
+      selectFile(path: string): unknown;
+    };
+    MetabrowserFileTypes?: {
+      classFor(path: string): string;
+      iconFor(path: string): unknown;
+    };
     MetabrowserIcons?: Record<string, string>;
-    metabrowser?: MetabrowserSdk;
+    MetabrowserTooltip?: {
+      hide(): void;
+      move(event: MouseEvent): void;
+      show(html: string, event: MouseEvent): void;
+    };
+    METABROWSER_INITIAL_PATH?: string;
+    METABROWSER_SETTINGS?: {
+      INDEX_PROGRESS_POLL_MS?: number;
+      INDEX_PROGRESS_UPDATE_FILES?: number;
+      RECENT_CLUSTER_PCT?: number;
+      RECENT_DEFAULT_WINDOW?: string;
+      RECENT_LIMIT?: number;
+      RECENT_RECLUSTER_DEBOUNCE_MS?: number;
+      RECENT_WINDOWS?: Array<string>;
+    };
+    metabrowser: MetabrowserSdk;
     metabrowserAgentLog?: {
       mountLogEventRaw?: (rawEl: HTMLElement) => void;
     };

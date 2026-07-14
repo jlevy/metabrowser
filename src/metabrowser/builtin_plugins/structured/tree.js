@@ -68,7 +68,7 @@
   }
 
   function _childPath(parentPath, entry) {
-    return entry.isArrayIndex ? parentPath + "[" + entry.key + "]" : parentPath + "." + entry.key;
+    return entry.isArrayIndex ? `${parentPath}[${entry.key}]` : `${parentPath}.${entry.key}`;
   }
 
   function materializeRows(parsed, expandedPaths) {
@@ -144,10 +144,10 @@
       switch (p.kind) {
         case "bracket":
         case "punct":
-          html += '<span class="tok-punct">' + escHtml(p.text) + "</span>";
+          html += `<span class="tok-punct">${escHtml(p.text)}</span>`;
           break;
         case "key":
-          html += '<span class="tok-key">' + escHtml(p.text) + "</span>";
+          html += `<span class="tok-key">${escHtml(p.text)}</span>`;
           break;
         case "value":
           html +=
@@ -158,11 +158,11 @@
             "</span>";
           break;
         case "nested":
-          html += '<span class="tok-summary">' + escHtml(p.text) + "</span>";
+          html += `<span class="tok-summary">${escHtml(p.text)}</span>`;
           break;
         case "more":
           // "(N more)" is chrome metadata, not content — sans-serif.
-          html += '<span class="tok-meta">' + escHtml(p.text) + "</span>";
+          html += `<span class="tok-meta">${escHtml(p.text)}</span>`;
           break;
         default:
           html += escHtml(p.text || "");
@@ -173,7 +173,7 @@
 
   function renderRowHtml(row, indentChars) {
     var indentStyle = pv.calculateIndentStyle(row.level, indentChars);
-    var stylePart = ' style="padding-left:' + indentStyle.paddingLeft + ';"';
+    var stylePart = ` style="padding-left:${indentStyle.paddingLeft};"`;
     var rowClass = "srow";
     var chevronHtml = "";
     if (row.kind === "open") {
@@ -201,10 +201,10 @@
     var bodyHtml = "";
     if (row.kind === "kv" || row.kind === "item") {
       var fv = pv.formatValue(row.value);
-      bodyHtml = '<span class="' + fv.colorClass + '">' + escHtml(fv.text) + "</span>";
+      bodyHtml = `<span class="${fv.colorClass}">${escHtml(fv.text)}</span>`;
     } else if (row.kind === "open") {
       if (row.expanded) {
-        var label = row.isArray ? row.childCount + " items" : row.childCount + " keys";
+        var label = row.isArray ? `${row.childCount} items` : `${row.childCount} keys`;
         bodyHtml =
           '<span class="tok-count">' +
           '<span class="tok-punct">' +
@@ -224,7 +224,7 @@
         bodyHtml = _renderPreviewParts(pr.parts);
       }
     } else if (row.kind === "empty") {
-      bodyHtml = '<span class="tok-summary">' + (row.isArray ? "[]" : "{}") + "</span>";
+      bodyHtml = `<span class="tok-summary">${row.isArray ? "[]" : "{}"}</span>`;
     }
 
     return (
@@ -370,7 +370,7 @@
     spacer.className = "tree-spacer";
     spacer.style.position = "relative";
     var rowHeight = _readRowHeight(viewport) || DEFAULT_ROW_HEIGHT_PX;
-    spacer.style.height = rows.length * rowHeight + "px";
+    spacer.style.height = `${rows.length * rowHeight}px`;
     viewport.appendChild(spacer);
     container.appendChild(viewport);
 
@@ -386,7 +386,7 @@
 
     function rebuild() {
       vstate.rows = materializeRows(parsed, vstate.expandedPaths);
-      spacer.style.height = vstate.rows.length * vstate.rowHeight + "px";
+      spacer.style.height = `${vstate.rows.length * vstate.rowHeight}px`;
       _renderVirtualWindow(vstate);
     }
 

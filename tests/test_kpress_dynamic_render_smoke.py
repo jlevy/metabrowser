@@ -92,7 +92,7 @@ A footnote reference[^one] in the body.
 def served_root(tmp_path: Path) -> Path:
     """A small worktree with one rich markdown doc, ROOT_DIR pointed at it."""
 
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "docs").mkdir()
     source = tmp_path / "docs" / "smoke.md"
     source.write_text(_RICH_MARKDOWN, encoding="utf-8")
@@ -286,7 +286,7 @@ def math_and_image_root(tmp_path: Path) -> Path:
     """A doc with display math and an image ref. Math triggers KaTeX
     asset advertising; image passes through verbatim."""
 
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "math.md").write_text(_MATH_AND_IMAGE_MARKDOWN, encoding="utf-8")
     return tmp_path

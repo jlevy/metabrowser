@@ -135,7 +135,7 @@
       throw new Error("fetchPluginData: plugin + route are required");
     }
     const url = new URL(
-      "/api/plugin/" + encodeURIComponent(plugin) + "/" + encodeURIComponent(route),
+      `/api/plugin/${encodeURIComponent(plugin)}/${encodeURIComponent(route)}`,
       global.location.origin,
     );
     if (params && typeof params === "object") {
@@ -147,12 +147,12 @@
     }
     const resp = await fetch(url.toString(), { method: "GET" });
     if (!resp.ok) {
-      throw new Error("fetchPluginData " + plugin + "/" + route + ": " + resp.status);
+      throw new Error(`fetchPluginData ${plugin}/${route}: ${resp.status}`);
     }
     const data = await resp.json();
     if (data && data.type === "plugin_error") {
       throw new Error(
-        (data.error || "Plugin data hook failed") + (data.detail ? ": " + data.detail : ""),
+        (data.error || "Plugin data hook failed") + (data.detail ? `: ${data.detail}` : ""),
       );
     }
     return data;
@@ -176,11 +176,11 @@
     }
     const resp = await fetch(url.toString());
     if (!resp.ok) {
-      throw new Error("fetchJsonl " + path + ": " + resp.status);
+      throw new Error(`fetchJsonl ${path}: ${resp.status}`);
     }
     const data = await resp.json();
     if (data && data.type !== "jsonl") {
-      throw new Error("fetchJsonl " + path + ": expected JSONL, got type=" + (data.type || "?"));
+      throw new Error(`fetchJsonl ${path}: expected JSONL, got type=${data.type || "?"}`);
     }
     return data;
   }
@@ -198,7 +198,7 @@
     const body = payload && typeof payload === "object" ? payload : {};
     const base = body.error || "KPress render failed";
     const detail = body.detail || "";
-    return base + (detail ? ": " + detail : "") + " (HTTP " + status + ")";
+    return `${base + (detail ? `: ${detail}` : "")} (HTTP ${status})`;
   }
 
   function renderTextTruncationWarning(data) {
@@ -232,6 +232,7 @@
     return global.document && (global.document.head || global.document.body);
   }
 
+  /** @param {string} url @returns {Promise<void>} */
   function _loadStylesheet(url) {
     if (!url || _loadedKpressAssets.has(url) || !global.document) {
       return Promise.resolve();
@@ -248,12 +249,13 @@
       link.onload = () => resolve();
       // Some browsers don't fire onload for cached stylesheets — onerror is the
       // only signal we get for a hard failure, so reject on it.
-      link.onerror = () => reject(new Error("Failed to load KPress stylesheet: " + url));
+      link.onerror = () => reject(new Error(`Failed to load KPress stylesheet: ${url}`));
       parent.appendChild(link);
       _loadedKpressAssets.add(url);
     });
   }
 
+  /** @param {string} url @returns {Promise<void>} */
   function _loadScript(url) {
     if (!url || _loadedKpressAssets.has(url) || !global.document) {
       return Promise.resolve();
@@ -269,7 +271,7 @@
       script.async = false;
       script.setAttribute("data-kpress-asset", "");
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load KPress asset: " + url));
+      script.onerror = () => reject(new Error(`Failed to load KPress asset: ${url}`));
       parent.appendChild(script);
       _loadedKpressAssets.add(url);
     });
@@ -284,7 +286,7 @@
   const _SKIP_EMBEDDED_KPRESS_JS = ["theme.js"];
 
   function _isSkippedKpressScript(url) {
-    return _SKIP_EMBEDDED_KPRESS_JS.some((name) => url.endsWith("/" + name));
+    return _SKIP_EMBEDDED_KPRESS_JS.some((name) => url.endsWith(`/${name}`));
   }
 
   // toc.js is loaded via dynamic import (not a <script> tag) so we can capture
@@ -431,12 +433,12 @@
     // displays line up visually.
     const n = Number(bytes) || 0;
     if (n < 1024) {
-      return n + " B";
+      return `${n} B`;
     }
     if (n < 1024 * 1024) {
-      return (n / 1024).toFixed(1) + " KB";
+      return `${(n / 1024).toFixed(1)} KB`;
     }
-    return (n / (1024 * 1024)).toFixed(1) + " MB";
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   function formatTimestamp(secondsSinceEpoch) {
@@ -465,11 +467,11 @@
       // Walker emits null aggregates while a directory is still finalizing
       // in the InventoryIndex; render as a skeleton cell so the row paints
       // with shape; the SSE fs.change patch flow replaces it in place.
-      const pendCls = ("size tally-pending " + (extraClass || "")).trim();
-      return '<span class="' + pendCls + '"></span>';
+      const pendCls = `size tally-pending ${extraClass || ""}`.trim();
+      return `<span class="${pendCls}"></span>`;
     }
-    const cls = ("size " + sizeClass(bytes) + " " + (extraClass || "")).trim();
-    return '<span class="' + cls + '">' + formatSize(bytes) + "</span>";
+    const cls = `size ${sizeClass(bytes)} ${extraClass || ""}`.trim();
+    return `<span class="${cls}">${formatSize(bytes)}</span>`;
   }
 
   // Threshold for syntax-highlight bypass. Mirrors app.js's
@@ -580,6 +582,7 @@
   }
 
   global.metabrowser = {
+    builtins: {},
     registerView: registerView,
     getRegisteredView: getRegisteredView,
     listViewsForKind: listViewsForKind,

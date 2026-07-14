@@ -10,61 +10,107 @@ permissions:
   contents: read
 
 env:
-  # Supply-chain cool-off: only consider releases older than this, so CI never
-  # resolves packages too new to have been vetted. uv (>= 0.9, and the version
-  # pinned below) accepts a relative duration directly. See the Supply Chain
-  # Hardening section in docs/development.md.
   UV_EXCLUDE_NEWER: "14 days"
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: ["ubuntu-latest"]
-        python-version: ["3.12", "3.13", "3.14"]
-
-    # Linux only by default. Use ${{ matrix.os }} for other OSes.
-    runs-on: ${{ matrix.os }}
-
+  lint:
+    runs-on: ubuntu-latest
     steps:
-      # Generally following uv docs:
-      # https://docs.astral.sh/uv/guides/integration/github/
-
-      - name: Checkout (official GitHub action)
-        # Pinned to a full commit SHA (see supply-chain notes in
-        # docs/development.md); bump deliberately when updating.
+      - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # Important for versioning plugins:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install uv (official Astral action)
-        # Pinned to a full commit SHA. Bump the action, uv version, and Linux
-        # checksum together when updating.
+      - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.11.25"
-          # uv-x86_64-unknown-linux-gnu.
+          checksum: "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+          cache: "npm"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install locked dependencies
+        run: make install
+
+      - name: Run quality gates
+        run: make lint-check
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=moderate
+
+  test:
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.25"
           checksum: "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
-      - name: Set up Python (using uv)
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+          cache: "npm"
+
+      - name: Set up Python
         run: uv python install
 
-      - name: Install all dependencies
-        # --frozen: install exactly from the committed uv.lock, never re-resolving
-        # (UV_EXCLUDE_NEWER, set above, governs any resolution that does happen).
-        run: uv sync --all-extras --all-groups --frozen
-
-      - name: Run linting
-        # Check-only mode so CI fails on unformatted code instead of fixing it.
-        run: make lint-check
+      - name: Install locked dependencies
+        run: make install
 
       - name: Run tests
         run: uv run pytest
 
-      - name: Validate distribution
-        if: matrix.python-version == '3.12'
+  distribution:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.25"
+          checksum: "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+          cache: "npm"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install locked dependencies
+        run: make install
+
+      - name: Validate source and wheel distributions
         run: make build

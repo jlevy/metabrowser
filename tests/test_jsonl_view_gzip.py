@@ -48,7 +48,7 @@ def test_parse_jsonl_file_degrades_line_parser_exceptions(tmp_path: Path, monkey
     """A parser bug in one line should become a warning event, not abort the file."""
 
     class BrokenParser:
-        def parse_line(self, line: str) -> list[object]:  # noqa: ARG002
+        def parse_line(self, line: str) -> list[object]:
             raise RuntimeError("bad parser")
 
         def flush(self) -> list[object]:

@@ -30,11 +30,11 @@
 
   function fmtDuration(s) {
     if (s < 60) {
-      return s.toFixed(1) + "s";
+      return `${s.toFixed(1)}s`;
     }
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
-    return m + "m " + sec + "s";
+    return `${m}m ${sec}s`;
   }
 
   function logStat(label, value) {
@@ -55,10 +55,10 @@
       return evt.summary_parts
         .map((p) => {
           if (p.type === "omitted") {
-            return '<span class="summary-omitted">' + mb.escapeHtml(p.text) + "</span>";
+            return `<span class="summary-omitted">${mb.escapeHtml(p.text)}</span>`;
           }
-          const cls = "summary-" + p.type;
-          return '<span class="' + cls + '">' + mb.escapeHtml(p.text) + "</span>";
+          const cls = `summary-${p.type}`;
+          return `<span class="${cls}">${mb.escapeHtml(p.text)}</span>`;
         })
         .join("");
     }
@@ -70,14 +70,14 @@
         '<span class="summary-label">' +
         mb.escapeHtml(m[1]) +
         "</span>" +
-        (rest ? ' <span class="summary-value">' + mb.escapeHtml(rest) + "</span>" : "")
+        (rest ? ` <span class="summary-value">${mb.escapeHtml(rest)}</span>` : "")
       );
     }
     return mb.escapeHtml(text);
   }
 
   function renderLogEvent(evt, idx) {
-    const kindClass = "kind-" + evt.kind + (evt.is_error ? " error" : "");
+    const kindClass = `kind-${evt.kind}${evt.is_error ? " error" : ""}`;
     let kindLabel = (evt.kind || "").replace("_", " ");
     if (evt.kind === "tool_call") {
       kindLabel = "→ tool call";
@@ -165,7 +165,7 @@
     // Legacy path: render a single <pre><code> block. Highlight.js
     // picks it up via the existing highlightCode() pass.
     const text = typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
-    rawEl.innerHTML = '<pre><code class="language-json">' + mb.escapeHtml(text) + "</code></pre>";
+    rawEl.innerHTML = `<pre><code class="language-json">${mb.escapeHtml(text)}</code></pre>`;
   }
 
   // Expose for the shell's toggleEvent() to call when an event is
@@ -214,14 +214,14 @@
         );
       })
       .join("");
-    return '<div class="filter-bar">' + buttons + "</div>";
+    return `<div class="filter-bar">${buttons}</div>`;
   }
 
   function toggleKindFilter(kind) {
     if (!activeKindFilters) {
       return;
     }
-    const btn = document.querySelector('.filter-btn[data-filter-kind="' + kind + '"]');
+    const btn = document.querySelector(`.filter-btn[data-filter-kind="${kind}"]`);
     if (!btn) {
       return;
     }
@@ -232,7 +232,7 @@
       activeKindFilters.add(kind);
       btn.classList.add("active");
     }
-    document.querySelectorAll('.log-event[data-kind="' + kind + '"]').forEach((el) => {
+    document.querySelectorAll(`.log-event[data-kind="${kind}"]`).forEach((el) => {
       if (el instanceof HTMLElement) {
         el.style.display = activeKindFilters.has(kind) ? "" : "none";
       }
@@ -258,7 +258,7 @@
       summary += logStat("Duration", fmtDuration(s.duration_s));
     }
     if (s.cost_usd != null) {
-      summary += logStat("Cost", "$" + s.cost_usd.toFixed(2));
+      summary += logStat("Cost", `$${s.cost_usd.toFixed(2)}`);
     }
     summary += logStat("Tool calls", s.tool_calls);
     summary += logStat("Events", s.total_events);
@@ -266,10 +266,7 @@
       summary += logStat("Errors", s.errors);
     }
     if (s.lines_skipped) {
-      summary += logStat(
-        "Lines skipped",
-        s.lines_skipped + " of " + s.lines_total + " (oversized)",
-      );
+      summary += logStat("Lines skipped", `${s.lines_skipped} of ${s.lines_total} (oversized)`);
     }
     summary += "</div>";
     const filterBar = renderFilterBar(data.events || []);
@@ -338,6 +335,7 @@
   mb.builtins.agentLog = {
     renderLog: renderLog,
     renderRaw: renderRaw,
+    renderCharts: renderCharts,
     // Single-event renderer exposed for the shell's SSE live-stream
     // handler — appending one batch of new events to an already-
     // rendered log pane without re-rendering the whole thing.

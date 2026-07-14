@@ -33,11 +33,11 @@ def _api_file(path: str) -> dict[str, Any]:
     request.query_params = _FakeQuery({"path": path})
     request.headers = {}
     response = asyncio.run(server.api_file(request))
-    return response.body and __import__("json").loads(response.body) or {}
+    return (response.body and __import__("json").loads(response.body)) or {}
 
 
 def test_api_file_emits_frontmatter_for_md_with_yaml(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     md = tmp_path / "doc.md"
     md.write_text("---\ntitle: Hello\ntags:\n  - a\n  - b\n---\n\nbody text\n")
     result = _api_file("doc.md")
@@ -45,7 +45,7 @@ def test_api_file_emits_frontmatter_for_md_with_yaml(tmp_path: Path) -> None:
 
 
 def test_api_file_omits_frontmatter_when_md_has_none(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     md = tmp_path / "plain.md"
     md.write_text("# heading\n\nbody only, no frontmatter.\n")
     result = _api_file("plain.md")
@@ -55,7 +55,7 @@ def test_api_file_omits_frontmatter_when_md_has_none(tmp_path: Path) -> None:
 
 
 def test_api_file_omits_frontmatter_for_non_md(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     txt = tmp_path / "notes.txt"
     txt.write_text("plain text\n")
     result = _api_file("notes.txt")

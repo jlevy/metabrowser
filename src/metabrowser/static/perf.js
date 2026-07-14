@@ -70,12 +70,10 @@
       // glance instead of squinting at the sample object. Pure
       // diagnostic — `sample` is still passed as the second arg so
       // every detail remains inspectable.
-      var headline =
-        "[metabrowser perf] slow " + kind + " (" + sample.duration_ms.toFixed(0) + " ms)";
+      var headline = `[metabrowser perf] slow ${kind} (${sample.duration_ms.toFixed(0)} ms)`;
       if (kind === "fetch" && typeof sample.server_ms === "number") {
         var transit = Math.max(0, sample.duration_ms - sample.server_ms);
-        headline +=
-          " server=" + sample.server_ms.toFixed(0) + "ms transit=" + transit.toFixed(0) + "ms";
+        headline += ` server=${sample.server_ms.toFixed(0)}ms transit=${transit.toFixed(0)}ms`;
       }
       console.warn(headline, sample);
     }
@@ -122,6 +120,7 @@
   // change.
   var origFetch = window.fetch ? window.fetch.bind(window) : null;
   if (origFetch) {
+    const fetchImpl = origFetch;
     window.fetch = (input, init) => {
       var t0 = _now();
       var url =
@@ -132,7 +131,7 @@
             : input instanceof URL
               ? input.href
               : "";
-      var p = origFetch(input, init);
+      var p = fetchImpl(input, init);
       p.then((resp) => {
         var t1 = _now();
         var status = resp?.status;
@@ -372,7 +371,7 @@
         console.log(snap.measure_summary);
       }
       if (snap.slow_fetch.length || snap.slow_measure.length) {
-        console.warn("MetaBrowser perf — slow samples >= " + snap.slow_threshold_ms + " ms");
+        console.warn(`MetaBrowser perf — slow samples >= ${snap.slow_threshold_ms} ms`);
         if (console.table) {
           console.table(snap.slow_fetch.concat(snap.slow_measure));
         } else {
@@ -392,7 +391,7 @@
     if (navigator?.clipboard?.writeText) {
       return navigator.clipboard.writeText(text).then(() => {
         if (console?.log) {
-          console.log("Copied perf report to clipboard (" + text.length + " bytes).");
+          console.log(`Copied perf report to clipboard (${text.length} bytes).`);
         }
       });
     }
@@ -408,7 +407,7 @@
     var blob = new Blob([text], { type: "application/json" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = name || "metabrowser-perf-" + Date.now() + ".json";
+    a.download = name || `metabrowser-perf-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {

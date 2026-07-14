@@ -66,7 +66,7 @@ def env_under_root(tmp_path: Path) -> Path:
     """Create an LMDB env under the served root and point the server at the
     root so :func:`_safe_path` accepts a relative path to the env folder.
     """
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     env_dir = tmp_path / "rooms" / "ALPHA" / "metadata" / "blobs.index.lmdb"
     env_dir.mkdir(parents=True)
     _populate_env(
@@ -157,7 +157,7 @@ def test_keys_handler_pagination(env_under_root: Path) -> None:
 
 
 def test_keys_handler_404_on_missing_env(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     resp = keys_handler(_make_request({"path": "does/not/exist"}))
     assert resp.status_code == 404
 

@@ -28,7 +28,7 @@
       );
     }
     const lang = mb.langForExtension(data.ext || "");
-    const langCls = lang ? "language-" + lang : "plaintext";
+    const langCls = lang ? `language-${lang}` : "plaintext";
     return (
       truncationWarning +
       mb.wrapWithCopy(

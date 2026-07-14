@@ -19,15 +19,15 @@ def _reset_browser_inventory() -> Generator[None, None, None]:
     """Reset the process-wide InventoryIndex + events bus between tests."""
     yield
     try:
-        from metabrowser.events_route import (  # noqa: PLC0415 -- guarded import (optional dep / circular)
+        from metabrowser.events_route import (
             reset_bus_for_tests,
         )
-        from metabrowser.inventory import (  # noqa: PLC0415 -- guarded import (optional dep / circular)
+        from metabrowser.inventory import (
             reset_instance_for_tests,
         )
 
         reset_instance_for_tests()
         reset_bus_for_tests()
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Defensive: never let cleanup failure mask a test failure.
         pass

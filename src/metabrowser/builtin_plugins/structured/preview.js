@@ -43,7 +43,7 @@
     if (typeof value === "string") {
       // Strings render with double quotes — YAML aesthetic
       // (defaultStringType: 'QUOTE_DOUBLE' in the reference).
-      return { text: '"' + value + '"', colorClass: "tok-string" };
+      return { text: `"${value}"`, colorClass: "tok-string" };
     }
     // Fallback for unexpected types (BigInt etc.). Stringify defensively.
     return { text: String(value), colorClass: "tok-string" };
@@ -55,7 +55,7 @@
     // 1 em per indent step at the default size; indentChars=2 means
     // 1 em == 2 character widths in the monospace font we render in.
     var ic = indentChars || 2;
-    return { paddingLeft: level * ic * 0.5 + "em" };
+    return { paddingLeft: `${level * ic * 0.5}em` };
   }
 
   // ── Collapsed-node preview ─────────────────────────────────────
@@ -121,13 +121,13 @@
         }
         if (i > 0) {
           if (!fits(2 + piece.text.length + 4)) {
-            pushPart({ kind: "more", text: "… (" + (data.length - i) + " more)" });
+            pushPart({ kind: "more", text: `… (${data.length - i} more)` });
             hasMore = true;
             break;
           }
           pushPart({ kind: "punct", text: ", " });
         } else if (!fits(piece.text.length + 4)) {
-          pushPart({ kind: "more", text: "… (" + data.length + " more)" });
+          pushPart({ kind: "more", text: `… (${data.length} more)` });
           hasMore = true;
           break;
         }
@@ -146,13 +146,13 @@
         var fragLen = key.length + 2; // "key: "
         if (k > 0) {
           if (!fits(2 + fragLen + 4)) {
-            pushPart({ kind: "more", text: "… (" + (keys.length - k) + " more)" });
+            pushPart({ kind: "more", text: `… (${keys.length - k} more)` });
             hasMore = true;
             break;
           }
           pushPart({ kind: "punct", text: ", " });
         } else if (!fits(fragLen + 4)) {
-          pushPart({ kind: "more", text: "… (" + keys.length + " more)" });
+          pushPart({ kind: "more", text: `… (${keys.length} more)` });
           hasMore = true;
           break;
         }
@@ -212,12 +212,12 @@
     var entries = [];
     if (Array.isArray(value)) {
       for (var i = 0; i < value.length; i++) {
-        entries.push({ path: parentPath + "[" + i + "]", value: value[i] });
+        entries.push({ path: `${parentPath}[${i}]`, value: value[i] });
       }
     } else if (value && typeof value === "object") {
       var keys = Object.keys(value);
       for (var k = 0; k < keys.length; k++) {
-        entries.push({ path: parentPath + "." + keys[k], value: value[keys[k]] });
+        entries.push({ path: `${parentPath}.${keys[k]}`, value: value[keys[k]] });
       }
     }
     return entries;
@@ -245,6 +245,9 @@
 
     while (queue.length > 0 && rowBudget > 0) {
       var ent = queue.shift();
+      if (!ent) {
+        break;
+      }
       if (!_isContainer(ent.value)) {
         continue;
       }

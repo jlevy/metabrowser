@@ -68,7 +68,7 @@ def test_no_frontmatter_no_parse_error(tmp_path: Path) -> None:
 
 
 def test_api_file_surfaces_frontmatter_error_for_md(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     md = tmp_path / "broken.md"
     md.write_text("---\n: : : not valid yaml\nbad indent\n---\n\nbody\n")
     result = _api_file("broken.md")
@@ -84,7 +84,7 @@ def test_api_file_surfaces_frontmatter_error_for_md(tmp_path: Path) -> None:
 
 
 def test_api_file_no_frontmatter_error_for_clean_file(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     md = tmp_path / "clean.md"
     md.write_text("---\ntitle: Hello\n---\n\nbody\n")
     result = _api_file("clean.md")

@@ -1,13 +1,18 @@
 # ---- Project Info and Dependencies ----
 
 [project.urls]
+Homepage = "https://github.com/jlevy/metabrowser"
 Repository = "https://github.com/jlevy/metabrowser"
+Documentation = "https://github.com/jlevy/metabrowser#readme"
 Issues = "https://github.com/jlevy/metabrowser/issues"
 
 [project]
 name = "metabrowser"
 description = "Local web UI for browsing files, logs, and structured artifacts with extensible renderers."
 authors = [
+    { name="Joshua Levy", email="joshua@cal.berkeley.edu" },
+]
+maintainers = [
     { name="Joshua Levy", email="joshua@cal.berkeley.edu" },
 ]
 readme = "README.md"
@@ -65,14 +70,14 @@ build = [
     "uv-dynamic-versioning==0.14.0",
 ]
 dev = [
-    "basedpyright>=1.38.0",
-    "codespell>=2.4.1",
-    "httpx",
-    "pytest>=9.0.2",
-    "pytest-sugar",
-    "pytest-timeout>=2.3",
-    "rich>=14.3.2",
-    "ruff>=0.15.1",
+    "basedpyright>=1.39.3",
+    "codespell>=2.4.2",
+    "httpx2>=2.5.0",
+    "pytest>=9.0.3",
+    "pytest-sugar>=1.1.1",
+    "pytest-timeout>=2.3.1",
+    "rich>=15.0.0",
+    "ruff>=0.15.12",
 ]
 
 [project.scripts]
@@ -123,23 +128,20 @@ line-length = 100
 
 [tool.ruff.lint]
 select = [
-    # See: https://docs.astral.sh/ruff/rules/
-    # Basic list from: https://docs.astral.sh/ruff/linter/#rule-selection
-    "E", # https://docs.astral.sh/ruff/rules/#error-e
-    "F", # https://docs.astral.sh/ruff/rules/#pyflakes-f
-    "UP", # https://docs.astral.sh/ruff/rules/#pyupgrade-up
-    "B", # https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
-    "I", # https://docs.astral.sh/ruff/rules/#isort-i
-    "FURB",
-    "G",
-    "ICN",
-    "ISC",
-    "LOG",
-    "PIE",
-    "PLC0415",
-    "PYI",
-    "RET",
+    # Correctness-oriented floor shared with KPress. Formatting and narrow
+    # preferences remain the formatter's responsibility.
+    "E",
+    "F",
+    "B",
+    "UP",
+    "I",
+    "C4",
+    "SIM",
+    "RUF",
+    "ASYNC",
     "TID",
+    "LOG",
+    "G",
 ]
 ignore = [
     # Disable some rules that are overly pedantic. Add/remove as desired:
@@ -147,6 +149,16 @@ ignore = [
     "E402", # https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file/
     "E731", # https://docs.astral.sh/ruff/rules/lambda-assignment/
     "B008",
+    # Maintained prose intentionally uses typographic characters.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    "RUF022",
+    "RUF043",
+    # These APIs intentionally expose timeouts and perform bounded metadata calls
+    # while coordinating asyncio-native filesystem work.
+    "ASYNC109",
+    "ASYNC240",
     # We use both ruff formatter and linter so some rules should always be disabled.
     # See: https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
     "W191", # https://docs.astral.sh/ruff/rules/tab-indentation/
@@ -170,37 +182,23 @@ ignore = [
 # https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright
 # https://docs.basedpyright.com/latest/configuration/config-files/#sample-pyprojecttoml-file
 include = ["src", "tests", "devtools"]
-# By default BasedPyright is very strict, so you almost certainly want to disable
-# some of the rules.
-# First, these turn off warnings about (yes) how you ignore warnings:
-reportIgnoreCommentWithoutRule = false
-reportUnnecessaryTypeIgnoreComment = false
-# A few typically noisy warnings are next.
-# How many you enable is up to you. The first few are off by default, but you can
-# comment/uncomment these as desired:
+typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 reportUnusedCallResult = false
-reportAny = false
-reportExplicitAny = false
 reportImplicitStringConcatenation = false
-reportUnreachable = false
-reportCallInDefaultInitializer = false
-reportImportCycles = false
-reportMissingModuleSource = false
-reportMissingParameterType = false
-reportUnknownParameterType = false
-reportUnknownMemberType = false
-reportUnknownVariableType = false
+reportImplicitOverride = false
+# MetaBrowser's compatibility facade intentionally re-exports underscored helpers,
+# and its JSON/plugin boundaries narrow unknown values at runtime.
+reportPrivateUsage = false
 reportUnknownArgumentType = false
 reportUnknownLambdaType = false
-reportUnannotatedClassAttribute = false
-reportUnusedParameter = false
-reportUntypedFunctionDecorator = false
-reportImplicitOverride = false
-reportUnusedImport = "none"
-reportUnusedFunction = "none"
-reportUnusedClass = "none"
-reportPrivateUsage = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+reportMissingParameterType = false
+reportUnusedClass = false
+reportUnusedFunction = false
+reportUnusedImport = false
 
 [tool.ruff.lint.isort]
 known-first-party = ["metabrowser"]

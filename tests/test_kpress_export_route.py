@@ -33,13 +33,13 @@ def _json_body(response: Any) -> dict[str, Any]:
 
 
 def test_kpress_export_rejects_non_post(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     response = asyncio.run(server.api_kpress_export(_request(method="GET")))
     assert response.status_code == 405
 
 
 def test_kpress_export_rejects_deferred_single_file_mode(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Doc\n")
     response = asyncio.run(
         server.api_kpress_export(
@@ -55,7 +55,7 @@ def test_kpress_export_rejects_deferred_single_file_mode(tmp_path: Path) -> None
 
 
 def test_kpress_export_rejects_unknown_export_mode(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Doc\n")
     response = asyncio.run(
         server.api_kpress_export(
@@ -69,7 +69,7 @@ def test_kpress_export_rejects_unknown_export_mode(tmp_path: Path) -> None:
 def test_kpress_export_rejects_inline_asset_mode(tmp_path: Path) -> None:
     """`asset_mode=inline` is currently part of the deferred single-file path."""
 
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Doc\n")
     response = asyncio.run(
         server.api_kpress_export(
@@ -81,7 +81,7 @@ def test_kpress_export_rejects_inline_asset_mode(tmp_path: Path) -> None:
 
 
 def test_kpress_export_rejects_missing_destination(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Doc\n")
     response = asyncio.run(server.api_kpress_export(_request(body={"path": "doc.md"})))
     assert response.status_code == 400
@@ -89,7 +89,7 @@ def test_kpress_export_rejects_missing_destination(tmp_path: Path) -> None:
 
 
 def test_kpress_export_rejects_path_traversal_on_source(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     response = asyncio.run(
         server.api_kpress_export(_request(body={"path": "../escape.md", "destination": "out.html"}))
     )
@@ -97,7 +97,7 @@ def test_kpress_export_rejects_path_traversal_on_source(tmp_path: Path) -> None:
 
 
 def test_kpress_export_rejects_path_traversal_on_destination(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Doc\n")
     response = asyncio.run(
         server.api_kpress_export(_request(body={"path": "doc.md", "destination": "../escape.html"}))
@@ -110,7 +110,7 @@ def test_kpress_export_delegates_to_adapter_and_returns_report(tmp_path: Path, m
     """Happy path: validated request becomes a KPressExportRequest, adapter is called,
     its dict is returned to the caller verbatim under `report`."""
 
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     source = tmp_path / "docs" / "report.md"
     source.parent.mkdir()
     source.write_text("# Report\n\nBody.\n")
@@ -159,7 +159,7 @@ def test_kpress_export_delegates_to_adapter_and_returns_report(tmp_path: Path, m
 def test_kpress_export_runs_against_released_runtime(tmp_path: Path) -> None:
     """Pin the route to the public KPress v0.1.0 export contract."""
 
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Released runtime\n\nRendered by KPress.\n")
 
     response = asyncio.run(
@@ -184,7 +184,7 @@ def test_kpress_export_runs_against_released_runtime(tmp_path: Path) -> None:
 
 
 def test_kpress_export_render_error_returns_502(tmp_path: Path, monkeypatch) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Doc\n")
 
     def _boom(_req: Any) -> Any:

@@ -96,10 +96,10 @@ def _serialize_to_yaml(value: Any) -> str:
     line-classification works on.
     """
     try:
-        from ruamel.yaml import (  # noqa: PLC0415 -- optional ruamel.yaml dependency with pyyaml fallback
+        from ruamel.yaml import (
             YAML,  # type: ignore[import-not-found]
         )
-        from ruamel.yaml.compat import (  # noqa: PLC0415 -- optional ruamel.yaml dependency with pyyaml fallback
+        from ruamel.yaml.compat import (
             StringIO,  # type: ignore[import-not-found]
         )
 
@@ -114,7 +114,7 @@ def _serialize_to_yaml(value: Any) -> str:
         yaml.dump(value, buf)
         text = buf.getvalue()
     except ImportError:
-        import yaml as pyyaml  # type: ignore[import-not-found]  # noqa: PLC0415 -- pyyaml fallback when ruamel.yaml unavailable
+        import yaml as pyyaml  # type: ignore[import-not-found]
 
         text = pyyaml.safe_dump(
             value,
@@ -144,7 +144,7 @@ def _parse_text(text: str, ext: str) -> Any:
             # normal JSON of any size; only files that fail it fall through
             # to ``json5``, and those are tiny config files, so json5's
             # pure-Python speed never touches the hot path.
-            import json5  # type: ignore[import-not-found]  # noqa: PLC0415 -- optional json5 dependency, only used as JSONC fallback
+            import json5  # type: ignore[import-not-found]
 
             return json5.loads(text)
     # .yaml / .yml — accept ``ruamel.yaml`` typ="safe" or pyyaml.safe_load.
@@ -154,14 +154,14 @@ def _parse_text(text: str, ext: str) -> Any:
     # document load raises on those, dropping the file to the plain-text
     # fallback instead of rendering the structured tree.
     try:
-        from ruamel.yaml import (  # noqa: PLC0415 -- optional ruamel.yaml dependency with pyyaml fallback
+        from ruamel.yaml import (
             YAML,  # type: ignore[import-not-found]
         )
 
         yaml = YAML(typ="safe")
         docs = list(yaml.load_all(text))
     except ImportError:
-        import yaml as pyyaml  # type: ignore[import-not-found]  # noqa: PLC0415 -- pyyaml fallback when ruamel.yaml unavailable
+        import yaml as pyyaml  # type: ignore[import-not-found]
 
         docs = list(pyyaml.safe_load_all(text))
     return _collapse_yaml_documents(docs)
@@ -198,7 +198,7 @@ def parse_structured(target: Path, ext: str, mtime_hash: str) -> StructuredPaylo
 def _parse_structured_cached(
     target_str: str,
     ext: str,
-    mtime_hash: str,  # noqa: ARG001 (mtime_hash is the cache key)
+    mtime_hash: str,
 ) -> StructuredPayload:
     target = Path(target_str)
     artifact = ArtifactPath(target)
@@ -219,7 +219,7 @@ def _parse_structured_cached(
         with artifact.open_text() as fh:
             text = fh.read()
         parsed = _parse_text(text, ext)
-    except Exception as exc:  # noqa: BLE001 — caller wants the message verbatim
+    except Exception as exc:
         return StructuredPayload(
             parsed=None,
             pretty_yaml="",
@@ -231,7 +231,7 @@ def _parse_structured_cached(
 
     try:
         pretty_yaml = _serialize_to_yaml(parsed)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # Parsing succeeded but serialization failed — uncommon (the
         # output is just structured data the YAML serializer should
         # handle), so log loudly and ship the parsed tree with an

@@ -1,8 +1,7 @@
 // Metabrowser — client-side application
 
 let currentPath = null;
-let currentMtimeHash = null;
-let activeFiles = new Map(); // path -> {pid_alive: bool|null}
+const activeFiles = new Map(); // path -> {pid_alive: bool|null}
 // Active SSE subscription for the currently-viewed live JSONL.
 // Closed and replaced on every selectFile.
 let currentLiveStream = null;
@@ -19,74 +18,89 @@ const FILE_PREFETCH_HOVER_DELAY_MS = 250;
 const FILE_PREFETCH_MAX_BYTES = 512 * 1024;
 const FILE_PREFETCH_MAX_CONCURRENT = 1;
 const TEXT_PREVIEW_CHUNK_BYTES = 128 * 1024;
-const SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024;
 
 // Optional perf instrumentation. perf.js installs window.metabrowserPerf
 // with measure/measureAsync helpers and a fetch wrapper; if it isn't
 // loaded these calls fall through to plain invocation.
 var _perf = (typeof window !== "undefined" && window.metabrowserPerf) || {
-  measure: function (_label, fn) { return fn(); },
-  measureAsync: function (_label, fn) { return fn(); },
+  measure: (_label, fn) => fn(),
+  measureAsync: (_label, fn) => fn(),
 };
 
 function filePerfMeta(data, extra) {
   var meta = {
-    path: data && data.path || "",
-    type: data && data.type || "",
-    kind: data && data.kind || "",
-    ext: data && data.ext || "",
-    size_bytes: data && data.size || 0,
-    view_count: data && data.views ? data.views.length : 0,
+    path: data?.path || "",
+    type: data?.type || "",
+    kind: data?.kind || "",
+    ext: data?.ext || "",
+    size_bytes: data?.size || 0,
+    view_count: data?.views ? data.views.length : 0,
   };
-  if (data && typeof data.content === "string") meta.content_chars = data.content.length;
-  if (data && typeof data.raw_text === "string") meta.raw_text_chars = data.raw_text.length;
-  if (data && Array.isArray(data.events)) meta.events = data.events.length;
-  if (data && typeof data.bytes_read === "number") meta.bytes_read = data.bytes_read;
-  if (data && data.content_truncated) meta.content_truncated = true;
-  if (data && data.highlight_disabled) meta.highlight_disabled = true;
+  if (data && typeof data.content === "string") {
+    meta.content_chars = data.content.length;
+  }
+  if (data && typeof data.raw_text === "string") {
+    meta.raw_text_chars = data.raw_text.length;
+  }
+  if (data && Array.isArray(data.events)) {
+    meta.events = data.events.length;
+  }
+  if (data && typeof data.bytes_read === "number") {
+    meta.bytes_read = data.bytes_read;
+  }
+  if (data?.content_truncated) {
+    meta.content_truncated = true;
+  }
+  if (data?.highlight_disabled) {
+    meta.highlight_disabled = true;
+  }
   if (extra) {
-    Object.keys(extra).forEach(function (k) { meta[k] = extra[k]; });
+    Object.keys(extra).forEach((k) => {
+      meta[k] = extra[k];
+    });
   }
   return meta;
 }
 
-function isLargeTextPreview(data) {
-  if (!data) return false;
-  return !!data.content_truncated
-    || !!data.highlight_disabled
-    || (data.size || 0) > SYNTAX_HIGHLIGHT_MAX_BYTES
-    || (typeof data.content === "string" && data.content.length > SYNTAX_HIGHLIGHT_MAX_BYTES);
-}
-
 function responsePerfMeta(resp, path, extra) {
+  /** @type {Record<string, unknown>} */
   var meta = {
     path: path || "",
-    status: resp && resp.status || 0,
+    status: resp?.status || 0,
     content_length: null,
     content_encoding: null,
   };
   try {
-    var cl = resp && resp.headers && resp.headers.get && resp.headers.get("content-length");
-    if (cl) meta.content_length = parseInt(cl, 10);
-    meta.content_encoding = resp && resp.headers && resp.headers.get
-      ? resp.headers.get("content-encoding")
-      : null;
-  } catch (_e) { /* ignore */ }
+    var cl = resp?.headers?.get?.("content-length");
+    if (cl) {
+      meta.content_length = parseInt(cl, 10);
+    }
+    meta.content_encoding = resp?.headers?.get ? resp.headers.get("content-encoding") : null;
+  } catch (_e) {
+    /* ignore */
+  }
   if (extra) {
-    Object.keys(extra).forEach(function (k) { meta[k] = extra[k]; });
+    Object.keys(extra).forEach((k) => {
+      meta[k] = extra[k];
+    });
   }
   return meta;
 }
 
 function measureNextPaint(label, meta) {
-  if (typeof requestAnimationFrame === "undefined") return;
-  _perf.measureAsync(label, function () {
-    return new Promise(function (resolve) {
-      requestAnimationFrame(function () {
-        requestAnimationFrame(resolve);
-      });
-    });
-  }, meta);
+  if (typeof requestAnimationFrame === "undefined") {
+    return;
+  }
+  _perf.measureAsync(
+    label,
+    () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(resolve);
+        });
+      }),
+    meta,
+  );
 }
 
 // ── Utilities ───────────────────────────────────────────────────
@@ -97,10 +111,37 @@ function esc(s) {
   return d.innerHTML;
 }
 
+/**
+ * @param {string} selector
+ * @param {ParentNode} [root]
+ * @returns {HTMLElement | null}
+ */
+function queryHtml(selector, root) {
+  return /** @type {HTMLElement | null} */ ((root || document).querySelector(selector));
+}
+
+/**
+ * @param {string} selector
+ * @param {ParentNode} [root]
+ * @returns {NodeListOf<HTMLElement>}
+ */
+function queryHtmlAll(selector, root) {
+  return /** @type {NodeListOf<HTMLElement>} */ ((root || document).querySelectorAll(selector));
+}
+
+/** @param {Event} event @returns {Element | null} */
+function eventTargetElement(event) {
+  return event.target instanceof Element ? event.target : null;
+}
+
 function formatSize(bytes) {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // Size-weight convention — single source of truth. Anything displaying a
@@ -119,11 +160,11 @@ function sizeHtml(bytes, extraClass) {
   // ``fs.change`` patch flow (applyCellPatch below) replaces it
   // in place once the walker finalizes the dir.
   if (bytes === null || bytes === undefined) {
-    var pendCls = ("size tally-pending " + (extraClass || "")).trim();
-    return '<span class="' + pendCls + '"></span>';
+    var pendCls = `size tally-pending ${extraClass || ""}`.trim();
+    return `<span class="${pendCls}"></span>`;
   }
-  var cls = ("size " + sizeClass(bytes) + " " + (extraClass || "")).trim();
-  return '<span class="' + cls + '">' + formatSize(bytes) + '</span>';
+  var cls = `size ${sizeClass(bytes)} ${extraClass || ""}`.trim();
+  return `<span class="${cls}">${formatSize(bytes)}</span>`;
 }
 
 // File-count convention — same idea as sizeHtml. One helper, one class,
@@ -141,23 +182,25 @@ function nullableDataValue(n) {
   return isPendingNumber(n) ? "" : String(n);
 }
 function parseTipNumber(value) {
-  if (value === undefined || value === null || value === "") return null;
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
   var n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 function formatCount(n) {
-  return (n || 0).toLocaleString() + " " + (n === 1 ? "file" : "files");
+  return `${(n || 0).toLocaleString()} ${n === 1 ? "file" : "files"}`;
 }
 function countClass(n) {
   return (n || 0) >= COUNT_LARGE_THRESHOLD ? "count-large" : "";
 }
 function countHtml(n, extraClass) {
   if (isPendingNumber(n)) {
-    var pendCls = ("count tally-pending " + (extraClass || "")).trim();
-    return '<span class="' + pendCls + '"></span>';
+    var pendCls = `count tally-pending ${extraClass || ""}`.trim();
+    return `<span class="${pendCls}"></span>`;
   }
-  var cls = ("count " + countClass(n) + " " + (extraClass || "")).trim();
-  return '<span class="' + cls + '">' + formatCount(n) + '</span>';
+  var cls = `count ${countClass(n)} ${extraClass || ""}`.trim();
+  return `<span class="${cls}">${formatCount(n)}</span>`;
 }
 
 // Path-styling convention — split at the final slash and render the
@@ -167,21 +210,14 @@ function countHtml(n, extraClass) {
 function pathHtml(path, extraClass) {
   var raw = String(path == null ? "" : path);
   var trimmed = raw.replace(/\/+$/, "");
-  var cls = ("path " + (extraClass || "")).trim();
+  var cls = `path ${extraClass || ""}`.trim();
   var i = trimmed.lastIndexOf("/");
   if (i < 0) {
-    return '<span class="' + cls + '"><span class="path-base">' + esc(trimmed || raw) + '</span></span>';
+    return `<span class="${cls}"><span class="path-base">${esc(trimmed || raw)}</span></span>`;
   }
   var dir = trimmed.slice(0, i + 1);
   var base = trimmed.slice(i + 1);
-  return '<span class="' + cls + '"><span class="path-dir">' + esc(dir) + '</span><span class="path-base">' + esc(base) + '</span></span>';
-}
-
-function fmtDuration(s) {
-  if (s < 60) return s.toFixed(1) + "s";
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return m + "m " + sec + "s";
+  return `<span class="${cls}"><span class="path-dir">${esc(dir)}</span><span class="path-base">${esc(base)}</span></span>`;
 }
 
 function getExt(name) {
@@ -189,104 +225,56 @@ function getExt(name) {
   return i >= 0 ? name.slice(i) : "";
 }
 
-// For tree/file responses, the server attaches `logical_ext` to .gz
-// entries — the inner extension after stripping `.gz`. The SPA reads
-// this for icon dispatch, prefetch decisions, and source-tab
-// classification so `events.jsonl.gz` behaves like `events.jsonl`.
-// Falls back to the suffix on the raw name for plain files (and any
-// future client that doesn't yet carry the field).
-function getLogicalExt(entry) {
-  if (entry && entry.logical_ext) return entry.logical_ext;
-  return getExt(entry && entry.name ? entry.name : "");
-}
-
 // Display name with `.gz` stripped when present. Used to pick the icon
 // (so subtype matchers like `.process.md` keep working on
 // `foo.process.md.gz`) and for any UI that should show the logical
 // filename instead of the on-disk one.
 function getLogicalName(entry) {
-  if (entry && entry.compressed && entry.name && entry.name.toLowerCase().endsWith(".gz")) {
+  if (entry?.compressed && entry.name?.toLowerCase().endsWith(".gz")) {
     return entry.name.slice(0, -3);
   }
-  return entry && entry.name ? entry.name : "";
-}
-
-// ── Color resolution (CSS var sentinels → concrete canvas colors) ──
-// Canvas rendering (Chart.js) cannot resolve var(--foo); Python emits
-// "var(--chart-...)" in chart specs and we substitute the computed
-// hsl(...) value here before handing to Chart.js. See the design-system
-// block at the top of styles.css for the token-only rule.
-function cssVar(ref) {
-  if (typeof ref !== "string") return ref;
-  var m = ref.match(/^var\((--[^)]+)\)$/);
-  var prop = m ? m[1] : (ref.indexOf("--") === 0 ? ref : null);
-  if (!prop) return ref;
-  var v = getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
-  return v || ref;
-}
-
-// Apply alpha (0..1) to an hsl()/hex color. Works with the resolved
-// output of cssVar() or any concrete color string already in the spec.
-function colorWithAlpha(color, alpha) {
-  if (typeof color !== "string" || alpha >= 1) return color;
-  var c = cssVar(color);
-  var m = c.match(/^hsla?\(([^/)]+?)(?:\s*\/\s*[^)]+)?\)$/i);
-  if (m) return "hsl(" + m[1].trim() + " / " + alpha + ")";
-  if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c)) {
-    var hex = Math.round(alpha * 255).toString(16);
-    if (hex.length < 2) hex = "0" + hex;
-    return c.slice(0, 7) + hex;
-  }
-  return c;
+  return entry?.name ? entry.name : "";
 }
 
 // ── Syntax highlighting (client-side via highlight.js) ──────────
-
-var LANG_MAP = {
-  ".py": "python", ".js": "javascript", ".ts": "typescript",
-  ".tsx": "typescript", ".jsx": "javascript",
-  ".sh": "bash", ".bash": "bash", ".zsh": "bash",
-  ".json": "json", ".jsonl": "json",
-  ".yaml": "yaml", ".yml": "yaml",
-  ".toml": "toml", ".md": "markdown",
-  ".css": "css", ".html": "xml",
-};
-
-function getLang(ext) {
-  return LANG_MAP[ext] || "";
-}
 
 function highlightCode() {
   // highlight.js is an optional CDN enhancement; if it failed to load (offline,
   // blocked, or a kpress-rendered doc that never pulled it in), no-op rather
   // than throwing `hljs is not defined` and aborting the whole render.
-  if (typeof hljs === "undefined") return;
+  if (typeof hljs === "undefined") {
+    return;
+  }
   // Skip raw blocks inside collapsed log events; renderLogTab can ship
   // 1000+ such elements and hljs.highlightElement runs in ~1 ms each,
   // so eager highlighting torpedoes the first paint of a big log file.
   // The toggleEvent handler highlights on first expand instead.
   var nodes = document.querySelectorAll("pre code:not(.hljs)");
   var meta = { blocks: nodes.length, skipped_collapsed_log_blocks: 0 };
-  return _perf.measure("highlightCode", function () {
-    nodes.forEach(function (el) {
-      if (el.closest(".log-event-raw")) {
-        meta.skipped_collapsed_log_blocks += 1;
-        return;
-      }
-      // KPress highlights its own code server-side; re-running hljs over those
-      // blocks double-highlights and trips hljs's "unescaped HTML" warning on
-      // the markup KPress already emitted. Leave the kpress host alone.
-      if (el.closest(".metabrowser-kpress-host")) {
-        meta.skipped_kpress_blocks = (meta.skipped_kpress_blocks || 0) + 1;
-        return;
-      }
-      if (el.classList.contains("no-highlight")) {
-        meta.skipped_no_highlight = (meta.skipped_no_highlight || 0) + 1;
-        return;
-      }
-      hljs.highlightElement(el);
-    });
-  }, meta);
+  return _perf.measure(
+    "highlightCode",
+    () => {
+      nodes.forEach((el) => {
+        if (el.closest(".log-event-raw")) {
+          meta.skipped_collapsed_log_blocks += 1;
+          return;
+        }
+        // KPress highlights its own code server-side; re-running hljs over those
+        // blocks double-highlights and trips hljs's "unescaped HTML" warning on
+        // the markup KPress already emitted. Leave the kpress host alone.
+        if (el.closest(".metabrowser-kpress-host")) {
+          meta.skipped_kpress_blocks = (meta.skipped_kpress_blocks || 0) + 1;
+          return;
+        }
+        if (el.classList.contains("no-highlight")) {
+          meta.skipped_no_highlight = (meta.skipped_no_highlight || 0) + 1;
+          return;
+        }
+        hljs.highlightElement(el);
+      });
+    },
+    meta,
+  );
 }
 
 function formatAge(mtimeSec) {
@@ -295,13 +283,19 @@ function formatAge(mtimeSec) {
   if (mtimeSec === null) {
     return '<span class="tally-pending tally-pending-narrow"></span>';
   }
-  if (!mtimeSec) return "";
+  if (!mtimeSec) {
+    return "";
+  }
   var diffMs = Date.now() - mtimeSec * 1000;
   var absMs = Math.abs(diffMs);
+  /** @type {Array<[string, number]>} */
   var steps = [
-    ["y", 365*24*60*60*1000], ["mo", 30*24*60*60*1000],
-    ["w", 7*24*60*60*1000], ["d", 24*60*60*1000],
-    ["h", 60*60*1000], ["m", 60*1000],
+    ["y", 365 * 24 * 60 * 60 * 1000],
+    ["mo", 30 * 24 * 60 * 60 * 1000],
+    ["w", 7 * 24 * 60 * 60 * 1000],
+    ["d", 24 * 60 * 60 * 1000],
+    ["h", 60 * 60 * 1000],
+    ["m", 60 * 1000],
   ];
   var label = "<1m";
   for (var i = 0; i < steps.length; i++) {
@@ -312,36 +306,37 @@ function formatAge(mtimeSec) {
   }
   // Color code by freshness
   var cls = "age-old";
-  if (absMs < 60*1000) cls = "age-sec";
-  else if (absMs < 60*60*1000) cls = "age-min";
-  else if (absMs < 24*60*60*1000) cls = "age-hr";
-  else if (absMs < 7*24*60*60*1000) cls = "age-day";
-  else if (absMs < 30*24*60*60*1000) cls = "age-wk";
-  return '<span class="' + cls + '">' + label + '</span>';
+  if (absMs < 60 * 1000) {
+    cls = "age-sec";
+  } else if (absMs < 60 * 60 * 1000) {
+    cls = "age-min";
+  } else if (absMs < 24 * 60 * 60 * 1000) {
+    cls = "age-hr";
+  } else if (absMs < 7 * 24 * 60 * 60 * 1000) {
+    cls = "age-day";
+  } else if (absMs < 30 * 24 * 60 * 60 * 1000) {
+    cls = "age-wk";
+  }
+  return `<span class="${cls}">${label}</span>`;
 }
 
 function formatTimestamp(mtimeSec) {
-  if (!mtimeSec) return "";
+  if (!mtimeSec) {
+    return "";
+  }
   return new Date(mtimeSec * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 function formatExactSize(bytes) {
-  return bytes.toLocaleString() + " bytes";
+  return `${bytes.toLocaleString()} bytes`;
 }
-
 
 // ── SVG Icons ───────────────────────────────────────────────────
 
 // Lucide `copy` (v1.17.0, ISC). Belongs in icons.js as ICONS.copy; pending
 // the registry move tracked in the design-system consolidation plan.
-var ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
-
-function wrapWithCopy(innerHtml) {
-  return '<div class="content-copy-wrap">'
-    + '<button class="content-copy-btn" onclick="copyContent(this)" title="Copy content">' + ICON_COPY + '</button>'
-    + innerHtml
-    + '</div>';
-}
+var ICON_COPY =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
 
 // ── Icon registry ──────────────────────────────────────────────
 // All SVG markup lives in static/icons.js, loaded before this file
@@ -363,20 +358,23 @@ function readPrefCookie(name) {
   try {
     var parts = document.cookie.split("; ");
     for (var i = 0; i < parts.length; i++) {
-      if (parts[i].indexOf(name + "=") === 0) {
+      if (parts[i].indexOf(`${name}=`) === 0) {
         return decodeURIComponent(parts[i].slice(name.length + 1));
       }
     }
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    /* ignore */
+  }
   return null;
 }
 
 function writePrefCookie(name, value) {
   try {
-    document.cookie =
-      name + "=" + encodeURIComponent(value) +
-      "; path=/; max-age=31536000; samesite=lax";
-  } catch (_e) { /* cookies disabled */ }
+    // biome-ignore lint/suspicious/noDocumentCookie: compatibility fallback for browsers without Cookie Store.
+    document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
+  } catch (_e) {
+    /* cookies disabled */
+  }
 }
 
 function normalizeThemeMode(mode) {
@@ -385,7 +383,7 @@ function normalizeThemeMode(mode) {
 
 function systemPrefersDark() {
   try {
-    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    return !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
   } catch (_e) {
     return false;
   }
@@ -393,8 +391,12 @@ function systemPrefersDark() {
 
 function resolveTheme(mode) {
   var normalized = normalizeThemeMode(mode);
-  if (normalized === "dark") return "dark";
-  if (normalized === "light") return "light";
+  if (normalized === "dark") {
+    return "dark";
+  }
+  if (normalized === "light") {
+    return "light";
+  }
   return systemPrefersDark() ? "dark" : "light";
 }
 
@@ -402,7 +404,9 @@ function getStoredThemeMode() {
   // Cookie is the store (shared across ports); fall back to a pre-existing
   // localStorage value so an upgrade carries the user's prior choice forward.
   var fromCookie = readPrefCookie(THEME_MODE_KEY);
-  if (fromCookie) return normalizeThemeMode(fromCookie);
+  if (fromCookie) {
+    return normalizeThemeMode(fromCookie);
+  }
   try {
     return normalizeThemeMode(localStorage.getItem(THEME_MODE_KEY) || "system");
   } catch (_e) {
@@ -411,8 +415,12 @@ function getStoredThemeMode() {
 }
 
 function themeModeIcon(mode) {
-  if (mode === "light") return ICONS.sun || "";
-  if (mode === "dark") return ICONS.moon || "";
+  if (mode === "light") {
+    return ICONS.sun || "";
+  }
+  if (mode === "dark") {
+    return ICONS.moon || "";
+  }
   return ICONS.monitor || "";
 }
 
@@ -421,7 +429,6 @@ function themeModeIcon(mode) {
 // look). Drives [data-prose-font] on <html>; the CSS bridge in styles.css
 // turns that into --kpress-host-font-prose for the embedded document.
 var PROSE_FONT_KEY = "metabrowser.proseFont";
-var PROSE_FONTS = ["serif", "sans"];
 
 function normalizeProseFont(font) {
   return font === "sans" ? "sans" : "serif";
@@ -449,12 +456,9 @@ function getStoredInterfaceFont() {
 // Mark the active segment of a chooser: the one whose data-<key> matches the
 // current value gets aria-checked="true" (the .menu-seg CSS tints it).
 function markChooserSegments(selector, dataKey, value) {
-  var segs = document.querySelectorAll(selector);
+  var segs = queryHtmlAll(selector);
   for (var i = 0; i < segs.length; i++) {
-    segs[i].setAttribute(
-      "aria-checked",
-      segs[i].dataset[dataKey] === value ? "true" : "false"
-    );
+    segs[i].setAttribute("aria-checked", segs[i].dataset[dataKey] === value ? "true" : "false");
   }
 }
 
@@ -477,102 +481,144 @@ function applyThemeMode(mode, persist) {
     docs[i].setAttribute("data-kpress-theme", normalized);
     docs[i].setAttribute("data-kpress-resolved-theme", resolved);
   }
-  if (persist) writePrefCookie(THEME_MODE_KEY, normalized);
+  if (persist) {
+    writePrefCookie(THEME_MODE_KEY, normalized);
+  }
   markChooserSegments("#settings-control [data-theme-choice]", "themeChoice", normalized);
 }
 
 function applyProseFont(font, persist) {
   var normalized = normalizeProseFont(font);
   document.documentElement.setAttribute("data-prose-font", normalized);
-  if (persist) writePrefCookie(PROSE_FONT_KEY, normalized);
+  if (persist) {
+    writePrefCookie(PROSE_FONT_KEY, normalized);
+  }
   markChooserSegments("#settings-control [data-font-choice]", "fontChoice", normalized);
 }
 
 function applyInterfaceFont(font, persist) {
   document.documentElement.setAttribute("data-app-font", font);
-  if (persist) writePrefCookie(INTERFACE_FONT_KEY, font);
-  var sel = document.getElementById("app-font-select");
-  if (sel && sel.value !== font) sel.value = font;
+  if (persist) {
+    writePrefCookie(INTERFACE_FONT_KEY, font);
+  }
+  var sel = /** @type {HTMLSelectElement | null} */ (document.getElementById("app-font-select"));
+  if (sel && sel.value !== font) {
+    sel.value = font;
+  }
 }
 
 function initSettingsControl() {
   applyThemeMode(getStoredThemeMode(), false);
   applyProseFont(getStoredProseFont(), false);
 
-  var wrap = document.getElementById("settings-control");
-  var btn = document.getElementById("settings-btn");
+  const wrap = document.getElementById("settings-control");
+  const btn = document.getElementById("settings-btn");
   if (wrap && btn) {
     btn.innerHTML = ICONS.gear || "";
 
     // Fill each segment with its icon and wire instant-apply on click. The
     // menu stays open while picking — two choosers share one panel.
-    var themeSegs = wrap.querySelectorAll("[data-theme-choice]");
+    var themeSegs = queryHtmlAll("[data-theme-choice]", wrap);
     for (var i = 0; i < themeSegs.length; i++) {
       themeSegs[i].innerHTML = themeModeIcon(themeSegs[i].dataset.themeChoice);
-      themeSegs[i].addEventListener("click", function (e) {
+      themeSegs[i].addEventListener("click", (e) => {
         e.stopPropagation();
-        applyThemeMode(this.dataset.themeChoice, true);
+        var segment = e.currentTarget;
+        if (segment instanceof HTMLElement) {
+          applyThemeMode(segment.dataset.themeChoice, true);
+        }
       });
     }
-    var fontSegs = wrap.querySelectorAll("[data-font-choice]");
+    var fontSegs = queryHtmlAll("[data-font-choice]", wrap);
     for (var j = 0; j < fontSegs.length; j++) {
       fontSegs[j].innerHTML = proseFontIcon(fontSegs[j].dataset.fontChoice);
-      fontSegs[j].addEventListener("click", function (e) {
+      fontSegs[j].addEventListener("click", (e) => {
         e.stopPropagation();
-        applyProseFont(this.dataset.fontChoice, true);
+        var segment = e.currentTarget;
+        if (segment instanceof HTMLElement) {
+          applyProseFont(segment.dataset.fontChoice, true);
+        }
       });
     }
     // Font-set dropdown: options come from the markup (server _FONT_SETS). Keep
     // the stored value if it is still a known option, else fall back to the
     // first (default) option, then apply and wire instant change.
-    var fontSelect = document.getElementById("app-font-select");
+    var fontSelect = /** @type {HTMLSelectElement | null} */ (
+      document.getElementById("app-font-select")
+    );
     if (fontSelect) {
       var storedFont = getStoredInterfaceFont();
-      if (storedFont) fontSelect.value = storedFont;
-      if (!fontSelect.value) fontSelect.selectedIndex = 0;
+      if (storedFont) {
+        fontSelect.value = storedFont;
+      }
+      if (!fontSelect.value) {
+        fontSelect.selectedIndex = 0;
+      }
       applyInterfaceFont(fontSelect.value, false);
-      fontSelect.addEventListener("change", function () {
-        applyInterfaceFont(this.value, true);
+      fontSelect.addEventListener("change", (event) => {
+        var select = event.currentTarget;
+        if (select instanceof HTMLSelectElement) {
+          applyInterfaceFont(select.value, true);
+        }
       });
     }
 
-    var isOpen = function () { return wrap.getAttribute("aria-expanded") === "true"; };
-    var setOpen = function (open) { wrap.setAttribute("aria-expanded", open ? "true" : "false"); };
-    btn.addEventListener("click", function (e) {
+    var isOpen = () => wrap.getAttribute("aria-expanded") === "true";
+    var setOpen = (open) => {
+      wrap.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
       setOpen(!isOpen());
     });
     // Dismiss on outside click or Escape.
-    document.addEventListener("click", function (e) {
-      if (isOpen() && !wrap.contains(e.target)) setOpen(false);
+    document.addEventListener("click", (e) => {
+      if (isOpen() && e.target instanceof Node && !wrap.contains(e.target)) {
+        setOpen(false);
+      }
     });
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && isOpen()) setOpen(false);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && isOpen()) {
+        setOpen(false);
+      }
     });
 
     // Segments exist now — re-sync the active markers.
-    markChooserSegments("#settings-control [data-theme-choice]", "themeChoice",
-      normalizeThemeMode(document.documentElement.getAttribute("data-theme-mode") || "system"));
-    markChooserSegments("#settings-control [data-font-choice]", "fontChoice",
-      normalizeProseFont(document.documentElement.getAttribute("data-prose-font")));
+    markChooserSegments(
+      "#settings-control [data-theme-choice]",
+      "themeChoice",
+      normalizeThemeMode(document.documentElement.getAttribute("data-theme-mode") || "system"),
+    );
+    markChooserSegments(
+      "#settings-control [data-font-choice]",
+      "fontChoice",
+      normalizeProseFont(document.documentElement.getAttribute("data-prose-font")),
+    );
   }
 
   if (window.matchMedia) {
     var media = window.matchMedia("(prefers-color-scheme: dark)");
-    var onChange = function () {
-      var mode = normalizeThemeMode(document.documentElement.getAttribute("data-theme-mode") || "system");
-      if (mode === "system") applyThemeMode("system", false);
+    var onChange = () => {
+      var mode = normalizeThemeMode(
+        document.documentElement.getAttribute("data-theme-mode") || "system",
+      );
+      if (mode === "system") {
+        applyThemeMode("system", false);
+      }
     };
-    if (media.addEventListener) media.addEventListener("change", onChange);
-    else if (media.addListener) media.addListener(onChange);
+    if (media.addEventListener) {
+      media.addEventListener("change", onChange);
+    } else if (media.addListener) {
+      media.addListener(onChange);
+    }
   }
 
   // Enable the crossfade only after first paint (already in the correct theme
   // from the head boot script), so initial load never animates — only user
   // switches do. Double rAF guarantees we're past that first frame.
   if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
         document.documentElement.classList.add("theme-anim");
       });
     });
@@ -595,35 +641,40 @@ function initSettingsControl() {
 // priority, longest/compound suffix first). To add a subtype split:
 // introduce a new `--ft-<name>` token in styles.css + a `ft-<name>`
 // class, then point the entry's `cls` at it.
-function endsWithSuffix(suffix) { return function (name) { return name.endsWith(suffix); }; }
-function hasExt(ext) { return function (name) { return getExt(name) === ext; }; }
-function hasAnyExt(exts) { return function (name) { return exts.indexOf(getExt(name)) >= 0; }; }
+function endsWithSuffix(suffix) {
+  return (name) => name.endsWith(suffix);
+}
+function hasExt(ext) {
+  return (name) => getExt(name) === ext;
+}
+function hasAnyExt(exts) {
+  return (name) => exts.indexOf(getExt(name)) >= 0;
+}
 
 var FILE_TYPES = [
   // Markdown subtypes — compound suffixes first so `.runbook.md`
   // matches before the generic `.md` fallback.
-  { match: endsWithSuffix(".runbook.md"),  icon: "doc",      cls: "ft-md-runbook" },
-  { match: endsWithSuffix(".template.md"), icon: "doc",      cls: "ft-md-template" },
-  { match: endsWithSuffix(".form.md"),     icon: "doc",      cls: "ft-md-template" },
-  { match: hasExt(".md"),                  icon: "doc",      cls: "ft-md" },
-  { match: hasExt(".txt"),                icon: "doc",      cls: "ft-text" },
+  { match: endsWithSuffix(".runbook.md"), icon: "doc", cls: "ft-md-runbook" },
+  { match: endsWithSuffix(".template.md"), icon: "doc", cls: "ft-md-template" },
+  { match: endsWithSuffix(".form.md"), icon: "doc", cls: "ft-md-template" },
+  { match: hasExt(".md"), icon: "doc", cls: "ft-md" },
+  { match: hasExt(".txt"), icon: "doc", cls: "ft-text" },
   // Structured-config family.
-  { match: hasExt(".yaml"),               icon: "list",     cls: "ft-yaml" },
-  { match: hasExt(".yml"),                icon: "list",     cls: "ft-yaml" },
-  { match: hasExt(".json"),               icon: "list",     cls: "ft-yaml" },
-  { match: hasExt(".toml"),               icon: "list",     cls: "ft-yaml" },
-  { match: hasExt(".cfg"),                icon: "list",     cls: "ft-config" },
-  { match: hasExt(".ini"),                icon: "list",     cls: "ft-config" },
+  { match: hasExt(".yaml"), icon: "list", cls: "ft-yaml" },
+  { match: hasExt(".yml"), icon: "list", cls: "ft-yaml" },
+  { match: hasExt(".json"), icon: "list", cls: "ft-yaml" },
+  { match: hasExt(".toml"), icon: "list", cls: "ft-yaml" },
+  { match: hasExt(".cfg"), icon: "list", cls: "ft-config" },
+  { match: hasExt(".ini"), icon: "list", cls: "ft-config" },
   // Log stream.
-  { match: hasExt(".jsonl"),              icon: "activity", cls: "ft-jsonl" },
+  { match: hasExt(".jsonl"), icon: "activity", cls: "ft-jsonl" },
   // Source code — one shared shape/color across the family; append
   // an extension to the list to pick it up.
-  { match: hasAnyExt([".py", ".sh", ".js", ".ts"]),
-                                          icon: "alignLeft", cls: "ft-code" },
+  { match: hasAnyExt([".py", ".sh", ".js", ".ts"]), icon: "alignLeft", cls: "ft-code" },
   // Tabular + document.
-  { match: hasExt(".csv"),                icon: "grid",     cls: "ft-csv" },
-  { match: hasExt(".pid"),                icon: "fileText", cls: "ft-text" },
-  { match: hasExt(".pdf"),                icon: "fileText", cls: "ft-text" },
+  { match: hasExt(".csv"), icon: "grid", cls: "ft-csv" },
+  { match: hasExt(".pid"), icon: "fileText", cls: "ft-text" },
+  { match: hasExt(".pdf"), icon: "fileText", cls: "ft-text" },
 ];
 
 function getFileIcon(name) {
@@ -641,11 +692,15 @@ function getFileIcon(name) {
 // "icon = major type, color = subtype" applies everywhere a filename
 // shows up in the UI.
 function getFileTypeClass(pathOrName) {
-  if (!pathOrName) return "";
+  if (!pathOrName) {
+    return "";
+  }
   var slash = pathOrName.lastIndexOf("/");
   var name = slash >= 0 ? pathOrName.slice(slash + 1) : pathOrName;
   for (var i = 0; i < FILE_TYPES.length; i++) {
-    if (FILE_TYPES[i].match(name)) return FILE_TYPES[i].cls;
+    if (FILE_TYPES[i].match(name)) {
+      return FILE_TYPES[i].cls;
+    }
   }
   return "";
 }
@@ -657,18 +712,25 @@ if (typeof window !== "undefined") {
 // ── Tree ────────────────────────────────────────────────────────
 
 async function loadTree() {
-  return _perf.measureAsync("loadTree", async function () {
+  return _perf.measureAsync("loadTree", async () => {
     const resp = await fetch("/api/tree");
     if (!resp.ok) {
-      console.warn("loadTree: HTTP " + resp.status);
+      console.warn(`loadTree: HTTP ${resp.status}`);
       const treeEl = document.getElementById("tree-content");
-      if (treeEl) treeEl.innerHTML = '<div class="preview-empty">Failed to load tree (HTTP ' + resp.status + ')</div>';
+      if (treeEl) {
+        treeEl.innerHTML = `<div class="preview-empty">Failed to load tree (HTTP ${resp.status})</div>`;
+      }
       return;
     }
-    const data = await _perf.measureAsync("apiTree:json", function () {
-      return resp.json();
-    }, responsePerfMeta(resp, ""));
-    document.querySelector(".header-path").innerHTML = pathHtml(data.root);
+    const data = await _perf.measureAsync(
+      "apiTree:json",
+      () => resp.json(),
+      responsePerfMeta(resp, ""),
+    );
+    var pathEl = queryHtml(".header-path");
+    if (pathEl) {
+      pathEl.innerHTML = pathHtml(data.root);
+    }
     // Aggregate root size + file count + newest-mtime from top-level
     // children. Same shape as a folder tooltip — the served root reads
     // as "just another folder", the top-most one.
@@ -679,18 +741,24 @@ async function loadTree() {
     for (var i = 0; i < data.tree.length; i++) {
       var n = data.tree[i];
       if (n.type === "dir") {
-        if (n.total_size === null || n.total_size === undefined
-            || n.total_files === null || n.total_files === undefined) {
+        if (
+          n.total_size === null ||
+          n.total_size === undefined ||
+          n.total_files === null ||
+          n.total_files === undefined
+        ) {
           hasPendingAggregate = true;
         } else {
           totalSize += n.total_size;
           totalFiles += n.total_files;
         }
       } else {
-        totalSize += (n.size || 0);
+        totalSize += n.size || 0;
         totalFiles += 1;
       }
-      if ((n.mtime || 0) > newestMtime) newestMtime = n.mtime || 0;
+      if ((n.mtime || 0) > newestMtime) {
+        newestMtime = n.mtime || 0;
+      }
     }
     var summaryFiles = hasPendingAggregate ? null : totalFiles;
     var summarySize = hasPendingAggregate ? null : totalSize;
@@ -705,19 +773,24 @@ async function loadTree() {
     }
     // Carry aggregates on the path link so the header tooltip handler
     // can pull them on hover without rebuilding from DOM.
-    var pathEl = document.querySelector(".header-path");
-    pathEl.dataset.tipName = data.root;
-    pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
-    pathEl.dataset.tipSize = nullableDataValue(summarySize);
-    pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+    if (pathEl) {
+      pathEl.dataset.tipName = data.root;
+      pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
+      pathEl.dataset.tipSize = nullableDataValue(summarySize);
+      pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+    }
     // Summary row sits at the top of the scrollable tree listing, not
     // in the sticky header — visible on first paint, scrolls away with
     // the rest of the tree. Keeps the upper nav header clean.
     var summaryHtml =
-      '<div class="tree-summary">'
-      + '<span class="tree-summary-count">' + countHtml(summaryFiles) + '</span>'
-      + '<span class="tree-summary-size">' + sizeHtml(summarySize) + '</span>'
-      + '</div>';
+      '<div class="tree-summary">' +
+      '<span class="tree-summary-count">' +
+      countHtml(summaryFiles) +
+      "</span>" +
+      '<span class="tree-summary-size">' +
+      sizeHtml(summarySize) +
+      "</span>" +
+      "</div>";
     // Walker truncation banner. The InventoryIndex
     // walker stops at INVENTORY_MAX_FILES; finalized dirs still
     // emit accumulated totals so the UI is usable, but the user
@@ -726,49 +799,64 @@ async function loadTree() {
     if (data.tally_cache_status === "truncated") {
       truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
     }
-    _perf.measure("renderTreeNodes:root", function () {
-      pendingTreePages.clear();
-      pendingTreePageId = 0;
-      // Files panel is now a child of #tree-content (P3.2 tab strip);
-      // the Recent panel is its sibling at #tab-recent.
-      var filesPanel = document.getElementById("tab-files");
-      filesPanel.innerHTML = truncationHtml + summaryHtml + renderTreeNodes(data.tree, true);
-    }, { nodes: data.tree ? data.tree.length : 0 });
+    _perf.measure(
+      "renderTreeNodes:root",
+      () => {
+        pendingTreePages.clear();
+        pendingTreePageId = 0;
+        // Files panel is now a child of #tree-content (P3.2 tab strip);
+        // the Recent panel is its sibling at #tab-recent.
+        var filesPanel = document.getElementById("tab-files");
+        if (filesPanel) {
+          filesPanel.innerHTML = truncationHtml + summaryHtml + renderTreeNodes(data.tree, true);
+        }
+      },
+      { nodes: data.tree ? data.tree.length : 0 },
+    );
   });
 }
 
 function treeTruncationNoteHtml(maxFiles) {
   var capText = maxFiles ? formatCount(maxFiles) : "the file cap";
-  return '<div class="tree-truncation-note" role="status">'
-    + 'Tree partial: capped at ' + capText + '. '
-    + 'Deep subtrees may be incomplete.'
-    + '</div>';
+  return (
+    '<div class="tree-truncation-note" role="status">' +
+    "Tree partial: capped at " +
+    capText +
+    ". " +
+    "Deep subtrees may be incomplete." +
+    "</div>"
+  );
 }
 
 function ensureTreeTruncationNote(maxFiles) {
   var filesPanel = document.getElementById("tab-files");
-  if (!filesPanel || filesPanel.querySelector(".tree-truncation-note")) return;
+  if (!filesPanel || filesPanel.querySelector(".tree-truncation-note")) {
+    return;
+  }
   filesPanel.insertAdjacentHTML("afterbegin", treeTruncationNoteHtml(maxFiles));
 }
 
 // Header hover tooltip — same folder-tooltip HTML the tree uses, so
 // hovering the served-root path shows the same name / files / size /
 // mtime block a hovered folder row shows below. One helper, one design.
-document.addEventListener("DOMContentLoaded", function () {
-  var headerPath = document.querySelector(".header-path");
-  if (!headerPath) return;
-  headerPath.addEventListener("mouseenter", function (e) {
+document.addEventListener("DOMContentLoaded", () => {
+  const headerPath = queryHtml(".header-path");
+  if (!headerPath) {
+    return;
+  }
+  headerPath.addEventListener("mouseenter", (e) => {
     var d = headerPath.dataset;
-    if (!d.tipName) return;
+    if (!d.tipName) {
+      return;
+    }
     showTooltip(
-      headerPath,
       folderTooltipHtml(
         d.tipName,
         parseTipNumber(d.tipFiles),
         parseTipNumber(d.tipSize),
-        parseTipNumber(d.tipMtime)
+        parseTipNumber(d.tipMtime),
       ),
-      e
+      e,
     );
   });
   headerPath.addEventListener("mousemove", positionTooltip);
@@ -791,7 +879,7 @@ function treeDirMetric(options) {
 }
 
 function treeRenderOptionsForElement(el) {
-  return el && el.closest && el.closest("#tab-recent")
+  return el?.closest?.("#tab-recent")
     ? { dirMetric: TREE_DIR_METRIC_COUNT }
     : { dirMetric: TREE_DIR_METRIC_SIZE };
 }
@@ -826,8 +914,12 @@ function renderTreeNodes(nodes, isRoot, options) {
   for (var ni = 0; ni < visibleCount; ni++) {
     var node = nodes[ni];
     var mutedCls = "";
-    if (node.gitignored) mutedCls += " tree-item-gitignored";
-    if (node.type === "dir" && node.empty) mutedCls += " tree-item-empty";
+    if (node.gitignored) {
+      mutedCls += " tree-item-gitignored";
+    }
+    if (node.type === "dir" && node.empty) {
+      mutedCls += " tree-item-empty";
+    }
     if (node.type === "dir") {
       var isSpecial = node.name === ".logs" || node.name === ".state";
       // Auto-expand top-level dirs on first paint, but skip any
@@ -840,18 +932,24 @@ function renderTreeNodes(nodes, isRoot, options) {
       // default rule.
       var notGray = !node.gitignored && !node.empty;
       var defaultExpanded = notGray && (isRoot || isSpecial);
-      var expanded = (typeof node.expanded === "boolean") ? node.expanded : defaultExpanded;
+      var expanded = typeof node.expanded === "boolean" ? node.expanded : defaultExpanded;
       var stateClass = expanded ? "expanded" : "collapsed";
       var dirAge = formatAge(node.mtime);
       var dirChip = treeDirChipHtml(node.total_files, node.total_size, options);
       parts.push(
-        '<div class="tree-item tree-folder ' + stateClass + mutedCls + '" data-action="toggle" data-path="' + esc(node.path) + '" data-tip-type="dir" data-tip-name="' + esc(node.name) + '" data-tip-files="' + nullableDataValue(node.total_files) + '" data-tip-size="' + nullableDataValue(node.total_size) + '" data-tip-mtime="' + nullableDataValue(node.mtime || 0) + '">',
+        `<div class="tree-item tree-folder ${stateClass}${mutedCls}" data-action="toggle" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
         ICONS.toggle,
-        '<span class="tree-item-name">', esc(node.name), "</span>",
-        '<span class="tree-item-age-inline">', dirAge, '</span>',
+        '<span class="tree-item-name">',
+        esc(node.name),
+        "</span>",
+        '<span class="tree-item-age-inline">',
+        dirAge,
+        "</span>",
         dirChip,
         "</div>",
-        '<div class="tree-children" style="display:', (expanded ? "block" : "none"), '">'
+        '<div class="tree-children" style="display:',
+        expanded ? "block" : "none",
+        '">',
       );
       if (Array.isArray(node.children)) {
         parts.push(renderTreeNodes(node.children, false, options));
@@ -860,9 +958,9 @@ function renderTreeNodes(nodes, isRoot, options) {
         // cap. Render a placeholder; click-to-expand fetches the
         // subtree via /api/tree?path=...
         parts.push(
-          '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">'
-          + '<span class="spinner spinner-sm" aria-hidden="true"></span>'
-          + '</div>'
+          '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+            '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
+            "</div>",
         );
       }
       parts.push("</div>");
@@ -872,21 +970,28 @@ function renderTreeNodes(nodes, isRoot, options) {
       var fi = getFileIcon(getLogicalName(node));
       var fileAge = formatAge(node.mtime);
       var compressed = !!node.compressed;
-      var iconCls = "tree-item-icon " + fi.cls + (compressed ? " is-compressed" : "");
+      var iconCls = `tree-item-icon ${fi.cls}${compressed ? " is-compressed" : ""}`;
       var compressionBadge = compressed
         ? '<span class="compression-badge" title="gzipped">Z</span>'
         : "";
-      var logicalExtAttr = node.logical_ext
-        ? ' data-logical-ext="' + esc(node.logical_ext) + '"'
-        : "";
+      var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
       var compressedAttr = compressed ? ' data-compressed="1"' : "";
       parts.push(
-        '<div class="tree-item tree-file' + mutedCls + '" data-action="select" data-path="' + esc(node.path) + '"' + logicalExtAttr + compressedAttr + ' data-tip-type="file" data-tip-name="' + esc(node.name) + '" data-tip-size="' + (node.size || 0) + '" data-tip-mtime="' + (node.mtime || 0) + '">',
-        '<span class="', iconCls, '">', fi.svg, compressionBadge, "</span>",
-        '<span class="tree-item-name">', esc(node.name), "</span>",
-        '<span class="tree-item-age-inline"><span class="tree-item-age">', fileAge, '</span><span class="tree-item-activity"></span></span>',
+        `<div class="tree-item tree-file${mutedCls}" data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        '<span class="',
+        iconCls,
+        '">',
+        fi.svg,
+        compressionBadge,
+        "</span>",
+        '<span class="tree-item-name">',
+        esc(node.name),
+        "</span>",
+        '<span class="tree-item-age-inline"><span class="tree-item-age">',
+        fileAge,
+        '</span><span class="tree-item-activity"></span></span>',
         sizeHtml(node.size, "tree-item-size"),
-        "</div>"
+        "</div>",
       );
     }
   }
@@ -897,9 +1002,15 @@ function renderTreeNodes(nodes, isRoot, options) {
       options: options,
     });
     parts.push(
-      '<div class="tree-page-more" data-action="page-more" data-page-id="', pageId, '">',
-      'Show ', String(hidden), ' more (', String(nodes.length), ' total)',
-      '</div>'
+      '<div class="tree-page-more" data-action="page-more" data-page-id="',
+      pageId,
+      '">',
+      "Show ",
+      String(hidden),
+      " more (",
+      String(nodes.length),
+      " total)",
+      "</div>",
     );
   }
   return parts.join("");
@@ -911,35 +1022,47 @@ const subtreeCache = new Map();
 const subtreeRetryTimers = new WeakMap();
 
 function treeLazyLoadingHtml(message) {
-  return '<div class="tree-lazy-placeholder" role="status" aria-live="polite">'
-    + '<span class="spinner spinner-sm" aria-hidden="true"></span>'
-    + '<span>' + esc(message || "Loading folder...") + '</span>'
-    + '</div>';
+  return (
+    '<div class="tree-lazy-placeholder" role="status" aria-live="polite">' +
+    '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
+    "<span>" +
+    esc(message || "Loading folder...") +
+    "</span>" +
+    "</div>"
+  );
 }
 
 function treeLazyFailureHtml(message) {
-  return '<div class="tree-lazy-placeholder tree-lazy-error" role="status">'
-    + esc(message || "Unable to load folder.")
-    + '</div>';
+  return (
+    '<div class="tree-lazy-placeholder tree-lazy-error" role="status">' +
+    esc(message || "Unable to load folder.") +
+    "</div>"
+  );
 }
 
 function errorMessage(e) {
-  return e && e.message ? e.message : String(e || "unknown error");
+  return e?.message ? e.message : String(e || "unknown error");
 }
 
 function subtreeIsExpanded(childrenEl) {
-  if (!childrenEl || !childrenEl.parentNode) return false;
+  if (!childrenEl?.parentNode) {
+    return false;
+  }
   var folder = childrenEl.previousElementSibling;
-  return !!folder
-    && folder.classList.contains("tree-folder")
-    && folder.classList.contains("expanded")
-    && childrenEl.style.display !== "none";
+  return (
+    !!folder &&
+    folder.classList.contains("tree-folder") &&
+    folder.classList.contains("expanded") &&
+    childrenEl.style.display !== "none"
+  );
 }
 
 function scheduleSubtreeRetry(path, childrenEl) {
-  if (subtreeRetryTimers.has(childrenEl)) return;
+  if (subtreeRetryTimers.has(childrenEl)) {
+    return;
+  }
   var delayMs = INDEX_PROGRESS_POLL_MS || 1000;
-  var timer = setTimeout(function () {
+  var timer = setTimeout(() => {
     subtreeRetryTimers.delete(childrenEl);
     if (subtreeIsExpanded(childrenEl)) {
       loadSubtree(path, childrenEl, treeRenderOptionsForElement(childrenEl));
@@ -950,7 +1073,9 @@ function scheduleSubtreeRetry(path, childrenEl) {
 
 function clearSubtreeRetry(childrenEl) {
   var timer = subtreeRetryTimers.get(childrenEl);
-  if (!timer) return;
+  if (!timer) {
+    return;
+  }
   clearTimeout(timer);
   subtreeRetryTimers.delete(childrenEl);
 }
@@ -959,23 +1084,29 @@ async function loadSubtree(path, childrenEl, options) {
   options = options || treeRenderOptionsForElement(childrenEl);
   if (subtreeCache.has(path)) {
     clearSubtreeRetry(childrenEl);
-    _perf.measure("renderTreeNodes:subtreeCache", function () {
-      childrenEl.innerHTML = renderTreeNodes(subtreeCache.get(path), false, options);
-    }, { path: path, nodes: subtreeCache.get(path).length });
+    _perf.measure(
+      "renderTreeNodes:subtreeCache",
+      () => {
+        childrenEl.innerHTML = renderTreeNodes(subtreeCache.get(path), false, options);
+      },
+      { path: path, nodes: subtreeCache.get(path).length },
+    );
     return;
   }
   childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder...");
   try {
     const resp = await fetch(
-      "/api/tree?path=" + encodeURIComponent(path) + "&depth=" + TREE_SUBTREE_FETCH_DEPTH,
-      { cache: "no-store" }
+      `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
+      { cache: "no-store" },
     );
     if (!resp.ok) {
-      throw new Error("HTTP " + resp.status);
+      throw new Error(`HTTP ${resp.status}`);
     }
-    const data = await _perf.measureAsync("apiTreeSubtree:json", function () {
-      return resp.json();
-    }, responsePerfMeta(resp, path));
+    const data = await _perf.measureAsync(
+      "apiTreeSubtree:json",
+      () => resp.json(),
+      responsePerfMeta(resp, path),
+    );
     if (!Array.isArray(data.tree)) {
       throw new Error("Malformed tree response");
     }
@@ -988,17 +1119,19 @@ async function loadSubtree(path, childrenEl, options) {
     }
     clearSubtreeRetry(childrenEl);
     subtreeCache.set(path, tree);
-    _perf.measure("renderTreeNodes:subtree", function () {
-      childrenEl.innerHTML = tree.length
-        ? renderTreeNodes(tree, false, options)
-        : '<div class="tree-lazy-placeholder">Empty folder</div>';
-    }, { path: path, nodes: tree.length });
-  } catch (e) {
-    console.warn("loadSubtree failed for " + path, e);
-    clearSubtreeRetry(childrenEl);
-    childrenEl.innerHTML = treeLazyFailureHtml(
-      "Unable to load folder (" + errorMessage(e) + ")."
+    _perf.measure(
+      "renderTreeNodes:subtree",
+      () => {
+        childrenEl.innerHTML = tree.length
+          ? renderTreeNodes(tree, false, options)
+          : '<div class="tree-lazy-placeholder">Empty folder</div>';
+      },
+      { path: path, nodes: tree.length },
     );
+  } catch (e) {
+    console.warn(`loadSubtree failed for ${path}`, e);
+    clearSubtreeRetry(childrenEl);
+    childrenEl.innerHTML = treeLazyFailureHtml(`Unable to load folder (${errorMessage(e)}).`);
   }
 }
 
@@ -1020,15 +1153,15 @@ function initTooltip() {
   document.body.appendChild(tooltipEl);
 }
 
-function showTooltip(target, html, e) {
+function showTooltip(html, e) {
   clearTimeout(tooltipTimer);
   // Small delay before appearing so tooltips don't flash when moving across items
-  tooltipTimer = setTimeout(function () {
+  tooltipTimer = setTimeout(() => {
     tooltipEl.innerHTML = html;
     tooltipEl.style.display = "block";
     positionTooltip(e);
     // Trigger fade-in on next frame
-    requestAnimationFrame(function () {
+    requestAnimationFrame(() => {
       tooltipEl.classList.add("visible");
     });
   }, 300);
@@ -1038,24 +1171,30 @@ function positionTooltip(e) {
   var x = e.clientX + 12;
   var y = e.clientY + 16;
   var rect = tooltipEl.getBoundingClientRect();
-  if (x + rect.width > window.innerWidth - 8) x = e.clientX - rect.width - 8;
-  if (y + rect.height > window.innerHeight - 8) y = e.clientY - rect.height - 8;
-  tooltipEl.style.left = x + "px";
-  tooltipEl.style.top = y + "px";
+  if (x + rect.width > window.innerWidth - 8) {
+    x = e.clientX - rect.width - 8;
+  }
+  if (y + rect.height > window.innerHeight - 8) {
+    y = e.clientY - rect.height - 8;
+  }
+  tooltipEl.style.left = `${x}px`;
+  tooltipEl.style.top = `${y}px`;
 }
 
 function hideTooltip() {
   clearTimeout(tooltipTimer);
   tooltipEl.classList.remove("visible");
   // Let the fade-out transition finish before hiding
-  tooltipTimer = setTimeout(function () {
+  tooltipTimer = setTimeout(() => {
     tooltipEl.style.display = "none";
   }, 150);
 }
 
 if (typeof window !== "undefined") {
   window.MetabrowserTooltip = {
-    show: function (html, e) { showTooltip(null, html, e); },
+    show: (html, e) => {
+      showTooltip(html, e);
+    },
     move: positionTooltip,
     hide: hideTooltip,
   };
@@ -1070,66 +1209,99 @@ function _tipSize(bytes) {
   if (isPendingNumber(bytes)) {
     return '<span class="tip-loading">Loading size...</span>';
   }
-  var cls = ("size " + sizeClass(bytes)).trim();
-  return '<span class="' + cls + '">' + formatExactSize(bytes || 0) + '</span>';
+  var cls = `size ${sizeClass(bytes)}`.trim();
+  return `<span class="${cls}">${formatExactSize(bytes || 0)}</span>`;
 }
 function _tipCount(n) {
   if (isPendingNumber(n)) {
     return '<span class="tip-loading">Loading file count...</span>';
   }
-  return '<span class="count">' + formatCount(n) + '</span>';
+  return `<span class="count">${formatCount(n)}</span>`;
 }
 
 function treeTooltipNameHtml(name, includeName) {
-  return includeName === false ? "" : '<div class="tip-name">' + esc(name) + '</div>';
+  return includeName === false ? "" : `<div class="tip-name">${esc(name)}</div>`;
 }
 
 function fileTooltipHtml(name, size, mtime, includeName) {
-  return treeTooltipNameHtml(name, includeName)
-    + '<div class="tip-detail">' + _tipSize(size) + '</div>'
-    + '<div class="tip-detail">' + formatTimestamp(mtime) + '</div>';
+  return (
+    treeTooltipNameHtml(name, includeName) +
+    '<div class="tip-detail">' +
+    _tipSize(size) +
+    "</div>" +
+    '<div class="tip-detail">' +
+    formatTimestamp(mtime) +
+    "</div>"
+  );
 }
 
 function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
-  return treeTooltipNameHtml(name, includeName)
-    + '<div class="tip-detail">' + _tipCount(totalFiles) + '</div>'
-    + '<div class="tip-detail">' + _tipSize(totalSize) + '</div>'
-    + '<div class="tip-detail">' + formatTimestamp(mtime) + '</div>';
+  return (
+    treeTooltipNameHtml(name, includeName) +
+    '<div class="tip-detail">' +
+    _tipCount(totalFiles) +
+    "</div>" +
+    '<div class="tip-detail">' +
+    _tipSize(totalSize) +
+    "</div>" +
+    '<div class="tip-detail">' +
+    formatTimestamp(mtime) +
+    "</div>"
+  );
 }
 
 // ── Tree interactions ───────────────────────────────────────────
 
-document.getElementById("tree-pane").addEventListener("mouseenter", function (e) {
-  var item = e.target.closest(".tree-item");
-  if (!item || !item.dataset.tipType) return;
-  var d = item.dataset;
-  // The tree row already shows the name, so the hover tooltip omits it and
-  // shows size + date only (the name would be duplicative).
-  var includeName = false;
-  var html;
-  if (d.tipType === "dir") {
-    html = folderTooltipHtml(
-      d.tipName,
-      parseTipNumber(d.tipFiles),
-      parseTipNumber(d.tipSize),
-      parseTipNumber(d.tipMtime),
-      includeName
-    );
-  } else {
-    html = fileTooltipHtml(
-      d.tipName,
-      parseTipNumber(d.tipSize),
-      parseTipNumber(d.tipMtime),
-      includeName
-    );
-  }
-  showTooltip(item, html, e);
-}, true);
+const treePane = /** @type {HTMLElement} */ (document.getElementById("tree-pane"));
+if (!treePane) {
+  throw new Error("MetaBrowser shell is missing #tree-pane");
+}
 
-document.getElementById("tree-pane").addEventListener("mouseleave", function (e) {
-  var item = e.target.closest(".tree-item");
-  if (item) hideTooltip();
-}, true);
+treePane.addEventListener(
+  "mouseenter",
+  (e) => {
+    var target = eventTargetElement(e);
+    var item = /** @type {HTMLElement | null} */ (target?.closest(".tree-item"));
+    if (!item?.dataset.tipType) {
+      return;
+    }
+    var d = item.dataset;
+    // The tree row already shows the name, so the hover tooltip omits it and
+    // shows size + date only (the name would be duplicative).
+    var includeName = false;
+    var html;
+    if (d.tipType === "dir") {
+      html = folderTooltipHtml(
+        d.tipName,
+        parseTipNumber(d.tipFiles),
+        parseTipNumber(d.tipSize),
+        parseTipNumber(d.tipMtime),
+        includeName,
+      );
+    } else {
+      html = fileTooltipHtml(
+        d.tipName,
+        parseTipNumber(d.tipSize),
+        parseTipNumber(d.tipMtime),
+        includeName,
+      );
+    }
+    showTooltip(html, e);
+  },
+  true,
+);
+
+treePane.addEventListener(
+  "mouseleave",
+  (e) => {
+    var target = eventTargetElement(e);
+    var item = target?.closest(".tree-item");
+    if (item) {
+      hideTooltip();
+    }
+  },
+  true,
+);
 
 var hoverPrefetchTimer = null;
 var hoverPrefetchPath = "";
@@ -1138,8 +1310,12 @@ var hoverPrefetchInFlight = 0;
 
 function shouldPrefetchFile(item) {
   var path = item.dataset.path;
-  if (!path || fileCache.has(path) || activeFiles.has(path)) return false;
-  if ((+(item.dataset.tipSize || 0)) > FILE_PREFETCH_MAX_BYTES) return false;
+  if (!path || fileCache.has(path) || activeFiles.has(path)) {
+    return false;
+  }
+  if (+(item.dataset.tipSize || 0) > FILE_PREFETCH_MAX_BYTES) {
+    return false;
+  }
   // For .gz files the server attaches `data-logical-ext`; key the
   // "skip prefetch for JSONL" rule off the inner extension so
   // `events.jsonl.gz` is treated identically to `events.jsonl`.
@@ -1158,25 +1334,35 @@ function abortHoverPrefetch() {
 }
 
 function startHoverPrefetch(path) {
-  if (!path || fileCache.has(path) || activeFiles.has(path)) return;
-  if (hoverPrefetchInFlight >= FILE_PREFETCH_MAX_CONCURRENT) return;
+  if (!path || fileCache.has(path) || activeFiles.has(path)) {
+    return;
+  }
+  if (hoverPrefetchInFlight >= FILE_PREFETCH_MAX_CONCURRENT) {
+    return;
+  }
 
   hoverPrefetchInFlight += 1;
   hoverPrefetchController = typeof AbortController !== "undefined" ? new AbortController() : null;
   var options = hoverPrefetchController ? { signal: hoverPrefetchController.signal } : {};
-  fetch("/api/file?path=" + encodeURIComponent(path), options)
-    .then(function (resp) {
-      return resp.ok
-        ? _perf.measureAsync("apiFile:prefetchJson", function () { return resp.json(); }, responsePerfMeta(resp, path))
-        : null;
-    })
-    .then(function (data) {
+  fetch(`/api/file?path=${encodeURIComponent(path)}`, options)
+    .then((resp) =>
+      resp.ok
+        ? _perf.measureAsync(
+            "apiFile:prefetchJson",
+            () => resp.json(),
+            responsePerfMeta(resp, path),
+          )
+        : null,
+    )
+    .then((data) => {
       if (data && !fileCache.has(path)) {
         cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
       }
     })
-    .catch(function () { /* best-effort prefetch */ })
-    .finally(function () {
+    .catch(() => {
+      /* best-effort prefetch */
+    })
+    .finally(() => {
       hoverPrefetchInFlight -= 1;
       if (hoverPrefetchPath === path) {
         hoverPrefetchController = null;
@@ -1186,30 +1372,52 @@ function startHoverPrefetch(path) {
 
 // Prefetch small, non-log file content only after hover intent is clear. Large
 // files and JSONL logs can be expensive to parse, so they wait for an explicit click.
-document.getElementById("tree-pane").addEventListener("mouseenter", function (e) {
-  var item = e.target.closest(".tree-item.tree-file");
-  if (!item) return;
-  if (!shouldPrefetchFile(item)) return;
-  abortHoverPrefetch();
-  hoverPrefetchPath = item.dataset.path;
-  hoverPrefetchTimer = setTimeout(function () {
-    startHoverPrefetch(hoverPrefetchPath);
-  }, FILE_PREFETCH_HOVER_DELAY_MS);
-}, true);
-
-document.getElementById("tree-pane").addEventListener("mouseleave", function (e) {
-  if (e.target.closest(".tree-item.tree-file")) {
+treePane.addEventListener(
+  "mouseenter",
+  (e) => {
+    var target = eventTargetElement(e);
+    var item = /** @type {HTMLElement | null} */ (target?.closest(".tree-item.tree-file"));
+    if (!item) {
+      return;
+    }
+    if (!shouldPrefetchFile(item)) {
+      return;
+    }
+    var path = item.dataset.path;
+    if (!path) {
+      return;
+    }
     abortHoverPrefetch();
-  }
-}, true);
+    hoverPrefetchPath = path;
+    hoverPrefetchTimer = setTimeout(() => {
+      startHoverPrefetch(hoverPrefetchPath);
+    }, FILE_PREFETCH_HOVER_DELAY_MS);
+  },
+  true,
+);
+
+treePane.addEventListener(
+  "mouseleave",
+  (e) => {
+    var target = eventTargetElement(e);
+    if (target?.closest(".tree-item.tree-file")) {
+      abortHoverPrefetch();
+    }
+  },
+  true,
+);
 
 async function expandAllDescendants(container) {
   var childItems = container.children;
   for (var i = 0; i < childItems.length; i++) {
     var folder = childItems[i];
-    if (!folder.classList || !folder.classList.contains("tree-folder")) continue;
+    if (!folder.classList?.contains("tree-folder")) {
+      continue;
+    }
     var ch = folder.nextElementSibling;
-    if (!ch || !ch.classList.contains("tree-children")) continue;
+    if (!ch?.classList.contains("tree-children")) {
+      continue;
+    }
     ch.style.display = "block";
     folder.classList.remove("collapsed");
     folder.classList.add("expanded");
@@ -1221,37 +1429,45 @@ async function expandAllDescendants(container) {
 }
 
 function collapseAllDescendants(container) {
-  container.querySelectorAll(".tree-children").forEach(function (ch) {
+  container.querySelectorAll(".tree-children").forEach((ch) => {
     ch.style.display = "none";
     var folder = ch.previousElementSibling;
-    if (folder && folder.classList.contains("tree-folder")) {
+    if (folder?.classList.contains("tree-folder")) {
       folder.classList.remove("expanded");
       folder.classList.add("collapsed");
     }
   });
 }
 
-document.getElementById("tree-pane").addEventListener("click", function (e) {
+treePane.addEventListener("click", (e) => {
   // Pagination "Show N more" sentinel is its own row (not .tree-item)
   // so it doesn't accidentally pick up tree-item click semantics like
   // hover-prefetch or selection.
-  var pageRow = e.target.closest(".tree-page-more");
+  var target = eventTargetElement(e);
+  if (!target) {
+    return;
+  }
+  var pageRow = /** @type {HTMLElement | null} */ (target.closest(".tree-page-more"));
   if (pageRow) {
     var pageId = pageRow.dataset.pageId;
     var page = pendingTreePages.get(pageId);
-    var nextBatch = page && page.nodes;
+    var nextBatch = page?.nodes;
     if (nextBatch) {
       pendingTreePages.delete(pageId);
       pageRow.outerHTML = renderTreeNodes(nextBatch, false, page.options);
     }
     return;
   }
-  const item = e.target.closest(".tree-item");
-  if (!item) return;
+  const item = /** @type {HTMLElement | null} */ (target.closest(".tree-item"));
+  if (!item) {
+    return;
+  }
   const action = item.dataset.action;
   if (action === "toggle") {
-    var children = item.nextElementSibling;
-    if (!children) return;
+    var children = /** @type {HTMLElement | null} */ (item.nextElementSibling);
+    if (!children) {
+      return;
+    }
     if (e.shiftKey) {
       // Shift+click: recursive expand/collapse.
       var wasExpanded = children.style.display !== "none";
@@ -1265,7 +1481,7 @@ document.getElementById("tree-pane").addEventListener("click", function (e) {
         item.classList.remove("collapsed");
         item.classList.add("expanded");
         if (children.querySelector(":scope > .tree-lazy-placeholder")) {
-          loadSubtree(item.dataset.path, children).then(function () {
+          loadSubtree(item.dataset.path, children).then(() => {
             expandAllDescendants(children);
           });
         } else {
@@ -1294,12 +1510,18 @@ document.getElementById("tree-pane").addEventListener("click", function (e) {
 // should follow the user when they switch tabs. ``null`` /
 // ``undefined`` clears all selection state.
 function setSelectedPath(path) {
-  document.querySelectorAll(".tree-item.selected").forEach(function (el) {
-    if (el.dataset.path !== path) el.classList.remove("selected");
+  queryHtmlAll(".tree-item.selected").forEach((el) => {
+    if (el.dataset.path !== path) {
+      el.classList.remove("selected");
+    }
   });
-  if (!path) return;
-  document.querySelectorAll(".tree-item").forEach(function (el) {
-    if (el.dataset.path === path) el.classList.add("selected");
+  if (!path) {
+    return;
+  }
+  queryHtmlAll(".tree-item").forEach((el) => {
+    if (el.dataset.path === path) {
+      el.classList.add("selected");
+    }
   });
 }
 
@@ -1346,7 +1568,9 @@ function indexProgressBucket(files) {
 
 function renderIndexProgress(meta) {
   var el = document.getElementById("index-progress");
-  if (!el) return;
+  if (!el) {
+    return;
+  }
   if (!indexProgressIsActive(meta)) {
     el.hidden = true;
     indexProgressLastRendered = meta || null;
@@ -1361,8 +1585,7 @@ function renderIndexProgress(meta) {
   var files = typeof rawFiles === "number" && rawFiles > 0 ? rawFiles : null;
   var text = el.querySelector(".index-progress-text");
   if (text) {
-    text.textContent =
-      files == null ? "Scanning…" : "~" + files.toLocaleString() + " files scanned";
+    text.textContent = files == null ? "Scanning…" : `~${files.toLocaleString()} files scanned`;
   }
   el.hidden = false;
   indexProgressLastRendered = {
@@ -1372,25 +1595,42 @@ function renderIndexProgress(meta) {
 }
 
 function shouldRenderIndexProgress(meta, force) {
-  if (force || !indexProgressLastRendered) return true;
-  if (meta.status !== indexProgressLastRendered.status) return true;
-  if (!indexProgressIsActive(meta)) return true;
-  return indexProgressBucket(meta.indexed_files) !== indexProgressBucket(indexProgressLastRendered.indexed_files);
+  if (force || !indexProgressLastRendered) {
+    return true;
+  }
+  if (meta.status !== indexProgressLastRendered.status) {
+    return true;
+  }
+  if (!indexProgressIsActive(meta)) {
+    return true;
+  }
+  return (
+    indexProgressBucket(meta.indexed_files) !==
+    indexProgressBucket(indexProgressLastRendered.indexed_files)
+  );
 }
 
 function stopIndexProgressPolling() {
-  if (!indexProgressTimer) return;
+  if (!indexProgressTimer) {
+    return;
+  }
   clearInterval(indexProgressTimer);
   indexProgressTimer = null;
 }
 
 async function refreshTreeIfPendingTallies() {
-  if (indexProgressCompletionRefreshInFlight) return;
-  if (!document.querySelector(".tally-pending")) return;
+  if (indexProgressCompletionRefreshInFlight) {
+    return;
+  }
+  if (!document.querySelector(".tally-pending")) {
+    return;
+  }
   indexProgressCompletionRefreshInFlight = true;
   try {
     await loadTree();
-    if (currentPath) setSelectedPath(currentPath);
+    if (currentPath) {
+      setSelectedPath(currentPath);
+    }
   } catch (e) {
     console.warn("tree refresh after scan completion failed", e);
     // Best-effort cleanup for stale startup placeholders. The next
@@ -1402,15 +1642,19 @@ async function refreshTreeIfPendingTallies() {
 }
 
 async function refreshIndexProgress(force) {
-  if (indexProgressInFlight) return;
+  if (indexProgressInFlight) {
+    return;
+  }
   indexProgressInFlight = true;
   try {
     var resp = await fetch("/api/index/progress", {
       cache: "no-store",
     });
-    if (resp.status === 304) return;
+    if (resp.status === 304) {
+      return;
+    }
     if (!resp.ok) {
-      console.warn("index progress: HTTP " + resp.status);
+      console.warn(`index progress: HTTP ${resp.status}`);
       renderIndexProgress(null);
       stopIndexProgressPolling();
       return;
@@ -1420,7 +1664,9 @@ async function refreshIndexProgress(force) {
       renderIndexProgress(meta);
     }
     if (!indexProgressIsActive(meta)) {
-      if (meta && meta.truncated) ensureTreeTruncationNote(meta.max_files);
+      if (meta?.truncated) {
+        ensureTreeTruncationNote(meta.max_files);
+      }
       renderIndexProgress(meta);
       await refreshTreeIfPendingTallies();
       stopIndexProgressPolling();
@@ -1434,27 +1680,30 @@ async function refreshIndexProgress(force) {
 }
 
 function startIndexProgressPolling() {
-  if (indexProgressTimer) return;
+  if (indexProgressTimer) {
+    return;
+  }
   refreshIndexProgress(true);
-  indexProgressTimer = setInterval(function () {
+  indexProgressTimer = setInterval(() => {
     refreshIndexProgress(false);
   }, INDEX_PROGRESS_POLL_MS);
 }
 
 function initNavTabs() {
-  var navBar = document.querySelector(".nav-tab-bar");
-  if (!navBar) return;
-  navBar.querySelectorAll(".tab-btn").forEach(function (btn) {
-    btn.addEventListener("click", function () {
+  const navBar = queryHtml(".nav-tab-bar");
+  if (!navBar) {
+    return;
+  }
+  queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
+    btn.addEventListener("click", () => {
       var tabId = btn.dataset.tab;
-      navBar.querySelectorAll(".tab-btn").forEach(function (b) {
+      navBar.querySelectorAll(".tab-btn").forEach((b) => {
         b.classList.remove("active");
         b.setAttribute("aria-selected", "false");
       });
       btn.classList.add("active");
       btn.setAttribute("aria-selected", "true");
-      var pane = document.getElementById("tree-pane");
-      pane.querySelectorAll("[data-tab-content]").forEach(function (panel) {
+      queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
         panel.style.display = panel.dataset.tabContent === tabId ? "" : "none";
       });
       if (tabId === "recent" && !recentEverLoaded) {
@@ -1471,16 +1720,23 @@ function initNavTabs() {
 // useful as a "there's more above" cue. The hairline border-bottom
 // from .tab-bar stays in both states.
 function initNavScrollShadow() {
-  var navBar = document.querySelector(".nav-tab-bar");
-  var content = document.getElementById("tree-content");
-  if (!navBar || !content) return;
+  const navBar = queryHtml(".nav-tab-bar");
+  const content = document.getElementById("tree-content");
+  if (!navBar || !content) {
+    return;
+  }
+  const scrollNavBar = navBar;
+  const scrollContent = content;
   function update() {
-    if (content.scrollTop > 0) navBar.classList.add("scrolled");
-    else navBar.classList.remove("scrolled");
+    if (scrollContent.scrollTop > 0) {
+      scrollNavBar.classList.add("scrolled");
+    } else {
+      scrollNavBar.classList.remove("scrolled");
+    }
   }
   // Passive listener — we never preventDefault — so the browser
   // can keep scroll responsive while we just read scrollTop.
-  content.addEventListener("scroll", update, { passive: true });
+  scrollContent.addEventListener("scroll", update, { passive: true });
   update();
 }
 
@@ -1493,7 +1749,7 @@ var _RECENT_WINDOW_SECONDS = {
   "24h": 24 * 60 * 60,
   "7d": 7 * 24 * 60 * 60,
   "30d": 30 * 24 * 60 * 60,
-  "all": null,
+  all: null,
 };
 
 // Recent is a hybrid
@@ -1552,39 +1808,63 @@ function fetchRecent(windowKey) {
   if (results && recentBaseEntries.size === 0) {
     results.innerHTML = '<div class="recent-empty">Loading recent files…</div>';
   }
-  var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   recentInflight = ctrl;
-  var url = "/api/recent?window=" + encodeURIComponent(windowKey)
-    + "&limit=" + encodeURIComponent(String(RECENT_LIMIT));
+  var url =
+    "/api/recent?window=" +
+    encodeURIComponent(windowKey) +
+    "&limit=" +
+    encodeURIComponent(String(RECENT_LIMIT));
   var fetchOpts = ctrl ? { signal: ctrl.signal } : undefined;
-  _perf.measureAsync("apiRecent:fetch", function () {
-    return fetch(url, fetchOpts).then(function (resp) {
-      if (!resp.ok) throw new Error("recent fetch failed: " + resp.status);
-      return resp.json();
+  _perf
+    .measureAsync(
+      "apiRecent:fetch",
+      () =>
+        fetch(url, fetchOpts).then((resp) => {
+          if (!resp.ok) {
+            throw new Error(`recent fetch failed: ${resp.status}`);
+          }
+          return resp.json();
+        }),
+      { window: windowKey },
+    )
+    .then((data) => {
+      if (windowKey !== currentRecentWindow) {
+        return; // user clicked another chip
+      }
+      recentBaseEntries = new Map();
+      var flat = data?.entries_flat || [];
+      for (var i = 0; i < flat.length; i++) {
+        var f = flat[i];
+        if (f?.path) {
+          recentBaseEntries.set(f.path, f);
+        }
+      }
+      recentTotalMatching = data?.total_matching || flat.length;
+      recentTruncated = !!data?.truncated;
+      var ignoredDirs = data?.gitignored_dirs || [];
+      _GITIGNORED_DIR_PATHS = new Set(ignoredDirs);
+      renderRecentFromBase();
+      if (currentPath) {
+        setSelectedPath(currentPath);
+      }
+    })
+    .catch((err) => {
+      if (err && err.name === "AbortError") {
+        return;
+      }
+      if (windowKey !== currentRecentWindow) {
+        return;
+      }
+      if (results) {
+        results.innerHTML = '<div class="recent-empty">Failed to load recent files.</div>';
+      }
+    })
+    .finally(() => {
+      if (recentInflight === ctrl) {
+        recentInflight = null;
+      }
     });
-  }, { window: windowKey }).then(function (data) {
-    if (windowKey !== currentRecentWindow) return; // user clicked another chip
-    recentBaseEntries = new Map();
-    var flat = (data && data.entries_flat) || [];
-    for (var i = 0; i < flat.length; i++) {
-      var f = flat[i];
-      if (f && f.path) recentBaseEntries.set(f.path, f);
-    }
-    recentTotalMatching = (data && data.total_matching) || flat.length;
-    recentTruncated = !!(data && data.truncated);
-    var ignoredDirs = (data && data.gitignored_dirs) || [];
-    _GITIGNORED_DIR_PATHS = new Set(ignoredDirs);
-    renderRecentFromBase();
-    if (currentPath) setSelectedPath(currentPath);
-  }).catch(function (err) {
-    if (err && err.name === "AbortError") return;
-    if (windowKey !== currentRecentWindow) return;
-    if (results) {
-      results.innerHTML = '<div class="recent-empty">Failed to load recent files.</div>';
-    }
-  }).finally(function () {
-    if (recentInflight === ctrl) recentInflight = null;
-  });
 }
 
 // Render the Recent panel from ``recentBaseEntries`` (the chip-
@@ -1592,25 +1872,31 @@ function fetchRecent(windowKey) {
 // fetchRecent on chip change AND by ``_scheduleRecentRecompute``
 // on every fs.change burst.
 function renderRecentFromBase() {
-  var results = document.getElementById("recent-results");
-  if (!results) return;
-  _perf.measure("renderRecent:root", function () {
-    var entries = recentEntriesFromBase({
-      window: currentRecentWindow,
-      limit: RECENT_LIMIT,
-    });
-    if (entries.length === 0) {
-      results.innerHTML = renderRecentList({ tree: [] });
-      return;
-    }
-    var nowSec = Date.now() / 1000;
-    var tree = clusterRecentTreeJs(entries, nowSec, RECENT_CLUSTER_PCT);
-    results.innerHTML = renderRecentList({
-      tree: tree,
-      total_matching: recentTotalMatching,
-      truncated: recentTruncated,
-    });
-  }, { items: recentBaseEntries.size });
+  const results = document.getElementById("recent-results");
+  if (!results) {
+    return;
+  }
+  _perf.measure(
+    "renderRecent:root",
+    () => {
+      var entries = recentEntriesFromBase({
+        window: currentRecentWindow,
+        limit: RECENT_LIMIT,
+      });
+      if (entries.length === 0) {
+        results.innerHTML = renderRecentList({ tree: [] });
+        return;
+      }
+      var nowSec = Date.now() / 1000;
+      var tree = clusterRecentTreeJs(entries, nowSec, RECENT_CLUSTER_PCT);
+      results.innerHTML = renderRecentList({
+        tree: tree,
+        total_matching: recentTotalMatching,
+        truncated: recentTruncated,
+      });
+    },
+    { items: recentBaseEntries.size },
+  );
 }
 
 // Apply a live FileStore-equivalent op to the recent base. Used
@@ -1619,17 +1905,23 @@ function renderRecentFromBase() {
 // are dropped; in-window upserts overwrite by path. ``op`` is the
 // fs.change op shape: ``{op, entry?, path?}`` matching events.py.
 function recentBaseApplyOp(op) {
-  if (!recentEverLoaded) return false;
-  if (!op) return false;
+  if (!recentEverLoaded) {
+    return false;
+  }
+  if (!op) {
+    return false;
+  }
   if (op.op === "upsert") {
     var e = op.entry;
-    if (!e || e.type !== "file") return false;
+    if (!e || e.type !== "file") {
+      return false;
+    }
     var dict = recentEntryFromFsEntry(e);
     // Only retain entries that fall inside the active window;
     // anything older than the window's seconds-back is dropped.
     var seconds = _RECENT_WINDOW_SECONDS[currentRecentWindow];
     if (seconds !== null) {
-      var cutoffSec = (Date.now() / 1000) - seconds;
+      var cutoffSec = Date.now() / 1000 - seconds;
       if (dict.mtime < cutoffSec) {
         // Out-of-window upsert — make sure any stale base entry
         // for this path is removed (e.g. a file aged past 1h).
@@ -1652,7 +1944,9 @@ function recentBaseApplyOp(op) {
   }
   if (op.op === "move") {
     var prev = recentBaseEntries.get(op.from_path);
-    if (!prev) return false;
+    if (!prev) {
+      return false;
+    }
     recentBaseEntries.delete(op.from_path);
     var moved = Object.assign({}, prev, {
       path: op.to_path,
@@ -1675,7 +1969,9 @@ function recentEntryFromFsEntry(entry) {
     size: entry.size || 0,
     mtime: (entry.mtime_ns || 0) / 1e9,
   };
-  if (entry.gitignored) out.gitignored = true;
+  if (entry.gitignored) {
+    out.gitignored = true;
+  }
   return out;
 }
 
@@ -1688,17 +1984,21 @@ function recentEntriesFromBase(opts) {
   opts = opts || {};
   var windowKey = opts.window || currentRecentWindow;
   var limit = opts.limit || RECENT_LIMIT;
-  var extFilter = opts.ext || null;          // null or string[]
-  var prefixFilter = opts.prefix || null;    // null or string
+  var extFilter = opts.ext || null; // null or string[]
+  var prefixFilter = opts.prefix || null; // null or string
 
   var seconds = _RECENT_WINDOW_SECONDS[windowKey];
   var nowSec = Date.now() / 1000;
-  var minMtime = seconds === null ? 0 : (nowSec - seconds);
+  var minMtime = seconds === null ? 0 : nowSec - seconds;
 
   var matches = [];
-  recentBaseEntries.forEach(function (entry) {
-    if (!entry || entry.type !== "file") return;
-    if ((entry.mtime || 0) < minMtime) return;
+  recentBaseEntries.forEach((entry) => {
+    if (!entry || entry.type !== "file") {
+      return;
+    }
+    if ((entry.mtime || 0) < minMtime) {
+      return;
+    }
     if (extFilter || prefixFilter) {
       // Recent-flat dicts don't carry ``ext`` (server pre-filters
       // by extension); pull it from the path tail when callers
@@ -1707,58 +2007,21 @@ function recentEntriesFromBase(opts) {
         var name = entry.name || (entry.path || "").split("/").pop();
         var dot = name.lastIndexOf(".");
         var ext = dot >= 0 ? name.slice(dot) : "";
-        if (extFilter.indexOf(ext) === -1) return;
+        if (extFilter.indexOf(ext) === -1) {
+          return;
+        }
       }
-      if (prefixFilter && (entry.path || "").indexOf(prefixFilter) !== 0) return;
+      if (prefixFilter && (entry.path || "").indexOf(prefixFilter) !== 0) {
+        return;
+      }
     }
     matches.push(entry);
   });
-  matches.sort(function (a, b) {
-    return (b.mtime || 0) - (a.mtime || 0);
-  });
-  if (matches.length > limit) matches = matches.slice(0, limit);
+  matches.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+  if (matches.length > limit) {
+    matches = matches.slice(0, limit);
+  }
   return matches;
-}
-
-// Compatibility shim: structural tests and older extensions expect a function named
-// ``recentEntriesFromStore``. Keep the name pointing at the
-// FileStore-only path; useful as the SSE-scoped baseline when
-// ``recentBaseEntries`` hasn't been populated yet (e.g. before
-// the first /api/recent fetch resolves).
-function recentEntriesFromStore(opts) {
-  opts = opts || {};
-  var windowKey = opts.window || currentRecentWindow;
-  var limit = opts.limit || RECENT_LIMIT;
-  var extFilter = opts.ext || null;
-  var prefixFilter = opts.prefix || null;
-
-  var seconds = _RECENT_WINDOW_SECONDS[windowKey];
-  var nowMs = Date.now();
-  var minMtimeNs = seconds === null ? 0 : (nowMs / 1000 - seconds) * 1e9;
-
-  var matches = [];
-  fileStore.forEach(function (entry) {
-    if (entry.type !== "file") return;
-    if ((entry.mtime_ns || 0) < minMtimeNs) return;
-    if (extFilter && extFilter.indexOf(entry.ext) === -1) return;
-    if (prefixFilter && entry.path.indexOf(prefixFilter) !== 0) return;
-    matches.push(entry);
-  });
-  matches.sort(function (a, b) {
-    return (b.mtime_ns || 0) - (a.mtime_ns || 0);
-  });
-  if (matches.length > limit) matches = matches.slice(0, limit);
-  return matches.map(function (e) {
-    var out = {
-      name: e.name,
-      path: e.path,
-      type: "file",
-      size: e.size || 0,
-      mtime: (e.mtime_ns || 0) / 1e9,
-    };
-    if (e.gitignored) out.gitignored = true;
-    return out;
-  });
 }
 
 // Authoritative implementation of Recent clustering. Single-dir
@@ -1772,8 +2035,9 @@ function recentEntriesFromStore(opts) {
 // gitignore status — it only maps a server-published path into a
 // node flag.
 function clusterRecentTreeJs(files, nowSec, pct) {
-  pct = (typeof pct === "number") ? pct : 0.05;
+  pct = typeof pct === "number" ? pct : 0.05;
   // Build the directory tree.
+  /** @type {{name: string, subdirs: Record<string, any>, leaves: Array<any>}} */
   var root = { name: "", subdirs: {}, leaves: [] };
   for (var fi = 0; fi < files.length; fi++) {
     var f = files[fi];
@@ -1795,13 +2059,15 @@ function clusterRecentTreeJs(files, nowSec, pct) {
     for (var si = 0; si < subnames.length; si++) {
       var subname = subnames[si];
       var sub = node.subdirs[subname];
-      var subPath = path ? (path + "/" + subname) : subname;
+      var subPath = path ? `${path}/${subname}` : subname;
       children.push(emitDir(sub, subPath));
     }
     for (var li = 0; li < node.leaves.length; li++) {
       var leaf = node.leaves[li];
       var leafCopy = {};
-      for (var k in leaf) leafCopy[k] = leaf[k];
+      for (var k in leaf) {
+        leafCopy[k] = leaf[k];
+      }
       leafCopy.type = "file";
       children.push(leafCopy);
     }
@@ -1811,31 +2077,35 @@ function clusterRecentTreeJs(files, nowSec, pct) {
     var compactPath = path;
     while (children.length === 1 && children[0].type === "dir") {
       var sole = children[0];
-      compactName = compactName ? (compactName + "/" + sole.name) : sole.name;
+      compactName = compactName ? `${compactName}/${sole.name}` : sole.name;
       compactPath = sole.path;
       children = sole.children;
     }
-    children.sort(function (a, b) {
-      return (b.mtime || 0) - (a.mtime || 0);
-    });
+    children.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
 
-    var totalFiles = 0, totalSize = 0, newestMtime = 0;
+    var totalFiles = 0,
+      totalSize = 0,
+      newestMtime = 0;
     for (var ci = 0; ci < children.length; ci++) {
       var c = children[ci];
       if (c.type === "dir") {
-        totalFiles += (c.total_files || 0);
-        totalSize += (c.total_size || 0);
+        totalFiles += c.total_files || 0;
+        totalSize += c.total_size || 0;
       } else {
         totalFiles += 1;
-        totalSize += (c.size || 0);
+        totalSize += c.size || 0;
       }
-      if ((c.mtime || 0) > newestMtime) newestMtime = c.mtime || 0;
+      if ((c.mtime || 0) > newestMtime) {
+        newestMtime = c.mtime || 0;
+      }
     }
 
     var ages = [];
     for (var ai = 0; ai < children.length; ai++) {
       var ac = children[ai];
-      if ((ac.mtime || 0) > 0) ages.push(nowSec - ac.mtime);
+      if ((ac.mtime || 0) > 0) {
+        ages.push(nowSec - ac.mtime);
+      }
     }
     var coherent = _agesWithinPctJs(ages, pct);
 
@@ -1854,8 +2124,10 @@ function clusterRecentTreeJs(files, nowSec, pct) {
     // leave ``expanded`` unset so renderTreeNodes' default rule
     // applies — top-level non-gitignored dirs auto-expand, deeper
     // dirs stay collapsed. Same heuristic the Files panel uses.
-    if (coherent) out.expanded = false;
-    if (_GITIGNORED_DIR_PATHS && _GITIGNORED_DIR_PATHS.has(compactPath)) {
+    if (coherent) {
+      out.expanded = false;
+    }
+    if (_GITIGNORED_DIR_PATHS?.has(compactPath)) {
       out.gitignored = true;
     }
     return out;
@@ -1869,32 +2141,45 @@ function clusterRecentTreeJs(files, nowSec, pct) {
   }
   for (var lj = 0; lj < root.leaves.length; lj++) {
     var lc = {};
-    for (var lk in root.leaves[lj]) lc[lk] = root.leaves[lj][lk];
+    for (var lk in root.leaves[lj]) {
+      lc[lk] = root.leaves[lj][lk];
+    }
     lc.type = "file";
     out.push(lc);
   }
-  out.sort(function (a, b) {
-    return (b.mtime || 0) - (a.mtime || 0);
-  });
+  out.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
   return out;
 }
 
 function _agesWithinPctJs(ages, pct) {
-  if (ages.length <= 1) return true;
-  var lo = ages[0], hi = ages[0];
-  for (var i = 1; i < ages.length; i++) {
-    if (ages[i] < lo) lo = ages[i];
-    if (ages[i] > hi) hi = ages[i];
+  if (ages.length <= 1) {
+    return true;
   }
-  if (hi <= 0) return true;
+  var lo = ages[0],
+    hi = ages[0];
+  for (var i = 1; i < ages.length; i++) {
+    if (ages[i] < lo) {
+      lo = ages[i];
+    }
+    if (ages[i] > hi) {
+      hi = ages[i];
+    }
+  }
+  if (hi <= 0) {
+    return true;
+  }
   return (hi - lo) / hi <= pct;
 }
 
 function ensureRecentScaffold() {
   var panel = document.getElementById("tab-recent");
-  if (document.getElementById("recent-controls")) return;
-  panel.innerHTML = renderRecentControls(currentRecentWindow)
-    + '<div id="recent-results"></div>';
+  if (document.getElementById("recent-controls")) {
+    return;
+  }
+  if (!panel) {
+    return;
+  }
+  panel.innerHTML = `${renderRecentControls(currentRecentWindow)}<div id="recent-results"></div>`;
 }
 
 function renderRecentControls(windowKey) {
@@ -1902,16 +2187,22 @@ function renderRecentControls(windowKey) {
   for (var i = 0; i < RECENT_WINDOWS.length; i++) {
     var w = RECENT_WINDOWS[i];
     var active = w === windowKey ? " active" : "";
-    parts.push('<button class="recent-chip' + active
-      + '" data-action="recent-window" data-window="' + esc(w) + '">'
-      + esc(w) + "</button>");
+    parts.push(
+      '<button class="recent-chip' +
+        active +
+        '" data-action="recent-window" data-window="' +
+        esc(w) +
+        '">' +
+        esc(w) +
+        "</button>",
+    );
   }
   parts.push("</div>");
   return parts.join("");
 }
 
 function setActiveRecentChip(windowKey) {
-  document.querySelectorAll("#recent-controls .recent-chip").forEach(function (chip) {
+  queryHtmlAll("#recent-controls .recent-chip").forEach((chip) => {
     chip.classList.toggle("active", chip.dataset.window === windowKey);
   });
 }
@@ -1936,9 +2227,13 @@ function renderRecentList(data) {
   // window had more files than we're showing. This used to be
   // hidden because the SPA never read the truncated/total fields.
   if (data.truncated && data.total_matching) {
-    body = '<div class="recent-truncated-note">Showing ' + RECENT_LIMIT
-      + ' of ' + data.total_matching + ' files. Narrow the window to see fewer.</div>'
-      + body;
+    body =
+      '<div class="recent-truncated-note">Showing ' +
+      RECENT_LIMIT +
+      " of " +
+      data.total_matching +
+      " files. Narrow the window to see fewer.</div>" +
+      body;
   }
   return body;
 }
@@ -1947,11 +2242,16 @@ function renderRecentList(data) {
 // that handles tree-item / page-more clicks); this binds the
 // chip-specific behavior. Picking the same chip again is a
 // no-op so a stray click doesn't trigger an extra fetch.
-document.getElementById("tree-pane").addEventListener("click", function (e) {
-  var chip = e.target.closest("[data-action='recent-window']");
-  if (!chip) return;
+treePane.addEventListener("click", (e) => {
+  var target = eventTargetElement(e);
+  var chip = /** @type {HTMLElement | null} */ (target?.closest("[data-action='recent-window']"));
+  if (!chip) {
+    return;
+  }
   var w = chip.dataset.window;
-  if (w === currentRecentWindow) return;
+  if (w === currentRecentWindow) {
+    return;
+  }
   loadRecent(w);
 });
 
@@ -1971,7 +2271,7 @@ const fileCache = new Map();
 // ``mtime_hash`` promoted to an HTTP-level ETag.
 const fileETags = new Map();
 const fileNeedsRevalidate = new Set();
-const CACHE_MAX = 30;      // file payloads are small
+const CACHE_MAX = 30; // file payloads are small
 
 function evictFileCacheMetadata(path) {
   fileETags.delete(path);
@@ -1984,31 +2284,48 @@ function cachePut(cache, key, value, maxSize, onEvict) {
   while (cache.size > maxSize) {
     var evicted = cache.keys().next().value;
     cache.delete(evicted);
-    if (onEvict) onEvict(evicted);
+    if (onEvict) {
+      onEvict(evicted);
+    }
   }
 }
 
 var textChunkLoadInFlight = false;
 
+// Called by the generated file-header action.
+// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 async function loadMoreCurrentText() {
-  if (textChunkLoadInFlight || !currentPath) return;
+  if (textChunkLoadInFlight || !currentPath) {
+    return;
+  }
   var cached = fileCache.get(currentPath);
-  if (!cached || !cached.content_truncated) return;
+  if (!cached?.content_truncated) {
+    return;
+  }
 
   textChunkLoadInFlight = true;
   var path = currentPath;
   var offset = cached.bytes_read || 0;
   try {
     var resp = await fetch(
-      "/api/file?path=" + encodeURIComponent(path)
-      + "&offset=" + encodeURIComponent(String(offset))
-      + "&limit=" + encodeURIComponent(String(TEXT_PREVIEW_CHUNK_BYTES))
+      "/api/file?path=" +
+        encodeURIComponent(path) +
+        "&offset=" +
+        encodeURIComponent(String(offset)) +
+        "&limit=" +
+        encodeURIComponent(String(TEXT_PREVIEW_CHUNK_BYTES)),
     );
-    if (!resp.ok) return;
-    var chunk = await _perf.measureAsync("apiFile:textChunkJson", function () {
-      return resp.json();
-    }, responsePerfMeta(resp, path, { offset: offset }));
-    if (currentPath !== path) return;
+    if (!resp.ok) {
+      return;
+    }
+    var chunk = await _perf.measureAsync(
+      "apiFile:textChunkJson",
+      () => resp.json(),
+      responsePerfMeta(resp, path, { offset: offset }),
+    );
+    if (currentPath !== path) {
+      return;
+    }
     if (chunk.mtime_hash && cached.mtime_hash && chunk.mtime_hash !== cached.mtime_hash) {
       fileNeedsRevalidate.add(path);
       await selectFile(path);
@@ -2035,83 +2352,110 @@ var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
 
 async function selectFile(path, skipHash) {
-  return _perf.measureAsync("selectFile", async function () {
-    // Always close any prior live stream — switching files (or reopening
-    // the same file) starts fresh.
-    closeLiveStream();
-    currentPath = path;
-    // Update URL hash for deep-linking (replaceState — lateral navigation, not history).
-    if (!skipHash) {
-      history.replaceState(null, "", "#" + encodeURIComponent(path));
-    }
-    const preview = document.getElementById("preview-pane");
-
-    // Three-way cache state:
-    //   - hot: in fileCache and not flagged → serve from cache.
-    //   - revalidate: in fileCache but flagged (file recently changed in
-    //     activity poll) → send If-None-Match, accept 304 to confirm.
-    //   - cold: not in fileCache → unconditional fetch.
-    const cached = fileCache.get(path);
-    const needsRevalidate = fileNeedsRevalidate.has(path);
-    if (cached && !needsRevalidate && !activeFiles.has(path)) {
-      renderFile(cached);
-      maybeOpenLiveStream(path, cached);
-      return;
-    }
-
-    if (loadingIndicatorTimer) clearTimeout(loadingIndicatorTimer);
-    loadingIndicatorTimer = setTimeout(function () {
-      loadingIndicatorTimer = null;
-      if (currentPath !== path) return;
-      disposeActivePluginViews();
-      preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
-    }, LOADING_INDICATOR_DELAY_MS);
-
-    try {
-      const headers = {};
-      if (cached && fileETags.has(path)) {
-        headers["if-none-match"] = fileETags.get(path);
+  return _perf.measureAsync(
+    "selectFile",
+    async () => {
+      // Always close any prior live stream — switching files (or reopening
+      // the same file) starts fresh.
+      closeLiveStream();
+      currentPath = path;
+      // Update URL hash for deep-linking (replaceState — lateral navigation, not history).
+      if (!skipHash) {
+        history.replaceState(null, "", `#${encodeURIComponent(path)}`);
       }
-      const resp = await fetch("/api/file?path=" + encodeURIComponent(path), { headers: headers });
-      if (resp.status === 304 && cached) {
-        // Server confirmed the cached payload is still fresh — zero-byte
-        // body, render from memory.
-        fileNeedsRevalidate.delete(path);
-        if (currentPath === path) {
-          if (loadingIndicatorTimer) { clearTimeout(loadingIndicatorTimer); loadingIndicatorTimer = null; }
-          currentMtimeHash = cached.mtime_hash || null;
-          renderFile(cached);
-          maybeOpenLiveStream(path, cached);
-        }
+      const preview = document.getElementById("preview-pane");
+      if (!preview) {
         return;
       }
-      if (!resp.ok) {
-        const text = await _perf.measureAsync("apiFile:errorText", function () {
-          return resp.text();
-        }, responsePerfMeta(resp, path));
-        throw new Error(text || ("HTTP " + resp.status));
+
+      // Three-way cache state:
+      //   - hot: in fileCache and not flagged → serve from cache.
+      //   - revalidate: in fileCache but flagged (file recently changed in
+      //     activity poll) → send If-None-Match, accept 304 to confirm.
+      //   - cold: not in fileCache → unconditional fetch.
+      const cached = fileCache.get(path);
+      const needsRevalidate = fileNeedsRevalidate.has(path);
+      if (cached && !needsRevalidate && !activeFiles.has(path)) {
+        renderFile(cached);
+        maybeOpenLiveStream(path, cached);
+        return;
       }
-      const data = await _perf.measureAsync("apiFile:json", function () {
-        return resp.json();
-      }, responsePerfMeta(resp, path));
-      cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
-      const etagHeader = resp.headers.get("etag");
-      if (etagHeader) fileETags.set(path, etagHeader);
-      fileNeedsRevalidate.delete(path);
-      if (currentPath === path) {
-        if (loadingIndicatorTimer) { clearTimeout(loadingIndicatorTimer); loadingIndicatorTimer = null; }
-        currentMtimeHash = data.mtime_hash || null;
-        renderFile(data);
-        maybeOpenLiveStream(path, data);
+
+      if (loadingIndicatorTimer) {
+        clearTimeout(loadingIndicatorTimer);
       }
-    } catch (err) {
-      if (currentPath === path) {
-        if (loadingIndicatorTimer) { clearTimeout(loadingIndicatorTimer); loadingIndicatorTimer = null; }
+      loadingIndicatorTimer = setTimeout(() => {
+        loadingIndicatorTimer = null;
+        if (currentPath !== path) {
+          return;
+        }
         disposeActivePluginViews();
-        preview.innerHTML = '<div class="preview-empty">Error: ' + esc(err.message) + "</div>";
+        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+      }, LOADING_INDICATOR_DELAY_MS);
+
+      try {
+        /** @type {Record<string, string>} */
+        const headers = {};
+        if (cached && fileETags.has(path)) {
+          headers["if-none-match"] = fileETags.get(path);
+        }
+        const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
+          headers: headers,
+        });
+        if (resp.status === 304 && cached) {
+          // Server confirmed the cached payload is still fresh — zero-byte
+          // body, render from memory.
+          fileNeedsRevalidate.delete(path);
+          if (currentPath === path) {
+            if (loadingIndicatorTimer) {
+              clearTimeout(loadingIndicatorTimer);
+              loadingIndicatorTimer = null;
+            }
+            renderFile(cached);
+            maybeOpenLiveStream(path, cached);
+          }
+          return;
+        }
+        if (!resp.ok) {
+          const text = await _perf.measureAsync(
+            "apiFile:errorText",
+            () => resp.text(),
+            responsePerfMeta(resp, path),
+          );
+          throw new Error(text || `HTTP ${resp.status}`);
+        }
+        const data = await _perf.measureAsync(
+          "apiFile:json",
+          () => resp.json(),
+          responsePerfMeta(resp, path),
+        );
+        cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
+        const etagHeader = resp.headers.get("etag");
+        if (etagHeader) {
+          fileETags.set(path, etagHeader);
+        }
+        fileNeedsRevalidate.delete(path);
+        if (currentPath === path) {
+          if (loadingIndicatorTimer) {
+            clearTimeout(loadingIndicatorTimer);
+            loadingIndicatorTimer = null;
+          }
+          renderFile(data);
+          maybeOpenLiveStream(path, data);
+        }
+      } catch (err) {
+        if (currentPath === path) {
+          if (loadingIndicatorTimer) {
+            clearTimeout(loadingIndicatorTimer);
+            loadingIndicatorTimer = null;
+          }
+          disposeActivePluginViews();
+          preview.innerHTML = `<div class="preview-empty">Error: ${esc(errorMessage(err))}</div>`;
+        }
       }
-    }
-  }, { path: path, skip_hash: !!skipHash });
+    },
+    { path: path, skip_hash: !!skipHash },
+  );
 }
 
 // ── File rendering ──────────────────────────────────────────────
@@ -2122,30 +2466,38 @@ function renderBadges(data) {
   // Compression status — surfaced first so it's adjacent to the path.
   // Mirrors the .compression-badge overlay on the tree icon, with
   // text rather than a glyph since file-header badges are larger.
-  if (data && data.compressed) {
+  if (data?.compressed) {
     var label = data.compression
       ? data.compression.charAt(0).toUpperCase() + data.compression.slice(1)
       : "Compressed";
-    badges += '<span class="file-header-badge badge-compressed" title="On-disk file is ' +
-              esc(label.toLowerCase()) + '-compressed">' + esc(label) + '</span>';
+    badges +=
+      '<span class="file-header-badge badge-compressed" title="On-disk file is ' +
+      esc(label.toLowerCase()) +
+      '-compressed">' +
+      esc(label) +
+      "</span>";
   }
   var kind = data.kind;
   if (kind === "agent-log" && data.summary) {
-    var s = data.summary;
-    if (s.adapter === "claude") badges += '<span class="file-header-badge badge-claude">Claude</span>';
-    else if (s.adapter === "gemini") badges += '<span class="file-header-badge badge-gemini">Gemini</span>';
-    else if (s.adapter === "pi") badges += '<span class="file-header-badge badge-pi">Pi</span>';
-  } else if (data.summary && data.summary.adapter && data.summary.adapter !== "unknown") {
+    var summary = data.summary;
+    if (summary.adapter === "claude") {
+      badges += '<span class="file-header-badge badge-claude">Claude</span>';
+    } else if (summary.adapter === "gemini") {
+      badges += '<span class="file-header-badge badge-gemini">Gemini</span>';
+    } else if (summary.adapter === "pi") {
+      badges += '<span class="file-header-badge badge-pi">Pi</span>';
+    }
+  } else if (data.summary?.adapter && data.summary.adapter !== "unknown") {
     var adapterLabel = String(data.summary.adapter)
       .replace(/[-_]+/g, " ")
-      .replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
-    badges += '<span class="file-header-badge badge-adapter">' + esc(adapterLabel) + '</span>';
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    badges += `<span class="file-header-badge badge-adapter">${esc(adapterLabel)}</span>`;
   }
   // Status badge for JSONL kinds
   if (data.type === "jsonl" && data.summary) {
-    var s = data.summary;
-    if (s.is_done) {
-      badges += s.is_error
+    var statusSummary = data.summary;
+    if (statusSummary.is_done) {
+      badges += statusSummary.is_error
         ? '<span class="file-header-badge badge-failed">Failed</span>'
         : '<span class="file-header-badge badge-completed">Done</span>';
     } else if (activeFiles.has(data.path)) {
@@ -2163,20 +2515,26 @@ function renderBadges(data) {
   // markdown, but the operator now sees that the frontmatter was
   // ignored rather than silently using an unparsable value.
   if (data.frontmatter_error) {
-    badges += '<span class="file-header-badge badge-frontmatter-error" title="'
-      + esc(data.frontmatter_error)
-      + '">Frontmatter error</span>';
+    badges +=
+      '<span class="file-header-badge badge-frontmatter-error" title="' +
+      esc(data.frontmatter_error) +
+      '">Frontmatter error</span>';
   }
   return badges;
 }
 
 function renderTextPreviewControls(data) {
-  if (!data || data.type !== "text" || typeof data.bytes_read !== "number") return "";
-  if (!data.content_truncated && data.bytes_read >= (data.size || 0)) return "";
+  if (!data || data.type !== "text" || typeof data.bytes_read !== "number") {
+    return "";
+  }
+  if (!data.content_truncated && data.bytes_read >= (data.size || 0)) {
+    return "";
+  }
   var loaded = Math.min(data.bytes_read || 0, data.size || 0);
-  var html = '<span class="file-header-preview">' + formatSize(loaded) + " / " + formatSize(data.size || 0) + "</span>";
+  var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
   if (data.content_truncated) {
-    html += '<button class="file-header-action" onclick="loadMoreCurrentText()" title="Load another text chunk">Load more</button>';
+    html +=
+      '<button class="file-header-action" onclick="loadMoreCurrentText()" title="Load another text chunk">Load more</button>';
   }
   return html;
 }
@@ -2186,43 +2544,57 @@ function boolData(value) {
 }
 
 function viewIsPrintable(view) {
-  return boolData(view && view.printable);
+  return boolData(view?.printable);
 }
 
 function viewPrintProfile(view) {
-  return (view && view.print_profile) || "plain";
+  return view?.print_profile || "plain";
 }
 
 function viewRenderRuntime(view) {
-  return (view && view.render_runtime) || "";
+  return view?.render_runtime || "";
 }
 
 function viewMetaAttrs(view) {
   var printable = viewIsPrintable(view) ? "true" : "false";
   var profile = viewPrintProfile(view);
   var runtime = viewRenderRuntime(view);
-  var attrs = ' data-printable="' + printable + '" data-print-profile="' + esc(profile) + '"';
-  if (runtime) attrs += ' data-render-runtime="' + esc(runtime) + '"';
-  if (runtime === "kpress") attrs += ' data-kpress-enabled="true"';
+  var attrs = ` data-printable="${printable}" data-print-profile="${esc(profile)}"`;
+  if (runtime) {
+    attrs += ` data-render-runtime="${esc(runtime)}"`;
+  }
+  if (runtime === "kpress") {
+    attrs += ' data-kpress-enabled="true"';
+  }
   return attrs;
 }
 
 function updatePrintButton(printable) {
   var btn = document.getElementById("print-view-btn");
-  if (!btn) return;
+  if (!btn) {
+    return;
+  }
   btn.hidden = !printable;
   btn.setAttribute("aria-hidden", printable ? "false" : "true");
 }
 
 function setActivePreviewView(tabId, preview) {
   preview = preview || document.getElementById("preview-pane");
-  if (!preview) return;
+  if (!preview) {
+    return;
+  }
+  preview = /** @type {HTMLElement} */ (preview);
+  /** @type {HTMLElement | null} */
   var active = null;
-  preview.querySelectorAll("[data-tab-content]").forEach(function (c) {
+  var tabContents = queryHtmlAll("[data-tab-content]", preview);
+  for (var i = 0; i < tabContents.length; i++) {
+    var c = tabContents[i];
     var isActive = !!tabId && c.dataset.tabContent === tabId;
     c.dataset.activeView = isActive ? "true" : "false";
-    if (isActive) active = c;
-  });
+    if (isActive) {
+      active = c;
+    }
+  }
   if (!active) {
     delete preview.dataset.activeView;
     preview.dataset.printable = "false";
@@ -2236,10 +2608,16 @@ function setActivePreviewView(tabId, preview) {
   preview.dataset.activeView = tabId;
   preview.dataset.printable = printable ? "true" : "false";
   preview.dataset.printProfile = active.dataset.printProfile || "plain";
-  if (active.dataset.renderRuntime) preview.dataset.renderRuntime = active.dataset.renderRuntime;
-  else delete preview.dataset.renderRuntime;
-  if (active.dataset.kpressEnabled) preview.dataset.kpressEnabled = active.dataset.kpressEnabled;
-  else delete preview.dataset.kpressEnabled;
+  if (active.dataset.renderRuntime) {
+    preview.dataset.renderRuntime = active.dataset.renderRuntime;
+  } else {
+    delete preview.dataset.renderRuntime;
+  }
+  if (active.dataset.kpressEnabled) {
+    preview.dataset.kpressEnabled = active.dataset.kpressEnabled;
+  } else {
+    delete preview.dataset.kpressEnabled;
+  }
   updatePrintButton(printable);
 }
 
@@ -2254,7 +2632,9 @@ if (typeof window !== "undefined") {
 var activePluginDisposers = [];
 
 function disposeActivePluginViews() {
-  if (!activePluginDisposers.length) return;
+  if (!activePluginDisposers.length) {
+    return;
+  }
   var disposers = activePluginDisposers;
   activePluginDisposers = [];
   for (var i = 0; i < disposers.length; i++) {
@@ -2273,156 +2653,216 @@ function mountPluginView(container, pluginView, ctx) {
   try {
     var maybePromise = pluginView.render(container, ctx);
     if (maybePromise && typeof maybePromise.catch === "function") {
-      maybePromise.catch(function (err) {
-        container.innerHTML = '<div class="preview-empty">Plugin render error: '
-          + esc(String(err && err.message || err)) + "</div>";
+      maybePromise.catch((err) => {
+        container.innerHTML =
+          '<div class="preview-empty">Plugin render error: ' +
+          esc(String(err?.message || err)) +
+          "</div>";
       });
     }
   } catch (err) {
-    container.innerHTML = '<div class="preview-empty">Plugin render error: '
-      + esc(String(err && err.message || err)) + "</div>";
+    container.innerHTML = `<div class="preview-empty">Plugin render error: ${esc(errorMessage(err))}</div>`;
   }
 }
 
 function renderFile(data) {
-  return _perf.measure("renderFile:" + (data.kind || data.type || "?"), function () {
-  const preview = document.getElementById("preview-pane");
-
-  // Drain any disposers from a previously mounted view; we're about to
-  // replace preview.innerHTML below, which detaches their containers.
-  disposeActivePluginViews();
-
-  // Build header
-  var badges = renderBadges(data);
-  let html = '<div class="file-header">';
-  html += '<span class="file-header-path">' + esc(data.path)
-    + '<button class="file-header-copy" onclick="copyPath(this, \'' + esc(data.path).replace(/'/g, "\\'") + '\')" title="Copy path">' + ICON_COPY + '</button>'
-    + "</span>";
-  html += badges;
-  html += sizeHtml(data.size, "file-header-size");
-  html += renderTextPreviewControls(data);
-  html += '<button class="file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>'
-    + (ICONS.print || "") + '</button>';
-  html += "</div>";
-
-  // Data-driven tab rendering from server views.
-  //
-  // Every (kind, viewId) goes through the plugin registry: built-in
-  // plugins (markdown, agent-log, unknown-jsonl, text) own their own
-  // kinds; entry-point plugins own theirs. The shell here
-  // builds the empty containers; each plugin's render(container, ctx)
-  // fires below once the DOM is in place. If no plugin claims a
-  // (kind, viewId) we paint an "Unknown view" empty state — never a
-  // fallback that pulls renderers out of the shell. This is the
-  // contract: every kind is a plugin.
-  var views = data.views;
-  var pluginRenders = [];
-  if (views && views.length > 0) {
-    if (views.length > 1) {
-      html += '<div class="tab-bar">';
-      for (var i = 0; i < views.length; i++) {
-        var v = views[i];
-        var active = v["default"] ? " active" : "";
-        html += '<button class="tab-btn' + active + '" data-tab="' + esc(v.id) + '"'
-          + viewMetaAttrs(v) + '>' + esc(v.label) + '</button>';
+  return _perf.measure(
+    `renderFile:${data.kind || data.type || "?"}`,
+    () => {
+      const preview = document.getElementById("preview-pane");
+      if (!preview) {
+        return;
       }
-      html += '</div>';
-    }
-    for (var i = 0; i < views.length; i++) {
-      var v = views[i];
-      var pluginView = (window.metabrowser && data.kind)
-        ? window.metabrowser.getRegisteredView(data.kind, v.id)
-        : null;
-      // container_class can be set per-view in the plugin manifest as
-      // [[view]].container_class; defaults to "content-body".
-      var containerClass = (v.container_class) || "content-body";
-      var hidden = v["default"] ? '' : ' style="display:none;"';
-      var noPadding = (v.id === "raw" || v.id === "source") ? "padding:0;" : "";
-      if (noPadding && !hidden) hidden = ' style="' + noPadding + '"';
-      else if (noPadding && hidden) hidden = ' style="display:none;' + noPadding + '"';
 
-      if (pluginView) {
-        // Empty container; plugin renders into it after innerHTML lands.
-        html += '<div class="' + containerClass + '" data-tab-content="' + v.id
-          + '" data-plugin-view="' + esc(v.id) + '"' + viewMetaAttrs(v)
-          + ' data-active-view="false"' + hidden + '></div>';
-        pluginRenders.push({ tabId: v.id, view: pluginView });
+      // Drain any disposers from a previously mounted view; we're about to
+      // replace preview.innerHTML below, which detaches their containers.
+      disposeActivePluginViews();
+
+      // Build header
+      var badges = renderBadges(data);
+      let html = '<div class="file-header">';
+      html +=
+        '<span class="file-header-path">' +
+        esc(data.path) +
+        '<button class="file-header-copy" onclick="copyPath(this, \'' +
+        esc(data.path).replace(/'/g, "\\'") +
+        '\')" title="Copy path">' +
+        ICON_COPY +
+        "</button>" +
+        "</span>";
+      html += badges;
+      html += sizeHtml(data.size, "file-header-size");
+      html += renderTextPreviewControls(data);
+      html +=
+        '<button class="file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+        (ICONS.print || "") +
+        "</button>";
+      html += "</div>";
+
+      // Data-driven tab rendering from server views.
+      //
+      // Every (kind, viewId) goes through the plugin registry: built-in
+      // plugins (markdown, agent-log, unknown-jsonl, text) own their own
+      // kinds; entry-point plugins own theirs. The shell here
+      // builds the empty containers; each plugin's render(container, ctx)
+      // fires below once the DOM is in place. If no plugin claims a
+      // (kind, viewId) we paint an "Unknown view" empty state — never a
+      // fallback that pulls renderers out of the shell. This is the
+      // contract: every kind is a plugin.
+      var views = data.views;
+      var pluginRenders = [];
+      if (views && views.length > 0) {
+        if (views.length > 1) {
+          html += '<div class="tab-bar">';
+          for (let i = 0; i < views.length; i++) {
+            const view = views[i];
+            var active = view.default ? " active" : "";
+            html +=
+              '<button class="tab-btn' +
+              active +
+              '" data-tab="' +
+              esc(view.id) +
+              '"' +
+              viewMetaAttrs(view) +
+              ">" +
+              esc(view.label) +
+              "</button>";
+          }
+          html += "</div>";
+        }
+        for (let i = 0; i < views.length; i++) {
+          const view = views[i];
+          var pluginView =
+            window.metabrowser && data.kind
+              ? window.metabrowser.getRegisteredView(data.kind, view.id)
+              : null;
+          // container_class can be set per-view in the plugin manifest as
+          // [[view]].container_class; defaults to "content-body".
+          var containerClass = view.container_class || "content-body";
+          var hidden = view.default ? "" : ' style="display:none;"';
+          var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
+          if (noPadding && !hidden) {
+            hidden = ` style="${noPadding}"`;
+          } else if (noPadding && hidden) {
+            hidden = ` style="display:none;${noPadding}"`;
+          }
+
+          if (pluginView) {
+            // Empty container; plugin renders into it after innerHTML lands.
+            html +=
+              '<div class="' +
+              containerClass +
+              '" data-tab-content="' +
+              view.id +
+              '" data-plugin-view="' +
+              esc(view.id) +
+              '"' +
+              viewMetaAttrs(view) +
+              ' data-active-view="false"' +
+              hidden +
+              "></div>";
+            pluginRenders.push({ tabId: view.id, view: pluginView });
+          } else {
+            // No plugin registered for this (kind, viewId). Defensive
+            // empty-state — should not fire in practice because every
+            // kind+view declared in any loaded plugin's manifest is
+            // expected to have a matching registerView call.
+            html +=
+              '<div class="' +
+              containerClass +
+              '" data-tab-content="' +
+              view.id +
+              '"' +
+              viewMetaAttrs(view) +
+              ' data-active-view="false"' +
+              hidden +
+              '><div class="preview-empty">Unknown view: ' +
+              esc(view.id) +
+              "</div></div>";
+          }
+        }
+      } else if (data.type === "image") {
+        // No tab bar — the browser renders the image directly via /raw,
+        // which already returns the right mimetype. The .content-body
+        // wrapper gives the same outer padding a plain text view has.
+        html +=
+          '<div class="content-body"><img class="file-image" src="/raw?path=' +
+          encodeURIComponent(data.path) +
+          '" alt="' +
+          esc(data.path) +
+          '"></div>';
+      } else if (data.type === "binary") {
+        html += `<div class="content-body"><div class="preview-empty">Binary file (${formatSize(data.size || 0)})</div></div>`;
+      } else if (data.type === "jsonl_too_large") {
+        html +=
+          '<div class="content-body"><div class="preview-empty">' +
+          "<strong>Log file too large for browser parsing</strong><br><br>" +
+          "Size: " +
+          formatSize(data.size || 0) +
+          " (limit: " +
+          formatSize(data.max_size || 0) +
+          ")<br><br>" +
+          "View with:<br><code>tail -f " +
+          esc(data.path) +
+          "</code>" +
+          "</div></div>";
+      } else if (data.type === "error") {
+        html += `<div class="content-body"><div class="preview-empty">Error: ${esc(data.error)}</div></div>`;
+      }
+
+      _perf.measure(
+        "renderFile:mount",
+        () => {
+          preview.innerHTML = html;
+        },
+        filePerfMeta(data, { html_chars: html.length }),
+      );
+      var defaultActiveView = null;
+      if (views?.length) {
+        defaultActiveView = views.find((v) => v.default) || views[0];
+        setActivePreviewView(defaultActiveView.id, preview);
       } else {
-        // No plugin registered for this (kind, viewId). Defensive
-        // empty-state — should not fire in practice because every
-        // kind+view declared in any loaded plugin's manifest is
-        // expected to have a matching registerView call.
-        html += '<div class="' + containerClass + '" data-tab-content="' + v.id + '"'
-          + viewMetaAttrs(v) + ' data-active-view="false"' + hidden
-          + '><div class="preview-empty">Unknown view: ' + esc(v.id) + '</div></div>';
+        setActivePreviewView(null, preview);
       }
-    }
-  } else if (data.type === "image") {
-    // No tab bar — the browser renders the image directly via /raw,
-    // which already returns the right mimetype. The .content-body
-    // wrapper gives the same outer padding a plain text view has.
-    html += '<div class="content-body"><img class="file-image" src="/raw?path='
-      + encodeURIComponent(data.path) + '" alt="' + esc(data.path) + '"></div>';
-  } else if (data.type === "binary") {
-    html += '<div class="content-body"><div class="preview-empty">Binary file (' + formatSize(data.size || 0) + ")</div></div>";
-  } else if (data.type === "jsonl_too_large") {
-    html += '<div class="content-body"><div class="preview-empty">'
-      + '<strong>Log file too large for browser parsing</strong><br><br>'
-      + 'Size: ' + formatSize(data.size || 0) + ' (limit: ' + formatSize(data.max_size || 0) + ')<br><br>'
-      + 'View with:<br><code>tail -f ' + esc(data.path) + '</code>'
-      + "</div></div>";
-  } else if (data.type === "error") {
-    html += '<div class="content-body"><div class="preview-empty">Error: ' + esc(data.error) + "</div></div>";
-  }
 
-  _perf.measure("renderFile:mount", function () {
-    preview.innerHTML = html;
-  }, filePerfMeta(data, { html_chars: html.length }));
-  var defaultActiveView = null;
-  if (views && views.length) {
-    defaultActiveView = views.find(function(v) { return v["default"]; }) || views[0];
-    setActivePreviewView(defaultActiveView.id, preview);
-  } else {
-    setActivePreviewView(null, preview);
-  }
-
-  // Now that the DOM is in place, run any deferred plugin renderers.
-  // Each plugin's render(container, ctx) mutates the container directly
-  // — async work (fetches, charts) is fine; the spinner stays visible
-  // until the plugin's render resolves.
-  if (pluginRenders && pluginRenders.length) {
-    var ctx = {
-      path: data.path,
-      kind: data.kind,
-      ext: data.ext,
-      size: data.size,
-      frontmatter: data.frontmatter || {},
-      body: typeof data.content === "string" ? data.content : (data.body || ""),
-      raw: data,
-      fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
-    };
-    for (var pi = 0; pi < pluginRenders.length; pi++) {
-      var pr = pluginRenders[pi];
-      var container = preview.querySelector('[data-plugin-view="' + pr.tabId + '"]');
-      if (!container) continue;
-      var mount = (function(target, pluginView) {
-        return function() {
-          mountPluginView(target, pluginView, ctx);
+      // Now that the DOM is in place, run any deferred plugin renderers.
+      // Each plugin's render(container, ctx) mutates the container directly
+      // — async work (fetches, charts) is fine; the spinner stays visible
+      // until the plugin's render resolves.
+      if (pluginRenders?.length) {
+        var ctx = {
+          path: data.path,
+          kind: data.kind,
+          ext: data.ext,
+          size: data.size,
+          frontmatter: data.frontmatter || {},
+          body: typeof data.content === "string" ? data.content : data.body || "",
+          raw: data,
+          fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
         };
-      })(container, pr.view);
-      if (defaultActiveView && pr.tabId === defaultActiveView.id) {
-        mount();
-      } else {
-        container._metabrowserMount = mount;
+        for (var pi = 0; pi < pluginRenders.length; pi++) {
+          var pr = pluginRenders[pi];
+          var container = preview.querySelector(`[data-plugin-view="${pr.tabId}"]`);
+          if (!container) {
+            continue;
+          }
+          var mount = ((target, pluginView) => () => {
+            mountPluginView(target, pluginView, ctx);
+          })(container, pr.view);
+          if (defaultActiveView && pr.tabId === defaultActiveView.id) {
+            mount();
+          } else {
+            container._metabrowserMount = mount;
+          }
+        }
       }
-    }
-  }
 
-  _perf.measure("initTabs", initTabs, filePerfMeta(data));
-  highlightCode();
-  measureNextPaint("renderFile:nextPaint", filePerfMeta(data));
-
-  }, filePerfMeta(data));
+      _perf.measure("initTabs", initTabs, filePerfMeta(data));
+      highlightCode();
+      measureNextPaint("renderFile:nextPaint", filePerfMeta(data));
+    },
+    filePerfMeta(data),
+  );
 }
 
 // The agent-log built-in plugin emits onclick="toggleEvent(this)"
@@ -2430,6 +2870,7 @@ function renderFile(data) {
 // inline onclick resolves at click time. Lazy-highlight on first
 // expand keeps initial render cheap on logs with thousands of events.
 
+// biome-ignore lint/correctness/noUnusedVariables: referenced from generated plugin HTML.
 function toggleEvent(header) {
   var parent = header.parentElement;
   parent.classList.toggle("expanded");
@@ -2448,32 +2889,36 @@ function toggleEvent(header) {
     }
     if (typeof hljs !== "undefined") {
       var code = parent.querySelector(".log-event-raw pre code:not(.hljs)");
-      if (code) hljs.highlightElement(code);
+      if (code) {
+        hljs.highlightElement(code);
+      }
     }
   }
 }
 
 // ── Charts loading + rendering ──────────────────────────────────
 
+// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 function copyPath(btn, path) {
-  navigator.clipboard.writeText(path).then(function () {
+  navigator.clipboard.writeText(path).then(() => {
     btn.classList.add("copied");
     btn.title = "Copied!";
-    setTimeout(function () {
+    setTimeout(() => {
       btn.classList.remove("copied");
       btn.title = "Copy path";
     }, 1500);
   });
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 function copyContent(btn) {
   var container = btn.closest(".content-copy-wrap");
-  var code = container && container.querySelector("code");
+  var code = container?.querySelector("code");
   var text = code ? code.textContent : "";
-  navigator.clipboard.writeText(text).then(function () {
+  navigator.clipboard.writeText(text).then(() => {
     btn.classList.add("copied");
     btn.title = "Copied!";
-    setTimeout(function () {
+    setTimeout(() => {
       btn.classList.remove("copied");
       btn.title = "Copy content";
     }, 1500);
@@ -2483,20 +2928,28 @@ function copyContent(btn) {
 // ── Tab switching ───────────────────────────────────────────────
 
 function initTabs() {
-  document.querySelectorAll(".tab-btn").forEach(function (btn) {
-    btn.addEventListener("click", function () {
+  queryHtmlAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
       var tabId = btn.dataset.tab;
-      var bar = btn.closest(".tab-bar");
+      var bar = /** @type {HTMLElement | null} */ (btn.closest(".tab-bar"));
+      if (!bar) {
+        return;
+      }
       var container = bar.parentElement;
-      bar.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
+      if (!container) {
+        return;
+      }
+      bar.querySelectorAll(".tab-btn").forEach((b) => {
+        b.classList.remove("active");
+      });
       btn.classList.add("active");
-      container.querySelectorAll("[data-tab-content]").forEach(function (c) {
+      queryHtmlAll("[data-tab-content]", container).forEach((c) => {
         c.style.display = c.dataset.tabContent === tabId ? "" : "none";
       });
       if (container && container.id === "preview-pane") {
         setActivePreviewView(tabId, container);
       }
-      var activeContent = container.querySelector('[data-tab-content="' + tabId + '"]');
+      var activeContent = container.querySelector(`[data-tab-content="${tabId}"]`);
       if (activeContent && typeof activeContent._metabrowserMount === "function") {
         var mount = activeContent._metabrowserMount;
         activeContent._metabrowserMount = null;
@@ -2510,25 +2963,37 @@ function initTabs() {
 
 function initPaneResize(handleId, paneSelector, minWidth, maxWidth) {
   var handle = document.getElementById(handleId);
-  var pane = document.querySelector(paneSelector);
-  if (!handle || !pane) return;
-  var isResizing = false, startX = 0, startWidth = 0;
+  var pane = queryHtml(paneSelector);
+  if (!handle || !pane) {
+    return;
+  }
+  const resizePane = pane;
+  var isResizing = false,
+    startX = 0,
+    startWidth = 0;
 
-  handle.addEventListener("mousedown", function (e) {
+  handle.addEventListener("mousedown", (e) => {
     isResizing = true;
     startX = e.clientX;
-    startWidth = pane.offsetWidth;
+    startWidth = resizePane.offsetWidth;
     document.body.classList.add("resizing");
     e.preventDefault();
   });
-  document.addEventListener("mousemove", function (e) {
-    if (!isResizing) return;
+  document.addEventListener("mousemove", (e) => {
+    if (!isResizing) {
+      return;
+    }
     var w = Math.max(minWidth, startWidth + e.clientX - startX);
-    if (maxWidth) w = Math.min(maxWidth, w);
-    pane.style.width = w + "px";
+    if (maxWidth) {
+      w = Math.min(maxWidth, w);
+    }
+    resizePane.style.width = `${w}px`;
   });
-  document.addEventListener("mouseup", function () {
-    if (isResizing) { isResizing = false; document.body.classList.remove("resizing"); }
+  document.addEventListener("mouseup", () => {
+    if (isResizing) {
+      isResizing = false;
+      document.body.classList.remove("resizing");
+    }
   });
 }
 
@@ -2545,7 +3010,11 @@ function initPaneResize(handleId, paneSelector, minWidth, maxWidth) {
 
 function closeLiveStream() {
   if (currentLiveStream) {
-    try { currentLiveStream.close(); } catch (_e) { /* ignore */ }
+    try {
+      currentLiveStream.close();
+    } catch (_e) {
+      /* ignore */
+    }
     currentLiveStream = null;
   }
 }
@@ -2555,23 +3024,32 @@ function maybeOpenLiveStream(path, data) {
   // file's writer is still alive per the activity poll. Anything else
   // is wasted overhead — and the server would close immediately on a
   // dead writer anyway.
-  if (!data || data.type !== "jsonl") return;
-  if (currentLiveStream) return;
+  if (!data || data.type !== "jsonl") {
+    return;
+  }
+  if (currentLiveStream) {
+    return;
+  }
   var info = activeFiles.get(path);
-  if (!info || info.pid_alive === false) return;
+  if (!info || info.pid_alive === false) {
+    return;
+  }
   openLiveStream(path, data.bytes_read || 0);
 }
 
 function openLiveStream(path, startCursor) {
   closeLiveStream();
-  if (typeof EventSource === "undefined") return;
-  var url = "/api/stream?path=" + encodeURIComponent(path)
-    + "&cursor=" + (startCursor || 0);
+  if (typeof EventSource === "undefined") {
+    return;
+  }
+  var url = `/api/stream?path=${encodeURIComponent(path)}&cursor=${startCursor || 0}`;
   var es = new EventSource(url);
   currentLiveStream = es;
 
-  es.addEventListener("append", function (msg) {
-    if (currentPath !== path || currentLiveStream !== es) return;
+  es.addEventListener("append", (msg) => {
+    if (currentPath !== path || currentLiveStream !== es) {
+      return;
+    }
     var batch;
     try {
       batch = JSON.parse(msg.data);
@@ -2581,13 +3059,15 @@ function openLiveStream(path, startCursor) {
     appendLiveEvents(path, batch);
   });
 
-  es.addEventListener("closed", function () {
-    if (currentPath !== path || currentLiveStream !== es) return;
+  es.addEventListener("closed", () => {
+    if (currentPath !== path || currentLiveStream !== es) {
+      return;
+    }
     closeLiveStream();
     flagRunEndedBadge();
   });
 
-  es.onerror = function () {
+  es.onerror = () => {
     // EventSource auto-reconnects on transient errors. We only need
     // to clean up if the stream shows persistent failure (readyState
     // CLOSED). For now, leave the browser to reconnect.
@@ -2595,46 +3075,49 @@ function openLiveStream(path, startCursor) {
 }
 
 function appendLiveEvents(path, batch) {
-  return _perf.measure("appendLiveEvents", function () {
-  var cached = fileCache.get(path);
-  if (!cached || !Array.isArray(batch.events)) return;
-  // Extend the in-memory event list and the byte cursor in place so a
-  // later "needs revalidation" cycle starts from the right point.
-  for (var i = 0; i < batch.events.length; i++) {
-    cached.events.push(batch.events[i]);
-  }
-  if (typeof batch.cursor === "number") {
-    cached.bytes_read = batch.cursor;
-  }
-  // Append to the currently-rendered log tab if it's visible. Charts
-  // tab live-update is intentionally deferred — chart series rebinning
-  // depends on the full event timeline, so for now the existing
-  // "re-fetch on poll" path stays.
-  var logPane = document.querySelector('[data-tab-content="log"]');
-  if (logPane && logPane.style.display !== "none") {
-    var tail = "";
-    var startIdx = cached.events.length - batch.events.length;
-    // renderLogEvent moved into the agent-log built-in plugin
-    // (Phase 3d). The SSE live-stream handler reaches into the
-    // plugin's exposed namespace; if the plugin isn't loaded
-    // (shouldn't happen for built-ins), the live tail is silently
-    // skipped — the static log render still shows up on full reload.
-    var renderEvt = window.metabrowser
-      && window.metabrowser.builtins
-      && window.metabrowser.builtins.agentLog
-      && window.metabrowser.builtins.agentLog.renderLogEvent;
-    if (renderEvt) {
-      for (var j = 0; j < batch.events.length; j++) {
-        tail += renderEvt(batch.events[j], startIdx + j);
+  return _perf.measure(
+    "appendLiveEvents",
+    () => {
+      var cached = fileCache.get(path);
+      if (!cached || !Array.isArray(batch.events)) {
+        return;
       }
-    }
-    logPane.insertAdjacentHTML('beforeend', tail);
-  }
-  }, {
-    path: path,
-    events_appended: batch && Array.isArray(batch.events) ? batch.events.length : 0,
-    cursor: batch && typeof batch.cursor === "number" ? batch.cursor : null,
-  });
+      // Extend the in-memory event list and the byte cursor in place so a
+      // later "needs revalidation" cycle starts from the right point.
+      for (var i = 0; i < batch.events.length; i++) {
+        cached.events.push(batch.events[i]);
+      }
+      if (typeof batch.cursor === "number") {
+        cached.bytes_read = batch.cursor;
+      }
+      // Append to the currently-rendered log tab if it's visible. Charts
+      // tab live-update is intentionally deferred — chart series rebinning
+      // depends on the full event timeline, so for now the existing
+      // "re-fetch on poll" path stays.
+      var logPane = queryHtml('[data-tab-content="log"]');
+      if (logPane && logPane.style.display !== "none") {
+        var tail = "";
+        var startIdx = cached.events.length - batch.events.length;
+        // renderLogEvent moved into the agent-log built-in plugin
+        // (Phase 3d). The SSE live-stream handler reaches into the
+        // plugin's exposed namespace; if the plugin isn't loaded
+        // (shouldn't happen for built-ins), the live tail is silently
+        // skipped — the static log render still shows up on full reload.
+        var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
+        if (renderEvt) {
+          for (var j = 0; j < batch.events.length; j++) {
+            tail += renderEvt(batch.events[j], startIdx + j);
+          }
+        }
+        logPane.insertAdjacentHTML("beforeend", tail);
+      }
+    },
+    {
+      path: path,
+      events_appended: batch && Array.isArray(batch.events) ? batch.events.length : 0,
+      cursor: batch && typeof batch.cursor === "number" ? batch.cursor : null,
+    },
+  );
 }
 
 function flagRunEndedBadge() {
@@ -2707,9 +3190,11 @@ function fileStoreApplyChange(ops) {
 // file; inactive→active flips switch the header badge to "Live"
 // and optionally open the live stream.
 function _mirrorActiveFromFsEntry(entry) {
-  if (entry.type !== "file") return;
+  if (entry.type !== "file") {
+    return;
+  }
   var pidLabel = null;
-  if (entry.labels && entry.labels.length) {
+  if (entry.labels?.length) {
     for (var i = 0; i < entry.labels.length; i++) {
       var pair = entry.labels[i];
       if (pair[0] === "pid_alive") {
@@ -2758,36 +3243,51 @@ function _mirrorActiveFromFsEntry(entry) {
 // Addressed by data-path so the same path on both Files and
 // Recent rows updates simultaneously.
 function refreshActivityBadge(path) {
-  var safe = (typeof CSS !== "undefined" && CSS.escape)
-    ? CSS.escape(path)
-    : path.replace(/(["\\\]\[])/g, "\\$1");
-  var rows = document.querySelectorAll('.tree-file[data-path="' + safe + '"]');
-  if (!rows.length) return;
+  var safe =
+    typeof CSS !== "undefined" && CSS.escape
+      ? CSS.escape(path)
+      : path.replace(/(["\\\][])/g, "\\$1");
+  var rows = queryHtmlAll(`.tree-file[data-path="${safe}"]`);
+  if (!rows.length) {
+    return;
+  }
   var info = activeFiles.get(path);
-  rows.forEach(function (row) {
+  rows.forEach((row) => {
     if (info) {
       row.classList.add("file-active");
-      if (info.pid_alive === false) row.classList.add("pid-dead");
-      else row.classList.remove("pid-dead");
+      if (info.pid_alive === false) {
+        row.classList.add("pid-dead");
+      } else {
+        row.classList.remove("pid-dead");
+      }
     } else {
       row.classList.remove("file-active", "pid-dead");
     }
     var span = row.querySelector(".tree-item-activity");
-    if (!span) return;
+    if (!span) {
+      return;
+    }
     if (!info) {
       span.innerHTML = "";
       return;
     }
     var pidClass = "";
-    if (info.pid_alive === true) pidClass = " pid-alive";
-    else if (info.pid_alive === false) pidClass = " pid-dead";
-    span.innerHTML = '<span class="activity-dot' + pidClass + '"></span>';
+    if (info.pid_alive === true) {
+      pidClass = " pid-alive";
+    } else if (info.pid_alive === false) {
+      pidClass = " pid-dead";
+    }
+    span.innerHTML = `<span class="activity-dot${pidClass}"></span>`;
   });
 }
 
 function notifyFileStoreSubscribers(evt) {
   for (var i = 0; i < fileStoreSubscribers.length; i++) {
-    try { fileStoreSubscribers[i](evt); } catch (_e) { /* isolate listener failure */ }
+    try {
+      fileStoreSubscribers[i](evt);
+    } catch (_e) {
+      /* isolate listener failure */
+    }
   }
 }
 
@@ -2801,7 +3301,9 @@ function computeCellPatch(entry, options) {
   if (entry.type === "dir") {
     var dirMtimeSec = entry.newest_mtime_ns
       ? entry.newest_mtime_ns / 1e9
-      : (entry.total_files === null ? null : 0);
+      : entry.total_files === null
+        ? null
+        : 0;
     var totalSize = entry.total_size === undefined ? null : entry.total_size;
     var totalFiles = entry.total_files == null ? null : entry.total_files;
     return {
@@ -2818,8 +3320,10 @@ function computeCellPatch(entry, options) {
   return {
     kind: "file",
     sizeHtml: sizeHtml(entry.size || 0, "tree-item-size"),
-    ageHtml: '<span class="tree-item-age">' + formatAge(fileMtimeSec)
-      + '</span><span class="tree-item-activity"></span>',
+    ageHtml:
+      '<span class="tree-item-age">' +
+      formatAge(fileMtimeSec) +
+      '</span><span class="tree-item-activity"></span>',
     tipSize: entry.size || 0,
     tipMtime: fileMtimeSec,
     active: !!entry.active,
@@ -2835,8 +3339,10 @@ function _treeSortKey(node) {
 }
 
 function _treeKeyCmp(a, b) {
-  if (a[0] !== b[0]) return a[0] - b[0];
-  return a[1] < b[1] ? -1 : (a[1] > b[1] ? 1 : 0);
+  if (a[0] !== b[0]) {
+    return a[0] - b[0];
+  }
+  return a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0;
 }
 
 // Build the HTML for one entry — same shape as renderTreeNodes
@@ -2848,42 +3354,73 @@ function _treeKeyCmp(a, b) {
 function _buildRowHtml(entry, options) {
   var name = entry.name || "";
   var muted = "";
-  if (entry.gitignored) muted += " tree-item-gitignored";
+  if (entry.gitignored) {
+    muted += " tree-item-gitignored";
+  }
   if (entry.type === "dir") {
     var dirChip = treeDirChipHtml(entry.total_files, entry.total_size, options);
     var dirAge = formatAge(entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0);
-    return '<div class="tree-item tree-folder collapsed' + muted
-      + '" data-action="toggle" data-path="' + esc(entry.path)
-      + '" data-tip-type="dir" data-tip-name="' + esc(name)
-      + '" data-tip-files="' + nullableDataValue(entry.total_files)
-      + '" data-tip-size="' + nullableDataValue(entry.total_size)
-      + '" data-tip-mtime="' + nullableDataValue((entry.newest_mtime_ns || 0) / 1e9) + '">'
-      + ICONS.toggle
-      + '<span class="tree-item-name">' + esc(name) + "</span>"
-      + '<span class="tree-item-age-inline">' + dirAge + '</span>'
-      + dirChip
-      + '</div>'
-      + '<div class="tree-children" style="display:none">'
-      + '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">'
-      + '<span class="spinner spinner-sm" aria-hidden="true"></span>'
-      + '</div>'
-      + '</div>';
+    return (
+      '<div class="tree-item tree-folder collapsed' +
+      muted +
+      '" data-action="toggle" data-path="' +
+      esc(entry.path) +
+      '" data-tip-type="dir" data-tip-name="' +
+      esc(name) +
+      '" data-tip-files="' +
+      nullableDataValue(entry.total_files) +
+      '" data-tip-size="' +
+      nullableDataValue(entry.total_size) +
+      '" data-tip-mtime="' +
+      nullableDataValue((entry.newest_mtime_ns || 0) / 1e9) +
+      '">' +
+      ICONS.toggle +
+      '<span class="tree-item-name">' +
+      esc(name) +
+      "</span>" +
+      '<span class="tree-item-age-inline">' +
+      dirAge +
+      "</span>" +
+      dirChip +
+      "</div>" +
+      '<div class="tree-children" style="display:none">' +
+      '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+      '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
+      "</div>" +
+      "</div>"
+    );
   }
   var fi = getFileIcon(getLogicalName(entry));
   var fileAge = formatAge(entry.mtime_ns ? entry.mtime_ns / 1e9 : 0);
-  return '<div class="tree-item tree-file' + muted
-    + '" data-action="select" data-path="' + esc(entry.path)
-    + '" data-tip-type="file" data-tip-name="' + esc(name)
-    + '" data-tip-size="' + (entry.size || 0)
-    + '" data-tip-mtime="' + ((entry.mtime_ns || 0) / 1e9) + '">'
-    + '<span class="tree-item-icon ' + fi.cls + '">' + fi.svg + '</span>'
-    + '<span class="tree-item-name">' + esc(name) + "</span>"
-    + '<span class="tree-item-age-inline">'
-    + '<span class="tree-item-age">' + fileAge + '</span>'
-    + '<span class="tree-item-activity"></span>'
-    + '</span>'
-    + sizeHtml(entry.size || 0, "tree-item-size")
-    + '</div>';
+  return (
+    '<div class="tree-item tree-file' +
+    muted +
+    '" data-action="select" data-path="' +
+    esc(entry.path) +
+    '" data-tip-type="file" data-tip-name="' +
+    esc(name) +
+    '" data-tip-size="' +
+    (entry.size || 0) +
+    '" data-tip-mtime="' +
+    (entry.mtime_ns || 0) / 1e9 +
+    '">' +
+    '<span class="tree-item-icon ' +
+    fi.cls +
+    '">' +
+    fi.svg +
+    "</span>" +
+    '<span class="tree-item-name">' +
+    esc(name) +
+    "</span>" +
+    '<span class="tree-item-age-inline">' +
+    '<span class="tree-item-age">' +
+    fileAge +
+    "</span>" +
+    '<span class="tree-item-activity"></span>' +
+    "</span>" +
+    sizeHtml(entry.size || 0, "tree-item-size") +
+    "</div>"
+  );
 }
 
 // Find the rendered child container under which an entry's
@@ -2894,13 +3431,20 @@ function _buildRowHtml(entry, options) {
 // is collapsed (in which case we don't insert — the row will
 // appear when the user expands).
 function _findChildContainerFor(parentRel, panelEl) {
-  if (!parentRel) return panelEl; // root
-  var folder = panelEl.querySelector(
-    '.tree-folder[data-path="' + parentRel.replace(/"/g, '\\"') + '"]');
-  if (!folder) return null;
-  if (!folder.classList.contains("expanded")) return null;
+  if (!parentRel) {
+    return panelEl; // root
+  }
+  var folder = panelEl.querySelector(`.tree-folder[data-path="${parentRel.replace(/"/g, '\\"')}"]`);
+  if (!folder) {
+    return null;
+  }
+  if (!folder.classList.contains("expanded")) {
+    return null;
+  }
   var children = folder.nextElementSibling;
-  if (!children || !children.classList.contains("tree-children")) return null;
+  if (!children?.classList.contains("tree-children")) {
+    return null;
+  }
   return children;
 }
 
@@ -2917,10 +3461,11 @@ function _findChildContainerFor(parentRel, panelEl) {
 // (selection, hover) doesn't fight a dangling class.
 function _insertRowSorted(container, entry, options) {
   var safe = entry.path.replace(/"/g, '\\"');
-  var existing = container.querySelector(
-    ':scope > .tree-item[data-path="' + safe + '"]');
-  if (existing) return false;
-  container.querySelectorAll(":scope > .tree-lazy-placeholder").forEach(function (el) {
+  var existing = container.querySelector(`:scope > .tree-item[data-path="${safe}"]`);
+  if (existing) {
+    return false;
+  }
+  container.querySelectorAll(":scope > .tree-lazy-placeholder").forEach((el) => {
     el.remove();
   });
   var tmp = document.createElement("div");
@@ -2933,15 +3478,23 @@ function _insertRowSorted(container, entry, options) {
   var children = container.children;
   for (var i = 0; i < children.length; i++) {
     var ch = children[i];
-    if (!ch.classList.contains("tree-item")) continue;
+    if (!ch.classList.contains("tree-item")) {
+      continue;
+    }
     if (ch.classList.contains("tree-folder")) {
       var name = ch.querySelector(".tree-item-name");
       var k = _treeSortKey({ type: "dir", name: name ? name.textContent : "" });
-      if (_treeKeyCmp(entryKey, k) < 0) { anchor = ch; break; }
+      if (_treeKeyCmp(entryKey, k) < 0) {
+        anchor = ch;
+        break;
+      }
     } else if (ch.classList.contains("tree-file")) {
       var name2 = ch.querySelector(".tree-item-name");
       var k2 = _treeSortKey({ type: "file", name: name2 ? name2.textContent : "" });
-      if (_treeKeyCmp(entryKey, k2) < 0) { anchor = ch; break; }
+      if (_treeKeyCmp(entryKey, k2) < 0) {
+        anchor = ch;
+        break;
+      }
     }
   }
   if (anchor === null) {
@@ -2955,13 +3508,17 @@ function _insertRowSorted(container, entry, options) {
     // Only flash the .tree-item itself; the sibling .tree-children
     // for folders is empty on insert (lazy placeholder) and would
     // visually double-flash if we styled it too.
-    if (node.classList && node.classList.contains("tree-item")) {
+    if (node.classList?.contains("tree-item")) {
       node.classList.add("tree-item-flash-in");
-      node.addEventListener("animationend", function (ev) {
-        if (ev.animationName === "tree-row-flash-in") {
-          ev.currentTarget.classList.remove("tree-item-flash-in");
-        }
-      }, { once: true });
+      node.addEventListener(
+        "animationend",
+        (ev) => {
+          if (ev.animationName === "tree-row-flash-in") {
+            ev.currentTarget.classList.remove("tree-item-flash-in");
+          }
+        },
+        { once: true },
+      );
     }
   }
   return true;
@@ -2980,27 +3537,32 @@ function applyCellPatch(entry) {
   // resolves to the panel root) and graft a phantom row for the served
   // dir *inside itself* — flashed yellow like a new file on every
   // (re)connect. Keep it in the store; just don't render it.
-  if (!entry.path) return;
+  if (!entry.path) {
+    return;
+  }
   var safePath = entry.path.replace(/"/g, '\\"');
-  var selector = entry.type === "dir"
-    ? '.tree-folder[data-path="' + safePath + '"]'
-    : '.tree-file[data-path="' + safePath + '"]';
-  var rows = document.querySelectorAll(selector);
+  var selector =
+    entry.type === "dir"
+      ? `.tree-folder[data-path="${safePath}"]`
+      : `.tree-file[data-path="${safePath}"]`;
+  var rows = queryHtmlAll(selector);
   if (rows.length > 0) {
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
       var patch = computeCellPatch(entry, treeRenderOptionsForElement(row));
-      if (!patch) continue;
-      var sizeSpan = row.querySelector('.tree-item-size');
+      if (!patch) {
+        continue;
+      }
+      var sizeSpan = row.querySelector(".tree-item-size");
       if (sizeSpan && sizeSpan.outerHTML !== patch.sizeHtml) {
         sizeSpan.outerHTML = patch.sizeHtml;
       }
-      var ageSpan = row.querySelector('.tree-item-age-inline');
+      var ageSpan = row.querySelector(".tree-item-age-inline");
       if (ageSpan && ageSpan.innerHTML !== patch.ageHtml) {
         ageSpan.innerHTML = patch.ageHtml;
       }
-      row.dataset.tipSize = patch.tipSize;
-      row.dataset.tipMtime = patch.tipMtime;
+      row.dataset.tipSize = nullableDataValue(patch.tipSize);
+      row.dataset.tipMtime = nullableDataValue(patch.tipMtime);
       if (patch.kind === "dir") {
         row.dataset.tipFiles = patch.tipFiles;
         // Sync the gray "empty" class. Server emits null for
@@ -3024,20 +3586,22 @@ function applyCellPatch(entry) {
   // No row exists — try to insert one in each panel where the
   // parent is currently rendered and expanded. Root parent is the
   // panel itself (always "expanded").
-  var parentRel = (entry.parent === undefined || entry.parent === null)
-    ? (entry.path.indexOf("/") >= 0
+  var parentRel =
+    entry.parent === undefined || entry.parent === null
+      ? entry.path.indexOf("/") >= 0
         ? entry.path.substring(0, entry.path.lastIndexOf("/"))
-        : "")
-    : entry.parent;
-  var panels = [
-    document.getElementById("tab-files"),
-    document.getElementById("tab-recent"),
-  ];
+        : ""
+      : entry.parent;
+  var panels = [document.getElementById("tab-files"), document.getElementById("tab-recent")];
   for (var p = 0; p < panels.length; p++) {
     var panel = panels[p];
-    if (!panel) continue;
+    if (!panel) {
+      continue;
+    }
     var container = _findChildContainerFor(parentRel, panel);
-    if (!container) continue;
+    if (!container) {
+      continue;
+    }
     _insertRowSorted(container, entry, treeRenderOptionsForElement(panel));
   }
 }
@@ -3058,25 +3622,36 @@ function applyCellPatch(entry) {
 // reads as confusing motion).
 function _removeRenderedRows(path) {
   var safe = path.replace(/"/g, '\\"');
-  var rows = document.querySelectorAll(
-    '.tree-item[data-path="' + safe + '"]');
+  var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];
     // Idempotent: if the row is already in the flash-out
     // animation phase, don't re-trigger.
-    if (row.classList.contains("tree-item-flash-out")) continue;
+    if (row.classList.contains("tree-item-flash-out")) {
+      continue;
+    }
     if (row.classList.contains("tree-folder")) {
       var children = row.nextElementSibling;
-      if (children && children.classList.contains("tree-children")) {
+      if (children?.classList.contains("tree-children")) {
         children.remove();
       }
     }
     row.classList.add("tree-item-flash-out");
-    row.addEventListener("animationend", function (ev) {
-      if (ev.animationName === "tree-row-flash-out") {
-        ev.currentTarget.remove();
-      }
-    }, { once: true });
+    row.addEventListener(
+      "animationend",
+      (ev) => {
+        if (!(ev instanceof AnimationEvent)) {
+          return;
+        }
+        if (ev.animationName === "tree-row-flash-out") {
+          var target = ev.currentTarget;
+          if (target instanceof Element) {
+            target.remove();
+          }
+        }
+      },
+      { once: true },
+    );
   }
 }
 
@@ -3087,41 +3662,57 @@ function _removeRenderedRows(path) {
 // updates inside the active window flow through without a refetch.
 var _recentRecomputeHandle = null;
 function _scheduleRecentRecompute() {
-  if (!recentEverLoaded) return;          // panel never mounted; nothing to do
+  if (!recentEverLoaded) {
+    return; // panel never mounted; nothing to do
+  }
   var panel = document.getElementById("tab-recent");
-  if (!panel || panel.style.display === "none") return; // hidden tab; defer
-  if (_recentRecomputeHandle) return;     // already pending
-  _recentRecomputeHandle = setTimeout(function () {
+  if (!panel || panel.style.display === "none") {
+    return; // hidden tab; defer
+  }
+  if (_recentRecomputeHandle) {
+    return; // already pending
+  }
+  _recentRecomputeHandle = setTimeout(() => {
     _recentRecomputeHandle = null;
     renderRecentFromBase();
-    if (currentPath) setSelectedPath(currentPath);
+    if (currentPath) {
+      setSelectedPath(currentPath);
+    }
   }, RECENT_RECLUSTER_DEBOUNCE_MS);
 }
 
 function startInventoryEventStream() {
-  if (typeof EventSource === "undefined") return; // graceful degradation
-  if (inventoryEventSource) return;
+  if (typeof EventSource === "undefined") {
+    return; // graceful degradation
+  }
+  if (inventoryEventSource) {
+    return;
+  }
   try {
     inventoryEventSource = new EventSource("/api/events?scope=root-depth-2");
   } catch (_e) {
     inventoryEventSource = null;
     return;
   }
-  inventoryEventSource.addEventListener("fs.snapshot", function (e) {
+  inventoryEventSource.addEventListener("fs.snapshot", (e) => {
     try {
       var data = JSON.parse(e.data);
       fileStoreApplySnapshot(data.scope, data.entries || []);
       _scheduleRecentRecompute();
-    } catch (_e) { /* malformed frame; ignore */ }
+    } catch (_e) {
+      /* malformed frame; ignore */
+    }
   });
-  inventoryEventSource.addEventListener("fs.change", function (e) {
+  inventoryEventSource.addEventListener("fs.change", (e) => {
     try {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
       _scheduleRecentRecompute();
-    } catch (_e) { /* ignore */ }
+    } catch (_e) {
+      /* ignore */
+    }
   });
-  inventoryEventSource.addEventListener("fs.resync_required", function (_e) {
+  inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
     // Server restart or root swap — drop everything; EventSource
     // auto-reconnect will deliver a fresh snapshot.
     fileStore = new Map();
@@ -3130,7 +3721,7 @@ function startInventoryEventStream() {
   });
   // EventSource auto-reconnects on transient errors; we don't
   // need an onerror handler beyond logging.
-  inventoryEventSource.onerror = function () {
+  inventoryEventSource.onerror = () => {
     // Connection bounced; nothing to do — auto-reconnect handles
     // the recovery path.
   };
@@ -3140,20 +3731,28 @@ function startInventoryEventStream() {
 
 function parseHashRoute() {
   var hash = location.hash;
-  if (!hash || hash === "#") return "";
+  if (!hash || hash === "#") {
+    return "";
+  }
   var frag = decodeURIComponent(hash.slice(1)).replace(/\/+$/, "");
-  if (!frag) return "";
+  if (!frag) {
+    return "";
+  }
   // The URL hash doubles as a file deep-link (#<path>) and as in-document
   // anchors inside an embedded KPress document (#section, #fn-note). Only treat
   // a fragment as a file path when it looks like one — a directory separator or
   // a file extension. Otherwise it is an in-doc anchor the browser scrolls
   // natively, and opening a file named by the fragment would 404.
-  if (frag.indexOf("/") === -1 && !/\.[A-Za-z0-9]{1,8}$/.test(frag)) return "";
+  if (frag.indexOf("/") === -1 && !/\.[A-Za-z0-9]{1,8}$/.test(frag)) {
+    return "";
+  }
   return frag;
 }
 
 function serverInitialPath() {
-  if (typeof window === "undefined") return "";
+  if (typeof window === "undefined") {
+    return "";
+  }
   var path = window.METABROWSER_INITIAL_PATH || "";
   return typeof path === "string" ? path.replace(/\/+$/, "") : "";
 }
@@ -3167,12 +3766,16 @@ function findRootReadme() {
   // Files panel is now a child of #tree-content (P3.2 tab refactor).
   // The old "#tree-content > .tree-item.tree-file" selector matches
   // nothing once the tab wrapper is in place.
-  var rootFiles = document.querySelectorAll("#tab-files > .tree-item.tree-file");
+  var rootFiles = queryHtmlAll("#tab-files > .tree-item.tree-file");
   for (var i = 0; i < rootFiles.length; i++) {
     var path = rootFiles[i].dataset.path;
-    if (!path) continue;
+    if (!path) {
+      continue;
+    }
     var base = path.split("/").pop();
-    if (/^readme\.md$/i.test(base)) return path;
+    if (base && /^readme\.md$/i.test(base)) {
+      return path;
+    }
   }
   return "";
 }
@@ -3183,14 +3786,16 @@ function findRootReadme() {
 // parallel so a deep-link doesn't pay tree-walk latency before its own
 // request leaves the client.
 async function revealInTree(path) {
-  if (!path) return false;
+  if (!path) {
+    return false;
+  }
   var segments = path.split("/");
   var current = "";
   for (var i = 0; i < segments.length - 1; i++) {
-    current = current ? current + "/" + segments[i] : segments[i];
-    var folder = document.querySelector('.tree-folder[data-path="' + current + '"]');
+    current = current ? `${current}/${segments[i]}` : segments[i];
+    var folder = queryHtml(`.tree-folder[data-path="${current}"]`);
     if (folder) {
-      var children = folder.nextElementSibling;
+      var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
         if (children.querySelector(".tree-lazy-placeholder")) {
           await loadSubtree(current, children);
@@ -3203,30 +3808,39 @@ async function revealInTree(path) {
       }
     }
   }
-  var target = document.querySelector('.tree-file[data-path="' + path + '"]');
-  if (!target) return false;
+  var target = document.querySelector(`.tree-file[data-path="${path}"]`);
+  if (!target) {
+    return false;
+  }
   setSelectedPath(path);
   target.scrollIntoView({ block: "nearest" });
   return true;
 }
 
 async function navigateToPath(path) {
-  if (!path) return;
+  if (!path) {
+    return;
+  }
   if (await revealInTree(path)) {
     selectFile(path, true);
   }
 }
 
-window.addEventListener("hashchange", function () {
+window.addEventListener("hashchange", () => {
   var path = parseHashRoute();
   if (path && path !== currentPath) {
     navigateToPath(path);
   }
 });
 
-window.addEventListener("metabrowser:open-path", function (event) {
-  var path = event && event.detail && event.detail.path;
-  if (typeof path === "string" && path) selectFile(path);
+window.addEventListener("metabrowser:open-path", (event) => {
+  if (!(event instanceof CustomEvent)) {
+    return;
+  }
+  var path = event.detail?.path;
+  if (typeof path === "string" && path) {
+    selectFile(path);
+  }
 });
 
 function clearBrowserFileCache(path) {
@@ -3251,13 +3865,19 @@ if (typeof window !== "undefined") {
     highlightCode();
   }
 
-  window.addEventListener("metabrowser:optional-asset-loaded", enhanceCurrentFileAfterOptionalAsset);
-  window.addEventListener("metabrowser:optional-assets-loaded", enhanceCurrentFileAfterOptionalAsset);
+  window.addEventListener(
+    "metabrowser:optional-asset-loaded",
+    enhanceCurrentFileAfterOptionalAsset,
+  );
+  window.addEventListener(
+    "metabrowser:optional-assets-loaded",
+    enhanceCurrentFileAfterOptionalAsset,
+  );
 }
 
 // ── Init ────────────────────────────────────────────────────────
 
-document.addEventListener("DOMContentLoaded", async function () {
+document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();
   initSettingsControl();
   initNavTabs();
@@ -3269,7 +3889,9 @@ document.addEventListener("DOMContentLoaded", async function () {
   // tree because it queries DOM the renderer just produced.
   var hashPath = parseHashRoute();
   var initialPath = hashPath || serverInitialPath();
-  if (initialPath) selectFile(initialPath, true);
+  if (initialPath) {
+    selectFile(initialPath, true);
+  }
   startIndexProgressPolling();
   await loadTree();
   initPaneResize("tree-resize", ".tree-pane", 180, null);
@@ -3277,7 +3899,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     revealInTree(initialPath);
   } else {
     var readme = findRootReadme();
-    if (readme) navigateToPath(readme);
+    if (readme) {
+      navigateToPath(readme);
+    }
   }
   // /api/events is the single source for tree decoration and
   // active-file badges; ActiveFileTracker emits fs.change ops

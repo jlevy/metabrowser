@@ -99,7 +99,7 @@ def build_gitignore_check_for(root: Path) -> Callable[[Path, bool], bool] | None
 
     try:
         checker, git_root = build_gitignore_check(root)
-    except Exception:  # noqa: BLE001
+    except Exception:
         LOG.exception("walker: failed to build gitignore check for %s", root)
         return None
     if git_root is None:
@@ -117,7 +117,7 @@ class _ScanItem:
     / ``is_dir`` matter; size/mtime are populated via the
     aggregate-rollup path."""
 
-    __slots__ = ("name", "abs_path", "is_dir", "size", "mtime_ns")
+    __slots__ = ("abs_path", "is_dir", "mtime_ns", "name", "size")
 
     def __init__(
         self,
@@ -239,7 +239,7 @@ async def walk_tree(
             return False
         try:
             return bool(gitignore_check(abs_path, is_dir))
-        except Exception:  # noqa: BLE001  (defensive; checker callers never raise)
+        except Exception:
             return False
 
     # Track "this rel_path's ancestor chain has a gitignored dir."

@@ -37,7 +37,7 @@
      4. Alpha is L4 syntax: hsl(H S% L% / 0.5). This lets us derive
         translucent variants at the point of use (chart fills,
         annotation backgrounds) without a separate -a-20 token for
-        every color. The JS helper colorWithAlpha() in app.js
+        every color. The JS helper colorWithAlpha() in charts.js
         applies alpha to any hsl() at runtime.
 
    How to add a color token: add it in :root below, next to the
@@ -670,12 +670,12 @@
 
   /* Chart palette — used by Chart.js configs emitted from Python
      and resolved
-     at canvas-draw time by cssVar()/colorWithAlpha() in app.js.
+     at canvas-draw time by cssVar()/colorWithAlpha() in charts.js.
      Rule: chart series/threshold/annotation colors live here, not
      inline in Python or JS. Hues align with --status-* so a
      threshold line and a status badge read as the same concept.
      Canvas rendering cannot resolve var(--foo) itself; Python emits
-     "var(--chart-series-info)" as a sentinel and app.js substitutes
+     "var(--chart-series-info)" as a sentinel and charts.js substitutes
      the computed value before handing to Chart.js. */
   --chart-grid: var(--viz-surface-sunken); /* chart gridlines */
   --chart-label-text: var(--viz-text-meta); /* annotation label fg */

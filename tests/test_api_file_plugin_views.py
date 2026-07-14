@@ -41,7 +41,7 @@ def test_plain_markdown_resolves_via_markdown_plugin(tmp_path: Path) -> None:
     """A .md file with no frontmatter resolves to 'markdown' via the
     builtin markdown plugin manifest.
     """
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     md = tmp_path / "plain.md"
     md.write_text("# heading\n\nbody only.\n")
     result = _api_file("plain.md")
@@ -60,7 +60,7 @@ def test_plain_markdown_resolves_via_markdown_plugin(tmp_path: Path) -> None:
 
 
 def test_plain_text_source_view_is_printable(tmp_path: Path) -> None:
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     txt = tmp_path / "notes.txt"
     txt.write_text("plain text\n")
     result = _api_file("notes.txt")
@@ -80,7 +80,7 @@ def test_plain_text_source_view_is_printable(tmp_path: Path) -> None:
 
 def test_unknown_jsonl_gets_default_log_view(tmp_path: Path) -> None:
     """Unknown JSONL still needs an initial visible tab in the browser."""
-    server._set_root_dir(tmp_path)  # noqa: SLF001
+    server._set_root_dir(tmp_path)
     log = tmp_path / "agent.jsonl"
     log.write_text('{"type":"thread.started","thread_id":"abc"}\n')
     result = _api_file("agent.jsonl")

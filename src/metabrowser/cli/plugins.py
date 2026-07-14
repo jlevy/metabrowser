@@ -81,7 +81,7 @@ def _format_table(rows: list[list[str]], headers: list[str]) -> str:
 
 @plugins_app.command("list")
 def cmd_list(
-    plugins_dir: list[Path] | None = typer.Option(  # noqa: B008
+    plugins_dir: list[Path] | None = typer.Option(
         None,
         "--plugins-dir",
         help=(
@@ -145,7 +145,7 @@ def cmd_list(
 @plugins_app.command("show")
 def cmd_show(
     name: str = typer.Argument(..., help="Plugin name to show."),
-    plugins_dir: list[Path] | None = typer.Option(  # noqa: B008
+    plugins_dir: list[Path] | None = typer.Option(
         None,
         "--plugins-dir",
         help="Extra plugin directory; may repeat. Combines with METABROWSER_PLUGINS_DIRS.",
@@ -194,7 +194,7 @@ def cmd_show(
 
 @plugins_app.command("doctor")
 def cmd_doctor(
-    plugins_dir: list[Path] | None = typer.Option(  # noqa: B008
+    plugins_dir: list[Path] | None = typer.Option(
         None,
         "--plugins-dir",
         help="Extra plugin directory; may repeat. Combines with METABROWSER_PLUGINS_DIRS.",

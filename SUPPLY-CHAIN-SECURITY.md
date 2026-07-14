@@ -10,10 +10,15 @@ Review this document before adding, upgrading, or invoking a package.
 - Apply a 14-day release cool-off with `uv.toml`, `UV_EXCLUDE_NEWER`, or the equivalent
   explicit uv flag.
 - Commit `uv.lock` and install it with `--frozen` in CI and publishing workflows.
-- Use exact versions for one-shot `uvx` and `npx` tools.
+- Commit `package-lock.json`, use exact JavaScript tool versions, and install it with
+  `npm ci`.
+- Run locked JavaScript tools with `npx --no-install`; use exact versions for one-shot
+  `uvx` tools.
 - Disable npm lifecycle scripts unless a reviewed package specifically requires them.
 - Keep npm’s release-age gate, exact-save behavior, and lockfile generation enabled.
+- Use npm 11.10 or newer so `min-release-age` is enforced rather than ignored.
 - Pin GitHub Actions to reviewed full commit SHAs.
+- Pin the CI and publishing Node release instead of resolving a moving major version.
 - Build without isolated dependency re-resolution and test the wheel in a clean
   environment.
 
@@ -41,9 +46,13 @@ Changing either version requires a new review and an updated rationale.
 ## Verification
 
 `devtools/npm_policy.py` checks the repository configuration, exact KPress dependency,
-lockfile source, and pinned tool references.
+Python and JavaScript lockfile sources and integrity fields, Node and npm requirements,
+full-SHA action pins, and release-workflow controls.
 `make lint-check` runs that policy together with public-hygiene, formatting, lint, and
 type checks.
+
+CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
+lock.
 
 Treat an unexpected lockfile source, install script, binary artifact, or publish-time
 change as a blocker until it is explained and reviewed.

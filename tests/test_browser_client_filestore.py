@@ -171,8 +171,8 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     assert "function nullableDataValue(n)" in js
     assert "+d.tipFiles" not in js
     assert "+d.tipSize" not in js
-    assert "data-tip-files=\"' + nullableDataValue(node.total_files)" in js
-    assert "data-tip-size=\"' + nullableDataValue(node.total_size)" in js
+    assert 'data-tip-files="${nullableDataValue(node.total_files)}' in js
+    assert 'data-tip-size="${nullableDataValue(node.total_size)}' in js
     assert "Loading file count..." in js
     assert "Loading size..." in js
 
@@ -184,7 +184,7 @@ def test_tree_tooltips_omit_duplicative_name() -> None:
     assert "function treeTooltipNameHtml(name, includeName)" in js
     assert "includeName === false" in js
 
-    listener_start = js.index('document.getElementById("tree-pane").addEventListener("mouseenter"')
+    listener_start = js.index('treePane.addEventListener(\n  "mouseenter"')
     listener_block = js[listener_start : listener_start + 1400]
     # Every tree row already shows its name, so the hover tooltip omits it and
     # shows size + date only (never duplicative).
@@ -260,8 +260,8 @@ def test_apply_cell_patch_skips_root_entry() -> None:
     # data-path selector that would otherwise match nothing and fall
     # through to insertion.
     fn_block = js[fn_start : fn_start + 600]
-    assert "if (!entry.path) return;" in fn_block
-    assert fn_block.index("if (!entry.path) return;") < fn_block.index("entry.path.replace")
+    assert "if (!entry.path)" in fn_block
+    assert fn_block.index("if (!entry.path)") < fn_block.index("entry.path.replace")
 
 
 # ── DOMContentLoaded ──────────────────────────────────────────
@@ -272,7 +272,7 @@ def test_dom_content_loaded_starts_inventory_event_stream() -> None:
     # The DOMContentLoaded async handler near the bottom of
     # app.js wires startInventoryEventStream() AFTER loadTree
     # so the snapshot can populate the just-rendered cells.
-    handler_start = js.rindex('addEventListener("DOMContentLoaded", async function')
+    handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     handler_block = js[handler_start : handler_start + 3000]
     assert "await loadTree();" in handler_block
     assert "startInventoryEventStream();" in handler_block
@@ -285,7 +285,7 @@ def test_dom_content_loaded_starts_inventory_event_stream() -> None:
 
 def test_dom_content_loaded_starts_index_progress_before_load_tree() -> None:
     js = _read_app_js()
-    handler_start = js.rindex('addEventListener("DOMContentLoaded", async function')
+    handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     handler_block = js[handler_start : handler_start + 3000]
     assert "startIndexProgressPolling();" in handler_block
     assert "await loadTree();" in handler_block
@@ -408,7 +408,7 @@ def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
     fn_block = js[fn_start : fn_start + 2400]
     assert "if (!resp.ok)" in fn_block
-    assert 'throw new Error("HTTP " + resp.status)' in fn_block
+    assert "throw new Error(`HTTP ${resp.status}`)" in fn_block
     assert "treeLazyFailureHtml(" in fn_block
     assert "Unable to load folder (" in fn_block
     assert "Failed to load</div>" not in fn_block
@@ -503,7 +503,7 @@ def test_mirror_active_from_fs_entry_handles_transitions() -> None:
 
     js = _read_app_js()
     fn_start = js.index("function _mirrorActiveFromFsEntry(entry)")
-    fn_block = js[fn_start : fn_start + 3000]
+    fn_block = js[fn_start : fn_start + 5000]
     # Inactive→active: switch badge + maybeOpenLiveStream
     assert "badge-running" in fn_block
     assert "maybeOpenLiveStream" in fn_block
@@ -555,7 +555,7 @@ def test_apply_cell_patch_inserts_new_rows_under_expanded_parent() -> None:
     assert "function _buildRowHtml(entry, options)" in js
     # applyCellPatch references them when no row exists.
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 3000]
+    fn_block = js[fn_start : fn_start + 5000]
     assert "_findChildContainerFor" in fn_block
     assert "_insertRowSorted" in fn_block
     assert "_insertRowSorted(container, entry, treeRenderOptionsForElement(panel))" in fn_block
@@ -624,7 +624,7 @@ def test_index_progress_completion_inserts_truncation_banner() -> None:
     js = _read_app_js()
     fn_start = js.index("async function refreshIndexProgress(force)")
     fn_block = js[fn_start : fn_start + 2500]
-    assert "meta && meta.truncated" in fn_block
+    assert "meta?.truncated" in fn_block
     assert "ensureTreeTruncationNote(meta.max_files)" in fn_block
 
 

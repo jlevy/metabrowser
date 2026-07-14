@@ -133,4 +133,4 @@ def test_container_class_drives_outer_div_style() -> None:
     on the api/file response so the shell can pick it up at render
     time."""
     src = _src()
-    assert "v.container_class" in src
+    assert "view.container_class" in src

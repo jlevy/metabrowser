@@ -69,7 +69,7 @@ def parse_jsonl_file_cached(filepath: Path) -> dict[str, Any]:
         return {"events": [], "summary": {"total_events": 0}}
     # Deferred so tests monkeypatching `metabrowser.jsonl_view._parse_jsonl_file`
     # see the patched function (a top-level binding would capture the original).
-    from metabrowser.jsonl_view import (  # noqa: PLC0415 -- test monkeypatch boundary
+    from metabrowser.jsonl_view import (
         _parse_jsonl_file,
     )
 
@@ -88,7 +88,7 @@ def extract_agent_charts_cached(filepath: Path) -> Any:
         return None
     # Deferred so tests monkeypatching `metabrowser.charts.extract_agent_charts`
     # see the patched function (a top-level binding would capture the original).
-    from metabrowser.charts import (  # noqa: PLC0415 -- test monkeypatch boundary
+    from metabrowser.charts import (
         extract_agent_charts,
     )
 

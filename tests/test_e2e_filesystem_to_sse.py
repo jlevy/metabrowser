@@ -297,14 +297,16 @@ def test_rm_directory_coalesces_descendants_into_one_fs_change(tmp_path: Path) -
         removed: set[str] = set()
         while not sub_q.empty():
             evt = sub_q.get_nowait()
-            if isinstance(evt, FsChange) and evt.ops:
-                # Only count fs.change events that actually carry
-                # a remove op (skip incidental upserts).
-                if any(isinstance(op, FsRemove) for op in evt.ops):
-                    n_changes += 1
-                    for op in evt.ops:
-                        if isinstance(op, FsRemove):
-                            removed.add(op.path)
+            # Only count fs.change events that carry a remove op.
+            if (
+                isinstance(evt, FsChange)
+                and evt.ops
+                and any(isinstance(op, FsRemove) for op in evt.ops)
+            ):
+                n_changes += 1
+                for op in evt.ops:
+                    if isinstance(op, FsRemove):
+                        removed.add(op.path)
         return n_changes, removed
 
     n_changes, removed = asyncio.run(_run())

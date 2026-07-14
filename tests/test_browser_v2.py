@@ -455,8 +455,8 @@ def test_index_omits_duplicate_markdown_runtime() -> None:
 def test_live_stream_append_code_appends_at_log_tail() -> None:
     """Live rows should appear after existing log rows, not after the filter bar."""
     app_js = proc_browser.STATIC_DIR.joinpath("app.js").read_text()
-    assert "logPane.insertAdjacentHTML('beforeend', tail)" in app_js
-    assert "insertAdjacentHTML('afterend', tail)" not in app_js
+    assert 'logPane.insertAdjacentHTML("beforeend", tail)' in app_js
+    assert 'insertAdjacentHTML("afterend", tail)' not in app_js
     assert 'logPane && logPane.style.display !== "none"' in app_js
 
 
@@ -476,7 +476,7 @@ def test_client_tree_pagination_state_clears_on_root_render() -> None:
     # 500 chars covers the small reset-and-render block without crossing
     # into unrelated callers — independent of where in loadTree() the
     # measure call sits relative to other statements.
-    start = app_js.index('measure("renderTreeNodes:root"')
+    start = app_js.index('"renderTreeNodes:root"')
     root_block = app_js[start : start + 500]
     assert "pendingTreePages.clear()" in root_block
     assert "pendingTreePageId = 0" in root_block

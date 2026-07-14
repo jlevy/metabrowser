@@ -91,7 +91,7 @@ def _parse_jsonl_file(filepath: Path) -> dict[str, Any]:
         assert parser is not None
         try:
             events.extend(parser.parse_line(stripped))
-        except Exception as exc:  # noqa: BLE001 - degrade one bad event, not the whole file
+        except Exception as exc:
             parse_errors += 1
             LOG.warning(
                 "jsonl parse error in %s line %s: %s",

@@ -1,18 +1,26 @@
 # Development
 
 MetaBrowser uses uv for Python environments and dependency resolution.
-The repository also checks Python with Ruff and BasedPyright, browser assets with Biome
-and TypeScript check-JS, Markdown with Flowmark, and behavior with pytest and Node
-contract tests.
+The repository checks Python with Ruff and BasedPyright, browser assets with Biome and
+TypeScript check-JS, Markdown with Flowmark, and behavior with pytest and Node contract
+tests.
 
 ## Set Up
 
 Install uv using the
 [official uv instructions](https://docs.astral.sh/uv/getting-started/installation/),
-clone the repository, and run:
+install Node 24.18.0 or a newer Node 24 release with npm 11.10 or newer, clone the
+repository, and run:
 
 ```shell
 make install
+```
+
+This installs the exact Python and JavaScript dependency locks with `uv sync --frozen`
+and `npm ci`. Install the repository’s Lefthook git hooks once after setup:
+
+```shell
+make hooks-install
 ```
 
 Do not activate `.venv` or invoke `python` or `pip` directly.
@@ -33,6 +41,9 @@ make test
 
 # Run every release gate, including the built-wheel smoke test.
 make verify
+
+# Audit the locked JavaScript toolchain for known vulnerabilities.
+npm audit --audit-level=moderate
 
 # Run a targeted test.
 uv run pytest tests/test_plugin_loader.py::test_classifier_priority_wins
@@ -57,7 +68,8 @@ uv add --dev --exclude-newer "14 days" package-name
 uv lock --upgrade-package package-name
 ```
 
-Commit `uv.lock` with every dependency change.
+Commit `uv.lock` with every Python dependency change and `package-lock.json` with every
+JavaScript tool change.
 Do not add requirements files, Poetry, or another environment manager.
 
 KPress is an exact runtime dependency because its Python and browser rendering contract
@@ -76,6 +88,9 @@ validation as a source change.
   parallel implementations.
 
 Run Ruff and BasedPyright through `make lint-check` before handoff.
+BasedPyright runs in strict mode; narrow exceptions in `pyproject.toml` cover documented
+dynamic plugin, compatibility, and untyped dependency boundaries.
+Do not broaden those exceptions without recording why strict narrowing is impractical.
 
 ## Browser Code
 
@@ -88,10 +103,22 @@ Core browser code lives in `src/metabrowser/static/`; built-in renderers live in
 - Large collections need lazy mounting, virtualization, or a bounded display.
 - Run Biome and TypeScript check-JS through the Make targets.
 
-`app.js` is currently excluded from TypeScript check-JS while its older dynamic code is
+`tsconfig.json` applies full strict checking, including `noImplicitAny`, to new browser
+modules automatically.
+`tsconfig.legacy.json` is an explicit allowlist of older modules that still permit
+implicit `any` while retaining strict null and other strict checks.
+`app.js` is checked under that legacy configuration while its older dynamic shell is
 incrementally typed.
-Do not broaden that exclusion.
-New standalone modules and plugin code must pass the check.
+Do not add a file to either exception without documenting the reason; remove files from
+the legacy list as their JSDoc contracts become complete.
+
+Biome checks every shipped browser module, including the legacy application shell, with
+the recommended rule set and only two configuration-level compatibility exceptions for
+intentional CSS ordering and legacy inner declarations.
+Globals invoked from generated HTML retain their public names through narrow inline
+suppressions because those call sites are not visible to static analysis.
+All Biome and TypeScript commands run from `package-lock.json` with `npx --no-install`,
+so quality checks cannot fetch tools at runtime.
 
 ## Documentation
 

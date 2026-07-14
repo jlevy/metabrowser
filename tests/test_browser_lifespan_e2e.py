@@ -93,7 +93,7 @@ def test_full_lifespan_stack_serves_all_endpoints(tmp_path: Path) -> None:
                 )
                 recent = json.loads(bytes(recent_resp.body))
                 # /api/index/meta
-                from metabrowser.events_route import (  # noqa: PLC0415 -- pre-existing local import; needs review
+                from metabrowser.events_route import (
                     api_capabilities,
                     api_index_meta,
                 )

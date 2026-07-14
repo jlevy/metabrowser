@@ -46,7 +46,7 @@ from typing import Any
 def _http_get_json(host: str, port: int, path: str, timeout: float = 30.0) -> dict[str, Any]:
     url = f"http://{host}:{port}{path}"
     started = time.perf_counter()
-    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
         body = resp.read()
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         return {
@@ -317,7 +317,7 @@ def cmd_health(args: argparse.Namespace) -> int:
     def safe(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         try:
             return fn()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {"error": f"{type(exc).__name__}: {exc}"}
 
     caps = safe(lambda: _http_get_json(args.host, args.port, "/api/capabilities"))

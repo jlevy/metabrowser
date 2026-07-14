@@ -61,13 +61,13 @@ from strif import file_mtime_hash
 from metabrowser import kpress_adapter
 from metabrowser.activity import (
     ACTIVITY_POLL_INTERVAL_MS,
-    TRACKABLE_DISCOVERY_TTL_SECONDS,  # noqa: F401  (re-exported for tests)
-    TRACKABLE_FILE_MAX_SIZE,  # noqa: F401  (re-exported for tests)
+    TRACKABLE_DISCOVERY_TTL_SECONDS,
+    TRACKABLE_FILE_MAX_SIZE,
     _activity_snapshot,
-    _collect_trackable_files,  # noqa: F401  (re-exported for tests)
-    _collect_trackable_files_cached,  # noqa: F401  (re-exported for tests)
-    _discover_trackable_files,  # noqa: F401  (re-exported for tests)
-    activity_tracker,  # noqa: F401  (re-exported for tests)
+    _collect_trackable_files,
+    _collect_trackable_files_cached,
+    _discover_trackable_files,
+    activity_tracker,
 )
 from metabrowser.activity import FileActivityTracker as _FileActivityTracker
 
@@ -75,12 +75,12 @@ from metabrowser.activity import FileActivityTracker as _FileActivityTracker
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
 from metabrowser.file_kinds import (
-    FILE_KIND_DETECTORS,  # noqa: F401  (re-exported for tests)
+    FILE_KIND_DETECTORS,
     VIEW_REGISTRY,
-    FileContext,  # noqa: F401  (re-exported for tests)
+    FileContext,
     classify_by_ext,
     classify_file_kind,
-    register_file_kind_detector,  # noqa: F401  (re-exported for tests)
+    register_file_kind_detector,
 )
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.inventory import get_instance as get_inventory
@@ -89,8 +89,8 @@ from metabrowser.jsonl_view import _parse_jsonl_file
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
 # KPress is the sole Markdown-to-HTML renderer; raw source remains a separate view.
 from metabrowser.paths_safe import (
-    _cached_root_prefix,  # noqa: F401  (re-exported for tests)
-    _rel_path,  # noqa: F401  (re-exported for tests)
+    _cached_root_prefix,
+    _rel_path,
     _relativize,
     _resolved_root_dir,
     _safe_path,
@@ -102,19 +102,19 @@ from metabrowser.server_utils import DEFAULT_PORT_SEARCH_COUNT, find_available_l
 from metabrowser.settings import DEFAULT_BROWSER_PORT, RECENT_WINDOW_SECONDS, client_settings_dict
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
-    _IGNORE_CACHE,  # noqa: F401  (re-exported for tests)
-    DEFAULT_TREE_DEPTH,  # noqa: F401  (re-exported for tests)
-    MAX_TREE_DEPTH,  # noqa: F401  (re-exported for tests)
-    SENTINEL_SUMMARY_DEPTH,  # noqa: F401  (re-exported for tests)
+    _IGNORE_CACHE,
+    DEFAULT_TREE_DEPTH,
+    MAX_TREE_DEPTH,
+    SENTINEL_SUMMARY_DEPTH,
     _build_inventory_tree,
     _dir_tree,
-    _find_git_root,  # noqa: F401  (re-exported for tests)
-    _has_any_file,  # noqa: F401  (re-exported for tests)
-    _has_any_nongitignored,  # noqa: F401  (re-exported for tests)
-    _has_visible_children,  # noqa: F401  (re-exported for tests)
-    _subtree_is_all_gitignored,  # noqa: F401  (re-exported for tests)
-    _subtree_is_empty,  # noqa: F401  (re-exported for tests)
-    _subtree_summary,  # noqa: F401  (re-exported for tests)
+    _find_git_root,
+    _has_any_file,
+    _has_any_nongitignored,
+    _has_visible_children,
+    _subtree_is_all_gitignored,
+    _subtree_is_empty,
+    _subtree_summary,
     _tree_depth_from_query,
     build_gitignore_check,
     inventory_has_data,
@@ -191,9 +191,9 @@ _setup_perf_logging()
 # same INFO-level emission, routed through this module's logger so
 # the perf-log setup above sends it to stdout.
 
-import functools  # noqa: E402, PLC0415 -- pre-existing local import; needs review
+import functools
 
-from funlog import format_duration as _format_duration  # noqa: E402
+from funlog import format_duration as _format_duration
 
 
 def log_async_calls(*, if_slower_than: float = 0.0) -> Any:
@@ -287,7 +287,7 @@ __all__ = [
 # directly. The canonical value lives in ``paths_safe``; expose it here as a
 # property-style attribute backed by the module-level lookup.
 
-import metabrowser.paths_safe as _paths_safe  # noqa: E402
+import metabrowser.paths_safe as _paths_safe
 
 # Re-export of the activity tracker class under the legacy proc_browser
 # namespace so existing tests/imports keep working. The numeric constants
@@ -303,8 +303,8 @@ FileActivityTracker = _FileActivityTracker
 # writes always go through ``_set_root_dir`` (which fires every
 # registered cache-invalidation callback).
 
-import sys as _sys  # noqa: E402
-import types as _types  # noqa: E402
+import sys as _sys
+import types as _types
 
 
 class _ProcBrowserModule(_types.ModuleType):
@@ -372,7 +372,7 @@ def _etag_for(mtime_hash: str) -> str:
 # callers that import ``_TEXT_EXTS`` / ``_IMAGE_EXTS`` directly.
 import contextlib
 
-from metabrowser.file_extensions import (  # noqa: E402, PLC0415 -- pre-existing local import; needs review
+from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS as _IMAGE_EXTS,
 )
 from metabrowser.file_extensions import (
@@ -1080,7 +1080,7 @@ async def api_file(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
     try:
         return await _api_file_impl(request)
-    except Exception as exc:  # noqa: BLE001 - route must degrade instead of 500ing
+    except Exception as exc:
         LOG.exception("api_file failed while rendering %s", subpath)
         return _api_file_internal_error_response(subpath, exc)
 
@@ -1124,7 +1124,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
     # in this branch the same as ``foo.jsonl``.
     if ext == ".jsonl":
         try:
-            from metabrowser.projections import (  # noqa: PLC0415 -- guarded import (optional dep / circular)
+            from metabrowser.projections import (
                 parse_jsonl_file_cached,
             )
 
@@ -1678,18 +1678,18 @@ async def raw_file(request: Request) -> Response:
 # server still starts. Hot reload (re-running discovery during a single
 # server run) is deliberately deferred.
 
-from metabrowser.plugin_loader.classify import (  # noqa: E402, PLC0415 -- pre-existing local import; needs review
+from metabrowser.plugin_loader.classify import (
     CompiledKindRule,
     build_classifier,
     collect_folder_markers,
 )
-from metabrowser.plugin_loader.discovery import (  # noqa: E402, PLC0415 -- pre-existing local import; needs review
+from metabrowser.plugin_loader.discovery import (
     discover_plugins,
 )
-from metabrowser.plugin_loader.static_assets import (  # noqa: E402, PLC0415 -- pre-existing local import; needs review
+from metabrowser.plugin_loader.static_assets import (
     build_plugin_routes,
 )
-from metabrowser.tree import (  # noqa: E402, PLC0415 -- pre-existing local import; needs review
+from metabrowser.tree import (
     set_folder_markers,
 )
 
@@ -1907,7 +1907,7 @@ middleware = [
 # layer; importing it at module top circles back through
 # paths_safe / activity, which already import this module. The
 # late import keeps the import graph acyclic.
-from metabrowser.events_route import (  # noqa: E402, PLC0415 -- pre-existing local import; needs review
+from metabrowser.events_route import (
     add_inventory_routes,
     build_lifespan,
 )
@@ -1921,7 +1921,7 @@ def _inventory_root_provider() -> object:
 
     try:
         root = _resolved_root_dir()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     return root if str(root) and root != Path() else None
 
@@ -1974,7 +1974,7 @@ def main() -> None:
         # but surface the failure so the operator knows why nothing
         # happened (silent passes hide config issues like a headless VM
         # without ``$BROWSER`` set).
-        import webbrowser  # noqa: PLC0415 -- pre-existing local import; needs review
+        import webbrowser
 
         try:
             webbrowser.open(url, new=2)
