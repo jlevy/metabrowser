@@ -100,7 +100,7 @@ Connect trusted publishing without a package token.
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
 - [x] Add tracked-file, source-distribution, and wheel public-hygiene checks
-- [ ] Complete review of the initial pull request with all GitHub Actions checks green
+- [x] Complete review of the initial pull request with all GitHub Actions checks green
 
 ### First Release
 
