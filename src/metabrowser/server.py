@@ -1700,7 +1700,9 @@ from metabrowser.tree import (
 _extra_plugin_dirs: list[Path] = []
 _env_dirs = os.environ.get("METABROWSER_PLUGINS_DIRS", "")
 if _env_dirs:
-    _extra_plugin_dirs = [Path(p) for p in _env_dirs.split(os.pathsep) if p]
+    _extra_plugin_dirs = [
+        Path(path).expanduser().resolve() for path in _env_dirs.split(os.pathsep) if path
+    ]
 
 _DISCOVERY = discover_plugins(
     extra_dirs=_extra_plugin_dirs or None,

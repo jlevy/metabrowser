@@ -91,6 +91,36 @@ def test_metabrowser_plugins_dirs_env_var_drives_discovery(tmp_path: Path) -> No
     )
 
 
+def test_server_import_expands_env_plugin_paths(tmp_path: Path) -> None:
+    """Direct server imports canonicalize env paths without requiring the CLI."""
+    home = tmp_path / "home"
+    parent = home / "plugins"
+    parent.mkdir(parents=True)
+    _make_plugin(parent, "expanded-env-demo")
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["METABROWSER_PLUGINS_DIRS"] = "~/plugins"
+
+    code = (
+        "import json, metabrowser.server as s; "
+        "print(json.dumps([p.name for p in s._LOADED_PLUGINS]))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"subprocess failed: stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    names = json.loads(result.stdout.strip().splitlines()[-1])
+    assert "expanded-env-demo" in names
+
+
 def test_user_home_plugins_dir_is_not_auto_discovered(tmp_path: Path, monkeypatch) -> None:
     """A plugin in ~/.metabrowser/plugins/ must not load by default either.
 
