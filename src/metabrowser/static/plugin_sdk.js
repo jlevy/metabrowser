@@ -75,8 +75,15 @@
 
   // Internal registry: kindId -> Map<viewId, {render, dispose?}>.
   const _viewRegistry = new Map();
+  /** @type {Set<string>} */
   const _loadedKpressAssets = new Set();
+  /** @type {Map<string, Promise<void>>} */
+  const _loadingKpressAssets = new Map();
   const _KPRESS_ASSET_MANIFEST_SCHEMA = "kpress-asset-manifest-v2";
+  /** Bounds a missing stylesheet load/error event before a later render can retry. */
+  const _stylesheetLoadTimeoutMs = 10_000;
+  /** Detects cached stylesheets whose browsers expose `sheet` without a load event. */
+  const _stylesheetReadyPollMs = 50;
 
   function registerView(kindId, viewId, spec) {
     if (typeof kindId !== "string" || !kindId) {
@@ -233,49 +240,133 @@
     return global.document && (global.document.head || global.document.body);
   }
 
+  /**
+   * Share an in-flight load and mark the asset complete only after it succeeds.
+   * @param {string} key
+   * @param {() => Promise<void>} load
+   * @returns {Promise<void>}
+   */
+  function _loadKpressAssetOnce(key, load) {
+    if (_loadedKpressAssets.has(key)) {
+      return Promise.resolve();
+    }
+    const existing = _loadingKpressAssets.get(key);
+    if (existing) {
+      return existing;
+    }
+    const pending = load()
+      .then(() => {
+        _loadedKpressAssets.add(key);
+      })
+      .finally(() => {
+        _loadingKpressAssets.delete(key);
+      });
+    _loadingKpressAssets.set(key, pending);
+    return pending;
+  }
+
   /** @param {string} url @returns {Promise<void>} */
   function _loadStylesheet(url) {
-    if (!url || _loadedKpressAssets.has(url) || !global.document) {
+    if (!url || !global.document) {
       return Promise.resolve();
     }
     const parent = _headOrBody();
     if (!parent || typeof global.document.createElement !== "function") {
       return Promise.resolve();
     }
-    return new Promise((resolve, reject) => {
-      const link = global.document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = url;
-      link.setAttribute("data-kpress-asset", "");
-      link.onload = () => resolve();
-      // Some browsers don't fire onload for cached stylesheets — onerror is the
-      // only signal we get for a hard failure, so reject on it.
-      link.onerror = () => reject(new Error(`Failed to load KPress stylesheet: ${url}`));
-      parent.appendChild(link);
-      _loadedKpressAssets.add(url);
-    });
+    return _loadKpressAssetOnce(
+      url,
+      () =>
+        new Promise((resolve, reject) => {
+          const link = global.document.createElement("link");
+          let settled = false;
+          /** @type {ReturnType<typeof setTimeout> | null} */
+          let readyPoll = null;
+          /** @type {ReturnType<typeof setTimeout> | null} */
+          let loadTimeout = null;
+
+          const clearLoadTimers = () => {
+            if (readyPoll !== null) {
+              clearTimeout(readyPoll);
+            }
+            if (loadTimeout !== null) {
+              clearTimeout(loadTimeout);
+            }
+          };
+          const succeed = () => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            clearLoadTimers();
+            resolve();
+          };
+          /** @param {Error} error */
+          const fail = (error) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            clearLoadTimers();
+            if (typeof link.remove === "function") {
+              link.remove();
+            }
+            reject(error);
+          };
+          const detectCachedStylesheet = () => {
+            if (settled) {
+              return;
+            }
+            if (link.sheet) {
+              succeed();
+              return;
+            }
+            readyPoll = setTimeout(detectCachedStylesheet, _stylesheetReadyPollMs);
+          };
+
+          link.rel = "stylesheet";
+          link.href = url;
+          link.setAttribute("data-kpress-asset", "");
+          link.onload = succeed;
+          link.onerror = () => fail(new Error(`Failed to load KPress stylesheet: ${url}`));
+          loadTimeout = setTimeout(
+            () => fail(new Error(`Timed out loading KPress stylesheet: ${url}`)),
+            _stylesheetLoadTimeoutMs,
+          );
+          parent.appendChild(link);
+          detectCachedStylesheet();
+        }),
+    );
   }
 
   /** @param {string} url @param {"module" | "classic"} loading @returns {Promise<void>} */
   function _loadScript(url, loading) {
-    if (!url || _loadedKpressAssets.has(url) || !global.document) {
+    if (!url || !global.document) {
       return Promise.resolve();
     }
     const parent = _headOrBody();
     if (!parent || typeof global.document.createElement !== "function") {
       return Promise.resolve();
     }
-    return new Promise((resolve, reject) => {
-      const script = global.document.createElement("script");
-      script.type = loading === "classic" ? "text/javascript" : "module";
-      script.src = url;
-      script.async = false;
-      script.setAttribute("data-kpress-asset", "");
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error(`Failed to load KPress asset: ${url}`));
-      parent.appendChild(script);
-      _loadedKpressAssets.add(url);
-    });
+    return _loadKpressAssetOnce(
+      url,
+      () =>
+        new Promise((resolve, reject) => {
+          const script = global.document.createElement("script");
+          script.type = loading === "classic" ? "text/javascript" : "module";
+          script.src = url;
+          script.async = false;
+          script.setAttribute("data-kpress-asset", "");
+          script.onload = () => resolve();
+          script.onerror = () => {
+            if (typeof script.remove === "function") {
+              script.remove();
+            }
+            reject(new Error(`Failed to load KPress asset: ${url}`));
+          };
+          parent.appendChild(script);
+        }),
+    );
   }
 
   // KPress ships standalone-page runtime scripts. theme.js is still skipped in
@@ -301,15 +392,13 @@
     return asset?.id === "js/toc.js" || url.endsWith("/toc.js");
   }
   async function _loadKpressTocModule(url) {
-    if (_loadedKpressAssets.has(url)) {
-      return;
-    }
-    _loadedKpressAssets.add(url);
     try {
-      const mod = await import(url);
-      if (mod && typeof mod.initKpressToc === "function") {
-        _kpressInitTocFn = mod.initKpressToc;
-      }
+      await _loadKpressAssetOnce(url, async () => {
+        const mod = await import(url);
+        if (mod && typeof mod.initKpressToc === "function") {
+          _kpressInitTocFn = mod.initKpressToc;
+        }
+      });
     } catch (err) {
       // A failed TOC module must not break document rendering; the doc still
       // shows, just without sidebar/drawer behavior.

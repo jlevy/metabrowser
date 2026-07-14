@@ -1,10 +1,12 @@
-// Behavioral shim for plugin_sdk.js — tests three contracts that
+// Behavioral shim for plugin_sdk.js — tests five contracts that
 // kpress_asset_loading.js (the happy-path shim) cannot:
 //
 //   1. _loadStylesheet awaits the actual onload event (not just appendChild)
 //   2. fetchKpressRender deduplicates concurrent requests for the same key
 //      via AbortController — the first call's signal becomes aborted
 //   3. Non-ok fetch responses propagate as rejections (with .status / .payload)
+//   4. Failed stylesheet, script, and TOC module loads can be retried
+//   5. A cached stylesheet settles even when the browser omits load events
 //
 // Usage:
 //   node kpress_plugin_sdk_behavior.js <repo_root>
@@ -46,6 +48,7 @@ function assetManifest(assets = [], importMap = {}) {
 const appended = [];
 // Track elements appended so we can fire onload later (async).
 const pendingOnload = [];
+let cacheNextStylesheet = false;
 
 function makeElement(tagName) {
   const attrs = {};
@@ -71,7 +74,12 @@ function makeElement(tagName) {
 const fakeParent = {
   appendChild(element) {
     appended.push(element);
-    pendingOnload.push(element);
+    if (cacheNextStylesheet && element.tagName === "LINK") {
+      cacheNextStylesheet = false;
+      element.sheet = {};
+    } else {
+      pendingOnload.push(element);
+    }
     return element;
   },
 };
@@ -86,6 +94,18 @@ function makeReleaseable() {
   });
 }
 const firstFetchGate = makeReleaseable();
+
+let tocImportAttempts = 0;
+const cachedStylesheetSettleDeadlineMs = 100;
+async function importKpressModule() {
+  tocImportAttempts += 1;
+  if (tocImportAttempts === 1) {
+    throw new Error("simulated TOC module failure");
+  }
+  return import(
+    "data:text/javascript,export function initKpressToc() { return function dispose() {}; }"
+  );
+}
 
 // errorFetch returns 502, used for the third contract.
 let useErrorFetch = false;
@@ -164,6 +184,7 @@ vm.createContext(sandbox);
 const sdkPath = path.join(repoRoot, "src", "metabrowser", "static", "plugin_sdk.js");
 vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
   filename: "plugin_sdk.js",
+  importModuleDynamically: importKpressModule,
 });
 
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
@@ -313,16 +334,112 @@ async function check_fetchKpressRender_throws_on_error() {
   }
 }
 
+// ── Contract 4: failed asset loads can retry ─────────────────────────────
+
+async function check_failed_kpress_assets_retry() {
+  const retryableAssets = [
+    {
+      id: "css/retry.css",
+      path: "css/retry.css",
+      public_url: "/css/retry.css",
+      entry_point: true,
+      loading: "stylesheet",
+    },
+    {
+      id: "js/retry.js",
+      path: "js/retry.js",
+      public_url: "/js/retry.js",
+      entry_point: true,
+      loading: "module",
+    },
+  ];
+
+  for (const asset of retryableAssets) {
+    const firstAppend = appended.length;
+    const firstLoad = loadKpressAssets(assetManifest([asset])).then(
+      () => ({ rejected: false }),
+      () => ({ rejected: true }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const firstElement = appended.at(-1);
+    if (appended.length !== firstAppend + 1 || typeof firstElement?.onerror !== "function") {
+      return { ok: false, detail: `${asset.id} did not append a loadable element` };
+    }
+    firstElement.onerror();
+    if (!(await firstLoad).rejected) {
+      return { ok: false, detail: `${asset.id} failure did not reject` };
+    }
+
+    const secondAppend = appended.length;
+    const secondLoad = loadKpressAssets(assetManifest([asset]));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const secondElement = appended.at(-1);
+    if (appended.length !== secondAppend + 1 || typeof secondElement?.onload !== "function") {
+      return { ok: false, detail: `${asset.id} was not appended again for retry` };
+    }
+    secondElement.onload();
+    await secondLoad;
+  }
+
+  tocImportAttempts = 0;
+  const tocManifest = assetManifest([
+    {
+      id: "js/toc.js",
+      path: "js/toc.js",
+      public_url: "/js/toc.js",
+      entry_point: true,
+      loading: "module",
+    },
+  ]);
+  await loadKpressAssets(tocManifest);
+  await loadKpressAssets(tocManifest);
+  if (tocImportAttempts !== 2) {
+    return {
+      ok: false,
+      detail: `TOC module was imported ${tocImportAttempts} time(s), expected a retry`,
+    };
+  }
+  return { ok: true };
+}
+
+// ── Contract 5: cached stylesheets settle without load events ────────────
+
+async function check_cached_stylesheet_settles() {
+  cacheNextStylesheet = true;
+  const settled = await Promise.race([
+    loadKpressAssets(
+      assetManifest([
+        {
+          id: "css/cached.css",
+          path: "css/cached.css",
+          public_url: "/css/cached.css",
+          entry_point: true,
+          loading: "stylesheet",
+        },
+      ]),
+    ).then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), cachedStylesheetSettleDeadlineMs)),
+  ]);
+  if (!settled) {
+    return { ok: false, detail: "cached stylesheet did not settle without load events" };
+  }
+  return { ok: true };
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
   const stylesheet = await check_loadStylesheet_waits_for_onload();
   const dedup = await check_fetchKpressRender_aborts_previous();
   const errorProp = await check_fetchKpressRender_throws_on_error();
+  const assetRetry = await check_failed_kpress_assets_retry();
+  const cachedStylesheet = await check_cached_stylesheet_settles();
 
-  process.stdout.write(`${JSON.stringify({ stylesheet, dedup, errorProp })}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet })}\n`,
+  );
 
-  if (!stylesheet.ok || !dedup.ok || !errorProp.ok) {
+  if (!stylesheet.ok || !dedup.ok || !errorProp.ok || !assetRetry.ok || !cachedStylesheet.ok) {
     process.exit(1);
   }
 })().catch((err) => fail(err?.stack ? err.stack : String(err)));

@@ -11,6 +11,9 @@ contracts that source-string tests can't validate:
    aborted via ``AbortController``.
 3. A non-ok fetch response rejects with an ``err.status`` and an
    ``err.payload`` carrying the server diagnostic.
+4. Failed stylesheet, script, and TOC module loads can be retried.
+5. Cached stylesheets settle when the browser exposes ``link.sheet`` without
+   dispatching a load event.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ def test_plugin_sdk_behavior_contracts() -> None:
         pytest.skip("node not available; skipping plugin_sdk.js behavioral shim")
 
     result = subprocess.run(
-        ["node", str(SHIM), str(REPO_ROOT)],
+        ["node", "--experimental-vm-modules", str(SHIM), str(REPO_ROOT)],
         capture_output=True,
         text=True,
         timeout=20,
@@ -45,3 +48,5 @@ def test_plugin_sdk_behavior_contracts() -> None:
     assert payload["stylesheet"]["ok"] is True, payload["stylesheet"]
     assert payload["dedup"]["ok"] is True, payload["dedup"]
     assert payload["errorProp"]["ok"] is True, payload["errorProp"]
+    assert payload["assetRetry"]["ok"] is True, payload["assetRetry"]
+    assert payload["cachedStylesheet"]["ok"] is True, payload["cachedStylesheet"]
