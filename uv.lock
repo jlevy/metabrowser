@@ -8,7 +8,7 @@ exclude-newer-span = "P14D"
 
 [options.exclude-newer-package]
 flowmark-rs = "2026-05-31T00:00:00Z"
-kpress = "2026-07-14T00:00:00Z"
+kpress = "2026-07-15T00:00:00Z"
 
 [[package]]
 name = "annotated-doc"
@@ -264,7 +264,7 @@ wheels = [
 
 [[package]]
 name = "kpress"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frontmatter-format" },
@@ -276,9 +276,9 @@ dependencies = [
     { name = "pygments" },
     { name = "strif" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ae/84/454a3f35b0fb5bfee219bc8f6a1b029ef32839f424c633a3e57bb2d30e9f/kpress-0.1.0.tar.gz", hash = "sha256:e67f4fed0ba4c42ec6e8d6da0b073473f01f3d44613ab434c27ad71ac2fb9660", size = 1003571, upload-time = "2026-07-13T17:43:08.454Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/96/ae/32a457899bf9b0e2ea576a2df2da170d71662c4fedb52ea06cc475106c62/kpress-0.2.0.tar.gz", hash = "sha256:2540219b9a3d96cdc4a83a482c2053ee70744bbcfd129906a2b5f8e8cd9f9e90", size = 1003555, upload-time = "2026-07-14T19:43:51.114Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/49/41a5129c3e353a5225247a8d5bf2d895143bbf30e48681397bd2bf6135db/kpress-0.1.0-py3-none-any.whl", hash = "sha256:556a2185e7ebd5b8cf45dad2bd1cbb9ed05c8dfcdde314e40271d70a64ae5ec1", size = 722776, upload-time = "2026-07-13T17:43:06.719Z" },
+    { url = "https://files.pythonhosted.org/packages/32/4d/841b8186acf735f201a72bb1f83c38b28c5d13b2705dc47bdf4e33dc7c0f/kpress-0.2.0-py3-none-any.whl", hash = "sha256:0556a242a0e68a0d46225c43785957680fedf2be82da5a45e65a1b6e87bdbb0c", size = 726043, upload-time = "2026-07-14T19:43:49.495Z" },
 ]
 
 [[package]]
@@ -461,7 +461,7 @@ requires-dist = [
     { name = "funlog", specifier = ">=0.2.1" },
     { name = "json5", specifier = ">=0.14" },
     { name = "jsonschema", specifier = ">=4.20" },
-    { name = "kpress", specifier = "==0.1.0" },
+    { name = "kpress", specifier = "==0.2.0" },
     { name = "lmdb", specifier = ">=1.4" },
     { name = "msgpack", specifier = ">=1.0" },
     { name = "pathspec", specifier = ">=0.12" },

@@ -37,7 +37,7 @@ Confirm:
 
 Two exact first-party releases are exempt from the ordinary cool-off for this release:
 
-- `kpress==0.1.0`, required for the first MetaBrowser release;
+- `kpress==0.2.0`, required for the first MetaBrowser release;
 - `flowmark-rs==0.3.1`, used to format and verify Markdown.
 
 The exceptions are package-scoped in configuration and do not weaken the global gate.

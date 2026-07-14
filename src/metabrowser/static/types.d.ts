@@ -8,7 +8,25 @@ type MetabrowserViewSpec = {
   dispose?: () => void;
 };
 
+type KpressAssetLoading = "classic" | "module" | "resource" | "stylesheet";
+
+type KpressAssetManifestEntry = {
+  entry_point: boolean;
+  id: string;
+  loading: KpressAssetLoading;
+  output_path?: string;
+  path: string;
+  public_url?: string;
+};
+
+type KpressAssetManifest = {
+  assets: Array<KpressAssetManifestEntry>;
+  import_map: Record<string, string>;
+  schema_version: "kpress-asset-manifest-v2";
+};
+
 type KpressRenderPayload = {
+  assets: KpressAssetManifest;
   diagnostics?: Array<unknown>;
   html: string;
 };
@@ -120,6 +138,7 @@ type MetabrowserSdk = {
   isLargeTextPreview(data: Record<string, unknown>): boolean;
   kpressInitToc(container: HTMLElement): () => void;
   langForExtension(ext: string): string;
+  loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   openPath(path: string): void;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;

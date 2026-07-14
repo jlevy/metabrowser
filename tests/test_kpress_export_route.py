@@ -157,7 +157,7 @@ def test_kpress_export_delegates_to_adapter_and_returns_report(tmp_path: Path, m
 
 
 def test_kpress_export_runs_against_released_runtime(tmp_path: Path) -> None:
-    """Pin the route to the public KPress v0.1.0 export contract."""
+    """Pin the route to the public KPress v0.2.0 export contract."""
 
     server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Released runtime\n\nRendered by KPress.\n")

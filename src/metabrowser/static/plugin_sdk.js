@@ -76,6 +76,7 @@
   // Internal registry: kindId -> Map<viewId, {render, dispose?}>.
   const _viewRegistry = new Map();
   const _loadedKpressAssets = new Set();
+  const _KPRESS_ASSET_MANIFEST_SCHEMA = "kpress-asset-manifest-v2";
 
   function registerView(kindId, viewId, spec) {
     if (typeof kindId !== "string" || !kindId) {
@@ -255,8 +256,8 @@
     });
   }
 
-  /** @param {string} url @returns {Promise<void>} */
-  function _loadScript(url) {
+  /** @param {string} url @param {"module" | "classic"} loading @returns {Promise<void>} */
+  function _loadScript(url, loading) {
     if (!url || _loadedKpressAssets.has(url) || !global.document) {
       return Promise.resolve();
     }
@@ -266,7 +267,7 @@
     }
     return new Promise((resolve, reject) => {
       const script = global.document.createElement("script");
-      script.type = "module";
+      script.type = loading === "classic" ? "text/javascript" : "module";
       script.src = url;
       script.async = false;
       script.setAttribute("data-kpress-asset", "");
@@ -285,8 +286,10 @@
   // sidebar/drawer, scroll-spy, and toggle against the pane (see kpressInitToc).
   const _SKIP_EMBEDDED_KPRESS_JS = ["theme.js"];
 
-  function _isSkippedKpressScript(url) {
-    return _SKIP_EMBEDDED_KPRESS_JS.some((name) => url.endsWith(`/${name}`));
+  function _isSkippedKpressScript(asset, url) {
+    return _SKIP_EMBEDDED_KPRESS_JS.some(
+      (name) => asset?.id === `js/${name}` || url.endsWith(`/${name}`),
+    );
   }
 
   // toc.js is loaded via dynamic import (not a <script> tag) so we can capture
@@ -294,8 +297,8 @@
   // self-init runs once against the page; per-render wiring + teardown is owned
   // by kpressInitToc below.
   let _kpressInitTocFn = null;
-  function _isTocScript(url) {
-    return url.endsWith("/toc.js");
+  function _isTocScript(asset, url) {
+    return asset?.id === "js/toc.js" || url.endsWith("/toc.js");
   }
   async function _loadKpressTocModule(url) {
     if (_loadedKpressAssets.has(url)) {
@@ -316,21 +319,68 @@
     }
   }
 
-  async function loadKpressAssets(assets) {
-    const css = assets?.css || [];
-    const js = assets?.js || [];
-    for (const url of css) {
-      await _loadStylesheet(url);
+  function _kpressAssetUrl(asset) {
+    return asset?.public_url || asset?.output_path || asset?.path || "";
+  }
+
+  function _installKpressImportMap(importMap) {
+    if (!importMap || typeof importMap !== "object" || !Object.keys(importMap).length) {
+      return;
     }
-    for (const url of js) {
-      if (_isSkippedKpressScript(url)) {
+    const parent = _headOrBody();
+    if (!parent || !global.document || typeof global.document.createElement !== "function") {
+      return;
+    }
+    const payload = JSON.stringify({ imports: importMap });
+    const key = `importmap:${payload}`;
+    if (_loadedKpressAssets.has(key)) {
+      return;
+    }
+    const script = global.document.createElement("script");
+    script.type = "importmap";
+    script.textContent = payload;
+    script.setAttribute("data-kpress-asset", "");
+    parent.appendChild(script);
+    _loadedKpressAssets.add(key);
+  }
+
+  async function loadKpressAssets(manifest) {
+    if (!manifest || manifest.schema_version !== _KPRESS_ASSET_MANIFEST_SCHEMA) {
+      throw new Error(
+        `Unsupported KPress asset manifest schema: ${manifest?.schema_version || "missing"}`,
+      );
+    }
+    if (!Array.isArray(manifest.assets)) {
+      throw new Error("Invalid KPress asset manifest: assets must be an array");
+    }
+    const entryPoints = manifest.assets.filter((asset) => asset?.entry_point === true);
+    for (const asset of entryPoints) {
+      if (asset.loading !== "stylesheet") {
         continue;
       }
-      if (_isTocScript(url)) {
+      const url = _kpressAssetUrl(asset);
+      if (!url) {
+        throw new Error(`KPress entry point ${asset.id || "<unknown>"} has no URL`);
+      }
+      await _loadStylesheet(url);
+    }
+    _installKpressImportMap(manifest.import_map);
+    for (const asset of entryPoints) {
+      if (asset.loading !== "module" && asset.loading !== "classic") {
+        continue;
+      }
+      const url = _kpressAssetUrl(asset);
+      if (!url) {
+        throw new Error(`KPress entry point ${asset.id || "<unknown>"} has no URL`);
+      }
+      if (_isSkippedKpressScript(asset, url)) {
+        continue;
+      }
+      if (_isTocScript(asset, url)) {
         await _loadKpressTocModule(url);
         continue;
       }
-      await _loadScript(url);
+      await _loadScript(url, asset.loading);
     }
   }
 

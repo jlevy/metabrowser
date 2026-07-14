@@ -1246,11 +1246,11 @@ html.theme-anim .menu {
    tree). The document-internal layout itself (the three width bands, the
    two-column TOC grid, the table bleed/constraint rules, and the
    reading-measure cap/uncap chain) lives in KPress, NOT here: see the
-   "Document layout + Table of Contents" block in KPress v0.1.0's
+   "Document layout + Table of Contents" block in KPress v0.2.0's
    src/kpress/format/static/css/components.css. MetaBrowser supplies only the
    container and the bridge tokens (--kpress-host-*, --kpress-measure) declared
    on :root above. The external source is authoritative:
-   https://github.com/jlevy/kpress/blob/v0.1.0/src/kpress/format/static/css/components.css */
+   https://github.com/jlevy/kpress/blob/v0.2.0/src/kpress/format/static/css/components.css */
 
 /* Font-set rules (settings dropdown). The default "clean" set needs no rule —
    it is the :root base above. Each additional set repoints the tokens here;

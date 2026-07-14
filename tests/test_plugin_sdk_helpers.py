@@ -77,7 +77,9 @@ def test_sdk_exports_kpress_render_helper() -> None:
     assert 'url.searchParams.set("view", viewId || "document")' in src
     assert 'url.searchParams.set("profile", profile)' in src
     assert "data-kpress-asset" in src
-    assert 'script.type = "module"' in src
+    assert '"kpress-asset-manifest-v2"' in src
+    assert 'loading === "classic"' in src
+    assert 'script.type = "importmap"' in src
     assert "_loadedKpressAssets" in src
 
 

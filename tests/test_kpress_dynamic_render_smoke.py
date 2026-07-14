@@ -25,6 +25,7 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
+from kpress import ASSET_MANIFEST_SCHEMA_VERSION
 
 from metabrowser import kpress_adapter, server
 
@@ -106,6 +107,14 @@ def _render(query: dict[str, str]) -> dict[str, Any]:
     return payload
 
 
+def _manifest_assets(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    manifest = payload["assets"]
+    assert manifest["schema_version"] == ASSET_MANIFEST_SCHEMA_VERSION
+    assert isinstance(manifest["assets"], list)
+    assert isinstance(manifest["import_map"], dict)
+    return manifest["assets"]
+
+
 def test_dynamic_render_emits_expected_envelope_shape(served_root: Path) -> None:
     """The render route must return a stable JSON envelope. A regression
     that drops `type`, `assets`, or `html` would silently break the SPA's
@@ -118,7 +127,12 @@ def test_dynamic_render_emits_expected_envelope_shape(served_root: Path) -> None
     assert payload["html"]
     assert isinstance(payload["profile"], str)
     assert isinstance(payload["printable"], bool)
-    assert set(payload["assets"]) == {"css", "js"}
+    assert set(payload["assets"]) == {"schema_version", "assets", "import_map"}
+    assets = _manifest_assets(payload)
+    assert assets
+    assert all(
+        {"id", "kind", "path", "mode", "entry_point", "loading"} <= set(asset) for asset in assets
+    )
     assert isinstance(payload["diagnostics"], list)
 
 
@@ -175,13 +189,17 @@ def test_dynamic_render_advertised_assets_are_actually_serveable(served_root: Pa
     or scripts with no obvious server-side error. This pin catches that."""
 
     payload = _render({"path": "docs/smoke.md", "view": "rendered"})
-    css_urls: list[str] = payload["assets"]["css"]
-    js_urls: list[str] = payload["assets"]["js"]
-    assert css_urls, "render response advertised zero CSS assets"
-    assert js_urls, "render response advertised zero JS assets"
+    assets = _manifest_assets(payload)
+    browser_entries = [asset for asset in assets if asset["entry_point"]]
+    assert any(asset["loading"] == "stylesheet" for asset in browser_entries)
+    assert any(asset["loading"] in {"module", "classic"} for asset in browser_entries)
+    assert any(not asset["entry_point"] for asset in assets), (
+        "manifest must retain dependency-only resources without loading them directly"
+    )
 
     static_prefix = re.compile(r"^/kpress-static/")
-    for url in css_urls + js_urls:
+    for asset in assets:
+        url = asset["public_url"]
         assert static_prefix.match(url), f"unexpected asset URL shape: {url!r}"
         rel = url[len("/kpress-static/") :]
         response = asyncio.run(server.kpress_static_asset(_request(path_params={"path": rel})))
@@ -319,9 +337,10 @@ def test_dynamic_render_emits_image_and_math_wrappers(math_and_image_root: Path)
 
     # The runtime should advertise KaTeX assets when math is present, so
     # the SPA loads them lazily on first render.
-    css_advertised = " ".join(payload["assets"]["css"]).lower()
-    js_advertised = " ".join(payload["assets"]["js"]).lower()
-    assert "katex" in css_advertised or "katex" in js_advertised, (
-        f"math doc rendered but KaTeX assets not advertised: "
-        f"css={payload['assets']['css']!r}, js={payload['assets']['js']!r}"
-    )
+    assets = _manifest_assets(payload)
+    katex_assets = [asset for asset in assets if "katex" in asset["path"].lower()]
+    assert katex_assets, "math doc rendered but KaTeX assets were not in the manifest"
+    assert any(
+        asset["entry_point"] and asset["loading"] in {"stylesheet", "classic"}
+        for asset in katex_assets
+    ), "KaTeX manifest closure has no browser entry points"

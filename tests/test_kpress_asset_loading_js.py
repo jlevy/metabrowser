@@ -19,7 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "kpress_asset_loading.js"
 
 
-def test_kpress_browser_assets_load_as_es_modules() -> None:
+def test_kpress_browser_assets_honor_manifest_loading_modes() -> None:
     if shutil.which("node") is None:
         pytest.skip("node not available; skipping JS-side KPress asset-loading shim")
 
@@ -35,12 +35,18 @@ def test_kpress_browser_assets_load_as_es_modules() -> None:
     )
 
     payload = json.loads(result.stdout.strip().splitlines()[-1])
-    scripts = [node for node in payload["appended"] if node["tagName"] == "SCRIPT"]
+    scripts = [
+        node
+        for node in payload["appended"]
+        if node["tagName"] == "SCRIPT" and node["type"] != "importmap"
+    ]
     # theme.js is skipped (metabrowser owns the theme); toc.js is loaded via
     # dynamic import (so the host drives initKpressToc per render) and is not
-    # appended as a script tag; every other asset loads as an ordered ES module.
+    # appended as a script tag; dependency-only runtime.js is also not emitted.
+    # The remaining module and classic entry points preserve manifest order.
     assert [script["src"] for script in scripts] == [
-        "/kpress-static/js/code-copy.js",
+        "/kpress-static/v0.2.0/js/code-copy.js",
+        "/kpress-static/v0.2.0/katex/katex.min.js",
     ]
-    assert all(script["type"] == "module" for script in scripts)
+    assert [script["type"] for script in scripts] == ["module", "text/javascript"]
     assert all(script["async"] is False for script in scripts)

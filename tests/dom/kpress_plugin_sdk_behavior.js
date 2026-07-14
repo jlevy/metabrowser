@@ -33,6 +33,14 @@ if (args.length !== 1) {
 
 const repoRoot = path.resolve(args[0]);
 
+function assetManifest(assets = [], importMap = {}) {
+  return {
+    schema_version: "kpress-asset-manifest-v2",
+    assets,
+    import_map: importMap,
+  };
+}
+
 // ── Sandbox setup ─────────────────────────────────────────────────────────
 
 const appended = [];
@@ -143,7 +151,7 @@ const sandbox = {
         profile: "document",
         printable: true,
         diagnostics: [],
-        assets: { css: [], js: [] },
+        assets: assetManifest(),
       }),
     };
   },
@@ -169,7 +177,17 @@ async function check_loadStylesheet_waits_for_onload() {
   let resolved = false;
   appended.length = 0;
   pendingOnload.length = 0;
-  const p = loadKpressAssets({ css: ["/css/late.css"], js: [] }).then(() => {
+  const p = loadKpressAssets(
+    assetManifest([
+      {
+        id: "css/late.css",
+        path: "css/late.css",
+        public_url: "/css/late.css",
+        entry_point: true,
+        loading: "stylesheet",
+      },
+    ]),
+  ).then(() => {
     resolved = true;
   });
 
@@ -226,7 +244,7 @@ async function check_fetchKpressRender_aborts_previous() {
         profile: "document",
         printable: true,
         diagnostics: [],
-        assets: { css: [], js: [] },
+        assets: assetManifest(),
       }),
     };
   };

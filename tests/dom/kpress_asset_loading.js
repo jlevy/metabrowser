@@ -42,6 +42,7 @@ function makeElement(tagName) {
     src: "",
     type: "",
     async: true,
+    textContent: "",
     onload: null,
     onerror: null,
     setAttribute(name, value) {
@@ -63,6 +64,7 @@ const fakeParent = {
       src: element.src,
       type: element.type,
       async: element.async,
+      textContent: element.textContent,
     });
     if (typeof element.onload === "function") {
       element.onload();
@@ -112,16 +114,58 @@ const sandbox = {
         printable: true,
         diagnostics: [],
         assets: {
-          css: ["/kpress-static/css/document.css"],
+          schema_version: "kpress-asset-manifest-v2",
+          assets: [
+            {
+              id: "css/document.css",
+              path: "css/document.css",
+              public_url: "/kpress-static/v0.2.0/css/document.css",
+              entry_point: true,
+              loading: "stylesheet",
+            },
+            {
+              id: "js/runtime.js",
+              path: "js/runtime.js",
+              public_url: "/kpress-static/v0.2.0/js/runtime.js",
+              entry_point: false,
+              loading: "module",
+            },
+            {
+              id: "js/theme.js",
+              path: "js/theme.js",
+              public_url: "/kpress-static/v0.2.0/js/theme.js",
+              entry_point: true,
+              loading: "module",
+            },
+            {
+              id: "js/code-copy.js",
+              path: "js/code-copy.js",
+              public_url: "/kpress-static/v0.2.0/js/code-copy.js",
+              entry_point: true,
+              loading: "module",
+            },
+            {
+              id: "js/toc.js",
+              path: "js/toc.js",
+              public_url: "/kpress-static/v0.2.0/js/toc.js",
+              entry_point: true,
+              loading: "module",
+            },
+            {
+              id: "katex/katex.min.js",
+              path: "katex/katex.min.js",
+              public_url: "/kpress-static/v0.2.0/katex/katex.min.js",
+              entry_point: true,
+              loading: "classic",
+            },
+          ],
           // theme.js is skipped (metabrowser owns the theme). toc.js is loaded
           // via dynamic import (so the host can call its initKpressToc per
-          // render) — it is never appended as a <script> tag. code-copy.js is a
-          // plain enhancement appended as an ordered module script.
-          js: [
-            "/kpress-static/js/theme.js",
-            "/kpress-static/js/code-copy.js",
-            "/kpress-static/js/toc.js",
-          ],
+          // render) — it is never appended as a <script> tag. Dependency-only
+          // runtime.js also receives no tag.
+          import_map: {
+            "/kpress-static/js/runtime.js": "/kpress-static/v0.2.0/js/runtime.js",
+          },
         },
       }),
     };
@@ -158,31 +202,59 @@ sandbox.metabrowser
     const scripts = appended.filter((el) => el.tagName === "SCRIPT");
     assert(links.length === 1, `expected one stylesheet, got ${links.length}`);
     assert(links[0].rel === "stylesheet", "stylesheet rel was not set");
-    assert(links[0].href === "/kpress-static/css/document.css", "stylesheet href was not set");
+    assert(
+      links[0].href === "/kpress-static/v0.2.0/css/document.css",
+      "stylesheet href was not set",
+    );
     assert(
       Object.hasOwn(links[0].attrs, "data-kpress-asset"),
       "stylesheet missing data-kpress-asset marker",
     );
 
-    // Only code-copy.js is appended as a <script> tag: theme.js is skipped
-    // (metabrowser owns the theme) and toc.js is loaded via dynamic import (so
-    // the host can drive its initKpressToc per render), so neither appears as a
-    // script tag.
-    const scriptSrcs = scripts.map((el) => el.src);
+    const importMaps = scripts.filter((el) => el.type === "importmap");
+    assert(importMaps.length === 1, `expected one import map, got ${importMaps.length}`);
+    const importMap = JSON.parse(importMaps[0].textContent);
     assert(
-      scripts.length === 1,
-      `expected one script tag (code-copy.js), got ${scripts.length}: ${scriptSrcs.join(", ")}`,
+      importMap.imports["/kpress-static/js/runtime.js"] === "/kpress-static/v0.2.0/js/runtime.js",
+      "KPress import map was not installed",
+    );
+
+    // Only code-copy.js and the classic KaTeX entry point receive executable
+    // script tags: theme.js is skipped
+    // (metabrowser owns the theme) and toc.js is loaded via dynamic import (so
+    // the host can drive its initKpressToc per render). runtime.js is a
+    // dependency-only entry and is resolved by module imports.
+    const loadedScripts = scripts.filter((el) => el.type !== "importmap");
+    const scriptSrcs = loadedScripts.map((el) => el.src);
+    assert(
+      loadedScripts.length === 2,
+      `expected module + classic entry points, got ${loadedScripts.length}: ${scriptSrcs.join(", ")}`,
     );
     assert(
-      scriptSrcs[0] === "/kpress-static/js/code-copy.js",
+      scriptSrcs[0] === "/kpress-static/v0.2.0/js/code-copy.js",
       `expected code-copy.js to load, got ${scriptSrcs[0]}`,
     );
+    assert(loadedScripts[0].type === "module", "code-copy.js was not loaded as a module");
     assert(
-      !scriptSrcs.some((src) => src.endsWith("/theme.js") || src.endsWith("/toc.js")),
-      `theme.js/toc.js must not be appended as script tags: ${scriptSrcs.join(", ")}`,
+      scriptSrcs[1] === "/kpress-static/v0.2.0/katex/katex.min.js",
+      `expected classic KaTeX script to load, got ${scriptSrcs[1]}`,
     );
-    for (const script of scripts) {
-      assert(script.type === "module", `${script.src} was not loaded as an ES module`);
+    assert(
+      loadedScripts[1].type === "text/javascript",
+      "classic KPress entry point was loaded as a module",
+    );
+    assert(
+      !scriptSrcs.some(
+        (src) =>
+          src.endsWith("/theme.js") || src.endsWith("/toc.js") || src.endsWith("/runtime.js"),
+      ),
+      `theme/toc/dependency scripts must not be appended: ${scriptSrcs.join(", ")}`,
+    );
+    assert(
+      appended.indexOf(importMaps[0]) < appended.indexOf(loadedScripts[0]),
+      "import map must be installed before module entry points",
+    );
+    for (const script of loadedScripts) {
       assert(script.async === false, `${script.src} should preserve script execution order`);
       assert(
         Object.hasOwn(script.attrs, "data-kpress-asset"),

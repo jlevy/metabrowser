@@ -3,4 +3,4 @@ exclude-newer = "14 days"
 
 [exclude-newer-package]
 flowmark-rs = "2026-05-31T00:00:00Z"
-kpress = "2026-07-14T00:00:00Z"
+kpress = "2026-07-15T00:00:00Z"

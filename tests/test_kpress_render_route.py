@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
-from kpress import __version__
+from kpress import ASSET_MANIFEST_SCHEMA_VERSION, __version__
 
 from metabrowser import kpress_adapter, server
 
@@ -37,6 +37,14 @@ def _request(
 
 def _json_body(response: Any) -> dict[str, Any]:
     return json.loads(response.body)
+
+
+def _empty_asset_manifest() -> dict[str, object]:
+    return {
+        "schema_version": ASSET_MANIFEST_SCHEMA_VERSION,
+        "assets": [],
+        "import_map": {},
+    }
 
 
 def test_kpress_render_invalid_request_maps_to_400(tmp_path: Path, monkeypatch) -> None:
@@ -83,7 +91,7 @@ def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch)
             "html": '<article class="kpress kpress-doc">ok</article>',
             "profile": "document",
             "printable": True,
-            "assets": {"css": [], "js": []},
+            "assets": _empty_asset_manifest(),
             "diagnostics": [],
         }
 
@@ -210,7 +218,19 @@ def test_kpress_adapter_builds_runtime_request(monkeypatch) -> None:
             "html": "<article>rendered</article>",
             "profile": request.kwargs["profile"],
             "printable": True,
-            "assets": {"css": ["/kpress-static/css/document.css"], "js": []},
+            "assets": {
+                "schema_version": ASSET_MANIFEST_SCHEMA_VERSION,
+                "assets": [
+                    {
+                        "id": "css/document.css",
+                        "path": "css/document.css",
+                        "public_url": "/kpress-static/css/document.css",
+                        "entry_point": True,
+                        "loading": "stylesheet",
+                    }
+                ],
+                "import_map": {},
+            },
             "diagnostics": [],
         }
 

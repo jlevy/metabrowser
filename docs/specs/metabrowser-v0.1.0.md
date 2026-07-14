@@ -16,7 +16,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 ## Goals
 
 - Publish the `metabrowser` package for Python 3.12 and newer
-- Depend on the exact audited `kpress==0.1.0` release
+- Depend on the exact audited `kpress==0.2.0` release
 - Preserve the Python, server, browser, file-format, and plugin contracts covered by the
   test suite
 - Use the simple-modern-uv project structure with uv, Ruff, BasedPyright, pytest, Biome,
@@ -73,8 +73,11 @@ Connect trusted publishing without a package token.
 
 - [x] Add package source, built-in plugins, browser assets, typed-package metadata, and
   behavior-focused tests
-- [x] Declare `kpress==0.1.0` as a required runtime dependency and remove alternate
+- [x] Declare `kpress==0.2.0` as a required runtime dependency and remove alternate
   Markdown rendering paths
+- [x] Consume the KPress v2 asset manifest end to end, including dependency-only
+  resources, browser entry-point roles, stylesheet/module/classic loading modes, and
+  import maps
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
 - [x] Add CI, tag-driven publishing, dependency policy, and artifact inspection
@@ -124,7 +127,7 @@ Connect trusted publishing without a package token.
 - Build and inspect the source distribution and wheel
 - Install the wheel in an isolated uv environment and import the package
 - Exercise command-line, server, plugin, filesystem, event, and KPress integration
-  behavior through tests
+  behavior through tests, including the complete KPress asset-manifest closure
 - Require GitHub Actions to pass before merge and rerun the same gates against release
   artifacts before announcing publication
 
@@ -160,7 +163,7 @@ distribution, and Python 3.12 through 3.14 jobs.
 - License: MIT
 - First release: `v0.1.0`
 - Supported Python: 3.12 through 3.14
-- Markdown renderer: exact `kpress==0.1.0`
+- Markdown renderer: exact `kpress==0.2.0`
 - Dependency manager and build workflow: uv and simple-modern-uv
 - Browser development toolchain: exact npm lock with Node 24.18.0 and npm 11.10 or newer
 - Issue prefix: `mb-`

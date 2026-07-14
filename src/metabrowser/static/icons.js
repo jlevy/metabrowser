@@ -8,7 +8,7 @@
 // Icons are Lucide v1.17.0 (ISC; https://lucide.dev) unless a comment
 // marks the entry as bespoke. The comment beside each entry is the
 // Lucide icon id, so a glyph can be updated or swapped deliberately.
-// See https://github.com/jlevy/kpress/blob/v0.1.0/docs/kpress-icons.md for the shared
+// See https://github.com/jlevy/kpress/blob/v0.2.0/docs/kpress-icons.md for the shared
 // icon contract, the add/swap process, and the kpress<->metabrowser glyph map.
 //
 // Icons are stored as raw SVG with no contextual classes. Callers
