@@ -28,6 +28,7 @@ import typer
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.errors import CLIError
 from metabrowser.plugin_loader.discovery import LoadedPlugin, discover_plugins
+from metabrowser.plugin_loader.manifest import DataHookSpec
 
 plugins_app = typer.Typer(
     name="plugins",
@@ -50,6 +51,20 @@ def _format_table(rows: list[list[str]], headers: list[str]) -> str:
     for row in rows:
         lines.append(fmt.format(*row))
     return "\n".join(lines)
+
+
+def _active_data_hooks(plugin: LoadedPlugin) -> list[DataHookSpec]:
+    """Return only hooks the server will register for this plugin source."""
+    if plugin.source.startswith("local:"):
+        return []
+    return list(plugin.manifest.data_hook)
+
+
+def _disabled_data_hooks(plugin: LoadedPlugin) -> list[DataHookSpec]:
+    """Return hooks suppressed by the operator-directory trust boundary."""
+    if plugin.source.startswith("local:"):
+        return list(plugin.manifest.data_hook)
+    return []
 
 
 @plugins_app.command("list")
@@ -82,7 +97,8 @@ def cmd_list(
                     "kinds": sorted({k.id for k in p.manifest.kind}),
                     "views": [view.id for view in p.manifest.view],
                     "view_count": len(p.manifest.view),
-                    "data_hooks": [h.route for h in p.manifest.data_hook],
+                    "data_hooks": [h.route for h in _active_data_hooks(p)],
+                    "disabled_data_hooks": [h.route for h in _disabled_data_hooks(p)],
                 }
                 for p in result.plugins
             ],
@@ -100,7 +116,7 @@ def cmd_list(
                 p.source,
                 ",".join(kinds) if kinds else "-",
                 str(len(p.manifest.view)),
-                ",".join(h.route for h in p.manifest.data_hook) or "-",
+                ",".join(h.route for h in _active_data_hooks(p)) or "-",
             ]
         )
     headers = ["NAME", "SOURCE", "KINDS", "VIEWS", "HOOKS"]
@@ -153,9 +169,16 @@ def cmd_show(
         typer.echo(f"  - {v.kind}/{v.id} '{v.label}'{default}")
     typer.echo("")
     typer.echo("data hooks:")
-    for h in plugin.manifest.data_hook:
+    active_hooks = _active_data_hooks(plugin)
+    disabled_hooks = _disabled_data_hooks(plugin)
+    for h in active_hooks:
         methods = ",".join(h.methods)
         typer.echo(f"  - {h.route} [{methods}] -> {h.sidekick}")
+    if disabled_hooks:
+        routes = ", ".join(h.route for h in disabled_hooks)
+        typer.echo(f"  (disabled for operator-directory plugins: {routes})")
+    elif not active_hooks:
+        typer.echo("  (none)")
     typer.echo("")
     typer.echo("assets in static_root:")
     if plugin.static_root.is_dir():

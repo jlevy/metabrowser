@@ -238,7 +238,7 @@ def walk(
     subpath: str = typer.Option(
         "",
         "--path",
-        help="Subtree (relative to root) to dump for the all-at-once tree envelope.",
+        help="Subtree (relative to root) for a JSON/YAML all-at-once tree envelope.",
     ),
     detail: str = typer.Option(
         "all",
@@ -279,6 +279,8 @@ def walk(
         raise CLIError(f"{resolved} is not a directory")
     if fmt not in FORMATS:
         raise CLIError(f"invalid --format {fmt!r}; expected one of {', '.join(FORMATS)}")
+    if subpath and (fmt == "text" or stream):
+        raise CLIError("--path requires --format json or yaml with --all-at-once")
     if subpath:
         _validate_contained_path(resolved, subpath)
 

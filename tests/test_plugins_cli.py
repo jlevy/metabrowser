@@ -86,3 +86,45 @@ sidekick = "nonexistent.module:nope"
     assert result.exit_code != 0
     assert "broken" in result.stdout
     assert "JavaScript-only" in result.stdout
+
+
+def test_plugins_diagnostics_do_not_advertise_disabled_local_hooks(tmp_path: Path) -> None:
+    pdir = tmp_path / "local-demo"
+    pdir.mkdir()
+    (pdir / "manifest.toml").write_text(
+        """
+[plugin]
+name = "local-demo"
+
+[[kind]]
+id = "x"
+match = { ext = ".x" }
+
+[[data_hook]]
+route = "boom"
+sidekick = "nonexistent.module:nope"
+"""
+    )
+    (pdir / "index.js").write_text("// stub\n")
+
+    json_result = _runner.invoke(
+        plugins_app,
+        ["list", "--json", "--plugins-dir", str(tmp_path)],
+    )
+    assert json_result.exit_code == 0
+    data = json.loads(json_result.stdout)
+    local = next(plugin for plugin in data["plugins"] if plugin["name"] == "local-demo")
+    assert local["data_hooks"] == []
+    assert local["disabled_data_hooks"] == ["boom"]
+
+    table_result = _runner.invoke(plugins_app, ["list", "--plugins-dir", str(tmp_path)])
+    assert table_result.exit_code == 0
+    assert "boom" not in table_result.stdout
+
+    show_result = _runner.invoke(
+        plugins_app,
+        ["show", "local-demo", "--plugins-dir", str(tmp_path)],
+    )
+    assert show_result.exit_code == 0
+    assert "disabled for operator-directory plugins" in show_result.stdout
+    assert "nonexistent.module:nope" not in show_result.stdout

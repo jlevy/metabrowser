@@ -204,6 +204,20 @@ def test_walk_rejects_subpaths_outside_root(tmp_path: Path) -> None:
         assert "outside the served root" in str(result.exception)
 
 
+def test_walk_rejects_path_in_modes_that_cannot_scope_to_a_subtree(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    (root / "nested").mkdir(parents=True)
+
+    for args in (
+        ["walk", str(root), "--path", "nested"],
+        ["walk", str(root), "--format", "json", "--stream", "--path", "nested"],
+    ):
+        result = runner.invoke(_app, args)
+
+        assert isinstance(result.exception, CLIError)
+        assert "--path requires --format json or yaml with --all-at-once" in str(result.exception)
+
+
 def test_server_module_execution_delegates_to_canonical_cli() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "metabrowser.server", "--help"],
