@@ -1,0 +1,55 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+env:
+  # Supply-chain cool-off: only consider releases older than this, so the publish
+  # build never resolves packages too new to have been vetted. uv (>= 0.9, and the
+  # version pinned below) accepts a relative duration directly. See the Supply Chain
+  # Hardening section in docs/development.md.
+  UV_EXCLUDE_NEWER: "14 days"
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Mandatory for OIDC.
+      contents: read
+    steps:
+      - name: Checkout (official GitHub action)
+        # Pinned to a full commit SHA (see supply-chain notes in
+        # docs/development.md); bump deliberately when updating.
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Important for versioning plugins:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv (official Astral action)
+        # Pinned to a full commit SHA (see note in ci.yml).
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.25"
+          # uv-x86_64-unknown-linux-gnu.
+          checksum: "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Set up Python (using uv)
+        run: uv python install
+
+      - name: Install all dependencies
+        # --frozen: install exactly from the committed uv.lock, never re-resolving
+        # (UV_EXCLUDE_NEWER, set above, governs any resolution that does happen).
+        run: uv sync --all-extras --all-groups --frozen
+
+      - name: Run tests
+        run: make lint-check test
+
+      - name: Build package
+        run: make build
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always

@@ -1,0 +1,144 @@
+"""Tests for the metabrowser CLI bare-form rewrite + plugins subcommand routing.
+
+The CLI accepts both ``metabrowser <root>`` (bare form, legacy invocation)
+and ``metabrowser serve <root>`` (explicit). The bare-form rewrite in
+``metabrowser.cli.serve._rewrite_bare_form`` decides which one's running
+based on whether the first positional looks like a known subcommand or a
+flag — anything else is forwarded to ``serve``.
+
+``metabrowser /tmp`` previously failed
+with ``No such command '/tmp'`` because Typer parsed ``/tmp`` as a
+subcommand name.
+"""
+
+from __future__ import annotations
+
+from typing import Protocol
+
+from click import unstyle
+from typer.testing import CliRunner
+
+from metabrowser.cli.serve import _app, _rewrite_bare_form
+from metabrowser.errors import CLIError
+
+runner = CliRunner()
+
+
+class _ResultWithOutput(Protocol):
+    """Structural result type shared by Click and Typer test runners."""
+
+    @property
+    def output(self) -> str:
+        """Return captured terminal output."""
+        ...
+
+
+def _plain_output(result: _ResultWithOutput) -> str:
+    """Strip ANSI escape codes from a CliRunner result for substring asserts.
+
+    Rich-rendered Typer help on narrow terminals (e.g. GitHub Actions) inserts
+    color/style codes mid-word, which breaks literal substring searches like
+    ``"--path" in result.output``. ``click.unstyle`` removes them.
+    """
+    return unstyle(result.output)
+
+
+# ── argv-rewrite unit tests ────────────────────────────────────
+
+
+def test_rewrite_bare_form_inserts_serve_for_path_arg() -> None:
+    assert _rewrite_bare_form(["./runs"]) == ["serve", "./runs"]
+    assert _rewrite_bare_form(["/tmp", "--no-open"]) == ["serve", "/tmp", "--no-open"]
+
+
+def test_rewrite_bare_form_passes_through_known_subcommands() -> None:
+    assert _rewrite_bare_form(["plugins", "list"]) == ["plugins", "list"]
+    assert _rewrite_bare_form(["serve", "./runs"]) == ["serve", "./runs"]
+
+
+def test_rewrite_bare_form_passes_through_flags() -> None:
+    assert _rewrite_bare_form(["--help"]) == ["--help"]
+    assert _rewrite_bare_form(["-v"]) == ["-v"]
+
+
+def test_rewrite_bare_form_passes_through_empty() -> None:
+    assert _rewrite_bare_form([]) == []
+
+
+# ── End-to-end CLI tests ───────────────────────────────────────
+
+
+def test_cli_help_works() -> None:
+    result = runner.invoke(_app, ["--help"])
+    assert result.exit_code == 0
+    assert "serve" in result.output
+    assert "plugins" in result.output
+    assert "remote" in result.output
+
+
+def test_cli_empty_command_shows_help_instead_of_serving_default_root() -> None:
+    result = runner.invoke(_app, [])
+    assert result.exit_code == 0
+    assert "Usage" in result.output
+    assert "serve" in result.output
+
+
+def test_rewrite_bare_form_passes_through_remote_subcommand() -> None:
+    """``remote`` is a known subcommand — rewriter must not prepend ``serve``."""
+    assert _rewrite_bare_form(["remote", "my-vm"]) == ["remote", "my-vm"]
+
+
+def test_cli_remote_help_works() -> None:
+    """``metabrowser remote --help`` exits cleanly and shows the SSH target arg."""
+    result = runner.invoke(_app, ["remote", "--help"])
+    output = _plain_output(result)
+    assert result.exit_code == 0
+    assert "metabrowser remote" in output
+    assert "HOST" in output
+    assert "--path" in output
+
+
+def test_cli_remote_requires_explicit_path() -> None:
+    result = runner.invoke(_app, ["remote", "my-vm"])
+    output = _plain_output(result)
+    assert result.exit_code != 0
+    assert "--path" in output
+
+
+def test_cli_plugins_list_works() -> None:
+    result = runner.invoke(_app, ["plugins", "list"])
+    assert result.exit_code == 0
+    # Built-in plugins should always be discovered.
+    assert "agent-log" in result.output
+    assert "markdown" in result.output
+
+
+def test_cli_serve_help_works() -> None:
+    """``metabrowser serve --help`` exits cleanly and prints the usage line.
+
+    Avoids asserting on individual flag names because Typer's rich pretty
+    printer line-wraps the options table at the terminal width — in
+    narrow terminals (CI runners, occasionally) some option labels can
+    end up split across multiple lines or hidden inside ANSI escape
+    sequences and the substring search misses them. The Usage line
+    (``metabrowser serve``) is stable.
+    """
+    result = runner.invoke(_app, ["serve", "--help"])
+    assert result.exit_code == 0
+    assert "metabrowser serve" in result.output
+    assert "ROOT" in result.output
+
+
+def test_cli_bare_form_rewrite_routes_to_serve() -> None:
+    """End-to-end: passing the rewritten args through Typer hits ``serve``
+    and fails on the (nonexistent) directory check, NOT on subcommand
+    routing.
+    """
+    rewritten = _rewrite_bare_form(["/this/path/does/not/exist/anywhere"])
+    result = runner.invoke(_app, rewritten)
+    # The serve command runs; nonexistent path raises CLIError with
+    # 'is not a directory' rather than Typer's 'No such command'.
+    assert "No such command" not in result.output
+
+    assert isinstance(result.exception, CLIError)
+    assert "not a directory" in str(result.exception)

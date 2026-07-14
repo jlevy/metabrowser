@@ -1,0 +1,21 @@
+[plugin]
+name = "unknown-jsonl"
+display_name = "Unknown JSONL"
+version = "0.0.1"
+
+# Catch-all for .jsonl files where adapter sniffing returns no known
+# adapter. The legacy detector returned "unknown-jsonl" for this case;
+# the manifest can't easily express "any .jsonl that no other rule
+# claimed" so we leave the assignment to classify_file_kind's fallback
+# in metabrowser.file_kinds. The plugin's job here is to declare the
+# views the kind exposes.
+
+[[view]]
+kind = "unknown-jsonl"
+id = "log"
+label = "Log"
+
+[[view]]
+kind = "unknown-jsonl"
+id = "raw"
+label = "Raw JSON"

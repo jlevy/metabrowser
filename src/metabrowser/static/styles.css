@@ -1,0 +1,2885 @@
+/* ─────────────────────────────────────────────────────────────────
+   Design system — HSL color tokens + elevation tokens, no literals
+   outside :root.
+
+   Every color AND every box-shadow in this app is defined ONCE as a
+   --token on :root and referenced via var(--token) everywhere else
+   (CSS rules, inline styles emitted by Python, chart configs resolved
+   by JS). Literal hex / rgb / rgba / hsl values must not appear
+   outside :root. Enforced for viz.css by
+   tests/test_viz_css_no_literal_colors.py; the same rule applies by
+   convention to the rest of the app.
+
+   Why HSL (hsl(H S% L%) / hsl(H S% L% / A))?
+
+     1. Hue encodes *family*. Tokens that share a hue are meant to
+        read as related. Example — adapter and model chips both sit
+        on ~sea-green (~160°); file-age grades walk a continuous
+        warm→cool→grey ramp (red→amber→green→blue→grey); chart
+        threshold colors use the same info / warning / error hues
+        as the status palette so dashboards and alerts speak the
+        same language. To introduce a new token, pick the hue that
+        places it in the right family first — do not pick a color
+        that "looks nice" in isolation.
+
+     2. Lightness is the retune knob. To make a dark theme or a
+        higher-contrast variant, hold H and S roughly fixed and
+        invert/shift L. A pair like "--viz-chip-adapter-bg" /
+        "--viz-chip-adapter-text" is two lightness stops on one
+        hue — so bg and text retune together when either is
+        adjusted. Never shift hue to dim a color; lower L.
+
+     3. Saturation is the loudness knob. Chart callouts, age
+        warnings, and status dots are higher S; body text, borders,
+        and surfaces are low S. If a new token reads as too noisy,
+        drop S before dropping L.
+
+     4. Alpha is L4 syntax: hsl(H S% L% / 0.5). This lets us derive
+        translucent variants at the point of use (chart fills,
+        annotation backgrounds) without a separate -a-20 token for
+        every color. The JS helper colorWithAlpha() in app.js
+        applies alpha to any hsl() at runtime.
+
+   How to add a color token: add it in :root below, next to the
+   family it belongs to, with a one-line comment naming the use site
+   and the reason this color (not a nearby one) is correct. Never
+   inline a literal in a rule; if the existing tokens don't cover
+   your case, add one here first.
+
+   Elevation (drop shadows):
+
+     Three semantic levels. Pick by depth, not by measuring pixels —
+     the token you reach for should describe what the surface is
+     doing, not how many pixels of blur it has.
+
+       --shadow-sm — resting cards, default card state. Barely-there
+                     1px lift; used by .viz-node at rest so the card
+                     separates from the canvas without advertising.
+       --shadow-md — hover lift + pane separators (toolbar, header).
+                     Readable elevation; signals interactivity or
+                     marks the boundary between two stacked regions.
+       --shadow-pane-right — directional separator at --shadow-md
+                     strength for vertical pane boundaries.
+       --shadow-lg — floating panels (tooltip, modal-style drawer).
+                     Detached surface that sits over arbitrary
+                     content — shadow has to be visible over any bg.
+
+     Never hand-roll a `box-shadow: 0 Xpx Ypx ...` in a rule. If the
+     three stops don't fit, add a fourth semantic token here first.
+
+   Shared visual conventions — reuse, don't re-derive:
+
+     Every recurring visual idiom in this app has exactly one
+     implementation. When a new site needs the same idea, call the
+     same helper / use the same class — don't copy the ternary, don't
+     re-invent the threshold. If the existing convention doesn't
+     quite fit, generalize the helper instead of forking it. When in
+     doubt: grep for the convention name below before writing.
+
+       File sizes (.size / sizeHtml() in app.js)
+           Every byte-count readout — file tree row, file header,
+           app header, drawer, tooltip — routes through
+           `sizeHtml(bytes)`. The helper formats via formatSize()
+           AND applies `.size-large` (= font-weight: bold) above a
+           single shared threshold (SIZE_LARGE_THRESHOLD). Big reads
+           as bold, small as normal, EVERYWHERE. Never render a byte
+           count with a bare formatSize() call + custom weight logic
+           in a one-off site — adjust the threshold in one place.
+
+       File-type colors (.ft-<name> + --ft-*) — see the block in
+       :root. Each subtype is one hue triplet (--ft-color, --ft-bg,
+       --ft-border); consumers read the generic names.
+
+       Identity blocks (_section("Identity", _xIdentityRows(node)))
+           in viz.js — rendered identically in the drawer and the
+           hover tooltip. Drawer is a strict superset; tooltip is
+           Identity only. Adding a field means editing one helper.
+
+       Text selection
+           Selection is semantic, not a pane-level styling shortcut.
+           Informational text — warnings, status messages, labels that
+           explain state, errors, logs, file contents, docs — stays
+           selectable so users can copy it into search, bug reports, or
+           debugging notes. Disable selection only on controls whose
+           primary purpose is click/drag/toggle navigation: tree rows,
+           tab buttons, resize handles, disclosure summaries, and graph
+           nodes. Never put `user-select: none` on a container just
+           because its children are mostly interactive.
+
+       Progress spinners
+           Every spinner that communicates loading or progress uses the
+           neutral spinner tokens: a light grey track and a darker grey
+           rotating segment. Do not use link, brand, status, file-age,
+           or chart hues for spinner rings.
+
+     The rule: if two pieces of UI are showing the same kind of
+     information, they must look the same. Consistency is not "a
+     nice-to-have" here — it's a design-system invariant that makes
+     the app legible.
+   ───────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: light;
+
+  /* Layout */
+  /* Interface font sets. The gear-menu dropdown writes the chosen set's value to
+     [data-app-font] on <html> (cookie metabrowser.interfaceFont); the option
+     list is the server's _FONT_SETS registry. Two sets today:
+       clean  - KPress's vendored faces everywhere: Source Sans 3 for chrome +
+                embedded UI, PT Serif for embedded prose. The @font-face rules
+                come from KPress's style-tokens.css, linked once in <head>, so
+                the woff2 files download a single time and are shared by the
+                chrome and the embedded document (no second copy, no FOUT once
+                preloaded).
+       system - the platform UI sans + platform serif (macOS: system-ui and
+                ui-serif "New York"); no web fonts are fetched.
+     Clean is the default and lives in this :root base; each additional set is a
+     `html[data-app-font="<value>"]` block below (see "system"). To add a set:
+     add a _FONT_SETS entry (server) and one such block here. */
+  --app-sans-clean:
+    "Source Sans 3 Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --app-sans-system: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --app-serif-system: ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: var(--app-sans-clean);
+  --font-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+
+  /* KPress host bridge tokens. MetaBrowser owns shell tokens; KPress owns
+     document rendering. KPress style-tokens.css declares each --kpress-doc-*
+     as var(--kpress-host-*, <default>), so setting --kpress-host-* on :root
+     lets the host's palette flow into the embedded document scope.
+     In the default "clean" font set only COLOR tokens are bridged: the
+     document keeps KPress's vendored faces (PT Serif prose / Source Sans UI),
+     so the host font tokens are left unset and fall back to KPress's vendored
+     stacks. `[data-app-font="system"]` (below) additionally bridges the font
+     tokens to the platform stacks; `data-prose-font="sans"` bridges just
+     --kpress-host-font-prose to --prose-sans-font (also below). */
+  --kpress-measure: 48rem;
+  --kpress-host-bg: var(--bg);
+  --kpress-host-text: var(--text);
+  --kpress-host-muted: var(--muted);
+  --kpress-host-border: var(--border);
+  --kpress-host-link: var(--link);
+  --kpress-print-page-margin: 0.65in;
+  --kpress-print-font-size: 11pt;
+  /* Sans face for the "sans" reading mode. Points at the interface sans
+     palette (--app-sans-clean, repointed to system under [data-app-font=
+     "system"]) rather than var(--font-sans): KPress redeclares --font-sans
+     inside its own `.kpress` scope, so a reference would resolve to KPress's
+     scoped Source Sans at the document, not the host token. --app-sans-* are
+     host-only and never redeclared by KPress, so they resolve correctly when
+     bridged into the embedded scope. */
+  --prose-sans-font: var(--app-sans-clean);
+
+  /* Font sizes are px (not rem/em) by deliberate choice: the app does
+     not scale with the browser's default font-size preference, and any
+     change to that policy should be a coordinated migration of every
+     token below — never a one-off rem at a single use site. Use these
+     tokens at use sites; do not inline pixel literals in rules. */
+  --body-font-size: 14px;
+  --mono-block-font-size: 13px;
+
+  --tree-pane-width: 300px;
+
+  /* Font weights — three-weight system: normal (body), medium (pills /
+     chips only), bold (headings + emphasis). Use these tokens everywhere
+     rather than hard-coded numeric weights. Medium is reserved for pill
+     text so the labels inside chips feel a touch heavier than body copy
+     without competing with header-level bold. */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  /* Small-caps label style (shared by table headers, stat labels, section labels) */
+  --label-font-size: 11px;
+  --label-font-weight: var(--weight-bold);
+  --label-letter-spacing: 0.05em;
+  --label-text-transform: uppercase;
+  --label-color: var(--muted);
+
+  /* "Panel" envelope — the bordered, rounded frame shared by markdown
+     tables and frontmatter blocks (and any future similar surface).
+     Putting these on :root keeps the visual treatment consistent across
+     every prose-embedded panel and avoids repeating the same shorthand
+     literals at each site. */
+  --panel-border: 1px solid var(--border);
+  --panel-header-bg: var(--sidebar-bg);
+  --panel-cell-padding: 0.35rem 0.6rem;
+
+  /* Border-radius tokens — split into "chrome" (interactive UI:
+     buttons, badges, chips, bars, controls, tooltips, log rows)
+     and "document" (content surfaces: cards, panels, code blocks,
+     inline code, tables, frontmatter). Both default to 0 (square)
+     so corners can be re-introduced by editing one var; the split
+     lets chrome and document diverge — e.g. square chrome on softly
+     rounded content panels. Pills and circles have their own tokens
+     because their shape is semantic, not a stylistic knob. The
+     scrollbar thumb has its own --scrollbar-thumb-radius below. */
+  --radius-chrome: 0;
+  --radius-document: 0;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+
+  /* Z-index scale — the named stacking layers. Use these tokens at use
+     sites rather than ad-hoc integers so the relative order of panes,
+     floating overlays (menus, dropdowns), and tooltips is defined in one
+     place. --z-overlay covers any summoned floating surface (the header
+     theme menu today; a future right-click context menu next); it sits
+     above the panes but below tooltips, the topmost hint layer. */
+  --z-pane: 1;
+  --z-resize-handle: 2;
+  --z-overlay: 100;
+  --z-tooltip: 1000;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  /* Theme crossfade — applied to the major page surfaces so flipping
+     light↔dark glides instead of snapping. Gated behind html.theme-anim
+     (added by app.js one frame after first paint) so it never fires on
+     initial load, only on a user theme change. */
+  --theme-transition:
+    background-color 0.4s ease-in-out, color 0.4s ease-in-out, border-color 0.4s ease-in-out;
+
+  /* Click/drag/toggle targets can suppress accidental selection.
+     Informational text must stay selectable; never apply this token to
+     a broad container such as .tree-pane. */
+  --toggle-user-select: none;
+
+  /* Content spacing */
+  --content-padding-x: 24px;
+  --content-padding-y: 16px;
+  --pane-header-padding-x: 16px;
+  --pane-header-padding-y: 8px;
+  --file-header-padding-y: var(--pane-header-padding-y);
+  --file-tab-padding-x: 12px;
+  --file-tab-padding-y: 8px;
+  --file-tab-align-adjust: 3px;
+  --file-tab-padding-top: calc(var(--file-tab-padding-y) + var(--file-tab-align-adjust));
+  --file-tab-padding-bottom: var(--file-tab-padding-y);
+
+  /* Shared tab visual — used by both the file-preview tab bar and
+     the nav-pane tab bar (Files / Recent). Promoting these to root
+     vars so active-state hue and border thickness stay locked in
+     step across every tab in the UI; change here to retheme
+     everywhere. */
+  --tab-active-color: hsl(216 98% 52%);
+  --tab-active-border-width: 2px;
+
+  /* Colors — light theme */
+  --bg: hsl(0 0% 100%);
+  --text: hsl(0 0% 10%);
+  --border: hsl(0 0% 90%);
+  /* Top bar — light surface matching the sidebar, dark-grey text. The
+     bar reads as another content pane rather than an inverse-styled
+     banner. The nav tab bar (which sits below the header and above the
+     scrollable tree) carries the drop shadow so the shadow falls onto
+     the scrolling content rather than onto a fixed strip. */
+  --header-bg: var(--sidebar-bg);
+  --header-text: hsl(0 0% 20%);
+  --sidebar-bg: hsl(210 17% 98%);
+  --hover-bg: hsl(0 0% 94%);
+  --link: hsl(205 80% 40%);
+  --muted: hsl(208 7% 46%);
+
+  /* Selection highlight — the "current item" indicator shared by the
+     file-tree nav and the embedded KPress document TOC, so both read the
+     same. Both derive from the one accent (--link, which is also bridged to
+     KPress as --kpress-host-link), so the colors are provably identical:
+     --highlight-bg matches KPress's --color-bg-selected (a 10% accent tint)
+     and --highlight-bar matches its TOC indicator (--kpress-doc-link).
+     Defined once here; they track --link automatically per theme. Set
+     --highlight-bar to transparent to drop the left bar. */
+  --highlight-bg: color-mix(in srgb, var(--link) 10%, transparent);
+  --highlight-bar: var(--link);
+
+  /* Code block backgrounds */
+  --code-bg: hsl(210 29% 97%);
+
+  /* Syntax-color tokens for the structured (JSON/YAML) tree view.
+     Light values have matching [data-theme="dark"] variants. Hues line up
+     with the existing palette
+     so colors don't drift between the structured tree and any other
+     code-coloring surface a future plugin might introduce. */
+  --color-syntax-string: hsl(140 50% 32%);
+  --color-syntax-number: hsl(28 75% 42%);
+  --color-syntax-bool: hsl(265 55% 50%);
+  --color-syntax-null: hsl(0 0% 55%);
+  --color-syntax-key: hsl(208 60% 35%);
+  --color-syntax-punct: hsl(0 0% 45%);
+  --color-syntax-summary: hsl(0 0% 60%);
+
+  /* Row height for the structured plugin's virtualized list. Read at
+     render time from --tree-row-height (parseFloat → px); changing
+     this rebalances the windowed list automatically. */
+  --tree-row-height: 18px;
+
+  /* Filter active border — gentle low-saturation green, applied to the
+     "Go to file" filter input and the tree content when any filter
+     (keyword / suffix / recency) is active, signaling a restricted view
+     in the spirit of Google Sheets filter views. */
+  --filter-active-border: hsl(140 35% 60%);
+
+  /* Scrollbar — shared geometry consumed by every scroll container
+     in the app via the global rules near the bottom of this file.
+     The thumb-border-width creates visual padding inside the track
+     so the visible thumb reads narrower than the track footprint,
+     which is what makes the bar feel subtle. --scrollbar-bg is the
+     per-site override: containers that sit on a non-default surface
+     (sidebar, code blocks) set it to their own background so the
+     scrollbar disappears into whatever surface it sits on. */
+  --scrollbar-thumb: hsl(0 0% 75%);
+  --scrollbar-thumb-hover: hsl(0 0% 65%);
+  --scrollbar-width: 10px;
+  --scrollbar-thumb-border-width: 2px;
+  --scrollbar-thumb-radius: 5px;
+  --scrollbar-bg: var(--bg);
+
+  /* Skeleton cells — rendered when the InventoryIndex walker
+     has not yet finalized a dir's aggregate. The slow opacity
+     pulse signals "loading" without the noise of a spinner.
+     applyCellPatch() in app.js replaces these in place once a
+     ``fs.change`` op arrives on /api/events. */
+  --tally-skeleton-bg: hsl(0 0% 88%);
+
+  /* Live-update row flash. Applied by app.js when the SPA inserts
+     a freshly-created row (`.tree-item-flash-in`) or starts the
+     animated removal of a deleted row (`.tree-item-flash-out`).
+     Pale yellow that fades to transparent — visible enough to
+     draw the eye, calm enough not to flicker on a burst of
+     changes. */
+  --row-flash-bg: hsl(50 95% 86%);
+
+  /* ── Viz palette (process-visualization plane) ─────────────── */
+  /* Design-system rules (shared by steps / processes / deps, viz + drawer):
+     - Labels: muted grey (--viz-text-muted) + --weight-normal — reference
+       text, never primary.
+     - Values: near-black (--viz-text) + --weight-medium — the data the
+       user cares about, reads as primary against the label.
+     - Strong/meta are reserved for headings and tertiary metadata.
+     Keeping labels muted + values emphasized is the single rule that
+     makes field rows and field pairs readable at a glance. */
+  --viz-text: hsl(0 0% 7%);
+  --viz-text-muted: hsl(220 9% 46%);
+  --viz-text-dim: hsl(218 11% 65%);
+  --viz-text-strong: hsl(244 47% 20%);
+  --viz-text-meta: hsl(217 19% 27%);
+
+  /* Surfaces */
+  --viz-surface: hsl(0 0% 100%);
+  --viz-surface-raised: hsl(0 0% 98%);
+  --viz-surface-toolbar: hsl(0 0% 97%);
+  --viz-surface-sunken: hsl(220 14% 96%);
+  --viz-surface-card: hsl(210 20% 98%);
+  --viz-surface-hover: hsl(0 0% 94%);
+  --viz-border: hsl(0 0% 89%);
+  --viz-border-strong: hsl(216 12% 84%);
+  --viz-border-subtle: hsl(220 13% 91%);
+
+  /* Kind accents (step / dep / process / file)
+     Design-system rule: each kind gets a light, logically-distinct bg so
+     nested graph levels are visually distinguishable without chroma
+     fighting — they share brightness but differ in hue.
+       - Steps:    cool near-white gray (hsl(210 20% 98%)) — intentionally the
+                   lightest surface so step cards read as the primary
+                   "leaf" content; slightly brighter than the process
+                   frame so nested process bg stays distinguishable
+       - Process:  very-light neutral-warm gray (hsl(45 18% 96%)) — darker than
+                   steps by a hair and in a different (warm) hue, so a
+                   process frame reads as a subtle container around its
+                   step children and doesn't blend into them
+       - Deps:     pale peach (hsl(25 90% 96%)) — represent user-visible artifact
+                   files. Kept in a warm hue distinct from warnings
+                   (which are yellow) so the two don't collide visually,
+                   and distinct from errors (which are red) so they
+                   don't read as a problem.
+     Icon + header text are always near-black so the kind label reads the
+     same across cards and drawer. */
+  --viz-accent-step-bg: hsl(45 20% 96%);
+  --viz-accent-step-border: hsl(45 12% 84%);
+  --viz-accent-step-icon: hsl(0 0% 7%);
+  --viz-accent-dep-bg: hsl(25 90% 96%);
+  --viz-accent-dep-border: hsl(30 72% 83%);
+  --viz-accent-dep-icon: hsl(29 50% 36%);
+  --viz-accent-file-bg: hsl(210 40% 96%);
+  --viz-accent-file-border: hsl(213 27% 84%);
+
+  /* Focus indicator (side-panel target). Desaturated blue — the
+     ring must be noticeable but the previous hsl(221 83% 53%) read as
+     an assaulting "alert blue" against the near-white card surfaces.
+     Dropping S from 83%→55% keeps the hue (reads as focus/selection
+     in the same family as --link) without the chroma shout. Glow
+     alpha stays at 0.25 so the halo is softly visible. */
+  --viz-accent-focus: hsl(217 55% 55%);
+  --viz-accent-focus-glow: hsl(217 55% 55% / 0.25);
+
+  /* Edge strokes — design-system rule: every arrow is a uniform-width
+     1.4px stroke (set in viz.css). Kind is carried by color alone, not
+     stroke-weight, so no arrow "outweighs" another visually. Colors are
+     kept light + desaturated because arrows are connective tissue, not
+     emphasis. */
+  --viz-edge-default: hsl(220 18% 65%);
+  /* Data-flow arrow colors — light + desaturated so arrows read as
+     connective tissue between boxes, not emphasis. Produces (blue) =
+     step→artifact; consumes (green) = artifact→step. */
+  --viz-edge-produces: hsl(199 65% 74%);
+  --viz-edge-consumes: hsl(102 18% 75%); /* muted sage — lighter sibling of the
+                                       sky-blue produces stroke; both are
+                                       low-chroma so neither outshouts the
+                                       kind accents on the nodes they link */
+
+  /* Chips — muted pastel palette.
+     Design-system rules:
+     - Each chip category (mode / adapter / model / fan / variant / role /
+       type) gets a dedicated hue so the reader can identify the field
+       from color alone, at a glance.
+     - Chroma is kept low so no chip reads as error/alert (no red, no
+       bright lime, no saturated orange).
+     - Related chips share a hue family with different saturations:
+       adapter + model both sea-green (adapter stronger = primary fact,
+       model softer = sub-facet of adapter).
+     - Pill text uses --weight-medium — slightly heavier than body but
+       not bold — set centrally on .viz-chip.
+     Chip tokens below pair -bg / -border / -text per category. */
+  --viz-chip-bg: hsl(0 0% 100% / 0.75);
+  --viz-chip-border: hsl(0 0% 0% / 0.08);
+  --viz-chip-mode-bg: hsl(228 100% 94%);
+  --viz-chip-mode-border: hsl(228 96% 89%);
+  --viz-chip-mode-text: hsl(228 55% 41%);
+  /* Adapter — sea-green, dialed back from a vivid teal so the pill reads as
+     a tag, not a status/alert. Still the strongest of the green pills
+     (adapter = primary fact, model = sub-facet). */
+  --viz-chip-adapter-bg: hsl(162 47% 85%);
+  --viz-chip-adapter-border: hsl(162 38% 74%);
+  --viz-chip-adapter-text: hsl(162 57% 24%);
+  /* Model — same sea-green hue as adapter, just lightened a few steps so
+     the two chips read as "primary + secondary facet" of the same fact
+     (adapter = runtime, model = which model that runtime is running).
+     Keep the hue identical; vary only lightness so they stay in lockstep. */
+  --viz-chip-model-bg: hsl(191 46% 91%);
+  --viz-chip-model-border: hsl(191 33% 80%);
+  --viz-chip-model-text: hsl(191 44% 30%);
+  --viz-chip-fan-bg: hsl(60 52% 70%);
+  --viz-chip-fan-border: hsl(60 52% 42%);
+  --viz-chip-fan-text: hsl(60 88% 20%);
+  --viz-chip-variant-bg: hsl(250 91% 95%);
+  --viz-chip-variant-border: hsl(250 95% 92%);
+  --viz-chip-variant-text: hsl(263 69% 42%);
+  --viz-chip-role-bg: hsl(48 96% 89%);
+  --viz-chip-role-border: hsl(48 97% 77%);
+  --viz-chip-role-text: hsl(48 81% 29%);
+  --viz-chip-type-bg: hsl(220 14% 96%);
+  --viz-chip-type-border: hsl(220 13% 91%);
+  --viz-chip-type-text: hsl(221 13% 28%);
+
+  /* Typography — shared header size for graph cards and frame headers. */
+  --viz-header-font-size: 11px;
+
+  /* Hover design system — every hoverable viz surface (toolbar button,
+     legend item, frame header, node card, toggle) shares the same ease
+     + duration so hover feels consistent across the plane. Filter-darken
+     is used where the element has a solid rest-color; background swap is
+     used where the rest-state is transparent. */
+  --viz-hover-duration: 120ms;
+  --viz-hover-ease: ease;
+  --viz-hover-filter: brightness(0.94);
+  --viz-hover-transition:
+    filter var(--viz-hover-duration) var(--viz-hover-ease),
+    background-color var(--viz-hover-duration) var(--viz-hover-ease),
+    box-shadow var(--viz-hover-duration) var(--viz-hover-ease);
+
+  /* Motion design system.
+     Two motion scales in the viz plane:
+       - layout: size/position shifts (expand/collapse, re-layout on
+         filter change, drawer open/close). ~180ms feels continuous but
+         not sluggish; the reader's eye tracks the movement.
+       - fade: appearance of elements (nodes, edges, banners) after a
+         re-render. 240ms is long enough to read as intentional motion
+         without feeling sluggish across a dense graph.
+     Both use a plain `ease` curve — easings should feel neutral across
+     a dense graph UI; no bounce or spring.
+     Mount-fade rule: the `viz-fade-in` keyframe uses a small upward
+     translate *plus* opacity so the fade is perceptible even when
+     visual density already fills the viewport (an opacity-only fade
+     can read as a flicker on modern fast-refresh displays). See
+     @keyframes viz-fade-in in viz.css. */
+  --viz-layout-transition: 180ms ease;
+  --viz-fade-duration: 240ms;
+  --viz-fade-ease: ease;
+
+  /* Side panel */
+  --viz-panel-badge-bg: hsl(226 100% 94%);
+  --viz-panel-badge-text: hsl(242 47% 34%);
+  --viz-panel-link: hsl(224 66% 48%);
+  --viz-panel-row-muted: hsl(220 14% 96%);
+  --viz-panel-desc: hsl(217 19% 27%);
+
+  /* Toolbar toggle */
+  --viz-toggle-on-bg: hsl(214 95% 93%);
+  --viz-toggle-on-border: hsl(213 74% 68%);
+  --viz-toggle-on-text: hsl(224 64% 33%);
+
+  /* Alert banners (errors + validation warnings).
+     Design-system rule: every "this isn't right" callout shares the same
+     warm-red palette so the reader sees one problem color, not two. Both
+     the hard-error panel and the soft "rendered without full validation"
+     banner use these tokens — distinction is in icon + copy, not hue. The
+     bg is intentionally very light so the callout informs without
+     dominating. */
+  --viz-error-bg: hsl(0 69% 97%); /* very-light warm red */
+  --viz-error-border: hsl(0 59% 86%); /* desaturated rose */
+  --viz-error-title: hsl(0 41% 38%); /* muted dark red — heading weight */
+  --viz-error-text: hsl(0 41% 25%); /* body text, deeper than title */
+  --viz-error-hint: hsl(0 31% 36%); /* tertiary hint text */
+  --viz-error-detail-bg: hsl(0 0% 100% / 0.6); /* nested detail box */
+
+  /* Elevation — three semantic stops. See the design-system header
+     for picking rules. Every box-shadow in the app MUST resolve to
+     one of these (directly via var(--shadow-*) or via a semantic
+     alias like --viz-shadow-card that points at them). */
+  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.04);
+  --shadow-md: 0 2px 6px hsl(0 0% 0% / 0.12);
+  --shadow-pane-right: 2px 0 6px hsl(0 0% 0% / 0.12);
+  --shadow-pane-left: -2px 0 6px hsl(0 0% 0% / 0.12);
+  --shadow-lg: 0 4px 12px hsl(0 0% 0% / 0.12);
+  /* Viz aliases — keep existing viz-* names so consumers there don't
+     care which primitive backs "card" vs "hover". */
+  --viz-shadow-card: var(--shadow-sm);
+  --viz-shadow-hover: var(--shadow-md);
+
+  /* File-size hue — every byte count in the app (.size / .size-large,
+     applied by sizeHtml()) shares this hue family so "this number is
+     a size" reads as a single visual category. Two L/S stops so small
+     sizes recede and big sizes stand out while staying in the same
+     hue. To retune the overall feel, shift L/S here; keep hue 205. */
+  --size-color: hsl(225 30% 50%);
+  --size-color-bold: hsl(225 42% 40%);
+
+  /* Status palette — shared by stats, tally tree, badges, progress bars.
+     Pair -bg / -text variants where the text sits on the tinted surface. */
+  --status-success: hsl(142 76% 36%);
+  --status-success-bg: hsl(141 84% 93%);
+  --status-success-soft-bg: hsl(134 41% 88%);
+  --status-success-soft-text: hsl(134 61% 21%);
+  --status-success-dot: hsl(134 61% 41%);
+  --status-warning: hsl(32 95% 44%);
+  --status-warning-strong: hsl(21 90% 48%);
+  --status-error: hsl(0 72% 51%);
+  --status-error-strong: hsl(0 84% 60%);
+  --status-info: hsl(217 81% 60%);
+  --status-info-bg: hsl(214 95% 93%);
+  --status-info-text: hsl(224 56% 48%);
+
+  /* Secondary muted tone (slate) for metadata/labels on charts & stats.
+     Distinct from --muted which is the warmer bootstrap grey. */
+  --muted-slate: hsl(215 16% 47%);
+
+  /* Spinner tokens — all progress spinners use a light grey track with
+     a darker grey rotating segment. Do not use brand, link, status, or
+     file-age hues for spinner rings; those colors are too loud for
+     ambient background work. */
+  --spinner-track: hsl(0 0% 90%);
+  --spinner-accent: hsl(0 0% 55%);
+  --spinner-mini-track: hsl(0 0% 87%);
+  --spinner-mini-accent: hsl(0 0% 55%);
+
+  /* File-age design system (used by the file-tree ".age-*" classes).
+     Rationale: the primary affordance of the file browser is "where did
+     something *just happen*?" — when runs write new files, the user's
+     eye should land on them without scanning names. Color is the
+     primary signal (warm/red = seconds, cooling to grey = old); weight
+     is a secondary boost for the very-recent tiers (seconds, minutes)
+     so they also read as bold. Every ".age-*" class pulls from these
+     tokens — do not add literal hex values inline. */
+  --file-age-weight: var(--weight-medium); /* base — 11px labels read */
+  /* as light at normal 400, */
+  /* so medium (500) is the */
+  /* legibility floor */
+  --file-age-weight-recent: var(--weight-bold); /* seconds + minutes pop */
+
+  /* Freshness ramp (red → orange → dim yellow). Single-family encoding:
+     hue walks monotonically from red to yellow as age grows, saturation
+     drops from loud to quiet, and lightness stays in the mid-40s so
+     contrast against the page background is roughly constant. The
+     reading is "warmer + louder = newer; cooler + quieter = older"
+     without ever crossing into a different color family. */
+  --file-age-sec: hsl(8 85% 52%); /* < 1 min — saturated red */
+  --file-age-min: hsl(22 78% 48%); /* < 1 hour — red-orange */
+  --file-age-hr: hsl(34 68% 46%); /* < 1 day — orange */
+  --file-age-day: hsl(44 55% 44%); /* < 1 week — amber */
+  --file-age-wk: hsl(50 35% 42%); /* < 1 month — dim yellow */
+  --file-age-old: hsl(52 18% 40%); /* ≥ 1 month — desaturated khaki */
+
+  /* File-type design system (used everywhere a filename shows up —
+     file tree, viz dep icons, drawer path rows).
+     Rule: icon = major type (doc / list / code / grid / activity),
+           color = subtype (--ft-* token below).
+     Single source of truth; to add a subtype split, introduce a new
+     --ft-<name> token here and point the FILE_TYPES matcher in app.js
+     at a matching `ft-<name>` class. The declarative FILE_TYPES table
+     encodes both icon + color class; do not inline literal hex values
+     in rules below. */
+  /* Markdown family — one hue per role so a reader classifies a doc by
+     color before reading the name:
+       - .md               → blue   (canonical prose — reference doc)
+       - .runbook.md       → green  (procedural / "go run this" doc)
+       - .template.md /
+         .form.md          → yellow (fill-in-the-blank scaffolds)
+     Distinct hues rather than L-steps because the roles are different
+     *kinds* of document, not severity levels. */
+  --ft-md: hsl(220 35% 50%); /* regular .md — blue (canonical docs) */
+  --ft-md-runbook: hsl(142 45% 50%); /* .runbook.md — green (procedural) */
+  --ft-md-template: hsl(45 52% 46%); /* .template.md / .form.md — yellow (fill-in) */
+  --ft-text: var(--muted); /* .txt / .pid / .pdf — muted grey */
+  /* YAML: orange (not red) — data/config files are common, and a red
+     icon reads as "error" at a glance, colliding with the status-error
+     hue used by failure badges, threshold lines, and annotation
+     callouts. Orange keeps data visually distinct from code without
+     pretending to be a warning. */
+  --ft-yaml: hsl(28 65% 53%); /* .yaml / .yml / .json — orange (data/config) */
+  --ft-config: var(--muted); /* .cfg / .ini — muted grey */
+  --ft-jsonl: hsl(247 40% 55%); /* .jsonl — indigo (log stream, distinct from md blue) */
+  --ft-code: hsl(162 40% 38%); /* .py / .sh / .ts / .toml — teal-green (non-purple) */
+  --ft-csv: hsl(60 52% 52%); /* .csv — yellow green (tabular) */
+
+  /* Surface + border stops derived from the same hue as each --ft-<name>
+     icon color. One design rule: bg ≈ hue at S≈40%, L≈94% (light wash);
+     border ≈ hue at S≈28%, L≈80% (mid-tone divider). These let any
+     consumer (dep card bg, chip, swatch) render a surface whose hue
+     family matches the subtype's icon. Consumers read them via
+     var(--ft-bg) / var(--ft-border) — the per-class rules below map
+     each ft-<name> to its own triplet, so adding a new subtype means
+     declaring one new class rule, not editing every consumer. */
+  --ft-md-bg: hsl(210 45% 95%);
+  --ft-md-border: hsl(210 30% 82%);
+  --ft-md-runbook-bg: hsl(142 40% 94%);
+  --ft-md-runbook-border: hsl(142 28% 80%);
+  --ft-md-template-bg: hsl(43 80% 94%);
+  --ft-md-template-border: hsl(43 58% 80%);
+  --ft-text-bg: hsl(208 10% 96%);
+  --ft-text-border: hsl(208 8% 85%);
+  --ft-yaml-bg: hsl(28 65% 94%);
+  --ft-yaml-border: hsl(28 45% 80%);
+  --ft-config-bg: hsl(208 10% 96%);
+  --ft-config-border: hsl(208 8% 85%);
+  --ft-jsonl-bg: hsl(247 45% 95%);
+  --ft-jsonl-border: hsl(247 30% 82%);
+  --ft-code-bg: hsl(162 35% 94%);
+  --ft-code-border: hsl(162 24% 80%);
+  --ft-csv-bg: hsl(41 70% 94%);
+  --ft-csv-border: hsl(41 48% 80%);
+
+  /* Chart palette — used by Chart.js configs emitted from Python
+     and resolved
+     at canvas-draw time by cssVar()/colorWithAlpha() in app.js.
+     Rule: chart series/threshold/annotation colors live here, not
+     inline in Python or JS. Hues align with --status-* so a
+     threshold line and a status badge read as the same concept.
+     Canvas rendering cannot resolve var(--foo) itself; Python emits
+     "var(--chart-series-info)" as a sentinel and app.js substitutes
+     the computed value before handing to Chart.js. */
+  --chart-grid: var(--viz-surface-sunken); /* chart gridlines */
+  --chart-label-text: var(--viz-text-meta); /* annotation label fg */
+  --chart-annotation-default: var(--status-error-strong);
+  --chart-series-info: var(--status-info); /* primary blue */
+  --chart-series-info-soft: hsl(213 94% 68%); /* secondary blue */
+  --chart-series-warning: hsl(38 92% 50%); /* amber */
+  --chart-series-error: var(--status-error-strong); /* red */
+  --chart-series-success: hsl(142 71% 45%); /* green */
+  --chart-series-result: hsl(160 84% 39%); /* emerald */
+  --chart-series-thinking: hsl(255 92% 76%); /* violet */
+  --chart-series-init: var(--viz-text-muted); /* neutral grey */
+  --chart-series-system: var(--viz-text-dim); /* neutral grey-dim */
+
+  /* Standalone-viz palette — used by viz/render_svg.py and
+     render_html.py when they emit self-contained documents (no
+     browser runtime). The generated doc inlines these tokens into
+     its own :root so the same naming works offline. */
+  --standalone-bg: hsl(0 0% 98%);
+  --standalone-surface: hsl(0 0% 100%);
+  --standalone-border: hsl(0 0% 87%);
+  --standalone-text: hsl(0 0% 7%);
+  --standalone-text-muted: hsl(0 0% 33%);
+  --standalone-node-fill: hsl(0 0% 97%);
+  --standalone-node-stroke: hsl(0 0% 20%);
+  --standalone-node-step-fill: hsl(210 100% 95%);
+  --standalone-node-dep-fill: hsl(40 100% 93%);
+  --standalone-label-kind: hsl(0 0% 40%);
+  --standalone-label-badge: hsl(0 0% 27%);
+  --standalone-edge: hsl(0 0% 33%);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: hsl(225 18% 10%);
+  --text: hsl(210 20% 92%);
+  --border: hsl(220 13% 25%);
+  --header-bg: hsl(224 18% 13%);
+  --header-text: hsl(210 20% 90%);
+  --sidebar-bg: hsl(222 18% 15%);
+  --hover-bg: hsl(222 16% 22%);
+  --link: hsl(204 88% 66%);
+  --muted: hsl(215 12% 68%);
+  --code-bg: hsl(220 18% 14%);
+
+  --panel-header-bg: hsl(222 17% 18%);
+  --scrollbar-thumb: hsl(220 10% 36%);
+  --scrollbar-thumb-hover: hsl(220 10% 46%);
+  --tally-skeleton-bg: hsl(220 10% 31%);
+  --row-flash-bg: hsl(45 75% 28%);
+
+  --viz-text: var(--text);
+  --viz-text-muted: hsl(215 12% 68%);
+  --viz-text-dim: hsl(215 10% 52%);
+  --viz-text-strong: hsl(220 35% 88%);
+  --viz-text-meta: hsl(217 15% 76%);
+  --viz-surface: hsl(225 18% 10%);
+  --viz-surface-raised: hsl(222 18% 15%);
+  --viz-surface-toolbar: hsl(222 18% 16%);
+  --viz-surface-sunken: hsl(223 19% 12%);
+  --viz-surface-card: hsl(222 18% 15%);
+  --viz-surface-hover: var(--hover-bg);
+  --viz-border: var(--border);
+  --viz-border-strong: hsl(218 13% 33%);
+  --viz-border-subtle: hsl(218 13% 24%);
+  --viz-chip-bg: hsl(222 18% 15% / 0.8);
+  --viz-chip-border: hsl(0 0% 100% / 0.12);
+  --viz-error-detail-bg: hsl(225 18% 10% / 0.65);
+  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.3);
+  --shadow-md: 0 2px 8px hsl(0 0% 0% / 0.35);
+  --shadow-pane-right: 2px 0 8px hsl(0 0% 0% / 0.35);
+  --shadow-pane-left: -2px 0 8px hsl(0 0% 0% / 0.35);
+  --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.4);
+  --size-color: hsl(211 42% 70%);
+  --size-color-bold: hsl(207 80% 78%);
+  --spinner-track: hsl(220 10% 30%);
+  --spinner-accent: hsl(220 10% 70%);
+  --spinner-mini-track: hsl(220 10% 30%);
+  --spinner-mini-accent: hsl(220 10% 70%);
+
+  --ft-text-bg: hsl(220 12% 18%);
+  --ft-text-border: hsl(220 10% 30%);
+  --ft-config-bg: hsl(220 12% 18%);
+  --ft-config-border: hsl(220 10% 30%);
+  --chart-grid: hsl(220 13% 24%);
+  --chart-label-text: var(--viz-text-meta);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Global scrollbars — every scroll container in the app inherits
+   the same minimal style. Containers that sit on a non-default
+   surface override --scrollbar-bg locally (e.g. .tree-content sets
+   it to var(--sidebar-bg), .code-block to var(--code-bg)) so the
+   thumb's matching border and the track blend with the surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-bg);
+}
+*::-webkit-scrollbar {
+  width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
+  background: var(--scrollbar-bg);
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+  border: none;
+  box-shadow: none;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: var(--scrollbar-thumb-border-width) solid var(--scrollbar-bg);
+  border-radius: var(--scrollbar-thumb-radius);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-bg);
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
+
+.app-header {
+  background: var(--header-bg);
+  color: var(--header-text);
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  position: relative;
+}
+/* Header links: no underline, subtle-background hover. Explicit
+   pointer cursor so the affordance is unambiguous across browsers
+   even if a user agent stylesheet reset blanked it out. */
+.app-header a {
+  color: var(--header-text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.app-header a:hover {
+  background: var(--hover-bg);
+}
+/* Product-name brand label at the very top of the nav header. Not a
+   link (the path immediately below already jumps to root) — just a
+   small uppercase muted line so the SPA name is present without
+   competing with the path for attention. */
+.header-brand {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 0 4px;
+  margin-left: -4px;
+}
+/* Path is the primary piece of information in the header — bold,
+   mixed-case, sans-serif at the tree-row size. Click jumps back to
+   the served root. */
+.header-path {
+  font-weight: var(--weight-bold);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--header-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 2px 0;
+  border-radius: var(--radius-chrome);
+}
+/* ── Settings toggle (gear → theme + reading-font choosers) ───────
+   A gear button pinned to the header's top-right opens a .menu holding
+   two segmented choosers (theme, reading font). Click-to-open-then-pick,
+   never click-to-cycle. Only the trigger and the menu's anchored
+   positioning live here; the menu surface comes from the .menu primitive
+   and the segments from the .menu-chooser primitive below. */
+.settings-toggle {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+}
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--radius-chrome);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+.settings-btn:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+  border-color: var(--border);
+}
+.settings-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.settings-toggle[aria-expanded="true"] .settings-btn {
+  color: var(--text);
+  background: var(--hover-bg);
+  border-color: var(--border);
+}
+/* Anchored placement under the trigger; the .menu primitive supplies the
+   surface styling. Scoped under .settings-toggle so this `display: none`
+   outranks the equal-specificity `.menu { display: flex }` primitive
+   regardless of source order — hidden until the wrapper reports
+   aria-expanded. */
+.settings-toggle .settings-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  display: none;
+}
+.settings-toggle[aria-expanded="true"] .settings-menu {
+  display: flex;
+}
+
+/* ── Menu — shared floating menu primitive ───────────────────────
+   The single menu surface in the app; the header settings menu uses it
+   today, and any future menu renders the same markup so every menu reads
+   identically. Styling only — positioning, keyboard nav, and dismissal
+   live in the JS that opens each menu.
+
+   Two content primitives sit inside a .menu:
+     .menu-item       a full-width text row (icon slot + label), for
+                      vertical lists. Slots: .menu-item-icon /
+                      .menu-item-label; states: [aria-disabled],
+                      [aria-checked] (selected radio row).
+     .menu-chooser    a horizontal segmented control — a row of icon-only
+                      .menu-seg buttons that apply instantly on click; the
+                      active one is [aria-checked="true"]. Used for the
+                      theme and reading-font pickers.
+     .menu-select     a small native <select> for a short list that may grow
+                      (the font-set picker), styled as a recessed field.
+     .menu-separator  a divider between groups. */
+.menu {
+  min-width: 124px;
+  padding: 4px;
+  background: var(--viz-surface-raised);
+  border: 1px solid var(--viz-border-strong);
+  border-radius: var(--radius-chrome);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-chrome);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--hover-bg);
+  outline: none;
+}
+.menu-item[aria-disabled="true"],
+.menu-item:disabled {
+  color: var(--muted);
+  cursor: default;
+  pointer-events: none;
+}
+.menu-item-icon {
+  display: flex;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.menu-item-icon svg {
+  width: 100%;
+  height: 100%;
+}
+/* Selected radio row (e.g. the active theme): tint the icon to the link
+   hue and bold the label so the current choice reads without a separate
+   checkmark column. */
+.menu-item[aria-checked="true"] {
+  font-weight: var(--weight-medium);
+}
+.menu-item[aria-checked="true"] .menu-item-icon {
+  color: var(--link);
+}
+.menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+/* Segmented chooser: icon-only buttons sharing a row, applied instantly
+   on click. The active segment fills with the selection surface; the rest
+   are muted until hovered. */
+.menu-chooser {
+  display: flex;
+  gap: 2px;
+}
+.menu-seg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-chrome);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+.menu-seg:hover,
+.menu-seg:focus-visible {
+  background: var(--hover-bg);
+  color: var(--text);
+  outline: none;
+}
+.menu-seg[aria-checked="true"] {
+  background: var(--highlight-bg);
+  color: var(--link);
+}
+.menu-seg svg {
+  width: 16px;
+  height: 16px;
+}
+/* Small dropdown chooser inside the menu (the font-set picker). A native
+   <select> so sets can be added from the registry/markup alone; styled to sit
+   quietly on the menu surface as a recessed field. */
+.menu-select {
+  width: 100%;
+  padding: 4px 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  cursor: pointer;
+}
+.menu-select:hover {
+  border-color: var(--muted);
+}
+.menu-select:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+
+/* Theme crossfade. Scoped to the large structural surfaces (and the
+   prose/code content panels) so the page background and panes glide
+   between themes while small interactive rows keep their snappy hover
+   feel. Gated behind html.theme-anim, which app.js adds one animation
+   frame after first paint — so the very first render (already painted in
+   the correct theme by the head boot script) never animates; only user
+   theme switches do. */
+html.theme-anim body,
+html.theme-anim .container,
+html.theme-anim .tree-pane,
+html.theme-anim .preview-pane,
+html.theme-anim .app-header,
+html.theme-anim .tree-content,
+html.theme-anim .preview-empty,
+html.theme-anim .tab-bar,
+html.theme-anim .code-block,
+html.theme-anim .md-body,
+html.theme-anim .settings-btn,
+html.theme-anim .menu {
+  transition: var(--theme-transition);
+}
+/* Tree summary row — first child of .tree-content, scrolls with the
+   listing. Holds the served-root file count + total size. Rendered by
+   loadTree() in app.js; the inner .size / .count chips inherit the
+   shared sizeHtml() / countHtml() conventions. */
+.tree-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.tree-summary-count,
+.tree-summary-size {
+  font-size: 11px;
+}
+
+/* Walker-truncation banner: shown only when /api/tree returns
+   tally_cache_status="truncated" (the BFS stopped at
+   INVENTORY_MAX_FILES). Finalized dirs still carry usable totals;
+   this just tells the user the tree is partial. */
+.tree-truncation-note {
+  padding: 8px 12px;
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 11px;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+}
+.tree-truncation-note code {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  padding: 1px 4px;
+  background: var(--hover-bg);
+  border-radius: var(--radius-document);
+}
+
+/* Path-rendering convention — pathHtml() in app.js wraps a path in
+   .path with .path-dir (everything up to and including the final
+   slash) and .path-base (the last segment). Only the dir prefix
+   restyles; the basename inherits whatever its container declares so
+   each call site (header, file header, etc.) keeps its own emphasis. */
+.path-dir {
+  color: var(--muted);
+  font-weight: var(--weight-normal);
+}
+/* Header path is the document headline — both the dir-prefix
+   and the basename inherit the header's bold weight + dark
+   text color. Other call sites (file header, etc.) keep the
+   normal-weight muted dir prefix from the rule above. */
+.header-path .path-dir {
+  font-weight: inherit;
+  color: inherit;
+}
+
+/* ── Main layout ─────────────────────────────────────────────── */
+
+.container {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Tree pane ───────────────────────────────────────────────── */
+
+.tree-pane {
+  width: var(--tree-pane-width);
+  min-width: 180px;
+  max-width: none;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  position: relative;
+  z-index: var(--z-pane);
+}
+.tree-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  --scrollbar-bg: var(--sidebar-bg);
+}
+
+.index-progress[hidden] {
+  display: none;
+}
+.index-progress {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+.index-progress-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid var(--spinner-track);
+  border-top-color: var(--spinner-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.index-progress-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Resize handle ───────────────────────────────────────────── */
+
+.resize-handle {
+  width: 4px;
+  margin-left: -4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: var(--z-resize-handle);
+  transition: background var(--transition-fast);
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+  cursor: col-resize;
+}
+.resize-handle:hover,
+.resizing .resize-handle {
+  background: var(--link);
+}
+.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* ── Preview pane ────────────────────────────────────────────── */
+
+/* The preview pane hosts a KPress-rendered document. Embedding contract:
+   this pane is the `kpress-doc` query container (see the `container:` decl
+   below), so ALL of KPress's responsive document layout — the TOC
+   sidebar/drawer, the reading-measure column, the table widths — reacts to
+   THIS pane's width, not the window's (the window also holds the file
+   tree). The document-internal layout itself (the three width bands, the
+   two-column TOC grid, the table bleed/constraint rules, and the
+   reading-measure cap/uncap chain) lives in KPress, NOT here: see the
+   "Document layout + Table of Contents" block in KPress v0.1.0's
+   src/kpress/format/static/css/components.css. MetaBrowser supplies only the
+   container and the bridge tokens (--kpress-host-*, --kpress-measure) declared
+   on :root above. The external source is authoritative:
+   https://github.com/jlevy/kpress/blob/v0.1.0/src/kpress/format/static/css/components.css */
+
+/* Font-set rules (settings dropdown). The default "clean" set needs no rule —
+   it is the :root base above. Each additional set repoints the tokens here;
+   "system" swaps the chrome sans and bridges the platform sans/serif into the
+   embedded document. Declared before the reading-font rule below so an explicit
+   "sans" reading choice still wins for prose. Set on <html> by the pre-paint
+   boot script (server.py) and the settings control (app.js). */
+html[data-app-font="system"] {
+  --font-sans: var(--app-sans-system);
+  --prose-sans-font: var(--app-sans-system);
+  --kpress-host-font-sans: var(--app-sans-system);
+  --kpress-host-font-body: var(--app-sans-system);
+  --kpress-host-font-prose: var(--app-serif-system);
+}
+
+/* Reading-font chooser (settings menu). Default (serif) leaves KPress's
+   vendored PT Serif in place. "sans" bridges the host-prose hook to the
+   interface sans, flipping the markdown body to the simpler look while
+   leaving headings, UI, and code on their own stacks. Set on <html> by the
+   pre-paint boot script (server.py) and the settings control (app.js). */
+html[data-prose-font="sans"] {
+  --kpress-host-font-prose: var(--prose-sans-font);
+}
+.preview-pane {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* The page floats above the nav: same stacking level as the tree pane but
+     later in the DOM, so its left-ward shadow falls over the nav. The resize
+     handle (--z-resize-handle) stays above both. */
+  position: relative;
+  z-index: var(--z-pane);
+  box-shadow: var(--shadow-pane-left);
+  /* The KPress document viewport. Named `kpress-doc` so KPress's own
+     `@container kpress-doc` TOC rules react to the pane's width (the window
+     also holds the file tree, so viewport queries would lie), and the
+     inline-size containment makes the pane the containing block for the TOC
+     drawer/toggle's `position: fixed` — pinning them to the pane, not the
+     window. The pane also carries `data-kpress-viewport` (set in server.py)
+     so KPress's toc.js resolves it as the scroll root. */
+  container: kpress-doc / inline-size;
+  /* Force the pane to be the containing block for KPress's `position: fixed`
+     floating UI (TOC drawer/toggle, tooltips, video, settings menu). The
+     `container-type` above should establish this, but not every engine honors
+     container containment for fixed descendants (only absolute), which lets the
+     TOC escape and overlay the left nav. A transform is the universally-honored
+     trigger; since the pane is an inner scroller that does not move with the
+     window, the floating UI stays pinned to the pane frame while content
+     scrolls beneath it. */
+  transform: translateZ(0);
+}
+.preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ── Tree items ──────────────────────────────────────────────── */
+
+/* Pagination sentinel — clickable row that swaps in the next batch
+   of children for a directory that exceeded TREE_PAGE_SIZE. Compact
+   and visually subordinate to real tree rows. */
+.tree-page-more {
+  padding: 2px 12px 2px 32px;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  color: var(--muted-slate);
+  font-style: italic;
+  font-size: 11px;
+}
+.tree-page-more:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  /* 2px transparent bar reserved on every row (coloured only when
+     selected) so selecting never shifts the row; the 10px + 2px keeps the
+     content's left inset at the original 12px. */
+  padding: 2px 12px 2px 10px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  gap: 6px;
+  font-size: 13px;
+  transition: background var(--transition-fast);
+}
+.tree-item:hover {
+  background: var(--hover-bg);
+}
+/* Current item — same tinted background + accent left bar as the embedded
+   KPress TOC (see --highlight-bg / --highlight-bar). */
+.tree-item.selected {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+.tree-item-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tree-item-icon svg {
+  width: 14px;
+  height: 14px;
+}
+/* Compression overlay — reuses the existing 16x16 envelope as the
+   positioning anchor and tucks a small badge into the bottom-right.
+   The 14x14 SVG leaves 1px slack each side, so a 9px badge sits
+   inside the bound without disturbing parent flex math. Future
+   archive formats (.zst/.br/.xz) reuse this component; only the
+   inner glyph changes. */
+.tree-item-icon.is-compressed {
+  position: relative;
+}
+.compression-badge {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  min-width: 9px;
+  height: 9px;
+  padding: 0 1px;
+  border-radius: var(--radius-chrome);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font: var(--weight-bold) 7px / 9px var(--font-mono);
+  text-align: center;
+  pointer-events: none;
+}
+.tree-item-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-item-age-inline {
+  font-size: 11px;
+  color: var(--muted);
+  /* Medium weight (not the 400 default) so 11px age labels stay legible;
+     warm-tier age classes below bump to --file-age-weight-recent. */
+  font-weight: var(--file-age-weight);
+  flex-shrink: 0;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  margin-left: 6px;
+}
+/* Positioning + size only — color / weight / tabular-nums come from
+   the shared .size / .size-large rule (the sole source of truth). */
+.tree-item-size {
+  font-size: 11px;
+  flex-shrink: 0;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+}
+/* Shared size-chip convention — every byte count anywhere uses
+   these, not bespoke styles. `.size` is the neutral base (cool-blue
+   hue, tabular nums); `.size-large` bumps weight + shifts to the
+   bolder stop of the same hue above the shared threshold (see
+   sizeHtml() / SIZE_LARGE_THRESHOLD in app.js). Callers add a
+   site-specific class for positioning (.tree-item-size,
+   .file-header-size, .tree-summary-size) but NEVER for weight/color. */
+.size {
+  color: var(--size-color);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-normal);
+}
+.size-large {
+  color: var(--size-color-bold);
+  font-weight: var(--weight-bold);
+}
+/* File-count convention — same idea as .size, same hue family (file
+   counts and file sizes are two views of the same data category so
+   they share the color signal). `.count-large` bolds up at the
+   shared threshold (see countHtml() / COUNT_LARGE_THRESHOLD in
+   app.js) the same way `.size-large` does for byte counts. */
+.count {
+  color: var(--size-color);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-normal);
+}
+.count-large {
+  color: var(--size-color-bold);
+  font-weight: var(--weight-bold);
+}
+/* Freshness ramp on the file tree: color (primary signal) + weight-boost
+   on the two most-recent tiers (secondary signal) so the newest files
+   read as the eye's first stop during a run. Colors + weights come from
+   --file-age-* tokens; do not inline literal hex values here. */
+.age-sec {
+  color: var(--file-age-sec);
+  font-weight: var(--file-age-weight-recent);
+}
+.age-min {
+  color: var(--file-age-min);
+  font-weight: var(--file-age-weight-recent);
+}
+.age-hr {
+  color: var(--file-age-hr);
+}
+.age-day {
+  color: var(--file-age-day);
+}
+.age-wk {
+  color: var(--file-age-wk);
+}
+.age-old {
+  color: var(--file-age-old);
+}
+.tree-children {
+  margin-left: 16px;
+}
+.tree-folder .tree-item-icon {
+  color: var(--text);
+}
+.tree-file .tree-item-icon {
+  color: var(--muted);
+}
+/* File-type design system — systematic hue triplet per subtype.
+
+   Each `.ft-<name>` class declares three generic custom properties —
+   --ft-color (icon), --ft-bg (surface wash), --ft-border (divider) —
+   pointed at the matching --ft-<name>, --ft-<name>-bg, --ft-<name>-border
+   tokens from :root. Consumers (tree icons, viz dep cards, chips) read
+   the generic names and don't care which subtype is active. Adding a
+   new subtype = one new row of :root tokens + one new `.ft-<name>`
+   rule; no edits needed at any consumer. */
+.ft-md {
+  --ft-color: var(--ft-md);
+  --ft-bg: var(--ft-md-bg);
+  --ft-border: var(--ft-md-border);
+}
+.ft-md-runbook {
+  --ft-color: var(--ft-md-runbook);
+  --ft-bg: var(--ft-md-runbook-bg);
+  --ft-border: var(--ft-md-runbook-border);
+}
+.ft-md-template {
+  --ft-color: var(--ft-md-template);
+  --ft-bg: var(--ft-md-template-bg);
+  --ft-border: var(--ft-md-template-border);
+}
+.ft-text {
+  --ft-color: var(--ft-text);
+  --ft-bg: var(--ft-text-bg);
+  --ft-border: var(--ft-text-border);
+}
+.ft-yaml {
+  --ft-color: var(--ft-yaml);
+  --ft-bg: var(--ft-yaml-bg);
+  --ft-border: var(--ft-yaml-border);
+}
+.ft-config {
+  --ft-color: var(--ft-config);
+  --ft-bg: var(--ft-config-bg);
+  --ft-border: var(--ft-config-border);
+}
+.ft-jsonl {
+  --ft-color: var(--ft-jsonl);
+  --ft-bg: var(--ft-jsonl-bg);
+  --ft-border: var(--ft-jsonl-border);
+}
+.ft-code {
+  --ft-color: var(--ft-code);
+  --ft-bg: var(--ft-code-bg);
+  --ft-border: var(--ft-code-border);
+}
+.ft-csv {
+  --ft-color: var(--ft-csv);
+  --ft-bg: var(--ft-csv-bg);
+  --ft-border: var(--ft-csv-border);
+}
+
+/* Icon-color consumer — any tree-item-icon with an ft-<name> class
+   reads the subtype's --ft-color automatically. */
+.tree-item-icon.ft-md,
+.tree-item-icon.ft-md-runbook,
+.tree-item-icon.ft-md-template,
+.tree-item-icon.ft-text,
+.tree-item-icon.ft-yaml,
+.tree-item-icon.ft-config,
+.tree-item-icon.ft-jsonl,
+.tree-item-icon.ft-code,
+.tree-item-icon.ft-csv {
+  color: var(--ft-color);
+}
+/* `.icon-state` is a folder variant (logs/state dirs), not a file-type. */
+.tree-item-icon.icon-state {
+  color: hsl(261 51% 51%);
+}
+
+/* Muted states: gitignored entries and empty directories. Dim the whole row
+   uniformly (name, icon, age, size) so file-type colors stay hue-consistent
+   — just faded. Hover still lights up via .tree-item:hover. */
+.tree-item.tree-item-gitignored,
+.tree-item.tree-item-empty {
+  opacity: 0.45;
+}
+.tree-item.tree-item-gitignored:hover,
+.tree-item.tree-item-empty:hover {
+  opacity: 1;
+}
+
+/* ── Tab bar ─────────────────────────────────────────────────── */
+
+.tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  flex-shrink: 0;
+  padding-left: var(--content-padding-x);
+}
+.tab-btn {
+  padding: var(--file-tab-padding-top) var(--file-tab-padding-x) var(--file-tab-padding-bottom);
+  border: none;
+  background: transparent;
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-family: var(--font-sans);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+.tab-btn:hover {
+  color: var(--text);
+}
+.tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--tab-active-color);
+}
+
+/* Nav tab bar — same .tab-bar / .tab-btn styling as the
+   preview pane, but the narrower tree pane needs a smaller
+   left indent so two short labels (Files / Recent) don't crowd
+   against the resize handle. The drop shadow only shows when
+   the tree-content below has scrolled — at scrollTop=0 the
+   shadow would be falling onto whitespace and reads as
+   floating chrome. ``.scrolled`` is toggled by a scroll
+   listener on ``.tree-content`` (see app.js). The hairline
+   border-bottom from .tab-bar above is always present;
+   the shadow is the additive cue. */
+.tab-bar.nav-tab-bar {
+  padding-left: var(--pane-header-padding-x);
+  position: relative;
+  z-index: 1;
+  transition: box-shadow var(--transition-fast);
+}
+.tab-bar.nav-tab-bar.scrolled {
+  box-shadow: var(--shadow-md);
+}
+
+/* Recent panel — controls (window picker) + flat file list.
+   The list reuses .tree-item rows (same icons, ages, sizes) so
+   click-to-open and hover affordances match the Files panel
+   exactly. */
+.recent-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.recent-chip {
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+.recent-chip:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+}
+.recent-chip.active {
+  color: var(--tab-active-color);
+  border-color: var(--tab-active-color);
+}
+.recent-empty {
+  padding: 24px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.recent-truncated-note {
+  padding: 8px 12px;
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── File header ─────────────────────────────────────────────── */
+
+.file-header {
+  padding: var(--file-header-padding-y) var(--content-padding-x);
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.file-header-path {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  color: var(--text);
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.file-header-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--radius-chrome);
+  flex-shrink: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+.file-header-copy:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+}
+.file-header-copy svg {
+  width: 14px;
+  height: 14px;
+}
+.file-header:hover .file-header-copy {
+  opacity: 1;
+  visibility: visible;
+}
+.file-header-copy.copied {
+  color: hsl(134 61% 41%);
+  opacity: 1;
+  visibility: visible;
+}
+/* Color / weight come from .size / .size-large — see the shared
+   size-chip convention above. */
+.file-header-size {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.file-header-preview {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.file-header-action {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-chrome);
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.file-header-action:hover {
+  border-color: var(--link);
+  color: var(--link);
+}
+.file-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: var(--radius-chrome);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+.file-header-icon:hover {
+  color: var(--link);
+  border-color: var(--link);
+}
+.file-header-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.file-header-icon[hidden] {
+  display: none;
+}
+.file-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-chrome);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  flex-shrink: 0;
+}
+.badge-completed {
+  background: hsl(134 41% 88%);
+  color: hsl(134 61% 21%);
+}
+.badge-failed {
+  background: hsl(355 70% 91%);
+  color: hsl(354 61% 28%);
+}
+.badge-running {
+  background: hsl(46 100% 90%);
+  color: hsl(46 94% 27%);
+}
+.badge-pending {
+  background: hsl(210 16% 93%);
+  color: hsl(210 9% 31%);
+}
+.badge-claude {
+  background: hsl(214 95% 93%);
+  color: hsl(214 71% 40%);
+}
+.badge-gemini {
+  background: hsl(48 96% 89%);
+  color: hsl(48 82% 31%);
+}
+.badge-pi {
+  background: hsl(251 91% 95%);
+  color: hsl(263 69% 42%);
+}
+.badge-adapter {
+  background: hsl(226 100% 94%);
+  color: hsl(226 55% 41%);
+}
+.badge-compressed {
+  background: hsl(0 0% 92%);
+  color: hsl(0 0% 35%);
+}
+.badge-frontmatter-error {
+  background: hsl(355 70% 91%);
+  color: hsl(354 61% 28%);
+  cursor: help;
+}
+
+/* ── Content copy button ─────────────────────────────────────── */
+
+.content-copy-wrap {
+  position: relative;
+}
+.content-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: none;
+  background: var(--sidebar-bg);
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--radius-chrome);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
+    background var(--transition-fast);
+  z-index: 2;
+}
+.content-copy-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.content-copy-wrap:hover .content-copy-btn {
+  opacity: 1;
+  visibility: visible;
+}
+.content-copy-btn:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+}
+.content-copy-btn.copied {
+  color: hsl(134 61% 41%);
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ── Content area ────────────────────────────────────────────── */
+
+/* Single scroll zone: the preview pane scrolls; content-body must NOT
+   have its own overflow, or the file-header (which lives above the
+   content-body in .preview-pane) will stay pinned while the inner
+   body scrolls — inconsistent with markdown, which has no inner
+   scroll. Everything on the right scrolls together; only the top app
+   bar stays fixed. */
+.content-body {
+  flex: 1;
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+.metabrowser-kpress-host {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── Embedded KPress documents ─────────────────────────────────────
+   metabrowser consumes KPress's own TOC runtime rather than reimplementing
+   it. The preview pane is marked `data-kpress-viewport` (see server.py) and
+   carries the `kpress-doc` query container (see .preview-pane above), so
+   KPress's components.css drives the responsive sidebar/drawer against the
+   pane and toc.js (loaded + initialized via plugin_sdk.js) drives scroll-spy,
+   the toggle, and the drawer. The doc <h1> header is suppressed at the source
+   via show_doc_header=False (the path shows in metabrowser's file header), so
+   no host CSS override is needed. */
+.metabrowser-kpress-render-error,
+.metabrowser-source-truncation-warning {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--status-warning);
+  background: var(--status-info-bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.metabrowser-kpress-error-detail {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+/* Image preview — scale to fit the pane without ever forcing a
+   horizontal scrollbar; height is intrinsic so aspect ratio is
+   preserved. Outer padding comes from the .content-body wrapper. */
+.file-image {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ── Log summary ─────────────────────────────────────────────── */
+
+.log-summary {
+  display: flex;
+  gap: 16px;
+  padding: 12px var(--content-padding-x);
+  background: hsl(210 17% 98%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-document);
+  margin-bottom: var(--content-padding-y);
+  flex-wrap: wrap;
+}
+.log-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.log-stat-label {
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+}
+.log-stat-value {
+  font-size: 14px;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Log events ──────────────────────────────────────────────── */
+
+.log-event {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+.log-event-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  background: hsl(0 0% 98%);
+  transition: background var(--transition-fast);
+}
+.log-event-header:hover {
+  background: var(--hover-bg);
+}
+.log-event-expand {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast);
+  color: var(--muted);
+}
+.log-event.expanded .log-event-expand {
+  transform: rotate(90deg);
+}
+.log-event-kind {
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  padding: 1px 6px;
+  border-radius: var(--radius-chrome);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.kind-init {
+  background: hsl(214 95% 93%);
+  color: hsl(226 71% 40%);
+}
+.kind-tool_call {
+  background: hsl(48 96% 89%);
+  color: hsl(23 82% 31%);
+}
+.kind-tool_result {
+  background: hsl(48 96% 89%);
+  color: hsl(23 82% 31%);
+}
+.kind-text {
+  background: hsl(220 14% 96%);
+  color: hsl(217 19% 27%);
+}
+.kind-thinking {
+  background: hsl(251 91% 95%);
+  color: hsl(263 69% 42%);
+}
+.kind-result {
+  background: hsl(149 80% 90%);
+  color: hsl(163 88% 20%);
+}
+.kind-result.error {
+  background: hsl(0 93% 94%);
+  color: hsl(0 70% 35%);
+}
+.kind-system {
+  background: hsl(220 14% 96%);
+  color: hsl(220 9% 46%);
+}
+.kind-raw {
+  background: hsl(220 14% 96%);
+  color: hsl(220 9% 46%);
+}
+
+/* ── Event filter bar ─────────────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  gap: 0;
+  margin: 8px 0 12px 0;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--muted);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+  line-height: 1.4;
+}
+.filter-btn:first-child {
+  border-radius: var(--radius-chrome) 0 0 var(--radius-chrome);
+}
+.filter-btn:last-child {
+  border-radius: 0 var(--radius-chrome) var(--radius-chrome) 0;
+}
+.filter-btn:not(:first-child) {
+  margin-left: -1px;
+}
+.filter-btn .filter-count {
+  font-weight: var(--weight-normal);
+  opacity: 0.7;
+}
+
+/* Active states — colored to match kind badge */
+.filter-btn.active.kind-thinking {
+  background: hsl(251 91% 95%);
+  color: hsl(263 69% 42%);
+  border-color: hsl(252 95% 85%);
+}
+.filter-btn.active.kind-text {
+  background: hsl(220 14% 96%);
+  color: hsl(217 19% 27%);
+  border-color: hsl(216 12% 84%);
+}
+.filter-btn.active.kind-tool_call {
+  background: hsl(48 96% 89%);
+  color: hsl(23 82% 31%);
+  border-color: hsl(43 96% 56%);
+}
+.filter-btn.active.kind-tool_result {
+  background: hsl(48 96% 89%);
+  color: hsl(23 82% 31%);
+  border-color: hsl(43 96% 56%);
+}
+.filter-btn.active.kind-system {
+  background: hsl(220 14% 96%);
+  color: hsl(220 9% 46%);
+  border-color: hsl(216 12% 84%);
+}
+.filter-btn.active.kind-init {
+  background: hsl(214 95% 93%);
+  color: hsl(226 71% 40%);
+  border-color: hsl(212 96% 78%);
+}
+.filter-btn.active.kind-result {
+  background: hsl(149 80% 90%);
+  color: hsl(163 88% 20%);
+  border-color: hsl(156 72% 67%);
+}
+.log-event-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  min-width: 0;
+}
+.summary-label {
+  font-weight: var(--weight-bold);
+}
+.summary-key {
+  color: var(--muted);
+}
+.summary-value {
+  color: var(--text);
+}
+.summary-omitted {
+  color: var(--muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.log-event-raw {
+  display: none;
+  max-height: 400px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+.log-event-raw pre {
+  margin: 0;
+}
+.log-event-raw code {
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+  line-height: 1.5;
+}
+.log-event.expanded .log-event-raw {
+  display: block;
+}
+
+/* ── Code blocks (highlight.js integration) ─────────────────── */
+
+/* Padding + background live on <pre class="code-block"> (block-level)
+   so source/raw views align horizontally with other content-body
+   views at var(--content-padding-x). Placing padding on the inner
+   <code class="hljs"> collides with the hljs theme's `pre code.hljs`
+   rule and produces a narrower, font-size-dependent left inset. */
+.code-block {
+  margin: 0;
+  overflow: auto;
+  padding: var(--content-padding-y) var(--content-padding-x);
+  background: var(--code-bg);
+  --scrollbar-bg: var(--code-bg);
+}
+.code-block code {
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+  line-height: 1.5;
+}
+/* Match the hljs theme's `pre code.hljs` specificity to neutralize
+   its 1em padding inside our .code-block wrapper. */
+pre.code-block code.hljs {
+  padding: 0;
+}
+/* Override highlight.js theme defaults to use our design tokens */
+.hljs {
+  background: var(--code-bg);
+  color: var(--text);
+}
+/* Full-file code views (source/raw tabs): the whole pane IS code, so
+   render it flat on --bg, matching rendered prose and the structured
+   tree, rather than the darker inline-code swatch. These views are
+   wrapped by wrapWithCopy in a .content-copy-wrap, so target the
+   <pre> as its direct child — the older `.content-body > .code-block`
+   selector missed the wrapper and left every source view gray.
+   Markdown-embedded code blocks render inside .md-body (never in a
+   .content-copy-wrap) and keep --code-bg to stand out against prose. */
+.content-copy-wrap > .code-block,
+.content-copy-wrap > .code-block .hljs,
+.content-body > .code-block,
+.content-body > .code-block .hljs {
+  background: var(--bg);
+}
+.content-copy-wrap > .code-block,
+.content-body > .code-block {
+  --scrollbar-bg: var(--bg);
+}
+.log-event-raw .hljs {
+  padding: 8px 12px;
+}
+
+/* ── Markdown rendering ──────────────────────────────────────── */
+
+.md-body {
+  line-height: 1.55;
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+.md-body h1 {
+  font-size: 1.5em;
+  margin: 1em 0 0.5em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
+}
+.md-body h2 {
+  font-size: 1.3em;
+  margin: 0.8em 0 0.4em;
+}
+.md-body h3 {
+  font-size: 1.15em;
+  margin: 0.6em 0 0.3em;
+}
+.md-body h4 {
+  font-size: 1.05em;
+  margin: 0.5em 0 0.3em;
+}
+.md-body p {
+  margin: 0.5em 0;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.md-body li {
+  margin: 0.5em 0;
+}
+
+/* Cap prose-flow elements for readability; tables, code blocks, images,
+   and hr stay full-width. No effect on narrow viewports. */
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6,
+.md-body p,
+.md-body ul,
+.md-body ol,
+.md-body blockquote {
+  max-width: 50em;
+}
+.md-body code {
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+  background: var(--code-bg);
+  padding: 2px 4px;
+  border-radius: var(--radius-document);
+}
+.md-body pre {
+  background: var(--code-bg);
+  padding: 12px;
+  border-radius: var(--radius-document);
+  overflow-x: auto;
+  margin: 0.5em 0;
+  --scrollbar-bg: var(--code-bg);
+}
+.md-body pre code {
+  background: none;
+  padding: 0;
+}
+.md-body blockquote {
+  border-left: 3px solid var(--border);
+  margin: 0.5em 0;
+  padding: 0.3em 1em;
+  color: var(--muted);
+}
+.md-body a {
+  color: var(--link);
+}
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+.md-body del {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.md-body strong {
+  font-weight: var(--weight-bold);
+}
+
+/* Checkboxes */
+.md-body .checkbox {
+  font-size: 1.1em;
+  margin-right: 0.2em;
+}
+.md-body .checkbox.checked {
+  color: hsl(134 61% 41%);
+}
+
+/* ── Markdown panels: tables and frontmatter ─────────────────── */
+/* Tables (``.table-container``) and frontmatter blocks share one
+   envelope — outer ``--panel-border``, ``--radius-document`` corners,
+   and a ``--panel-header-bg`` strip that holds small-caps label
+   typography. The border lives on the container (not the table), so
+   the radius clips a real 1px outline cleanly; cells only paint
+   internal grid lines, so there's no double-edge anywhere. */
+
+.table-container,
+.frontmatter-block {
+  margin: 0.5em 0;
+  border: var(--panel-border);
+  border-radius: var(--radius-document);
+  overflow: hidden;
+}
+
+/* Tables shrink to fit their content but cap at the parent so a small
+   numeric table doesn't span the full prose width; very wide tables
+   still get horizontal scroll via the per-axis override below. */
+.table-container {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.data-table {
+  border-collapse: collapse;
+}
+.data-table th,
+.data-table td {
+  padding: var(--panel-cell-padding);
+  text-align: left;
+  border-right: var(--panel-border);
+  border-bottom: var(--panel-border);
+}
+.data-table th:last-child,
+.data-table td:last-child {
+  border-right: 0;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.data-table th {
+  background: var(--panel-header-bg);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  /* Panel headers use full-strength --text rather than the default
+     muted --label-color, matching the active .tab-btn style: same
+     small-caps typography, same darker hue. Keeps the "thead /
+     section header" tier visually distinct from secondary in-content
+     labels (stat captions, chart titles) which stay muted. */
+  color: var(--text);
+  white-space: nowrap;
+  /* Default header alignment is centered. Explicit per-column alignment
+     from markdown (`:---:`, `---:`) wins via inline style/attr. The
+     auto-numeric-column pass in markdown/index.js does NOT touch
+     headers — only the numeric cells in the body — so a column of
+     numbers reads as right-aligned data under a centered label. */
+  text-align: center;
+}
+/* Numeric body cells, applied by the auto-numeric pass in
+   markdown/index.js. Tabular-nums lines decimal points up across rows
+   so a column of figures scans as a column instead of a ragged edge.
+   See ``.size`` / ``.count`` for the same convention elsewhere. */
+.data-table td.numeric-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Zebra striping reuses the panel header fill so the alternating rows
+   read as part of the same table envelope (same hue family) rather
+   than a separate accent. Hover then switches to the neutral
+   --hover-bg so pointer feedback stays visible on striped rows and
+   matches hover behavior elsewhere in the app. */
+.data-table tbody tr:nth-child(even) {
+  background: var(--panel-header-bg);
+}
+.data-table tbody tr:hover {
+  background: var(--hover-bg);
+}
+.data-table code {
+  font-size: var(--mono-block-font-size);
+  background: var(--hover-bg);
+  padding: 1px 4px;
+  border-radius: var(--radius-document);
+}
+
+/* The frontmatter ``<summary>`` reads as a one-row thead: same fill,
+   same label typography, same divider stroke as ``.data-table th``. */
+.frontmatter-block {
+  margin: 0 0 1em;
+}
+.frontmatter-block summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--panel-cell-padding);
+  background: var(--panel-header-bg);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  /* Matches .data-table th — see the note there. */
+  color: var(--text);
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  border-bottom: var(--panel-border);
+  transition: background var(--transition-fast);
+  list-style: none;
+}
+.frontmatter-block summary::-webkit-details-marker {
+  display: none;
+}
+.frontmatter-block summary:hover {
+  background: var(--hover-bg);
+}
+.frontmatter-block[open] .toggle-chevron {
+  transform: rotate(90deg);
+}
+.frontmatter-block pre {
+  margin: 0;
+  border-radius: 0;
+}
+.frontmatter-block .hljs {
+  padding: 12px;
+  background: var(--code-bg);
+}
+
+/* ── Custom tooltip ──────────────────────────────────────────── */
+/* Single floating surface, light theme. Shares tokens + typography
+   with the drawer so any content that renders inside the drawer (e.g.
+   _section("Identity", ...) from viz.js) also renders coherently in a
+   tooltip. Kept pointer-events: none so hovering the tooltip itself
+   never hijacks the parent's hover target. */
+
+.custom-tooltip {
+  display: none;
+  position: fixed;
+  z-index: var(--z-tooltip);
+  background: var(--viz-surface-raised);
+  color: var(--viz-text);
+  border: 1px solid var(--viz-border-strong);
+  padding: 6px 10px;
+  border-radius: var(--radius-chrome);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+  max-width: 360px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  box-shadow: var(--shadow-lg);
+}
+.custom-tooltip.visible {
+  opacity: 1;
+}
+/* Legacy tree-tooltip rows — kept for the file-tree's existing
+   file/folder summary shape. Use viz-panel-* classes for anything
+   "identity-like" so the drawer and the tooltip stay consistent. */
+.tip-name {
+  font-weight: var(--weight-medium);
+  margin-bottom: 2px;
+  word-break: break-all;
+  color: var(--viz-text);
+}
+.tip-detail {
+  color: var(--viz-text-muted);
+  font-weight: var(--weight-normal);
+  font-size: 11px;
+}
+.tip-loading {
+  color: var(--muted);
+  font-style: italic;
+}
+/* Section titles inside a tooltip don't need the extra top margin the
+   drawer uses (tooltip has its own padding). */
+.custom-tooltip .viz-panel-section {
+  margin-top: 0;
+}
+.custom-tooltip .viz-panel-section + .viz-panel-section {
+  margin-top: 6px;
+}
+
+/* ── Loading ─────────────────────────────────────────────────── */
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px;
+  color: var(--muted);
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--spinner-track);
+  border-top-color: var(--spinner-accent);
+  border-radius: var(--radius-circle);
+  animation: spin 0.8s linear infinite;
+}
+/* Tree-sized spinner — fits the 13px ``.tree-item`` font without
+   dominating the row. Used in ``.tree-lazy-placeholder`` while a
+   subtree is being fetched. */
+.spinner-sm {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Inline placeholder shown for a folder whose children are still
+   being lazy-loaded. Without this rule the text falls back to the
+   page default font (16px) and renders as a comically large block
+   inside the tree. */
+.tree-lazy-placeholder {
+  display: flex;
+  align-items: center;
+  padding: 2px 12px 2px 28px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}
+.tree-lazy-error {
+  color: var(--status-error);
+  font-style: normal;
+}
+
+/* ── Tree expand/collapse indicator ──────────────────────────── */
+
+/* Shared toggle chevron (used by tree folders and tally tree) */
+.toggle-chevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--muted);
+  stroke-width: 2.5;
+  transition: transform var(--transition-fast);
+}
+.collapsed .toggle-chevron {
+  transform: rotate(0deg);
+}
+.expanded .toggle-chevron {
+  transform: rotate(90deg);
+}
+/* Left-align folder names with file names. A file row leads with a 16px icon
+   box (.tree-item-icon); a folder row leads with the bare 12px chevron, so
+   folder names sat 4px to the left. The 2px inline margins make the chevron's
+   margin-box 16px to match the icon box (glyph stays 12px, centered), so names
+   align at every indent level. Scoped to .tree-folder so the shared tally-tree
+   chevron is unaffected. */
+.tree-folder > .toggle-chevron {
+  margin-inline: 2px;
+}
+
+/* ── Activity indicators ────────────────────────────────────── */
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Hide age for active files, show a mini spinner instead; keep file size */
+.file-active .tree-item-age {
+  display: none;
+}
+.file-active .tree-item-activity {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--spinner-mini-track);
+  border-top-color: var(--spinner-mini-accent);
+  border-radius: var(--radius-circle);
+  animation: spin 2s linear infinite;
+  flex-shrink: 0;
+}
+.tree-item-activity {
+  display: none;
+}
+
+.badge-live {
+  background: var(--status-success-soft-bg);
+  color: var(--status-success-soft-text);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+.badge-live::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-circle);
+  background: var(--status-success-dot);
+  margin-right: 4px;
+}
+
+/* ── Charts ─────────────────────────────────────────────────── */
+
+.chart-container {
+  position: relative;
+  margin: 8px 0;
+  height: 140px;
+}
+.chart-title {
+  font-size: 11px;
+  color: var(--muted-slate);
+  font-weight: var(--weight-bold);
+  margin: 12px 0 2px 4px;
+}
+.charts-section {
+  padding: 8px 12px;
+}
+
+/* ── Tally tree ─────────────────────────────────────────────── */
+
+.tally-tree {
+  font-size: 12px;
+  line-height: 1.8;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+}
+.tally-node {
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+}
+.tally-node:hover {
+  background: var(--hover-bg);
+  border-radius: var(--radius-chrome);
+}
+.tally-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+}
+.tally-label {
+  margin-left: 2px;
+}
+.tally-count {
+  font-weight: var(--weight-bold);
+  margin-left: 4px;
+  color: var(--text);
+}
+.tally-children {
+  padding-left: 16px;
+}
+.tally-children.collapsed {
+  display: none;
+}
+.tally-metadata {
+  font-size: 11px;
+  color: var(--muted-slate);
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+.tally-metadata span {
+  margin-right: 12px;
+}
+.tally-leaf-bar {
+  display: inline-block;
+  height: 8px;
+  border-radius: var(--radius-chrome);
+  margin-left: 6px;
+  vertical-align: middle;
+  opacity: 0.6;
+}
+
+/* Tally color hints */
+.tally-color-success {
+  color: var(--status-success);
+}
+.tally-color-failed,
+.tally-color-error {
+  color: var(--status-error);
+}
+.tally-color-critical {
+  color: var(--status-error);
+  font-weight: var(--weight-bold);
+}
+.tally-color-high {
+  color: var(--status-warning-strong);
+}
+.tally-color-elevated {
+  color: var(--status-warning);
+}
+.tally-color-kill {
+  color: var(--status-error);
+}
+
+/* ── Tally skeleton cells (P1.13) ───────────────────────────── */
+/* Rendered by sizeHtml(null) / formatAge(null) when the
+   InventoryIndex walker has not yet finalized a dir. The cell
+   shows shape (a gray box) but no value; applyCellPatch() in
+   app.js swaps the real number in place when an fs.change op
+   for that path arrives on /api/events. The opacity pulse is
+   slow (1.6 s) so it reads as "loading" rather than "blinking". */
+.tally-pending {
+  display: inline-block;
+  vertical-align: middle;
+  width: 36px;
+  height: 0.85em;
+  background: var(--tally-skeleton-bg);
+  border-radius: var(--radius-chrome);
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
+}
+.tally-pending.tally-pending-narrow {
+  width: 22px;
+}
+@keyframes tally-pending-pulse {
+  0% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0.45;
+  }
+}
+
+/* Live-update row flash. Both the .tree-item AND its sibling
+   .tree-children (for folders) get the class so the whole insert
+   reads as a coherent visual event. The animations are scoped to
+   the .tree-item itself for the bg flash; the .tree-children
+   variant handles smooth height collapse on remove. */
+.tree-item-flash-in {
+  animation: tree-row-flash-in 900ms ease-out;
+}
+.tree-item-flash-out {
+  animation: tree-row-flash-out 320ms ease-in forwards;
+  /* `forwards` keeps the final keyframe (opacity 0) in place so
+     the row stays invisible until the JS DOM removal lands. */
+  pointer-events: none;
+  overflow: hidden;
+}
+@keyframes tree-row-flash-in {
+  0% {
+    background-color: var(--row-flash-bg);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+@keyframes tree-row-flash-out {
+  0% {
+    background-color: var(--row-flash-bg);
+    opacity: 1;
+    max-height: 4em;
+  }
+  100% {
+    background-color: var(--row-flash-bg);
+    opacity: 0;
+    max-height: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Honor the OS-level "reduce motion" preference: drop both
+     animations to a near-instant fade so the user still gets the
+     yellow flash for context, but no movement. */
+  .tree-item-flash-in,
+  .tree-item-flash-out {
+    animation-duration: 1ms;
+  }
+}
+
+/* ── Print adapter: host chrome only, document styling stays in KPress ── */
+@media print {
+  @page {
+    margin: var(--kpress-print-page-margin);
+  }
+
+  html,
+  body {
+    width: auto;
+    height: auto;
+    overflow: visible;
+    background: white;
+    color: black;
+  }
+
+  body {
+    display: block;
+  }
+
+  .tree-pane,
+  .resize-handle,
+  .app-header,
+  .file-header,
+  .tab-bar,
+  .content-copy-btn,
+  .file-header-print,
+  .settings-toggle,
+  .custom-tooltip,
+  .index-progress,
+  .loading,
+  .spinner {
+    display: none;
+  }
+
+  .container,
+  .preview-pane {
+    display: block;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    background: white;
+    color: black;
+  }
+
+  .preview-pane [data-tab-content] {
+    display: none;
+  }
+
+  .preview-pane [data-tab-content][data-active-view="true"][data-printable="true"] {
+    display: block;
+    overflow: visible;
+  }
+
+  .preview-pane[data-printable="false"]::before {
+    content: "This MetaBrowser view is not marked printable.";
+    display: block;
+    color: black;
+    font: 11pt / 1.4 var(--font-sans);
+  }
+
+  .content-body,
+  .md-body,
+  .metabrowser-kpress-host,
+  .metabrowser-source-host {
+    padding: 0;
+    background: white;
+    color: black;
+  }
+
+  .metabrowser-kpress-render-error,
+  .metabrowser-source-truncation-warning {
+    break-inside: avoid;
+    background: white;
+    color: black;
+    border-color: var(--border);
+  }
+
+  .code-block,
+  .code-block code,
+  .hljs,
+  .content-body > .code-block,
+  .content-body > .code-block .hljs {
+    overflow: visible;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: white;
+    color: black;
+  }
+
+  .kpress-print-surface {
+    display: block;
+  }
+}

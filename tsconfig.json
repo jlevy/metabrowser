@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "target": "ES2022",
+    "noImplicitAny": false,
+    "strictNullChecks": false
+  },
+  "include": [
+    "src/metabrowser/static/**/*.d.ts",
+    "src/metabrowser/static/**/*.js",
+    "src/metabrowser/builtin_plugins/**/*.js"
+  ],
+  "exclude": ["src/metabrowser/static/app.js"]
+}

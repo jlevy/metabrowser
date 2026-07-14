@@ -1,0 +1,45 @@
+[plugin]
+name = "lmdb"
+display_name = "LMDB Database"
+version = "0.0.1"
+
+# Match by folder_marker so the tree gets the dataset-style badge on
+# any directory containing an LMDB env. Priority 50 sits below domain
+# plugins (100+) so a dataset plugin claiming the parent room's
+# `dataset.yml` still wins for the room folder; this kind only owns
+# the LMDB folder itself.
+[[kind]]
+id = "lmdb-database"
+match = { folder_marker = "data.mdb" }
+priority = 50
+
+[[view]]
+kind = "lmdb-database"
+id = "keys"
+label = "Keys"
+default = true
+
+[[view]]
+kind = "lmdb-database"
+id = "entry"
+label = "Entry"
+
+[[view]]
+kind = "lmdb-database"
+id = "stats"
+label = "Stats"
+
+[[data_hook]]
+route = "keys"
+sidekick = "metabrowser.builtin_plugins.lmdb.sidekick:keys_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "entry"
+sidekick = "metabrowser.builtin_plugins.lmdb.sidekick:entry_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "stats"
+sidekick = "metabrowser.builtin_plugins.lmdb.sidekick:stats_handler"
+methods = ["GET"]

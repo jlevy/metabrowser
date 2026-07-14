@@ -1,0 +1,326 @@
+"""End-to-end tests for the InventoryIndex-backed migration of
+``/api/tree`` and ``/api/activity`` (P1.11 + P1.12).
+
+* ``api_tree`` uses the inventory path when the index has data;
+  the response carries ``tally_cache_status`` reflecting walker
+  state; falls back to the filesystem walk when the index is
+  idle.
+* The inventory-backed tree shape matches the legacy filesystem
+  walk on a small fixture, except where the inventory emits
+  ``None`` aggregates for in-progress dirs (walker still
+  finalizing).
+* ``_discover_trackable_files`` reads from the inventory when
+  populated; returns the same set of paths as the legacy walk.
+* The cold-path budget contract is verifiable: with a fully
+  finalized inventory, ``_discover_trackable_files`` finishes
+  without touching the filesystem (no ``os.walk`` call required).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from typing import Any, cast
+
+from metabrowser import paths_safe
+from metabrowser import server as proc_browser
+from metabrowser.activity import (
+    _discover_trackable_files,
+    _discover_trackable_files_from_inventory,
+)
+from metabrowser.events import FsEntry
+from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.tree import _build_inventory_tree, inventory_has_data, inventory_status
+
+
+def _build_fixture(root: Path) -> None:
+    """Tree with .logs and .state dirs so trackable-file discovery
+    has something to find."""
+    (root / "README.md").write_text("readme")
+    (root / "runs").mkdir()
+    (root / "runs" / "x").mkdir()
+    (root / "runs" / "x" / ".logs").mkdir()
+    (root / "runs" / "x" / ".logs" / "foo.jsonl").write_text('{"event":"start"}\n')
+    (root / "runs" / "x" / ".logs" / "foo.log").write_text("info: started\n")
+    (root / "runs" / "x" / ".state").mkdir()
+    (root / "runs" / "x" / ".state" / "status.json").write_text("{}")
+    (root / "docs").mkdir()
+    (root / "docs" / "notes.md").write_text("notes")
+
+
+class _FakeQuery:
+    def __init__(self, data: dict[str, str]) -> None:
+        self._data = data
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._data.get(key, default)
+
+
+class _FakeHeaders:
+    def __init__(self, data: dict[str, str]) -> None:
+        self._data = {k.lower(): v for k, v in data.items()}
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._data.get(key.lower(), default)
+
+
+class _FakeRequest:
+    def __init__(
+        self,
+        query: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        self.query_params = _FakeQuery(query or {})
+        self.headers = _FakeHeaders(headers or {})
+
+
+async def _drive_walker(root: Path) -> None:
+    reset_instance_for_tests()
+    inv = get_instance()
+    inv.start(root)
+    await inv.wait_until_done(timeout=5.0)
+
+
+# ── tree.py: inventory-backed builder ─────────────────────────
+
+
+def test_inventory_backed_tree_shape_matches_legacy_filesystem(tmp_path: Path) -> None:
+    """The inventory-built tree must produce the same per-row
+    keys (``name``/``path``/``type``/``size``/``mtime``) as the
+    legacy ``_dir_tree`` walk for files. Dir aggregates may be
+    None during walker progress; here we wait for done so they're
+    populated."""
+
+    _build_fixture(tmp_path)
+    asyncio.run(_drive_walker(tmp_path))
+
+    tree = _build_inventory_tree(parent_rel="", max_depth=3, root_abs=tmp_path)
+    # Top-level entries: README.md, runs/, docs/
+    names = {row["name"] for row in tree}
+    assert "README.md" in names
+    assert "runs" in names
+    assert "docs" in names
+
+    # README.md has size 6 and a non-zero mtime.
+    readme = next(row for row in tree if row["name"] == "README.md")
+    assert readme["type"] == "file"
+    assert readme["size"] == 6
+    assert readme["mtime"] > 0
+
+    # docs is a dir with one child (notes.md).
+    docs = next(row for row in tree if row["name"] == "docs")
+    assert docs["type"] == "dir"
+    assert docs["total_files"] == 1
+    assert docs["has_children"] is True
+
+
+def test_inventory_backed_tree_emits_none_aggregates_when_walker_in_progress(
+    tmp_path: Path,
+) -> None:
+    """Before the walker finalizes a dir, its ``total_files`` is
+    None (placeholder). The shape carries this through so the
+    client can render skeleton cells."""
+
+    _build_fixture(tmp_path)
+    reset_instance_for_tests()
+    inv = get_instance()
+
+    inv._entries["docs"] = FsEntry(
+        path="docs",
+        parent="",
+        name="docs",
+        type="dir",
+        ext="",
+        kind="dir",
+        size=0,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+    )
+    out = _build_inventory_tree(parent_rel="", max_depth=2, root_abs=tmp_path)
+    docs_row = next(row for row in out if row["name"] == "docs")
+    assert docs_row["total_files"] is None
+    assert docs_row["total_size"] is None
+
+
+def test_inventory_status_passes_through(tmp_path: Path) -> None:
+    _build_fixture(tmp_path)
+    reset_instance_for_tests()
+    assert inventory_status() == "idle"
+    asyncio.run(_drive_walker(tmp_path))
+    assert inventory_status() in ("done", "truncated")
+
+
+def test_inventory_has_data_false_when_idle() -> None:
+    reset_instance_for_tests()
+    assert inventory_has_data() is False
+
+
+# ── proc_browser.api_tree: route-level integration ────────────
+
+
+def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
+    """When the inventory is populated, /api/tree's response
+    carries the entries from the cache and the response envelope
+    includes ``tally_cache_status``."""
+
+    _build_fixture(tmp_path)
+
+    async def _run() -> dict[str, Any]:
+
+        original_root = paths_safe.ROOT_DIR
+        paths_safe._set_root_dir(tmp_path)
+        try:
+            await _drive_walker(tmp_path)
+            resp = await proc_browser.api_tree(cast(Any, _FakeRequest()))
+        finally:
+            paths_safe._set_root_dir(original_root)
+        return json.loads(bytes(resp.body))
+
+    body = asyncio.run(_run())
+    assert "tally_cache_status" in body
+    assert body["tally_cache_status"] in ("idle", "scanning", "done", "truncated")
+    assert "tree" in body
+    names = {row["name"] for row in body["tree"]}
+    assert "README.md" in names
+    assert "runs" in names
+
+
+def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """A known-but-unfinalized subtree should return immediately from
+    inventory instead of starting a second blocking filesystem walk."""
+
+    (tmp_path / "runs" / "local" / "known").mkdir(parents=True)
+
+    original_root = paths_safe.ROOT_DIR
+    paths_safe._set_root_dir(tmp_path)
+    reset_instance_for_tests()
+    inv = get_instance()
+    inv._root = tmp_path
+    inv._status = "scanning"
+
+    inv._entries["runs/local"] = FsEntry(
+        path="runs/local",
+        parent="runs",
+        name="local",
+        type="dir",
+        ext="",
+        kind="dir",
+        size=0,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+    )
+    inv._entries["runs/local/known"] = FsEntry(
+        path="runs/local/known",
+        parent="runs/local",
+        name="known",
+        type="dir",
+        ext="",
+        kind="dir",
+        size=0,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+    )
+
+    def _fail_filesystem_walk(*_args: object, **_kwargs: object) -> list[dict[str, Any]]:
+        raise AssertionError("api_tree must not use _dir_tree for pending inventory rows")
+
+    monkeypatch.setattr(proc_browser, "_dir_tree", _fail_filesystem_walk)
+    try:
+        resp = asyncio.run(
+            proc_browser.api_tree(cast(Any, _FakeRequest({"path": "runs/local", "depth": "2"})))
+        )
+    finally:
+        paths_safe._set_root_dir(original_root)
+        reset_instance_for_tests()
+
+    body = json.loads(bytes(resp.body))
+    assert body["tally_cache_status"] == "scanning"
+    assert [row["path"] for row in body["tree"]] == ["runs/local/known"]
+    assert body["tree"][0]["total_files"] is None
+    assert body["tree"][0]["total_size"] is None
+
+
+# ── activity.py: inventory-backed discovery ───────────────────
+
+
+def test_discover_trackable_files_from_inventory_returns_none_when_empty() -> None:
+    reset_instance_for_tests()
+    out = _discover_trackable_files_from_inventory(Path("/nonexistent"))
+    assert out is None
+
+
+def test_discover_trackable_files_from_inventory_finds_logs_state_files(
+    tmp_path: Path,
+) -> None:
+    _build_fixture(tmp_path)
+    asyncio.run(_drive_walker(tmp_path))
+
+    out = _discover_trackable_files_from_inventory(tmp_path)
+    assert out is not None
+    paths = {p.relative_to(tmp_path).as_posix() for p in out}
+    assert "runs/x/.logs/foo.jsonl" in paths
+    # .log is NOT in BROWSER_TRACKABLE_EXTS (only .jsonl/.yaml/.yml/etc).
+    # That's a deliberate scope choice — only commonly appended formats
+    # at runtime are tracked. The .json file IS tracked.
+    assert "runs/x/.state/status.json" in paths
+    # README.md is NOT trackable (lives outside .logs/.state).
+    assert "README.md" not in paths
+    # docs/notes.md is also not in .logs/.state.
+    assert "docs/notes.md" not in paths
+
+
+def test_discover_trackable_files_uses_inventory_when_populated(tmp_path: Path) -> None:
+    """Wrapper function returns the same set as the legacy walk."""
+
+    _build_fixture(tmp_path)
+    asyncio.run(_drive_walker(tmp_path))
+
+    out = _discover_trackable_files(tmp_path)
+    paths = {p.relative_to(tmp_path).as_posix() for p in out}
+    assert "runs/x/.logs/foo.jsonl" in paths
+    # .log is NOT in BROWSER_TRACKABLE_EXTS (only .jsonl/.yaml/.yml/etc).
+    # That's a deliberate scope choice — only commonly appended formats
+    # at runtime are tracked. The .json file IS tracked.
+    assert "runs/x/.state/status.json" in paths
+
+
+def test_discover_trackable_files_falls_back_to_walk_when_inventory_idle(
+    tmp_path: Path,
+) -> None:
+    """When the inventory has no data, the legacy filesystem
+    walker still produces a correct result. This is the safety
+    net for the 'no walker started yet' edge case."""
+
+    _build_fixture(tmp_path)
+    reset_instance_for_tests()  # inventory empty
+
+    out = _discover_trackable_files(tmp_path)
+    paths = {p.relative_to(tmp_path).as_posix() for p in out}
+    # Same expected set as the inventory-backed path.
+    assert "runs/x/.logs/foo.jsonl" in paths
+    # .log is NOT in BROWSER_TRACKABLE_EXTS (only .jsonl/.yaml/.yml/etc).
+    # That's a deliberate scope choice — only commonly appended formats
+    # at runtime are tracked. The .json file IS tracked.
+    assert "runs/x/.state/status.json" in paths
+
+
+def test_inventory_and_filesystem_paths_agree_on_trackable_set(tmp_path: Path) -> None:
+    """Same input, two independent code paths, identical
+    output set — the migration is behavior-preserving."""
+
+    _build_fixture(tmp_path)
+    # Run both paths against the same fixture.
+    reset_instance_for_tests()
+    fs_paths = {p.relative_to(tmp_path).as_posix() for p in _discover_trackable_files(tmp_path)}
+    asyncio.run(_drive_walker(tmp_path))
+    inv_out = _discover_trackable_files_from_inventory(tmp_path)
+    assert inv_out is not None
+    inv_paths = {p.relative_to(tmp_path).as_posix() for p in inv_out}
+    assert fs_paths == inv_paths

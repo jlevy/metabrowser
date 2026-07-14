@@ -1,0 +1,192 @@
+/* Structured (JSON/YAML) plugin — Tree view styles.
+   Every color / size references a CSS variable on :root; no literals.
+   Class-name conventions:
+     .structured-tree, .tree-viewport — plugin-private chrome
+     .srow, .srow-* — per-row layout and state
+     .tok-*       — token-bearing classes shared with future plugins
+                    that want to mount the same color vocabulary
+
+   Content vs chrome — design-system rule:
+     The monospace .structured-tree font is the JSON / YAML content
+     surface. Brackets, keys, values, punctuation, the inline
+     collapsed-content stand-ins ({…}, […], {}, []), and the
+     container-header tallies ({N keys} / [N items]) are content and
+     stay in the monospace family — header tallies are dimmed via
+     --muted but keep the mono baseline so they sit cleanly next to
+     the key they summarize.
+     Pure chrome — the "(N more)" overflow markers inside inline
+     previews — renders in the sans-serif body font using --muted,
+     matching every other "gray metadata" surface in the shell
+     (label-color, sidebar tallies, ...).
+     Italics are reserved for the conventional code-highlight cue on
+     null literals; never applied to chrome metadata. */
+
+.structured-tree {
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+  color: var(--text);
+  background: var(--bg);
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.structured-tree .tree-viewport {
+  position: relative;
+  overflow-y: auto;
+  height: 100%;
+  background: var(--bg);
+}
+
+.structured-tree .tree-viewport-flat {
+  position: relative;
+  overflow-y: auto;
+}
+
+.structured-tree .tree-spacer {
+  /* Sized in JS from rows.length * rowHeight so the scrollbar
+     reflects the full virtual content height. */
+  width: 100%;
+}
+
+/* Row */
+.srow {
+  display: flex;
+  align-items: center;
+  height: var(--tree-row-height);
+  line-height: var(--tree-row-height);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 8px;
+}
+
+/* Row content — everything after the chevron lives in one inline
+   formatting context. The row itself is a flex container (for chevron
+   alignment); without this wrapper each token span becomes its own
+   flex item and the trailing space inside ": " / ", " / "- " spans is
+   trimmed at the end of each item's line box, collapsing the spacing
+   between a colon and its value/summary. */
+.srow-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.srow-container {
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+}
+
+.srow-container:hover {
+  background: var(--hover-bg);
+}
+
+/* Chevron */
+.srow-chevron {
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+  margin-right: 4px;
+  transition: transform var(--transition-fast);
+  color: var(--color-syntax-punct);
+}
+
+.srow-collapsed .srow-chevron {
+  transform: rotate(0deg);
+}
+
+.srow-expanded .srow-chevron {
+  transform: rotate(90deg);
+}
+
+.srow-chevron-leaf,
+.srow-chevron-empty {
+  visibility: hidden;
+}
+
+/* Tokens — referenced from preview.js / tree.js render output */
+.tok-key {
+  color: var(--color-syntax-key);
+}
+
+.tok-string {
+  color: var(--color-syntax-string);
+}
+
+.tok-number {
+  color: var(--color-syntax-number);
+}
+
+.tok-bool {
+  color: var(--color-syntax-bool);
+}
+
+.tok-null {
+  color: var(--color-syntax-null);
+  font-style: italic;
+}
+
+.tok-punct {
+  color: var(--color-syntax-punct);
+}
+
+/* Inline collapsed-content stand-ins ({…}, […], {}, []). Still
+   content (they stand in for JSON structure), so stay in the
+   monospace family + use the syntax-summary gray. No italic — the
+   monospace + the dimmed color already read as "collapsed". */
+.tok-summary {
+  color: var(--color-syntax-summary);
+}
+
+/* Chrome metadata in inline previews: the "(N more)" overflow markers
+   shown inside collapsed-content stand-ins. Sans-serif body font +
+   the design-system --muted gray, matching every other "gray metadata"
+   treatment in the shell. */
+.tok-meta {
+  font-family: var(--font-sans);
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+/* Container-header tally: "{7 keys}" / "[3 items]" on expanded
+   container rows. The braces use .tok-punct so they match the
+   collapsed-state braces exactly; only the inner "N keys" / "N items"
+   label is dimmed via --muted. Full mono size — no shrink — so the
+   baseline lines up with the surrounding key and the row never
+   changes height between states. The space before the tally comes from
+   the real ": " after the key, same as the collapsed preview, so the
+   two states line up exactly. */
+.tok-count-label {
+  color: var(--muted);
+}
+
+/* Parse-error banner — appears above the source view when the
+   server reports parse_error or truncated. */
+.parse-error-banner {
+  margin: var(--content-padding-y) var(--content-padding-x);
+  padding: var(--panel-cell-padding);
+  background: hsl(0 60% 96%);
+  border: 1px solid hsl(0 50% 80%);
+  border-radius: var(--radius-document);
+  color: hsl(0 50% 30%);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+}
+
+/* Per-event inline mount (agent-log + unknown-jsonl reuse).
+   Stays compact: bounded by the per-event payload cap so we don't
+   need a scroll viewport. */
+.log-event-raw .structured-tree {
+  height: auto;
+  overflow: visible;
+  font-size: var(--mono-block-font-size);
+}
+
+.log-event-raw .tree-viewport,
+.log-event-raw .tree-viewport-flat {
+  height: auto;
+  overflow: visible;
+}

@@ -1,0 +1,223 @@
+# ---- Project Info and Dependencies ----
+
+[project.urls]
+Repository = "https://github.com/jlevy/metabrowser"
+Issues = "https://github.com/jlevy/metabrowser/issues"
+
+[project]
+name = "metabrowser"
+description = "Local web UI for browsing files, logs, and structured artifacts with extensible renderers."
+authors = [
+    { name="Joshua Levy", email="joshua@cal.berkeley.edu" },
+]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<4.0"
+dynamic = ["version"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+    "Topic :: Software Development :: User Interfaces",
+]
+keywords = ["browser", "jsonl", "logs", "markdown", "developer-tools"]
+
+
+# ---- Main dependencies ----
+
+dependencies = [
+    "cachetools>=5.0",
+    "frontmatter-format",
+    "funlog>=0.2.1",
+    "json5>=0.14",
+    "jsonschema>=4.20",
+    "kpress==0.1.0",
+    "lmdb>=1.4",
+    "msgpack>=1.0",
+    "pathspec>=0.12",
+    "prettyfmt",
+    "psutil>=5.9",
+    "pydantic",
+    "python-dotenv>=1.0",
+    "pyyaml",
+    "ruamel.yaml",
+    "starlette",
+    "strif",
+    "typer",
+    "uvicorn",
+    "watchfiles>=0.24",
+]
+
+
+# ---- Dev dependencies ----
+
+[dependency-groups]
+build = [
+    "hatchling==1.30.1",
+    "uv-dynamic-versioning==0.14.0",
+]
+dev = [
+    "basedpyright>=1.38.0",
+    "codespell>=2.4.1",
+    "httpx",
+    "pytest>=9.0.2",
+    "pytest-sugar",
+    "pytest-timeout>=2.3",
+    "rich>=14.3.2",
+    "ruff>=0.15.1",
+]
+
+[project.scripts]
+metabrowser = "metabrowser.cli.serve:main"
+
+
+# ---- Build system ----
+
+# Dynamic versioning from:
+# https://github.com/ninoseki/uv-dynamic-versioning/
+
+[build-system]
+requires = ["hatchling==1.30.1", "uv-dynamic-versioning==0.14.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+# Note JSON schemas don't seem to be right for tool.hatch.version.source so
+# this may cause false warnings in IDEs.
+# https://github.com/ninoseki/uv-dynamic-versioning/issues/21
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+
+[tool.hatch.build]
+exclude = [
+    "/.agents/",
+    "/.claude/",
+    "/.codex/",
+    "/.github/",
+    "/.tbd/",
+    "/.copier-answers.yml",
+    "/AGENTS.md",
+    "/CLAUDE.md",
+    "/skills-lock.json",
+]
+
+[tool.hatch.build.targets.wheel]
+# The source location for the package.
+packages = ["src/metabrowser"]
+
+
+[tool.ruff]
+# Set as desired, typically 88 (black standard) or 100 (wide).
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    # See: https://docs.astral.sh/ruff/rules/
+    # Basic list from: https://docs.astral.sh/ruff/linter/#rule-selection
+    "E", # https://docs.astral.sh/ruff/rules/#error-e
+    "F", # https://docs.astral.sh/ruff/rules/#pyflakes-f
+    "UP", # https://docs.astral.sh/ruff/rules/#pyupgrade-up
+    "B", # https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+    "I", # https://docs.astral.sh/ruff/rules/#isort-i
+    "FURB",
+    "G",
+    "ICN",
+    "ISC",
+    "LOG",
+    "PIE",
+    "PLC0415",
+    "PYI",
+    "RET",
+    "TID",
+]
+ignore = [
+    # Disable some rules that are overly pedantic. Add/remove as desired:
+    "E501", # https://docs.astral.sh/ruff/rules/line-too-long/
+    "E402", # https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file/
+    "E731", # https://docs.astral.sh/ruff/rules/lambda-assignment/
+    "B008",
+    # We use both ruff formatter and linter so some rules should always be disabled.
+    # See: https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "W191", # https://docs.astral.sh/ruff/rules/tab-indentation/
+    "E111", # https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple/
+    "E114", # https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple-comment/
+    "E117", # https://docs.astral.sh/ruff/rules/over-indented/
+    "D206", # https://docs.astral.sh/ruff/rules/docstring-tab-indentation/
+    "D300", # https://docs.astral.sh/ruff/rules/triple-single-quotes/
+    "Q000", # https://docs.astral.sh/ruff/rules/bad-quotes-inline-string/
+    "Q001", # https://docs.astral.sh/ruff/rules/bad-quotes-multiline-string/
+    "Q002", # https://docs.astral.sh/ruff/rules/bad-quotes-docstring/
+    "Q003", # https://docs.astral.sh/ruff/rules/avoidable-escaped-quote/
+    "COM812", # https://docs.astral.sh/ruff/rules/missing-trailing-comma/
+    "COM819", # https://docs.astral.sh/ruff/rules/prohibited-trailing-comma/
+    "ISC002", # https://docs.astral.sh/ruff/rules/multi-line-implicit-string-concatenation/
+]
+
+[tool.basedpyright]
+# BasedPyright currently seems like the best type checker option, much faster
+# than mypy and with a good extension for VSCode/Cursor.
+# https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright
+# https://docs.basedpyright.com/latest/configuration/config-files/#sample-pyprojecttoml-file
+include = ["src", "tests", "devtools"]
+# By default BasedPyright is very strict, so you almost certainly want to disable
+# some of the rules.
+# First, these turn off warnings about (yes) how you ignore warnings:
+reportIgnoreCommentWithoutRule = false
+reportUnnecessaryTypeIgnoreComment = false
+# A few typically noisy warnings are next.
+# How many you enable is up to you. The first few are off by default, but you can
+# comment/uncomment these as desired:
+reportMissingTypeStubs = false
+reportUnusedCallResult = false
+reportAny = false
+reportExplicitAny = false
+reportImplicitStringConcatenation = false
+reportUnreachable = false
+reportCallInDefaultInitializer = false
+reportImportCycles = false
+reportMissingModuleSource = false
+reportMissingParameterType = false
+reportUnknownParameterType = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportUnannotatedClassAttribute = false
+reportUnusedParameter = false
+reportUntypedFunctionDecorator = false
+reportImplicitOverride = false
+reportUnusedImport = "none"
+reportUnusedFunction = "none"
+reportUnusedClass = "none"
+reportPrivateUsage = false
+
+[tool.ruff.lint.isort]
+known-first-party = ["metabrowser"]
+
+[tool.codespell]
+ignore-words-list = "browseable,fo,ue,unparseable"
+
+[tool.pytest.ini_options]
+python_files = ["*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = [
+    "src",
+    "tests",
+]
+pythonpath = ["."]
+norecursedirs = []
+filterwarnings = []
+timeout = 60
+timeout_method = "thread"
