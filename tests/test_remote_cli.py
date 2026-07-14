@@ -9,6 +9,7 @@ explicit and insulates this command from any future routing change.
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
 from unittest.mock import patch
 
@@ -133,3 +134,54 @@ def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:
     )
     browser.open.assert_called_once_with("http://localhost:8411", new=2)
     assert len(popen_calls) == 1
+
+
+def test_remote_loads_dotenv_before_resolving_gcp_project(monkeypatch) -> None:
+    observed: dict[str, str] = {}
+
+    class _FakeProc:
+        returncode = 0
+
+        def poll(self):
+            return 0
+
+        def wait(self):
+            return 0
+
+        def send_signal(self, sig):
+            pass
+
+    def _fake_load_dotenv_chain():
+        os.environ["METABROWSER_GCP_PROJECT"] = "dotenv-project"
+
+    def _fake_probe(*args, **kwargs):
+        observed["probe_project"] = kwargs["project"]
+        return 8412
+
+    def _fake_tunnel(*args, **kwargs):
+        observed["tunnel_project"] = kwargs["project"]
+        return ["ssh"]
+
+    monkeypatch.delenv("METABROWSER_GCP_PROJECT", raising=False)
+    monkeypatch.setattr(remote, "_load_dotenv_chain", _fake_load_dotenv_chain)
+    monkeypatch.setattr(remote, "_probe_remote_free_port", _fake_probe)
+    monkeypatch.setattr(remote, "build_ssh_tunnel_command", _fake_tunnel)
+    monkeypatch.setattr(remote, "find_available_local_port", lambda *a, **kw: 8411)
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _FakeProc())
+
+    with patch.object(remote.signal, "signal"):
+        remote.remote(
+            host="my-vm",
+            path="/runs",
+            base_port=8411,
+            no_open=True,
+            ssh_options="",
+            gcp=True,
+            zone="us-central1-b",
+            project="",
+        )
+
+    assert observed == {
+        "probe_project": "dotenv-project",
+        "tunnel_project": "dotenv-project",
+    }

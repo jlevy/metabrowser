@@ -26,6 +26,7 @@ from metabrowser.cli.ssh_utils import (
     build_ssh_tunnel_command,
     wrap_with_stdin_watchdog,
 )
+from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import (
     DEFAULT_PORT_SEARCH_COUNT,
@@ -105,6 +106,8 @@ def remote(
     so multiple remote sessions can coexist on the same host pair. Ctrl-C
     tears down the tunnel and kills the remote serve cleanly.
     """
+    _load_dotenv_chain()
+
     # The environment default is consulted only when --gcp is set.
     effective_project = project or os.environ.get("METABROWSER_GCP_PROJECT", "")
 

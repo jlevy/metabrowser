@@ -87,8 +87,8 @@ Connect trusted publishing without a package token.
 - [x] Reject duplicate data-hook routes before server startup so manifest order cannot
   silently shadow a plugin endpoint
 - [x] Normalize and validate plugin paths across commands and direct server imports,
-  load dotenv configuration for non-server walks, and use readiness-gated,
-  platform-neutral browser launching for remote mode
+  load dotenv configuration consistently for serve, walk, plugin diagnostics, and remote
+  mode, and use readiness-gated, platform-neutral browser launching
 - [x] Expand home-relative served roots and reject traversal or symlink paths from both
   server deep links and standalone tree walks when they resolve outside the root; reject
   walk path flags in output modes that cannot apply them
@@ -135,7 +135,7 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 614 Python and browser contract tests pass
+- 615 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no repository-only
   tbd or agent metadata
 - An isolated uv environment installs the wheel and exercises its command, packaged
