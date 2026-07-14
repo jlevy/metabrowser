@@ -218,6 +218,20 @@ def test_walk_rejects_path_in_modes_that_cannot_scope_to_a_subtree(tmp_path: Pat
         assert "--path requires --format json or yaml with --all-at-once" in str(result.exception)
 
 
+def test_walk_rejects_file_subpaths(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    (root / "artifact.json").write_text("{}")
+
+    result = runner.invoke(
+        _app,
+        ["walk", str(root), "--format", "json", "--path", "artifact.json"],
+    )
+
+    assert isinstance(result.exception, CLIError)
+    assert "--path target is not a directory" in str(result.exception)
+
+
 def test_server_module_execution_delegates_to_canonical_cli() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "metabrowser.server", "--help"],

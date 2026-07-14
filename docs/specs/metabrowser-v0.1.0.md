@@ -91,7 +91,8 @@ Connect trusted publishing without a package token.
   mode, and use readiness-gated, platform-neutral browser launching
 - [x] Expand home-relative served roots and reject traversal or symlink paths from both
   server deep links and standalone tree walks when they resolve outside the root; reject
-  walk path flags in output modes that cannot apply them
+  walk path flags in output modes that cannot apply them and file targets that cannot
+  form subtrees
 - [x] Anchor Codex hooks to the git root and Claude hooks to the project root, and
   delegate legacy module execution to the canonical CLI before bootstrap side effects
 - [x] Keep optional GitHub CLI setup non-fatal on unsupported platforms and enforce the
@@ -135,7 +136,7 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 615 Python and browser contract tests pass
+- 616 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no repository-only
   tbd or agent metadata
 - An isolated uv environment installs the wheel and exercises its command, packaged

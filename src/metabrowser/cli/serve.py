@@ -84,13 +84,14 @@ def _wait_for_http_ok_then_open(
 _VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
 
-def _validate_contained_path(root: Path, requested: str) -> None:
+def _validate_contained_path(root: Path, requested: str) -> Path:
     """Require a requested path to exist within the resolved root."""
     target = (root / requested).resolve()
     if not target.is_relative_to(root):
         raise CLIError(f"--path target is outside the served root: {requested}")
     if not target.exists():
         raise CLIError(f"--path target does not exist: {target}")
+    return target
 
 
 def _apply_log_level(level: str | None) -> None:
@@ -282,7 +283,9 @@ def walk(
     if subpath and (fmt == "text" or stream):
         raise CLIError("--path requires --format json or yaml with --all-at-once")
     if subpath:
-        _validate_contained_path(resolved, subpath)
+        target = _validate_contained_path(resolved, subpath)
+        if not target.is_dir():
+            raise CLIError(f"--path target is not a directory: {target}")
 
     if fmt == "text":
         if detail not in DETAIL_LEVELS:
