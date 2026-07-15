@@ -44,7 +44,7 @@ dependencies = [
     "funlog>=0.2.1",
     "json5>=0.14",
     "jsonschema>=4.20",
-    "kpress==0.2.1",
+    "kpress==0.2.2",
     "lmdb>=1.4",
     "msgpack>=1.0",
     "pathspec>=0.12",

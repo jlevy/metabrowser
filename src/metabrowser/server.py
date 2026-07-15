@@ -1045,22 +1045,23 @@ class JSONResponse(_StarletteJSONResponse):
 # ``starlette.responses.JSONResponse`` directly is unaffected.
 
 
-def _gz_envelope_fields(artifact: ArtifactPath) -> dict[str, Any]:
-    """Additive fields injected into ``/api/file`` responses for ``.gz`` files.
-
-    Plain (non-gzipped) responses get ``{}`` so existing clients see the
-    same envelope shape they always have. The SPA reads ``logical_ext``
-    for icon/highlight dispatch and ``compressed`` to render the
-    compression-badge overlay.
-    """
+def _gz_identity_fields(artifact: ArtifactPath) -> dict[str, Any]:
+    """Compression fields that do not require reading the gzip trailer."""
     if not artifact.is_gzip:
         return {}
     return {
-        "size_uncompressed": artifact.logical_size,
         "logical_ext": artifact.logical_ext,
         "compressed": True,
         "compression": artifact.compression,
     }
+
+
+def _gz_envelope_fields(artifact: ArtifactPath) -> dict[str, Any]:
+    """Additive fields injected into successful ``/api/file`` gzip responses."""
+    identity = _gz_identity_fields(artifact)
+    if not identity:
+        return {}
+    return {"size_uncompressed": artifact.logical_size, **identity}
 
 
 def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONResponse:
@@ -1107,11 +1108,27 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
-    disk_size = artifact.disk_size
-    # Logical size drives "too big to inline" checks and the client's
-    # "X% read" indicator. For plain files it equals disk_size; for
-    # ``.gz`` it's the ISIZE-trailer uncompressed length.
-    logical_size = artifact.logical_size
+    try:
+        disk_size = artifact.disk_size
+        # Logical size drives "too big to inline" checks and the client's
+        # "X% read" indicator. For plain files it equals disk_size; for
+        # ``.gz`` it's the ISIZE-trailer uncompressed length.
+        logical_size = artifact.logical_size
+    except OSError:
+        try:
+            disk_size = target.stat().st_size
+        except OSError:
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        return JSONResponse(
+            {
+                "type": "binary",
+                "kind": "binary",
+                "views": _views_for_kind("binary"),
+                "path": subpath,
+                "size": disk_size,
+                **_gz_identity_fields(artifact),
+            }
+        )
     mtime_hash = file_mtime_hash(target)
     etag = _etag_for(mtime_hash)
     etag_headers = {"etag": etag, "cache-control": "no-cache"}
@@ -1384,9 +1401,9 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
 
 _KPRESS_EXPORT_MODES_SUPPORTED = {"page", "static-hosted", "hashed-static-hosted", "pdf"}
-# `single-file` is deferred by the KPress v0.2.1 contract. Reject explicitly so callers
+# `single-file` is deferred by the KPress v0.2.2 contract. Reject explicitly so callers
 # see a clear 400 with the reason rather than a half-supported artifact. The external
-# package is authoritative: https://github.com/jlevy/kpress/blob/v0.2.1/docs/kpress-design.md
+# package is authoritative: https://github.com/jlevy/kpress/blob/v0.2.2/docs/kpress-design.md
 _KPRESS_EXPORT_MODES_DEFERRED = {"single-file"}
 _KPRESS_EXPORT_ASSET_MODES_SUPPORTED = {"linked", "hashed"}
 
@@ -1477,8 +1494,25 @@ async def api_kpress_export(request: Request) -> JSONResponse:
     ctx = FileContext(source, ext)
     kind = _classify_with_plugins(source, ext, file_ctx=ctx)
 
+    export_source = source
+    source_text: str | None = None
+    if artifact.is_gzip:
+        try:
+            source_text = await asyncio.to_thread(_read_artifact_text, artifact)
+        except OSError as exc:
+            return JSONResponse(
+                {
+                    "type": "kpress_export_error",
+                    "error": "Unable to read compressed source",
+                    "detail": str(exc),
+                },
+                status_code=404,
+            )
+        export_source = source.with_suffix("")
+
     export_request = kpress_adapter.build_export_request(
-        path=str(source),
+        path=str(export_source),
+        source_text=source_text,
         kind=kind,
         view=view,
         print_profile=profile,

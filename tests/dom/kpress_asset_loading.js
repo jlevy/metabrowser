@@ -119,42 +119,42 @@ const sandbox = {
             {
               id: "css/document.css",
               path: "css/document.css",
-              public_url: "/kpress-static/v0.2.1/css/document.css",
+              public_url: "/kpress-static/v0.2.2/css/document.css",
               entry_point: true,
               loading: "stylesheet",
             },
             {
               id: "js/runtime.js",
               path: "js/runtime.js",
-              public_url: "/kpress-static/v0.2.1/js/runtime.js",
+              public_url: "/kpress-static/v0.2.2/js/runtime.js",
               entry_point: false,
               loading: "module",
             },
             {
               id: "js/theme.js",
               path: "js/theme.js",
-              public_url: "/kpress-static/v0.2.1/js/theme.js",
+              public_url: "/kpress-static/v0.2.2/js/theme.js",
               entry_point: true,
               loading: "module",
             },
             {
               id: "js/code-copy.js",
               path: "js/code-copy.js",
-              public_url: "/kpress-static/v0.2.1/js/code-copy.js",
+              public_url: "/kpress-static/v0.2.2/js/code-copy.js",
               entry_point: true,
               loading: "module",
             },
             {
               id: "js/toc.js",
               path: "js/toc.js",
-              public_url: "/kpress-static/v0.2.1/js/toc.js",
+              public_url: "/kpress-static/v0.2.2/js/toc.js",
               entry_point: true,
               loading: "module",
             },
             {
               id: "katex/katex.min.js",
               path: "katex/katex.min.js",
-              public_url: "/kpress-static/v0.2.1/katex/katex.min.js",
+              public_url: "/kpress-static/v0.2.2/katex/katex.min.js",
               entry_point: true,
               loading: "classic",
             },
@@ -164,7 +164,7 @@ const sandbox = {
           // render) — it is never appended as a <script> tag. Dependency-only
           // runtime.js also receives no tag.
           import_map: {
-            "/kpress-static/js/runtime.js": "/kpress-static/v0.2.1/js/runtime.js",
+            "/kpress-static/js/runtime.js": "/kpress-static/v0.2.2/js/runtime.js",
           },
         },
       }),
@@ -203,7 +203,7 @@ sandbox.metabrowser
     assert(links.length === 1, `expected one stylesheet, got ${links.length}`);
     assert(links[0].rel === "stylesheet", "stylesheet rel was not set");
     assert(
-      links[0].href === "/kpress-static/v0.2.1/css/document.css",
+      links[0].href === "/kpress-static/v0.2.2/css/document.css",
       "stylesheet href was not set",
     );
     assert(
@@ -215,7 +215,7 @@ sandbox.metabrowser
     assert(importMaps.length === 1, `expected one import map, got ${importMaps.length}`);
     const importMap = JSON.parse(importMaps[0].textContent);
     assert(
-      importMap.imports["/kpress-static/js/runtime.js"] === "/kpress-static/v0.2.1/js/runtime.js",
+      importMap.imports["/kpress-static/js/runtime.js"] === "/kpress-static/v0.2.2/js/runtime.js",
       "KPress import map was not installed",
     );
 
@@ -231,12 +231,12 @@ sandbox.metabrowser
       `expected module + classic entry points, got ${loadedScripts.length}: ${scriptSrcs.join(", ")}`,
     );
     assert(
-      scriptSrcs[0] === "/kpress-static/v0.2.1/js/code-copy.js",
+      scriptSrcs[0] === "/kpress-static/v0.2.2/js/code-copy.js",
       `expected code-copy.js to load, got ${scriptSrcs[0]}`,
     );
     assert(loadedScripts[0].type === "module", "code-copy.js was not loaded as a module");
     assert(
-      scriptSrcs[1] === "/kpress-static/v0.2.1/katex/katex.min.js",
+      scriptSrcs[1] === "/kpress-static/v0.2.2/katex/katex.min.js",
       `expected classic KaTeX script to load, got ${scriptSrcs[1]}`,
     );
     assert(

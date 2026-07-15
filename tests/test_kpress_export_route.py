@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 from pathlib import Path
 from typing import Any
@@ -157,7 +158,7 @@ def test_kpress_export_delegates_to_adapter_and_returns_report(tmp_path: Path, m
 
 
 def test_kpress_export_runs_against_released_runtime(tmp_path: Path) -> None:
-    """Pin the route to the public KPress v0.2.1 export contract."""
+    """Pin the route to the public KPress v0.2.2 export contract."""
 
     server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("# Released runtime\n\nRendered by KPress.\n")
@@ -181,6 +182,31 @@ def test_kpress_export_runs_against_released_runtime(tmp_path: Path) -> None:
     output = tmp_path / "public" / "doc.html"
     assert output.is_file()
     assert "Released runtime" in output.read_text(encoding="utf-8")
+
+
+def test_kpress_export_decompresses_gzip_source_for_released_runtime(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    source = tmp_path / "docs" / "compressed.md.gz"
+    source.parent.mkdir()
+    with gzip.open(source, "wt") as compressed:
+        compressed.write("# Compressed export\n\n![Diagram](diagram.svg)\n")
+    (source.parent / "diagram.svg").write_text("<svg></svg>\n", encoding="utf-8")
+
+    response = asyncio.run(
+        server.api_kpress_export(
+            _request(
+                body={
+                    "path": "docs/compressed.md.gz",
+                    "destination": "public/compressed.html",
+                }
+            )
+        )
+    )
+
+    assert response.status_code == 200
+    output = tmp_path / "public" / "compressed.html"
+    assert "Compressed export" in output.read_text(encoding="utf-8")
+    assert (output.parent / "diagram.svg").read_text(encoding="utf-8") == "<svg></svg>\n"
 
 
 def test_kpress_export_render_error_returns_502(tmp_path: Path, monkeypatch) -> None:

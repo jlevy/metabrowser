@@ -90,7 +90,7 @@ KPress is an exact runtime dependency because its Python and browser rendering c
 is part of the MetaBrowser release surface.
 Changing the KPress version requires the same rendering, wheel, and public-hygiene
 validation as a source change.
-KPress 0.2.1 provides the versioned asset-manifest contract used by the browser host:
+KPress 0.2.2 provides the versioned asset-manifest contract used by the browser host:
 MetaBrowser serves the complete declared closure, emits browser tags only for entry
 points, honors stylesheet, module, and classic loading modes, and installs any import
 map before module entry points.

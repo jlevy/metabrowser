@@ -7,9 +7,12 @@ without re-parsing the YAML block client-side.
 from __future__ import annotations
 
 import asyncio
+import gzip
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
+
+import pytest
 
 from metabrowser import server
 
@@ -42,6 +45,24 @@ def test_api_file_emits_frontmatter_for_md_with_yaml(tmp_path: Path) -> None:
     md.write_text("---\ntitle: Hello\ntags:\n  - a\n  - b\n---\n\nbody text\n")
     result = _api_file("doc.md")
     assert result.get("frontmatter") == {"title": "Hello", "tags": ["a", "b"]}
+
+
+def test_api_file_gzipped_markdown_uses_frontmatter_for_classification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server._set_root_dir(tmp_path)
+    content = "---\nreport:\n  title: Compressed\n---\n\n# Report\n"
+    with gzip.open(tmp_path / "report.md.gz", "wt") as fh:
+        fh.write(content)
+
+    def _classify(ctx: Any) -> str | None:
+        return "report" if ctx.frontmatter and "report" in ctx.frontmatter else None
+
+    monkeypatch.setattr(server, "_PLUGIN_CLASSIFY", _classify)
+    result = _api_file("report.md.gz")
+
+    assert result["frontmatter"] == {"report": {"title": "Compressed"}}
+    assert result["kind"] == "report"
 
 
 def test_api_file_omits_frontmatter_when_md_has_none(tmp_path: Path) -> None:

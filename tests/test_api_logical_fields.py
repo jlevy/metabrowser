@@ -137,6 +137,21 @@ def test_api_file_gzipped_text_honors_logical_byte_window(tmp_path: Path) -> Non
     assert body["content_truncated"] is True
 
 
+def test_api_file_truncated_gzip_degrades_to_binary(tmp_path: Path) -> None:
+    (tmp_path / "broken.txt.gz").write_bytes(b"\x1f\x8b")
+    proc_browser._set_root_dir(tmp_path)
+
+    body = _call_file("broken.txt.gz")
+
+    assert body["type"] == "binary"
+    assert body["kind"] == "binary"
+    assert body["size"] == 2
+    assert body["logical_ext"] == ".txt"
+    assert body["compressed"] is True
+    assert body["compression"] == "gzip"
+    assert "size_uncompressed" not in body
+
+
 # ── /api/tree ──────────────────────────────────────────────────────
 
 

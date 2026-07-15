@@ -16,7 +16,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 ## Goals
 
 - Publish the `metabrowser` package for Python 3.12 and newer
-- Depend on the exact audited `kpress==0.2.1` release
+- Depend on the exact audited `kpress==0.2.2` release
 - Preserve the Python, server, browser, file-format, and plugin contracts covered by the
   test suite
 - Use the simple-modern-uv project structure with uv, Ruff, BasedPyright, pytest, Biome,
@@ -73,11 +73,14 @@ Connect trusted publishing without a package token.
 
 - [x] Add package source, built-in plugins, browser assets, typed-package metadata, and
   behavior-focused tests
-- [x] Declare `kpress==0.2.1` as a required runtime dependency and remove alternate
+- [x] Declare `kpress==0.2.2` as a required runtime dependency and remove alternate
   Markdown rendering paths
 - [x] Consume the KPress v2 asset manifest end to end, including dependency-only
   resources, browser entry-point roles, stylesheet/module/classic loading modes, and
   import maps
+- [x] Preserve gzip transparency across bounded text previews, logical-byte pagination,
+  frontmatter-driven classification, Markdown rendering, and KPress static export;
+  degrade malformed gzip size and read failures into endpoint error contracts
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
 - [x] Add CI, tag-driven publishing, dependency policy, and artifact inspection
@@ -128,7 +131,8 @@ Connect trusted publishing without a package token.
 - Build and inspect the source distribution and wheel
 - Install the wheel in an isolated uv environment and import the package
 - Exercise command-line, server, plugin, filesystem, event, and KPress integration
-  behavior through tests, including the complete KPress asset-manifest closure
+  behavior through tests, including the complete KPress asset-manifest closure and
+  gzip-backed preview, frontmatter, render, and export paths
 - Require GitHub Actions to pass before merge and rerun the same gates against release
   artifacts before announcing publication
 
@@ -140,14 +144,14 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 621 Python and browser contract tests pass
+- 625 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
 - An isolated uv environment installs the wheel and exercises its command, packaged
   assets, built-in plugins, and KPress rendering
-- The exact public `kpress==0.2.1` wheel resolves from PyPI under the package-scoped
-  first-party exception; its maintenance update adds no transitive dependency
+- The exact public `kpress==0.2.2` wheel resolves from PyPI under the package-scoped
+  first-party exception; its host-decoded export seam adds no transitive dependency
 
 The pull request is ready to merge only when its latest commit has green lint,
 distribution, and Python 3.12 through 3.14 jobs.
@@ -166,7 +170,7 @@ distribution, and Python 3.12 through 3.14 jobs.
 - License: MIT
 - First release: `v0.1.0`
 - Supported Python: 3.12 through 3.14
-- Markdown renderer: exact `kpress==0.2.1`
+- Markdown renderer: exact `kpress==0.2.2`
 - Dependency manager and build workflow: uv and simple-modern-uv
 - Browser development toolchain: exact npm lock with Node 24.18.0 and npm 11.10 or newer
 - Issue prefix: `mb-`
