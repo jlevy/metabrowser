@@ -1,7 +1,7 @@
-"""Tests for the `metabrowser remote` subcommand's remote command construction.
+"""Tests for the `metab remote` subcommand's remote command construction.
 
 The SSH inner command must use the
-explicit ``metabrowser serve <path>`` form. The bare ``metabrowser
+explicit ``metab serve <path>`` form. The bare ``metab
 <path>`` rewrite works too (see test_cli_serve.py), but ``serve`` is
 explicit and insulates this command from any future routing change.
 """
@@ -18,7 +18,7 @@ from metabrowser.cli.ssh_utils import build_ssh_tunnel_command
 
 
 def test_remote_inner_command_uses_explicit_serve_subcommand(monkeypatch) -> None:
-    """The remote command piped into SSH must call ``metabrowser serve …``."""
+    """The remote command piped into SSH must call ``metab serve …``."""
     captured: dict[str, list[str]] = {}
 
     def _fake_popen(cmd, *args, **kwargs):
@@ -64,17 +64,15 @@ def test_remote_inner_command_uses_explicit_serve_subcommand(monkeypatch) -> Non
     cmd = captured["cmd"]
     assert cmd[0] == "ssh"
     inner = cmd[-1]
-    assert "metabrowser serve" in inner, (
-        f"remote command should call 'metabrowser serve …', got: {inner!r}"
-    )
-    assert "metabrowser /runs" not in inner.split("&&", 1)[1] or "serve" in inner
+    assert "metab serve" in inner, f"remote command should call 'metab serve …', got: {inner!r}"
+    assert "metab /runs" not in inner.split("&&", 1)[1] or "serve" in inner
 
 
 def test_ssh_tunnel_helper_unchanged() -> None:
     """The lower-level SSH-tunnel builder still constructs the right shape."""
     cmd = build_ssh_tunnel_command(
         "user@vm",
-        remote_cmd="metabrowser serve /runs --port 8412 --host 127.0.0.1 --no-open",
+        remote_cmd="metab serve /runs --port 8412 --host 127.0.0.1 --no-open",
         local_port=8411,
         remote_port=8412,
     )
@@ -82,7 +80,7 @@ def test_ssh_tunnel_helper_unchanged() -> None:
     assert "-L" in cmd
     tunnel_idx = cmd.index("-L")
     assert cmd[tunnel_idx + 1] == "8411:localhost:8412"
-    assert "metabrowser serve" in cmd[-1]
+    assert "metab serve" in cmd[-1]
 
 
 def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:

@@ -1,6 +1,6 @@
-"""``.env`` / ``.env.local`` files are honored by metabrowser CLI bootstrap.
+"""``.env`` / ``.env.local`` files are honored by the `metab` CLI bootstrap.
 
-Phase 4: the trust cut moved metabrowser plugin discovery to opt-in.
+Phase 4: the trust cut moved MetaBrowser plugin discovery to opt-in.
 Operators name plugin parents via ``--plugins-dir`` flags or set
 ``METABROWSER_PLUGINS_DIRS`` in ``.env`` / ``.env.local``.
 

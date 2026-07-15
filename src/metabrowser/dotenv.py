@@ -1,4 +1,4 @@
-"""``.env`` / ``.env.local`` loader for the metabrowser CLI.
+"""``.env`` / ``.env.local`` loader for the `metab` CLI.
 
 Thin wrapper over ``python-dotenv`` that follows a conventional lookup:
 walk up from the current working directory looking for both

@@ -18,6 +18,10 @@ SETUP_NODE_SHA = "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e"
 UV_VERSION = "0.11.25"
 UV_LINUX_CHECKSUM = "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
 BUILD_PINS = ["hatchling==1.30.1", "uv-dynamic-versioning==0.14.0"]
+CLI_SCRIPTS = {
+    "metab": "metabrowser.cli.serve:main",
+    "metabrowser": "metabrowser.cli.serve:main",
+}
 RUNTIME_REQUIREMENTS = [
     "cachetools>=7.1.4",
     "frontmatter-format>=0.3.0",
@@ -76,6 +80,10 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         raise RuntimeError(
             "runtime requirements must preserve the reviewed version constraints; "
             f"missing={missing}, unexpected={unexpected}"
+        )
+    if pyproject["project"].get("scripts") != CLI_SCRIPTS:
+        raise RuntimeError(
+            "project scripts must expose metab with the metabrowser compatibility alias"
         )
     if pyproject["dependency-groups"].get("build") != BUILD_PINS:
         raise RuntimeError("the build dependency group must contain the exact backend pins")

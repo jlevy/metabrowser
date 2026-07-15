@@ -1,20 +1,20 @@
-"""metabrowser CLI — `serve` + `plugins` + `remote` subcommands.
+"""MetaBrowser CLI with `serve`, `plugins`, `remote`, and `walk` subcommands.
 
-The legacy single-arg invocation `metabrowser ./runs` still works; it's
-forwarded to ``serve`` by the top-level callback when no subcommand is
+The canonical command is `metab`; `metabrowser` is a compatibility alias.
+The single-argument form `metab ./runs` is forwarded to ``serve`` when no subcommand is
 named.
 
 Examples:
-    metabrowser path/to/run-dir              # browse a specific run directory
-    metabrowser path/to/file.jsonl           # open file directly (sets root to parent)
-    metabrowser run-dir --path .logs/predict/ALPHA.jsonl   # open file within run
+    metab path/to/run-dir              # browse a specific run directory
+    metab path/to/file.jsonl           # open file directly (sets root to parent)
+    metab run-dir --path .logs/predict/ALPHA.jsonl   # open file within run
 
-    metabrowser plugins list                 # what's discovered?
-    metabrowser plugins show example         # one plugin's manifest
-    metabrowser plugins doctor               # validate all plugins
+    metab plugins list                 # what's discovered?
+    metab plugins show example         # one plugin's manifest
+    metab plugins doctor               # validate all plugins
 
-    metabrowser remote my-vm --path /mnt/filestore/runs   # SSH-tunnel from a remote host
-    metabrowser remote my-vm --gcp --path /mnt/filestore/runs
+    metab remote my-vm --path /mnt/filestore/runs   # SSH-tunnel from a remote host
+    metab remote my-vm --gcp --path /mnt/filestore/runs
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ def _apply_log_level(level: str | None) -> None:
 
 
 _app = typer.Typer(
-    name="metabrowser",
+    name="metab",
     add_completion=False,
     help="Local web UI for browsing run logs and structured artifacts.",
     no_args_is_help=False,
@@ -181,7 +181,7 @@ def serve(
 
     # Normalize env/CLI plugin directories before the discovery layer first
     # runs at server-module import. This is the same path resolution and
-    # validation used by ``metabrowser plugins``.
+    # validation used by ``metab plugins``.
     extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
     os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
         str(plugin_dir) for plugin_dir in extra_plugin_dirs
@@ -356,14 +356,14 @@ _KNOWN_SUBCOMMANDS = frozenset({"serve", "plugins", "remote", "walk"})
 
 def _rewrite_bare_form(argv: list[str]) -> list[str]:
     """If the first positional looks like a path (not a subcommand or flag),
-    prepend ``serve`` so ``metabrowser <root>`` keeps working.
+    prepend ``serve`` so ``metab <root>`` works.
 
     Examples:
-      ``metabrowser ./runs`` → ``metabrowser serve ./runs``
-      ``metabrowser /tmp --no-open`` → ``metabrowser serve /tmp --no-open``
-      ``metabrowser plugins list`` → unchanged (plugins is a known subcommand)
-      ``metabrowser --help`` → unchanged (flag, not a path)
-      ``metabrowser`` → unchanged (no positional; root is required)
+      ``metab ./runs`` → ``metab serve ./runs``
+      ``metab /tmp --no-open`` → ``metab serve /tmp --no-open``
+      ``metab plugins list`` → unchanged (plugins is a known subcommand)
+      ``metab --help`` → unchanged (flag, not a path)
+      ``metab`` → unchanged (no positional; root is required)
     """
     if not argv:
         return argv
@@ -377,7 +377,7 @@ def _rewrite_bare_form(argv: list[str]) -> list[str]:
 
 
 def main() -> None:
-    """Console-script entry point for `metabrowser`."""
+    """Console-script entry point for `metab` and its `metabrowser` alias."""
 
     try:
         _app(args=_rewrite_bare_form(sys.argv[1:]))

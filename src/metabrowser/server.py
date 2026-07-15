@@ -22,7 +22,7 @@ below so external callers don't break.
 
 Usage::
 
-    uv run --project metabrowser metabrowser serve ROOT_DIR [--port PORT]
+    uv run --project metabrowser metab serve ROOT_DIR [--port PORT]
 """
 
 from __future__ import annotations

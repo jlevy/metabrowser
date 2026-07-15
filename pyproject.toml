@@ -79,6 +79,7 @@ dev = [
 ]
 
 [project.scripts]
+metab = "metabrowser.cli.serve:main"
 metabrowser = "metabrowser.cli.serve:main"
 
 

@@ -1,6 +1,6 @@
-"""Tests for the metabrowser plugins diagnostic CLI.
+"""Tests for the metab plugins diagnostic CLI.
 
-Drives ``metabrowser plugins list / show / doctor`` via Typer's CliRunner.
+Drives ``metab plugins list / show / doctor`` via Typer's CliRunner.
 Confirms the discovered set, the JSON output shape, and the doctor's
 exit-code contract on broken / valid plugins.
 """

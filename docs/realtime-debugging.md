@@ -26,7 +26,7 @@ Interpret it as follows:
 Enable one line for every request when correlation is more useful than log volume:
 
 ```shell
-METABROWSER_REQUEST_LOG=verbose uv run metabrowser serve ./artifacts --no-open
+METABROWSER_REQUEST_LOG=verbose uv run metab serve ./artifacts --no-open
 ```
 
 The events and tail routes are intentionally long-lived and are excluded from ordinary
@@ -37,7 +37,7 @@ slow-request warnings.
 Enable the debug endpoint only for local investigation:
 
 ```shell
-METABROWSER_DEBUG=1 uv run metabrowser serve ./artifacts --no-open
+METABROWSER_DEBUG=1 uv run metab serve ./artifacts --no-open
 ```
 
 During a stall, request `/_debug/tasks` from another terminal.
@@ -65,8 +65,8 @@ Do not repair a gap by replaying operations whose order is no longer known.
 Start with the registry:
 
 ```shell
-uv run metabrowser plugins list --json
-uv run metabrowser plugins doctor
+uv run metab plugins list --json
+uv run metab plugins doctor
 ```
 
 Then verify:

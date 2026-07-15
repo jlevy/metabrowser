@@ -28,11 +28,11 @@ already belong to the active Python environment.
 Inspect discovery without starting the server:
 
 ```shell
-metabrowser plugins list
-metabrowser plugins list --json
-metabrowser plugins show markdown
-metabrowser plugins doctor
-metabrowser plugins doctor --plugins-dir ./examples
+metab plugins list
+metab plugins list --json
+metab plugins show markdown
+metab plugins doctor
+metab plugins doctor --plugins-dir ./examples
 ```
 
 `doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
@@ -90,7 +90,7 @@ default = true
 Run it explicitly:
 
 ```shell
-metabrowser serve ./examples --plugins-dir ./examples
+metab serve ./examples --plugins-dir ./examples
 ```
 
 Plugin discovery happens at startup, so restart the server after changing a manifest or
@@ -320,7 +320,7 @@ missing package data.
 
 Before publishing a plugin:
 
-1. Run `metabrowser plugins doctor` in a clean environment.
+1. Run `metab plugins doctor` in a clean environment.
 2. Confirm every manifest view has a matching `registerView` call.
 3. Exercise default and lazy-mounted tabs.
 4. Verify `dispose` stops listeners, streams, timers, and chart instances.

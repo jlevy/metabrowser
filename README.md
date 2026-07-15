@@ -13,14 +13,21 @@ MetaBrowser ships as an MIT-licensed Python package for Python 3.12 and newer.
 Run the published CLI without a persistent installation:
 
 ```shell
-uvx --from metabrowser==0.1.0 metabrowser ./path/to/artifacts
+uvx --from metabrowser==0.1.0 metab ./path/to/artifacts
+```
+
+The `metabrowser` compatibility alias matches the package name, so the concise uvx form
+also works:
+
+```shell
+uvx metabrowser ./path/to/artifacts
 ```
 
 Or install the command with uv:
 
 ```shell
 uv tool install metabrowser==0.1.0
-metabrowser ./path/to/artifacts
+metab ./path/to/artifacts
 ```
 
 See [installation](docs/installation.md) for uv setup.
@@ -30,27 +37,27 @@ See [installation](docs/installation.md) for uv setup.
 The short form starts a local server, opens the browser, and serves the selected root:
 
 ```shell
-metabrowser ./path/to/artifacts
+metab ./path/to/artifacts
 ```
 
 Useful forms include:
 
 ```shell
 # Open one file within the served root.
-metabrowser ./path/to/artifacts --path logs/session.jsonl
+metab ./path/to/artifacts --path logs/session.jsonl
 
 # Start without opening a browser window.
-metabrowser serve ./path/to/artifacts --no-open
+metab serve ./path/to/artifacts --no-open
 
 # Inspect files on a remote host through an SSH tunnel.
-metabrowser remote example-host --path /srv/artifacts
+metab remote example-host --path /srv/artifacts
 
 # Inspect and validate the plugin registry.
-metabrowser plugins list
-metabrowser plugins doctor
+metab plugins list
+metab plugins doctor
 
 # Print a machine-readable inventory without starting the web UI.
-metabrowser walk ./path/to/artifacts --format json
+metab walk ./path/to/artifacts --format json
 ```
 
 The server binds to `127.0.0.1:8411` by default.

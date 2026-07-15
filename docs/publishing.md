@@ -43,6 +43,7 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
 8. Run an isolated smoke test against the released version:
 
    ```shell
+   uvx --from metabrowser==X.Y.Z metab --help
    uvx --from metabrowser==X.Y.Z metabrowser --help
    ```
 

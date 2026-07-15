@@ -6,7 +6,7 @@ and plugin lifecycle management in core while delegating file-kind rendering to 
 
 ## Runtime Shape
 
-The `metabrowser` CLI starts a Starlette application with four main layers:
+The `metab` CLI starts a Starlette application with four main layers:
 
 1. **Safe filesystem access.** `paths_safe.py`, `gz_io.py`, and the file endpoints
    resolve every requested path beneath the selected root.

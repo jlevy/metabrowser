@@ -1,12 +1,12 @@
-"""metabrowser remote — open metabrowser on a remote host via SSH tunnel.
+"""metab remote — open MetaBrowser on a remote host via SSH tunnel.
 
 Walks both local and remote ports upward from a base port so multiple
 remote sessions can coexist on the same host pair. Ctrl-C tears down the
 tunnel and kills the remote serve cleanly.
 
-Registered as a subcommand on the unified ``metabrowser`` Typer app
+Registered as a subcommand on the unified ``metab`` Typer app
 (see :mod:`metabrowser.cli.serve`). There's no standalone console
-script — invoke as ``metabrowser remote <host> --path <remote-root>``.
+script — invoke as ``metab remote <host> --path <remote-root>``.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def _probe_remote_free_port(
     project: str,
     ssh_options: str,
 ) -> int:
-    """Ask the remote host which port to use for ``metabrowser serve``.
+    """Ask the remote host which port to use for ``metab serve``.
 
     Walks from *base_port* upward so multiple remote sessions on the same
     target host coexist. Coordinating the port choice before opening the
@@ -100,7 +100,7 @@ def remote(
     zone: str = typer.Option("us-central1-b", "--zone", help="GCP zone (only with --gcp)"),
     project: str = typer.Option("", "--project", help="GCP project (only with --gcp)"),
 ) -> None:
-    """SSH into a remote host, start metabrowser serve, and tunnel it to localhost.
+    """SSH into a remote host, start metab serve, and tunnel it to localhost.
 
     Both local and remote ports are chosen by walking upward from --base-port,
     so multiple remote sessions can coexist on the same host pair. Ctrl-C
@@ -129,12 +129,12 @@ def remote(
     )
 
     # Use the explicit ``serve`` subcommand on the remote: the bare-form
-    # rewrite in metabrowser.cli.serve.main() also accepts ``metabrowser
+    # rewrite in metabrowser.cli.serve.main() also accepts ``metab
     # <path>``, but being explicit here insulates this command from any
     # future change in subcommand routing.
     inner_cmd = (
         'export PATH="$HOME/.local/bin:$PATH" && '
-        f"metabrowser serve {shlex.quote(path)}"
+        f"metab serve {shlex.quote(path)}"
         f" --port {remote_port} --host 127.0.0.1 --no-open"
     )
     # Wrap so remote serve dies when the SSH channel closes — prevents orphan
@@ -153,7 +153,7 @@ def remote(
     )
 
     url = f"http://localhost:{local_port}"
-    typer.echo(f"Connecting to {host} and starting metabrowser serve...")
+    typer.echo(f"Connecting to {host} and starting metab serve...")
     typer.echo(f"Tunnel: localhost:{local_port} → {host}:{remote_port}")
     typer.echo(f"Browser URL: {url}")
     typer.echo("Press Ctrl-C to stop.\n")
@@ -181,8 +181,9 @@ def remote(
 
     if proc.returncode == 127:
         typer.echo(
-            f"\nmetabrowser is not available on {host}.\n"
-            "Install it on the remote host (e.g. via your team's bootstrap script).",
+            f"\nThe metab command is not available on {host}.\n"
+            "Install the metabrowser package on the remote host "
+            "(e.g. via your team's bootstrap script).",
             err=True,
         )
 

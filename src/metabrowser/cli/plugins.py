@@ -1,10 +1,10 @@
-"""metabrowser plugins — diagnostic CLI for the plugin discovery layer.
+"""metab plugins — diagnostic CLI for the plugin discovery layer.
 
 Three subcommands:
 
-* ``metabrowser plugins list``  — table of every discovered plugin.
-* ``metabrowser plugins show``  — full manifest dump for one plugin.
-* ``metabrowser plugins doctor`` — sanity-check every plugin: validate the
+* ``metab plugins list``  — table of every discovered plugin.
+* ``metab plugins show``  — full manifest dump for one plugin.
+* ``metab plugins doctor`` — sanity-check every plugin: validate the
   manifest, confirm sidekick handlers import, check for asset / kind-id
   collisions across plugins. Exit code != 0 when any plugin is broken.
 
@@ -33,7 +33,7 @@ from metabrowser.plugin_loader.manifest import DataHookSpec
 plugins_app = typer.Typer(
     name="plugins",
     add_completion=False,
-    help="Inspect metabrowser plugin discovery (list / show / doctor).",
+    help="Inspect MetaBrowser plugin discovery (list / show / doctor).",
     no_args_is_help=True,
 )
 
@@ -252,12 +252,12 @@ def cmd_doctor(
         problems.append(p)
 
     if problems:
-        typer.echo(f"metabrowser plugins doctor: {len(problems)} problem(s):")
+        typer.echo(f"metab plugins doctor: {len(problems)} problem(s):")
         for prob in problems:
             typer.echo(f"  • {prob}")
         raise typer.Exit(code=1)
 
-    typer.echo(f"metabrowser plugins doctor: {len(result.plugins)} plugin(s) OK")
+    typer.echo(f"metab plugins doctor: {len(result.plugins)} plugin(s) OK")
 
 
 def _plugins_with_index_check(plugins: list[LoadedPlugin]) -> list[str]:
@@ -270,7 +270,7 @@ def _plugins_with_index_check(plugins: list[LoadedPlugin]) -> list[str]:
 
 
 def main() -> None:
-    """Console-script entry point for `metabrowser-plugins`."""
+    """Standalone entry point for `metab plugins` diagnostics."""
     try:
         plugins_app()
     except CLIError as exc:

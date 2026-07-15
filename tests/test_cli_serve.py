@@ -1,12 +1,12 @@
-"""Tests for the metabrowser CLI bare-form rewrite + plugins subcommand routing.
+"""Tests for the MetaBrowser CLI bare-form rewrite and subcommand routing.
 
-The CLI accepts both ``metabrowser <root>`` (bare form, legacy invocation)
-and ``metabrowser serve <root>`` (explicit). The bare-form rewrite in
+The CLI accepts both ``metab <root>`` (bare form) and ``metab serve <root>``
+(explicit). The bare-form rewrite in
 ``metabrowser.cli.serve._rewrite_bare_form`` decides which one's running
 based on whether the first positional looks like a known subcommand or a
 flag — anything else is forwarded to ``serve``.
 
-``metabrowser /tmp`` previously failed
+``metab /tmp`` previously failed
 with ``No such command '/tmp'`` because Typer parsed ``/tmp`` as a
 subcommand name.
 """
@@ -93,11 +93,11 @@ def test_rewrite_bare_form_passes_through_remote_subcommand() -> None:
 
 
 def test_cli_remote_help_works() -> None:
-    """``metabrowser remote --help`` exits cleanly and shows the SSH target arg."""
+    """``metab remote --help`` exits cleanly and shows the SSH target arg."""
     result = runner.invoke(_app, ["remote", "--help"])
     output = _plain_output(result)
     assert result.exit_code == 0
-    assert "metabrowser remote" in output
+    assert "metab remote" in output
     assert "HOST" in output
     assert "--path" in output
 
@@ -118,18 +118,18 @@ def test_cli_plugins_list_works() -> None:
 
 
 def test_cli_serve_help_works() -> None:
-    """``metabrowser serve --help`` exits cleanly and prints the usage line.
+    """``metab serve --help`` exits cleanly and prints the usage line.
 
     Avoids asserting on individual flag names because Typer's rich pretty
     printer line-wraps the options table at the terminal width — in
     narrow terminals (CI runners, occasionally) some option labels can
     end up split across multiple lines or hidden inside ANSI escape
     sequences and the substring search misses them. The Usage line
-    (``metabrowser serve``) is stable.
+    (``metab serve``) is stable.
     """
     result = runner.invoke(_app, ["serve", "--help"])
     assert result.exit_code == 0
-    assert "metabrowser serve" in result.output
+    assert "metab serve" in result.output
     assert "ROOT" in result.output
 
 

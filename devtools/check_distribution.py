@@ -130,17 +130,18 @@ def _smoke_install(wheel: Path) -> None:
     ]
     subprocess.run(python_command, cwd=ROOT, env=env, check=True)
 
-    cli_command = [
-        "uv",
-        "run",
-        "--isolated",
-        "--no-project",
-        "--with",
-        str(wheel),
-        "metabrowser",
-        "--help",
-    ]
-    subprocess.run(cli_command, cwd=ROOT, env=env, check=True)
+    for command in ("metab", "metabrowser"):
+        cli_command = [
+            "uv",
+            "run",
+            "--isolated",
+            "--no-project",
+            "--with",
+            str(wheel),
+            command,
+            "--help",
+        ]
+        subprocess.run(cli_command, cwd=ROOT, env=env, check=True)
 
 
 def main() -> int:

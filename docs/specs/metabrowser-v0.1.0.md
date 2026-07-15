@@ -16,6 +16,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 ## Goals
 
 - Publish the `metabrowser` package for Python 3.12 and newer
+- Expose `metab` as the canonical CLI and retain `metabrowser` as a compatibility alias
 - Depend on the exact audited `kpress==0.2.2` release
 - Declare and enforce a tested minimum version for every other direct runtime dependency
 - Preserve the Python, server, browser, file-format, and plugin contracts covered by the
@@ -96,6 +97,8 @@ Connect trusted publishing without a package token.
   decompression-bomb limits
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
+- [x] Publish `metab` as the canonical console script while retaining `metabrowser` for
+  existing callers and the `uvx metabrowser` package-name shorthand
 - [x] Add CI, tag-driven publishing, artifact inspection, and a package policy that
   enforces the reviewed runtime floors and exact KPress compatibility pin
 - [x] Align Python and JavaScript quality gates with KPress and tbd guidance using
@@ -131,8 +134,9 @@ Connect trusted publishing without a package token.
 - [ ] Make the repository public after the hygiene and artifact gates pass
 - [ ] Configure the PyPI trusted publisher for the repository workflow
 - [ ] Publish the GitHub `v0.1.0` release and verify the PyPI files and metadata
-- [ ] Verify `uvx --from metabrowser==0.1.0 metabrowser`, server startup, built-in
-  plugins, extension discovery, and KPress rendering from published artifacts
+- [ ] Verify both `uvx --from metabrowser==0.1.0 metab` and `uvx metabrowser`, server
+  startup, built-in plugins, extension discovery, and KPress rendering from published
+  artifacts
 - [ ] Confirm the release remains available and is not yanked
 
 ## Testing Strategy
@@ -145,7 +149,8 @@ Connect trusted publishing without a package token.
   `npx --no-install`, and audit both frozen dependency graphs for known vulnerabilities
 - Run the full pytest and browser contract suites on every supported Python version
 - Build and inspect the source distribution and wheel
-- Install the wheel in an isolated uv environment and import the package
+- Install the wheel in an isolated uv environment, import the package, and invoke both
+  console scripts
 - Exercise command-line, server, plugin, filesystem, event, and KPress integration
   behavior through tests, including the complete KPress asset-manifest closure and
   compressed preview, frontmatter, render, and export paths
@@ -164,8 +169,8 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
-- An isolated uv environment installs the wheel and exercises its command, packaged
-  assets, built-in plugins, and KPress rendering
+- An isolated uv environment installs the wheel and exercises `metab`, the `metabrowser`
+  compatibility alias, packaged assets, built-in plugins, and KPress rendering
 - The exact public `kpress==0.2.2` wheel resolves from PyPI under the package-scoped
   first-party exception; its host-decoded export seam adds no transitive dependency
 
@@ -183,6 +188,7 @@ distribution, and Python 3.12 through 3.14 jobs.
 ## Decisions
 
 - Package and import name: `metabrowser`
+- Canonical CLI and compatibility alias: `metab` and `metabrowser`
 - License: MIT
 - First release: `v0.1.0`
 - Supported Python: 3.12 through 3.14

@@ -61,15 +61,16 @@ make audit
 uv run pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
 # Start the development server from this checkout.
-uv run metabrowser serve ./tests/fixtures --no-open
+uv run metab serve ./tests/fixtures --no-open
 ```
 
 `make lint` applies the ordinary auto-fixes and then runs policy and public-hygiene
 checks. `make verify` is the handoff standard before a pull request or release.
 It also audits both locked dependency graphs.
 Its artifact gate rejects local environments, build trees, and repository-only metadata
-before an isolated wheel smoke test exercises the installed command, packaged assets,
-built-in plugin discovery, and KPress rendering.
+before an isolated wheel smoke test exercises the installed `metab` command and
+`metabrowser` compatibility alias, packaged assets, built-in plugin discovery, and
+KPress rendering.
 
 ## Dependencies
 

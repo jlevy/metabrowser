@@ -10,7 +10,7 @@ def wrap_with_stdin_watchdog(inner_cmd: str) -> str:
 
     Problem: ``gcloud compute ssh`` (and non-TTY ssh generally) does not reliably
     deliver SIGHUP to remote processes when the local SSH channel closes. Result:
-    every ``metabrowser remote`` that's Ctrl-C'd leaves an orphan ``metabrowser serve``
+    every ``metab remote`` that's Ctrl-C'd leaves an orphan ``metab serve``
     on the remote host; subsequent sessions then tunnel to the *oldest* orphan
     because the default port is taken by it.
 

@@ -74,7 +74,7 @@ the test.
 A plugin should cover:
 
 1. manifest parsing and classifier matches, including near misses;
-2. registry diagnostics through `metabrowser plugins doctor`;
+2. registry diagnostics through `metab plugins doctor`;
 3. default-view mount and lazy-view mount;
 4. data-hook success, validation errors, and unsafe paths;
 5. disposal of requests, streams, listeners, timers, and charts;
@@ -90,7 +90,7 @@ an unrelated workspace package happens to be installed.
 Before a release, run a small local fixture and check the real browser:
 
 ```shell
-uv run metabrowser serve ./tests/fixtures --no-open
+uv run metab serve ./tests/fixtures --no-open
 ```
 
 Open the printed URL and verify:

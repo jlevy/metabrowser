@@ -23,14 +23,21 @@ uv python install 3.12
 For a one-shot run in an isolated environment:
 
 ```shell
-uvx --from metabrowser==0.1.0 metabrowser ./path/to/artifacts
+uvx --from metabrowser==0.1.0 metab ./path/to/artifacts
+```
+
+The package also exposes `metabrowser` as a compatibility alias, which supports the
+package-name shorthand:
+
+```shell
+uvx metabrowser ./path/to/artifacts
 ```
 
 For a persistent command installation:
 
 ```shell
 uv tool install metabrowser==0.1.0
-metabrowser ./path/to/artifacts
+metab ./path/to/artifacts
 ```
 
 Upgrade deliberately to a reviewed release by naming its exact version:

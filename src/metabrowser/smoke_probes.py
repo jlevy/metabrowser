@@ -1,7 +1,7 @@
 """Atomic probes for the browser smoke playbook.
 
 Each subcommand performs one atomic check against a running
-metabrowser server and prints the result as JSON. Pass /
+metab server and prints the result as JSON. Pass /
 fail judgment lives in ``docs/browser-smoke.playbook.md`` — these
 probes are observation tools, not assertions, so a non-zero exit
 means *the probe itself failed* (server unreachable, malformed

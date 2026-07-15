@@ -1,6 +1,6 @@
 """End-to-end test of the full browser lifespan + route stack.
 
-Exercises the wiring as a real ``metabrowser serve`` deployment
+Exercises the wiring as a real ``metab serve`` deployment
 sees it: the lifespan hook spawns walker + active-tracker +
 watcher; routes serve from the in-memory inventory; SSE
 delivers fs.change ops; the watcher picks up new files.
