@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,39 @@ BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+def _git_ignored(paths: list[Path]) -> set[Path]:
+    """Return the subset of ``paths`` that git ignores.
+
+    Only published content is in scope: tracked files plus what the build packs
+    into the sdist/wheel (that artifact is scanned separately in
+    ``check_distribution``). ``git check-ignore`` consults the index, so tracked
+    files are never reported even when they match a pattern; it flags only
+    untracked, ignored residue such as a contributor's ``.claude/
+    settings.local.json`` (which Claude Code writes with absolute home paths).
+    Falls back to an empty set when git is unavailable or ``ROOT`` is not a work
+    tree, preserving the original full scan.
+    """
+    if not paths:
+        return set()
+    stdin = "\n".join(str(path.relative_to(ROOT)) for path in paths)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(ROOT), "check-ignore", "--stdin"],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    # 0 = at least one path ignored, 1 = none ignored; anything else (e.g. 128
+    # outside a work tree) means we could not classify, so scan everything.
+    if result.returncode not in (0, 1):
+        return set()
+    return {ROOT / line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
 def _text_files() -> list[Path]:
     files: list[Path] = []
     for path in ROOT.rglob("*"):
@@ -52,7 +86,8 @@ def _text_files() -> list[Path]:
         except (OSError, UnicodeDecodeError):
             continue
         files.append(path)
-    return files
+    ignored = _git_ignored(files)
+    return [path for path in files if path not in ignored]
 
 
 def find_hygiene_findings(source: str, text: str) -> list[str]:

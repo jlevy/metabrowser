@@ -183,3 +183,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Agent tool per-user local overrides (tracked scaffolding lives beside these).
+# Claude Code writes local tool-permission grants here with absolute paths.
+.claude/settings.local.json
+.codex/settings.local.json
