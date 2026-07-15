@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+GIT_CHECK_IGNORE_TIMEOUT_SECONDS = 30
 SKIP_PARTS = {".git", ".venv", "dist", "node_modules", "__pycache__"}
 SKIP_ROOTS = (ROOT / ".tbd" / "docs",)
 BANNED_TOKEN_HASHES: dict[str, str] = {
@@ -53,14 +54,14 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
     """
     if not paths:
         return set()
-    stdin = "\n".join(str(path.relative_to(ROOT)) for path in paths)
+    stdin = "".join(f"{path.relative_to(ROOT)}\0" for path in paths)
     try:
         result = subprocess.run(
-            ["git", "-C", str(ROOT), "check-ignore", "--stdin"],
+            ["git", "-C", str(ROOT), "check-ignore", "--stdin", "-z"],
             input=stdin,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=GIT_CHECK_IGNORE_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -69,7 +70,7 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
     # outside a work tree) means we could not classify, so scan everything.
     if result.returncode not in (0, 1):
         return set()
-    return {ROOT / line.strip() for line in result.stdout.splitlines() if line.strip()}
+    return {ROOT / path for path in result.stdout.split("\0") if path}
 
 
 def _text_files() -> list[Path]:

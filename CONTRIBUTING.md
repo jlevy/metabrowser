@@ -13,7 +13,7 @@ Security reports follow [SECURITY.md](SECURITY.md), not the public issue tracker
 1. Fork and clone the repository.
 2. Create a focused branch from current `main`.
 3. Install the prerequisites in [development](docs/development.md): uv and the Node
-   version pinned in `.node-version`.
+   version pinned for your version manager.
 4. Run `make install`.
 5. Add or update tests with the implementation.
 6. Run `make format` and `make verify`.

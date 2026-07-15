@@ -19,9 +19,9 @@ make install
 This installs the exact Python and JavaScript dependency locks with `uv sync --locked`
 and `npm ci`. `--locked` also asserts that `uv.lock` matches `pyproject.toml` and
 `uv.toml`, so a stale or locally contaminated lock fails at install instead of shipping.
-The required Node version is pinned in `.node-version`, so fnm, nvm, and mise select it
-automatically (for example `fnm use` or `mise install`). `npm ci` refuses to run under
-an older Node with an `EBADENGINE` error.
+The required Node version is pinned in `.node-version` for fnm and mise and in `.nvmrc`
+for nvm. Select it with `fnm use`, `nvm use`, or `mise install` before running the Make
+targets. `npm ci` refuses to run under an older Node with an `EBADENGINE` error.
 Install the repository’s Lefthook git hooks once after setup:
 
 ```shell

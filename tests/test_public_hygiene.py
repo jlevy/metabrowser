@@ -49,6 +49,12 @@ def test_git_ignored_local_residue_is_excluded_but_tracked_files_kept() -> None:
     assert tracked not in result
 
 
+def test_git_ignored_preserves_unusual_filenames() -> None:
+    ignored = ROOT / "ignored\nname.pyc"
+
+    assert _git_ignored([ignored]) == {ignored}
+
+
 def test_codex_hook_commands_anchor_to_repository_root() -> None:
     payload = json.loads((ROOT / ".codex" / "hooks.json").read_text())
     commands = [
