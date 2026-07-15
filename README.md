@@ -173,6 +173,7 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 - [Real-time debugging](docs/realtime-debugging.md)
 - [Development](docs/development.md)
 - [Publishing](docs/publishing.md)
+- [Roadmap and TODO](TODO.md)
 - [Security policy](SECURITY.md)
 
 ## License
