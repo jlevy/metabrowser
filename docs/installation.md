@@ -20,25 +20,28 @@ uv python install 3.12
 
 ## Run MetaBrowser
 
-For a one-shot run in an isolated environment:
-
-```shell
-uvx --from metabrowser==0.1.0 metab ./path/to/artifacts
-```
-
-The package also exposes `metabrowser` as a compatibility alias, which supports the
-package-name shorthand:
+For a one-shot run of the latest published release:
 
 ```shell
 uvx metabrowser ./path/to/artifacts
 ```
 
-For a persistent command installation:
+Pin the release for a reproducible local, CI, or agent run:
+
+```shell
+uvx metabrowser@0.1.0 ./path/to/artifacts
+```
+
+For a persistent global tool installation:
 
 ```shell
 uv tool install metabrowser==0.1.0
 metab ./path/to/artifacts
 ```
+
+`metab` is the standard installed command.
+The `metabrowser` compatibility command matches the package name and enables the concise
+`uvx metabrowser ...` form.
 
 Upgrade deliberately to a reviewed release by naming its exact version:
 
@@ -49,6 +52,19 @@ uv tool install --upgrade metabrowser==0.1.1
 MetaBrowser installs `kpress==0.2.2` as a required dependency.
 Do not install a second KPress checkout beside the package or override it with a
 workspace source.
+
+## Install the Agent Skill
+
+The repository publishes a portable MetaBrowser skill for coding agents:
+
+```shell
+npx skills add jlevy/metabrowser --skill metabrowser
+```
+
+The skill invokes the pinned `uvx metabrowser@0.1.0 ...` runner, so it does not require
+a persistent MetaBrowser installation.
+It routes agents to `--help` for current command details and documents the plugin trust
+boundary.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -17,6 +17,10 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 
 - Publish the `metabrowser` package for Python 3.12 and newer
 - Expose `metab` as the canonical CLI and retain `metabrowser` as a compatibility alias
+- Make zero-install, global-tool, plugin, and agent onboarding immediately discoverable
+  from the top-level README
+- Publish a portable MetaBrowser Agent Skill that delegates to the pinned zero-install
+  runner and treats CLI help as the command reference
 - Depend on the exact audited `kpress==0.2.2` release
 - Declare and enforce a tested minimum version for every other direct runtime dependency
 - Preserve the Python, server, browser, file-format, and plugin contracts covered by the
@@ -99,6 +103,9 @@ Connect trusted publishing without a package token.
   package metadata
 - [x] Publish `metab` as the canonical console script while retaining `metabrowser` for
   existing callers and the `uvx metabrowser` package-name shorthand
+- [x] Simplify the README around `uvx metabrowser`, the globally installed `metab`
+  command, plugin discovery, and command help; publish the L1 Agent Skill at
+  `skills/metabrowser/SKILL.md` with a pinned `uvx metabrowser@0.1.0` runner
 - [x] Add CI, tag-driven publishing, artifact inspection, and a package policy that
   enforces the reviewed runtime floors and exact KPress compatibility pin
 - [x] Align Python and JavaScript quality gates with KPress and tbd guidance using
@@ -134,9 +141,12 @@ Connect trusted publishing without a package token.
 - [ ] Make the repository public after the hygiene and artifact gates pass
 - [ ] Configure the PyPI trusted publisher for the repository workflow
 - [ ] Publish the GitHub `v0.1.0` release and verify the PyPI files and metadata
-- [ ] Verify both `uvx --from metabrowser==0.1.0 metab` and `uvx metabrowser`, server
+- [ ] Verify `uvx metabrowser@0.1.0`, the globally installed `metab` command, server
   startup, built-in plugins, extension discovery, and KPress rendering from published
   artifacts
+- [ ] Install the public skill with
+  `npx skills add jlevy/metabrowser --skill metabrowser` and confirm it invokes the
+  published pinned runner and routes agents to current CLI help
 - [ ] Confirm the release remains available and is not yanked
 
 ## Testing Strategy
@@ -149,6 +159,8 @@ Connect trusted publishing without a package token.
   `npx --no-install`, and audit both frozen dependency graphs for known vulnerabilities
 - Run the full pytest and browser contract suites on every supported Python version
 - Build and inspect the source distribution and wheel
+- Validate the public Agent Skill metadata and confirm it is included in the source
+  distribution
 - Install the wheel in an isolated uv environment, import the package, and invoke both
   console scripts
 - Exercise command-line, server, plugin, filesystem, event, and KPress integration
@@ -165,6 +177,8 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
+- The MetaBrowser skill passes the Agent Skills structure validator and uses the pinned
+  first-release `uvx` runner
 - 604 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
@@ -198,12 +212,15 @@ distribution, and Python 3.12 through 3.14 jobs.
 - Dependency manager and build workflow: uv and simple-modern-uv
 - Browser development toolchain: exact npm lock with Node 24.18.0 and npm 11.10 or newer
 - Issue prefix: `mb-`
+- Agent integration: portable L1 skill with a pinned zero-install runner and no hooks or
+  project mutation
 
 ## References
 
 - [Architecture](../architecture.md)
 - [Development](../development.md)
 - [Plugin authoring](../plugins.md)
+- [MetaBrowser Agent Skill](../../skills/metabrowser/SKILL.md)
 - [Publishing](../publishing.md)
 - [Supply-chain security](../../SUPPLY-CHAIN-SECURITY.md)
 - [KPress](https://github.com/jlevy/kpress)

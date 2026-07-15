@@ -1,0 +1,4 @@
+interface:
+  display_name: "MetaBrowser"
+  short_description: "Browse artifacts and logs with MetaBrowser"
+  default_prompt: "Use $metabrowser to inspect this directory and its files or logs."

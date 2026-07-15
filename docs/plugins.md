@@ -24,6 +24,8 @@ the MetaBrowser page.
 Operator-supplied directory plugins are JavaScript-only.
 Python data hooks are accepted from installed entry-point packages, whose modules
 already belong to the active Python environment.
+When MetaBrowser runs through uvx or as a uv tool, install the plugin distribution into
+that same isolated environment with uv’s `--with` option.
 
 Inspect discovery without starting the server:
 

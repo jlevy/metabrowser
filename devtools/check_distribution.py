@@ -79,6 +79,8 @@ def _inspect_sdist(sdist: Path) -> None:
             "LICENSE",
             "README.md",
             "pyproject.toml",
+            "skills/metabrowser/SKILL.md",
+            "skills/metabrowser/agents/openai.yaml",
             "src/metabrowser/static/app.js",
         }
         for suffix in required_suffixes:

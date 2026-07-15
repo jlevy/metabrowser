@@ -1,99 +1,140 @@
 # MetaBrowser
 
 MetaBrowser is a local web UI for exploring files, live logs, JSONL streams, Markdown,
-structured data, images, and binary files.
-It combines a responsive file tree with extensible preview tabs, live filesystem
-updates, and trusted plugins.
+structured data, images, and binary metadata.
+Point it at a directory or file and it opens a browser with a live file tree and
+extensible preview tabs.
 
-Markdown rendering is provided by the exact `kpress==0.2.2` dependency.
-MetaBrowser ships as an MIT-licensed Python package for Python 3.12 and newer.
+MetaBrowser is an MIT-licensed Python package for Python 3.12 and newer.
+Markdown is rendered by the exact `kpress==0.2.2` dependency.
 
-## Install
+## Quick Start
 
-Run the published CLI without a persistent installation:
-
-```shell
-uvx --from metabrowser==0.1.0 metab ./path/to/artifacts
-```
-
-The `metabrowser` compatibility alias matches the package name, so the concise uvx form
-also works:
+MetaBrowser uses [uv](https://docs.astral.sh/uv/). Run the latest published release
+without installing a global tool:
 
 ```shell
 uvx metabrowser ./path/to/artifacts
 ```
 
-Or install the command with uv:
+For a reproducible run, pin the release:
+
+```shell
+uvx metabrowser@0.1.0 ./path/to/artifacts
+```
+
+To make MetaBrowser available everywhere as `metab`:
 
 ```shell
 uv tool install metabrowser==0.1.0
 metab ./path/to/artifacts
 ```
 
-See [installation](docs/installation.md) for uv setup.
+`metab` is the standard installed command.
+The `metabrowser` compatibility command matches the package name, which is why the short
+`uvx metabrowser ...` form works.
 
-## Use
-
-The short form starts a local server, opens the browser, and serves the selected root:
+The CLI documents every command and option:
 
 ```shell
-metab ./path/to/artifacts
+metab --help
+metab serve --help
+metab plugins --help
 ```
 
-Useful forms include:
+See [installation](docs/installation.md) for uv setup and upgrade instructions.
+
+## What MetaBrowser Opens
+
+Built-in plugins provide views for:
+
+- Markdown rendered by KPress, alongside the source
+- JSON, YAML, and other structured documents
+- coding-agent JSONL logs and generic JSONL streams
+- text, source code, images, and binary-file metadata
+- generic chart summaries for supported agent logs
+
+Large trees are indexed in the background.
+The first preview does not wait for a full recursive crawl, and filesystem events update
+the tree and recent-file views while the server runs.
+
+## Common Commands
+
+The short form starts the local server, opens the browser, and serves the selected root:
 
 ```shell
-# Open one file within the served root.
+# Browse a directory or open one file directly.
+metab ./path/to/artifacts
+metab ./path/to/artifacts/logs/session.jsonl
+
+# Select a file relative to the served root.
 metab ./path/to/artifacts --path logs/session.jsonl
 
 # Start without opening a browser window.
 metab serve ./path/to/artifacts --no-open
 
-# Inspect files on a remote host through an SSH tunnel.
+# Browse a directory on a remote host through an SSH tunnel.
 metab remote example-host --path /srv/artifacts
-
-# Inspect and validate the plugin registry.
-metab plugins list
-metab plugins doctor
 
 # Print a machine-readable inventory without starting the web UI.
 metab walk ./path/to/artifacts --format json
 ```
 
-The server binds to `127.0.0.1:8411` by default.
-If that port is occupied, MetaBrowser walks a bounded range to find the next available
-port. Use `--host` and `--port` to override the defaults; review the security
-implications before exposing a served root beyond localhost.
-Remote mode also waits for the tunneled HTTP endpoint to become ready before opening the
-local browser.
-
-## Built-In Views
-
-MetaBrowser includes trusted plugins for:
-
-- Markdown rendered by KPress, with a source view;
-- JSON, YAML, and other structured documents;
-- coding-agent JSONL logs and generic JSONL streams;
-- text, source code, images, and binary-file metadata;
-- generic chart summaries for supported agent logs.
-
-Large trees are indexed in the background.
-The initial file preview does not wait for a full recursive crawl, and filesystem events
-update visible rows and recent-file views while the server is running.
+The server binds to `127.0.0.1:8411` by default and walks a bounded port range if that
+port is occupied. Review the security implications before changing `--host` to expose a
+served root beyond localhost.
 
 ## Plugins
 
-A plugin combines a declarative `manifest.toml` with browser-side renderers in
-`index.js`. Installed Python distributions may also provide server-side data hooks.
+MetaBrowser is designed to be extended.
+A plugin can add:
+
+- file-kind matching rules
+- browser preview tabs implemented in JavaScript
+- optional Python data hooks for installed plugin packages
+- JSONL event adapters for additional log formats
+
+Inspect the complete registry and validate every discovered plugin from the CLI:
+
+```shell
+metab plugins list
+metab plugins list --json
+metab plugins show markdown
+metab plugins doctor
+```
+
 MetaBrowser loads plugins only from trusted sources:
 
-1. built-ins shipped in the wheel;
-2. the `metabrowser.plugins` Python entry-point group;
-3. directories explicitly named with `--plugins-dir` or `METABROWSER_PLUGINS_DIRS`.
+1. built-ins shipped in the MetaBrowser wheel
+2. installed Python packages registered in the `metabrowser.plugins` entry-point group
+3. directories explicitly named with `--plugins-dir` or `METABROWSER_PLUGINS_DIRS`
+
+An installed Python plugin must be present in the same uv tool or uvx environment as
+MetaBrowser. Operator-directory plugins are useful for local JavaScript-only extensions.
+
+For example, load an operator-reviewed plugin directory with:
+
+```shell
+metab serve ./path/to/artifacts --plugins-dir ./trusted-plugins
+```
 
 The served data tree is never an implicit plugin source.
-See the [plugin authoring guide](docs/plugins.md) for the manifest schema, JavaScript
-SDK, entry-point registration, lifecycle rules, and security model.
+See the [plugin authoring guide](docs/plugins.md) for the manifest schema, browser SDK,
+packaging, lifecycle rules, and security boundary.
+
+## Use With Coding Agents
+
+MetaBrowser includes a portable [Agent Skill](skills/metabrowser/SKILL.md).
+Install it for supported coding agents with:
+
+```shell
+npx skills add jlevy/metabrowser --skill metabrowser
+```
+
+The skill requires no persistent MetaBrowser installation.
+It calls the pinned `uvx metabrowser@0.1.0 ...` runner and uses `--help` on the CLI and
+its subcommands as the source of truth.
+A globally installed `metab` remains available as the faster local command.
 
 ## Develop
 
@@ -106,15 +147,15 @@ make format
 make verify
 ```
 
-`make verify` runs check-only formatting and lint gates, the complete test suite,
-locked-graph vulnerability audits, wheel and source builds, artifact inspection, and an
-isolated wheel-import smoke test.
+`make verify` runs formatting, lint, type checks, tests, locked dependency audits,
+source and wheel builds, artifact inspection, and isolated installed-wheel smoke tests.
 See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
+- [Installation](docs/installation.md)
 - [Plugin authoring](docs/plugins.md)
+- [Architecture](docs/architecture.md)
 - [Design system](docs/design-system.md)
 - [End-to-end testing](docs/e2e-testing.md)
 - [Real-time debugging](docs/realtime-debugging.md)

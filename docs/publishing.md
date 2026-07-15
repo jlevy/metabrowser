@@ -43,8 +43,16 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
 8. Run an isolated smoke test against the released version:
 
    ```shell
+   uvx metabrowser@X.Y.Z --help
    uvx --from metabrowser==X.Y.Z metab --help
    uvx --from metabrowser==X.Y.Z metabrowser --help
+   ```
+
+9. From a clean temporary directory, install the public Agent Skill and confirm its
+   pinned runner matches the release:
+
+   ```shell
+   npx skills add jlevy/metabrowser --skill metabrowser
    ```
 
 For the first release, the intended tag and package version are `v0.1.0` and `0.1.0`.
