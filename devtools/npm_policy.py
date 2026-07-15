@@ -95,6 +95,10 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         raise RuntimeError("the npm development-tool package must remain private")
     if package_data.get("engines") != {"node": NODE_RANGE, "npm": NPM_RANGE}:
         raise RuntimeError("package.json must require the reviewed Node and npm ranges")
+    for relative in (".node-version", ".nvmrc"):
+        path = root / relative
+        if not path.is_file() or path.read_text(encoding="utf-8").strip() != NODE_VERSION:
+            raise RuntimeError(f"{relative} must pin Node {NODE_VERSION}")
     if package_data.get("devDependencies") != NPM_TOOL_PINS:
         raise RuntimeError("package.json must contain only the reviewed exact npm tool pins")
 

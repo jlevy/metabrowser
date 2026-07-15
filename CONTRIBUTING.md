@@ -12,11 +12,13 @@ Security reports follow [SECURITY.md](SECURITY.md), not the public issue tracker
 
 1. Fork and clone the repository.
 2. Create a focused branch from current `main`.
-3. Run `make install`.
-4. Add or update tests with the implementation.
-5. Run `make format` and `make verify`.
-6. Review the diff and built artifacts for unrelated files or private data.
-7. Open a pull request with the problem, approach, validation, and compatibility notes.
+3. Install the prerequisites in [development](docs/development.md): uv and the Node
+   version pinned for your version manager.
+4. Run `make install`.
+5. Add or update tests with the implementation.
+6. Run `make format` and `make verify`.
+7. Review the diff and built artifacts for unrelated files or private data.
+8. Open a pull request with the problem, approach, validation, and compatibility notes.
 
 The project uses uv exclusively.
 Do not add requirements files or instructions that invoke raw `pip` or an activated

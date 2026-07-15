@@ -5,7 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from devtools.public_hygiene import ROOT, _text_files, find_hygiene_findings
+from devtools.public_hygiene import ROOT, _git_ignored, _text_files, find_hygiene_findings
 
 
 def test_public_issue_tracking_language_is_allowed() -> None:
@@ -34,6 +34,25 @@ def test_generated_tbd_document_cache_is_not_scanned() -> None:
     tbd_docs = ROOT / ".tbd" / "docs"
 
     assert all(not path.is_relative_to(tbd_docs) for path in _text_files())
+
+
+def test_git_ignored_local_residue_is_excluded_but_tracked_files_kept() -> None:
+    # Claude Code writes .claude/settings.local.json with absolute home paths;
+    # it is git-ignored and never published, so the scan must skip it while
+    # still covering tracked files. git check-ignore needs no file on disk.
+    ignored = ROOT / ".claude" / "settings.local.json"
+    tracked = ROOT / "AGENTS.md"
+
+    result = _git_ignored([ignored, tracked])
+
+    assert ignored in result
+    assert tracked not in result
+
+
+def test_git_ignored_preserves_unusual_filenames() -> None:
+    ignored = ROOT / "ignored\nname.pyc"
+
+    assert _git_ignored([ignored]) == {ignored}
 
 
 def test_codex_hook_commands_anchor_to_repository_root() -> None:
