@@ -18,6 +18,26 @@ SETUP_NODE_SHA = "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e"
 UV_VERSION = "0.11.25"
 UV_LINUX_CHECKSUM = "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
 BUILD_PINS = ["hatchling==1.30.1", "uv-dynamic-versioning==0.14.0"]
+RUNTIME_REQUIREMENTS = [
+    "cachetools>=7.1.4",
+    "frontmatter-format>=0.3.0",
+    "funlog>=0.2.1",
+    "json5>=0.15.0",
+    "jsonschema>=4.26.0",
+    "kpress==0.2.2",
+    "pathspec>=1.1.1",
+    "prettyfmt>=0.4.1",
+    "psutil>=7.2.2",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
+    "ruamel.yaml>=0.19.1",
+    "starlette>=1.3.1",
+    "strif>=3.1.0",
+    "typer>=0.26.8",
+    "uvicorn>=0.49.0",
+    "watchfiles>=1.2.0",
+]
 PYTHON_TOOL_FLOORS = {
     "basedpyright>=1.39.9",
     "codespell>=2.4.2",
@@ -50,8 +70,13 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
 
     pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     dependencies = pyproject["project"]["dependencies"]
-    if "kpress==0.2.2" not in dependencies:
-        raise RuntimeError("MetaBrowser must require exact kpress==0.2.2")
+    if dependencies != RUNTIME_REQUIREMENTS:
+        missing = sorted(set(RUNTIME_REQUIREMENTS) - set(dependencies))
+        unexpected = sorted(set(dependencies) - set(RUNTIME_REQUIREMENTS))
+        raise RuntimeError(
+            "runtime requirements must preserve the reviewed version constraints; "
+            f"missing={missing}, unexpected={unexpected}"
+        )
     if pyproject["dependency-groups"].get("build") != BUILD_PINS:
         raise RuntimeError("the build dependency group must contain the exact backend pins")
     if pyproject["build-system"].get("requires") != BUILD_PINS:

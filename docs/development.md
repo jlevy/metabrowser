@@ -86,6 +86,11 @@ Commit `uv.lock` with every Python dependency change and `package-lock.json` wit
 JavaScript tool change.
 Do not add requirements files, Poetry, or another environment manager.
 
+Every direct runtime requirement declares the minimum version covered by the frozen
+release graph. When a direct runtime package is upgraded, update its floor and the
+reviewed runtime requirement set in `devtools/npm_policy.py` together, then run the
+complete release gate.
+
 KPress is an exact runtime dependency because its Python and browser rendering contract
 is part of the MetaBrowser release surface.
 Changing the KPress version requires the same rendering, wheel, and public-hygiene

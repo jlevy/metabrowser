@@ -17,6 +17,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 
 - Publish the `metabrowser` package for Python 3.12 and newer
 - Depend on the exact audited `kpress==0.2.2` release
+- Declare and enforce a tested minimum version for every other direct runtime dependency
 - Preserve the Python, server, browser, file-format, and plugin contracts covered by the
   test suite
 - Keep transparent compression in core while placing specialized binary readers in
@@ -95,7 +96,8 @@ Connect trusted publishing without a package token.
   decompression-bomb limits
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
-- [x] Add CI, tag-driven publishing, dependency policy, and artifact inspection
+- [x] Add CI, tag-driven publishing, artifact inspection, and a package policy that
+  enforces the reviewed runtime floors and exact KPress compatibility pin
 - [x] Align Python and JavaScript quality gates with KPress and tbd guidance using
   strict BasedPyright, correctness-oriented Ruff rules, recommended Biome rules, strict
   TypeScript check-JS, exact npm locks, Lefthook, and SHA-pinned actions
@@ -137,6 +139,8 @@ Connect trusted publishing without a package token.
 
 - Run Ruff, BasedPyright, codespell, npm policy, Biome, TypeScript check-JS, Flowmark,
   and public-hygiene checks
+- Require the package-policy check to reject missing, weakened, or unreviewed direct
+  runtime requirements
 - Install Python and JavaScript tooling from committed locks, run JavaScript tools with
   `npx --no-install`, and audit both frozen dependency graphs for known vulnerabilities
 - Run the full pytest and browser contract suites on every supported Python version
