@@ -134,7 +134,7 @@ Connect trusted publishing without a package token.
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
 - [x] Add tracked-file, source-distribution, and wheel public-hygiene checks
-- [ ] Complete final review reconciliation with all tracked findings closed, the full
+- [x] Complete final review reconciliation with all tracked findings closed, the full
   local release gate passing, no unresolved review threads, and all GitHub Actions
   checks green on the reconciliation commit
 
@@ -152,7 +152,7 @@ Connect trusted publishing without a package token.
 - [x] Enforce frozen uv execution in Make targets, hooks, workflows, and executable
   documentation; make parallel verification ordering safe and publish without mutable
   dependency caches
-- [ ] Run `make verify`, confirm zero unresolved review threads, publish the complete
+- [x] Run `make verify`, confirm zero unresolved review threads, publish the complete
   bead-to-finding reconciliation, and close and sync the review bead tree
 
 ### First Release
