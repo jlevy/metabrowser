@@ -1378,9 +1378,9 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
 
 _KPRESS_EXPORT_MODES_SUPPORTED = {"page", "static-hosted", "hashed-static-hosted", "pdf"}
-# `single-file` is deferred by the KPress v0.2.0 contract. Reject explicitly so callers
+# `single-file` is deferred by the KPress v0.2.1 contract. Reject explicitly so callers
 # see a clear 400 with the reason rather than a half-supported artifact. The external
-# package is authoritative: https://github.com/jlevy/kpress/blob/v0.2.0/docs/kpress-design.md
+# package is authoritative: https://github.com/jlevy/kpress/blob/v0.2.1/docs/kpress-design.md
 _KPRESS_EXPORT_MODES_DEFERRED = {"single-file"}
 _KPRESS_EXPORT_ASSET_MODES_SUPPORTED = {"linked", "hashed"}
 

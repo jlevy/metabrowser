@@ -5,7 +5,7 @@ structured data, images, and LMDB databases.
 It combines a responsive file tree with extensible preview tabs, live filesystem
 updates, and trusted plugins.
 
-Markdown rendering is provided by the exact `kpress==0.2.0` dependency.
+Markdown rendering is provided by the exact `kpress==0.2.1` dependency.
 MetaBrowser ships as an MIT-licensed Python package for Python 3.12 and newer.
 
 ## Install

@@ -16,7 +16,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 ## Goals
 
 - Publish the `metabrowser` package for Python 3.12 and newer
-- Depend on the exact audited `kpress==0.2.0` release
+- Depend on the exact audited `kpress==0.2.1` release
 - Preserve the Python, server, browser, file-format, and plugin contracts covered by the
   test suite
 - Use the simple-modern-uv project structure with uv, Ruff, BasedPyright, pytest, Biome,
@@ -73,7 +73,7 @@ Connect trusted publishing without a package token.
 
 - [x] Add package source, built-in plugins, browser assets, typed-package metadata, and
   behavior-focused tests
-- [x] Declare `kpress==0.2.0` as a required runtime dependency and remove alternate
+- [x] Declare `kpress==0.2.1` as a required runtime dependency and remove alternate
   Markdown rendering paths
 - [x] Consume the KPress v2 asset manifest end to end, including dependency-only
   resources, browser entry-point roles, stylesheet/module/classic loading modes, and
@@ -145,6 +145,8 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - The frozen Python and npm dependency graphs have no known vulnerabilities
 - An isolated uv environment installs the wheel and exercises its command, packaged
   assets, built-in plugins, and KPress rendering
+- The exact public `kpress==0.2.1` wheel resolves from PyPI under the package-scoped
+  first-party exception; its maintenance update adds no transitive dependency
 
 The pull request is ready to merge only when its latest commit has green lint,
 distribution, and Python 3.12 through 3.14 jobs.
@@ -163,7 +165,7 @@ distribution, and Python 3.12 through 3.14 jobs.
 - License: MIT
 - First release: `v0.1.0`
 - Supported Python: 3.12 through 3.14
-- Markdown renderer: exact `kpress==0.2.0`
+- Markdown renderer: exact `kpress==0.2.1`
 - Dependency manager and build workflow: uv and simple-modern-uv
 - Browser development toolchain: exact npm lock with Node 24.18.0 and npm 11.10 or newer
 - Issue prefix: `mb-`

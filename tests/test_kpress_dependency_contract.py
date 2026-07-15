@@ -12,7 +12,7 @@ SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
 def test_kpress_is_an_exact_required_runtime_dependency() -> None:
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
 
-    assert "kpress==0.2.0" in project["project"]["dependencies"]
+    assert "kpress==0.2.1" in project["project"]["dependencies"]
     assert "kpress" not in project["project"].get("optional-dependencies", {})
     assert "kpress" not in project.get("dependency-groups", {}).get("dev", [])
 
