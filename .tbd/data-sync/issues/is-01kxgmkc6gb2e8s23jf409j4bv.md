@@ -5,7 +5,7 @@ title: Prepare MetaBrowser v0.1.0 standalone package
 kind: epic
 status: in_progress
 priority: 1
-version: 24
+version: 26
 labels:
   - release
 dependencies: []
@@ -27,11 +27,12 @@ child_order_hints:
   - is-01kxj67pty26s2j7bftahawv2a
   - is-01kxj6mq90b884fzynz50bjcbj
   - is-01kxj6mrvpkqnkn274rhy3mg2j
+  - is-01kxj87a53xs0p7rnwecgdsfkj
 created_at: 2026-07-14T15:40:47.183Z
-updated_at: 2026-07-15T06:40:50.961Z
+updated_at: 2026-07-15T06:59:09.350Z
 ---
 Create a public-safe, MIT-licensed standalone MetaBrowser package with exact KPress integration, modern Python tooling, release automation, and complete validation.
 
 ## Notes
 
-Standalone extraction and final PR reconciliation merged through MetaBrowser PR #1 at merge commit 5dfb02e; origin/main contains final head 42d5303. The 669-test local release gate and all latest-head GitHub checks were green, with 35/35 review threads resolved. Bounded gzip and zlib are core; .zst and other compression/archive work remain explicit non-blocking roadmap beads mb-epis, mb-min4, and mb-p7ts in TODO.md. The epic remains in progress only for PyPI publication mb-xkcx.
+Standalone extraction is merged. Release-readiness PR #3 is ready and mergeable at 9d17f6c with 672 local tests, five green GitHub jobs, explicit repository uv configuration, improved release positioning/security docs, and successful synthetic v0.1.0 artifacts. Epic remains in progress for PR #3 merge and PyPI publication mb-xkcx.
