@@ -18,8 +18,8 @@ Initial standalone release:
 - SSH and optional GCP remote tunnels;
 - MIT licensing, PyPI packaging, locked uv environments, and isolated wheel checks.
 - review hardening for bounded compressed reads, safe rendered labels, byte-accurate
-  event streaming, renderer disposal, frozen development commands, and release builds
-  without mutable dependency caches.
+  event streaming, renderer disposal, explicitly repository-configured development
+  commands, and release builds without mutable dependency caches.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

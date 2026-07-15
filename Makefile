@@ -7,11 +7,12 @@
 # Safe default for every dependency resolution invoked through this Makefile.
 UV_EXCLUDE_NEWER ?= 14 days
 export UV_EXCLUDE_NEWER
-# Prevent machine-global uv policy from changing the repository lock. All Make
-# targets use the checked-in configuration file explicitly.
-UV_CONFIG_FILE ?= $(CURDIR)/uv.toml
-export UV_CONFIG_FILE
-UV_RUN := uv run --frozen
+# Prevent machine-global uv policy from changing the repository lock. Pass the
+# checked-in configuration explicitly so every command is self-contained and
+# reviewable instead of depending on an inherited UV_CONFIG_FILE setting.
+UV := uv --config-file $(CURDIR)/uv.toml
+UVX := uvx --config-file $(CURDIR)/uv.toml
+UV_RUN := $(UV) run --frozen
 
 # Some managed agent environments export pnpm-style npm variables that npm 11
 # treats as unknown configuration. Repository policy lives in .npmrc, so prevent
@@ -29,7 +30,7 @@ default: install
 install:
 	# --locked also asserts uv.lock matches pyproject.toml and uv.toml, so a
 	# stale or locally contaminated lock fails here instead of shipping.
-	uv sync --all-extras --all-groups --locked
+	$(UV) sync --all-extras --all-groups --locked
 	npm ci
 
 hooks-install: install
@@ -58,31 +59,31 @@ format:
 		biome.json package.json tsconfig.json tsconfig.legacy.json
 
 format-markdown:
-	uvx --exclude-newer-package 'flowmark-rs=2026-05-31T00:00:00Z' flowmark-rs@0.3.1 --auto --inplace --nobackup .
+	$(UVX) --exclude-newer-package 'flowmark-rs=2026-05-31T00:00:00Z' flowmark-rs@0.3.1 --auto --inplace --nobackup .
 
 # Check-only lint, matching CI (does not modify files).
 lint-check:
 	$(UV_RUN) python devtools/lint.py --check
 	$(UV_RUN) python devtools/npm_policy.py
 	$(UV_RUN) python devtools/public_hygiene.py
-	uvx --exclude-newer-package 'flowmark-rs=2026-05-31T00:00:00Z' flowmark-rs@0.3.1 --auto --check .
+	$(UVX) --exclude-newer-package 'flowmark-rs=2026-05-31T00:00:00Z' flowmark-rs@0.3.1 --auto --check .
 
 test:
 	$(UV_RUN) pytest
 
 audit:
 	npm audit --audit-level=moderate
-	uv --preview-features audit-command audit --frozen
+	$(UV) --preview-features audit-command audit --frozen
 
 lock:
-	uv lock
+	$(UV) lock
 
 upgrade:
-	uv lock --upgrade
-	uv sync --all-extras --all-groups --frozen
+	$(UV) lock --upgrade
+	$(UV) sync --all-extras --all-groups --frozen
 
 build:
-	uv build --clear --no-build-isolation
+	$(UV) build --clear --no-build-isolation
 	$(UV_RUN) python -m devtools.check_distribution
 
 verify: install lint-check test audit build

@@ -19,9 +19,11 @@ filesystem.
 
 ## Security Boundaries
 
-MetaBrowser is intended to bind to localhost.
+MetaBrowser is a trusted-local-client tool, not a public-facing web server.
+It does not provide a public-service authentication or tenant-isolation boundary.
 Serving on another interface can expose file contents beneath the selected root and
-should be done only within a trusted network boundary.
+should be done only within a trusted network boundary; never expose MetaBrowser directly
+to the internet.
 
 Plugins execute JavaScript in the MetaBrowser page and installed entry-point plugins may
 execute Python data hooks.

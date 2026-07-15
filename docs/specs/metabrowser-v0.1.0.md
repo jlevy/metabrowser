@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy and contributors
 
-**Status:** In Review
+**Status:** Release Candidate
 
 ## Overview
 
@@ -149,15 +149,15 @@ Connect trusted publishing without a package token.
   running source checkout
 - [x] Preserve KPress sanitization as an explicit dependency contract and keep its
   auxiliary browser assets non-fatal after the rendered document is available
-- [x] Enforce frozen uv execution in Make targets, hooks, workflows, and executable
-  documentation; make parallel verification ordering safe and publish without mutable
-  dependency caches
+- [x] Enforce frozen, explicitly repository-configured uv execution in Make targets,
+  hooks, workflows, and executable documentation; make parallel verification ordering
+  safe and publish without mutable dependency caches
 - [x] Run `make verify`, confirm zero unresolved review threads, publish the complete
   bead-to-finding reconciliation, and close and sync the review bead tree
 
 ### First Release
 
-- [ ] Make the repository public after the hygiene and artifact gates pass
+- [x] Make the repository public after the hygiene and artifact gates pass
 - [ ] Configure the PyPI trusted publisher for the repository workflow
 - [ ] Publish the GitHub `v0.1.0` release and verify the PyPI files and metadata
 - [ ] Verify `uvx metabrowser@0.1.0`, the globally installed `metab` command, server
@@ -190,8 +190,7 @@ Connect trusted publishing without a package token.
 
 ## Validation Evidence
 
-The complete local `make -j4 verify` gate passes on the final reconciliation working
-tree:
+The complete local `make -j4 verify` gate passes on the release-candidate working tree:
 
 - Ruff and BasedPyright report no diagnostics
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
@@ -199,12 +198,14 @@ tree:
 - Flowmark and public-hygiene checks pass for the repository
 - The MetaBrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
-- 669 Python and browser contract tests pass
+- 672 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
 - An isolated uv environment installs the wheel and exercises `metab`, the `metabrowser`
   compatibility alias, packaged assets, built-in plugins, and KPress rendering
+- A clean synthetic `v0.1.0` tag builds version `0.1.0` source and wheel distributions,
+  passes distribution inspection, and installs both console scripts under Python 3.12
 - A running source checkout renders the public Markdown, structured, source, JSONL,
   image, and binary fixtures; live create/delete updates Files and Recent; direct hash
   links, light/dark themes, a 480-pixel viewport, keyboard focus, and print handoff are

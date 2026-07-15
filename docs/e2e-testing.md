@@ -42,11 +42,11 @@ and CLI. This catches missing package data and source-checkout assumptions.
 
 ```shell
 # Complete Python suite.
-uv run --frozen pytest
+uv --config-file uv.toml run --frozen pytest
 
 # One module or test.
-uv run --frozen pytest tests/test_plugin_loader.py
-uv run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
+uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py
+uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
 # Full release gate.
 make verify
@@ -90,7 +90,7 @@ an unrelated workspace package happens to be installed.
 Before a release, serve the public-safe manual corpus and check the real browser:
 
 ```shell
-uv run --frozen metab serve ./tests/manual-fixtures --no-open
+uv --config-file uv.toml run --frozen metab serve ./tests/manual-fixtures --no-open
 ```
 
 The corpus contains Markdown with frontmatter, structured JSON, JSONL events, source

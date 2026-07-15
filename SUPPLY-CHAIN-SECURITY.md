@@ -9,8 +9,9 @@ Review this document before adding, upgrading, or invoking a package.
   Do not use raw `pip` or an activated virtual environment.
 - Apply a 14-day release cool-off with `uv.toml`, `UV_EXCLUDE_NEWER`, or the equivalent
   explicit uv flag.
-- Commit `uv.lock`, install it with `uv sync --locked` so lock drift fails the build,
-  and execute commands with `uv run --frozen` so they cannot resolve dependencies.
+- Commit `uv.lock`, install it with `uv --config-file uv.toml sync --locked` so lock
+  drift fails the build, and execute commands with
+  `uv --config-file uv.toml run --frozen` so they cannot resolve dependencies.
 - Commit `package-lock.json`, use exact JavaScript tool versions, and install it with
   `npm ci`.
 - Run locked JavaScript tools with `npx --no-install`; use exact versions for one-shot

@@ -13,10 +13,10 @@ Each probe assumes a server is already running. Start one with::
 
 Usage::
 
-    uv run --frozen python -m metabrowser.smoke_probes capabilities
-    uv run --frozen python -m metabrowser.smoke_probes index-meta
-    uv run --frozen python -m metabrowser.smoke_probes tree [--path SUBDIR]
-    uv run --frozen python -m metabrowser.smoke_probes sse-probe [--timeout 10]
+    uv --config-file uv.toml run --frozen python -m metabrowser.smoke_probes capabilities
+    uv --config-file uv.toml run --frozen python -m metabrowser.smoke_probes index-meta
+    uv --config-file uv.toml run --frozen python -m metabrowser.smoke_probes tree [--path SUBDIR]
+    uv --config-file uv.toml run --frozen python -m metabrowser.smoke_probes sse-probe [--timeout 10]
 
 Common flags::
 

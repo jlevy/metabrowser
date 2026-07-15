@@ -22,7 +22,7 @@ below so external callers don't break.
 
 Usage::
 
-    uv run --frozen metab serve ROOT_DIR [--port PORT]
+    uv --config-file uv.toml run --frozen metab serve ROOT_DIR [--port PORT]
 """
 
 from __future__ import annotations

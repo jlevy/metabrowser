@@ -11,7 +11,7 @@ This test pins the regression: with ``N`` trackable JSONL files (each
 with a sibling ``.pid``), ``_tick`` must not block the loop more than
 ``MAX_STALL_MS``. Run as:
 
-    uv run --frozen pytest tests/test_active_tracker_event_loop_stall.py -v
+    uv --config-file uv.toml run --frozen pytest tests/test_active_tracker_event_loop_stall.py -v
 """
 
 from __future__ import annotations

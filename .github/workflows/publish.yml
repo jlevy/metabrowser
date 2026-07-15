@@ -50,7 +50,7 @@ jobs:
             exit 1
           fi
           expected="${RELEASE_TAG#v}"
-          actual="$(uv run --frozen python -c 'import metabrowser; print(metabrowser.__version__)')"
+          actual="$(uv --config-file uv.toml run --frozen python -c 'import metabrowser; print(metabrowser.__version__)')"
           if [ "$actual" != "$expected" ]; then
             printf 'Release version mismatch: expected %s from tag %s, got %s\n' \
               "$expected" "$RELEASE_TAG" "$actual" >&2
@@ -58,4 +58,4 @@ jobs:
           fi
 
       - name: Publish to PyPI
-        run: uv publish --trusted-publishing always
+        run: uv --config-file uv.toml publish --trusted-publishing always

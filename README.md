@@ -4,9 +4,36 @@ MetaBrowser is a local web UI for exploring files, live logs, JSONL streams, Mar
 structured data, images, and binary metadata.
 Point it at a directory or file and it opens a browser with a live file tree and
 extensible preview tabs.
+A simple plugin architecture can add custom rendering for any file type.
 
 MetaBrowser is an MIT-licensed Python package for Python 3.12 and newer.
 Markdown is rendered by the exact `kpress==0.2.2` dependency.
+
+> [!WARNING]
+> MetaBrowser is not a public-facing web server.
+> It is for trusted users and agents browsing local files.
+> It does not provide public-service authentication or tenant isolation; anyone who can
+> reach the server may read content beneath the selected root.
+> Keep the default `127.0.0.1` binding, load only trusted plugins, and never expose
+> MetaBrowser directly to the internet.
+
+## Why MetaBrowser
+
+- **Custom rendering for arbitrary file types.** The simple manifest-based plugin
+  architecture adds file matching and browser views, with optional Python data hooks and
+  JSONL adapters, without changing MetaBrowser core.
+- **Broad text support.** Render common text and source files, logs, JSON, JSONL, YAML,
+  JSON5, images, and useful metadata for binary files.
+- **Complete Markdown.** KPress provides careful typography, tables, footnotes, syntax
+  highlighting, math, links, images, and print-friendly output.
+- **More informative directory overviews.** Unlike a Finder or IDE/VSCode tree, the file
+  and recent views keep file ages, file and folder counts, and aggregate disk usage
+  visible while you browse.
+- **A fast, framework-free frontend.** MetaBrowser ships direct CSS and JavaScript with
+  no browser framework, keeping rendering quick and customization straightforward.
+- **A simple backend that scales.** The Python server starts quickly, indexes in the
+  background, and is designed to browse directories with 100K–1M files without waiting
+  for a complete crawl before showing the first preview.
 
 ## Quick Start
 
@@ -93,8 +120,9 @@ metab walk ./path/to/artifacts --format json
 ```
 
 The server binds to `127.0.0.1:8411` by default and walks a bounded port range if that
-port is occupied. Review the security implications before changing `--host` to expose a
-served root beyond localhost.
+port is occupied.
+Do not change `--host` to expose a served root to an untrusted network;
+see the [security policy](SECURITY.md).
 
 ## Plugins
 

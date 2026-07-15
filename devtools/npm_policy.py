@@ -60,12 +60,10 @@ TBD_VERSION = "0.4.0"
 
 def _verify_documented_uv_commands(source: str, text: str) -> None:
     """Reject documentation commands that bypass the repository uv policy."""
-    if re.search(r"\buv run(?! --frozen)(?=\s)", text):
+    if re.search(r"\buv(?:\s+--config-file\s+uv\.toml)?\s+run(?! --frozen)(?=\s)", text):
         raise RuntimeError(f"{source} documents a non-frozen uv run command")
-    if re.search(r"^\s*uv\s+(?:add|lock|sync)\b", text, re.MULTILINE):
-        raise RuntimeError(
-            f"{source} documents a direct dependency command without --config-file uv.toml"
-        )
+    if re.search(r"\buv\s+(?:add|build|lock|run|sync)\b", text):
+        raise RuntimeError(f"{source} documents a repository command without --config-file uv.toml")
 
 
 def verify_repo_package_policy(root: Path = ROOT) -> None:
@@ -183,10 +181,14 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
     ]
     tooling_text = "\n".join(path.read_text(encoding="utf-8") for path in tooling_paths)
     makefile_text = (root / "Makefile").read_text(encoding="utf-8")
-    if "UV_RUN := uv run --frozen" not in makefile_text:
+    if "UV := uv --config-file $(CURDIR)/uv.toml" not in makefile_text:
+        raise RuntimeError("Make targets must select the repository uv configuration")
+    if "UVX := uvx --config-file $(CURDIR)/uv.toml" not in makefile_text:
+        raise RuntimeError("Make targets must select the repository uvx configuration")
+    if "UV_RUN := $(UV) run --frozen" not in makefile_text:
         raise RuntimeError("Make targets must use a frozen uv runner")
-    if re.search(r"^\tuv run(?! --frozen)", makefile_text, re.MULTILINE):
-        raise RuntimeError("Make recipes must not invoke bare uv run")
+    if re.search(r"^\tuvx?\s", makefile_text, re.MULTILINE):
+        raise RuntimeError("Make recipes must not invoke bare uv or uvx")
     if (
         "default: install\n\t$(MAKE) SKIP_INSTALL=1 format\n"
         "\t$(MAKE) SKIP_INSTALL=1 lint\n\t$(MAKE) SKIP_INSTALL=1 test" not in makefile_text
@@ -197,8 +199,8 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
     ):
         raise RuntimeError("parallel quality gates must wait for the install target")
     lefthook_text = (root / "lefthook.yml").read_text(encoding="utf-8")
-    if re.search(r"^\s*run:\s+uv run(?! --frozen)", lefthook_text, re.MULTILINE):
-        raise RuntimeError("hooks must not invoke bare uv run")
+    if re.search(r"^\s*run:\s+uv\s+(?!--config-file uv\.toml\s)", lefthook_text, re.MULTILINE):
+        raise RuntimeError("hooks must select the repository uv configuration")
     command_doc_paths = [
         root / "AGENTS.md",
         root / "README.md",
@@ -218,7 +220,7 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         raise RuntimeError("CI and local setup must install the committed npm lock")
     required_audit_commands = (
         "npm audit --audit-level=moderate",
-        "uv --preview-features audit-command audit --frozen",
+        "$(UV) --preview-features audit-command audit --frozen",
     )
     if any(command not in tooling_text for command in required_audit_commands):
         raise RuntimeError("the audit gate must inspect the locked npm and Python graphs")
@@ -249,8 +251,8 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
 
     workflow_paths = sorted((root / ".github" / "workflows").glob("*.yml"))
     workflow_text = "\n".join(path.read_text(encoding="utf-8") for path in workflow_paths)
-    if re.search(r"^\s*run:\s+uv run(?! --frozen)", workflow_text, re.MULTILINE):
-        raise RuntimeError("workflows must not invoke bare uv run")
+    if re.search(r"\buv\s+(?:build|lock|publish|run|sync)\b", workflow_text):
+        raise RuntimeError("workflows must select the repository uv configuration")
     action_uses = re.findall(r"^\s*uses:\s+[^@\s]+@([^\s#]+)", workflow_text, re.MULTILINE)
     mutable_actions = [ref for ref in action_uses if re.fullmatch(r"[0-9a-f]{40}", ref) is None]
     if mutable_actions:
@@ -283,7 +285,7 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         "run: make verify",
         "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
         "metabrowser.__version__",
-        "uv publish --trusted-publishing always",
+        "uv --config-file uv.toml publish --trusted-publishing always",
     ]
     missing_publish_controls = [
         value for value in required_publish_controls if value not in publish_workflow

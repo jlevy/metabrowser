@@ -16,9 +16,10 @@ repository, and run:
 make install
 ```
 
-This installs the exact Python and JavaScript dependency locks with `uv sync --locked`
-and `npm ci`. `--locked` also asserts that `uv.lock` matches `pyproject.toml` and
-`uv.toml`, so a stale or locally contaminated lock fails at install instead of shipping.
+This installs the exact Python and JavaScript dependency locks with
+`uv --config-file uv.toml sync --locked` and `npm ci`. `--locked` also asserts that
+`uv.lock` matches `pyproject.toml` and `uv.toml`, so a stale or locally contaminated
+lock fails at install instead of shipping.
 The required Node version is pinned in `.node-version` for fnm and mise and in `.nvmrc`
 for nvm. Select it with `fnm use`, `nvm use`, or `mise install` before running the Make
 targets. `npm ci` refuses to run under an older Node with an `EBADENGINE` error.
@@ -29,13 +30,13 @@ make hooks-install
 ```
 
 Do not activate `.venv` or invoke `python` or `pip` directly.
-Use `uv run --frozen`, exact-version `uvx`, repository-configured dependency commands,
-and the Make targets so commands use the locked environment and repository supply-chain
-policy.
+Use `uv --config-file uv.toml run --frozen`, exact-version `uvx`, repository-configured
+dependency commands, and the Make targets so commands use the locked environment and
+repository supply-chain policy.
 
 A machine-global uv configuration such as `~/.config/uv/uv.toml` merges into direct `uv`
 invocations and can silently rewrite the `[options]` block of `uv.lock`. The Make
-targets pin `UV_CONFIG_FILE` to the repository `uv.toml` to prevent this, and
+targets pass `--config-file` explicitly to select the repository `uv.toml`, and
 `make install` fails on a contaminated lock.
 Pass `--config-file uv.toml` to direct dependency commands outside Make.
 After running them, check `git diff uv.lock` before committing and restore the lock if
@@ -60,10 +61,10 @@ make verify
 make audit
 
 # Run a targeted test.
-uv run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
+uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
 # Start the development server with the manual browser corpus.
-uv run --frozen metab serve ./tests/manual-fixtures --no-open
+uv --config-file uv.toml run --frozen metab serve ./tests/manual-fixtures --no-open
 ```
 
 `make lint` applies the ordinary auto-fixes and then runs policy and public-hygiene
