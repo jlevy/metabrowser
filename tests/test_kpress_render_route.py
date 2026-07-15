@@ -141,6 +141,19 @@ def test_kpress_render_route_uses_logical_size_for_gzip(tmp_path: Path, monkeypa
     assert seen["size"] > source.stat().st_size
 
 
+def test_kpress_render_route_degrades_truncated_gzip(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md.gz").write_bytes(b"\x1f\x8b")
+
+    response = asyncio.run(
+        server.api_kpress_render(_request(query={"path": "doc.md.gz", "view": "rendered"}))
+    )
+
+    assert response.status_code == 404
+    payload = _json_body(response)
+    assert payload["error"]
+
+
 def test_kpress_static_asset_serving_and_304(tmp_path: Path) -> None:
     static_root = tmp_path / "static"
     static_root.mkdir()

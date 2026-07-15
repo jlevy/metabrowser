@@ -1298,8 +1298,11 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
-    logical_size = artifact.logical_size
-    disk_size = artifact.disk_size
+    try:
+        logical_size = artifact.logical_size
+        disk_size = artifact.disk_size
+    except OSError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
     if ext not in _TEXT_EXTS and logical_size >= _INLINE_TEXT_FALLBACK_BYTES:
         return JSONResponse(
             {
