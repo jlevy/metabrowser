@@ -3,15 +3,17 @@ type: is
 id: is-01kxj9abcx9a5cp05zq9vakm8b
 title: Apply Common Documentation Guidelines repo-wide
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/specs/metabrowser-v0.1.0.md
 labels: []
 dependencies: []
 parent_id: is-01kxgmkc6gb2e8s23jf409j4bv
 created_at: 2026-07-15T07:02:05.980Z
-updated_at: 2026-07-15T07:12:45.939Z
+updated_at: 2026-07-15T07:17:33.849Z
+closed_at: 2026-07-15T07:17:33.849Z
+close_reason: Project-authored Markdown audited and updated under tbd Common Documentation Guidelines; footer policy added with deliberate generated/fixture exclusions; Flowmark and the 674-test release gate pass at c412d8c.
 ---
 
 ## Notes
