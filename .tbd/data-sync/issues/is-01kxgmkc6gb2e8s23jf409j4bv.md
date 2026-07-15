@@ -5,7 +5,7 @@ title: Prepare MetaBrowser v0.1.0 standalone package
 kind: epic
 status: in_progress
 priority: 1
-version: 16
+version: 17
 labels:
   - release
 dependencies: []
@@ -22,8 +22,9 @@ child_order_hints:
   - is-01kxhx67bp2wc5zyqyzapnnb4c
   - is-01kxhxpvyky9jsxa3321hqsrj7
   - is-01kxhytdpkzawm7554krxgj6t5
+  - is-01kxhztx5585r48tq7gja5refa
 created_at: 2026-07-14T15:40:47.183Z
-updated_at: 2026-07-15T03:58:38.290Z
+updated_at: 2026-07-15T04:16:22.693Z
 ---
 Create a public-safe, MIT-licensed standalone MetaBrowser package with exact KPress integration, modern Python tooling, release automation, and complete validation.
 
