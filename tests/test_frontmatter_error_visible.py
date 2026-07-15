@@ -14,6 +14,7 @@ must:
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 from pathlib import Path
 from unittest.mock import Mock
@@ -48,6 +49,17 @@ def test_malformed_frontmatter_sets_parse_error_on_context(tmp_path: Path) -> No
     assert ctx.frontmatter is None
     assert ctx.frontmatter_parse_error is not None
     assert ctx.frontmatter_parse_error  # non-empty string
+
+
+def test_malformed_gzip_frontmatter_sets_parse_error_on_context(tmp_path: Path) -> None:
+    f = tmp_path / "bad.md.gz"
+    with gzip.open(f, "wt") as source:
+        source.write("---\nthis: : : not valid yaml :::\n   bad: indent\n---\nbody\n")
+
+    ctx = FileContext(f, ".md")
+
+    assert ctx.frontmatter is None
+    assert ctx.frontmatter_parse_error
 
 
 def test_clean_frontmatter_no_parse_error(tmp_path: Path) -> None:

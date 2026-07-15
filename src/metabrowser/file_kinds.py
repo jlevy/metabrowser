@@ -12,7 +12,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from frontmatter_format import fmf_read_frontmatter
+from frontmatter_format import FmFormatError, FmStyle, fmf_read_frontmatter, from_yaml_string
+from ruamel.yaml.error import YAMLError
+
+from metabrowser.gz_io import ArtifactPath
 
 # VIEW_REGISTRY carries the built-in kinds owned by metabrowser core.
 # Third-party plugins contribute additional kinds and views through their
@@ -58,6 +61,40 @@ VIEW_REGISTRY: dict[str, list[dict[str, Any]]] = {
 }
 
 
+def _read_gzip_markdown_frontmatter(path: Path) -> dict[str, Any] | None:
+    """Parse YAML frontmatter from a gzip-transparent Markdown stream."""
+    try:
+        with ArtifactPath(path).open_text(errors="strict") as source:
+            first_line = source.readline()
+            if not first_line or first_line.rstrip() != FmStyle.yaml.start:
+                return None
+
+            metadata_lines: list[str] = []
+            for line in source:
+                if line.rstrip() == FmStyle.yaml.end:
+                    metadata_text = "".join(metadata_lines)
+                    if not metadata_text:
+                        return None
+                    try:
+                        parsed = from_yaml_string(metadata_text)
+                    except YAMLError as exc:
+                        raise FmFormatError(
+                            f"Error parsing YAML metadata: `{path}`: {exc}"
+                        ) from exc
+                    if not isinstance(parsed, dict):
+                        raise FmFormatError(
+                            f"Expected YAML metadata to be a dict, got {type(parsed)}: `{path}`"
+                        )
+                    return parsed
+                metadata_lines.append(line)
+    except UnicodeDecodeError:
+        return None
+
+    raise FmFormatError(
+        f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found: `{path}`"
+    )
+
+
 class FileContext:
     """Everything a detector may need to classify a file.
 
@@ -98,7 +135,11 @@ class FileContext:
         if not self._frontmatter_loaded:
             self._frontmatter_loaded = True
             try:
-                raw = fmf_read_frontmatter(self.path)
+                artifact = ArtifactPath(self.path)
+                if self.ext == ".md" and artifact.is_gzip:
+                    raw = _read_gzip_markdown_frontmatter(self.path)
+                else:
+                    raw = fmf_read_frontmatter(self.path)
             except (OSError, ValueError) as exc:
                 # OSError on unreadable file — leave parse_error unset
                 # (we'll get a separate error elsewhere); record YAML

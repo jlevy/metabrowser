@@ -113,7 +113,7 @@ def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch)
 
 def test_kpress_render_route_uses_logical_size_for_gzip(tmp_path: Path, monkeypatch) -> None:
     server._set_root_dir(tmp_path)
-    content = "# Heading\n" + ("Repeated content.\n" * 200)
+    content = "---\ntitle: Compressed\n---\n# Heading\n" + ("Repeated content.\n" * 200)
     compressed = gzip.compress(content.encode())
     source = tmp_path / "doc.md.gz"
     source.write_bytes(compressed)
@@ -137,6 +137,7 @@ def test_kpress_render_route_uses_logical_size_for_gzip(tmp_path: Path, monkeypa
 
     assert response.status_code == 200
     assert seen["source_text"] == content
+    assert seen["frontmatter"] == {"title": "Compressed"}
     assert seen["size"] == len(content.encode())
     assert seen["size"] > source.stat().st_size
 
