@@ -264,7 +264,7 @@ wheels = [
 
 [[package]]
 name = "kpress"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frontmatter-format" },
@@ -276,9 +276,9 @@ dependencies = [
     { name = "pygments" },
     { name = "strif" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/39/14/b96438a12e60d14a15babd0859f67e7eeca2abd07388db8c281f5dc23cdf/kpress-0.2.1.tar.gz", hash = "sha256:d13171f67d55d5d5c5338cd5eb293c72024def5468d307a552d7090d44006af1", size = 975133, upload-time = "2026-07-15T01:23:14.644Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/4a/fbe3c61c7a9359a1cfcd919728967ce8ce32c69193bcf4ff4cbb5019b0a1/kpress-0.2.2.tar.gz", hash = "sha256:475f78dde2cd762f40add1351e3ca49b6c186182b2ef6fe1f8069182e14fb2cc", size = 976001, upload-time = "2026-07-15T02:14:50.512Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/fa/8284f67630a2d68759185f8859ad25749488157d14cb86b4e29685b1da2d/kpress-0.2.1-py3-none-any.whl", hash = "sha256:5bce2c52037e9175bf707bdc18a30596a4c8e9d918042a56526402f0d7fd52be", size = 726087, upload-time = "2026-07-15T01:23:13.377Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/ab/f678cbeed015b675cccf4f9d1512c95eb989cf04e58637058d38c4a3c1d0/kpress-0.2.2-py3-none-any.whl", hash = "sha256:46c3e9f0496f30d7e5c19c08c38a96634bee257af15124da0795fa267e9698e1", size = 726113, upload-time = "2026-07-15T02:14:49.336Z" },
 ]
 
 [[package]]
@@ -461,7 +461,7 @@ requires-dist = [
     { name = "funlog", specifier = ">=0.2.1" },
     { name = "json5", specifier = ">=0.14" },
     { name = "jsonschema", specifier = ">=4.20" },
-    { name = "kpress", specifier = "==0.2.1" },
+    { name = "kpress", specifier = "==0.2.2" },
     { name = "lmdb", specifier = ">=1.4" },
     { name = "msgpack", specifier = ">=1.0" },
     { name = "pathspec", specifier = ">=0.12" },

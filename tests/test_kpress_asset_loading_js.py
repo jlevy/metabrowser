@@ -45,8 +45,8 @@ def test_kpress_browser_assets_honor_manifest_loading_modes() -> None:
     # appended as a script tag; dependency-only runtime.js is also not emitted.
     # The remaining module and classic entry points preserve manifest order.
     assert [script["src"] for script in scripts] == [
-        "/kpress-static/v0.2.1/js/code-copy.js",
-        "/kpress-static/v0.2.1/katex/katex.min.js",
+        "/kpress-static/v0.2.2/js/code-copy.js",
+        "/kpress-static/v0.2.2/katex/katex.min.js",
     ]
     assert [script["type"] for script in scripts] == ["module", "text/javascript"]
     assert all(script["async"] is False for script in scripts)

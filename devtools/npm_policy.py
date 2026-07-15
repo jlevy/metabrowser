@@ -50,8 +50,8 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
 
     pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     dependencies = pyproject["project"]["dependencies"]
-    if "kpress==0.2.1" not in dependencies:
-        raise RuntimeError("MetaBrowser must require exact kpress==0.2.1")
+    if "kpress==0.2.2" not in dependencies:
+        raise RuntimeError("MetaBrowser must require exact kpress==0.2.2")
     if pyproject["dependency-groups"].get("build") != BUILD_PINS:
         raise RuntimeError("the build dependency group must contain the exact backend pins")
     if pyproject["build-system"].get("requires") != BUILD_PINS:
@@ -74,8 +74,8 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
     if lock_path.exists():
         lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
         kpress = [package for package in lock.get("package", []) if package.get("name") == "kpress"]
-        if len(kpress) != 1 or kpress[0].get("version") != "0.2.1":
-            raise RuntimeError("uv.lock must contain exactly kpress==0.2.1")
+        if len(kpress) != 1 or kpress[0].get("version") != "0.2.2":
+            raise RuntimeError("uv.lock must contain exactly kpress==0.2.2")
         if kpress[0].get("source") != {"registry": "https://pypi.org/simple"}:
             raise RuntimeError("KPress must resolve from the PyPI registry")
         if lock.get("options", {}).get("exclude-newer-package") != expected_exceptions:
