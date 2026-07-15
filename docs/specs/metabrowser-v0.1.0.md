@@ -19,6 +19,8 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 - Depend on the exact audited `kpress==0.2.2` release
 - Preserve the Python, server, browser, file-format, and plugin contracts covered by the
   test suite
+- Keep transparent compression in core while placing specialized binary readers in
+  separately installed plugins
 - Use the simple-modern-uv project structure with uv, Ruff, BasedPyright, pytest, Biome,
   TypeScript check-JS, and tag-driven releases
 - Apply the 14-day dependency cool-off, frozen lockfile, SHA-pinned GitHub Actions, and
@@ -35,6 +37,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 - Add a second Markdown renderer or a local copy of KPress
 - Add application-specific plugins, schemas, routes, fixtures, or operational docs to
   the generic package
+- Ship specialized binary-store readers or their native dependencies in the core wheel
 
 ## Design
 
@@ -43,6 +46,8 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 MetaBrowser owns the generic file browser, server, browser shell, inventory and event
 APIs, built-in renderers, and plugin runtime.
 Application-specific behavior belongs in separate plugin distributions.
+Transparent compression belongs in core because it precedes file classification;
+format-specific binary interpretation belongs in external plugins.
 KPress owns Markdown-to-HTML rendering and is consumed only through its published
 package interface.
 
@@ -56,7 +61,8 @@ required at runtime.
 - **Python and JavaScript plugin APIs:** Preserve the documented manifest, entry-point,
   SDK, and lifecycle contracts
 - **Server APIs:** Preserve documented routes and observable response shapes
-- **File formats:** Continue reading the formats covered by compatibility tests
+- **File formats:** Preserve generic file and gzip behavior; add bounded zlib streams
+  before release; keep specialized binary formats available through plugins
 - **Internal module paths:** No stability guarantee beyond documented public APIs
 - **Database schemas:** Not applicable
 
@@ -81,6 +87,12 @@ Connect trusted publishing without a package token.
 - [x] Preserve gzip transparency across bounded text previews, logical-byte pagination,
   frontmatter-driven classification, Markdown rendering, and KPress static export;
   degrade malformed gzip size and read failures into endpoint error contracts
+- [x] Remove specialized binary-store code and native dependencies from the core wheel;
+  retain the manifest, browser SDK, and installed-entry-point seams needed by external
+  format plugins
+- [ ] Add bounded zlib artifact support with logical-extension handling, streaming
+  previews, rendering and export integration, malformed-stream errors, and
+  decompression-bomb limits
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
 - [x] Add CI, tag-driven publishing, dependency policy, and artifact inspection
@@ -132,7 +144,7 @@ Connect trusted publishing without a package token.
 - Install the wheel in an isolated uv environment and import the package
 - Exercise command-line, server, plugin, filesystem, event, and KPress integration
   behavior through tests, including the complete KPress asset-manifest closure and
-  gzip-backed preview, frontmatter, render, and export paths
+  compressed preview, frontmatter, render, and export paths
 - Require GitHub Actions to pass before merge and rerun the same gates against release
   artifacts before announcing publication
 
@@ -144,7 +156,7 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- 625 Python and browser contract tests pass
+- 604 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
@@ -171,6 +183,8 @@ distribution, and Python 3.12 through 3.14 jobs.
 - First release: `v0.1.0`
 - Supported Python: 3.12 through 3.14
 - Markdown renderer: exact `kpress==0.2.2`
+- Compression boundary: gzip and zlib in core; specialized binary readers in external
+  plugins
 - Dependency manager and build workflow: uv and simple-modern-uv
 - Browser development toolchain: exact npm lock with Node 24.18.0 and npm 11.10 or newer
 - Issue prefix: `mb-`

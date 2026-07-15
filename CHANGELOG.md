@@ -6,7 +6,7 @@ All notable changes to MetaBrowser are documented here.
 
 Initial standalone release:
 
-- local file, log, Markdown, structured-data, image, binary, and LMDB browsing;
+- local file, log, Markdown, structured-data, image, and binary browsing;
 - trusted manifest-driven plugins with JavaScript views and Python data hooks;
 - KPress-backed Markdown rendering through `kpress==0.2.2`;
 - gzip-transparent previews, frontmatter classification, Markdown rendering, and KPress

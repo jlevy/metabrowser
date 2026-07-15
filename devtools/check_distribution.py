@@ -116,7 +116,7 @@ def _smoke_install(wheel: Path) -> None:
             "from metabrowser.kpress_adapter import render_kpress_view; "
             "plugins = metabrowser.discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
-            "required = {'agent-log', 'binary', 'lmdb', 'markdown', 'structured', 'text', "
+            "required = {'agent-log', 'binary', 'markdown', 'structured', 'text', "
             "'unknown-jsonl'}; "
             "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
             "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "

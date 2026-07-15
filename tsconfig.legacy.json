@@ -11,7 +11,6 @@
     "src/metabrowser/static/perf.js",
     "src/metabrowser/static/plugin_sdk.js",
     "src/metabrowser/builtin_plugins/agent_log/index.js",
-    "src/metabrowser/builtin_plugins/lmdb/index.js",
     "src/metabrowser/builtin_plugins/markdown/index.js",
     "src/metabrowser/builtin_plugins/structured/index.js",
     "src/metabrowser/builtin_plugins/structured/preview.js",

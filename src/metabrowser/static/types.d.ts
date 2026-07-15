@@ -58,29 +58,11 @@ type MetabrowserChartInstance = {
   destroy(): void;
 };
 
-type LmdbKeyRow = {
-  decoderUsed?: string;
-  key?: string;
-  subdb?: string;
-  valuePreview?: string;
-  valueSize?: number;
-};
-
-type LmdbStatsRow = {
-  depth?: number;
-  entries?: number;
-  name?: string;
-};
-
 type MetabrowserPluginData = {
-  keys?: Array<LmdbKeyRow>;
-  nextCursor?: string;
   parse_error?: unknown;
   parsed?: unknown;
   pretty_yaml?: string;
   sizeBytes?: number;
-  subdbs?: Array<LmdbStatsRow>;
-  totalEntries?: number;
   truncated?: unknown;
   [key: string]: unknown;
 };
@@ -112,7 +94,6 @@ type TextBuiltins = {
 
 type MetabrowserBuiltins = {
   agentLog?: AgentLogBuiltins;
-  lmdb?: Record<string, unknown>;
   markdown?: Record<string, unknown>;
   structured?: StructuredBuiltins;
   text?: TextBuiltins;

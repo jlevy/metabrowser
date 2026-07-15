@@ -1,7 +1,7 @@
 # MetaBrowser
 
 MetaBrowser is a local web UI for exploring files, live logs, JSONL streams, Markdown,
-structured data, images, and LMDB databases.
+structured data, images, and binary files.
 It combines a responsive file tree with extensible preview tabs, live filesystem
 updates, and trusted plugins.
 
@@ -68,7 +68,6 @@ MetaBrowser includes trusted plugins for:
 - JSON, YAML, and other structured documents;
 - coding-agent JSONL logs and generic JSONL streams;
 - text, source code, images, and binary-file metadata;
-- LMDB database inspection;
 - generic chart summaries for supported agent logs.
 
 Large trees are indexed in the background.

@@ -48,7 +48,10 @@ file replaces the pane.
 
 Core knows only generic capabilities and built-in file kinds.
 It does not contain consumer-specific schemas, endpoint routes, view identifiers, or
-renderers.
+renderers. Transparent compression is a core filesystem capability because it applies
+uniformly before classification and rendering.
+Specialized binary stores and their value schemas belong in separately installed
+plugins.
 
 Plugins own:
 

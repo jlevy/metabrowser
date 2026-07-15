@@ -55,11 +55,15 @@ def shim_output() -> dict[str, Any]:
 
 
 def test_shim_loads_every_builtin_plugin(shim_output: dict[str, Any]) -> None:
-    """All five built-in plugins (markdown, agent_log, binary, text,
-    unknown_jsonl) load + run their index.js."""
-    plugins = shim_output["plugins"]
-    for expected in ("markdown", "agent_log", "binary", "text", "unknown_jsonl"):
-        assert expected in plugins, f"plugin {expected!r} should load; got {plugins!r}"
+    """The generic built-in plugin set loads and runs each ``index.js``."""
+    assert set(shim_output["plugins"]) == {
+        "agent_log",
+        "binary",
+        "markdown",
+        "structured",
+        "text",
+        "unknown_jsonl",
+    }
 
 
 def test_shim_reports_no_load_errors(shim_output: dict[str, Any]) -> None:
