@@ -415,8 +415,10 @@ def _query_int(request: Request, name: str, default: int) -> int:
         return default
 
 
-def _read_text_chunk(path: Path, offset: int, limit: int) -> tuple[str, int, int]:
-    with path.open("rb") as fh:
+def _read_artifact_text_chunk(
+    artifact: ArtifactPath, offset: int, limit: int
+) -> tuple[str, int, int]:
+    with artifact.open_binary() as fh:
         fh.seek(offset)
         raw = fh.read(limit)
     return raw.decode(errors="replace"), len(raw), offset + len(raw)
@@ -1175,22 +1177,18 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         )
 
     if ext in _TEXT_EXTS or logical_size < _INLINE_TEXT_FALLBACK_BYTES:
-        # ``.gz`` text files: ``gzip.GzipFile.seek`` is O(n) up to the
-        # offset, so windowed reads thrash. Read whole text via the
-        # ArtifactPath (which selects gzip.open under the hood); the
-        # logical-size gate above already kept us under the inline cap.
         try:
-            if artifact.is_gzip:
-                content = await asyncio.to_thread(_read_artifact_text, artifact)
-                content_bytes = len(content.encode("utf-8", errors="replace"))
-                bytes_read = logical_size
-            elif text_offset > 0 or logical_size > _TEXT_PREVIEW_CHUNK_BYTES:
+            if text_offset > 0 or logical_size > _TEXT_PREVIEW_CHUNK_BYTES:
                 content, content_bytes, bytes_read = await asyncio.to_thread(
-                    _read_text_chunk,
-                    target,
+                    _read_artifact_text_chunk,
+                    artifact,
                     text_offset,
                     text_limit,
                 )
+            elif artifact.is_gzip:
+                content = await asyncio.to_thread(_read_artifact_text, artifact)
+                content_bytes = len(content.encode("utf-8", errors="replace"))
+                bytes_read = logical_size
             else:
                 content = await asyncio.to_thread(target.read_text, errors="replace")
                 content_bytes = disk_size

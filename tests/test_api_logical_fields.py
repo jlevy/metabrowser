@@ -59,8 +59,8 @@ def _setup_pair(tmp_path: Path) -> tuple[Path, Path]:
     return plain, gz
 
 
-def _call_file(path: str) -> dict[str, Any]:
-    fake = _FakeRequest(path=path)
+def _call_file(path: str, **params: str) -> dict[str, Any]:
+    fake = _FakeRequest(path=path, **params)
     response = asyncio.run(proc_browser.api_file(fake))  # pyright: ignore[reportArgumentType]
     return json.loads(bytes(response.body).decode())
 
@@ -114,6 +114,27 @@ def test_api_file_gzipped_text_inlines_full_decompressed_content(tmp_path: Path)
     assert body["logical_ext"] == ".txt"
     assert body["compressed"] is True
     assert body["size_uncompressed"] == len(text.encode("utf-8"))
+
+
+def test_api_file_gzipped_text_honors_logical_byte_window(tmp_path: Path) -> None:
+    """Gzip previews use the same logical-byte chunk contract as plain text."""
+    text = "0123456789abcdef" * (proc_browser._TEXT_PREVIEW_CHUNK_BYTES // 8)
+    encoded = text.encode("utf-8")
+    gz = tmp_path / "large.txt.gz"
+    with gzip.open(gz, "wb") as fh:
+        fh.write(encoded)
+    proc_browser._set_root_dir(tmp_path)
+
+    offset = 117
+    limit = 43
+    body = _call_file("large.txt.gz", offset=str(offset), limit=str(limit))
+
+    assert body["type"] == "text_chunk"
+    assert body["content"] == encoded[offset : offset + limit].decode()
+    assert body["content_offset"] == offset
+    assert body["content_bytes"] == limit
+    assert body["bytes_read"] == offset + limit
+    assert body["content_truncated"] is True
 
 
 # ── /api/tree ──────────────────────────────────────────────────────
