@@ -5,7 +5,7 @@ title: Prepare MetaBrowser v0.1.0 standalone package
 kind: epic
 status: in_progress
 priority: 1
-version: 22
+version: 23
 labels:
   - release
 dependencies: []
@@ -28,10 +28,10 @@ child_order_hints:
   - is-01kxj6mq90b884fzynz50bjcbj
   - is-01kxj6mrvpkqnkn274rhy3mg2j
 created_at: 2026-07-14T15:40:47.183Z
-updated_at: 2026-07-15T06:16:18.044Z
+updated_at: 2026-07-15T06:40:04.974Z
 ---
 Create a public-safe, MIT-licensed standalone MetaBrowser package with exact KPress integration, modern Python tooling, release automation, and complete validation.
 
 ## Notes
 
-Standalone extraction and final PR reconciliation are complete. Bounded gzip and zlib are core; .zst is explicitly deferred as non-blocking mb-epis, with other single-file and archive/container work tracked in mb-min4 and mb-p7ts and documented in TODO.md. PR #1 awaits the final documentation follow-up checks and merge; PyPI publication remains mb-xkcx after merge.
+Standalone extraction and final PR reconciliation are complete at PR #1 head 42d5303. Local 669-test release gate and all latest-head GitHub checks are green; 35/35 review threads are resolved; the PR is merge-clean and ready to merge. Bounded gzip and zlib are core; .zst is explicitly deferred as non-blocking mb-epis, with other single-file and archive/container work tracked in mb-min4 and mb-p7ts and documented in TODO.md. The epic remains in progress only for post-merge PyPI publication mb-xkcx.
