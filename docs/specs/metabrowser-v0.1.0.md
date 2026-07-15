@@ -91,7 +91,8 @@ Connect trusted publishing without a package token.
   silently shadow a plugin endpoint
 - [x] Normalize and validate plugin paths across commands and direct server imports,
   load dotenv configuration consistently for serve, walk, plugin diagnostics, and remote
-  mode, and use readiness-gated, platform-neutral browser launching
+  mode and before direct ASGI server initialization, and use readiness-gated,
+  platform-neutral browser launching
 - [x] Expand home-relative served roots and reject traversal or symlink paths from both
   server deep links and standalone tree walks when they resolve outside the root; reject
   walk path flags in output modes that cannot apply them and file targets that cannot

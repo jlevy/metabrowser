@@ -15,8 +15,8 @@ from collections.abc import Generator
 import pytest
 
 # Test discovery imports the server from several module scopes. Never let an
-# operator's shell configuration alter collection or load external plugins.
-os.environ.pop("METABROWSER_PLUGINS_DIRS", None)
+# operator's shell or dotenv configuration alter collection or load external plugins.
+os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 
 
 @pytest.fixture(autouse=True)

@@ -82,6 +82,7 @@ from metabrowser.activity import FileActivityTracker as _FileActivityTracker
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.file_kinds import (
     FILE_KIND_DETECTORS,
     VIEW_REGISTRY,
@@ -132,6 +133,10 @@ from metabrowser.tree import (
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+
+# Direct ASGI imports bypass the CLI bootstrap. Load trusted working-tree
+# configuration before logging flags and one-shot plugin discovery are read.
+load_dotenv_chain()
 
 LOG = logging.getLogger(__name__)
 # Bounded startup grace for route-level test calls or direct imports
@@ -1701,7 +1706,7 @@ from metabrowser.tree import (
 )
 
 # Honor the CLI's --plugins-dir flags (merged into METABROWSER_PLUGINS_DIRS
-# in the CLI; loaded from .env / .env.local before this module imports).
+# by the CLI) and direct-import settings loaded from .env / .env.local above.
 # Anything in this list is operator-named — auto-discovery from the served
 # root or the user's home is intentionally NOT a source (trust model).
 _extra_plugin_dirs: list[Path] = []

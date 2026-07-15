@@ -63,7 +63,7 @@ def test_shell_export_wins_over_dotenv(tmp_path: Path, monkeypatch) -> None:
 
 def test_dotenv_drives_plugin_discovery(tmp_path: Path) -> None:
     """End-to-end: a `.env` setting METABROWSER_PLUGINS_DIRS makes that
-    directory's plugins load through the regular metabrowser bootstrap.
+    directory's plugins load on direct server import.
 
     Uses subprocess so the python-dotenv side effects don't leak into
     other tests in the suite.
@@ -85,8 +85,6 @@ def test_dotenv_drives_plugin_discovery(tmp_path: Path) -> None:
     env.pop("METABROWSER_PLUGINS_DIRS", None)
 
     code = (
-        "from metabrowser.dotenv import load_dotenv_chain; "
-        "load_dotenv_chain(); "
         "import metabrowser.server as s; "
         "import json; print(json.dumps([p.name for p in s._LOADED_PLUGINS]))"
     )
