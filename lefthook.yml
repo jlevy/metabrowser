@@ -1,0 +1,44 @@
+# Git hooks managed by lefthook (https://lefthook.dev).
+# Install once with `make hooks-install`.
+
+pre-commit:
+  parallel: false
+  commands:
+    ruff-format:
+      glob: "*.py"
+      run: uv run --frozen ruff format {staged_files}
+      stage_fixed: true
+
+    ruff-check:
+      glob: "*.py"
+      run: uv run --frozen ruff check --fix {staged_files}
+      stage_fixed: true
+
+    biome:
+      glob: "*.{js,css,json}"
+      run: uv run --frozen python -m devtools.biome check --write --unsafe --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+
+    browser-types:
+      glob: "*.{js,ts}"
+      run: uv run --frozen python -m devtools.tsc_check
+
+    codespell:
+      glob: "*.{py,md}"
+      run: uv run --frozen codespell --write-changes {staged_files}
+      stage_fixed: true
+
+    format-markdown:
+      glob: "*.md"
+      run: make format-markdown
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  commands:
+    package-policy:
+      run: uv run --frozen python devtools/npm_policy.py
+    public-hygiene:
+      run: uv run --frozen python devtools/public_hygiene.py
+    tests:
+      run: uv run --frozen pytest -q

@@ -1,0 +1,160 @@
+"""Validate built artifacts and a clean-wheel installation."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import tarfile
+import zipfile
+from pathlib import Path
+
+from devtools.public_hygiene import find_hygiene_findings
+
+ROOT = Path(__file__).resolve().parents[1]
+DIST = ROOT / "dist"
+REPOSITORY_ONLY_PARTS = {
+    ".agents",
+    ".claude",
+    ".codex",
+    ".github",
+    ".tbd",
+    ".venv",
+    "dist",
+    "node_modules",
+}
+REPOSITORY_ONLY_NAMES = {".copier-answers.yml", "AGENTS.md", "CLAUDE.md", "skills-lock.json"}
+
+
+def _single_wheel() -> Path:
+    wheels = sorted(DIST.glob("metabrowser-*.whl"))
+    if len(wheels) != 1:
+        raise RuntimeError(f"expected one wheel in dist/, found {len(wheels)}")
+    return wheels[0]
+
+
+def _single_sdist() -> Path:
+    sdists = sorted(DIST.glob("metabrowser-*.tar.gz"))
+    if len(sdists) != 1:
+        raise RuntimeError(f"expected one sdist in dist/, found {len(sdists)}")
+    return sdists[0]
+
+
+def _check_text_member(name: str, payload: bytes) -> None:
+    if name.endswith("devtools/public_hygiene.py"):
+        return
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError:
+        return
+    findings = find_hygiene_findings(name, text)
+    if findings:
+        raise RuntimeError(f"artifact hygiene failed: {findings[:10]}")
+
+
+def _inspect_wheel(wheel: Path) -> None:
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+        required_suffixes = {
+            "metabrowser/__init__.py",
+            "metabrowser/static/app.js",
+            "metabrowser/static/charts.js",
+            "metabrowser/builtin_plugins/markdown/manifest.toml",
+        }
+        for suffix in required_suffixes:
+            if not any(name.endswith(suffix) for name in names):
+                raise RuntimeError(f"wheel is missing {suffix}")
+        forbidden_parts = REPOSITORY_ONLY_PARTS | {"tests", "devtools"}
+        leaked = [name for name in names if forbidden_parts.intersection(Path(name).parts)]
+        if leaked:
+            raise RuntimeError(f"wheel contains repository-only files: {leaked[:10]}")
+        for name in names:
+            _check_text_member(name, archive.read(name))
+
+
+def _inspect_sdist(sdist: Path) -> None:
+    with tarfile.open(sdist, "r:gz") as archive:
+        members = [member for member in archive.getmembers() if member.isfile()]
+        names = {member.name for member in members}
+        required_suffixes = {
+            "LICENSE",
+            "README.md",
+            "pyproject.toml",
+            "skills/metabrowser/SKILL.md",
+            "skills/metabrowser/agents/openai.yaml",
+            "src/metabrowser/static/app.js",
+        }
+        for suffix in required_suffixes:
+            if not any(name.endswith(suffix) for name in names):
+                raise RuntimeError(f"sdist is missing {suffix}")
+        leaked = [
+            name
+            for name in names
+            if REPOSITORY_ONLY_PARTS.intersection(Path(name).parts)
+            or Path(name).name in REPOSITORY_ONLY_NAMES
+        ]
+        if leaked:
+            raise RuntimeError(f"sdist contains repository-only files: {leaked[:10]}")
+        for member in members:
+            extracted = archive.extractfile(member)
+            if extracted is not None:
+                _check_text_member(member.name, extracted.read())
+
+
+def _smoke_install(wheel: Path) -> None:
+    env = os.environ.copy()
+    env.setdefault("UV_EXCLUDE_NEWER", "14 days")
+    python_command = [
+        "uv",
+        "run",
+        "--isolated",
+        "--no-project",
+        "--with",
+        str(wheel),
+        "python",
+        "-c",
+        (
+            "from importlib.resources import files; "
+            "import metabrowser; "
+            "from metabrowser.kpress_adapter import render_kpress_view; "
+            "plugins = metabrowser.discover_plugins(); "
+            "names = {plugin.name for plugin in plugins.plugins}; "
+            "required = {'agent-log', 'binary', 'markdown', 'structured', 'text', "
+            "'unknown-jsonl'}; "
+            "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
+            "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
+            "mtime_hash='wheel-smoke', size=14); "
+            "assert metabrowser.__version__; "
+            "assert files('metabrowser').joinpath('static/app.js').is_file(); "
+            "assert required == names; "
+            "assert not plugins.errors; "
+            "assert 'Wheel smoke' in rendered['html']"
+        ),
+    ]
+    subprocess.run(python_command, cwd=ROOT, env=env, check=True)
+
+    for command in ("metab", "metabrowser"):
+        cli_command = [
+            "uv",
+            "run",
+            "--isolated",
+            "--no-project",
+            "--with",
+            str(wheel),
+            command,
+            "--help",
+        ]
+        subprocess.run(cli_command, cwd=ROOT, env=env, check=True)
+
+
+def main() -> int:
+    wheel = _single_wheel()
+    sdist = _single_sdist()
+    _inspect_wheel(wheel)
+    _inspect_sdist(sdist)
+    _smoke_install(wheel)
+    print(f"Distribution checks passed: {wheel.name}, {sdist.name}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

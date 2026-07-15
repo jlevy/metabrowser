@@ -1,0 +1,70 @@
+# Supply-Chain Security
+
+Dependencies and build tools are code execution boundaries.
+Review this document before adding, upgrading, or invoking a package.
+
+## Required Defaults
+
+- Use uv for Python resolution, execution, and tools.
+  Do not use raw `pip` or an activated virtual environment.
+- Apply a 14-day release cool-off with `uv.toml`, `UV_EXCLUDE_NEWER`, or the equivalent
+  explicit uv flag.
+- Commit `uv.lock`, install it with `uv sync --locked` so lock drift fails the build,
+  and execute commands with `uv run --frozen` so they cannot resolve dependencies.
+- Commit `package-lock.json`, use exact JavaScript tool versions, and install it with
+  `npm ci`.
+- Run locked JavaScript tools with `npx --no-install`; use exact versions for one-shot
+  `uvx` tools.
+- Disable npm lifecycle scripts unless a reviewed package specifically requires them.
+- Keep npm’s release-age gate, exact-save behavior, and lockfile generation enabled.
+- Use npm 11.10 or newer so `min-release-age` is enforced rather than ignored.
+- Pin GitHub Actions to reviewed full commit SHAs.
+- Pin the CI and publishing Node release instead of resolving a moving major version.
+- Build without isolated dependency re-resolution and test the wheel in a clean
+  environment.
+
+## Review Before Adding
+
+Confirm:
+
+1. the dependency is necessary and existing code cannot provide the capability;
+2. the package name, publisher, source repository, and license are correct;
+3. the selected release is at least 14 days old;
+4. the release artifacts and install behavior are expected;
+5. transitive dependency growth is proportionate;
+6. the lockfile change contains no unexplained package or source changes.
+
+## Audited First-Party Exceptions
+
+Two exact first-party releases are exempt from the ordinary cool-off for this release:
+
+- `kpress==0.2.2`, required for the first MetaBrowser release and reviewed as a
+  compatible first-party maintenance update with no added dependencies;
+- `flowmark-rs==0.3.1`, used to format and verify Markdown.
+
+The exceptions are package-scoped in configuration and do not weaken the global gate.
+Changing either version requires a new review and an updated rationale.
+
+The copied agent-skill instructions name exact `get-tbd@0.4.0` bootstrap commands.
+Those commands are operator-invoked documentation for installing this repository’s issue
+tracker; no build, hook, CI, test, or publishing path executes them.
+The package-policy check rejects moving `@latest` references and enforces this exact
+bootstrap version until it is deliberately reviewed.
+
+## Verification
+
+`devtools/npm_policy.py` checks the repository configuration, exact KPress dependency,
+Python and JavaScript lockfile sources and integrity fields, Node and npm requirements,
+full-SHA action pins, and release-workflow controls.
+`make lint-check` runs that policy together with public-hygiene, formatting, lint, and
+type checks.
+
+CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
+lock.
+
+Treat an unexpected lockfile source, install script, binary artifact, or publish-time
+change as a blocker until it is explained and reviewed.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

@@ -1,0 +1,9 @@
+{
+  "name": "sample-run",
+  "status": "complete",
+  "metrics": {
+    "items": 3,
+    "warnings": 0
+  },
+  "labels": ["example", "public-safe"]
+}
