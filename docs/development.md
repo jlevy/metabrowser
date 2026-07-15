@@ -16,8 +16,13 @@ repository, and run:
 make install
 ```
 
-This installs the exact Python and JavaScript dependency locks with `uv sync --frozen`
-and `npm ci`. Install the repository’s Lefthook git hooks once after setup:
+This installs the exact Python and JavaScript dependency locks with `uv sync --locked`
+and `npm ci`. `--locked` also asserts that `uv.lock` matches `pyproject.toml` and
+`uv.toml`, so a stale or locally contaminated lock fails at install instead of shipping.
+The required Node version is pinned in `.node-version`, so fnm, nvm, and mise select it
+automatically (for example `fnm use` or `mise install`). `npm ci` refuses to run under
+an older Node with an `EBADENGINE` error.
+Install the repository’s Lefthook git hooks once after setup:
 
 ```shell
 make hooks-install
@@ -26,6 +31,13 @@ make hooks-install
 Do not activate `.venv` or invoke `python` or `pip` directly.
 Use `uv run`, `uvx`, `uv add`, and the Make targets so commands use the locked
 environment and repository supply-chain policy.
+
+A machine-global uv configuration such as `~/.config/uv/uv.toml` merges into direct `uv`
+invocations and can silently rewrite the `[options]` block of `uv.lock`. The Make
+targets pin `UV_CONFIG_FILE` to the repository `uv.toml` to prevent this, and
+`make install` fails on a contaminated lock.
+After running `uv` commands directly, check `git diff uv.lock` before committing and
+restore the lock if the options block changed.
 
 ## Everyday Commands
 

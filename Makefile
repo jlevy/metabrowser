@@ -23,8 +23,10 @@ unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
 default: install format lint test
 
 install:
-	uv sync --all-extras --all-groups --frozen
-	npm ci --silent
+	# --locked also asserts uv.lock matches pyproject.toml and uv.toml, so a
+	# stale or locally contaminated lock fails here instead of shipping.
+	uv sync --all-extras --all-groups --locked
+	npm ci
 
 hooks-install: install
 	npx --no-install lefthook install
