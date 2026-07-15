@@ -187,6 +187,18 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         raise RuntimeError("Make targets must select the repository uvx configuration")
     if "UV_RUN := $(UV) run --frozen" not in makefile_text:
         raise RuntimeError("Make targets must use a frozen uv runner")
+    ambient_npm_policy = (
+        "NPM_CONFIG_BEFORE",
+        "NPM_CONFIG_FROZEN_LOCKFILE",
+        "NPM_CONFIG_MINIMUM_RELEASE_AGE",
+    )
+    missing_npm_unexports = [
+        variable for variable in ambient_npm_policy if f"unexport {variable}" not in makefile_text
+    ]
+    if missing_npm_unexports:
+        raise RuntimeError(
+            f"Make targets must ignore conflicting ambient npm policy: {missing_npm_unexports}"
+        )
     if re.search(r"^\tuvx?\s", makefile_text, re.MULTILINE):
         raise RuntimeError("Make recipes must not invoke bare uv or uvx")
     if (

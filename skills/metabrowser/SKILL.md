@@ -38,8 +38,9 @@ guessing flags.
 ## Operate Safely
 
 - Serve only paths the user placed in scope
-- Keep the default localhost binding unless the user explicitly requests network
-  exposure and understands the file-access implications
+- Keep the default localhost binding.
+  Never expose MetaBrowser directly to the public internet; change the binding only for
+  an explicitly requested trusted network.
 - Treat installed and operator-directory plugins as executable code; pass
   `--plugins-dir` only for a directory the user trusts
 - Keep Python entry-point plugins in the same uvx or uv tool environment as MetaBrowser;
@@ -47,7 +48,7 @@ guessing flags.
 - Prefer `walk --format json` when the task needs machine-readable inventory rather than
   an interactive browser
 - In a headless environment, avoid opening a browser and report the local URL and
-  process state clearly
+  whether the server is still running
 - Preserve nonzero exits and surface plugin-doctor failures instead of reporting partial
   success as complete
 
@@ -55,3 +56,7 @@ guessing flags.
 
 State what MetaBrowser opened or inspected, the served root, the selected file when
 applicable, the local URL for a running server, and any plugin or validation errors.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

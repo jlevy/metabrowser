@@ -16,7 +16,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 ## Goals
 
 - Publish the `metabrowser` package for Python 3.12 and newer
-- Expose `metab` as the canonical CLI and retain `metabrowser` as a compatibility alias
+- Expose `metab` as the primary CLI and retain `metabrowser` as a compatibility alias
 - Make zero-install, global-tool, plugin, and agent onboarding immediately discoverable
   from the top-level README
 - Publish a portable MetaBrowser Agent Skill that delegates to the pinned zero-install
@@ -101,7 +101,7 @@ Connect trusted publishing without a package token.
   decompression-bomb limits
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
-- [x] Publish `metab` as the canonical console script while retaining `metabrowser` for
+- [x] Publish `metab` as the primary console script while retaining `metabrowser` for
   existing callers and the `uvx metabrowser` package-name shorthand
 - [x] Simplify the README around `uvx metabrowser`, the globally installed `metab`
   command, plugin discovery, and command help; publish the L1 Agent Skill at
@@ -111,6 +111,8 @@ Connect trusted publishing without a package token.
 - [x] Align Python and JavaScript quality gates with KPress and tbd guidance using
   strict BasedPyright, correctness-oriented Ruff rules, recommended Biome rules, strict
   TypeScript check-JS, exact npm locks, Lefthook, and SHA-pinned actions
+- [x] Pin Node 24.18.0 for nvm and fnm, require npm 11.10 or newer, and isolate Make
+  targets from conflicting host-level npm release-cutoff configuration
 - [x] Apply CLI configuration before server initialization, call the documented plugin
   entry-point factory, report incomplete installed plugins, and enforce JavaScript-only
   operator-directory plugins in both runtime behavior and diagnostic output
@@ -125,7 +127,7 @@ Connect trusted publishing without a package token.
   walk path flags in output modes that cannot apply them and file targets that cannot
   form subtrees
 - [x] Anchor Codex hooks to the git root and Claude hooks to the project root, and
-  delegate legacy module execution to the canonical CLI before bootstrap side effects
+  delegate legacy module execution to the primary CLI before bootstrap side effects
 - [x] Keep optional GitHub CLI setup non-fatal on unsupported platforms and enforce the
   repository’s exact tbd v0.4.0 pin across generated agent guidance
 - [x] Isolate test discovery from operator plugin environment variables before tests
@@ -137,6 +139,9 @@ Connect trusted publishing without a package token.
 - [x] Complete final review reconciliation with all tracked findings closed, the full
   local release gate passing, no unresolved review threads, and all GitHub Actions
   checks green on the reconciliation commit
+- [x] Apply tbd Common Documentation Guidelines across project-authored Markdown, format
+  it with Flowmark, and enforce the standard footer without modifying generated template
+  copies or rendering fixtures
 
 ### Final Review Reconciliation
 
@@ -198,10 +203,12 @@ The complete local `make -j4 verify` gate passes on the release-candidate workin
 - Flowmark and public-hygiene checks pass for the repository
 - The MetaBrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
-- 672 Python and browser contract tests pass
+- 674 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
+- The checked-in nvm and fnm version files select Node 24.18.0, and the Make targets use
+  repository-owned npm policy even when the host exports a conflicting cutoff
 - An isolated uv environment installs the wheel and exercises `metab`, the `metabrowser`
   compatibility alias, packaged assets, built-in plugins, and KPress rendering
 - A clean synthetic `v0.1.0` tag builds version `0.1.0` source and wheel distributions,
@@ -218,16 +225,15 @@ distribution, and Python 3.12 through 3.14 jobs.
 
 ## Rollout Plan
 
-1. Review and merge the complete standalone repository import
-2. Change repository visibility only after repeating public-hygiene checks
-3. Configure trusted publishing and create the `v0.1.0` GitHub release
-4. Verify installation and runtime behavior from PyPI
-5. Track future features and fixes in this repository using `mb-*` issues
+1. Review and merge the release-readiness pull request
+2. Configure trusted publishing and create the `v0.1.0` GitHub release
+3. Verify installation, the Agent Skill, and runtime behavior from PyPI
+4. Track future features and fixes in this repository using `mb-*` issues
 
 ## Decisions
 
 - Package and import name: `metabrowser`
-- Canonical CLI and compatibility alias: `metab` and `metabrowser`
+- Primary CLI and compatibility alias: `metab` and `metabrowser`
 - License: MIT
 - First release: `v0.1.0`
 - Supported Python: 3.12 through 3.14

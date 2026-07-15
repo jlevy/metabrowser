@@ -35,9 +35,10 @@ or browser SDK methods without an explicit migration plan and release note.
 
 ## Documentation and Tests
 
-Format Markdown with Flowmark through `make format`. Documentation must be safe for a
-public repository and must not contain credentials, private paths, private issue IDs, or
-copied operational data.
+Apply `tbd guidelines common-doc-guidelines` when creating or restructuring
+documentation, and format Markdown with Flowmark through `make format`. Documentation
+must be safe for a public repository and must not contain credentials, private paths,
+private issue IDs, or copied operational data.
 
 Choose the narrowest test layer that proves the behavior.
 See [end-to-end testing](docs/e2e-testing.md) for the suite structure.

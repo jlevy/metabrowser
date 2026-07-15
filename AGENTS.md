@@ -52,7 +52,8 @@ pre-push gates.
 
 ## Documentation and Public Hygiene
 
-- Follow the common document guidelines footer used throughout the repository.
+- Apply `tbd guidelines common-doc-guidelines` to every human-authored document and
+  retain the standard footer.
 - Format all human-authored Markdown with Flowmark through `make format`.
 - Link to source documentation instead of duplicating long policy text.
 - Never add credentials, private organization or repository names, private issue IDs,

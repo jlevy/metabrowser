@@ -19,6 +19,9 @@ UV_RUN := $(UV) run --frozen
 # those ambient aliases from adding warnings or changing command behavior.
 unexport NPM_CONFIG_FROZEN_LOCKFILE
 unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
+# A host-level publication cutoff conflicts with the repository's release-age gate in
+# npm 11. Repository installs must use the reviewed .npmrc policy instead.
+unexport NPM_CONFIG_BEFORE
 
 .PHONY: default install hooks-install format format-markdown lint lint-check test audit lock upgrade build verify clean
 

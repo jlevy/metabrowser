@@ -1,4 +1,4 @@
-# Roadmap and TODO
+# Roadmap
 
 MetaBrowser treats compression as a transport layer around one logical file.
 For example, `report.html.zst` should classify and render like `report.html` while all

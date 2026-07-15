@@ -159,6 +159,8 @@ so quality checks cannot fetch tools at runtime.
 Human-authored Markdown is formatted with the exact Flowmark release pinned in the
 Makefile. Run `make format` after editing docs and `make lint-check` to verify the tree
 without modifications.
+Apply `tbd guidelines common-doc-guidelines` to the README, guidance, specifications,
+and other human-authored documents; retain the standard footer.
 
 Keep documentation public-safe.
 Do not include private repository names, internal issue identifiers, personal absolute

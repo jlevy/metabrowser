@@ -1,10 +1,9 @@
 # MetaBrowser
 
-MetaBrowser is a local web UI for exploring files, live logs, JSONL streams, Markdown,
-structured data, images, and binary metadata.
-Point it at a directory or file and it opens a browser with a live file tree and
-extensible preview tabs.
-A simple plugin architecture can add custom rendering for any file type.
+MetaBrowser is a local web UI for trusted users and agents exploring files, live logs,
+JSONL streams, Markdown, structured data, images, and binary metadata.
+Point it at a directory or file to open a live file tree with extensible preview tabs.
+Its manifest-based plugin architecture can add custom rendering for any file type.
 
 MetaBrowser is an MIT-licensed Python package for Python 3.12 and newer.
 Markdown is rendered by the exact `kpress==0.2.2` dependency.
@@ -19,7 +18,7 @@ Markdown is rendered by the exact `kpress==0.2.2` dependency.
 
 ## Why MetaBrowser
 
-- **Custom rendering for arbitrary file types.** The simple manifest-based plugin
+- **Custom rendering for arbitrary file types.** A compact manifest-based plugin
   architecture adds file matching and browser views, with optional Python data hooks and
   JSONL adapters, without changing MetaBrowser core.
 - **Broad text support.** Render common text and source files, logs, JSON, JSONL, YAML,
@@ -83,11 +82,11 @@ uv --config-file uv.toml run --frozen metab ./path/to/artifacts
 
 Built-in plugins provide views for:
 
-- Markdown rendered by KPress, alongside the source
-- JSON, YAML, and other structured documents
-- coding-agent JSONL logs and generic JSONL streams
-- text, source code, images, and binary-file metadata
-- generic chart summaries for supported agent logs
+- Markdown rendered by KPress, alongside the source.
+- JSON, YAML, and other structured documents.
+- Coding-agent JSONL logs and generic JSONL streams.
+- Text, source code, images, and binary-file metadata.
+- Generic chart summaries for supported agent logs.
 
 Gzip and zlib variants of supported artifacts open transparently with bounded
 decompression. Format-specific binary stores belong in separately installed plugins,
@@ -129,10 +128,10 @@ see the [security policy](SECURITY.md).
 MetaBrowser is designed to be extended.
 A plugin can add:
 
-- file-kind matching rules
-- browser preview tabs implemented in JavaScript
-- optional Python data hooks for installed plugin packages
-- JSONL event adapters for additional log formats
+- File-kind matching rules.
+- Browser preview tabs implemented in JavaScript.
+- Optional Python data hooks for installed plugin packages.
+- JSONL event adapters for additional log formats.
 
 Inspect the complete registry and validate every discovered plugin from the CLI:
 
@@ -197,12 +196,12 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 - [Plugin authoring](docs/plugins.md)
 - [Architecture](docs/architecture.md)
 - [Design system](docs/design-system.md)
+- [Development](docs/development.md)
 - [End-to-end testing](docs/e2e-testing.md)
 - [Real-time debugging](docs/realtime-debugging.md)
-- [Development](docs/development.md)
 - [Publishing](docs/publishing.md)
-- [Roadmap and TODO](TODO.md)
 - [Security policy](SECURITY.md)
+- [Roadmap](TODO.md)
 
 ## License
 

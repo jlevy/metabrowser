@@ -3,8 +3,8 @@
 ## Supported Versions
 
 Security fixes are provided for the latest published MetaBrowser release.
-Before the first stable release, upgrades may include compatibility changes documented
-in the release notes.
+During the `0.x` series, upgrades may include compatibility changes documented in the
+release notes.
 
 ## Reporting a Vulnerability
 

@@ -118,7 +118,7 @@ Avoid looping animation except for active progress indicators.
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
 
-### Progress spinners stay neutral
+### Progress Spinners Stay Neutral
 
 Loading and progress spinners use the shared neutral-gray track and accent tokens.
 They must not borrow link, status, file-type, or chart colors because a spinner conveys
