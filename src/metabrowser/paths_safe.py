@@ -78,11 +78,9 @@ def _safe_path(requested: str) -> Path | None:
 def _safe_subdir(requested: str) -> Path | None:
     """Like :func:`_safe_path` but require the resolved path to be a directory.
 
-    The route-level callers that previously inlined this check
-    (``api_stats``, ``api_resources``) inherited the same prefix-confusion
-    bug; routing them through here keeps the safety logic in one place.
-    Returns ``None`` if the resolved path is outside ROOT_DIR or not a
-    directory.
+    Centralizing the containment and directory checks keeps route-level
+    callers from performing unsafe string-prefix comparisons. Returns
+    ``None`` if the resolved path is outside ROOT_DIR or not a directory.
     """
     target = _safe_path(requested)
     if target is None or not target.is_dir():

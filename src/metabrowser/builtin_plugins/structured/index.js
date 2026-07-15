@@ -9,7 +9,7 @@
 // plugins (agent-log per-event payloads, future schema-aware
 // variants) can mount an inline tree without duplicating the logic.
 // Consumers must read mb.builtins.structured AT RENDER TIME, never at
-// script-load — see metabrowser-plugins.md → "Render-time-only
+// script-load — see docs/plugins.md → "Render-time-only
 // namespace rule".
 (() => {
   const mb = window.metabrowser;

@@ -21,7 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from metabrowser.gz_io import ArtifactPath
+from metabrowser.gz_io import ArtifactDecompressionLimitError, ArtifactPath
 
 LOG = logging.getLogger(__name__)
 
@@ -202,10 +202,8 @@ def _parse_structured_cached(
 ) -> StructuredPayload:
     target = Path(target_str)
     artifact = ArtifactPath(target)
-    # ``logical_size`` decompresses .gz to know the real cost; we cap
-    # on that so a 100 KB gzipped 100 MB JSON doesn't slip through.
-    size = artifact.logical_size
-    if size > STRUCTURED_PARSE_MAX_BYTES:
+
+    def truncated_payload() -> StructuredPayload:
         return StructuredPayload(
             parsed=None,
             pretty_yaml="",
@@ -216,9 +214,15 @@ def _parse_structured_cached(
         )
 
     try:
-        with artifact.open_text() as fh:
+        # Compressed streams must reach the caller-specific bound before a
+        # malformed trailer can obscure that they exceed it.
+        if not artifact.is_compressed and artifact.logical_size > STRUCTURED_PARSE_MAX_BYTES:
+            return truncated_payload()
+        with artifact.open_text(max_output_bytes=STRUCTURED_PARSE_MAX_BYTES) as fh:
             text = fh.read()
         parsed = _parse_text(text, ext)
+    except ArtifactDecompressionLimitError:
+        return truncated_payload()
     except Exception as exc:
         return StructuredPayload(
             parsed=None,

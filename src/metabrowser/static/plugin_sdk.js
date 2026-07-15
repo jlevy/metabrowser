@@ -433,7 +433,7 @@
     _loadedKpressAssets.add(key);
   }
 
-  async function loadKpressAssets(manifest) {
+  function _validateKpressAssetManifest(manifest) {
     if (!manifest || manifest.schema_version !== _KPRESS_ASSET_MANIFEST_SCHEMA) {
       throw new Error(
         `Unsupported KPress asset manifest schema: ${manifest?.schema_version || "missing"}`,
@@ -442,6 +442,18 @@
     if (!Array.isArray(manifest.assets)) {
       throw new Error("Invalid KPress asset manifest: assets must be an array");
     }
+    for (const asset of manifest.assets) {
+      if (!asset?.entry_point || asset.loading === "resource") {
+        continue;
+      }
+      if (!_kpressAssetUrl(asset)) {
+        throw new Error(`KPress entry point ${asset.id || "<unknown>"} has no URL`);
+      }
+    }
+  }
+
+  async function loadKpressAssets(manifest) {
+    _validateKpressAssetManifest(manifest);
     const entryPoints = manifest.assets.filter((asset) => asset?.entry_point === true);
     for (const asset of entryPoints) {
       if (asset.loading !== "stylesheet") {
@@ -548,7 +560,18 @@
       err.payload = payload;
       throw err;
     }
-    await loadKpressAssets(payload.assets || {});
+    const assets = payload.assets || {};
+    _validateKpressAssetManifest(assets);
+    try {
+      await loadKpressAssets(assets);
+    } catch (err) {
+      if (global.console?.warn) {
+        global.console.warn(
+          "metabrowser: KPress document rendered with one or more unavailable assets",
+          err,
+        );
+      }
+    }
     return payload;
   }
 

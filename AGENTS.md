@@ -57,7 +57,7 @@ pre-push gates.
 - Link to source documentation instead of duplicating long policy text.
 - Never add credentials, private organization or repository names, private issue IDs,
   personal absolute paths, customer data, or copied operational artifacts.
-- Run `uv run python devtools/public_hygiene.py` before every public release or
+- Run `uv run --frozen python devtools/public_hygiene.py` before every public release or
   repository-visibility change.
 
 ## Git

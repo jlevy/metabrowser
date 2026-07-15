@@ -155,8 +155,8 @@ function sizeClass(bytes) {
 }
 function sizeHtml(bytes, extraClass) {
   // Walker emits ``null`` aggregates while a directory is still
-  // finalizing in the InventoryIndex (P1.13). Render as a
-  // skeleton cell so the row paints with shape; the SSE
+  // finalizing in the InventoryIndex. Render as a skeleton cell
+  // so the row paints with shape; the SSE
   // ``fs.change`` patch flow (applyCellPatch below) replaces it
   // in place once the walker finalizes the dir.
   if (bytes === null || bytes === undefined) {
@@ -225,13 +225,16 @@ function getExt(name) {
   return i >= 0 ? name.slice(i) : "";
 }
 
-// Display name with `.gz` stripped when present. Used to pick the icon
-// (so subtype matchers like `.process.md` keep working on
-// `foo.process.md.gz`) and for any UI that should show the logical
-// filename instead of the on-disk one.
+const COMPRESSION_SUFFIX_BY_FORMAT = Object.freeze({
+  gzip: ".gz",
+  zlib: ".zlib",
+});
+
+// Strip a recognized compression suffix before extension-based dispatch.
 function getLogicalName(entry) {
-  if (entry?.compressed && entry.name?.toLowerCase().endsWith(".gz")) {
-    return entry.name.slice(0, -3);
+  const suffix = COMPRESSION_SUFFIX_BY_FORMAT[entry?.compression];
+  if (entry?.compressed && suffix && entry.name?.toLowerCase().endsWith(suffix)) {
+    return entry.name.slice(0, -suffix.length);
   }
   return entry?.name ? entry.name : "";
 }
@@ -278,7 +281,7 @@ function highlightCode() {
 }
 
 function formatAge(mtimeSec) {
-  // Walker emits ``null`` newest-mtime while finalizing (P1.13).
+  // Walker emits ``null`` newest-mtime while finalizing.
   // Render skeleton; applyCellPatch fills it from fs.change.
   if (mtimeSec === null) {
     return '<span class="tally-pending tally-pending-narrow"></span>';
@@ -333,8 +336,7 @@ function formatExactSize(bytes) {
 
 // ── SVG Icons ───────────────────────────────────────────────────
 
-// Lucide `copy` (v1.17.0, ISC). Belongs in icons.js as ICONS.copy; pending
-// the registry move tracked in the design-system consolidation plan.
+// Lucide `copy` (v1.17.0, ISC), used by clipboard actions.
 var ICON_COPY =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
 
@@ -425,8 +427,7 @@ function themeModeIcon(mode) {
 }
 
 // Reading-font preference: "serif" keeps KPress's vendored PT Serif; "sans"
-// flips the markdown body to the plain system sans (origin/main's simpler
-// look). Drives [data-prose-font] on <html>; the CSS bridge in styles.css
+// uses the host system sans. Drives [data-prose-font] on <html>; styles.css
 // turns that into --kpress-host-font-prose for the embedded document.
 var PROSE_FONT_KEY = "metabrowser.proseFont";
 
@@ -804,8 +805,7 @@ async function loadTree() {
       () => {
         pendingTreePages.clear();
         pendingTreePageId = 0;
-        // Files panel is now a child of #tree-content (P3.2 tab strip);
-        // the Recent panel is its sibling at #tab-recent.
+        // Files and Recent are sibling panels inside #tree-content.
         var filesPanel = document.getElementById("tab-files");
         if (filesPanel) {
           filesPanel.innerHTML = truncationHtml + summaryHtml + renderTreeNodes(data.tree, true);
@@ -971,8 +971,10 @@ function renderTreeNodes(nodes, isRoot, options) {
       var fileAge = formatAge(node.mtime);
       var compressed = !!node.compressed;
       var iconCls = `tree-item-icon ${fi.cls}${compressed ? " is-compressed" : ""}`;
+      var compressionName = node.compression || "compressed";
+      var compressionGlyph = compressionName === "gzip" ? "G" : "Z";
       var compressionBadge = compressed
-        ? '<span class="compression-badge" title="gzipped">Z</span>'
+        ? `<span class="compression-badge" title="${esc(compressionName)} compressed">${compressionGlyph}</span>`
         : "";
       var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
       var compressedAttr = compressed ? ' data-compressed="1"' : "";
@@ -1505,7 +1507,7 @@ treePane.addEventListener("click", (e) => {
 });
 
 // Mark every .tree-item whose data-path matches *path* as
-// selected, across panels (P3.9). The same file can be rendered
+// selected across panels. The same file can be rendered
 // in both the Files tree and the Recent tree; the highlight
 // should follow the user when they switch tabs. ``null`` /
 // ``undefined`` clears all selection state.
@@ -2218,14 +2220,11 @@ function renderRecentList(data) {
   // in last 24h" mixes incomparable things). isRoot=true so the
   // default-expand rule fires for top-level non-gitignored dirs;
   // the Recent tree builder leaves ``expanded`` unset on those
-  // exact nodes so the rule applies. (Future: refine the rule
-  // breadth-first to fill vertical space without going so deep
-  // that lots of files become overwhelming.)
+  // exact nodes so the rule applies without expanding deep subtrees.
   var body = renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
   // Truncation banner: when total_matching exceeds the cap (server
   // tops out at ``RECENT_MAX_LIMIT = 2 000``), tell the user the
-  // window had more files than we're showing. This used to be
-  // hidden because the SPA never read the truncated/total fields.
+  // window has more files than the response includes.
   if (data.truncated && data.total_matching) {
     body =
       '<div class="recent-truncated-note">Showing ' +
@@ -2878,7 +2877,7 @@ function toggleEvent(header) {
     // First-expand mount: agent-log emits log-event-raw containers
     // empty and registers mountLogEventRaw on window. When the
     // structured plugin is loaded, this renders a collapsible inline
-    // tree; otherwise it falls back to the legacy flat JSON block.
+    // tree; otherwise it falls back to a flat JSON block.
     var rawEl = parent.querySelector(".log-event-raw");
     if (
       rawEl &&
@@ -3070,7 +3069,7 @@ function openLiveStream(path, startCursor) {
   es.onerror = () => {
     // EventSource auto-reconnects on transient errors. We only need
     // to clean up if the stream shows persistent failure (readyState
-    // CLOSED). For now, leave the browser to reconnect.
+    // CLOSED), so transient errors remain under browser control.
   };
 }
 
@@ -3091,16 +3090,14 @@ function appendLiveEvents(path, batch) {
         cached.bytes_read = batch.cursor;
       }
       // Append to the currently-rendered log tab if it's visible. Charts
-      // tab live-update is intentionally deferred — chart series rebinning
-      // depends on the full event timeline, so for now the existing
-      // "re-fetch on poll" path stays.
+      // re-fetch on poll because series rebinning depends on the complete
+      // event timeline.
       var logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
         var tail = "";
         var startIdx = cached.events.length - batch.events.length;
-        // renderLogEvent moved into the agent-log built-in plugin
-        // (Phase 3d). The SSE live-stream handler reaches into the
-        // plugin's exposed namespace; if the plugin isn't loaded
+        // The agent-log built-in plugin owns renderLogEvent and exposes it
+        // through the public namespace. If the plugin isn't loaded
         // (shouldn't happen for built-ins), the live tail is silently
         // skipped — the static log render still shows up on full reload.
         var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
@@ -3128,7 +3125,7 @@ function flagRunEndedBadge() {
   }
 }
 
-// ── FileStore + /api/events EventSource (P1.8 + P1.13) ─────────
+// ── FileStore + /api/events EventSource ────────────────────────
 //
 // Single source of truth for live tree decoration. Populated from
 // /api/events:
@@ -3530,6 +3527,29 @@ function _insertRowSorted(container, entry, options) {
 // no row exists for the entry's path AND the entry's parent is
 // rendered + expanded in either tab panel, insert a new row in
 // sorted position so the user sees new files/dirs without a reload.
+function updateRootAggregatePresentation(entry) {
+  if (entry.path || entry.type !== "dir") {
+    return;
+  }
+  var totalFiles = entry.total_files == null ? null : entry.total_files;
+  var totalSize = entry.total_size == null ? null : entry.total_size;
+  var newestMtime = entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0;
+  var countEl = queryHtml(".tree-summary-count");
+  var sizeEl = queryHtml(".tree-summary-size");
+  if (countEl) {
+    countEl.innerHTML = countHtml(totalFiles);
+  }
+  if (sizeEl) {
+    sizeEl.innerHTML = sizeHtml(totalSize);
+  }
+  var pathEl = queryHtml(".header-path");
+  if (pathEl) {
+    pathEl.dataset.tipFiles = nullableDataValue(totalFiles);
+    pathEl.dataset.tipSize = nullableDataValue(totalSize);
+    pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+  }
+}
+
 function applyCellPatch(entry) {
   // The root (path "") is the implicit tree container, never a row. The
   // server includes it in the fs.snapshot for its aggregate totals, but
@@ -3538,6 +3558,7 @@ function applyCellPatch(entry) {
   // dir *inside itself* — flashed yellow like a new file on every
   // (re)connect. Keep it in the store; just don't render it.
   if (!entry.path) {
+    updateRootAggregatePresentation(entry);
     return;
   }
   var safePath = entry.path.replace(/"/g, '\\"');
@@ -3758,14 +3779,12 @@ function serverInitialPath() {
 }
 
 // Top-level README (case-insensitive). Returns its path or "" if absent.
-// Used to auto-nav on first load when no hash is set, so a worktree with
+// Auto-navigates on first load when no hash is set, so a worktree with
 // a root readme never opens to the empty "select a file" pane. Scoped
 // to direct children of the tree root: never auto-navs to a README in
 // some nested subdirectory.
 function findRootReadme() {
-  // Files panel is now a child of #tree-content (P3.2 tab refactor).
-  // The old "#tree-content > .tree-item.tree-file" selector matches
-  // nothing once the tab wrapper is in place.
+  // Files are direct children of the Files panel; Recent is its sibling.
   var rootFiles = queryHtmlAll("#tab-files > .tree-item.tree-file");
   for (var i = 0; i < rootFiles.length; i++) {
     var path = rootFiles[i].dataset.path;

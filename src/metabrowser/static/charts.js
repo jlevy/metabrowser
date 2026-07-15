@@ -13,6 +13,13 @@
   };
   var chartInstances = [];
 
+  function dispose() {
+    for (var i = 0; i < chartInstances.length; i++) {
+      chartInstances[i].destroy();
+    }
+    chartInstances = [];
+  }
+
   function cssVar(ref) {
     if (typeof ref !== "string") {
       return ref;
@@ -182,11 +189,7 @@
     return _perf.measure(
       "renderChartSpecs",
       () => {
-        // Destroy old chart instances
-        for (var i = 0; i < chartInstances.length; i++) {
-          chartInstances[i].destroy();
-        }
-        chartInstances = [];
+        dispose();
 
         if (typeof Chart === "undefined") {
           container.innerHTML += '<div class="preview-empty">Chart.js not loaded</div>';
@@ -447,6 +450,7 @@
   }
 
   global.MetabrowserCharts = {
+    dispose: dispose,
     renderPayload: renderPayload,
   };
 })(window);

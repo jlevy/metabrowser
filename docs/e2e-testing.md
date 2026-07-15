@@ -42,11 +42,11 @@ and CLI. This catches missing package data and source-checkout assumptions.
 
 ```shell
 # Complete Python suite.
-uv run pytest
+uv run --frozen pytest
 
 # One module or test.
-uv run pytest tests/test_plugin_loader.py
-uv run pytest tests/test_plugin_loader.py::test_classifier_priority_wins
+uv run --frozen pytest tests/test_plugin_loader.py
+uv run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
 # Full release gate.
 make verify
@@ -87,11 +87,15 @@ an unrelated workspace package happens to be installed.
 
 ## Manual Browser Check
 
-Before a release, run a small local fixture and check the real browser:
+Before a release, serve the public-safe manual corpus and check the real browser:
 
 ```shell
-uv run metab serve ./tests/fixtures --no-open
+uv run --frozen metab serve ./tests/manual-fixtures --no-open
 ```
+
+The corpus contains Markdown with frontmatter, structured JSON, JSONL events, source
+code, an SVG image, and an opaque file large enough to exercise the binary view.
+Keep these fixtures generic and free of copied production data.
 
 Open the printed URL and verify:
 

@@ -61,7 +61,8 @@ SSE_RING_BUFFER_CAPACITY = 5_000
 
 # Per-connection bounded queue. Overflow disconnects that
 # connection only; EventSource auto-reconnect drives a fresh
-# snapshot. NOT load-bearing for fairness — that's Phase 6.
+# snapshot. This bound protects one connection; bus-level fanout
+# governs delivery across connections.
 SSE_PER_CONNECTION_QUEUE_SIZE = 1_024
 
 # The event bus subscribes to the inventory once and fans out to
@@ -86,9 +87,8 @@ DEFAULT_EXECUTOR_WORKERS = 64
 # ── Active-file tracker (replaces /api/activity polling) ─────
 
 # Cadence at which the active-file tracker walks .logs/.state
-# entries to refresh their fingerprint. Matches the legacy
-# 5 s ACTIVITY_POLL_INTERVAL_MS so behaviour is unchanged from
-# the user's perspective; only the transport changes.
+# entries to refresh their fingerprint. The live stream and
+# compatibility snapshot use the same activity cadence.
 ACTIVE_TRACKER_INTERVAL_S = 5.0
 
 # Files unchanged for this many polls drop their ``active=true``

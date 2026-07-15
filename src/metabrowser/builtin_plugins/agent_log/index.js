@@ -23,10 +23,12 @@
   }
 
   // ── Per-plugin filter state ─────────────────────────────────────
-  // The filter bar's onclick handlers reference toggleKindFilter via
-  // window so the inline-onclick HTML can fire at click time without
-  // each event button being re-bound after every re-render.
   let activeKindFilters = null; // Set<string> | null
+  let chartsRenderGeneration = 0;
+
+  function kindClassToken(kind) {
+    return String(kind || "unknown").replace(/[^a-z0-9_-]/gi, "-");
+  }
 
   function fmtDuration(s) {
     if (s < 60) {
@@ -77,11 +79,12 @@
   }
 
   function renderLogEvent(evt, idx) {
-    const kindClass = `kind-${evt.kind}${evt.is_error ? " error" : ""}`;
-    let kindLabel = (evt.kind || "").replace("_", " ");
-    if (evt.kind === "tool_call") {
+    const kind = String(evt.kind || "unknown");
+    const kindClass = `kind-${kindClassToken(kind)}${evt.is_error ? " error" : ""}`;
+    let kindLabel = kind.replace("_", " ");
+    if (kind === "tool_call") {
       kindLabel = "→ tool call";
-    } else if (evt.kind === "tool_result") {
+    } else if (kind === "tool_result") {
       kindLabel = "← tool result";
     }
 
@@ -96,14 +99,14 @@
       '<div class="log-event" data-idx="' +
       idx +
       '" data-kind="' +
-      evt.kind +
+      mb.escapeHtml(kind) +
       '">' +
       '<div class="log-event-header" onclick="toggleEvent(this)">' +
       mb.icons.chevron +
       '<span class="log-event-kind ' +
       kindClass +
       '">' +
-      kindLabel +
+      mb.escapeHtml(kindLabel) +
       "</span>" +
       '<span class="log-event-summary" title="' +
       mb.escapeHtml(evt.summary || "") +
@@ -121,7 +124,7 @@
   // Module-scope cache of evt.raw payloads, indexed by event idx.
   // toggleEvent() in the shell pulls this on first-expand and mounts
   // an inline structured tree (if the structured plugin is present)
-  // or falls back to the legacy flat JSON block.
+  // or falls back to a flat JSON block.
   const _logEventRawCache = new Map();
 
   function mountLogEventRaw(rawEl) {
@@ -136,9 +139,8 @@
     }
 
     // Render-time-only namespace read: mb.builtins.structured may not
-    // exist (plugin disabled / removed from install set). Gracefully
-    // fall back to the legacy <pre><code language-json> block in that
-    // case.
+    // exist (plugin disabled / removed from install set). Fall back to
+    // the flat <pre><code language-json> block in that case.
     if (mb.builtins?.structured && raw && typeof raw === "object") {
       const inner = window.document.createElement("div");
       rawEl.appendChild(inner);
@@ -162,7 +164,7 @@
         console.warn("structured inline tree failed; falling back to flat JSON", err);
       }
     }
-    // Legacy path: render a single <pre><code> block. Highlight.js
+    // Fallback path: render a single <pre><code> block. Highlight.js
     // picks it up via the existing highlightCode() pass.
     const text = typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
     rawEl.innerHTML = `<pre><code class="language-json">${mb.escapeHtml(text)}</code></pre>`;
@@ -199,15 +201,12 @@
       .map((k) => {
         const label = k.replace("_", " ");
         return (
-          '<button class="filter-btn active kind-' +
-          k +
+          '<button type="button" class="filter-btn active kind-' +
+          kindClassToken(k) +
           '" data-filter-kind="' +
-          k +
-          '"' +
-          " onclick=\"toggleKindFilter('" +
-          k +
-          "')\">" +
-          label +
+          mb.escapeHtml(k) +
+          '">' +
+          mb.escapeHtml(label) +
           ' <span class="filter-count">(' +
           counts[k] +
           ")</span></button>"
@@ -217,11 +216,13 @@
     return `<div class="filter-bar">${buttons}</div>`;
   }
 
-  function toggleKindFilter(kind) {
+  function toggleKindFilter(kind, root) {
     if (!activeKindFilters) {
       return;
     }
-    const btn = document.querySelector(`.filter-btn[data-filter-kind="${kind}"]`);
+    const btn = Array.from(root.querySelectorAll(".filter-btn[data-filter-kind]")).find(
+      (candidate) => candidate instanceof HTMLElement && candidate.dataset.filterKind === kind,
+    );
     if (!btn) {
       return;
     }
@@ -232,19 +233,30 @@
       activeKindFilters.add(kind);
       btn.classList.add("active");
     }
-    document.querySelectorAll(`.log-event[data-kind="${kind}"]`).forEach((el) => {
+    root.querySelectorAll(".log-event[data-kind]").forEach((el) => {
+      if (el.dataset.kind !== kind) {
+        return;
+      }
       if (el instanceof HTMLElement) {
         el.style.display = activeKindFilters.has(kind) ? "" : "none";
       }
     });
   }
 
-  // Inline onclick handlers fire at click time and resolve against
-  // window globals; expose the filter toggle so the buttons keep
-  // working. (toggleEvent — used by the per-event chevron headers —
-  // is owned by the shell so multiple plugins can share the same
-  // expand-on-click + lazy-highlight behaviour.)
-  window.toggleKindFilter = toggleKindFilter;
+  function bindFilterBar(container) {
+    const filterBar = container.querySelector(".filter-bar");
+    if (!filterBar) {
+      return;
+    }
+    filterBar.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const button = target?.closest(".filter-btn[data-filter-kind]");
+      if (!(button instanceof HTMLElement) || !filterBar.contains(button)) {
+        return;
+      }
+      toggleKindFilter(button.dataset.filterKind || "", container);
+    });
+  }
 
   // ── Renderers ───────────────────────────────────────────────────
 
@@ -309,6 +321,7 @@
     _logEventRawCache.clear();
     mb.perf.measure("renderAgentLog:log", () => {
       container.innerHTML = renderLogHtml(ctx.raw);
+      bindFilterBar(container);
     });
   }
 
@@ -319,12 +332,21 @@
   }
 
   async function renderCharts(container, ctx) {
+    const generation = ++chartsRenderGeneration;
     container.innerHTML = '<div class="charts-placeholder preview-empty">Charts loading...</div>';
     const chartData = await mb.fetchPluginData("agent-log", "charts", { path: ctx.path });
+    if (generation !== chartsRenderGeneration) {
+      return;
+    }
     if (!window.MetabrowserCharts) {
       throw new Error("MetaBrowser chart runtime is unavailable");
     }
     window.MetabrowserCharts.renderPayload(container, chartData);
+  }
+
+  function disposeCharts() {
+    chartsRenderGeneration += 1;
+    window.MetabrowserCharts?.dispose();
   }
 
   // ── Reusable namespace + registration ───────────────────────────
@@ -345,6 +367,7 @@
   mb.registerView("agent-log", "log", { render: renderLog });
   mb.registerView("agent-log", "charts", {
     render: renderCharts,
+    dispose: disposeCharts,
   });
   mb.registerView("agent-log", "raw", { render: renderRaw });
 })();

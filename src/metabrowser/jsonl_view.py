@@ -4,20 +4,11 @@ Reads a JSONL file in a single pass, sniffs the adapter from the first
 non-empty lines, parses the rest with the matching parser, and returns
 events + a summary block ready to ship as JSON.
 
-Performance notes
------------------
-
-The previous implementation opened the file twice — once for adapter
-detection (read the first 20 lines), then again for full parsing. That
-doubled the I/O cost on big logs. Now we read once: the first 20 valid
-lines feed into ``detect_adapter``, then the parser consumes the same
-buffered list plus the rest of the file.
-
-We also no longer pre-format every event's raw payload as
-``json.dumps(raw, indent=2)``. The client falls back to
-``JSON.stringify(evt.raw, null, 2)`` lazily on render, which moves the
-work off the hot path on big logs (and out of the JSON response body —
-which roughly halves the wire size).
+The file is read once: the first 20 valid lines feed ``detect_adapter``,
+then the parser consumes that buffered prefix and the remaining lines.
+Raw event payloads stay structured in the response; the client formats
+them lazily when a row is expanded, keeping the hot path and wire payload
+bounded for large logs.
 """
 
 from __future__ import annotations
@@ -38,10 +29,8 @@ LOG = logging.getLogger(__name__)
 _MAX_LINE_LEN = 256 * 1024
 # 2 MiB. Above this we cap the raw tab and truncate per-event raw to keep
 # the response payload (and the client-side parse + DOM cost) bounded.
-# The threshold used to be 100 MiB, which meant a 38 MiB Pi log shipped
-# 41 MiB of JSON to the browser and took ~1 s just to parse on the client.
-# 2 MiB lines up with where the per-event embedded payloads start to
-# dominate; larger logs are still navigable via the file's ``/raw`` URL.
+# Embedded per-event payloads begin to dominate above this threshold;
+# larger logs remain navigable through the file's ``/raw`` URL.
 _LARGE_FILE_BYTES = 2 * 1024 * 1024
 # 5 MiB cap on the raw-tab payload for large files.
 _LARGE_FILE_RAW_CAP = 5 * 1024 * 1024
@@ -51,25 +40,34 @@ _LARGE_FILE_RAW_CAP = 5 * 1024 * 1024
 # ``... (truncated)`` marker and the full bytes remain available via
 # ``/raw`` for download.
 _LARGE_FILE_PER_EVENT_RAW = 8 * 1024
+# Absolute decompressed-input ceiling for one JSONL parse. Raw-tab truncation
+# controls response size separately; this bound protects the parser itself.
+_JSONL_PARSE_MAX_BYTES = 64 * 1024 * 1024
+
+
+class JsonlParseLimitError(ValueError):
+    """A JSONL artifact exceeded the parser's decompressed-input ceiling."""
 
 
 def _parse_jsonl_file(filepath: Path) -> dict[str, Any]:
     """Parse a JSONL log file and return structured events + summary.
 
-    Transparently handles ``.jsonl.gz`` via :class:`ArtifactPath`. The
-    large-file caps gate on the *logical* (uncompressed) size, not the
-    on-disk size — a 1 MB ``.jsonl.gz`` whose decompressed payload is
-    8 MB is the "large file" case from the parser's point of view.
+    Transparently handles compressed JSONL via :class:`ArtifactPath`. The
+    reader enforces the parser's decoded-byte ceiling before compressed trailer
+    validation, so malformed metadata cannot obscure a limit violation.
 
     Single-pass: the first 20 valid lines are buffered to detect the
     adapter, then handed back into the parser before continuing through
     the rest of the file.
     """
     artifact = ArtifactPath(filepath)
-    file_size = artifact.logical_size
-    large_file = file_size > _LARGE_FILE_BYTES
-    max_raw_total = _LARGE_FILE_RAW_CAP if large_file else None
-    max_per_event_raw = _LARGE_FILE_PER_EVENT_RAW if large_file else None
+    file_size = artifact.disk_size if artifact.is_compressed else artifact.logical_size
+    if not artifact.is_compressed and file_size > _JSONL_PARSE_MAX_BYTES:
+        raise JsonlParseLimitError(
+            f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes"
+        )
+    large_file = not artifact.is_compressed and file_size > _LARGE_FILE_BYTES
+    max_raw_total = _LARGE_FILE_RAW_CAP if artifact.is_compressed or large_file else None
 
     detection_buffer: list[str] = []
     parser = None
@@ -127,8 +125,14 @@ def _parse_jsonl_file(filepath: Path) -> dict[str, Any]:
         else:
             raw_parts.append(part)
 
-    with artifact.open_text(errors="replace") as fh:
+    logical_bytes_read = 0
+    with artifact.open_text(errors="replace", max_output_bytes=_JSONL_PARSE_MAX_BYTES) as fh:
         for raw_line in fh:
+            logical_bytes_read += len(raw_line.encode("utf-8", errors="replace"))
+            if logical_bytes_read > _JSONL_PARSE_MAX_BYTES:
+                raise JsonlParseLimitError(
+                    f"JSONL content exceeds {_JSONL_PARSE_MAX_BYTES} decompressed bytes"
+                )
             lines_total += 1
             stripped = raw_line.strip()
             if not stripped:
@@ -163,6 +167,11 @@ def _parse_jsonl_file(filepath: Path) -> dict[str, Any]:
                 _consume(buffered, first_buffered_line + offset)
 
         events.extend(parser.flush())
+
+    if artifact.is_compressed:
+        file_size = logical_bytes_read
+        large_file = file_size > _LARGE_FILE_BYTES
+    max_per_event_raw = _LARGE_FILE_PER_EVENT_RAW if large_file else None
 
     tool_calls = sum(1 for e in events if e.kind == "tool_call")
     errors = sum(1 for e in events if e.is_error)

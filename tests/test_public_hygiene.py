@@ -30,6 +30,63 @@ def test_private_guidance_path_is_rejected() -> None:
     ]
 
 
+def test_dangling_legacy_documentation_names_are_rejected() -> None:
+    names = (
+        "browser-smoke" + ".playbook.md",
+        "realtime-debugging" + ".runbook.md",
+        "metabrowser" + "-plugins.md",
+        "see kpress" + "-design.md",
+    )
+    for name in names:
+        assert find_hygiene_findings("src/metabrowser/example.py", name) == [
+            "src/metabrowser/example.py:1: dangling legacy documentation name"
+        ]
+
+    public_url = "https://github.com/jlevy/kpress/blob/v0.2.2/docs/kpress" + "-design.md"
+    assert find_hygiene_findings("src/metabrowser/example.py", public_url) == []
+
+
+def test_terminal_private_home_paths_are_rejected() -> None:
+    home_paths = (
+        "/" + "Users/alice",
+        "/" + "home/alice",
+        "/" + "Users/alice/project",
+        "/" + "home/alice/project",
+    )
+    sources = ("README.md", "metabrowser-0.1.0/README.md")
+
+    for source in sources:
+        for home_path in home_paths:
+            assert find_hygiene_findings(source, home_path) == [f"{source}:1: private home path"]
+
+
+def test_implementation_plan_markers_are_rejected() -> None:
+    markers = (
+        "Implemented under P1.13.",
+        "Phase 5 wires this behavior.",
+        "Matches origin/main.",
+        "Tracked in the design-system consolidation plan.",
+        "A follow-up spec can wire it.",
+    )
+
+    for source in ("src/metabrowser/example.py", "tests/test_example.py"):
+        for marker in markers:
+            assert find_hygiene_findings(source, marker) == [
+                f"{source}:1: stale implementation-plan marker"
+            ]
+
+
+def test_public_hygiene_marker_fixtures_are_explicitly_excluded() -> None:
+    assert (
+        find_hygiene_findings("tests/test_public_hygiene.py", "Phase 5 wires this behavior.") == []
+    )
+
+
+def test_production_property_names_are_not_plan_markers() -> None:
+    for expression in ("value.p0.parsed.y", "value.P0.parsed.y"):
+        assert find_hygiene_findings("src/metabrowser/example.js", expression) == []
+
+
 def test_generated_tbd_document_cache_is_not_scanned() -> None:
     tbd_docs = ROOT / ".tbd" / "docs"
 

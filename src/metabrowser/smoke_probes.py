@@ -2,21 +2,21 @@
 
 Each subcommand performs one atomic check against a running
 metab server and prints the result as JSON. Pass /
-fail judgment lives in ``docs/browser-smoke.playbook.md`` — these
+fail judgment lives in ``docs/e2e-testing.md`` — these
 probes are observation tools, not assertions, so a non-zero exit
 means *the probe itself failed* (server unreachable, malformed
 response), not that the system under test failed.
 
 Each probe assumes a server is already running. Start one with::
 
-    metabrowser --no-open
+    metab serve ./tests/manual-fixtures --no-open
 
 Usage::
 
-    python -m metabrowser.smoke_probes capabilities
-    python -m metabrowser.smoke_probes index-meta
-    python -m metabrowser.smoke_probes tree [--path SUBDIR]
-    python -m metabrowser.smoke_probes sse-probe [--timeout 10]
+    uv run --frozen python -m metabrowser.smoke_probes capabilities
+    uv run --frozen python -m metabrowser.smoke_probes index-meta
+    uv run --frozen python -m metabrowser.smoke_probes tree [--path SUBDIR]
+    uv run --frozen python -m metabrowser.smoke_probes sse-probe [--timeout 10]
 
 Common flags::
 

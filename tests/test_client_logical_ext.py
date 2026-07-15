@@ -27,14 +27,12 @@ def test_tree_uses_server_logical_ext_metadata() -> None:
     assert 'data-logical-ext="' in js
 
 
-def test_get_logical_name_strips_gz_suffix() -> None:
+def test_get_logical_name_strips_supported_compression_suffixes() -> None:
     js = _app_js()
     assert "function getLogicalName(entry)" in js
-    # The strip path keys off both `compressed` AND `.gz` suffix so a
-    # non-gz file with a name ending in literal ".gz" doesn't get
-    # silently truncated.
     assert "entry?.compressed" in js
-    assert 'entry.name?.toLowerCase().endsWith(".gz")' in js
+    assert 'gzip: ".gz"' in js
+    assert 'zlib: ".zlib"' in js
 
 
 # ── Dispatch sites use logical name ───────────────────────────────
@@ -59,11 +57,11 @@ def test_prefetch_reads_data_logical_ext() -> None:
 # ── Badge rendering ───────────────────────────────────────────────
 
 
-def test_tree_emit_adds_compressed_class_and_badge_for_gz_files() -> None:
+def test_tree_emit_adds_compressed_class_and_format_aware_badge() -> None:
     js = _app_js()
     assert 'compressed ? " is-compressed" : ""' in js
-    # The Z badge HTML, only emitted when compressed is true.
-    assert '<span class="compression-badge" title="gzipped">Z</span>' in js
+    assert 'node.compression || "compressed"' in js
+    assert "compression-badge" in js
 
 
 def test_tree_emit_attaches_data_logical_ext_attr_when_present() -> None:

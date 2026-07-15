@@ -1,4 +1,4 @@
-"""Tests for the filesystem-watcher backend (P5).
+"""Tests for the filesystem-watcher backend.
 
 * fs-type detection from /proc/self/mountinfo (Linux); falls
   back to "polling" with a sensible reason on unknown / missing.

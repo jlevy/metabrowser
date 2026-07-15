@@ -1,4 +1,4 @@
-"""Phase 3j — manifest-driven plugin asset emission.
+"""Manifest-driven plugin asset emission.
 
 The shell previously hardcoded optional plugin assets in the index template.
 Plugins now declare extra JS or CSS files in their

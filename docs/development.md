@@ -29,15 +29,17 @@ make hooks-install
 ```
 
 Do not activate `.venv` or invoke `python` or `pip` directly.
-Use `uv run`, `uvx`, `uv add`, and the Make targets so commands use the locked
-environment and repository supply-chain policy.
+Use `uv run --frozen`, exact-version `uvx`, repository-configured dependency commands,
+and the Make targets so commands use the locked environment and repository supply-chain
+policy.
 
 A machine-global uv configuration such as `~/.config/uv/uv.toml` merges into direct `uv`
 invocations and can silently rewrite the `[options]` block of `uv.lock`. The Make
 targets pin `UV_CONFIG_FILE` to the repository `uv.toml` to prevent this, and
 `make install` fails on a contaminated lock.
-After running `uv` commands directly, check `git diff uv.lock` before committing and
-restore the lock if the options block changed.
+Pass `--config-file uv.toml` to direct dependency commands outside Make.
+After running them, check `git diff uv.lock` before committing and restore the lock if
+the options block changed.
 
 ## Everyday Commands
 
@@ -58,10 +60,10 @@ make verify
 make audit
 
 # Run a targeted test.
-uv run pytest tests/test_plugin_loader.py::test_classifier_priority_wins
+uv run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
-# Start the development server from this checkout.
-uv run metab serve ./tests/fixtures --no-open
+# Start the development server with the manual browser corpus.
+uv run --frozen metab serve ./tests/manual-fixtures --no-open
 ```
 
 `make lint` applies the ordinary auto-fixes and then runs policy and public-hygiene
@@ -78,9 +80,9 @@ Read [supply-chain security](../SUPPLY-CHAIN-SECURITY.md) before adding or upgra
 dependency. Use uv and retain the 14-day cool-off:
 
 ```shell
-uv add --exclude-newer "14 days" package-name
-uv add --dev --exclude-newer "14 days" package-name
-uv lock --upgrade-package package-name
+uv --config-file uv.toml add --exclude-newer "14 days" package-name
+uv --config-file uv.toml add --dev --exclude-newer "14 days" package-name
+uv --config-file uv.toml lock --upgrade-package package-name
 ```
 
 Commit `uv.lock` with every Python dependency change and `package-lock.json` with every
@@ -108,8 +110,8 @@ map before module entry points.
 - Prefer small typed values and explicit error boundaries over unstructured mappings.
 - Catch only errors the current layer can handle; preserve causes with `raise ... from`.
 - Keep filesystem and parsing work bounded, especially on request and event-loop paths.
-- Use existing safe-path, gzip, manifest, and inventory helpers instead of creating
-  parallel implementations.
+- Use existing safe-path, compression, manifest, and inventory helpers instead of
+  creating parallel implementations.
 
 Run Ruff and BasedPyright through `make lint-check` before handoff.
 BasedPyright runs in strict mode; narrow exceptions in `pyproject.toml` cover documented
@@ -120,6 +122,12 @@ Do not broaden those exceptions without recording why strict narrowing is imprac
 
 Core browser code lives in `src/metabrowser/static/`; built-in renderers live in
 `src/metabrowser/builtin_plugins/`.
+
+`server.py` and `app.js` remain compatibility coordination shells for the initial
+release. New feature logic belongs in focused route, service, store, or renderer modules
+rather than expanding those files.
+Extract existing behavior when a change has contract coverage and a clear boundary; do
+not combine an unrelated rewrite with a release fix.
 
 - Plugins use `window.metabrowser`, not private variables in `app.js`.
 - New renderer state must have an explicit disposal path.
@@ -133,8 +141,9 @@ modules automatically.
 implicit `any` while retaining strict null and other strict checks.
 `app.js` is checked under that legacy configuration while its older dynamic shell is
 incrementally typed.
-Do not add a file to either exception without documenting the reason; remove files from
-the legacy list as their JSDoc contracts become complete.
+No new file may enter the legacy configuration as an ordinary implementation shortcut.
+An exceptional addition requires a documented architecture reason and an explicit
+follow-up; otherwise the allowlist only shrinks as JSDoc contracts become complete.
 
 Biome checks every shipped browser module, including the legacy application shell, with
 the recommended rule set and only two configuration-level compatibility exceptions for

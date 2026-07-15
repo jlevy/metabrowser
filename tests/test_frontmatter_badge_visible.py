@@ -1,4 +1,4 @@
-"""Phase 4 follow-up — malformed frontmatter must be visible in the browser UI.
+"""Malformed frontmatter must be visible in the browser UI.
 
 An earlier implementation added ``frontmatter_error``
 to the ``/api/file`` JSON response but the shell didn't surface it

@@ -144,8 +144,11 @@ claim a narrower format.
 Specialized binary stores belong in installed plugins so their native readers and value
 decoders do not become mandatory MetaBrowser dependencies.
 
-Classification reads only bounded prefixes when it needs structured metadata.
-Do not design a classifier that requires loading an entire large artifact.
+Content-based classification is deliberately bounded.
+JSON predicates parse only a complete document of at most 256 KiB; YAML predicates
+inspect at most the first 16 KiB. An oversized or truncated document does not match that
+content predicate, so use `basename`, `ext`, or `path_glob` when large files must be
+claimed without reading their contents.
 
 ### Views
 

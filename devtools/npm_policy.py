@@ -58,6 +58,16 @@ FLOWMARK_VERSION = "0.3.1"
 TBD_VERSION = "0.4.0"
 
 
+def _verify_documented_uv_commands(source: str, text: str) -> None:
+    """Reject documentation commands that bypass the repository uv policy."""
+    if re.search(r"\buv run(?! --frozen)(?=\s)", text):
+        raise RuntimeError(f"{source} documents a non-frozen uv run command")
+    if re.search(r"^\s*uv\s+(?:add|lock|sync)\b", text, re.MULTILINE):
+        raise RuntimeError(
+            f"{source} documents a direct dependency command without --config-file uv.toml"
+        )
+
+
 def verify_repo_package_policy(root: Path = ROOT) -> None:
     """Raise when package or tool configuration bypasses repository policy."""
     npmrc = (root / ".npmrc").read_text(encoding="utf-8")
@@ -117,6 +127,12 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
     publish_workflow = (root / ".github/workflows/publish.yml").read_text(encoding="utf-8")
     if "types: [published]" not in publish_workflow or "workflow_dispatch" in publish_workflow:
         raise RuntimeError("publishing must be triggered only by a published GitHub release")
+    if "enable-cache: false" not in publish_workflow:
+        raise RuntimeError("publishing must explicitly disable the uv cache")
+    if "enable-cache: true" in publish_workflow or re.search(
+        r'^\s*cache:\s*["\']?npm', publish_workflow, re.MULTILINE
+    ):
+        raise RuntimeError("publishing must not restore mutable dependency caches")
 
     package_json = root / "package.json"
     package_lock = root / "package-lock.json"
@@ -161,10 +177,37 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         root / "Makefile",
         root / ".github/workflows/ci.yml",
         root / ".github/workflows/publish.yml",
+        root / "lefthook.yml",
         root / "devtools/biome.py",
         root / "devtools/tsc_check.py",
     ]
     tooling_text = "\n".join(path.read_text(encoding="utf-8") for path in tooling_paths)
+    makefile_text = (root / "Makefile").read_text(encoding="utf-8")
+    if "UV_RUN := uv run --frozen" not in makefile_text:
+        raise RuntimeError("Make targets must use a frozen uv runner")
+    if re.search(r"^\tuv run(?! --frozen)", makefile_text, re.MULTILINE):
+        raise RuntimeError("Make recipes must not invoke bare uv run")
+    if (
+        "default: install\n\t$(MAKE) SKIP_INSTALL=1 format\n"
+        "\t$(MAKE) SKIP_INSTALL=1 lint\n\t$(MAKE) SKIP_INSTALL=1 test" not in makefile_text
+    ):
+        raise RuntimeError("the mutating default workflow must run format, lint, and test serially")
+    if "format lint: | install" not in makefile_text or (
+        "lint-check test audit build: | install" not in makefile_text
+    ):
+        raise RuntimeError("parallel quality gates must wait for the install target")
+    lefthook_text = (root / "lefthook.yml").read_text(encoding="utf-8")
+    if re.search(r"^\s*run:\s+uv run(?! --frozen)", lefthook_text, re.MULTILINE):
+        raise RuntimeError("hooks must not invoke bare uv run")
+    command_doc_paths = [
+        root / "AGENTS.md",
+        root / "README.md",
+        *sorted((root / "docs").glob("*.md")),
+    ]
+    for path in command_doc_paths:
+        _verify_documented_uv_commands(
+            str(path.relative_to(root)), path.read_text(encoding="utf-8")
+        )
     if f"flowmark-rs@{FLOWMARK_VERSION}" not in tooling_text:
         raise RuntimeError("Flowmark tooling is missing its exact pin")
     if tooling_text.count("npx --no-install") < 1 or tooling_text.count("npx_no_install") < 2:
@@ -190,9 +233,24 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         text = path.read_text(encoding="utf-8")
         if f"get-tbd@{TBD_VERSION}" not in text or "@latest" in text:
             raise RuntimeError(f"{path.relative_to(root)} must pin get-tbd@{TBD_VERSION}")
+    agent_tbd_hook_paths = [
+        root / ".codex/tbd-session.sh",
+        root / ".codex/tbd-closing-reminder.sh",
+        root / ".claude/scripts/tbd-session.sh",
+        root / ".claude/hooks/tbd-closing-reminder.sh",
+    ]
+    for path in agent_tbd_hook_paths:
+        text = path.read_text(encoding="utf-8")
+        if "npx --yes" in text or "npx --package" in text:
+            raise RuntimeError(f"{path.relative_to(root)} must not fetch tbd from a hook")
+    for path in (root / ".codex/tbd-session.sh", root / ".claude/scripts/tbd-session.sh"):
+        if f"npm install -g get-tbd@{TBD_VERSION}" not in path.read_text(encoding="utf-8"):
+            raise RuntimeError(f"{path.relative_to(root)} must document the exact tbd install")
 
     workflow_paths = sorted((root / ".github" / "workflows").glob("*.yml"))
     workflow_text = "\n".join(path.read_text(encoding="utf-8") for path in workflow_paths)
+    if re.search(r"^\s*run:\s+uv run(?! --frozen)", workflow_text, re.MULTILINE):
+        raise RuntimeError("workflows must not invoke bare uv run")
     action_uses = re.findall(r"^\s*uses:\s+[^@\s]+@([^\s#]+)", workflow_text, re.MULTILINE)
     mutable_actions = [ref for ref in action_uses if re.fullmatch(r"[0-9a-f]{40}", ref) is None]
     if mutable_actions:

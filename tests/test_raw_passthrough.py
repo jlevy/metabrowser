@@ -20,7 +20,9 @@ from typing import Any
 import pytest
 from starlette.responses import FileResponse, StreamingResponse
 
+from metabrowser import gz_io
 from metabrowser import server as proc_browser
+from metabrowser.gz_io import ArtifactDecompressionLimitError
 from metabrowser.server import _accepts_gzip
 
 _SAMPLE_BYTES = b'{"event": "init"}\n{"event": "message", "text": "hello"}\n' * 100
@@ -155,6 +157,35 @@ def test_raw_gz_with_no_accept_encoding_streams_decompressed(tmp_path: Path) -> 
     response = _call("events.jsonl.gz", accept_encoding="")
     assert isinstance(response, StreamingResponse)
     assert response.headers.get("content-encoding") is None
+
+
+def test_raw_gz_identity_rejects_malformed_stream_before_response(tmp_path: Path) -> None:
+    source = tmp_path / "malformed.txt.gz"
+    source.write_bytes(b"not a gzip stream")
+    proc_browser._set_root_dir(tmp_path)
+
+    response = _call(source.name, accept_encoding="identity")
+
+    assert response.status_code == 400
+    assert not isinstance(response, StreamingResponse)
+
+
+def test_raw_gz_identity_rejects_limit_before_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "oversized.txt.gz"
+    source.write_bytes(gzip.compress(b"payload", mtime=0))
+    proc_browser._set_root_dir(tmp_path)
+
+    def _raise_limit(_path: Path) -> int:
+        raise ArtifactDecompressionLimitError("decompressed content exceeds test limit")
+
+    monkeypatch.setattr(gz_io, "_gzip_uncompressed_size", _raise_limit)
+
+    response = _call(source.name, accept_encoding="identity")
+
+    assert response.status_code == 413
+    assert not isinstance(response, StreamingResponse)
 
 
 # ── /raw endpoint: 404 path ────────────────────────────────────────

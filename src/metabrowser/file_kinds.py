@@ -17,6 +17,8 @@ from ruamel.yaml.error import YAMLError
 
 from metabrowser.gz_io import ArtifactPath
 
+_FRONTMATTER_MAX_BYTES = 256 * 1024
+
 # VIEW_REGISTRY carries the built-in kinds owned by metabrowser core.
 # Third-party plugins contribute additional kinds and views through their
 # manifests without extending this registry.
@@ -61,10 +63,12 @@ VIEW_REGISTRY: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def _read_gzip_markdown_frontmatter(path: Path) -> dict[str, Any] | None:
-    """Parse YAML frontmatter from a gzip-transparent Markdown stream."""
+def _read_compressed_markdown_frontmatter(path: Path) -> dict[str, Any] | None:
+    """Parse YAML frontmatter from a bounded compressed Markdown stream."""
     try:
-        with ArtifactPath(path).open_text(errors="strict") as source:
+        with ArtifactPath(path).open_text(
+            errors="strict", max_output_bytes=_FRONTMATTER_MAX_BYTES
+        ) as source:
             first_line = source.readline()
             if not first_line or first_line.rstrip() != FmStyle.yaml.start:
                 return None
@@ -112,6 +116,8 @@ class FileContext:
         "_frontmatter_cache",
         "_frontmatter_loaded",
         "_frontmatter_parse_error",
+        "_json_top_level_cache",
+        "_json_top_level_loaded",
         "_yaml_top_level_cache",
         "_yaml_top_level_loaded",
         "adapter",
@@ -126,6 +132,8 @@ class FileContext:
         self._frontmatter_cache: dict[str, Any] | None = None
         self._frontmatter_loaded = False
         self._frontmatter_parse_error: str | None = None
+        self._json_top_level_cache: dict[str, Any] | None = None
+        self._json_top_level_loaded = False
         self._yaml_top_level_cache: dict[str, Any] | None = None
         self._yaml_top_level_loaded = False
 
@@ -136,8 +144,8 @@ class FileContext:
             self._frontmatter_loaded = True
             try:
                 artifact = ArtifactPath(self.path)
-                if self.ext == ".md" and artifact.is_gzip:
-                    raw = _read_gzip_markdown_frontmatter(self.path)
+                if self.ext == ".md" and artifact.is_compressed:
+                    raw = _read_compressed_markdown_frontmatter(self.path)
                 else:
                     raw = fmf_read_frontmatter(self.path)
             except (OSError, ValueError) as exc:
@@ -159,6 +167,16 @@ class FileContext:
         # Touch the lazy property so the parse runs on first read.
         _ = self.frontmatter
         return self._frontmatter_parse_error
+
+    @property
+    def json_top_level(self) -> dict[str, Any] | None:
+        """Lazily load a bounded, complete top-level JSON mapping."""
+        if not self._json_top_level_loaded:
+            self._json_top_level_loaded = True
+            from metabrowser.plugin_loader.classify import _json_top_level
+
+            self._json_top_level_cache = _json_top_level(self.path)
+        return self._json_top_level_cache
 
     @property
     def yaml_top_level(self) -> dict[str, Any] | None:
@@ -229,7 +247,7 @@ def classify_file_kind(
 
 
 def classify_by_ext(ext: str, adapter: str | None = None) -> str:
-    """Legacy extension-only classifier for call sites without a path handy.
+    """Compatibility classifier for call sites without a path handy.
     Used by the charts endpoint for .jsonl files where adapter has been sniffed
     from the first log lines. Prefer classify_file_kind(path, ext, adapter)
     for everything else."""

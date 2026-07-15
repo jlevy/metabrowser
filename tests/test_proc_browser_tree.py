@@ -7,9 +7,11 @@ mocks so pathspec behavior is exercised end-to-end.
 
 from __future__ import annotations
 
+import inspect
 import subprocess
 from pathlib import Path
 
+from metabrowser import server as proc_browser
 from metabrowser.server import (
     DEFAULT_TREE_DEPTH,
     MAX_TREE_DEPTH,
@@ -76,6 +78,12 @@ def test_tree_depth_query_is_always_bounded() -> None:
     assert _tree_depth_from_query("not-a-number") == DEFAULT_TREE_DEPTH
     assert _tree_depth_from_query("-1") == 0
     assert _tree_depth_from_query(str(MAX_TREE_DEPTH + 100)) == MAX_TREE_DEPTH
+
+
+def test_tree_cold_start_uses_constant_time_child_lookup() -> None:
+    source = inspect.getsource(proc_browser.api_tree)
+    assert "inventory.has_direct_child(subpath)" in source
+    assert 'inventory.entries(scope="all-known")' not in source
 
 
 def test_build_gitignore_check_no_repo_returns_noop(tmp_path: Path) -> None:

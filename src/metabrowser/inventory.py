@@ -1,9 +1,8 @@
 """Process-wide inventory of filesystem state for the browser.
 
 ``InventoryIndex`` is the single source of truth for file/directory
-metadata in the browser process. It is eagerly populated at server
-boot via the lifespan hook (P1.10), serves ``/api/tree`` and
-``/api/activity`` reads from memory (P1.11 / P1.12), and emits
+metadata in the browser process. The server lifespan eagerly populates
+it, ``/api/tree`` and ``/api/activity`` read from it, and writes emit
 ``fs.change`` events on a single shared SSE channel so the client
 fills in skeleton cells without manual reload.
 
@@ -43,6 +42,7 @@ The :func:`walk_tree` generator is decoupled from the
 from __future__ import annotations
 
 import asyncio
+import heapq
 import logging
 import time
 from dataclasses import replace
@@ -51,6 +51,7 @@ from typing import Literal
 
 from metabrowser.events import (
     FsChange,
+    FsChangeOp,
     FsEntry,
     FsRemove,
     FsResyncRequired,
@@ -103,10 +104,9 @@ class InventoryIndex:
     it. Per-path generation counters serialize concurrent
     invalidations against in-flight walker writes.
 
-    Designed to be the only stateful object in the inventory plane;
-    Phase 4/5 watcher backends push ops into a shared queue that
-    this object consumes from in a single coroutine, preserving
-    per-path total order.
+    This is the only stateful object in the inventory plane. Walker and
+    watcher observations pass through it so reads and subscriber events
+    share one ordered view of each path.
     """
 
     def __init__(
@@ -118,6 +118,13 @@ class InventoryIndex:
     ) -> None:
         self._root: Path | None = None
         self._entries: dict[str, FsEntry] = {}
+        self._direct_child_counts: dict[str, int] = {}
+        self._child_mtime_heaps: dict[str, list[tuple[int, str]]] = {}
+        self._recorded_child_mtimes: dict[str, tuple[str, int]] = {}
+        self._pending_dirs: set[str] = set()
+        self._descendant_file_counts: dict[str, int] = {}
+        self._descendant_file_sizes: dict[str, int] = {}
+        self._walker_dir_generations: dict[str, int] = {}
         self._generation: dict[str, int] = {}
         self._subscribers: set[asyncio.Queue[StreamEvent]] = set()
         self._walker_task: asyncio.Task[None] | None = None
@@ -162,6 +169,13 @@ class InventoryIndex:
             self._walker_task.cancel()
         self._walker_task = None
         self._entries.clear()
+        self._direct_child_counts.clear()
+        self._child_mtime_heaps.clear()
+        self._recorded_child_mtimes.clear()
+        self._pending_dirs.clear()
+        self._descendant_file_counts.clear()
+        self._descendant_file_sizes.clear()
+        self._walker_dir_generations.clear()
         self._generation.clear()
         self._files_indexed = 0
         self._status = "idle"
@@ -187,6 +201,11 @@ class InventoryIndex:
     def get(self, path: str) -> FsEntry | None:
         return self._entries.get(path)
 
+    def has_direct_child(self, path: str) -> bool:
+        """Return whether *path* has a child already present in the index."""
+
+        return self._direct_child_counts.get(path, 0) > 0
+
     def entries(
         self,
         scope: Literal[
@@ -200,9 +219,9 @@ class InventoryIndex:
         ``root-depth-2`` returns entries at depth 0–2 (matches the
         default ``/api/tree`` first-paint).
         ``all-known`` returns everything currently in the index.
-        ``recent-top-N`` and ``expanded-prefixes`` are
-        Phase 3/5 contracts; placeholder behavior here is identical
-        to ``all-known``.
+        ``recent-top-N`` and ``expanded-prefixes`` are accepted wire
+        scopes that currently return the same complete snapshot as
+        ``all-known``.
         """
 
         if scope == "all-known":
@@ -211,8 +230,7 @@ class InventoryIndex:
             depth_cap = 2 if max_depth is None else max_depth
             base = [e for e in self._entries.values() if _depth_of(e.path) <= depth_cap]
         elif scope in ("recent-top-N", "expanded-prefixes"):
-            # Phase 3/5: identical to all-known until those phases
-            # wire the actual scope filters.
+            # These wire scopes currently request the complete snapshot.
             base = list(self._entries.values())
         else:  # pragma: no cover — type-checked at the boundary
             raise ValueError(f"unknown scope: {scope!r}")
@@ -266,6 +284,7 @@ class InventoryIndex:
 
         if self._root is None:
             return
+        previous_subtree = self._entries.get(rel)
         if not rel:
             # The whole-root re-walk is what start() does; refuse to
             # avoid two walkers writing into the index simultaneously.
@@ -344,6 +363,27 @@ class InventoryIndex:
             rebased = replace(entry, path=rebased_path, parent=rebased_parent)
             self._apply_walker_entry(rebased)
 
+        current_subtree = self._entries.get(rel)
+        if current_subtree is not None and current_subtree.type == "dir":
+            previous_files = 0
+            previous_size = 0
+            if previous_subtree is not None:
+                if previous_subtree.type == "file":
+                    previous_files = 1
+                    previous_size = previous_subtree.size
+                else:
+                    previous_files = previous_subtree.total_files or 0
+                    previous_size = previous_subtree.total_size or 0
+            current_files = current_subtree.total_files or 0
+            current_size = current_subtree.total_size or 0
+            aggregate_updates = self._update_ancestor_aggregates(
+                parent=current_subtree.parent,
+                delta_files=current_files - previous_files,
+                delta_size=current_size - previous_size,
+            )
+            if aggregate_updates:
+                self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in aggregate_updates)))
+
     def remove(self, path: str) -> None:
         """Remove *path* and every descendant from the index. Emits
         one ``FsChange`` event whose ops cover every removed path so
@@ -370,22 +410,46 @@ class InventoryIndex:
         # this region opts into race-safety via
         # :meth:`capture_write_token` — the bumped generation drops
         # any stale captured write that lands after the remove.
-        prefix = path + "/"
-        removed: list[str] = []
-        for cur in list(self._entries.keys()):
-            if cur == path or cur.startswith(prefix):
-                removed.append(cur)
-        if not removed:
+        target = self._entries.get(path)
+        if target is None:
             return
+        if target.type == "file":
+            removed = [path]
+        else:
+            prefix = path + "/"
+            removed = [
+                cur for cur in list(self._entries.keys()) if cur == path or cur.startswith(prefix)
+            ]
+        removed_entries = [self._entries[cur] for cur in removed]
+        removed_files = [entry for entry in removed_entries if entry.type == "file"]
+        outer_parent = target.parent
         for cur in removed:
             entry = self._entries.pop(cur, None)
-            if entry is not None and entry.type == "file":
-                self._files_indexed -= 1
+            if entry is not None:
+                if entry.type == "file":
+                    self._files_indexed -= 1
+                    self._adjust_descendant_file_aggregates(
+                        parent=entry.parent,
+                        delta_files=-1,
+                        delta_size=-entry.size,
+                    )
+                else:
+                    self._pending_dirs.discard(entry.path)
+                    self._child_mtime_heaps.pop(entry.path, None)
+                self._remove_direct_child(entry)
+                self._recorded_child_mtimes.pop(entry.path, None)
             # Bump the generation so any in-flight walker write for
             # this path with a captured WriteToken is dropped on
             # store rather than resurrecting a removed entry.
             self.invalidate(cur)
-        self._emit(FsChange(ops=tuple(FsRemove(path=cur) for cur in removed)))
+        aggregate_updates = self._update_ancestor_aggregates(
+            parent=outer_parent,
+            delta_files=-len(removed_files),
+            delta_size=-sum(entry.size for entry in removed_files),
+        )
+        ops: list[FsChangeOp] = [FsRemove(path=cur) for cur in removed]
+        ops.extend(FsUpsert(entry=entry) for entry in aggregate_updates)
+        self._emit(FsChange(ops=tuple(ops)))
 
     # ── Subscriptions ───────────────────────────────────────
 
@@ -453,6 +517,15 @@ class InventoryIndex:
                 first_render_depth=self._first_render_depth,
                 gitignore_check=gi_check,
             ):
+                if entry.type == "dir" and entry.total_files is None:
+                    self._walker_dir_generations.setdefault(
+                        entry.path, self._generation.get(entry.path, 0)
+                    )
+                elif entry.type == "dir":
+                    observed_generation = self._walker_dir_generations.pop(
+                        entry.path, self._generation.get(entry.path, 0)
+                    )
+                    entry = replace(entry, write_token=WriteToken(observed_generation))
                 stored = self._store_walker_entry(entry)
                 if stored is None:
                     continue
@@ -504,55 +577,43 @@ class InventoryIndex:
         already contains the descendant file entries needed to compute
         a useful aggregate. Rebuild those pending dir totals from the
         known files so ``status=done`` never exposes null tallies.
+
+        Descendant counts and sizes are maintained as entries change, so
+        completion visits only pending directories. Processing deepest
+        paths first lets each repaired mtime feed its parent's child heap.
         """
 
-        pending_dirs = [
-            entry.path
-            for entry in self._entries.values()
-            if entry.type == "dir" and entry.total_files is None
-        ]
+        pending_dirs = sorted(self._pending_dirs, key=_depth_of, reverse=True)
         if not pending_dirs:
             return
-        pending_set = set(pending_dirs)
-        total_files = dict.fromkeys(pending_dirs, 0)
-        total_size = dict.fromkeys(pending_dirs, 0)
-        newest_mtime = dict.fromkeys(pending_dirs, 0)
-
-        for entry in self._entries.values():
-            if entry.type != "file":
-                continue
-            cursor = entry.parent
-            while True:
-                if cursor in pending_set:
-                    total_files[cursor] += 1
-                    total_size[cursor] += entry.size
-                    if entry.mtime_ns > newest_mtime[cursor]:
-                        newest_mtime[cursor] = entry.mtime_ns
-                if cursor == "":
-                    break
-                cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
 
         batch: list[FsEntry] = []
+        repaired_count = 0
         for path in pending_dirs:
             existing = self._entries.get(path)
-            if existing is None:
+            if existing is None or existing.type != "dir" or existing.total_files is not None:
+                self._pending_dirs.discard(path)
                 continue
+            newest_mtime = self._direct_child_newest(path)
             repaired = replace(
                 existing,
-                total_files=total_files[path],
-                total_size=total_size[path],
-                newest_mtime_ns=newest_mtime[path],
-                mtime_ns=newest_mtime[path],
+                total_files=self._descendant_file_counts.get(path, 0),
+                total_size=self._descendant_file_sizes.get(path, 0),
+                newest_mtime_ns=newest_mtime,
+                mtime_ns=newest_mtime,
                 write_token=WriteToken(self._generation.get(path, 0)),
             )
             self._entries[path] = repaired
+            self._pending_dirs.discard(path)
+            self._record_child_mtime(repaired)
+            repaired_count += 1
             batch.append(repaired)
             if len(batch) >= WALKER_EMIT_BATCH:
                 self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
                 batch.clear()
         if batch:
             self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
-        LOG.info("inventory repaired %d pending dir aggregate(s)", len(pending_dirs))
+        LOG.info("inventory repaired %d pending dir aggregate(s)", repaired_count)
 
     def capture_write_token(self, path: str) -> WriteToken:
         """Capture the inventory's current generation counter for *path*.
@@ -590,9 +651,9 @@ class InventoryIndex:
           invalidation has bumped the counter to ``> N`` since,
           the write is dropped.
 
-        The type-level discriminator replaces the previous int-default
-        convention, which was prone to silent drops when producers forgot
-        to stamp an observation.
+        The type-level discriminator distinguishes fresh observations from
+        captured generations so an unstamped observation cannot be silently
+        dropped.
         """
 
         cur_gen = self._generation.get(entry.path, 0)
@@ -618,10 +679,183 @@ class InventoryIndex:
         if entry.write_token != stamped_token:
             entry = replace(entry, write_token=stamped_token)
         existing = self._entries.get(entry.path)
+        existing_file = existing if existing is not None and existing.type == "file" else None
+        incoming_file = entry if entry.type == "file" else None
+        if (
+            existing_file is not None
+            and incoming_file is not None
+            and existing_file.parent == incoming_file.parent
+        ):
+            if existing_file.size != incoming_file.size:
+                self._adjust_descendant_file_aggregates(
+                    parent=incoming_file.parent,
+                    delta_files=0,
+                    delta_size=incoming_file.size - existing_file.size,
+                )
+        else:
+            if existing_file is not None:
+                self._adjust_descendant_file_aggregates(
+                    parent=existing_file.parent,
+                    delta_files=-1,
+                    delta_size=-existing_file.size,
+                )
+            if incoming_file is not None:
+                self._adjust_descendant_file_aggregates(
+                    parent=incoming_file.parent,
+                    delta_files=1,
+                    delta_size=incoming_file.size,
+                )
+        if existing is None:
+            self._add_direct_child(entry)
+        elif existing.parent != entry.parent:
+            self._remove_direct_child(existing)
+            self._add_direct_child(entry)
         self._entries[entry.path] = entry
-        if entry.type == "file" and existing is None:
+        if entry.type == "dir" and entry.total_files is None:
+            self._pending_dirs.add(entry.path)
+        else:
+            self._pending_dirs.discard(entry.path)
+        self._record_child_mtime(entry)
+        if entry.type == "file" and (existing is None or existing.type != "file"):
             self._files_indexed += 1
+        elif entry.type != "file" and existing is not None and existing.type == "file":
+            self._files_indexed -= 1
         return entry
+
+    def apply_live_entry(self, entry: FsEntry) -> None:
+        """Store a watcher observation and refresh finalized ancestor totals."""
+
+        existing = self._entries.get(entry.path)
+        stored = self._store_walker_entry(entry)
+        if stored is None:
+            return
+        old_file = existing if existing is not None and existing.type == "file" else None
+        new_file = stored if stored.type == "file" else None
+        aggregate_updates = self._update_ancestor_aggregates(
+            parent=stored.parent,
+            delta_files=int(new_file is not None) - int(old_file is not None),
+            delta_size=(new_file.size if new_file is not None else 0)
+            - (old_file.size if old_file is not None else 0),
+        )
+        ops = [FsUpsert(entry=stored)]
+        ops.extend(FsUpsert(entry=ancestor) for ancestor in aggregate_updates)
+        self._emit(FsChange(ops=tuple(ops)))
+
+    def _update_ancestor_aggregates(
+        self,
+        *,
+        parent: str,
+        delta_files: int,
+        delta_size: int,
+    ) -> list[FsEntry]:
+        updates: list[FsEntry] = []
+        cursor = parent
+        while True:
+            existing = self._entries.get(cursor)
+            if (
+                existing is not None
+                and existing.type == "dir"
+                and existing.total_files is not None
+                and existing.total_size is not None
+            ):
+                newest_mtime_ns = self._direct_child_newest(cursor)
+                updated = replace(
+                    existing,
+                    total_files=max(0, existing.total_files + delta_files),
+                    total_size=max(0, existing.total_size + delta_size),
+                    newest_mtime_ns=newest_mtime_ns,
+                    write_token=WriteToken(self._generation.get(cursor, 0)),
+                )
+                self._entries[cursor] = updated
+                self._record_child_mtime(updated)
+                updates.append(updated)
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+        return updates
+
+    def _record_child_mtime(self, entry: FsEntry) -> None:
+        if entry.path == entry.parent:
+            return
+        newest = entry.mtime_ns if entry.type == "file" else entry.newest_mtime_ns or 0
+        recorded = (entry.parent, newest)
+        if self._recorded_child_mtimes.get(entry.path) == recorded:
+            return
+        self._recorded_child_mtimes[entry.path] = recorded
+        heap = self._child_mtime_heaps.setdefault(entry.parent, [])
+        heapq.heappush(heap, (-newest, entry.path))
+        # Heap entries are versioned implicitly by `_recorded_child_mtimes`.
+        # Real mtime changes leave stale versions behind until they reach the
+        # top, so compact occasionally to keep a frequently-written file from
+        # growing this auxiliary index for the lifetime of the process.
+        compact_after = max(64, self._direct_child_counts.get(entry.parent, 0) * 4)
+        if len(heap) > compact_after:
+            current: dict[str, tuple[int, str]] = {}
+            for _negative_mtime, path in heap:
+                recorded = self._recorded_child_mtimes.get(path)
+                if recorded is not None and recorded[0] == entry.parent:
+                    current[path] = (-recorded[1], path)
+            heap[:] = current.values()
+            heapq.heapify(heap)
+
+    def _adjust_descendant_file_aggregates(
+        self,
+        *,
+        parent: str,
+        delta_files: int,
+        delta_size: int,
+    ) -> None:
+        cursor = parent
+        while True:
+            file_count = self._descendant_file_counts.get(cursor, 0) + delta_files
+            if file_count <= 0:
+                self._descendant_file_counts.pop(cursor, None)
+                self._descendant_file_sizes.pop(cursor, None)
+            else:
+                self._descendant_file_counts[cursor] = file_count
+                self._descendant_file_sizes[cursor] = max(
+                    0, self._descendant_file_sizes.get(cursor, 0) + delta_size
+                )
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+
+    def _direct_child_newest(self, parent: str) -> int:
+        heap = self._child_mtime_heaps.get(parent)
+        if heap is None:
+            return 0
+        while heap:
+            negative_mtime, path = heap[0]
+            entry = self._entries.get(path)
+            current_mtime = (
+                entry.mtime_ns
+                if entry is not None and entry.type == "file"
+                else (entry.newest_mtime_ns or 0 if entry is not None else 0)
+            )
+            if (
+                entry is not None
+                and entry.parent == parent
+                and current_mtime == -negative_mtime
+                and self._recorded_child_mtimes.get(path) == (parent, current_mtime)
+            ):
+                return current_mtime
+            heapq.heappop(heap)
+        self._child_mtime_heaps.pop(parent, None)
+        return 0
+
+    def _add_direct_child(self, entry: FsEntry) -> None:
+        if entry.path == entry.parent:
+            return
+        self._direct_child_counts[entry.parent] = self._direct_child_counts.get(entry.parent, 0) + 1
+
+    def _remove_direct_child(self, entry: FsEntry) -> None:
+        if entry.path == entry.parent:
+            return
+        count = self._direct_child_counts.get(entry.parent, 0)
+        if count <= 1:
+            self._direct_child_counts.pop(entry.parent, None)
+        else:
+            self._direct_child_counts[entry.parent] = count - 1
 
     def _apply_walker_entry(self, entry: FsEntry) -> None:
         """Single-entry path used by the watcher and other live
@@ -692,9 +926,9 @@ class _Singleton:
 
 def get_instance() -> InventoryIndex:
     """Lazy-initialize the process-wide ``InventoryIndex``.
-    The lifespan hook (P1.10) is the only caller that should
-    invoke ``start()`` on the returned object; other callers read
-    via ``get()`` / ``entries()`` / ``subscribe()``.
+    The lifespan hook is the only production caller that should invoke
+    ``start()``; other callers read via ``get()``, ``entries()``, or
+    ``subscribe()``.
     """
 
     if _Singleton.instance is None:
@@ -711,8 +945,7 @@ def reset_instance_for_tests() -> None:
     _Singleton.instance = None
 
 
-# Re-export the non-trivial helpers so tests + Phase 1.11/1.12
-# call sites can reach them without importing private names.
+# Re-export the non-trivial helpers used by tests and inventory consumers.
 __all__ = [
     "DEFAULT_FIRST_RENDER_DEPTH",
     "DEFAULT_MAX_DEPTH",

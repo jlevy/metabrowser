@@ -15,9 +15,8 @@ This module owns:
   suffix tally, and oldest/newest mtime; ETag-cacheable. Folds
   what the search spec called ``/api/index/status`` and
   ``/api/index/suffixes`` into one envelope.
-* ``GET /api/capabilities`` — unified capability surface (P1
-  emits a polling placeholder; Phase 5 wires real fs-type
-  detection).
+* ``GET /api/capabilities`` — unified capability surface with
+  filesystem-type-driven watcher status.
 * :func:`build_lifespan` — Starlette lifespan context manager
   that bumps the asyncio default executor to 64 workers and
   spawns the eager ``InventoryIndex`` pre-warm without blocking
@@ -158,9 +157,8 @@ async def build_lifespan(
             prewarm_gitignore(),
             name="metabrowser-gitignore-prewarm",
         )
-        # Spawn the active-file tracker; it pushes fs.change ops
-        # into the inventory whenever a tracked file's active
-        # state flips. Replaces /api/activity polling.
+        # The active-file tracker pushes fs.change ops into the
+        # inventory whenever a tracked file's active state flips.
         try:
             from metabrowser.active_tracker import (
                 run_active_tracker,
@@ -237,13 +235,9 @@ class _EventBus:
                 )
 
     async def _relay_loop(self) -> None:
-        # Two failure modes used to silence ALL SSE delivery for
-        # the process: (a) an exception in the relay killed it
-        # permanently, and (b) the inventory dropped our subscriber
-        # queue when the walker fan-out overflowed it, leaving the
-        # relay blocked on a dead queue. Defend against both: catch
-        # crashes with backoff, and periodically poll the inventory
-        # to resubscribe if our queue was dropped.
+        # A relay exception must not stop process-wide SSE delivery, and
+        # inventory overflow can drop this subscriber queue. Back off after
+        # crashes and periodically resubscribe when the queue is detached.
         backoff = 0.5
         while True:
             try:
@@ -379,10 +373,8 @@ def _change_path(op: object) -> str:
 def _filter_event_for_scope(event: StreamEvent, scope: _ScopeType) -> StreamEvent | None:
     """Apply the connection's scope to live events.
 
-    Initial snapshots have always been scoped, but live walker batches
-    used to bypass the scope and deliver deep all-known updates to a
-    root-depth-2 tab. On large trees that made the browser do work for
-    rows it could not render yet.
+    A root-depth-2 connection receives only rows it can render, matching
+    the scope of its initial snapshot.
     """
 
     if scope == "all-known":
@@ -448,11 +440,9 @@ async def _stream_events(
             latest = bus.latest_id()
             if last_id > latest:
                 # Server restarted: client's last-known id is from a
-                # previous process whose ring buffer is gone. Replay
-                # is empty and the client will keep going with stale
-                # ids. The right answer is FsResyncRequired (defined
-                # in the wire schema) — surface the case so a
-                # follow-up spec can wire it.
+                # previous process whose ring buffer is gone. The
+                # snapshot above restores current state, while this
+                # warning preserves the resume mismatch for diagnostics.
                 LOG.warning(
                     "sse: out-of-window Last-Event-ID client=%s last_id=%d > latest=%d "
                     "(server restarted? client may need FsResyncRequired)",
@@ -666,8 +656,9 @@ async def api_index_meta(request: Request) -> Response:
 
 
 async def api_capabilities(request: Request) -> JSONResponse:
-    """Unified capability shape. Phase 5: ``backends`` reports
-    the real fs-type-driven mode (native vs polling) via
+    """Return capabilities with the filesystem-driven watcher mode.
+
+    ``backends`` reports native versus polling mode via
     :func:`metabrowser.watch_backends.select_watch_mode`."""
 
     inventory = get_inventory()

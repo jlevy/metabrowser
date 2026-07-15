@@ -2,7 +2,7 @@
 flag changes on ``FsEntry`` records via the inventory event
 plane, replacing client-side ``/api/activity`` polling.
 
-Architecture (P3.5 follow-up + activity migration):
+Architecture:
 
 * Periodically walks the inventory's known trackable files
   (``.logs/`` and ``.state/`` dirs, ``BROWSER_TRACKABLE_EXTS``
@@ -20,13 +20,12 @@ Why this lives here, not as part of the walker: the walker
 finalizes structure/aggregates once. Active-file detection is a
 recurring poll on a small subset of files. Splitting them keeps
 the walker pure and lets active-tracker tune its cadence
-independently (default 5 s, matches the legacy
-``ACTIVITY_POLL_INTERVAL_MS``).
+independently while sharing a cadence with the compatibility
+``/api/activity`` snapshot.
 
-The output is a single source of truth for "is this file being
-written?" — the same flag the legacy ``/api/activity`` endpoint
-exposed, but pushed via SSE instead of pulled. Once the SPA
-runs against ``/api/events``, ``/api/activity`` is dead code.
+The output is the browser's live source of truth for "is this file
+being written?" The compatibility ``/api/activity`` endpoint exposes
+the same state as a snapshot for scripted callers.
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ LOG = logging.getLogger(__name__)
 
 
 def _is_trackable(entry: FsEntry) -> bool:
-    """Match the legacy ``_discover_trackable_files`` rules:
+    """Match the ``_discover_trackable_files`` rules:
     ``BROWSER_TRACKABLE_EXTS`` files inside ``.logs`` /
     ``.state`` subtrees."""
 

@@ -13,8 +13,8 @@ of the test dep tree). Covers:
 * ``/api/index/meta`` returns status, file/dir counts, mtime
   range, and the suffix tally; ETag round-trips via 304 when
   nothing finalized between polls.
-* ``/api/capabilities`` returns the unified shape with the Phase
-  1 polling placeholder for ``backends`` and real values for
+* ``/api/capabilities`` returns the unified shape with the polling
+  placeholder for ``backends`` and real values for
   ``index`` and ``events``.
 * SSE wire hygiene: ``Content-Type``, ``Cache-Control``,
   ``X-Accel-Buffering`` headers are present.
@@ -380,7 +380,7 @@ def test_api_index_meta_etag_round_trip(tmp_path: Path) -> None:
 
 
 def test_api_capabilities_shape_with_fs_type_detection(tmp_path: Path) -> None:
-    """P5: ``backends`` reports the real fs-type-driven mode
+    """``backends`` reports the real filesystem-type-driven mode
     (native vs polling). On the dev container the underlying
     fs may be ext4/tmpfs (native) or unrecognized (polling); we
     assert the shape is correct either way."""

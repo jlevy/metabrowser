@@ -9,7 +9,8 @@ Review this document before adding, upgrading, or invoking a package.
   Do not use raw `pip` or an activated virtual environment.
 - Apply a 14-day release cool-off with `uv.toml`, `UV_EXCLUDE_NEWER`, or the equivalent
   explicit uv flag.
-- Commit `uv.lock` and install it with `--frozen` in CI and publishing workflows.
+- Commit `uv.lock`, install it with `uv sync --locked` so lock drift fails the build,
+  and execute commands with `uv run --frozen` so they cannot resolve dependencies.
 - Commit `package-lock.json`, use exact JavaScript tool versions, and install it with
   `npm ci`.
 - Run locked JavaScript tools with `npx --no-install`; use exact versions for one-shot
@@ -43,6 +44,12 @@ Two exact first-party releases are exempt from the ordinary cool-off for this re
 
 The exceptions are package-scoped in configuration and do not weaken the global gate.
 Changing either version requires a new review and an updated rationale.
+
+The copied agent-skill instructions name exact `get-tbd@0.4.0` bootstrap commands.
+Those commands are operator-invoked documentation for installing this repository’s issue
+tracker; no build, hook, CI, test, or publishing path executes them.
+The package-policy check rejects moving `@latest` references and enforces this exact
+bootstrap version until it is deliberately reviewed.
 
 ## Verification
 

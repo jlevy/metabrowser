@@ -1,16 +1,15 @@
-"""End-to-end tests for the InventoryIndex-backed migration of
-``/api/tree`` and ``/api/activity`` (P1.11 + P1.12).
+"""End-to-end tests for InventoryIndex-backed API behavior.
 
 * ``api_tree`` uses the inventory path when the index has data;
   the response carries ``tally_cache_status`` reflecting walker
   state; falls back to the filesystem walk when the index is
   idle.
-* The inventory-backed tree shape matches the legacy filesystem
-  walk on a small fixture, except where the inventory emits
+* The inventory-backed tree shape matches the direct filesystem
+  reference walk on a small fixture, except where the inventory emits
   ``None`` aggregates for in-progress dirs (walker still
   finalizing).
 * ``_discover_trackable_files`` reads from the inventory when
-  populated; returns the same set of paths as the legacy walk.
+  populated and returns the same set of paths as the reference walk.
 * The cold-path budget contract is verifiable: with a fully
   finalized inventory, ``_discover_trackable_files`` finishes
   without touching the filesystem (no ``os.walk`` call required).

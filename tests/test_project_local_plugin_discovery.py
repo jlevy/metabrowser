@@ -1,14 +1,12 @@
-"""Project-local + user-home plugin auto-discovery is GONE — Phase 4 trust cut.
+"""Served-root and user-home plugins are never discovered implicitly.
 
-Phase 1+2 advertised auto-discovery from ``<served-root>/.metabrowser/plugins/``
-and ``~/.metabrowser/plugins/``. The senior review caught that this lets viewed
-data opt itself into running JS in the metabrowser page (a security regression
-when serving arbitrary run/output directories). Phase 4 removes the auto-
-discovery sources entirely; the only operator-supplied source is the
+Implicit discovery from ``<served-root>/.metabrowser/plugins/`` or
+``~/.metabrowser/plugins/`` would let viewed data opt itself into running JavaScript in
+the MetaBrowser page. The only operator-supplied source is therefore the
 ``--plugins-dir`` CLI flag merged with ``METABROWSER_PLUGINS_DIRS`` (loaded
 from ``.env`` / ``.env.local``).
 
-These tests guard the cut: a plugin under ``<served-root>/.metabrowser/plugins/``
+These tests guard that trust boundary: a plugin under ``<served-root>/.metabrowser/plugins/``
 or ``~/.metabrowser/plugins/`` is NOT loaded by default. The same plugin IS
 loaded when its parent directory is explicitly named via ``extra_dirs``.
 """
@@ -44,7 +42,7 @@ def test_project_local_plugins_dir_is_not_auto_discovered(tmp_path: Path) -> Non
     result = discover_plugins()
     names = [p.name for p in result.plugins]
     assert "auto-demo" not in names, (
-        "project-local plugins must NOT auto-discover; the security cut requires "
+        "project-local plugins must NOT auto-discover; the trust boundary requires "
         f"operator opt-in via --plugins-dir / METABROWSER_PLUGINS_DIRS. Loaded: {names!r}"
     )
 

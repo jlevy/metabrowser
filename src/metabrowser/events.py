@@ -120,13 +120,9 @@ class FsEntry:
     ) -> FsEntry:
         """Build a freshly-observed file entry.
 
-        Single construction point for the walker (boot scan +
-        ``rewalk_subtree``) and the watcher (file-event handler).
-        Both producers used to build entries by hand and diverged on
-        ext derivation (the watcher used a simple last-dot suffix
-        while the walker used the compound-tail heuristic in
-        :func:`metabrowser.fs_paths.derive_ext`) — see the senior
-        review of the file-watching layer.
+        This is the single construction point for the walker and watcher,
+        ensuring both use the compound-tail extension heuristic in
+        :func:`metabrowser.fs_paths.derive_ext`.
 
         Carries forward ``active`` and ``labels`` from *existing* when
         provided so the watcher's modify path preserves run-state and
@@ -274,8 +270,7 @@ class FsResyncRequired:
 @dataclass(slots=True, frozen=True)
 class CapabilityUpdate:
     """Per-mount or global capability change (a watcher demoted to
-    polling, the index hitting truncation, etc.). Phase 5 wires
-    this for real; Phase 1 emits a single placeholder."""
+    polling, the index hitting truncation, etc.)."""
 
     backends: tuple[dict[str, str], ...]
     index: dict[str, Any]
@@ -286,8 +281,7 @@ class CapabilityUpdate:
 @dataclass(slots=True, frozen=True)
 class ProjectionInvalidate:
     """A derived view (chart, jsonl summary) is now stale for
-    *path*. Phase 1 defines the type; producers wire it as the
-    ``MtimeCache`` invalidations are folded in."""
+    *path* and must be refreshed before reuse."""
 
     path: str
     projection: str
@@ -314,7 +308,7 @@ class Heartbeat:
     type: Literal["heartbeat"] = "heartbeat"
 
 
-# ── tail events (Phase 6 producers; encoder must round-trip today) ──
+# ── Tail-event wire types ──────────────────────────────────────
 
 
 @dataclass(slots=True, frozen=True)

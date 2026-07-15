@@ -43,9 +43,8 @@ def parsed_handler(request: Request) -> JSONResponse:
     if target is None or not target.is_file():
         return JSONResponse({"error": "Not found", "path": raw_path}, status_code=404)
 
-    # ArtifactPath.logical_ext strips a trailing .gz so foo.json.gz
-    # resolves to ".json" — matching the rest of the server that
-    # passes ``logical_ext`` to the classifier.
+    # ArtifactPath.logical_ext strips supported compression suffixes before
+    # the server passes the extension to classifiers.
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
     if ext not in (".json", ".yaml", ".yml"):

@@ -1,13 +1,12 @@
-"""Phase 3c — markdown built-in plugin owns its renderers.
+"""The Markdown built-in plugin owns its renderers.
 
 The markdown plugin's `index.js` used to be a stub IIFE; the actual
 `renderMarkdownTab` / `renderSourceTab` lived in `app.js` behind a
-`VIEW_RENDERERS` fallback. Phase 3c moved them into the plugin so
-every kind+view goes through the plugin registry.
+`VIEW_RENDERERS` fallback. They now live in the plugin so every
+kind-and-view pair goes through the plugin registry.
 
 These tests assert on source text (no JS runtime in the metabrowser
-suite); the JSDOM end-to-end test in Phase 3h covers actual render
-behaviour.
+suite); the JSDOM end-to-end test covers actual render behavior.
 """
 
 from __future__ import annotations
@@ -50,8 +49,7 @@ def test_index_js_uses_sdk_helpers_not_local_copies() -> None:
 
 
 def test_index_js_no_legacy_stub_comments() -> None:
-    """Phase 3 deleted the 'renderers stay in app.js' comments. Regression
-    guard so they don't creep back in."""
+    """Stub-era ownership comments must not creep back in."""
     src = _index_js()
     forbidden = [
         "renderers stay in app.js",

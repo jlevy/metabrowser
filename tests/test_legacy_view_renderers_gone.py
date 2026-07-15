@@ -1,9 +1,8 @@
-"""Phase 3g — VIEW_RENDERERS / VIEW_CONTAINER_STYLES / renderXTab gone from app.js.
+"""Legacy view renderer tables and functions stay out of app.js.
 
-After Phase 3c–3f migrated each built-in plugin's renderers into its
-own ``index.js``, Phase 3g deletes the legacy fallback dispatch and
-the now-unused function definitions. Every (kind, viewId) pair must
-go through the plugin registry; no shell-side function table.
+Each built-in plugin owns its renderers in its ``index.js``. Every
+``(kind, viewId)`` pair must go through the plugin registry; the shell
+must not regain a parallel function table or fallback dispatch.
 
 Regression guards so the legacy machinery doesn't reappear on
 future changes.
@@ -87,14 +86,13 @@ def test_render_file_uses_unknown_view_empty_state() -> None:
     """The fallback branch must paint 'Unknown view' rather than dispatching
     through a function table — proves the cut is real."""
     src = _src()
-    assert "Unknown view:" in src, "Phase 3g empty-state must be present"
+    assert "Unknown view:" in src, "unknown-view empty state must be present"
     # Negative: the fallback branch must NOT call into a function table.
     assert "VIEW_RENDERERS[v.id]" not in src
 
 
 def test_no_legacy_for_now_comments_in_builtin_plugins() -> None:
-    """Phase 3 deleted every 'renderers stay in app.js for now' comment
-    from the built-in plugins. Regression guard."""
+    """Built-ins must not imply that renderers still belong in app.js."""
     builtin_root = APP_JS.parent.parent / "builtin_plugins"
     forbidden_phrases = [
         "stay in app.js",

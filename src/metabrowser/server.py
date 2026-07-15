@@ -22,7 +22,7 @@ below so external callers don't break.
 
 Usage::
 
-    uv run --project metabrowser metab serve ROOT_DIR [--port PORT]
+    uv run --frozen metab serve ROOT_DIR [--port PORT]
 """
 
 from __future__ import annotations
@@ -91,7 +91,11 @@ from metabrowser.file_kinds import (
     classify_file_kind,
     register_file_kind_detector,
 )
-from metabrowser.gz_io import ArtifactPath
+from metabrowser.gz_io import (
+    ArtifactCompressionError,
+    ArtifactDecompressionLimitError,
+    ArtifactPath,
+)
 from metabrowser.inventory import get_instance as get_inventory
 from metabrowser.jsonl_view import _parse_jsonl_file
 
@@ -405,6 +409,10 @@ _SYNTAX_HIGHLIGHT_MAX_BYTES = int(
 )
 
 
+class _ArtifactTextLimitError(OSError):
+    """A decompressed text read exceeded its caller-owned byte budget."""
+
+
 def _query_int(request: Request, name: str, default: int) -> int:
     raw = request.query_params.get(name, "")
     if raw == "":
@@ -417,11 +425,20 @@ def _query_int(request: Request, name: str, default: int) -> int:
 
 def _read_artifact_text_chunk(
     artifact: ArtifactPath, offset: int, limit: int
-) -> tuple[str, int, int]:
-    with artifact.open_binary() as fh:
-        fh.seek(offset)
-        raw = fh.read(limit)
-    return raw.decode(errors="replace"), len(raw), offset + len(raw)
+) -> tuple[str, int, int, bool]:
+    with artifact.open_binary(max_output_bytes=offset + limit + 1) as fh:
+        if artifact.is_compressed:
+            remaining = offset
+            while remaining > 0:
+                skipped = fh.read(min(_RAW_STREAM_CHUNK, remaining))
+                if not skipped:
+                    break
+                remaining -= len(skipped)
+        else:
+            fh.seek(offset)
+        raw_with_probe = fh.read(limit + 1)
+    raw = raw_with_probe[:limit]
+    return raw.decode(errors="replace"), len(raw), offset + len(raw), len(raw_with_probe) > limit
 
 
 def _clear_browser_caches() -> None:
@@ -877,10 +894,7 @@ async def api_tree(request: Request) -> JSONResponse:
         while asyncio.get_running_loop().time() < deadline:
             if inventory_status() in ("done", "truncated"):
                 break
-            if any(
-                entry.parent == subpath and entry.path != subpath
-                for entry in inventory.entries(scope="all-known")
-            ):
+            if inventory.has_direct_child(subpath):
                 break
             await asyncio.sleep(0.005)
 
@@ -1045,9 +1059,9 @@ class JSONResponse(_StarletteJSONResponse):
 # ``starlette.responses.JSONResponse`` directly is unaffected.
 
 
-def _gz_identity_fields(artifact: ArtifactPath) -> dict[str, Any]:
-    """Compression fields that do not require reading the gzip trailer."""
-    if not artifact.is_gzip:
+def _compression_identity_fields(artifact: ArtifactPath) -> dict[str, Any]:
+    """Compression fields that do not require reading the decoded stream."""
+    if not artifact.is_compressed:
         return {}
     return {
         "logical_ext": artifact.logical_ext,
@@ -1056,12 +1070,12 @@ def _gz_identity_fields(artifact: ArtifactPath) -> dict[str, Any]:
     }
 
 
-def _gz_envelope_fields(artifact: ArtifactPath) -> dict[str, Any]:
-    """Additive fields injected into successful ``/api/file`` gzip responses."""
-    identity = _gz_identity_fields(artifact)
+def _compression_envelope_fields(artifact: ArtifactPath, logical_size: int) -> dict[str, Any]:
+    """Additive fields injected into successful compressed-file responses."""
+    identity = _compression_identity_fields(artifact)
     if not identity:
         return {}
-    return {"size_uncompressed": artifact.logical_size, **identity}
+    return {"size_uncompressed": logical_size, **identity}
 
 
 def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONResponse:
@@ -1108,12 +1122,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
+    logical_size: int | None
     try:
         disk_size = artifact.disk_size
-        # Logical size drives "too big to inline" checks and the client's
-        # "X% read" indicator. For plain files it equals disk_size; for
-        # ``.gz`` it's the ISIZE-trailer uncompressed length.
-        logical_size = artifact.logical_size
     except OSError:
         try:
             disk_size = target.stat().st_size
@@ -1126,20 +1137,76 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
-                **_gz_identity_fields(artifact),
+                **_compression_identity_fields(artifact),
+            }
+        )
+
+    try:
+        # Validated compression scans must not run on the event loop.
+        logical_size = await asyncio.to_thread(lambda: artifact.logical_size)
+    except ArtifactCompressionError as exc:
+        if artifact.is_gzip:
+            # Caller-specific readers below can still return a bounded preview
+            # or a limit error before reaching a malformed gzip trailer.
+            logical_size = None
+        else:
+            try:
+                disk_size = target.stat().st_size
+            except OSError:
+                return JSONResponse({"error": "Not found"}, status_code=404)
+            return JSONResponse(
+                {
+                    "type": "error",
+                    "kind": "error",
+                    "views": [],
+                    "path": subpath,
+                    "size": disk_size,
+                    "error": str(exc),
+                    **_compression_identity_fields(artifact),
+                }
+            )
+    except OSError:
+        return JSONResponse(
+            {
+                "type": "binary",
+                "kind": "binary",
+                "views": _views_for_kind("binary"),
+                "path": subpath,
+                "size": disk_size,
+                **_compression_identity_fields(artifact),
             }
         )
     mtime_hash = file_mtime_hash(target)
     etag = _etag_for(mtime_hash)
     etag_headers = {"etag": etag, "cache-control": "no-cache"}
-    gz_fields = _gz_envelope_fields(artifact)
-    text_offset = max(0, min(_query_int(request, "offset", 0), logical_size))
+    compression_fields = (
+        _compression_envelope_fields(artifact, logical_size)
+        if logical_size is not None
+        else _compression_identity_fields(artifact)
+    )
+    requested_text_offset = max(0, _query_int(request, "offset", 0))
     text_limit = max(
         1,
         min(
             _query_int(request, "limit", _TEXT_PREVIEW_CHUNK_BYTES),
             _TEXT_PREVIEW_MAX_CHUNK_BYTES,
         ),
+    )
+    if (
+        artifact.is_compressed
+        and requested_text_offset + text_limit > _TEXT_PREVIEW_MAX_CHUNK_BYTES
+    ):
+        return JSONResponse(
+            {
+                "type": "error",
+                "path": subpath,
+                "error": "Requested preview window exceeds the decompression budget",
+                "max_offset": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+            },
+            status_code=416,
+        )
+    text_offset = (
+        requested_text_offset if logical_size is None else min(requested_text_offset, logical_size)
     )
 
     # 304 short-circuit. Repeat clicks on an unchanged file return zero
@@ -1161,7 +1228,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
 
             parsed = await asyncio.to_thread(parse_jsonl_file_cached, target)
             adapter = parsed.get("summary", {}).get("adapter")
-            kind = _classify_with_plugins(target, ext, adapter)
+            kind = await asyncio.to_thread(_classify_with_plugins, target, ext, adapter)
             views = _views_for_kind(kind)
             return JSONResponse(
                 {
@@ -1171,7 +1238,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "path": subpath,
                     "size": disk_size,
                     "mtime_hash": mtime_hash,
-                    **gz_fields,
+                    **compression_fields,
                     **parsed,
                 },
                 headers=etag_headers,
@@ -1188,30 +1255,63 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "path": subpath,
                 "size": disk_size,
                 "mtime_hash": mtime_hash,
-                **gz_fields,
+                **compression_fields,
             },
             headers=etag_headers,
         )
 
-    if ext in _TEXT_EXTS or logical_size < _INLINE_TEXT_FALLBACK_BYTES:
+    if ext in _TEXT_EXTS or (
+        logical_size is not None and logical_size < _INLINE_TEXT_FALLBACK_BYTES
+    ):
         try:
-            if text_offset > 0 or logical_size > _TEXT_PREVIEW_CHUNK_BYTES:
-                content, content_bytes, bytes_read = await asyncio.to_thread(
+            content_has_more = False
+            if (
+                artifact.is_compressed
+                or text_offset > 0
+                or (logical_size is not None and logical_size > _TEXT_PREVIEW_CHUNK_BYTES)
+            ):
+                content, content_bytes, bytes_read, content_has_more = await asyncio.to_thread(
                     _read_artifact_text_chunk,
                     artifact,
                     text_offset,
                     text_limit,
                 )
-            elif artifact.is_gzip:
-                content = await asyncio.to_thread(_read_artifact_text, artifact)
-                content_bytes = len(content.encode("utf-8", errors="replace"))
-                bytes_read = logical_size
             else:
                 content = await asyncio.to_thread(target.read_text, errors="replace")
                 content_bytes = disk_size
                 bytes_read = disk_size
+        except ArtifactCompressionError as exc:
+            if artifact.is_gzip:
+                return JSONResponse(
+                    {
+                        "type": "binary",
+                        "kind": "binary",
+                        "views": _views_for_kind("binary"),
+                        "path": subpath,
+                        "size": disk_size,
+                        **_compression_identity_fields(artifact),
+                    }
+                )
+            return JSONResponse(
+                {
+                    "type": "error",
+                    "kind": "error",
+                    "views": [],
+                    "path": subpath,
+                    "size": disk_size,
+                    "error": str(exc),
+                    **compression_fields,
+                }
+            )
         except OSError:
-            return JSONResponse({"type": "binary", "path": subpath, "size": disk_size, **gz_fields})
+            return JSONResponse(
+                {
+                    "type": "binary",
+                    "path": subpath,
+                    "size": disk_size,
+                    **compression_fields,
+                }
+            )
 
         if text_offset > 0:
             return JSONResponse(
@@ -1224,10 +1324,11 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "content_offset": text_offset,
                     "content_bytes": content_bytes,
                     "bytes_read": bytes_read,
-                    "content_truncated": bytes_read < logical_size,
+                    "content_truncated": content_has_more
+                    or (logical_size is not None and bytes_read < logical_size),
                     "content_preview_limit": text_limit,
                     "highlight_disabled": True,
-                    **gz_fields,
+                    **compression_fields,
                 },
                 headers=etag_headers,
             )
@@ -1236,7 +1337,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # share a cached result; plugin classification may consult frontmatter
         # for specialized document detection.
         ctx = FileContext(target, ext)
-        kind = _classify_with_plugins(target, ext, file_ctx=ctx)
+        kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
         views = _views_for_kind(kind)
 
         # For .md files, expose parsed frontmatter so plugin renderers can
@@ -1261,14 +1362,16 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "content_offset": 0,
             "content_bytes": content_bytes,
             "bytes_read": bytes_read,
-            "content_truncated": bytes_read < logical_size,
+            "content_truncated": content_has_more
+            or (logical_size is not None and bytes_read < logical_size),
             "content_preview_limit": text_limit,
             "highlight_disabled": (
-                bytes_read < logical_size
-                or logical_size > _SYNTAX_HIGHLIGHT_MAX_BYTES
+                content_has_more
+                or (logical_size is not None and bytes_read < logical_size)
+                or (logical_size is not None and logical_size > _SYNTAX_HIGHLIGHT_MAX_BYTES)
                 or bytes_read > _SYNTAX_HIGHLIGHT_MAX_BYTES
             ),
-            **gz_fields,
+            **compression_fields,
         }
         if frontmatter is not None:
             result["frontmatter"] = frontmatter
@@ -1287,16 +1390,19 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "path": subpath,
             "size": disk_size,
             "mtime_hash": mtime_hash,
-            **gz_fields,
+            **compression_fields,
         },
         headers=etag_headers,
     )
 
 
-def _read_artifact_text(artifact: ArtifactPath) -> str:
-    """Read whole text via ``ArtifactPath`` (gzip-transparent)."""
-    with artifact.open_text() as fh:
-        return fh.read()
+def _read_artifact_text(artifact: ArtifactPath, max_bytes: int) -> tuple[str, int]:
+    """Read compression-transparent text under a decompressed byte cap."""
+    with artifact.open_binary(max_output_bytes=max_bytes + 1) as fh:
+        raw = fh.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise _ArtifactTextLimitError(f"decompressed content exceeds {max_bytes} bytes")
+    return raw.decode(errors="replace"), len(raw)
 
 
 @log_async_calls(if_slower_than=0.1)
@@ -1315,9 +1421,55 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
+    content: str | None = None
     try:
-        logical_size = artifact.logical_size
         disk_size = artifact.disk_size
+    except OSError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+    try:
+        if artifact.is_compressed:
+            content, logical_size = await asyncio.to_thread(
+                _read_artifact_text,
+                artifact,
+                _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+            )
+        else:
+            logical_size = artifact.logical_size
+    except _ArtifactTextLimitError:
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "File is too large for full document rendering",
+                "path": subpath,
+                "size": disk_size,
+                "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+            },
+            status_code=413,
+        )
+    except ArtifactDecompressionLimitError as exc:
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "Compressed source exceeds safety limits",
+                "detail": str(exc),
+                "path": subpath,
+                "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+            },
+            status_code=413,
+        )
+    except ArtifactCompressionError as exc:
+        if artifact.is_gzip:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "Unable to read compressed source",
+                "detail": str(exc),
+                "path": subpath,
+            },
+            status_code=400,
+        )
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
     if ext not in _TEXT_EXTS and logical_size >= _INLINE_TEXT_FALLBACK_BYTES:
@@ -1345,15 +1497,13 @@ async def api_kpress_render(request: Request) -> JSONResponse:
         )
 
     try:
-        if artifact.is_gzip:
-            content = await asyncio.to_thread(_read_artifact_text, artifact)
-        else:
+        if content is None:
             content = await asyncio.to_thread(target.read_text, errors="replace")
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     ctx = FileContext(target, ext)
-    kind = _classify_with_plugins(target, ext, file_ctx=ctx)
+    kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
     frontmatter: dict[str, Any] | None = None
     frontmatter_error: str | None = None
     if ext == ".md":
@@ -1447,7 +1597,9 @@ async def api_kpress_export(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "type": "kpress_export_error",
-                "error": f"Export mode {export_mode!r} is deferred — see kpress-design.md",
+                "error": (
+                    f"Export mode {export_mode!r} is deferred and not supported in this release"
+                ),
             },
             status_code=400,
         )
@@ -1492,13 +1644,36 @@ async def api_kpress_export(request: Request) -> JSONResponse:
     artifact = ArtifactPath(source)
     ext = artifact.logical_ext
     ctx = FileContext(source, ext)
-    kind = _classify_with_plugins(source, ext, file_ctx=ctx)
+    kind = await asyncio.to_thread(_classify_with_plugins, source, ext, file_ctx=ctx)
 
     export_source = source
     source_text: str | None = None
-    if artifact.is_gzip:
+    if artifact.is_compressed:
         try:
-            source_text = await asyncio.to_thread(_read_artifact_text, artifact)
+            source_text, _ = await asyncio.to_thread(
+                _read_artifact_text,
+                artifact,
+                _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+            )
+        except (_ArtifactTextLimitError, ArtifactDecompressionLimitError) as exc:
+            return JSONResponse(
+                {
+                    "type": "kpress_export_error",
+                    "error": "Compressed source is too large to export",
+                    "detail": str(exc),
+                    "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+                },
+                status_code=413,
+            )
+        except ArtifactCompressionError as exc:
+            return JSONResponse(
+                {
+                    "type": "kpress_export_error",
+                    "error": "Unable to read compressed source",
+                    "detail": str(exc),
+                },
+                status_code=400,
+            )
         except OSError as exc:
             return JSONResponse(
                 {
@@ -1604,7 +1779,7 @@ async def api_activity(_request: Request) -> JSONResponse:
     retained for two reasons:
 
     * Scripted / curl callers — the JSON snapshot is convenient
-      shell glue; the behaviour is unchanged from pre-Phase 1.
+      shell glue and preserves the snapshot endpoint contract.
     * Bench coverage — ``devtools/browser_bench.py`` measures it
       as the cold-path proxy for the inventory-backed activity
       walk (see :mod:`metabrowser.activity`).
@@ -1672,13 +1847,13 @@ async def raw_file(request: Request) -> Response:
     artifact = ArtifactPath(target)
     media_type = artifact.mime_type
 
-    # Non-gzip path: stream the file as-is. ``FileResponse`` streams in
+    # Uncompressed path: stream the file as-is. ``FileResponse`` streams in
     # fixed-size chunks via aiofiles; the earlier ``read_bytes()`` +
     # ``Response`` shape allocated the entire file before the first byte
     # hit the wire (a 100 MB image stalled and spiked memory). Streaming
     # keeps the event loop responsive and bounds memory regardless of
     # file size. ``_safe_path`` already rejected paths outside ROOT_DIR.
-    if not artifact.is_gzip:
+    if not artifact.is_compressed:
         return FileResponse(target, media_type=media_type)
 
     accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
@@ -1688,12 +1863,22 @@ async def raw_file(request: Request) -> Response:
     # transparently. Zero server CPU. Starlette's ``GZipMiddleware``
     # skips responses with ``Content-Encoding`` already set, so we
     # don't double-wrap.
-    if accepts_gzip:
+    if artifact.is_gzip and accepts_gzip:
         return FileResponse(
             target,
             media_type=media_type,
             headers=artifact.passthrough_headers(),
         )
+
+    # Validate every compressed identity response before StreamingResponse sends
+    # successful headers. Without this scan, malformed or over-limit gzip data
+    # can fail only after a 200 response and a partial body reach the client.
+    try:
+        await asyncio.to_thread(lambda: artifact.logical_size)
+    except ArtifactDecompressionLimitError as exc:
+        return PlainTextResponse(str(exc), status_code=413)
+    except ArtifactCompressionError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
 
     # Identity fallback: client refuses gzip (rare, e.g. ``curl`` without
     # ``--compressed``). Stream-decompress so the client gets plain

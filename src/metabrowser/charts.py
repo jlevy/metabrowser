@@ -24,6 +24,7 @@ from typing import Any
 
 from cachetools import LRUCache
 
+from metabrowser import jsonl_view
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.logutil.parsing import LogEvent, create_parser, detect_adapter
 
@@ -40,19 +41,16 @@ _CHARTS_CACHE: LRUCache[tuple[str, str, int, int], dict[str, Any]] = LRUCache(
 
 
 def _cache_key(kind: str, artifact: ArtifactPath) -> tuple[str, str, int, int] | None:
-    """Return a (kind, path, mtime_ns, logical_size) tuple, or None if the file vanished.
+    """Return a (kind, path, mtime_ns, disk_size) tuple, or None if the file vanished.
 
     Stating once per call is cheap; the key changes on any append so the
-    memo invalidates automatically as a live JSONL grows. ``logical_size``
-    (uncompressed for ``.gz``) keeps the cache key stable against the
-    decompressed payload the chart actually represents.
+    memo invalidates automatically as a live JSONL grows.
     """
     try:
         st = artifact.disk_path.stat()
-        logical_size = artifact.logical_size
     except OSError:
         return None
-    return (kind, str(artifact.disk_path), st.st_mtime_ns, logical_size)
+    return (kind, str(artifact.disk_path), st.st_mtime_ns, st.st_size)
 
 
 def clear_charts_cache() -> None:
@@ -67,10 +65,15 @@ def clear_charts_cache() -> None:
 def extract_agent_charts(filepath: Path) -> dict[str, Any]:
     """Extract chart data from an agent JSONL log file (Claude/Gemini/Pi).
 
-    Transparently handles ``.jsonl.gz`` via :class:`ArtifactPath`.
+    Transparently handles compressed JSONL via :class:`ArtifactPath`.
     Returns ``{summary: {counts, metadata}, charts: [...]}``.
     """
     artifact = ArtifactPath(filepath)
+    parse_max_bytes = jsonl_view._JSONL_PARSE_MAX_BYTES
+    if not artifact.is_compressed and artifact.logical_size > parse_max_bytes:
+        raise jsonl_view.JsonlParseLimitError(
+            f"JSONL content exceeds {parse_max_bytes} decompressed bytes"
+        )
     key = _cache_key("agent", artifact)
     if key is not None:
         hit = _CHARTS_CACHE.get(key)
@@ -79,7 +82,7 @@ def extract_agent_charts(filepath: Path) -> dict[str, Any]:
 
     # Read first lines to detect adapter
     first_lines: list[str] = []
-    with artifact.open_text(errors="replace") as fh:
+    with artifact.open_text(errors="replace", max_output_bytes=parse_max_bytes) as fh:
         for raw_line in fh:
             stripped = raw_line.strip()
             if stripped:
@@ -92,7 +95,7 @@ def extract_agent_charts(filepath: Path) -> dict[str, Any]:
 
     # Parse all events
     events: list[LogEvent] = []
-    with artifact.open_text(errors="replace") as fh:
+    with artifact.open_text(errors="replace", max_output_bytes=parse_max_bytes) as fh:
         for raw_line in fh:
             stripped = raw_line.strip()
             if not stripped or len(stripped) > 256 * 1024:

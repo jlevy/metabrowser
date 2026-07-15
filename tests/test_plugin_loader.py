@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from metabrowser.file_kinds import FileContext
 from metabrowser.paths_safe import _set_root_dir
 from metabrowser.plugin_loader.classify import (
+    _JSON_CLASSIFICATION_MAX_BYTES,
     CompiledKindRule,
     build_classifier,
     collect_folder_markers,
@@ -416,6 +417,51 @@ def test_classifier_json_value_prefix_rejects_mismatch(tmp_path: Path) -> None:
         discovery_index=0,
     )
     assert build_classifier([rule])(_ctx(f)) is None
+
+
+def test_classifier_rejects_json_above_content_classification_cap(tmp_path: Path) -> None:
+    f = tmp_path / "resources.json"
+    f.write_text(
+        '{"schema":"example.resources/v1","padding":"' + "x" * _JSON_CLASSIFICATION_MAX_BYTES + '"}'
+    )
+    rule = CompiledKindRule(
+        rule=KindRule(
+            id="analysis-report",
+            match=KindMatch(
+                ext=".json",
+                json_has_key="schema",
+                json_value_prefix="example.resources/",
+            ),
+        ),
+        plugin_name="reports",
+        discovery_index=0,
+    )
+
+    assert build_classifier([rule])(_ctx(f)) is None
+
+
+def test_classifier_caches_bounded_json_parse_on_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    f = tmp_path / "resources.json"
+    f.write_text('{"schema":"example.resources/v1"}')
+    context = _ctx(f)
+    calls = 0
+
+    from metabrowser.plugin_loader import classify as classify_module
+
+    original = classify_module._json_top_level
+
+    def counting_parser(path: Path):
+        nonlocal calls
+        calls += 1
+        return original(path)
+
+    monkeypatch.setattr(classify_module, "_json_top_level", counting_parser)
+
+    assert context.json_top_level == {"schema": "example.resources/v1"}
+    assert context.json_top_level == {"schema": "example.resources/v1"}
+    assert calls == 1
 
 
 def test_classifier_exts_list_match(tmp_path: Path) -> None:

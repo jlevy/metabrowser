@@ -4,16 +4,9 @@ Discovers candidate files (JSONL/state/PID files inside ``.logs/`` and
 ``.state/`` trees), then on each poll re-stats them and reports which
 ones changed within ``stale_after_s`` seconds.
 
-Scoping note
-------------
-
-Earlier versions of this module walked the entire repository looking
-for any ``.jsonl`` / ``.yaml`` / ``.md`` / ``.csv`` file and tracked all
-of them. On a 35 k-file repo that meant ~30 k stat() syscalls per poll —
-about a second of wall time every five seconds. Active run artifacts
-normally live under ``.logs/`` and ``.state/``, so we now scope
-the discovery walk to those subtrees. This drops the activity poll to
-sub-millisecond steady state.
+Discovery is scoped to ``.logs/`` and ``.state/`` subtrees, where active
+run artifacts live. Bounding the candidate set prevents repository size
+from turning each activity poll into a full-tree stat pass.
 """
 
 from __future__ import annotations
@@ -150,11 +143,9 @@ def _discover_trackable_files_from_inventory(root: Path) -> tuple[Path, ...] | N
     has no data (walker hasn't reached anywhere yet) so the caller
     can fall back to the live walk.
 
-    P1.12: this is the cold-path fix that drops /api/activity
-    from 14 s baseline (and 132 s under heavy dispatch I/O) to
-    sub-50 ms. The per-file fingerprint poll in
-    ``FileActivityTracker.poll`` is unchanged — only the
-    discovery walk is replaced with the cache lookup.
+    Reading the inventory keeps the request path from repeating a
+    filesystem discovery walk. Per-file fingerprint checks in
+    ``FileActivityTracker.poll`` remain unchanged.
     """
 
     inv = get_inventory()

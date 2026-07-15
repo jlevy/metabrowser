@@ -13,6 +13,7 @@ Covers:
 
 from __future__ import annotations
 
+import gzip
 import json
 from pathlib import Path
 
@@ -117,6 +118,23 @@ def test_truncated_for_oversize(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     f = tmp_path / "big.json"
     f.write_text(json.dumps({"x": "y" * 1024}))
     payload = parse_structured(f, ".json", "h-trunc")
+    assert payload.truncated is True
+    assert payload.parsed is None
+    assert payload.parse_error is None
+
+
+def test_truncated_gzip_does_not_trust_forged_isize(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(parser_mod, "STRUCTURED_PARSE_MAX_BYTES", 64)
+    parser_mod._parse_structured_cached.cache_clear()
+    encoded = bytearray(gzip.compress(json.dumps({"value": "x" * 256}).encode()))
+    encoded[-4:] = (1).to_bytes(4, "little")
+    source = tmp_path / "forged.json.gz"
+    source.write_bytes(encoded)
+
+    payload = parse_structured(source, ".json", "h-forged-gzip")
+
     assert payload.truncated is True
     assert payload.parsed is None
     assert payload.parse_error is None

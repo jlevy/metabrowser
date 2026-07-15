@@ -1,12 +1,12 @@
-"""Filesystem-watcher backends for the inventory event plane (P5).
+"""Filesystem-watcher backends for the inventory event plane.
 
 Single entry point :func:`run_watcher` spawns a long-running task
 that emits ``fs.change`` ops on the InventoryIndex whenever the
 filesystem under the served root reports an mtime / create /
 delete event.
 
-Debugging a "no live updates" report? See the runbook at
-`metabrowser/realtime-debugging.runbook.md` — it walks the
+Debugging a "no live updates" report? See
+``docs/realtime-debugging.md`` — it walks the
 producer/consumer chain layer by layer and tells you which DEBUG
 log line proves which layer is healthy.
 
@@ -19,8 +19,7 @@ Backend selection is by **filesystem type** at startup:
 * Polling-required (nfs, nfs4, cifs, smbfs, fuse.gcsfuse, …) →
   ``watchfiles.awatch(force_polling=True, poll_delay_ms=2000)``.
   Slower but works on remote mounts where native watchers don't
-  see remote writes. (Phase 4's writer-emitted event log is the
-  NFS-correct path; polling here is the fallback.)
+  see remote writes, so polling is the correctness fallback.
 * Unknown fs type → polling, with a ``log.warning`` naming the
   type so unrecognized mounts surface in logs.
 
@@ -227,6 +226,12 @@ async def _emit_for_path(
         LOG.debug("watcher: drop (hidden segment) change=%s rel=%s", change_type.name, rel)
         return
 
+    # Invalidate the path and every ancestor before observing the live state.
+    # A boot-walker directory finalization carries the generation captured when
+    # its placeholder was stored, so a pre-change aggregate is dropped and
+    # repaired from the current inventory instead of overwriting this event.
+    inventory.invalidate(rel)
+
     if change_type == Change.deleted:
         existing = inventory.get(rel)
         if existing is None:
@@ -302,7 +307,7 @@ async def _emit_for_path(
         gitignored=gitignored,
         existing=existing,
     )
-    inventory._apply_walker_entry(entry)
+    inventory.apply_live_entry(entry)
     # Drop the projection caches' entry for this path and tell
     # subscribers the derived view is stale. ``MtimeCache.read``
     # will re-stat lazily anyway, but the explicit invalidate is

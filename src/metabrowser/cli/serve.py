@@ -60,15 +60,9 @@ def _wait_for_http_ok_then_open(
 ) -> None:
     """Poll the index route until it serves HTTP OK, then open the URL.
 
-    Closes the racy auto-open path: webbrowser.open() used to fire before
-    uvicorn finished binding the socket, so the browser's first GET could
-    land on connection-refused (which renders as a "site can't be
-    reached" / 404-shaped error in Chrome) — refresh worked because by
-    then uvicorn was up.
-
     Polls every 50 ms up to ``timeout_s``. A bare TCP accept is not
     enough: the probe requires a non-error HTTP response from the index
-    route so auto-open never puts the operator in a broken browser tab.
+    route, preventing auto-open before uvicorn is ready.
     On timeout or 4xx/5xx, print the URL and leave the browser closed.
     """
     wait_for_http_ok_then(
@@ -120,6 +114,12 @@ _app = typer.Typer(
     name="metab",
     add_completion=False,
     help="Local web UI for browsing run logs and structured artifacts.",
+    epilog=(
+        "Examples:\n"
+        "  metab ./path/to/artifacts\n"
+        "  metab serve ./path/to/artifacts --no-open\n"
+        "  metab plugins --help"
+    ),
     no_args_is_help=False,
 )
 _app.add_typer(plugins_app, name="plugins")

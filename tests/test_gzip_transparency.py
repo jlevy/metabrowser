@@ -12,12 +12,21 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import zlib
 from pathlib import Path
 from typing import Any
 
+import pytest
 from starlette.responses import FileResponse, StreamingResponse
 
+from metabrowser import gz_io
 from metabrowser import server as proc_browser
+from metabrowser.gz_io import (
+    ArtifactCompressionError,
+    ArtifactDecompressionLimitError,
+    ArtifactDecompressionTimeoutError,
+    ArtifactPath,
+)
 
 # Real Claude-format events so the parser branch produces meaningful
 # output (adapter detection wants ~20 lines minimum).
@@ -84,6 +93,81 @@ def _api_file(path: str) -> dict[str, Any]:
     fake = _FakeRequest(path)
     response = asyncio.run(proc_browser.api_file(fake))  # pyright: ignore[reportArgumentType]
     return json.loads(bytes(response.body).decode())
+
+
+def test_gzip_reader_counts_all_members_and_padding_against_input_limit(
+    tmp_path: Path,
+) -> None:
+    encoded = b"".join(
+        (
+            gzip.compress(b"", mtime=0),
+            gzip.compress(b"a" * 10, mtime=0),
+            gzip.compress(b"", mtime=0),
+            gzip.compress(b"b" * 20, mtime=0),
+            b"\0" * 64,
+        )
+    )
+    source = tmp_path / "members.txt.gz"
+    source.write_bytes(encoded)
+    artifact = ArtifactPath(source)
+
+    assert artifact.logical_size == 30
+    with artifact.open_binary(max_compressed_bytes=len(encoded)) as stream:
+        assert stream.read() == b"a" * 10 + b"b" * 20
+    with pytest.raises(ArtifactDecompressionLimitError, match="compressed content"):
+        artifact.open_binary(max_compressed_bytes=len(encoded) - 1)
+    with (
+        pytest.raises(ArtifactDecompressionLimitError, match="decompressed content"),
+        artifact.open_binary(max_output_bytes=29) as stream,
+    ):
+        stream.read()
+
+
+def test_gzip_reader_enforces_cpu_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "slow.txt.gz"
+    source.write_bytes(
+        gzip.compress(b"", mtime=0) * 32 + gzip.compress(b"payload", mtime=0) + b"\0" * 32
+    )
+    cpu_times = iter((10.0, 10.1))
+    monkeypatch.setattr(gz_io.time, "thread_time", lambda: next(cpu_times))
+
+    with (
+        pytest.raises(ArtifactDecompressionTimeoutError, match="gzip.*CPU seconds"),
+        ArtifactPath(source).open_binary(max_cpu_seconds=0.01) as stream,
+    ):
+        stream.read()
+
+
+def test_gzip_logical_size_sums_concatenated_members(tmp_path: Path) -> None:
+    source = tmp_path / "concatenated.txt.gz"
+    source.write_bytes(gzip.compress(b"a" * 10, mtime=0) + gzip.compress(b"b" * 20, mtime=0))
+
+    assert ArtifactPath(source).logical_size == 30
+
+
+def test_gzip_reader_and_logical_size_normalize_malformed_errors(tmp_path: Path) -> None:
+    valid = gzip.compress(b"payload", mtime=0)
+    bad_crc = bytearray(valid)
+    bad_crc[-8] ^= 0xFF
+    malformed = {
+        "invalid.txt.gz": b"not a gzip stream",
+        "truncated.txt.gz": valid[:-2],
+        "bad-crc.txt.gz": bytes(bad_crc),
+    }
+
+    for name, encoded in malformed.items():
+        source = tmp_path / name
+        source.write_bytes(encoded)
+        artifact = ArtifactPath(source)
+        with (
+            pytest.raises(ArtifactCompressionError) as read_error,
+            artifact.open_binary() as stream,
+        ):
+            stream.read()
+        assert isinstance(read_error.value.__cause__, (gzip.BadGzipFile, EOFError, zlib.error))
+        with pytest.raises(ArtifactCompressionError) as size_error:
+            _ = artifact.logical_size
+        assert isinstance(size_error.value.__cause__, (gzip.BadGzipFile, EOFError, zlib.error))
 
 
 # ── /api/file equivalence ─────────────────────────────────────────

@@ -15,7 +15,8 @@ Rule evaluation order:
 
 The ``FileContext`` is a thin wrapper around the file's path, extension,
 adapter sniff (for JSONL), and a lazily-loaded YAML frontmatter dict.
-The wrapper is shared with the legacy detector chain in ``file_kinds.py``.
+The wrapper is shared with the imperative fallback detector chain in
+``file_kinds.py``.
 Declarative manifest rules are the supported plugin classification surface.
 """
 
@@ -32,6 +33,7 @@ import pathspec
 import yaml
 
 from metabrowser.file_kinds import FileContext
+from metabrowser.gz_io import ArtifactPath
 from metabrowser.paths_safe import _relativize
 from metabrowser.plugin_loader.manifest import KindMatch, KindRule
 
@@ -41,11 +43,43 @@ LOG = logging.getLogger(__name__)
 KindClassifier = Callable[[FileContext], "str | None"]
 
 
+# Caps for content-based classification. These predicates run while inventory
+# entries are being classified, so they must never turn a large artifact into
+# an unbounded parse. JSON matching accepts only complete documents within its
+# cap; YAML matching intentionally parses a small prefix.
+_JSON_CLASSIFICATION_MAX_BYTES = 256 * 1024
+
 # Cap for the bounded YAML prefix read used by `yaml_has_key` matching.
 # 16 KiB comfortably covers any reasonable schema-versioned header (`spec:
 # Foo/0.1`-style fields land in the first dozen lines) while keeping the
 # classifier's per-file cost negligible even on multi-MB YAML files.
 _YAML_PREFIX_BYTES = 16 * 1024
+
+
+def _json_top_level(
+    path: Path, byte_limit: int = _JSON_CLASSIFICATION_MAX_BYTES
+) -> dict[str, Any] | None:
+    """Return a small JSON document's top-level mapping.
+
+    Content predicates are classification hints, not a reason to parse an
+    arbitrarily large artifact. Read one byte beyond the declared cap so an
+    oversized document is rejected even when its matching key appears near the
+    beginning. ``ArtifactPath`` applies the same bound while decompressing.
+    """
+    try:
+        with ArtifactPath(path).open_binary(max_output_bytes=byte_limit + 1) as source:
+            payload = source.read(byte_limit + 1)
+    except OSError:
+        return None
+    if len(payload) > byte_limit:
+        return None
+    try:
+        parsed = json.loads(payload)
+    except (UnicodeError, json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(parsed, dict):
+        return parsed
+    return None
 
 
 def _yaml_top_level(path: Path, byte_limit: int = _YAML_PREFIX_BYTES) -> dict[str, Any] | None:
@@ -58,7 +92,7 @@ def _yaml_top_level(path: Path, byte_limit: int = _YAML_PREFIX_BYTES) -> dict[st
     top-level value is not a mapping.
     """
     try:
-        with path.open("rb") as f:
+        with ArtifactPath(path).open_binary(max_output_bytes=byte_limit) as f:
             prefix = f.read(byte_limit)
     except OSError:
         return None
@@ -133,18 +167,20 @@ class CompiledKindRule:
 
 def _match_one(rule: KindMatch, ctx: FileContext) -> bool:
     """Evaluate a single declarative match predicate against a FileContext."""
+    artifact = ArtifactPath(ctx.path)
+    logical_path = ctx.path.with_name(artifact.logical_name)
     if rule.ext is not None and ctx.ext != rule.ext:
         return False
     if rule.exts is not None and ctx.ext not in rule.exts:
         return False
-    if rule.basename is not None and ctx.path.name != rule.basename:
+    if rule.basename is not None and logical_path.name != rule.basename:
         return False
     # folder_marker is semantically identical to basename at file-classification
     # time; the difference is that it also feeds the tree-row badge
     # (see collect_folder_markers + tree.set_folder_markers).
-    if rule.folder_marker is not None and ctx.path.name != rule.folder_marker:
+    if rule.folder_marker is not None and logical_path.name != rule.folder_marker:
         return False
-    if rule.path_glob is not None and not _match_path_glob(ctx.path, rule.path_glob):
+    if rule.path_glob is not None and not _match_path_glob(logical_path, rule.path_glob):
         return False
     if rule.adapter is not None and ctx.adapter != rule.adapter:
         return False
@@ -162,10 +198,7 @@ def _match_one(rule: KindMatch, ctx: FileContext) -> bool:
     if rule.json_has_key is not None or rule.json_value_prefix is not None:
         if ctx.ext != ".json":
             return False
-        try:
-            raw = json.loads(ctx.path.read_text())
-        except (OSError, json.JSONDecodeError, ValueError):
-            return False
+        raw = ctx.json_top_level
         if not isinstance(raw, dict):
             return False
         if rule.json_has_key is not None and rule.json_has_key not in raw:

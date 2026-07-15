@@ -53,6 +53,19 @@ MetaBrowser installs `kpress==0.2.2` as a required dependency.
 Do not install a second KPress checkout beside the package or override it with a
 workspace source.
 
+## Run a Source Checkout
+
+Before a version is published, or when developing locally, run the checked-out source
+against its exact locks:
+
+```shell
+make install
+uv --config-file uv.toml run --frozen metab ./path/to/artifacts
+```
+
+The explicit repository config prevents a machine-global uv policy from changing the
+lock, and `--frozen` prevents the run command from resolving dependencies.
+
 ## Install the Agent Skill
 
 The repository publishes a portable MetaBrowser skill for coding agents:

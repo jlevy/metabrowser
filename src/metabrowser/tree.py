@@ -28,7 +28,7 @@ from cachetools.func import ttl_cache
 from funlog import log_calls
 
 from metabrowser.fs_paths import is_visible as _is_visible
-from metabrowser.gz_io import GZIP_SUFFIX, ArtifactPath
+from metabrowser.gz_io import ArtifactPath
 from metabrowser.ignore_filter import IgnoreMode, ignore_none, make_ignore_filter
 from metabrowser.paths_safe import _rel_path, register_root_callback
 
@@ -41,15 +41,10 @@ MAX_TREE_DEPTH = 20
 SENTINEL_SUMMARY_DEPTH = 3
 # Sentinel-walk caches: each per-request walk on a large tree
 # (e.g. ``runs/local/example-workload``, 290 top-level dirs)
-# generates ~3k unique sentinel calls per cache. ``maxsize`` was
-# previously 1024 — smaller than the working set, so entries got
-# evicted before they could be hit. 16k covers comfortably larger
-# trees at ~1.6 MB total cost across the three caches.
+# generates ~3k unique sentinel calls per cache. A 16k limit covers
+# comfortably larger trees at ~1.6 MB total cost across the three caches.
 #
-# ``ttl`` was previously 5 s, mirroring the activity-poll cadence,
-# but human browsing patterns (read a file, think, click another)
-# routinely exceed 5 s, so a TTL that short turned every "next click"
-# into a fresh full scan. The cached values here are *aggregate*
+# The cached values are aggregate
 # subtree metrics (total_files, total_size, newest_mtime); minute-
 # scale staleness is fine — the activity poll handles the live
 # indicator separately, and ``register_root_callback`` invalidates
@@ -385,8 +380,7 @@ def _dir_tree(
     except (PermissionError, OSError, FileNotFoundError, NotADirectoryError):
         return []
 
-    # Sort: dirs first, then by name. Same convention as the previous
-    # ``Path.iterdir + sorted`` pipeline.
+    # Sort directories first, then by name, matching the public tree contract.
     raw_entries.sort(key=lambda pair: (not pair[1], pair[0].name))
 
     entries: list[dict[str, Any]] = []
@@ -489,11 +483,11 @@ def _dir_tree(
                 "size": size,
                 "mtime": mtime,
             }
-            # Tag gzipped files with their logical (inner) extension so the
+            # Tag compressed files with their logical (inner) extension so the
             # SPA's icon dispatch + .compression-badge overlay key off
-            # the right type instead of seeing every one as the gzip suffix.
-            if entry.name.lower().endswith(GZIP_SUFFIX):
-                artifact = ArtifactPath(item_path)
+            # the right type instead of seeing the compression suffix.
+            artifact = ArtifactPath(item_path)
+            if artifact.is_compressed:
                 file_dict["logical_ext"] = artifact.logical_ext
                 file_dict["compressed"] = True
                 file_dict["compression"] = artifact.compression
@@ -514,7 +508,7 @@ def _tree_depth_from_query(depth_str: str) -> int:
     return max(0, min(depth, MAX_TREE_DEPTH))
 
 
-# ── InventoryIndex-backed tree builder (P1.11) ─────────────────────
+# ── InventoryIndex-backed tree builder ─────────────────────────────
 #
 # When the InventoryIndex walker has populated entries, /api/tree
 # can serve from memory in milliseconds rather than walking the
@@ -669,8 +663,8 @@ def _build_inventory_subtree(
                 "size": entry.size,
                 "mtime": entry.mtime_ns / 1_000_000_000.0 if entry.mtime_ns else 0.0,
             }
-            if entry.name.lower().endswith(GZIP_SUFFIX):
-                artifact = ArtifactPath(root_abs / entry.path)
+            artifact = ArtifactPath(root_abs / entry.path)
+            if artifact.is_compressed:
                 file_dict["logical_ext"] = artifact.logical_ext
                 file_dict["compressed"] = True
                 file_dict["compression"] = artifact.compression

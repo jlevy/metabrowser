@@ -1,7 +1,7 @@
 """Unit tests for ``metabrowser.inventory``.
 
-Covers the walker correctness invariants and the InventoryIndex
-public surface that Phase 1 depends on:
+Covers the walker correctness invariants and the public InventoryIndex
+surface:
 
 * Walker yields every file/dir in the tree exactly once (files
   once, dirs twice — placeholder + final).
@@ -31,8 +31,12 @@ drive coroutines via ``asyncio.run``.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
+from time import monotonic, sleep
+from typing import Any
 
+import metabrowser.inventory as inventory_module
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.events import (
     FsChange,
@@ -51,6 +55,20 @@ from metabrowser.inventory import (
     walk_tree,
 )
 from metabrowser.walker import depth_of as _depth_of
+
+
+class _SlowValuesEntries(dict[str, FsEntry]):
+    def values(self) -> Any:
+        sleep(0.1)
+        return super().values()
+
+
+class _ScanTrackingEntries(dict[str, FsEntry]):
+    full_scan_requested = False
+
+    def keys(self) -> Any:
+        self.full_scan_requested = True
+        return super().keys()
 
 
 def _build_tree(root: Path) -> None:
@@ -381,6 +399,180 @@ def test_inventory_files_indexed_counter(tmp_path: Path) -> None:
     assert asyncio.run(_run()) == 4
 
 
+def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
+    inv = InventoryIndex()
+    directory = FsEntry(
+        path="runs",
+        parent="",
+        name="runs",
+        type="dir",
+        ext="",
+        kind="directory",
+        size=0,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+    )
+    child = FsEntry(
+        path="runs/event.jsonl",
+        parent="runs",
+        name="event.jsonl",
+        type="file",
+        ext="jsonl",
+        kind="file",
+        size=10,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+    )
+
+    assert inv.apply_walker_entries([directory, child]) == 2
+    assert inv.has_direct_child("") is True
+    assert inv.has_direct_child("runs") is True
+
+    inv.remove("runs/event.jsonl")
+
+    assert inv.has_direct_child("") is True
+    assert inv.has_direct_child("runs") is False
+
+
+def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[FsEntry, FsEntry, list[FsChange]]:
+        inv = await _drive_inventory(tmp_path)
+        before = inv.get("")
+        assert before is not None
+        queue = inv.subscribe()
+        live = FsEntry(
+            path="live.txt",
+            parent="",
+            name="live.txt",
+            type="file",
+            ext="txt",
+            kind="file",
+            size=53,
+            mtime_ns=before.newest_mtime_ns + 1 if before.newest_mtime_ns else 1,
+            mtime_hash="",
+            active=False,
+        )
+        inv.apply_live_entry(live)
+        after_insert = inv.get("")
+        assert after_insert is not None
+        inv.remove("live.txt")
+        after_remove = inv.get("")
+        assert after_remove is not None
+        changes: list[FsChange] = []
+        for _ in range(2):
+            event = await queue.get()
+            assert isinstance(event, FsChange)
+            changes.append(event)
+        return after_insert, after_remove, changes
+
+    after_insert, after_remove, changes = asyncio.run(_run())
+    assert (after_insert.total_files, after_insert.total_size) == (5, 303)
+    assert (after_remove.total_files, after_remove.total_size) == (4, 250)
+    assert (after_remove.newest_mtime_ns or 0) < (after_insert.newest_mtime_ns or 0)
+    for change in changes:
+        assert any(isinstance(op, FsUpsert) and op.entry.path == "" for op in change.ops)
+
+
+def test_live_change_during_boot_invalidates_stale_directory_finalization(
+    tmp_path: Path, monkeypatch
+) -> None:
+    walker_paused = asyncio.Event()
+    resume_walker = asyncio.Event()
+    root_placeholder = FsEntry.for_observed_dir(path="", parent="", name=tmp_path.name)
+    old_file = FsEntry(
+        path="old.txt",
+        parent="",
+        name="old.txt",
+        type="file",
+        ext="txt",
+        kind="file",
+        size=10,
+        mtime_ns=10,
+        mtime_hash="",
+        active=False,
+    )
+
+    async def _walk(*_args, **_kwargs):
+        yield root_placeholder
+        yield old_file
+        walker_paused.set()
+        await resume_walker.wait()
+        yield replace(
+            root_placeholder,
+            total_files=1,
+            total_size=10,
+            newest_mtime_ns=10,
+            mtime_ns=10,
+        )
+
+    monkeypatch.setattr(inventory_module, "walk_tree", _walk)
+
+    async def _run() -> tuple[int | None, int | None]:
+        inv = InventoryIndex()
+        inv.start(tmp_path)
+        await walker_paused.wait()
+        inv.invalidate("live.txt")
+        inv.apply_live_entry(
+            FsEntry(
+                path="live.txt",
+                parent="",
+                name="live.txt",
+                type="file",
+                ext="txt",
+                kind="file",
+                size=20,
+                mtime_ns=20,
+                mtime_hash="",
+                active=False,
+            )
+        )
+        resume_walker.set()
+        await inv.wait_until_done(timeout=2.0)
+        root = inv.get("")
+        assert root is not None
+        return root.total_files, root.total_size
+
+    assert asyncio.run(_run()) == (2, 30)
+
+
+def test_unchanged_mtime_upserts_do_not_grow_child_heaps(tmp_path: Path) -> None:
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[int, int]:
+        inv = await _drive_inventory(tmp_path)
+        entry = inv.get("file_a.log")
+        assert entry is not None
+        before = sum(len(heap) for heap in inv._child_mtime_heaps.values())
+        for index in range(100):
+            inv.apply_walker_entries(
+                [replace(entry, active=bool(index % 2), labels=(("tick", str(index)),))]
+            )
+        after = sum(len(heap) for heap in inv._child_mtime_heaps.values())
+        return before, after
+
+    before, after = asyncio.run(_run())
+    assert after == before
+
+
+def test_changing_mtime_upserts_periodically_compact_child_heaps(tmp_path: Path) -> None:
+    _build_tree(tmp_path)
+
+    async def _run() -> int:
+        inv = await _drive_inventory(tmp_path)
+        entry = inv.get("file_a.log")
+        assert entry is not None
+        for index in range(200):
+            inv.apply_walker_entries([replace(entry, mtime_ns=entry.mtime_ns + index + 1)])
+        return len(inv._child_mtime_heaps[""])
+
+    heap_size = asyncio.run(_run())
+    assert heap_size <= 64
+
+
 def test_inventory_invalidate_bumps_ancestor_generations(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
@@ -539,9 +731,8 @@ def test_inventory_repair_pending_dir_aggregates_after_stale_finalize() -> None:
     tallies."""
 
     inv = InventoryIndex()
-    q = inv.subscribe()
     inv._generation["runs"] = 1
-    inv._entries[""] = FsEntry(
+    root = FsEntry(
         path="",
         parent="",
         name="root",
@@ -553,7 +744,7 @@ def test_inventory_repair_pending_dir_aggregates_after_stale_finalize() -> None:
         mtime_hash="",
         active=False,
     )
-    inv._entries["runs"] = FsEntry(
+    runs = FsEntry(
         path="runs",
         parent="",
         name="runs",
@@ -565,7 +756,7 @@ def test_inventory_repair_pending_dir_aggregates_after_stale_finalize() -> None:
         mtime_hash="",
         active=False,
     )
-    inv._entries["runs/a.txt"] = FsEntry(
+    child = FsEntry(
         path="runs/a.txt",
         parent="runs",
         name="a.txt",
@@ -577,6 +768,8 @@ def test_inventory_repair_pending_dir_aggregates_after_stale_finalize() -> None:
         mtime_hash="",
         active=False,
     )
+    assert inv.apply_walker_entries([root, runs, child]) == 3
+    q = inv.subscribe()
 
     inv._repair_pending_dir_aggregates()
 
@@ -588,6 +781,57 @@ def test_inventory_repair_pending_dir_aggregates_after_stale_finalize() -> None:
     assert isinstance(event, FsChange)
     paths = {op.entry.path for op in event.ops if isinstance(op, FsUpsert)}
     assert {"", "runs"} <= paths
+
+    inv.apply_live_entry(
+        FsEntry(
+            path="older.txt",
+            parent="",
+            name="older.txt",
+            type="file",
+            ext=".txt",
+            kind="text",
+            size=1,
+            mtime_ns=1,
+            mtime_hash="",
+            active=False,
+        )
+    )
+    assert inv._entries[""].newest_mtime_ns == 123
+
+
+def test_inventory_pending_repair_does_not_scan_all_entries_on_event_loop() -> None:
+    inv = InventoryIndex()
+    root = FsEntry.for_observed_dir(path="", parent="", name="root")
+    child = FsEntry(
+        path="event.jsonl",
+        parent="",
+        name="event.jsonl",
+        type="file",
+        ext=".jsonl",
+        kind="unknown-jsonl",
+        size=10,
+        mtime_ns=123,
+        mtime_hash="",
+        active=False,
+    )
+    assert inv.apply_walker_entries([root, child]) == 2
+    inv._entries = _SlowValuesEntries(inv._entries)
+
+    async def _run() -> float:
+        ticked_at = 0.0
+
+        async def _tick() -> None:
+            nonlocal ticked_at
+            await asyncio.sleep(0.01)
+            ticked_at = monotonic()
+
+        started_at = monotonic()
+        ticker = asyncio.create_task(_tick())
+        inv._repair_pending_dir_aggregates()
+        await ticker
+        return ticked_at - started_at
+
+    assert asyncio.run(_run()) < 0.05
 
 
 def test_inventory_completion_survives_pending_repair_failure(tmp_path: Path) -> None:
@@ -775,6 +1019,37 @@ def test_rewalk_subtree_refuses_root_and_missing_paths(tmp_path: Path) -> None:
     assert before == after
 
 
+def test_rewalk_subtree_replaces_file_without_double_counting_root(tmp_path: Path) -> None:
+    replacement = tmp_path / "replacement"
+    replacement.write_bytes(b"old-file")
+
+    async def _run() -> tuple[FsEntry, FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        root_before = inv.get("")
+        assert root_before is not None
+
+        replacement.unlink()
+        replacement.mkdir()
+        (replacement / "child.txt").write_bytes(b"new-child-data")
+        await inv.rewalk_subtree("replacement")
+
+        root_after = inv.get("")
+        subtree = inv.get("replacement")
+        assert root_after is not None
+        assert subtree is not None
+        return root_before, root_after, subtree
+
+    root_before, root_after, subtree = asyncio.run(_run())
+    assert subtree.type == "dir"
+    assert subtree.total_files == 1
+    assert root_after.total_files == root_before.total_files
+    assert root_before.total_size is not None
+    assert root_after.total_size is not None
+    assert root_after.total_size == root_before.total_size - len(b"old-file") + len(
+        b"new-child-data"
+    )
+
+
 # ── remove ────────────────────────────────────────────────────
 
 
@@ -803,6 +1078,35 @@ def test_remove_drops_path_and_emits_fs_remove(tmp_path: Path) -> None:
     in_index, removes = asyncio.run(_run())
     assert in_index is False
     assert any(r.path == "sub1/file_b.log" for r in removes)
+
+
+def test_remove_known_file_does_not_scan_large_inventory() -> None:
+    inv = InventoryIndex()
+    target = FsEntry(
+        path="target.txt",
+        parent="",
+        name="target.txt",
+        type="file",
+        ext=".txt",
+        kind="text",
+        size=1,
+        mtime_ns=1,
+        mtime_hash="",
+        active=False,
+    )
+    filler = replace(target, path="unrelated.txt", name="unrelated.txt")
+    large_entry_count = 20_000
+    entries = _ScanTrackingEntries(
+        {f"unrelated/{index}.txt": filler for index in range(large_entry_count)}
+    )
+    entries[target.path] = target
+    inv._entries = entries
+    inv._files_indexed = len(entries)
+
+    inv.remove(target.path)
+
+    assert target.path not in inv._entries
+    assert entries.full_scan_requested is False
 
 
 def test_remove_directory_drops_descendants_in_one_event(tmp_path: Path) -> None:

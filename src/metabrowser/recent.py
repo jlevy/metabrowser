@@ -94,9 +94,9 @@ def collect_recent_entries(
 
     *root* is the served root. Gitignore status is read directly
     from each ``FsEntry.gitignored`` field, which the walker
-    populates once at index-write time using the same checker
-    the Files tab uses; the response layer no longer runs
-    ``build_gitignore_check`` per leaf or per ancestor.
+    populates once at index-write time using the same checker as
+    the Files tab. Response construction does not repeat that work
+    per leaf or ancestor.
 
     *ext_filter* is matched against the entry's compound-tail
     extension (``.runbook.md`` for ``foo.runbook.md``); empty

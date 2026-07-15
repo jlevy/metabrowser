@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import zlib
 from pathlib import Path
 
 import pytest
@@ -99,4 +100,17 @@ def test_parsed_endpoint_handles_gzipped_json(tmp_path: Path, structured_app: Te
     body = resp.json()
     assert body["ext"] == ".json"
     assert body["parsed"] == {"compressed": True, "n": 7}
+    assert body["parse_error"] is None
+
+
+def test_parsed_endpoint_handles_zlib_json(tmp_path: Path, structured_app: TestClient) -> None:
+    source = tmp_path / "bundle.json.zlib"
+    source.write_bytes(zlib.compress(json.dumps({"compressed": "zlib", "n": 8}).encode()))
+
+    response = structured_app.get("/api/plugin/structured/parsed", params={"path": source.name})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ext"] == ".json"
+    assert body["parsed"] == {"compressed": "zlib", "n": 8}
     assert body["parse_error"] is None

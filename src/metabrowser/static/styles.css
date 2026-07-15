@@ -403,12 +403,9 @@
   --viz-accent-file-bg: hsl(210 40% 96%);
   --viz-accent-file-border: hsl(213 27% 84%);
 
-  /* Focus indicator (side-panel target). Desaturated blue — the
-     ring must be noticeable but the previous hsl(221 83% 53%) read as
-     an assaulting "alert blue" against the near-white card surfaces.
-     Dropping S from 83%→55% keeps the hue (reads as focus/selection
-     in the same family as --link) without the chroma shout. Glow
-     alpha stays at 0.25 so the halo is softly visible. */
+  /* Focus indicator (side-panel target). Desaturated blue keeps the
+     ring noticeable without reading as an alert against near-white
+     card surfaces. The hue remains in the same family as --link. */
   --viz-accent-focus: hsl(217 55% 55%);
   --viz-accent-focus-glow: hsl(217 55% 55% / 0.25);
 
@@ -2470,8 +2467,8 @@ pre.code-block code.hljs {
 .custom-tooltip.visible {
   opacity: 1;
 }
-/* Legacy tree-tooltip rows — kept for the file-tree's existing
-   file/folder summary shape. Use viz-panel-* classes for anything
+/* File-tree tooltip rows use the compact file/folder summary shape.
+   Use viz-panel-* classes for anything
    "identity-like" so the drawer and the tooltip stay consistent. */
 .tip-name {
   font-weight: var(--weight-medium);
@@ -2713,7 +2710,7 @@ pre.code-block code.hljs {
   color: var(--status-error);
 }
 
-/* ── Tally skeleton cells (P1.13) ───────────────────────────── */
+/* ── Tally skeleton cells ───────────────────────────────────── */
 /* Rendered by sizeHtml(null) / formatAge(null) when the
    InventoryIndex walker has not yet finalized a dir. The cell
    shows shape (a gray box) but no value; applyCellPatch() in

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import zlib
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -207,6 +208,53 @@ def test_kpress_export_decompresses_gzip_source_for_released_runtime(tmp_path: P
     output = tmp_path / "public" / "compressed.html"
     assert "Compressed export" in output.read_text(encoding="utf-8")
     assert (output.parent / "diagram.svg").read_text(encoding="utf-8") == "<svg></svg>\n"
+
+
+def test_kpress_export_decompresses_zlib_source_for_released_runtime(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    source = tmp_path / "docs" / "compressed.md.zlib"
+    source.parent.mkdir()
+    source.write_bytes(zlib.compress(b"# Zlib export\n\n![Diagram](diagram.svg)\n"))
+    (source.parent / "diagram.svg").write_text("<svg></svg>\n", encoding="utf-8")
+
+    response = asyncio.run(
+        server.api_kpress_export(
+            _request(
+                body={
+                    "path": "docs/compressed.md.zlib",
+                    "destination": "public/compressed.html",
+                }
+            )
+        )
+    )
+
+    assert response.status_code == 200
+    output = tmp_path / "public" / "compressed.html"
+    assert "Zlib export" in output.read_text(encoding="utf-8")
+    assert (output.parent / "diagram.svg").read_text(encoding="utf-8") == "<svg></svg>\n"
+
+
+def test_kpress_export_rejects_malformed_and_oversize_zlib_sources(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "broken.md.zlib").write_bytes(b"not a zlib stream")
+    oversize = b"# Oversize\n" + b"x" * server._TEXT_PREVIEW_MAX_CHUNK_BYTES
+    (tmp_path / "oversize.md.zlib").write_bytes(zlib.compress(oversize))
+
+    malformed_response = asyncio.run(
+        server.api_kpress_export(
+            _request(body={"path": "broken.md.zlib", "destination": "broken.html"})
+        )
+    )
+    oversize_response = asyncio.run(
+        server.api_kpress_export(
+            _request(body={"path": "oversize.md.zlib", "destination": "oversize.html"})
+        )
+    )
+
+    assert malformed_response.status_code == 400
+    assert _json_body(malformed_response)["type"] == "kpress_export_error"
+    assert oversize_response.status_code == 413
+    assert _json_body(oversize_response)["max_size"] == server._TEXT_PREVIEW_MAX_CHUNK_BYTES
 
 
 def test_kpress_export_render_error_returns_502(tmp_path: Path, monkeypatch) -> None:

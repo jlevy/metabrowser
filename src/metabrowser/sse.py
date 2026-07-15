@@ -15,7 +15,9 @@ The endpoint emits standard ``text/event-stream`` frames:
 * ``event: append`` — one JSON object containing a batch of newly
   appended events (parsed with the same single-pass parser as
   ``_parse_jsonl_file``) plus the new byte cursor. The client appends
-  to the rendered log and extends in-memory chart series.
+  to the rendered log and extends in-memory chart series. The same
+  complete-line cursor is the SSE event ID, so automatic reconnects
+  continue from the last acknowledged record through ``Last-Event-ID``.
 * ``event: heartbeat`` — empty frames every ~10 s to keep proxies
   happy and detect dead clients.
 * ``event: closed`` — final frame when the writer rotates the file
@@ -39,7 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.responses import PlainTextResponse, Response, StreamingResponse
 
-from metabrowser.gz_io import GZIP_SUFFIX
+from metabrowser.gz_io import ArtifactPath
 from metabrowser.jsonl_view import _LARGE_FILE_BYTES, _MAX_LINE_LEN
 from metabrowser.logutil.parsing import LogEvent, create_parser, detect_adapter
 from metabrowser.paths_safe import _safe_path
@@ -64,10 +66,11 @@ _MAX_BATCH_BYTES = 256 * 1024
 _ADAPTER_DETECTION_GRACE_S = 1.0
 
 
-def _sse_frame(event: str, payload: dict[str, Any]) -> bytes:
+def _sse_frame(event: str, payload: dict[str, Any], *, event_id: int | None = None) -> bytes:
     """Format an SSE frame with a named event and JSON-encoded data."""
     body = json.dumps(payload, separators=(",", ":"))
-    return f"event: {event}\ndata: {body}\n\n".encode()
+    id_line = f"id: {event_id}\n" if event_id is not None else ""
+    return f"event: {event}\ndata: {body}\n{id_line}\n".encode()
 
 
 def _sse_comment(text: str) -> bytes:
@@ -87,6 +90,19 @@ def _serialize_events(events: list[LogEvent]) -> list[dict[str, Any]]:
             d["raw"] = {"_text": raw}
         out.append(d)
     return out
+
+
+def _bound_pending_line(
+    pending: bytes,
+    dropping_oversized_line: bool,
+    *,
+    max_line_bytes: int | None = None,
+) -> tuple[bytes, bool]:
+    """Keep an unterminated JSONL record within the per-line byte cap."""
+    limit = _MAX_LINE_LEN if max_line_bytes is None else max_line_bytes
+    if dropping_oversized_line or len(pending) > limit:
+        return b"", True
+    return pending, False
 
 
 def _detect_parser_and_replay(lines: list[str]) -> tuple[str, Any, list[LogEvent]]:
@@ -113,8 +129,10 @@ async def _tail_jsonl(
     adapter = "unknown"
     parser = None
     detection_buffer: list[str] = []
-    cursor = max(0, start_cursor)
-    line_buffer = ""
+    read_cursor = max(0, start_cursor)
+    acknowledged_cursor = read_cursor
+    byte_buffer = b""
+    dropping_oversized_line = False
     last_heartbeat = time.monotonic()
     detection_last_growth: float | None = None
 
@@ -124,9 +142,12 @@ async def _tail_jsonl(
         yield _sse_frame("closed", {"reason": "missing"})
         return
     inode = initial_st.st_ino
-    cursor = min(cursor, initial_st.st_size)
-    if cursor > 0:
-        adapter, parser = await asyncio.to_thread(_prime_parser_to_cursor, filepath, cursor)
+    read_cursor = min(read_cursor, initial_st.st_size)
+    if read_cursor > 0:
+        read_cursor = await asyncio.to_thread(_complete_line_cursor, filepath, read_cursor)
+    acknowledged_cursor = read_cursor
+    if read_cursor > 0:
+        adapter, parser = await asyncio.to_thread(_prime_parser_to_cursor, filepath, read_cursor)
 
     while True:
         try:
@@ -139,28 +160,45 @@ async def _tail_jsonl(
         # the file (log rotation), and a shrunken size means it was
         # truncated. Either way, the cursor we're holding is stale —
         # tell the client and stop.
-        if st.st_ino != inode or st.st_size < cursor:
+        if st.st_ino != inode or st.st_size < read_cursor:
             yield _sse_frame("closed", {"reason": "rotated"})
             return
+        if st.st_size > _LARGE_FILE_BYTES:
+            yield _sse_frame("closed", {"reason": "too_large"})
+            return
 
-        if st.st_size > cursor:
+        if st.st_size > read_cursor:
             # Read up to _MAX_BATCH_BYTES of new bytes. Bigger writes
             # arrive over multiple cycles, which is fine — the next
             # tick picks up the rest.
-            chunk_end = min(st.st_size, cursor + _MAX_BATCH_BYTES)
-            chunk = await asyncio.to_thread(_read_slice, filepath, cursor, chunk_end)
-            cursor = chunk_end
+            chunk_end = min(st.st_size, read_cursor + _MAX_BATCH_BYTES)
+            raw_chunk = await asyncio.to_thread(_read_slice, filepath, read_cursor, chunk_end)
+            read_cursor = chunk_end
 
-            line_buffer += chunk
+            byte_buffer += raw_chunk
             lines: list[str] = []
-            while True:
-                nl = line_buffer.find("\n")
-                if nl < 0:
-                    break
-                line, line_buffer = line_buffer[:nl], line_buffer[nl + 1 :]
-                stripped = line.strip()
-                if stripped and len(stripped) <= _MAX_LINE_LEN:
-                    lines.append(stripped)
+            if dropping_oversized_line:
+                first_newline = byte_buffer.find(b"\n")
+                if first_newline < 0:
+                    byte_buffer = b""
+                else:
+                    byte_buffer = byte_buffer[first_newline + 1 :]
+                    dropping_oversized_line = False
+                    acknowledged_cursor = read_cursor - len(byte_buffer)
+            last_newline = byte_buffer.rfind(b"\n")
+            if last_newline >= 0:
+                complete, byte_buffer = (
+                    byte_buffer[: last_newline + 1],
+                    byte_buffer[last_newline + 1 :],
+                )
+                acknowledged_cursor = read_cursor - len(byte_buffer)
+                for raw_line in complete.split(b"\n")[:-1]:
+                    stripped = raw_line.decode(errors="replace").strip()
+                    if stripped and len(raw_line) <= _MAX_LINE_LEN:
+                        lines.append(stripped)
+            byte_buffer, dropping_oversized_line = _bound_pending_line(
+                byte_buffer, dropping_oversized_line
+            )
 
             if lines:
                 # First batch: detect adapter from whatever we've got.
@@ -181,10 +219,10 @@ async def _tail_jsonl(
                 if new_events:
                     payload = {
                         "adapter": adapter,
-                        "cursor": cursor,
+                        "cursor": acknowledged_cursor,
                         "events": _serialize_events(new_events),
                     }
-                    yield _sse_frame("append", payload)
+                    yield _sse_frame("append", payload, event_id=acknowledged_cursor)
                     last_heartbeat = time.monotonic()
 
         if (
@@ -199,10 +237,10 @@ async def _tail_jsonl(
             if new_events:
                 payload = {
                     "adapter": adapter,
-                    "cursor": cursor,
+                    "cursor": acknowledged_cursor,
                     "events": _serialize_events(new_events),
                 }
-                yield _sse_frame("append", payload)
+                yield _sse_frame("append", payload, event_id=acknowledged_cursor)
                 last_heartbeat = time.monotonic()
 
         if time.monotonic() - last_heartbeat > _HEARTBEAT_INTERVAL_S:
@@ -235,13 +273,26 @@ def _prime_parser_to_cursor(filepath: Path, cursor: int) -> tuple[str, Any]:
     return adapter, parser
 
 
-def _read_slice(filepath: Path, start: int, end: int) -> str:
-    """Read ``filepath[start:end]`` as text. Synchronous; called via
-    ``asyncio.to_thread`` so the event loop stays responsive on big
-    reads."""
-    with filepath.open(errors="replace") as fh:
+def _read_slice(filepath: Path, start: int, end: int) -> bytes:
+    """Read the exact byte range used by the live-tail cursor."""
+    with filepath.open("rb") as fh:
         fh.seek(start)
         return fh.read(end - start)
+
+
+def _complete_line_cursor(filepath: Path, requested_cursor: int) -> int:
+    """Rewind a requested cursor to the last complete JSONL record.
+
+    Initial `/api/file` reads can race a writer and report an EOF cursor in the
+    middle of a line. Streamable files are capped at 2 MiB, so inspecting the
+    bounded prefix avoids dropping that partial record when it later completes.
+    """
+    if requested_cursor <= 0:
+        return 0
+    with filepath.open("rb") as source:
+        prefix = source.read(requested_cursor)
+    newline = prefix.rfind(b"\n")
+    return newline + 1 if newline >= 0 else 0
 
 
 async def api_stream(request: Request) -> Response:
@@ -252,12 +303,12 @@ async def api_stream(request: Request) -> Response:
     target = _safe_path(subpath)
     if target is None or not target.is_file():
         return PlainTextResponse("Not found", status_code=404)
-    # Reject gzipped: sealed logs make no sense to live-tail. Clients
+    # Reject compressed artifacts: sealed logs make no sense to live-tail. Clients
     # hitting an archived log should fall back to /api/file (single-shot
     # parse) or /raw (download). This check runs before the .jsonl check
-    # because ``foo.jsonl.gz`` would otherwise sneak through as
+    # because a compressed JSONL path would otherwise sneak through as
     # "non-JSONL" with the wrong error.
-    if target.suffix.lower() == GZIP_SUFFIX:
+    if ArtifactPath(target).is_compressed:
         return PlainTextResponse("file is sealed; load via /api/file instead", status_code=400)
     if target.suffix.lower() != ".jsonl":
         return PlainTextResponse("Stream endpoint is JSONL-only", status_code=400)
@@ -271,8 +322,11 @@ async def api_stream(request: Request) -> Response:
             status_code=413,
         )
 
+    requested_cursor = request.headers.get("last-event-id", "") or request.query_params.get(
+        "cursor", "0"
+    )
     try:
-        cursor = max(0, int(request.query_params.get("cursor", "0")))
+        cursor = max(0, int(requested_cursor))
     except ValueError:
         cursor = 0
 

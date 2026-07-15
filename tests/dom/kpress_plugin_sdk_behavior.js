@@ -1,4 +1,4 @@
-// Behavioral shim for plugin_sdk.js — tests five contracts that
+// Behavioral shim for plugin_sdk.js — tests six contracts that
 // kpress_asset_loading.js (the happy-path shim) cannot:
 //
 //   1. _loadStylesheet awaits the actual onload event (not just appendChild)
@@ -7,6 +7,7 @@
 //   3. Non-ok fetch responses propagate as rejections (with .status / .payload)
 //   4. Failed stylesheet, script, and TOC module loads can be retried
 //   5. A cached stylesheet settles even when the browser omits load events
+//   6. A failed auxiliary asset does not discard rendered HTML
 //
 // Usage:
 //   node kpress_plugin_sdk_behavior.js <repo_root>
@@ -426,6 +427,45 @@ async function check_cached_stylesheet_settles() {
   return { ok: true };
 }
 
+// ── Contract 6: rendered HTML survives auxiliary asset failure ──────────
+
+async function check_render_survives_asset_failure() {
+  sandbox.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      type: "kpress-rendered-document",
+      html: '<article class="kpress-doc">Still visible</article>',
+      assets: assetManifest([
+        {
+          id: "css/optional.css",
+          path: "css/optional.css",
+          public_url: "/css/optional.css",
+          entry_point: true,
+          loading: "stylesheet",
+        },
+      ]),
+    }),
+  });
+  const pending = fetchKpressRender({ path: "asset-failure.md" }, "rendered", {
+    dedupKey: "asset-failure",
+  }).then(
+    (payload) => ({ payload }),
+    (error) => ({ error }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const element = appended.at(-1);
+  if (typeof element?.onerror !== "function") {
+    return { ok: false, detail: "auxiliary stylesheet was not requested" };
+  }
+  element.onerror();
+  const result = await pending;
+  if (result.error || !result.payload?.html.includes("Still visible")) {
+    return { ok: false, detail: "asset failure discarded the rendered document" };
+  }
+  return { ok: true };
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -434,12 +474,20 @@ async function check_cached_stylesheet_settles() {
   const errorProp = await check_fetchKpressRender_throws_on_error();
   const assetRetry = await check_failed_kpress_assets_retry();
   const cachedStylesheet = await check_cached_stylesheet_settles();
+  const assetFailureFallback = await check_render_survives_asset_failure();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback })}\n`,
   );
 
-  if (!stylesheet.ok || !dedup.ok || !errorProp.ok || !assetRetry.ok || !cachedStylesheet.ok) {
+  if (
+    !stylesheet.ok ||
+    !dedup.ok ||
+    !errorProp.ok ||
+    !assetRetry.ok ||
+    !cachedStylesheet.ok ||
+    !assetFailureFallback.ok
+  ) {
     process.exit(1);
   }
 })().catch((err) => fail(err?.stack ? err.stack : String(err)));

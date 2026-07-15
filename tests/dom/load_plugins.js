@@ -1,7 +1,7 @@
 // JSDOM-shim plugin loader — runs the SDK + every plugin's index.js
 // in a Node sandbox with minimal `window`/`document` mocks, then dumps
 // the resulting view registry as JSON to stdout. Exercised by Python
-// tests under tests/test_plugin_e2e_render.py (Phase 3h).
+// tests under tests/test_plugin_e2e_render.py.
 //
 // Usage:
 //   node load_plugins.js <metabrowser_root> [extra_plugin_dir ...]
@@ -97,7 +97,7 @@ if (!sandbox.metabrowser) {
 // ── 1b. Install a tracking Proxy on mb.builtins ───────────────────
 //
 // Enforces the "render-time-only namespace rule" from
-// metabrowser-plugins.md: a plugin's top-level IIFE MUST NOT
+// docs/plugins.md: a plugin's top-level IIFE MUST NOT
 // dereference another plugin's mb.builtins.<other> namespace unless
 // <other> has already loaded. Anything that violates the rule
 // resolves to `undefined` during shim load, and we record the bad

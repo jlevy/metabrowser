@@ -2,7 +2,7 @@
 
 The server is responsible for filtering, capping, and resolving
 gitignore — clustering lives in the SPA (see
-``test_browser_phase3_recent.py`` for the JS-side rules). These
+``test_browser_recent_ui.py`` for the JS-side rules). These
 tests pin the server's wire contract: an unclustered newest-first
 leaf list plus the set of gitignored ancestor directories.
 """

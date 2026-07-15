@@ -69,7 +69,7 @@ class _FakeRequest:
 
 def test_full_lifespan_stack_serves_all_endpoints(tmp_path: Path) -> None:
     """The full app starts, populates the inventory, and serves
-    every Phase 1/3/5 endpoint correctly."""
+    every inventory, recent-file, and watcher endpoint correctly."""
 
     _build_realistic_fixture(tmp_path)
 

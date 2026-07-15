@@ -1,5 +1,4 @@
-"""Structural tests for the Phase 3 Recent UX (P3.2 / P3.3 /
-P3.4 / P3.8 / P3.9 / P3.10) and the DOM contract test (P3.11).
+"""Structural tests for the Recent view and its DOM contract.
 
 Follows the test_browser_v2.py convention: parse the static
 HTML/JS/CSS sources and assert structural invariants. End-to-end
@@ -22,7 +21,7 @@ def _read_styles_css() -> str:
     return proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
 
 
-# ── P3.2 Tab strip in index template ───────────────────────────
+# ── Tab strip in index template ────────────────────────────────
 
 
 def _render_index_html() -> str:
@@ -77,7 +76,7 @@ def test_index_template_versions_core_static_assets() -> None:
     assert 'src="/static/app.js?v=' in html
 
 
-# ── P3.11 DOM contract: every JS-referenced id present in HTML ──
+# ── DOM contract: every JS-referenced id present in HTML ───────
 
 
 def test_dom_contract_all_referenced_ids_exist_in_rendered_html() -> None:
@@ -110,7 +109,7 @@ def test_dom_contract_tab_panels_are_direct_children_of_tree_content() -> None:
     assert after_open.index('id="tab-files"') < after_open.index('id="tab-recent"')
 
 
-# ── P3.2 / P3.8 client wiring ─────────────────────────────────
+# ── Client wiring ──────────────────────────────────────────────
 
 
 def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
@@ -291,7 +290,7 @@ def test_load_recent_locks_window_synchronously_first() -> None:
     assert assign_idx < fetch_idx
 
 
-# ── P3.9 Cross-panel selection ───────────────────────────────
+# ── Cross-panel selection ──────────────────────────────────────
 
 
 def test_set_selected_path_helper_exists_and_is_used() -> None:
@@ -329,7 +328,7 @@ def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
     assert "setSelectedPath(path)" in reveal_block
 
 
-# ── P3.10 Auto-expand fix ─────────────────────────────────────
+# ── Auto-expand behavior ───────────────────────────────────────
 
 
 def test_render_tree_nodes_auto_expand_skips_gitignored_top_level() -> None:
@@ -353,7 +352,7 @@ def test_render_tree_nodes_explicit_expanded_overrides_default() -> None:
     assert 'typeof node.expanded === "boolean" ? node.expanded : defaultExpanded' in fn_block
 
 
-# ── CSS (P3.2 / P3.8) ────────────────────────────────────────
+# ── CSS ────────────────────────────────────────────────────────
 
 
 def test_styles_css_promotes_tab_active_color_to_root() -> None:

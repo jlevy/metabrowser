@@ -96,7 +96,7 @@ Connect trusted publishing without a package token.
 - [x] Remove specialized binary-store code and native dependencies from the core wheel;
   retain the manifest, browser SDK, and installed-entry-point seams needed by external
   format plugins
-- [ ] Add bounded zlib artifact support with logical-extension handling, streaming
+- [x] Add bounded zlib artifact support with logical-extension handling, streaming
   previews, rendering and export integration, malformed-stream errors, and
   decompression-bomb limits
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
@@ -134,7 +134,26 @@ Connect trusted publishing without a package token.
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
 - [x] Add tracked-file, source-distribution, and wheel public-hygiene checks
-- [x] Complete review of the initial pull request with all GitHub Actions checks green
+- [ ] Complete final review reconciliation with all tracked findings closed, the full
+  local release gate passing, no unresolved review threads, and all GitHub Actions
+  checks green on the reconciliation commit
+
+### Final Review Reconciliation
+
+- [x] Inventory every top-level review, formal review, inline thread, and merged
+  follow-up finding and map each item to a tbd issue
+- [x] Resolve every accepted runtime, security, performance, tooling, documentation, and
+  public-hygiene finding, or record a tested disposition where the existing boundary is
+  intentional
+- [x] Add a public-safe manual browser corpus and verify every documented view against a
+  running source checkout
+- [x] Preserve KPress sanitization as an explicit dependency contract and keep its
+  auxiliary browser assets non-fatal after the rendered document is available
+- [x] Enforce frozen uv execution in Make targets, hooks, workflows, and executable
+  documentation; make parallel verification ordering safe and publish without mutable
+  dependency caches
+- [ ] Run `make verify`, confirm zero unresolved review threads, publish the complete
+  bead-to-finding reconciliation, and close and sync the review bead tree
 
 ### First Release
 
@@ -171,7 +190,8 @@ Connect trusted publishing without a package token.
 
 ## Validation Evidence
 
-The complete local `make verify` gate passes on the initial pull-request tree:
+The complete local `make -j4 verify` gate passes on the final reconciliation working
+tree:
 
 - Ruff and BasedPyright report no diagnostics
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
@@ -179,12 +199,16 @@ The complete local `make verify` gate passes on the initial pull-request tree:
 - Flowmark and public-hygiene checks pass for the repository
 - The MetaBrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
-- 604 Python and browser contract tests pass
+- 669 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
 - An isolated uv environment installs the wheel and exercises `metab`, the `metabrowser`
   compatibility alias, packaged assets, built-in plugins, and KPress rendering
+- A running source checkout renders the public Markdown, structured, source, JSONL,
+  image, and binary fixtures; live create/delete updates Files and Recent; direct hash
+  links, light/dark themes, a 480-pixel viewport, keyboard focus, and print handoff are
+  usable without browser warnings or errors
 - The exact public `kpress==0.2.2` wheel resolves from PyPI under the package-scoped
   first-party exception; its host-decoded export seam adds no transitive dependency
 

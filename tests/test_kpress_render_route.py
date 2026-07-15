@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -142,6 +143,36 @@ def test_kpress_render_route_uses_logical_size_for_gzip(tmp_path: Path, monkeypa
     assert seen["size"] > source.stat().st_size
 
 
+def test_kpress_render_route_reads_zlib_source_and_frontmatter(tmp_path: Path, monkeypatch) -> None:
+    server._set_root_dir(tmp_path)
+    content = "---\ntitle: Zlib document\n---\n# Heading\n"
+    source = tmp_path / "doc.md.zlib"
+    source.write_bytes(zlib.compress(content.encode()))
+    seen: dict[str, Any] = {}
+
+    def _fake_render(**kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        return {
+            "type": "kpress-rendered-document",
+            "html": '<article class="kpress kpress-doc">ok</article>',
+            "profile": "document",
+            "printable": True,
+            "assets": _empty_asset_manifest(),
+            "diagnostics": [],
+        }
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _fake_render)
+    response = asyncio.run(
+        server.api_kpress_render(_request(query={"path": source.name, "view": "rendered"}))
+    )
+
+    assert response.status_code == 200
+    assert seen["source_text"] == content
+    assert seen["source_path"] == source.name
+    assert seen["frontmatter"] == {"title": "Zlib document"}
+    assert seen["size"] == len(content.encode())
+
+
 def test_kpress_render_route_degrades_truncated_gzip(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "doc.md.gz").write_bytes(b"\x1f\x8b")
@@ -151,6 +182,22 @@ def test_kpress_render_route_degrades_truncated_gzip(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_kpress_render_rejects_forged_gzip_size_before_full_read(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    payload = b"# Heading\n" + b"x" * server._TEXT_PREVIEW_MAX_CHUNK_BYTES
+    compressed = bytearray(gzip.compress(payload))
+    compressed[-4:] = (1).to_bytes(4, "little")
+    (tmp_path / "forged.md.gz").write_bytes(compressed)
+
+    response = asyncio.run(
+        server.api_kpress_render(_request(query={"path": "forged.md.gz", "view": "rendered"}))
+    )
+    assert response.status_code == 413
+    payload_json = _json_body(response)
+    assert payload_json["type"] == "kpress_render_error"
+    assert payload_json["max_size"] == server._TEXT_PREVIEW_MAX_CHUNK_BYTES
     payload = _json_body(response)
     assert payload["error"]
 

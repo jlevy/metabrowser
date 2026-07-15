@@ -1,4 +1,4 @@
-"""Phase 3h — end-to-end plugin discovery + registration.
+"""End-to-end plugin discovery and registration.
 
 Real flow exercised here: the SDK source loads, every built-in plugin's
 ``index.js`` runs, and the resulting view registry covers every
@@ -93,7 +93,7 @@ def test_no_render_time_namespace_violations(shim_output: dict[str, Any]) -> Non
     loaded. The shim tracks every load-time read of mb.builtins.<X>;
     a read that resolved to undefined is a foot-gun (the consumer will
     explode the moment it tries to use the value). See
-    metabrowser-plugins.md → "Render-time-only namespace rule".
+    docs/plugins.md → "Render-time-only namespace rule".
     """
     violations = shim_output.get("namespace_violations", [])
     assert violations == [], (

@@ -63,7 +63,7 @@ class FileNode(TypedDict, total=False):
     # Conditional fields (server emits when applicable):
     logical_ext: str
     compressed: bool
-    compression: str
+    compression: Literal["gzip", "zlib"]
     gitignored: bool
 
 

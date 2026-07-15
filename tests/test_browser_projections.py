@@ -1,4 +1,4 @@
-"""Tests for the MtimeCache projection façades (P1.1).
+"""Tests for the MtimeCache projection facades.
 
 Each façade caches the result of a heavy compute keyed by the
 file's mtime fingerprint. Tests verify:

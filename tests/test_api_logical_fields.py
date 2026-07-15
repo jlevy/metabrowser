@@ -11,9 +11,11 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import struct
 from pathlib import Path
 from typing import Any
 
+from metabrowser import jsonl_view
 from metabrowser import server as proc_browser
 
 # Real JSONL events so the parser branch produces a meaningful response,
@@ -135,6 +137,70 @@ def test_api_file_gzipped_text_honors_logical_byte_window(tmp_path: Path) -> Non
     assert body["content_bytes"] == limit
     assert body["bytes_read"] == offset + limit
     assert body["content_truncated"] is True
+
+
+def test_api_file_gzip_preview_does_not_trust_forged_isize(tmp_path: Path) -> None:
+    payload = b"x" * (proc_browser._TEXT_PREVIEW_CHUNK_BYTES + 32)
+    compressed = bytearray(gzip.compress(payload))
+    compressed[-4:] = (1).to_bytes(4, "little")
+    (tmp_path / "forged.txt.gz").write_bytes(compressed)
+    proc_browser._set_root_dir(tmp_path)
+
+    body = _call_file("forged.txt.gz")
+    assert body["type"] == "text"
+    assert body["content_bytes"] == proc_browser._TEXT_PREVIEW_CHUNK_BYTES
+    assert body["content_truncated"] is True
+
+
+def test_api_file_jsonl_parse_does_not_trust_forged_gzip_isize(tmp_path: Path, monkeypatch) -> None:
+    payload = b'{"type":"result","subtype":"success"}\n' * 4
+    compressed = bytearray(gzip.compress(payload))
+    compressed[-4:] = (1).to_bytes(4, "little")
+    (tmp_path / "forged.jsonl.gz").write_bytes(compressed)
+    monkeypatch.setattr(jsonl_view, "_JSONL_PARSE_MAX_BYTES", 64)
+    proc_browser._set_root_dir(tmp_path)
+
+    body = _call_file("forged.jsonl.gz")
+
+    assert body["type"] == "error"
+    assert "decompressed content exceeds 64 bytes" in body["error"]
+
+
+def test_api_file_rejects_forged_large_gzip_preview_offset(tmp_path: Path) -> None:
+    source = tmp_path / "forged.txt.gz"
+    with gzip.open(source, "wb") as fh:
+        fh.write(b"small payload\n")
+    encoded = source.read_bytes()
+    source.write_bytes(encoded[:-4] + struct.pack("<I", 0xF0000000))
+    proc_browser._set_root_dir(tmp_path)
+
+    response = asyncio.run(
+        proc_browser.api_file(  # pyright: ignore[reportArgumentType]
+            _FakeRequest(path=source.name, offset=str(64 * 1024 * 1024), limit="1")
+        )
+    )
+    body = json.loads(bytes(response.body).decode())
+
+    assert response.status_code == 416
+    assert body["max_offset"] == proc_browser._TEXT_PREVIEW_MAX_CHUNK_BYTES
+
+
+def test_api_file_keeps_random_access_for_large_uncompressed_text(tmp_path: Path) -> None:
+    offset = proc_browser._TEXT_PREVIEW_MAX_CHUNK_BYTES + 11
+    source = tmp_path / "large.txt"
+    source.write_bytes(b"x" * offset + b"tail")
+    proc_browser._set_root_dir(tmp_path)
+
+    response = asyncio.run(
+        proc_browser.api_file(  # pyright: ignore[reportArgumentType]
+            _FakeRequest(path=source.name, offset=str(offset), limit="4")
+        )
+    )
+    body = json.loads(bytes(response.body).decode())
+
+    assert response.status_code == 200
+    assert body["type"] == "text_chunk"
+    assert body["content"] == "tail"
 
 
 def test_api_file_truncated_gzip_degrades_to_binary(tmp_path: Path) -> None:

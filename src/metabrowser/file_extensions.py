@@ -16,12 +16,11 @@ Three independent sets, each scoped to one decision:
   watches for live writes. Kept tight because every entry costs one
   ``stat()`` per poll on the candidate-discovery walk; only formats
   an active process commonly appends to at runtime belong here. Notably
-  excludes ``.gz`` (write-once-sealed) and source code (not produced
+  excludes compressed artifacts (write-once-sealed) and source code (not produced
   at runtime).
 
-Any supported extension remains browsable when gzipped. The browser's
-``ArtifactPath`` layer routes ``*.gz`` files through transparent text or
-binary passthrough handling.
+Any supported extension remains browsable through gzip or zlib compression.
+The browser's ``ArtifactPath`` layer provides transparent bounded reads.
 """
 
 from __future__ import annotations
@@ -90,8 +89,8 @@ BROWSER_IMAGE_EXTS: frozenset[str] = frozenset(
 
 # Extensions the activity tracker watches for live writes. Keep tight:
 # every entry costs a stat() per poll on the candidate discovery walk,
-# and only formats active processes commonly append to belong here. ``.gz``
-# is deliberately excluded because compressed artifacts are normally sealed.
+# and only formats active processes commonly append to belong here. Compression
+# suffixes are deliberately excluded because compressed artifacts are sealed.
 BROWSER_TRACKABLE_EXTS: frozenset[str] = frozenset(
     {
         ".jsonl",

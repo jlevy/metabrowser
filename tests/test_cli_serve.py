@@ -74,10 +74,14 @@ def test_rewrite_bare_form_passes_through_empty() -> None:
 
 def test_cli_help_works() -> None:
     result = runner.invoke(_app, ["--help"])
+    output = _plain_output(result)
+    compact_output = " ".join(output.split())
     assert result.exit_code == 0
-    assert "serve" in result.output
-    assert "plugins" in result.output
-    assert "remote" in result.output
+    assert "serve" in output
+    assert "plugins" in output
+    assert "remote" in output
+    assert "metab ./path/to/artifacts" in compact_output
+    assert "metab serve ./path/to/artifacts --no-open" in compact_output
 
 
 def test_cli_empty_command_shows_help_instead_of_serving_default_root() -> None:

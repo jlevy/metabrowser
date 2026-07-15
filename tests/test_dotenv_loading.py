@@ -1,6 +1,6 @@
 """``.env`` / ``.env.local`` files are honored by the `metab` CLI bootstrap.
 
-Phase 4: the trust cut moved MetaBrowser plugin discovery to opt-in.
+Plugin discovery is operator-opt-in at the trust boundary.
 Operators name plugin parents via ``--plugins-dir`` flags or set
 ``METABROWSER_PLUGINS_DIRS`` in ``.env`` / ``.env.local``.
 

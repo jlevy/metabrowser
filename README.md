@@ -44,6 +44,14 @@ metab plugins --help
 
 See [installation](docs/installation.md) for uv setup and upgrade instructions.
 
+To run an unreleased source checkout, install its exact locks and invoke the local
+environment without resolving them again:
+
+```shell
+make install
+uv --config-file uv.toml run --frozen metab ./path/to/artifacts
+```
+
 ## What MetaBrowser Opens
 
 Built-in plugins provide views for:
@@ -53,6 +61,10 @@ Built-in plugins provide views for:
 - coding-agent JSONL logs and generic JSONL streams
 - text, source code, images, and binary-file metadata
 - generic chart summaries for supported agent logs
+
+Gzip and zlib variants of supported artifacts open transparently with bounded
+decompression. Format-specific binary stores belong in separately installed plugins,
+keeping native readers out of the core package.
 
 Large trees are indexed in the background.
 The first preview does not wait for a full recursive crawl, and filesystem events update
@@ -147,8 +159,8 @@ make format
 make verify
 ```
 
-`make verify` runs formatting, lint, type checks, tests, locked dependency audits,
-source and wheel builds, artifact inspection, and isolated installed-wheel smoke tests.
+`make verify` checks formatting, lint, types, tests, locked dependency audits, source
+and wheel builds, artifact inspection, and isolated installed-wheel smoke tests.
 See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 ## Documentation

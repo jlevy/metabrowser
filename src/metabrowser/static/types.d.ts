@@ -51,6 +51,7 @@ type MetabrowserPerf = {
 };
 
 type MetabrowserChartRuntime = {
+  dispose(): void;
   renderPayload(container: HTMLElement, chartData: MetabrowserPluginData): unknown;
 };
 

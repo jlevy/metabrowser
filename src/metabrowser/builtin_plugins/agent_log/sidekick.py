@@ -8,7 +8,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from metabrowser.charts import extract_agent_charts
-from metabrowser.gz_io import ArtifactPath
+from metabrowser.gz_io import ArtifactDecompressionLimitError, ArtifactPath
+from metabrowser.jsonl_view import JsonlParseLimitError
 
 
 async def charts_handler(request: Request) -> JSONResponse:
@@ -24,6 +25,8 @@ async def charts_handler(request: Request) -> JSONResponse:
 
     try:
         payload = await asyncio.to_thread(extract_agent_charts, target)
+    except (ArtifactDecompressionLimitError, JsonlParseLimitError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=413)
     except (OSError, TypeError, ValueError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
     return JSONResponse(payload)

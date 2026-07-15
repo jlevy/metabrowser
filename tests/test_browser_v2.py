@@ -22,7 +22,7 @@ from typing import Any, cast
 from metabrowser import server as proc_browser
 from metabrowser import sse
 from metabrowser.charts import _CHARTS_CACHE, extract_agent_charts
-from metabrowser.sse import _tail_jsonl
+from metabrowser.sse import _bound_pending_line, _read_slice, _tail_jsonl
 
 
 class _FakeHeaders:
@@ -289,6 +289,207 @@ def test_api_file_large_text_chunk_ignores_matching_etag(tmp_path: Path) -> None
 # ── SSE tail (sse.py) ──────────────────────────────────────────
 
 
+def test_sse_read_slice_uses_byte_offsets_for_utf8(tmp_path: Path) -> None:
+    log = tmp_path / "events.jsonl"
+    payload = "α🙂中\nnext\n".encode()
+    log.write_bytes(payload)
+
+    first_line_end = payload.index(b"\n") + 1
+    assert _read_slice(log, 0, first_line_end) == "α🙂中\n".encode()
+    assert _read_slice(log, first_line_end, len(payload)) == b"next\n"
+
+
+def test_sse_pending_line_buffer_stays_bounded_across_batches() -> None:
+    pending = b""
+    dropping = False
+    for _ in range(100):
+        pending, dropping = _bound_pending_line(pending + b"abcdefg", dropping, max_line_bytes=32)
+        assert len(pending) <= 32
+
+    assert dropping is True
+    assert pending == b""
+
+
+def test_sse_tail_preserves_utf8_split_across_byte_batches(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    log = tmp_path / "utf8.jsonl"
+    log.write_text(
+        json.dumps(
+            {
+                "type": "system",
+                "subtype": "init",
+                "model": "model🙂",
+                "session_id": "utf8",
+                "timestamp": "2026-04-24T12:00:00Z",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sse, "_MAX_BATCH_BYTES", 1)
+    monkeypatch.setattr(sse, "_TAIL_POLL_INTERVAL_S", 0)
+    monkeypatch.setattr(sse, "_ADAPTER_DETECTION_GRACE_S", 0)
+
+    async def collect_first_batch() -> bytes:
+        gen = _tail_jsonl(log, 0)
+        async with asyncio.timeout(2.0):
+            async for frame in gen:
+                if frame.startswith(b"event: append"):
+                    return frame
+        return b""
+
+    frame = asyncio.run(collect_first_batch())
+    payload_body: dict[str, Any] = json.loads(frame.split(b"\n", 2)[1][len(b"data: ") :])
+    assert payload_body["events"][0]["raw"]["model"] == "model🙂"
+
+
+def test_sse_cursor_acknowledges_only_complete_lines_and_resumes(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    first = json.dumps(
+        {
+            "type": "system",
+            "subtype": "init",
+            "model": "claude-opus-4-7",
+            "session_id": "resume",
+            "timestamp": "2026-04-24T12:00:00Z",
+        }
+    )
+    second = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "timestamp": "2026-04-24T12:00:01Z",
+        }
+    )
+    split_at = len(second) // 2
+    log = tmp_path / "resume.jsonl"
+    log.write_text(first + "\n" + second[:split_at])
+    monkeypatch.setattr(sse, "_TAIL_POLL_INTERVAL_S", 0)
+    monkeypatch.setattr(sse, "_ADAPTER_DETECTION_GRACE_S", 0)
+
+    async def first_connection() -> bytes:
+        async for frame in _tail_jsonl(log, 0):
+            if frame.startswith(b"event: append"):
+                return frame
+        return b""
+
+    first_frame = asyncio.run(first_connection())
+    first_payload: dict[str, Any] = json.loads(
+        next(
+            line[len(b"data: ") :]
+            for line in first_frame.splitlines()
+            if line.startswith(b"data: ")
+        )
+    )
+    expected_cursor = len((first + "\n").encode())
+    assert first_payload["cursor"] == expected_cursor
+    assert f"id: {expected_cursor}".encode() in first_frame.splitlines()
+
+    with log.open("a") as source:
+        source.write(second[split_at:] + "\n")
+
+    async def resumed_connection() -> bytes:
+        async for frame in _tail_jsonl(log, first_payload["cursor"]):
+            if frame.startswith(b"event: append"):
+                return frame
+        return b""
+
+    resumed_frame = asyncio.run(resumed_connection())
+    resumed_payload: dict[str, Any] = json.loads(
+        next(
+            line[len(b"data: ") :]
+            for line in resumed_frame.splitlines()
+            if line.startswith(b"data: ")
+        )
+    )
+    assert len(resumed_payload["events"]) == 1
+    assert resumed_payload["events"][0]["kind"] == "result"
+
+
+def test_sse_initial_cursor_rewinds_from_partial_eof(tmp_path: Path, monkeypatch: Any) -> None:
+    first = json.dumps(
+        {
+            "type": "system",
+            "subtype": "init",
+            "model": "claude-opus-4-7",
+            "session_id": "partial-eof",
+            "timestamp": "2026-04-24T12:00:00Z",
+        }
+    )
+    second = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "timestamp": "2026-04-24T12:00:01Z",
+        }
+    )
+    split_at = len(second) // 2
+    log = tmp_path / "partial-eof.jsonl"
+    log.write_text(first + "\n" + second[:split_at])
+    partial_eof = log.stat().st_size
+    monkeypatch.setattr(sse, "_TAIL_POLL_INTERVAL_S", 0.01)
+
+    async def collect_after_completion() -> bytes:
+        async def finish_line() -> None:
+            await asyncio.sleep(0.05)
+            with log.open("a") as source:
+                source.write(second[split_at:] + "\n")
+
+        writer = asyncio.create_task(finish_line())
+        try:
+            async for frame in _tail_jsonl(log, partial_eof):
+                if frame.startswith(b"event: append"):
+                    return frame
+        finally:
+            await writer
+        return b""
+
+    frame = asyncio.run(collect_after_completion())
+    payload: dict[str, Any] = json.loads(
+        next(line[len(b"data: ") :] for line in frame.splitlines() if line.startswith(b"data: "))
+    )
+    assert len(payload["events"]) == 1
+    assert payload["events"][0]["kind"] == "result"
+
+
+def test_api_stream_prefers_last_event_id_on_reconnect(tmp_path: Path, monkeypatch: Any) -> None:
+    log = tmp_path / "events.jsonl"
+    log.write_text("{}\n")
+    observed: list[int] = []
+
+    async def fake_tail(_path: Path, cursor: int):
+        observed.append(cursor)
+        yield b": done\n\n"
+
+    monkeypatch.setattr(sse, "_tail_jsonl", fake_tail)
+    proc_browser._set_root_dir(tmp_path)
+
+    async def consume_response() -> None:
+        response = await sse.api_stream(
+            cast(
+                Any,
+                _FakeRequest(
+                    {"path": "events.jsonl", "cursor": "3"},
+                    {"Last-Event-ID": "17"},
+                ),
+            )
+        )
+        async for _chunk in cast(Any, response).body_iterator:
+            pass
+
+    try:
+        asyncio.run(consume_response())
+    finally:
+        proc_browser._set_root_dir(Path())
+
+    assert observed == [17]
+
+
 def test_sse_tail_emits_append_for_appended_lines(tmp_path: Path) -> None:
     """Drive the async generator directly; write 20 lines so the
     detection threshold trips, then assert an ``append`` frame fires."""
@@ -501,7 +702,7 @@ def test_browser_perf_reports_large_file_render_phases() -> None:
     """Large-file diagnosis needs separate client timings for body parse,
     HTML generation/mounting, and syntax highlighting. The renderer-side
     perf labels migrated with the renderers into per-plugin index.js
-    files (Phase 3c-3f); the shell-level timings still live in app.js.
+    files; the shell-level timings still live in app.js.
     """
     app_js = proc_browser.STATIC_DIR.joinpath("app.js").read_text()
     perf_js = proc_browser.STATIC_DIR.joinpath("perf.js").read_text()

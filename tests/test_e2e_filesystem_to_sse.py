@@ -212,7 +212,7 @@ def test_mkdir_with_files_runs_rewalk_and_emits_upserts(tmp_path: Path) -> None:
 
     _build_tree(tmp_path)
 
-    async def _run() -> set[str]:
+    async def _run() -> tuple[set[str], tuple[int | None, int | None]]:
         await _drive_walker(tmp_path)
         inv = get_instance()
 
@@ -232,13 +232,17 @@ def test_mkdir_with_files_runs_rewalk_and_emits_upserts(tmp_path: Path) -> None:
                 for op in evt.ops:
                     if isinstance(op, FsUpsert):
                         upsert_paths.add(op.entry.path)
-        return upsert_paths
+        root = inv.get("")
+        assert root is not None
+        return upsert_paths, (root.total_files, root.total_size)
 
-    upserts = asyncio.run(_run())
+    upserts, root_totals = asyncio.run(_run())
+    assert "" in upserts
     assert "newdir" in upserts
     assert "newdir/x.txt" in upserts
     assert "newdir/nested" in upserts
     assert "newdir/nested/y.txt" in upserts
+    assert root_totals == (4, 180)
 
 
 def test_rm_file_emits_fs_remove(tmp_path: Path) -> None:
@@ -248,7 +252,7 @@ def test_rm_file_emits_fs_remove(tmp_path: Path) -> None:
 
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[set[str], bool]:
+    async def _run() -> tuple[set[str], bool, tuple[int | None, int | None], bool]:
         await _drive_walker(tmp_path)
         inv = get_instance()
 
@@ -258,18 +262,25 @@ def test_rm_file_emits_fs_remove(tmp_path: Path) -> None:
         await _emit_for_path(inv, tmp_path, str(target), Change.deleted)
 
         removed: set[str] = set()
+        root_upserted = False
         while not sub_q.empty():
             evt = sub_q.get_nowait()
             if isinstance(evt, FsChange):
                 for op in evt.ops:
                     if isinstance(op, FsRemove):
                         removed.add(op.path)
+                    elif op.entry.path == "":
+                        root_upserted = True
         in_index = "file_a.log" in inv._entries
-        return removed, in_index
+        root = inv.get("")
+        assert root is not None
+        return removed, in_index, (root.total_files, root.total_size), root_upserted
 
-    removed, in_index = asyncio.run(_run())
+    removed, in_index, root_totals, root_upserted = asyncio.run(_run())
     assert "file_a.log" in removed
     assert in_index is False
+    assert root_totals == (1, 100)
+    assert root_upserted is True
 
 
 def test_rm_directory_coalesces_descendants_into_one_fs_change(tmp_path: Path) -> None:

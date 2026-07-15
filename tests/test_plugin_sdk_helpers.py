@@ -1,4 +1,4 @@
-"""Phase 3b — promoted shared rendering helpers must be on window.metabrowser.
+"""Shared rendering helpers must stay on ``window.metabrowser``.
 
 Helpers moved from app.js into plugin_sdk.js so the built-in plugins
 (and any external plugin) can call them via ``mb.<helper>(...)``

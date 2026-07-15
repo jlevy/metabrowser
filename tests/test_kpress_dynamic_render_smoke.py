@@ -145,6 +145,26 @@ def test_dynamic_render_includes_theme_and_doc_chrome(served_root: Path) -> None
     assert 'class="kpress kpress-doc kpress-print-surface"' in html
 
 
+def test_dynamic_render_sanitizes_untrusted_worktree_markup(served_root: Path) -> None:
+    source = served_root / "docs" / "unsafe.md"
+    source.write_text(
+        """# Unsafe
+
+<script>window.pwned = true</script>
+<a href="javascript:alert(1)" onclick="alert(2)">link</a>
+<img src="https://example.com/image.png" onerror="alert(3)">
+""",
+        encoding="utf-8",
+    )
+
+    html = _render({"path": "docs/unsafe.md", "view": "rendered"})["html"].lower()
+
+    assert "<script" not in html
+    assert "javascript:" not in html
+    assert "onclick=" not in html
+    assert "onerror=" not in html
+
+
 def test_dynamic_render_emits_table_code_and_footnote_wrappers(served_root: Path) -> None:
     """Common Markdown features should round-trip with the wrappers our CSS
     relies on. If any of these vanish, manual browser review would just see

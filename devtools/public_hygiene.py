@@ -36,8 +36,37 @@ BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(r"\bdocs/(?:general|project)/|\bplan-20\d{2}-", re.IGNORECASE),
     ),
     ("private pull-request reference", re.compile(r"\bPR[- ]?#?\d+\b", re.IGNORECASE)),
-    ("private home path", re.compile(r"/(?:Users|home)/[^/\s]+/")),
+    ("private home path", re.compile(r"/(?:Users|home)/[^/\s]+(?=/|\s|$)")),
+    (
+        "dangling legacy documentation name",
+        re.compile(
+            r"browser-smoke\.playbook\.md|"
+            r"realtime-debugging\.runbook\.md|"
+            r"metabrowser-plugins\.md|"
+            r"(?<!/)kpress-design\.md"
+        ),
+    ),
 )
+STALE_IMPLEMENTATION_MARKER_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_.])P\d+(?:\.\d+)*\b|"
+    r"(?i:\b(?:pre-)?phase\s+\d+(?:[A-Za-z]|\.\d+|/\d+)*\b)|"
+    r"(?i:\borigin/main\b)|"
+    r"(?i:\bdesign-system consolidation plan\b)|"
+    r"(?i:\bfollow-up spec\b)"
+)
+
+
+def _is_implementation_source(source: str) -> bool:
+    normalized = source.replace("\\", "/").lstrip("./")
+    if normalized.endswith("tests/test_public_hygiene.py"):
+        # This test module contains the marker strings as deliberate fixtures.
+        return False
+    return (
+        normalized.startswith("metabrowser/")
+        or "/src/metabrowser/" in f"/{normalized}"
+        or normalized.startswith("tests/")
+        or "/tests/" in f"/{normalized}"
+    )
 
 
 def _git_ignored(paths: list[Path]) -> set[Path]:
@@ -110,6 +139,10 @@ def find_hygiene_findings(source: str, text: str) -> list[str]:
         for match in pattern.finditer(text):
             line = text.count("\n", 0, match.start()) + 1
             findings.append(f"{source}:{line}: {label}")
+    if _is_implementation_source(source):
+        for match in STALE_IMPLEMENTATION_MARKER_PATTERN.finditer(text):
+            line = text.count("\n", 0, match.start()) + 1
+            findings.append(f"{source}:{line}: stale implementation-plan marker")
     return findings
 
 

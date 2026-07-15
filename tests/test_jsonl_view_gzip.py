@@ -8,9 +8,16 @@ size. A 1 MB ``.jsonl.gz`` whose decompressed payload is 10 MB is the
 
 from __future__ import annotations
 
+import asyncio
 import gzip
+import json
+import zlib
 from pathlib import Path
 
+import pytest
+
+from metabrowser import jsonl_view, server
+from metabrowser.builtin_plugins.agent_log.sidekick import charts_handler
 from metabrowser.charts import _cache_key, extract_agent_charts
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.jsonl_view import _LARGE_FILE_BYTES, _parse_jsonl_file
@@ -86,20 +93,14 @@ def test_parse_jsonl_file_uses_logical_size_for_large_file_gate(tmp_path: Path) 
     assert result["bytes_read"] == artifact.logical_size
 
 
-def test_charts_cache_key_uses_logical_size(tmp_path: Path) -> None:
-    """A ``.gz`` and its plain twin (with identical content) get
-    *different* cache keys (different paths, different mtime), but each
-    key embeds the logical size — verifying the size component is the
-    decompressed length, not the disk length, for the .gz."""
+def test_charts_cache_key_uses_safe_disk_fingerprint(tmp_path: Path) -> None:
     plain, gz = _make_pair(tmp_path, n_events=20)
     plain_key = _cache_key("agent", ArtifactPath(plain))
     gz_key = _cache_key("agent", ArtifactPath(gz))
     assert plain_key is not None
     assert gz_key is not None
-    # The size field of the key is the same for both — content-equivalent
-    # files should hash on the same logical size, even though disk sizes
-    # diverge.
-    assert plain_key[3] == gz_key[3]
+    assert plain_key[3] == plain.stat().st_size
+    assert gz_key[3] == gz.stat().st_size
 
 
 def test_extract_agent_charts_handles_gzip(tmp_path: Path) -> None:
@@ -112,3 +113,36 @@ def test_extract_agent_charts_handles_gzip(tmp_path: Path) -> None:
     # assert the contract holds.
     assert "summary" in result
     assert "charts" in result
+
+
+class _Params:
+    def __init__(self, path: str) -> None:
+        self._path = path
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._path if key == "path" else default
+
+
+class _Request:
+    def __init__(self, path: str) -> None:
+        self.query_params = _Params(path)
+
+
+def test_charts_endpoint_rejects_gzip_and_zlib_over_actual_decoded_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = (json.dumps({"type": "result", "subtype": "success"}) + "\n").encode() * 4
+    gzip_bytes = bytearray(gzip.compress(payload))
+    gzip_bytes[-4:] = (1).to_bytes(4, "little")
+    (tmp_path / "forged.jsonl.gz").write_bytes(gzip_bytes)
+    (tmp_path / "large.jsonl.zlib").write_bytes(zlib.compress(payload))
+    monkeypatch.setattr(jsonl_view, "_JSONL_PARSE_MAX_BYTES", 64)
+    server._set_root_dir(tmp_path)
+
+    for name in ("forged.jsonl.gz", "large.jsonl.zlib"):
+        response = asyncio.run(
+            charts_handler(_Request(name))  # pyright: ignore[reportArgumentType]
+        )
+        assert response.status_code == 413
+        body = json.loads(bytes(response.body))
+        assert "64" in body["error"]

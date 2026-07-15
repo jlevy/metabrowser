@@ -27,14 +27,13 @@ jobs:
         with:
           version: "0.11.25"
           checksum: "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
-          enable-cache: true
+          enable-cache: false
           python-version: "3.13"
 
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24.18.0"
-          cache: "npm"
 
       - name: Set up Python
         run: uv python install
@@ -51,7 +50,7 @@ jobs:
             exit 1
           fi
           expected="${RELEASE_TAG#v}"
-          actual="$(uv run python -c 'import metabrowser; print(metabrowser.__version__)')"
+          actual="$(uv run --frozen python -c 'import metabrowser; print(metabrowser.__version__)')"
           if [ "$actual" != "$expected" ]; then
             printf 'Release version mismatch: expected %s from tag %s, got %s\n' \
               "$expected" "$RELEASE_TAG" "$actual" >&2

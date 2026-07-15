@@ -31,9 +31,8 @@
         )
       );
     }
-    // .md source: split frontmatter so each side highlights with the
-    // appropriate language (yaml + markdown), matching the previous
-    // shell behaviour.
+    // Split frontmatter so YAML and Markdown use their respective
+    // highlighters.
     const content = data.content || "";
     if (content.startsWith("---\n") || content.startsWith("---\r\n")) {
       let fmEnd = content.indexOf("\n---\n", 4);

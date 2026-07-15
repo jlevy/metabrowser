@@ -81,7 +81,7 @@ jobs:
         run: make install
 
       - name: Run tests
-        run: uv run pytest
+        run: make test
 
   distribution:
     runs-on: ubuntu-latest

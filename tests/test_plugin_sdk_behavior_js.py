@@ -12,8 +12,9 @@ contracts that source-string tests can't validate:
 3. A non-ok fetch response rejects with an ``err.status`` and an
    ``err.payload`` carrying the server diagnostic.
 4. Failed stylesheet, script, and TOC module loads can be retried.
-5. Cached stylesheets settle when the browser exposes ``link.sheet`` without
-   dispatching a load event.
+    5. Cached stylesheets settle when the browser exposes ``link.sheet`` without
+       dispatching a load event.
+    6. Auxiliary asset failures preserve an already-rendered document payload.
 """
 
 from __future__ import annotations
@@ -50,3 +51,4 @@ def test_plugin_sdk_behavior_contracts() -> None:
     assert payload["errorProp"]["ok"] is True, payload["errorProp"]
     assert payload["assetRetry"]["ok"] is True, payload["assetRetry"]
     assert payload["cachedStylesheet"]["ok"] is True, payload["cachedStylesheet"]
+    assert payload["assetFailureFallback"]["ok"] is True, payload["assetFailureFallback"]

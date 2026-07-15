@@ -1,5 +1,4 @@
-"""Structural tests for the FileStore + EventSource client wiring
-(P1.8 + P1.13).
+"""Structural tests for the FileStore and EventSource client wiring.
 
 Follows the test_browser_v2.py convention: parse the static
 ``app.js`` source as text and assert specific structural
@@ -262,6 +261,23 @@ def test_apply_cell_patch_skips_root_entry() -> None:
     fn_block = js[fn_start : fn_start + 600]
     assert "if (!entry.path)" in fn_block
     assert fn_block.index("if (!entry.path)") < fn_block.index("entry.path.replace")
+
+
+def test_root_entry_refreshes_summary_and_tooltip_before_row_guard() -> None:
+    js = _read_app_js()
+    helper_start = js.index("function updateRootAggregatePresentation(entry)")
+    helper_block = js[helper_start : helper_start + 1800]
+    assert 'queryHtml(".tree-summary-count")' in helper_block
+    assert 'queryHtml(".tree-summary-size")' in helper_block
+    assert 'queryHtml(".header-path")' in helper_block
+    assert "countHtml(totalFiles)" in helper_block
+    assert "sizeHtml(totalSize)" in helper_block
+    assert "pathEl.dataset.tipFiles" in helper_block
+    assert "pathEl.dataset.tipSize" in helper_block
+
+    patch_start = js.index("function applyCellPatch(entry)")
+    patch_block = js[patch_start : patch_start + 700]
+    assert patch_block.index("updateRootAggregatePresentation(entry)") < patch_block.index("return")
 
 
 # ── DOMContentLoaded ──────────────────────────────────────────

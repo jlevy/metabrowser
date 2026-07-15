@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -86,3 +87,19 @@ def test_unknown_jsonl_gets_default_log_view(tmp_path: Path) -> None:
     result = _api_file("agent.jsonl")
     assert result["kind"] == "unknown-jsonl"
     assert [v["id"] for v in result["views"] if v.get("default")] == ["log"]
+
+
+def test_plugin_classification_runs_off_the_request_event_loop(tmp_path: Path, monkeypatch) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "data.json").write_text('{"schema":"example"}\n')
+    request_thread = threading.get_ident()
+    classifier_threads: list[int] = []
+
+    def _classify(*_args: Any, **_kwargs: Any) -> str:
+        classifier_threads.append(threading.get_ident())
+        return "text"
+
+    monkeypatch.setattr(server, "_classify_with_plugins", _classify)
+    _api_file("data.json")
+    assert classifier_threads
+    assert classifier_threads[0] != request_thread
