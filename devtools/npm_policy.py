@@ -202,8 +202,8 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         raise RuntimeError("Biome legacy exceptions must match the reviewed file-scoped baseline")
 
     uv_toml = tomllib.loads((root / "uv.toml").read_text(encoding="utf-8"))
-    if uv_toml.get("required-version") != ">=0.11.21":
-        raise RuntimeError("uv.toml must preserve the reviewed uv version floor")
+    if uv_toml.get("required-version") != f">={UV_VERSION}":
+        raise RuntimeError(f"uv.toml must require uv >={UV_VERSION}")
     if uv_toml.get("exclude-newer") != "14 days":
         raise RuntimeError("uv.toml must preserve the 14-day cool-off")
     expected_exceptions = {

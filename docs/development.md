@@ -7,7 +7,7 @@ tests.
 
 ## Set Up
 
-Install uv 0.11.21 or newer using the
+Install uv 0.11.26 or newer using the
 [official uv instructions](https://docs.astral.sh/uv/getting-started/installation/),
 install Node 24.18.0 or a newer Node 24 release with npm 11.10 or newer, clone the
 repository, and run:
