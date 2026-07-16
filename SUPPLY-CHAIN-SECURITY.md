@@ -52,16 +52,20 @@ Changing either version requires a new review and an updated rationale.
 The copied agent-skill instructions name exact `get-tbd@0.4.0` bootstrap commands.
 Those commands are operator-invoked documentation for installing this repository’s issue
 tracker; no build, hook, CI, test, or publishing path executes them.
-The package-policy check rejects moving `@latest` references and enforces this exact
-bootstrap version until it is deliberately reviewed.
+The skill files own that reviewed version and must be updated deliberately.
 
 ## Verification
 
-`devtools/npm_policy.py` checks the repository configuration, exact KPress dependency,
-Python and JavaScript lockfile sources and integrity fields, Node and npm requirements,
-full-SHA action pins, and release-workflow controls.
-`make lint-check` runs that policy together with public-hygiene, formatting, lint, and
-type checks.
+`devtools/check_supply_chain.py` checks only safeguards that span configuration files:
+npm safety settings, exact direct npm specifications, npm registry and integrity data,
+the uv cool-off, matching nvm and fnm versions, full-SHA action references, and trusted
+publishing controls.
+
+The configuration files own dependency versions, build behavior, lint and type ratchets,
+workflows, and documentation.
+`make verify` installs both locks, runs the configured linters and type checkers,
+executes the tests and audits, builds the package, inspects its contents, and exercises
+the installed wheel and plugin surface.
 
 CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
 lock.

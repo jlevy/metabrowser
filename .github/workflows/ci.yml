@@ -39,14 +39,8 @@ jobs:
       - name: Set up Python
         run: uv python install
 
-      - name: Install locked dependencies
-        run: make install
-
-      - name: Run quality gates
-        run: make lint-check
-
-      - name: Audit locked dependencies
-        run: make audit
+      - name: Run quality gates and audits
+        run: make lint-check audit
 
   test:
     strategy:
@@ -77,9 +71,6 @@ jobs:
       - name: Set up Python
         run: uv python install
 
-      - name: Install locked dependencies
-        run: make install
-
       - name: Run tests
         run: make test
 
@@ -108,9 +99,6 @@ jobs:
 
       - name: Set up Python
         run: uv python install
-
-      - name: Install locked dependencies
-        run: make install
 
       - name: Validate source and wheel distributions
         run: make build

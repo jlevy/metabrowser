@@ -16,12 +16,12 @@ pre-commit:
 
     biome:
       glob: "*.{js,css,json}"
-      run: uv --config-file uv.toml run --frozen python -m devtools.biome check --write --unsafe --no-errors-on-unmatched {staged_files}
+      run: make biome-fix STAGED_FILES="{staged_files}"
       stage_fixed: true
 
     browser-types:
       glob: "*.{js,ts}"
-      run: uv --config-file uv.toml run --frozen python -m devtools.tsc_check
+      run: make browser-types
 
     codespell:
       glob: "*.{py,md}"
@@ -34,11 +34,6 @@ pre-commit:
       stage_fixed: true
 
 pre-push:
-  parallel: true
   commands:
-    package-policy:
-      run: uv --config-file uv.toml run --frozen python devtools/npm_policy.py
-    public-hygiene:
-      run: uv --config-file uv.toml run --frozen python devtools/public_hygiene.py
-    tests:
-      run: uv --config-file uv.toml run --frozen pytest -q
+    quality:
+      run: make lint-check test

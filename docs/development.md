@@ -67,8 +67,12 @@ uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_c
 uv --config-file uv.toml run --frozen metab serve ./tests/manual-fixtures --no-open
 ```
 
-`make lint` applies the ordinary auto-fixes and then runs policy and public-hygiene
-checks. `make verify` is the handoff standard before a pull request or release.
+The quality, test, audit, and build targets install both locked environments before
+running. Make keeps these stages ordered even when invoked with parallel jobs.
+
+`make lint` applies the ordinary auto-fixes and then runs supply-chain and
+public-hygiene checks.
+`make verify` is the handoff standard before a pull request or release.
 It also audits both locked dependency graphs.
 Its artifact gate rejects local environments, build trees, and repository-only metadata
 before an isolated wheel smoke test exercises the installed `metab` command and
@@ -93,9 +97,16 @@ JavaScript tool change.
 Do not add requirements files, Poetry, or another environment manager.
 
 Every direct runtime requirement declares the minimum version covered by the frozen
-release graph. When a direct runtime package is upgraded, update its floor and the
-reviewed runtime requirement set in `devtools/npm_policy.py` together, then run the
-complete release gate.
+release graph. `pyproject.toml` owns those requirements, while `uv.lock` records the
+resolved graph. Update both through uv and run the complete release gate after a
+dependency change.
+
+Configuration files own their respective tool versions, entry points, lint and type
+ratchets, and build behavior.
+The verification gate proves those settings by running the locked tools, tests, audits,
+build, distribution inspection, and installed-wheel smoke tests.
+`devtools/check_supply_chain.py` adds only the cross-file safety checks that those tools
+do not provide.
 
 KPress is an exact runtime dependency because its Python and browser rendering contract
 is part of the MetaBrowser release surface.

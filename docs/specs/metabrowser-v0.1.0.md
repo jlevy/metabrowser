@@ -106,8 +106,8 @@ Connect trusted publishing without a package token.
 - [x] Simplify the README around `uvx metabrowser`, the globally installed `metab`
   command, plugin discovery, and command help; publish the L1 Agent Skill at
   `skills/metabrowser/SKILL.md` with a pinned `uvx metabrowser@0.1.0` runner
-- [x] Add CI, tag-driven publishing, artifact inspection, and a package policy that
-  enforces the reviewed runtime floors and exact KPress compatibility pin
+- [x] Add CI, tag-driven publishing, artifact inspection, behavioral release gates, and
+  focused cross-file supply-chain checks
 - [x] Align Python and JavaScript quality gates with KPress and tbd guidance using
   strict BasedPyright, correctness-oriented Ruff rules, recommended Biome rules, strict
   TypeScript check-JS, exact npm locks, Lefthook, and SHA-pinned actions
@@ -182,10 +182,10 @@ pending.
 
 ## Testing Strategy
 
-- Run Ruff, BasedPyright, codespell, npm policy, Biome, TypeScript check-JS, Flowmark,
-  and public-hygiene checks
-- Require the package-policy check to reject missing, weakened, or unreviewed direct
-  runtime requirements
+- Run Ruff, BasedPyright, codespell, Biome, TypeScript check-JS, Flowmark, focused
+  supply-chain checks, and public-hygiene checks
+- Keep version floors and ratchets in their owning configuration files and prove them by
+  running the locked tools instead of mirroring project configuration in custom code
 - Install Python and JavaScript tooling from committed locks, run JavaScript tools with
   `npx --no-install`, and audit both frozen dependency graphs for known vulnerabilities
 - Run the full pytest and browser contract suites on every supported Python version
@@ -215,7 +215,7 @@ The complete local `make -j4 verify` gate passes on the release-candidate workin
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
 - The checked-in nvm and fnm version files select Node 24.18.0, and the Make targets use
-  repository-owned npm policy even when the host exports a conflicting cutoff
+  repository-owned `.npmrc` settings even when the host exports a conflicting cutoff
 - An isolated uv environment installs the wheel and exercises `metab`, the `metabrowser`
   compatibility alias, packaged assets, built-in plugins, and KPress rendering
 - A clean synthetic `v0.1.0` tag builds version `0.1.0` source and wheel distributions,

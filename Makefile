@@ -3,6 +3,8 @@
 # GitHub Actions use these targets so local and CI gates stay aligned.
 
 .DEFAULT_GOAL := default
+# Keep install and quality stages ordered even when callers pass `-j`.
+.NOTPARALLEL:
 
 # Safe default for every dependency resolution invoked through this Makefile.
 UV_EXCLUDE_NEWER ?= 14 days
@@ -28,12 +30,9 @@ unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
 # npm 11. Repository installs must use the reviewed .npmrc policy instead.
 unexport NPM_CONFIG_BEFORE
 
-.PHONY: default install hooks-install format format-markdown lint lint-check test audit lock upgrade build verify clean
+.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test audit lock upgrade build verify clean
 
-default: install
-	$(MAKE) SKIP_INSTALL=1 format
-	$(MAKE) SKIP_INSTALL=1 lint
-	$(MAKE) SKIP_INSTALL=1 test
+default: install format lint test
 
 install:
 	# --locked also asserts uv.lock matches pyproject.toml and uv.toml, so a
@@ -44,25 +43,24 @@ install:
 hooks-install: install
 	npx --no-install lefthook install
 
-# Top-level quality gates cannot start until both environments are installed
-# from their locks. The default target invokes its mutating format/lint/test
-# stages serially and tells those recursive makes that installation is complete.
-ifeq ($(SKIP_INSTALL),)
-format lint: | install
-lint-check test audit build: | install
-endif
+biome-fix:
+	npx --no-install biome check --write --unsafe --no-errors-on-unmatched $(STAGED_FILES)
+
+browser-types:
+	npx --no-install tsc --noEmit -p tsconfig.json
+	npx --no-install tsc --noEmit -p tsconfig.legacy.json
+
+format lint lint-check test audit build: | install
 
 lint:
-	$(UV_RUN) python devtools/lint.py
-	$(UV_RUN) python devtools/npm_policy.py
-	$(UV_RUN) python devtools/public_hygiene.py
+	$(UV_RUN) python -m devtools.lint
+	$(UV_RUN) python -m devtools.public_hygiene
+	$(UV_RUN) python -m devtools.check_supply_chain
 
 format:
 	$(MAKE) format-markdown
-	$(UV_RUN) ruff check --fix src tests devtools
 	$(UV_RUN) ruff format src tests devtools
-	# Locked wrappers invoke the exact tools in package-lock.json without fetching.
-	$(UV_RUN) python -m devtools.biome format --write \
+	npx --no-install biome format --write \
 		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom \
 		biome.json package.json tsconfig.json tsconfig.legacy.json
 
@@ -71,9 +69,9 @@ format-markdown:
 
 # Check-only lint, matching CI (does not modify files).
 lint-check:
-	$(UV_RUN) python devtools/lint.py --check
-	$(UV_RUN) python devtools/npm_policy.py
-	$(UV_RUN) python devtools/public_hygiene.py
+	$(UV_RUN) python -m devtools.lint --check
+	$(UV_RUN) python -m devtools.public_hygiene
+	$(UV_RUN) python -m devtools.check_supply_chain
 	$(FLOWMARK) --auto --check .
 
 test:
@@ -103,4 +101,5 @@ clean:
 	-rm -rf .ruff_cache/
 	-rm -rf .mypy_cache/
 	-rm -rf .venv/
+	-rm -rf node_modules/
 	-find . -type d -name "__pycache__" -exec rm -rf {} +
