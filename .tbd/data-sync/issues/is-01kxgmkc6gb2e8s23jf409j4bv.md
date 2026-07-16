@@ -5,7 +5,7 @@ title: Prepare MetaBrowser v0.1.0 standalone package
 kind: epic
 status: in_progress
 priority: 1
-version: 30
+version: 39
 labels:
   - release
 dependencies: []
@@ -30,11 +30,19 @@ child_order_hints:
   - is-01kxj87a53xs0p7rnwecgdsfkj
   - is-01kxj9abcx9a5cp05zq9vakm8b
   - is-01kxj9pbx9h88k8m1fn1qrd1pq
+  - is-01kxnvq16mbtsb3mqvbr7ch0a6
+  - is-01kxnvq1ep0v3a635pawwsc8gs
+  - is-01kxnvq1q524e5bh7nxjgbbf2j
+  - is-01kxnvq1y0qwm9p57jcj37q09b
+  - is-01kxnvq25p7jthk4c5q3y1wbg3
+  - is-01kxnww26n70vegt5rxxnn2kca
+  - is-01kxnww2f3ggbt0grdkf7spdt4
+  - is-01kxnww2qv3mt7v5j17059bwpc
 created_at: 2026-07-14T15:40:47.183Z
-updated_at: 2026-07-16T16:02:22.693Z
+updated_at: 2026-07-16T16:44:33.362Z
 ---
 Create a public-safe, MIT-licensed standalone MetaBrowser package with exact KPress integration, modern Python tooling, release automation, and complete validation.
 
 ## Notes
 
-Standalone extraction is merged. Release-readiness PR #3 is ready and mergeable at 6156c65 after the public Python sidekick API, Common Documentation Guidelines audit, and npm ambient-policy hardening. The final local gate passes 676 tests plus lint, strict types, Flowmark, public/document hygiene, dependency audits, distributions, and installed-wheel smoke tests. All five required GitHub jobs are green. Thread-aware inspection reports zero formal reviews, zero review threads, and only three non-actionable Cursor usage-limit notices. The epic remains in progress for PR #3 merge and PyPI publication under mb-xkcx.
+Owner review comment 4994096399 is fully addressed in the local PR #3 working tree: public API/error contracts, uv/npm policy consistency, release checklist reconciliation, installed-wheel plugin diagnostics, and a common KPress/MetaBrowser tooling floor. The full make -j4 verify gate passes 686 tests plus Ruff, strict BasedPyright, Biome, both TypeScript projects, Flowmark, public hygiene, dependency audits, distributions, and metab plugins doctor from the installed wheel. Completed review beads are closed; CSP and measured Python/JavaScript/Biome ratchets remain explicit public follow-ups. Commit, push, published finding dispositions, and fresh GitHub Actions checks remain pending for the parent workflow.
