@@ -1,0 +1,51 @@
+"""Stable Python helpers for installed MetaBrowser plugin sidekicks.
+
+Plugin data hooks run inside the MetaBrowser server process. They need the
+same served-root containment, transparent artifact reads, log-adapter
+detection, and cache lifecycle as built-in handlers. This module exposes that
+small contract without requiring plugins to import private implementation
+names.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from metabrowser.gz_io import ArtifactPath
+from metabrowser.logutil.parsing import LogEvent, LogParser, detect_adapter, register_log_adapter
+from metabrowser.paths_safe import (
+    _relativize,
+    _safe_path,
+    _safe_subdir,
+    register_root_callback,
+)
+from metabrowser.projections import extract_agent_charts_cached
+
+
+def resolve_path(requested: str) -> Path | None:
+    """Resolve a served-root-relative path without allowing traversal."""
+    return _safe_path(requested)
+
+
+def resolve_directory(requested: str) -> Path | None:
+    """Resolve a served-root-relative directory without allowing traversal."""
+    return _safe_subdir(requested)
+
+
+def relativize_path(raw: str | None) -> str | None:
+    """Convert an absolute path under the served root to its client path."""
+    return _relativize(raw)
+
+
+__all__ = [
+    "ArtifactPath",
+    "LogEvent",
+    "LogParser",
+    "detect_adapter",
+    "extract_agent_charts_cached",
+    "register_log_adapter",
+    "register_root_callback",
+    "relativize_path",
+    "resolve_directory",
+    "resolve_path",
+]

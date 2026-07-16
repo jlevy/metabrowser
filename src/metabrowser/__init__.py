@@ -10,7 +10,18 @@ Public API for plugin authors (typically only relevant to Python sidekicks
 from importlib.metadata import PackageNotFoundError, version
 
 from metabrowser.errors import CLIError
-from metabrowser.logutil.parsing import LogEvent, LogParser, register_log_adapter
+from metabrowser.plugin_api import (
+    ArtifactPath,
+    LogEvent,
+    LogParser,
+    detect_adapter,
+    extract_agent_charts_cached,
+    register_log_adapter,
+    register_root_callback,
+    relativize_path,
+    resolve_directory,
+    resolve_path,
+)
 from metabrowser.plugin_loader.discovery import (
     LoadedPlugin,
     discover_plugins,
@@ -32,6 +43,7 @@ except PackageNotFoundError:  # pragma: no cover - source tree without installat
 
 __all__ = [
     "CLIError",
+    "ArtifactPath",
     "DataHookSpec",
     "KindMatch",
     "KindRule",
@@ -43,6 +55,12 @@ __all__ = [
     "ViewSpec",
     "__version__",
     "discover_plugins",
+    "detect_adapter",
+    "extract_agent_charts_cached",
     "load_manifest",
     "register_log_adapter",
+    "register_root_callback",
+    "relativize_path",
+    "resolve_directory",
+    "resolve_path",
 ]

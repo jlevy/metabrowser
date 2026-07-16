@@ -317,6 +317,29 @@ Keep it fast, deterministic, and free of filesystem or network work.
 The factory must return a fresh parser for each file or live stream.
 Built-in adapter names cannot be replaced.
 
+### Python Sidekick API
+
+Import server-integrated helpers from `metabrowser`, not private package modules:
+
+```python
+from metabrowser import ArtifactPath, relativize_path, resolve_directory, resolve_path
+```
+
+- `resolve_path(value)` resolves a served-root-relative path and rejects traversal.
+- `resolve_directory(value)` applies the same containment rule and requires a directory.
+- `relativize_path(value)` converts an absolute path under the served root to a client
+  path.
+- `ArtifactPath` reads supported single-file compression formats transparently and with
+  decompression limits.
+- `register_root_callback(callback)` invalidates plugin caches when the served root
+  changes.
+- `detect_adapter(lines)` uses built-in and plugin-owned JSONL adapter registrations.
+- `extract_agent_charts_cached(path)` reuses the generic agent-log chart projection.
+
+These helpers share the server’s active root and lifecycle.
+Do not cache the resolved root or import underscored helpers from
+`metabrowser.paths_safe`.
+
 Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets.
 Test the built wheel in an isolated environment; an editable source checkout can conceal
 missing package data.
