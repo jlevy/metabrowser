@@ -27,7 +27,7 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture(autouse=True)
-def _ensure_fixture_importable() -> None:
+def _ensure_fixture_importable() -> None:  # pyright: ignore[reportUnusedFunction]
     """Make tests/fixtures/ importable so the sidekick handler resolves."""
     if str(_FIXTURES) not in sys.path:
         sys.path.insert(0, str(_FIXTURES))

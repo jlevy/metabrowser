@@ -60,15 +60,6 @@ from metabrowser.events import (
     StreamEvent,
     WriteToken,
 )
-from metabrowser.fs_paths import (
-    derive_ext as _ext_of,  # noqa: F401  — re-exported for tests
-)
-from metabrowser.fs_paths import (
-    is_visible as _is_visible,  # noqa: F401  — re-exported for tests
-)
-from metabrowser.fs_paths import (
-    is_visible_segment,  # noqa: F401  — re-exported for tests
-)
 from metabrowser.walker import (
     DEFAULT_FIRST_RENDER_DEPTH,
     DEFAULT_MAX_DEPTH,
@@ -82,9 +73,6 @@ from metabrowser.walker import (
 )
 from metabrowser.walker import (
     depth_of as _depth_of,
-)
-from metabrowser.walker import (
-    rel_path as _rel_path,  # noqa: F401  — re-exported for tests
 )
 
 LOG = logging.getLogger(__name__)

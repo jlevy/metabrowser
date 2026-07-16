@@ -41,7 +41,10 @@ Two exact first-party releases are exempt from the ordinary cool-off for this re
 
 - `kpress==0.2.2`, required for the first MetaBrowser release and reviewed as a
   compatible first-party maintenance update with no added dependencies;
-- `flowmark-rs==0.3.1`, used to format and verify Markdown.
+- `flowmark-rs==0.3.2`, used to format and verify Markdown.
+  This first-party release was reviewed against `0.3.1`; its formatting output is
+  unchanged, while its skill, publishing, and Markdown-parser configuration are more
+  reliable.
 
 The exceptions are package-scoped in configuration and do not weaken the global gate.
 Changing either version requires a new review and an updated rationale.

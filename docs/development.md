@@ -73,7 +73,9 @@ It also audits both locked dependency graphs.
 Its artifact gate rejects local environments, build trees, and repository-only metadata
 before an isolated wheel smoke test exercises the installed `metab` command and
 `metabrowser` compatibility alias, packaged assets, built-in plugin discovery, and
-KPress rendering.
+KPress rendering. The installed wheel must also pass `metab plugins doctor`, so the
+release gate validates the user-facing plugin diagnostics rather than only importing
+plugin internals.
 
 ## Dependencies
 
@@ -115,9 +117,13 @@ map before module entry points.
   creating parallel implementations.
 
 Run Ruff and BasedPyright through `make lint-check` before handoff.
-BasedPyright runs in strict mode; narrow exceptions in `pyproject.toml` cover documented
-dynamic plugin, compatibility, and untyped dependency boundaries.
-Do not broaden those exceptions without recording why strict narrowing is impractical.
+BasedPyright runs in strict mode globally.
+Its remaining compatibility exceptions are scoped separately to `src` and `tests`;
+`devtools` receives the unmodified strict floor.
+The 2026-07-16 ratchet baseline is 121 suppressed source diagnostics at dynamic plugin
+and cross-module compatibility boundaries and 362 at pytest fixture and monkeypatch
+boundaries. Reduce those counts and remove an exception category when it reaches zero.
+Never add a broad global suppression.
 
 ## Browser Code
 
@@ -140,15 +146,20 @@ not combine an unrelated rewrite with a release fix.
 modules automatically.
 `tsconfig.legacy.json` is an explicit allowlist of older modules that still permit
 implicit `any` while retaining strict null and other strict checks.
-`app.js` is checked under that legacy configuration while its older dynamic shell is
-incrementally typed.
+The 2026-07-16 baseline is 10 files, 7,124 JavaScript lines, and 532 diagnostics when
+the allowlist is checked with `noImplicitAny` enabled.
+`text/index.js` has graduated to the strict project; move each additional file as its
+JSDoc contracts become complete.
 No new file may enter the legacy configuration as an ordinary implementation shortcut.
 An exceptional addition requires a documented architecture reason and an explicit
 follow-up; otherwise the allowlist only shrinks as JSDoc contracts become complete.
 
 Biome checks every shipped browser module, including the legacy application shell, with
-the recommended rule set and only two configuration-level compatibility exceptions for
-intentional CSS ordering and legacy inner declarations.
+the recommended rule set.
+Its compatibility overrides are file-scoped: 244 legacy inner declarations across
+`app.js`, `charts.js`, `perf.js`, `structured/preview.js`, and `structured/tree.js`,
+plus 24 descending-specificity findings in `styles.css` at the 2026-07-16 baseline.
+Shrink each override list as those files become clean.
 Globals invoked from generated HTML retain their public names through narrow inline
 suppressions because those call sites are not visible to static analysis.
 All Biome and TypeScript commands run from `package-lock.json` with `npx --no-install`,

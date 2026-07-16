@@ -13,6 +13,11 @@ export UV_EXCLUDE_NEWER
 UV := uv --config-file $(CURDIR)/uv.toml
 UVX := uvx --config-file $(CURDIR)/uv.toml
 UV_RUN := $(UV) run --frozen
+# First-party exception reviewed in SUPPLY-CHAIN-SECURITY.md. The cutoff is
+# package-scoped and only admits the exact formatter release pinned here.
+FLOWMARK_VERSION := 0.3.2
+FLOWMARK_EXCEPTION := 2026-07-16T00:00:00Z
+FLOWMARK := $(UVX) --exclude-newer-package 'flowmark-rs=$(FLOWMARK_EXCEPTION)' flowmark-rs@$(FLOWMARK_VERSION)
 
 # Some managed agent environments export pnpm-style npm variables that npm 11
 # treats as unknown configuration. Repository policy lives in .npmrc, so prevent
@@ -62,14 +67,14 @@ format:
 		biome.json package.json tsconfig.json tsconfig.legacy.json
 
 format-markdown:
-	$(UVX) --exclude-newer-package 'flowmark-rs=2026-05-31T00:00:00Z' flowmark-rs@0.3.1 --auto --inplace --nobackup .
+	$(FLOWMARK) --auto --inplace --nobackup .
 
 # Check-only lint, matching CI (does not modify files).
 lint-check:
 	$(UV_RUN) python devtools/lint.py --check
 	$(UV_RUN) python devtools/npm_policy.py
 	$(UV_RUN) python devtools/public_hygiene.py
-	$(UVX) --exclude-newer-package 'flowmark-rs=2026-05-31T00:00:00Z' flowmark-rs@0.3.1 --auto --check .
+	$(FLOWMARK) --auto --check .
 
 test:
 	$(UV_RUN) pytest

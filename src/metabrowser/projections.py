@@ -44,7 +44,7 @@ _AGENT_CHARTS_CACHE_MAX = 256
 
 
 _PARSE_CACHE: MtimeCache[dict[str, Any]] = MtimeCache(max_size=_PARSE_CACHE_MAX, name="jsonl_parse")
-_AGENT_CHARTS_CACHE: MtimeCache[Any] = MtimeCache(
+_AGENT_CHARTS_CACHE: MtimeCache[dict[str, Any]] = MtimeCache(
     max_size=_AGENT_CHARTS_CACHE_MAX, name="agent_charts"
 )
 
@@ -78,8 +78,12 @@ def parse_jsonl_file_cached(filepath: Path) -> dict[str, Any]:
     return fresh
 
 
-def extract_agent_charts_cached(filepath: Path) -> Any:
-    """Cached :func:`metabrowser.charts.extract_agent_charts`."""
+def extract_agent_charts_cached(filepath: Path) -> dict[str, Any] | None:
+    """Return cached agent-log chart data, or ``None`` when the file is absent.
+
+    Parsing and decompression failures propagate as the public exceptions
+    exported by :mod:`metabrowser.plugin_api`.
+    """
 
     cached = _AGENT_CHARTS_CACHE.read(filepath)
     if cached.hit:

@@ -20,7 +20,7 @@ os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 
 
 @pytest.fixture(autouse=True)
-def _reset_browser_inventory() -> Generator[None, None, None]:
+def _reset_browser_inventory() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Reset the process-wide InventoryIndex + events bus between tests."""
     yield
     try:

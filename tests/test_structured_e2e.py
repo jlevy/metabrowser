@@ -19,7 +19,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from metabrowser import paths_safe
-from metabrowser import server as proc_browser  # noqa: F401 — triggers ROOT_DIR plumbing
+from metabrowser import server as proc_browser  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from metabrowser.plugin_loader.discovery import _try_load_plugin
 from metabrowser.plugin_loader.static_assets import build_plugin_routes
 

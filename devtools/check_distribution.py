@@ -103,8 +103,9 @@ def _inspect_sdist(sdist: Path) -> None:
 def _smoke_install(wheel: Path) -> None:
     env = os.environ.copy()
     env.setdefault("UV_EXCLUDE_NEWER", "14 days")
+    uv_command = ["uv", "--config-file", str(ROOT / "uv.toml")]
     python_command = [
-        "uv",
+        *uv_command,
         "run",
         "--isolated",
         "--no-project",
@@ -116,7 +117,8 @@ def _smoke_install(wheel: Path) -> None:
             "from importlib.resources import files; "
             "import metabrowser; "
             "from metabrowser.kpress_adapter import render_kpress_view; "
-            "plugins = metabrowser.discover_plugins(); "
+            "from metabrowser.plugin_loader.discovery import discover_plugins; "
+            "plugins = discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
             "required = {'agent-log', 'binary', 'markdown', 'structured', 'text', "
             "'unknown-jsonl'}; "
@@ -134,7 +136,7 @@ def _smoke_install(wheel: Path) -> None:
 
     for command in ("metab", "metabrowser"):
         cli_command = [
-            "uv",
+            *uv_command,
             "run",
             "--isolated",
             "--no-project",
@@ -144,6 +146,19 @@ def _smoke_install(wheel: Path) -> None:
             "--help",
         ]
         subprocess.run(cli_command, cwd=ROOT, env=env, check=True)
+
+    doctor_command = [
+        *uv_command,
+        "run",
+        "--isolated",
+        "--no-project",
+        "--with",
+        str(wheel),
+        "metab",
+        "plugins",
+        "doctor",
+    ]
+    subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
 
 
 def main() -> int:

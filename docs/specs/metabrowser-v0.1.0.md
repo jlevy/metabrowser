@@ -116,6 +116,9 @@ Connect trusted publishing without a package token.
 - [x] Apply CLI configuration before server initialization, call the documented plugin
   entry-point factory, report incomplete installed plugins, and enforce JavaScript-only
   operator-directory plugins in both runtime behavior and diagnostic output
+- [x] Expose the provisional root-level Python sidekick API used by installed plugins
+  and validate callable packaged-resource factories, safe-path helpers, transparent
+  compression, log adapters, root lifecycle callbacks, and chart projections
 - [x] Reject duplicate data-hook routes before server startup so manifest order cannot
   silently shadow a plugin endpoint
 - [x] Normalize and validate plugin paths across commands and direct server imports,
@@ -136,9 +139,9 @@ Connect trusted publishing without a package token.
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
 - [x] Add tracked-file, source-distribution, and wheel public-hygiene checks
-- [x] Complete final review reconciliation with all tracked findings closed, the full
-  local release gate passing, no unresolved review threads, and all GitHub Actions
-  checks green on the reconciliation commit
+- [ ] Complete final review reconciliation for the latest owner feedback, publish the
+  finding dispositions, and confirm all GitHub Actions checks are green on the
+  reconciliation commit; retain the Content Security Policy work as a public follow-up
 - [x] Apply tbd Common Documentation Guidelines across project-authored Markdown, format
   it with Flowmark, and enforce the standard footer without modifying generated template
   copies or rendering fixtures
@@ -157,12 +160,16 @@ Connect trusted publishing without a package token.
 - [x] Enforce frozen, explicitly repository-configured uv execution in Make targets,
   hooks, workflows, and executable documentation; make parallel verification ordering
   safe and publish without mutable dependency caches
-- [x] Run `make verify`, confirm zero unresolved review threads, publish the complete
-  bead-to-finding reconciliation, and close and sync the review bead tree
+- [ ] Publish the complete bead-to-finding reconciliation after `make verify`, confirm
+  zero unresolved review threads, close the completed review beads, and keep only the
+  explicit Content Security Policy follow-up open
 
 ### First Release
 
-- [x] Make the repository public after the hygiene and artifact gates pass
+The repository is public, while package publication and post-publication checks remain
+pending.
+
+- [x] Confirm the repository is public after the hygiene and artifact gates pass
 - [ ] Configure the PyPI trusted publisher for the repository workflow
 - [ ] Publish the GitHub `v0.1.0` release and verify the PyPI files and metadata
 - [ ] Verify `uvx metabrowser@0.1.0`, the globally installed `metab` command, server
@@ -203,7 +210,7 @@ The complete local `make -j4 verify` gate passes on the release-candidate workin
 - Flowmark and public-hygiene checks pass for the repository
 - The MetaBrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
-- 674 Python and browser contract tests pass
+- 686 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities

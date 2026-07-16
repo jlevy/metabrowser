@@ -128,7 +128,7 @@ def _path_spec(glob: str) -> _PathMatcher:
     return spec
 
 
-def _match_path_glob(path, glob: str) -> bool:
+def _match_path_glob(path: Path, glob: str) -> bool:
     """Match *path* against a gitignore-style glob. Uses the served-root-relative
     path when one is available; otherwise the absolute path."""
     rel = _relativize(str(path))

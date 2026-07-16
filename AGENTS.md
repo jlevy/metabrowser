@@ -54,7 +54,8 @@ pre-push gates.
 
 - Apply `tbd guidelines common-doc-guidelines` to every human-authored document and
   retain the standard footer.
-- Format all human-authored Markdown with Flowmark through `make format`.
+- Format all human-authored Markdown with the exact `flowmark-rs==0.3.2` pin through
+  `make format`.
 - Link to source documentation instead of duplicating long policy text.
 - Never add credentials, private organization or repository names, private issue IDs,
   personal absolute paths, customer data, or copied operational artifacts.

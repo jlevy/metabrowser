@@ -5,6 +5,40 @@ For example, `report.html.zst` should classify and render like `report.html` whi
 reads remain bounded.
 Checked items below are supported today; unchecked items are planned work.
 
+## Core Browser
+
+- [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
+  rendering can evolve independently
+- [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
+- [ ] Add scalable search and optional persistent indexing for very large roots
+- [ ] Add multiplexed, fair live-tail streaming across multiple files
+- [ ] Define a generic writer event-log backend for append-only generated artifacts
+- [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for
+  directories containing hundreds of thousands of entries
+
+## Plugin Platform
+
+- [ ] Design an editor-capable plugin lifecycle without weakening the default read-only
+  plugin contract
+- [ ] Document stable extension points for custom renderers, metadata, actions, and
+  optional storage adapters as each capability graduates into the public API
+
+MetaBrowser’s core stays independent of domain-specific renderers.
+Applications can ship their own plugin packages while depending only on the documented
+public plugin API.
+
+## Trusted-Local Workflows
+
+- [ ] Add [opt-in file operations](docs/specs/file-editing.md) with containment,
+  conflict handling, and trash-first semantics
+- [ ] Expose
+  [scan progress and recent directories](docs/specs/scanning-state-and-recent-directories.md)
+  without presenting incomplete trees as empty
+
+File mutation remains disabled by default.
+These workflows do not change MetaBrowser’s trusted-client, local-filesystem security
+model.
+
 ## Transparent Single-File Compression
 
 - [x] Gzip (`.gz`)
@@ -29,6 +63,27 @@ rendering, export, and raw serving.
 Archives contain multiple logical files, so they need a navigable virtual tree and a
 stronger security boundary than transparent single-file compression.
 They are not part of the v0.1.0 core contract.
+
+## Browser Defense in Depth
+
+- [ ] Enforce a strict Content Security Policy after replacing or nonce-enabling the
+  remaining inline shell and plugin handlers
+
+The current renderer sanitizes untrusted document HTML, and event data is escaped before
+DOM insertion. A Content Security Policy remains useful defense in depth because the
+trusted local server can read files within its configured root.
+
+## Engineering Ratchets
+
+- [ ] Remove the remaining scoped Python type-checking exceptions
+- [ ] Graduate the remaining legacy JavaScript into strict TypeScript
+- [ ] Remove the remaining exact-file Biome exceptions as those files are modernized
+
+The release baseline already enforces Ruff, BasedPyright, Biome, TypeScript, pytest,
+dependency audits, documentation formatting, source-distribution checks, wheel checks,
+and installed-wheel CLI and plugin-doctor smoke tests.
+These ratchets tighten known, measured legacy surfaces without weakening the enforced
+baseline.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

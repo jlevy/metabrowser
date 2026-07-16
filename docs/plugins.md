@@ -322,10 +322,19 @@ Built-in adapter names cannot be replaced.
 Import server-integrated helpers from `metabrowser`, not private package modules:
 
 ```python
-from metabrowser import ArtifactPath, relativize_path, resolve_directory, resolve_path
+from metabrowser import (
+    ArtifactCompressionError,
+    ArtifactPath,
+    JsonlParseLimitError,
+    relativize_path,
+    resolve_directory,
+    resolve_path,
+)
 ```
 
 - `resolve_path(value)` resolves a served-root-relative path and rejects traversal.
+  An empty string returns the served root, and any successful result may be a file or
+  directory.
 - `resolve_directory(value)` applies the same containment rule and requires a directory.
 - `relativize_path(value)` converts an absolute path under the served root to a client
   path.
@@ -333,12 +342,27 @@ from metabrowser import ArtifactPath, relativize_path, resolve_directory, resolv
   decompression limits.
 - `register_root_callback(callback)` invalidates plugin caches when the served root
   changes.
-- `detect_adapter(lines)` uses built-in and plugin-owned JSONL adapter registrations.
-- `extract_agent_charts_cached(path)` reuses the generic agent-log chart projection.
+- `LogEvent`, `LogParser`, `detect_adapter(lines)`, and
+  `register_log_adapter(name, detector, parser_factory)` define the JSONL adapter
+  contract described above.
+- `extract_agent_charts_cached(path)` reuses the generic agent-log chart projection and
+  returns `None` if the file is absent.
+- `ArtifactCompressionError`, `ArtifactDecompressionLimitError`, and
+  `ArtifactDecompressionTimeoutError` let sidekicks distinguish malformed compressed
+  data from resource-limit and CPU-time failures.
+  `ArtifactPath` and chart extraction can raise them.
+- `JsonlParseLimitError` is raised when chart extraction exceeds the JSONL parser’s
+  decompressed-input limit.
 
 These helpers share the server’s active root and lifecycle.
 Do not cache the resolved root or import underscored helpers from
-`metabrowser.paths_safe`.
+`metabrowser.paths_safe`. The sidekick surface is provisional during the 0.x series;
+release notes will identify changes before 1.0. `metabrowser.plugin_api.__all__`
+contains the sidekick names above, and `metabrowser.__all__` adds `CLIError` and
+`__version__`. CLI integrations can catch `CLIError` to preserve the command’s
+user-facing message and exit code.
+Plugin-loader and manifest implementation types remain available from their defining
+modules but are not part of this compatibility contract.
 
 Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets.
 Test the built wheel in an isolated environment; an editable source checkout can conceal

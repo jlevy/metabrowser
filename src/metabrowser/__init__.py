@@ -11,7 +11,11 @@ from importlib.metadata import PackageNotFoundError, version
 
 from metabrowser.errors import CLIError
 from metabrowser.plugin_api import (
+    ArtifactCompressionError,
+    ArtifactDecompressionLimitError,
+    ArtifactDecompressionTimeoutError,
     ArtifactPath,
+    JsonlParseLimitError,
     LogEvent,
     LogParser,
     detect_adapter,
@@ -22,19 +26,6 @@ from metabrowser.plugin_api import (
     resolve_directory,
     resolve_path,
 )
-from metabrowser.plugin_loader.discovery import (
-    LoadedPlugin,
-    discover_plugins,
-)
-from metabrowser.plugin_loader.manifest import (
-    DataHookSpec,
-    KindMatch,
-    KindRule,
-    PluginInfo,
-    PluginManifest,
-    ViewSpec,
-    load_manifest,
-)
 
 try:
     __version__ = version("metabrowser")
@@ -42,22 +33,17 @@ except PackageNotFoundError:  # pragma: no cover - source tree without installat
     __version__ = "0.0.0"
 
 __all__ = [
-    "CLIError",
+    "ArtifactCompressionError",
+    "ArtifactDecompressionLimitError",
+    "ArtifactDecompressionTimeoutError",
     "ArtifactPath",
-    "DataHookSpec",
-    "KindMatch",
-    "KindRule",
-    "LoadedPlugin",
+    "CLIError",
+    "JsonlParseLimitError",
     "LogEvent",
     "LogParser",
-    "PluginInfo",
-    "PluginManifest",
-    "ViewSpec",
     "__version__",
-    "discover_plugins",
     "detect_adapter",
     "extract_agent_charts_cached",
-    "load_manifest",
     "register_log_adapter",
     "register_root_callback",
     "relativize_path",

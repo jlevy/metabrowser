@@ -24,7 +24,7 @@ from metabrowser.tree import _dir_tree, set_folder_markers
 
 
 @pytest.fixture(autouse=True)
-def _clear_markers():
+def _clear_markers():  # pyright: ignore[reportUnusedFunction]
     """Each test starts with an empty marker set; tear down likewise."""
     set_folder_markers(set())
     yield

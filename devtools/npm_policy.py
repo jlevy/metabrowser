@@ -15,8 +15,8 @@ NPM_RANGE = ">=11.10.0 <12"
 CHECKOUT_SHA = "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
 SETUP_UV_SHA = "fac544c07dec837d0ccb6301d7b5580bf5edae39"
 SETUP_NODE_SHA = "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e"
-UV_VERSION = "0.11.25"
-UV_LINUX_CHECKSUM = "1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2"
+UV_VERSION = "0.11.26"
+UV_LINUX_CHECKSUM = "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
 BUILD_PINS = ["hatchling==1.30.1", "uv-dynamic-versioning==0.14.0"]
 CLI_SCRIPTS = {
     "metab": "metabrowser.cli.serve:main",
@@ -49,21 +49,89 @@ PYTHON_TOOL_FLOORS = {
     "pytest-timeout>=2.4.0",
     "ruff>=0.15.20",
 }
+GLOBAL_BASEDPYRIGHT_RATCHET_RULES = {
+    "reportMissingParameterType",
+    "reportPrivateUsage",
+    "reportUnknownArgumentType",
+    "reportUnknownLambdaType",
+    "reportUnknownMemberType",
+    "reportUnknownParameterType",
+    "reportUnknownVariableType",
+    "reportUnusedClass",
+    "reportUnusedFunction",
+    "reportUnusedImport",
+}
+BASEDPYRIGHT_EXECUTION_ENVIRONMENTS = [
+    {
+        "root": "src",
+        "reportPrivateUsage": False,
+        "reportUnknownArgumentType": False,
+        "reportUnknownMemberType": False,
+        "reportUnknownVariableType": False,
+        "reportUnusedFunction": False,
+    },
+    {
+        "root": "tests",
+        "extraPaths": ["."],
+        "reportPrivateUsage": False,
+        "reportUnknownArgumentType": False,
+        "reportUnknownLambdaType": False,
+        "reportUnknownMemberType": False,
+        "reportUnknownParameterType": False,
+        "reportUnknownVariableType": False,
+        "reportMissingParameterType": False,
+    },
+]
+LEGACY_JAVASCRIPT_FILES = [
+    "src/metabrowser/static/app.js",
+    "src/metabrowser/static/charts.js",
+    "src/metabrowser/static/icons.js",
+    "src/metabrowser/static/perf.js",
+    "src/metabrowser/static/plugin_sdk.js",
+    "src/metabrowser/builtin_plugins/agent_log/index.js",
+    "src/metabrowser/builtin_plugins/markdown/index.js",
+    "src/metabrowser/builtin_plugins/structured/index.js",
+    "src/metabrowser/builtin_plugins/structured/preview.js",
+    "src/metabrowser/builtin_plugins/structured/tree.js",
+]
+BIOME_OVERRIDES = [
+    {
+        "includes": ["src/metabrowser/static/styles.css"],
+        "linter": {"rules": {"style": {"noDescendingSpecificity": "off"}}},
+    },
+    {
+        "includes": [
+            "src/metabrowser/static/app.js",
+            "src/metabrowser/static/charts.js",
+            "src/metabrowser/static/perf.js",
+            "src/metabrowser/builtin_plugins/structured/preview.js",
+            "src/metabrowser/builtin_plugins/structured/tree.js",
+        ],
+        "linter": {"rules": {"correctness": {"noInnerDeclarations": "off"}}},
+    },
+]
 NPM_TOOL_PINS = {
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.2",
     "lefthook": "2.1.9",
     "typescript": "6.0.3",
 }
-FLOWMARK_VERSION = "0.3.1"
+FLOWMARK_VERSION = "0.3.2"
+FLOWMARK_EXCEPTION = "2026-07-16T00:00:00Z"
 TBD_VERSION = "0.4.0"
+UV_REPOSITORY_SUBCOMMANDS = "add|build|lock|publish|run|sync"
+
+
+def _verify_repository_uv_commands(source: str, text: str) -> None:
+    """Reject repository uv commands that do not select ``uv.toml``."""
+    if re.search(rf"\buv\s+(?:{UV_REPOSITORY_SUBCOMMANDS})\b", text):
+        raise RuntimeError(f"{source} uses a repository uv command without --config-file uv.toml")
 
 
 def _verify_documented_uv_commands(source: str, text: str) -> None:
     """Reject documentation commands that bypass the repository uv policy."""
     if re.search(r"\buv(?:\s+--config-file\s+uv\.toml)?\s+run(?! --frozen)(?=\s)", text):
         raise RuntimeError(f"{source} documents a non-frozen uv run command")
-    if re.search(r"\buv\s+(?:add|build|lock|run|sync)\b", text):
-        raise RuntimeError(f"{source} documents a repository command without --config-file uv.toml")
+    _verify_repository_uv_commands(source, text)
 
 
 def verify_repo_package_policy(root: Path = ROOT) -> None:
@@ -99,13 +167,47 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         raise RuntimeError("the isolated build system must contain the exact backend pins")
     if not PYTHON_TOOL_FLOORS.issubset(pyproject["dependency-groups"].get("dev", [])):
         raise RuntimeError("the development group must preserve the reviewed Python tool floors")
+    basedpyright = pyproject["tool"]["basedpyright"]
+    if basedpyright.get("typeCheckingMode") != "strict":
+        raise RuntimeError("BasedPyright must retain the global strict type-checking floor")
+    broad_type_exceptions = sorted(
+        rule for rule in GLOBAL_BASEDPYRIGHT_RATCHET_RULES if basedpyright.get(rule) is False
+    )
+    if broad_type_exceptions:
+        raise RuntimeError(
+            f"BasedPyright legacy exceptions must not be global: {broad_type_exceptions}"
+        )
+    if basedpyright.get("executionEnvironments") != BASEDPYRIGHT_EXECUTION_ENVIRONMENTS:
+        raise RuntimeError("BasedPyright legacy exceptions must match the reviewed scoped baseline")
+
+    tsconfig = json.loads((root / "tsconfig.json").read_text(encoding="utf-8"))
+    legacy_tsconfig = json.loads((root / "tsconfig.legacy.json").read_text(encoding="utf-8"))
+    if tsconfig.get("compilerOptions", {}).get("noImplicitAny") is not True:
+        raise RuntimeError("the primary TypeScript checkJs project must reject implicit any")
+    if legacy_tsconfig.get("compilerOptions") != {"noImplicitAny": False}:
+        raise RuntimeError("the legacy TypeScript project may relax only noImplicitAny")
+    if tsconfig.get("exclude") != LEGACY_JAVASCRIPT_FILES:
+        raise RuntimeError("the strict TypeScript exclusion list must match the legacy ratchet")
+    expected_legacy_files = ["src/metabrowser/static/types.d.ts", *LEGACY_JAVASCRIPT_FILES]
+    if legacy_tsconfig.get("files") != expected_legacy_files:
+        raise RuntimeError("the legacy TypeScript allowlist must match the reviewed ratchet")
+
+    biome = json.loads((root / "biome.json").read_text(encoding="utf-8"))
+    global_biome_rules = biome.get("linter", {}).get("rules", {})
+    if global_biome_rules.get("correctness", {}).get("noInnerDeclarations") == "off" or (
+        global_biome_rules.get("style", {}).get("noDescendingSpecificity") == "off"
+    ):
+        raise RuntimeError("Biome legacy rule exceptions must not be global")
+    if biome.get("overrides") != BIOME_OVERRIDES:
+        raise RuntimeError("Biome legacy exceptions must match the reviewed file-scoped baseline")
+
     uv_toml = tomllib.loads((root / "uv.toml").read_text(encoding="utf-8"))
     if uv_toml.get("required-version") != ">=0.11.21":
         raise RuntimeError("uv.toml must preserve the reviewed uv version floor")
     if uv_toml.get("exclude-newer") != "14 days":
         raise RuntimeError("uv.toml must preserve the 14-day cool-off")
     expected_exceptions = {
-        "flowmark-rs": "2026-05-31T00:00:00Z",
+        "flowmark-rs": FLOWMARK_EXCEPTION,
         "kpress": "2026-07-16T00:00:00Z",
     }
     if uv_toml.get("exclude-newer-package") != expected_exceptions:
@@ -222,8 +324,16 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
         _verify_documented_uv_commands(
             str(path.relative_to(root)), path.read_text(encoding="utf-8")
         )
-    if f"flowmark-rs@{FLOWMARK_VERSION}" not in tooling_text:
-        raise RuntimeError("Flowmark tooling is missing its exact pin")
+    required_flowmark_controls = (
+        f"FLOWMARK_VERSION := {FLOWMARK_VERSION}",
+        f"FLOWMARK_EXCEPTION := {FLOWMARK_EXCEPTION}",
+        "flowmark-rs@$(FLOWMARK_VERSION)",
+    )
+    if any(control not in makefile_text for control in required_flowmark_controls):
+        raise RuntimeError("Flowmark tooling is missing its exact pin or reviewed exception")
+    agents_text = (root / "AGENTS.md").read_text(encoding="utf-8")
+    if f"flowmark-rs=={FLOWMARK_VERSION}" not in agents_text:
+        raise RuntimeError("AGENTS.md must document the exact Flowmark tool pin")
     if tooling_text.count("npx --no-install") < 1 or tooling_text.count("npx_no_install") < 2:
         raise RuntimeError("npm tools must run from the lock with npx --no-install")
     if "npx --yes" in tooling_text or '"--package"' in tooling_text:
@@ -263,8 +373,7 @@ def verify_repo_package_policy(root: Path = ROOT) -> None:
 
     workflow_paths = sorted((root / ".github" / "workflows").glob("*.yml"))
     workflow_text = "\n".join(path.read_text(encoding="utf-8") for path in workflow_paths)
-    if re.search(r"\buv\s+(?:build|lock|publish|run|sync)\b", workflow_text):
-        raise RuntimeError("workflows must select the repository uv configuration")
+    _verify_repository_uv_commands("GitHub Actions workflows", workflow_text)
     action_uses = re.findall(r"^\s*uses:\s+[^@\s]+@([^\s#]+)", workflow_text, re.MULTILINE)
     mutable_actions = [ref for ref in action_uses if re.fullmatch(r"[0-9a-f]{40}", ref) is None]
     if mutable_actions:
