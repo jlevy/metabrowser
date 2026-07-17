@@ -67,7 +67,6 @@ ENTRIES: tuple[VendorEntry, ...] = (
         "chartjs-adapter-date-fns.bundle.min.js",
         "LICENSE.md",
     ),
-    VendorEntry("elkjs", "lib/elk.bundled.js", "elk.bundled.js", "LICENSE.md"),
 )
 
 

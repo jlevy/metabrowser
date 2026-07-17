@@ -63,7 +63,6 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/vendor/manifest.json",
             "metabrowser/static/vendor/highlight.min.js",
             "metabrowser/static/vendor/chart.umd.min.js",
-            "metabrowser/static/vendor/elk.bundled.js",
             "metabrowser/builtin_plugins/markdown/manifest.toml",
         }
         for suffix in required_suffixes:

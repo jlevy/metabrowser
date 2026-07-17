@@ -20,13 +20,6 @@
     "source": "dist/chartjs-plugin-annotation.min.js",
     "version": "3.1.0"
   },
-  "elk.bundled.js": {
-    "bytes": 1585569,
-    "package": "elkjs",
-    "sha256": "48d338d5aeddd9503ccf1d12661c11b5d7d43c6afc5f66c7ddb2ea4170c0f6bf",
-    "source": "lib/elk.bundled.js",
-    "version": "0.10.0"
-  },
   "highlight-github.min.css": {
     "bytes": 1309,
     "package": "@highlightjs/cdn-assets",

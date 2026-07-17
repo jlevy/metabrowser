@@ -56,7 +56,6 @@ def test_optional_libraries_are_served_from_local_vendor() -> None:
         "vendor/chart.umd.min.js",
         "vendor/chartjs-plugin-annotation.min.js",
         "vendor/chartjs-adapter-date-fns.bundle.min.js",
-        "vendor/elk.bundled.js",
     ):
         assert name in html, f"vendored asset missing from index template: {name}"
         assert (VENDOR_DIR / Path(name).name).is_file(), f"vendored file missing: {name}"

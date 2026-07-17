@@ -773,7 +773,6 @@ async def index(_request: Request) -> HTMLResponse:
             "src": _static_asset_url("vendor/chartjs-adapter-date-fns.bundle.min.js"),
             "requires": "Chart",
         },
-        {"src": _static_asset_url("vendor/elk.bundled.js")},
     ]
     optional_assets_block = f"""<script>
   (function () {{
