@@ -754,52 +754,25 @@ async def index(_request: Request) -> HTMLResponse:
     app_font_options = "".join(
         f'<option value="{s["value"]}">{s["label"]}</option>' for s in _FONT_SETS
     )
-    # Every CDN entry pins an exact version AND a Subresource Integrity
-    # hash of that exact file, so a compromised or tampering CDN cannot
-    # substitute script bytes — the browser refuses the load and the
-    # loader's onerror path degrades gracefully. Recompute when bumping a
-    # version:
-    #   curl -sS <url> | openssl dgst -sha384 -binary | openssl base64 -A
-    # The vendored local file needs no integrity attribute; it is served
-    # same-origin from the wheel.
+    # Every third-party browser library is vendored into the wheel from
+    # lockfile-verified npm packages (see devtools/vendor_assets.py and
+    # static/vendor/manifest.json) and served same-origin, so the page has
+    # no external origins and works offline. Bump a version by updating
+    # package.json + package-lock.json, then run `make vendor-assets`.
     optional_script_assets = [
-        {
-            "src": "https://cdn.jsdelivr.net/npm/mustache@4.2.0/mustache.min.js",
-            "integrity": "sha384-WASZCYHGuIg0bwkJEH65mhmbKS1x4/VKI2bzElPKmL5B3e0UaH45nIdqOm+BUuRA",
-        },
-        {
-            "src": "https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js",
-            "integrity": "sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp",
-        },
+        {"src": _static_asset_url("vendor/mustache.min.js")},
+        {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
+        {"src": _static_asset_url("vendor/chart.umd.min.js")},
         {
-            "src": "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js",
-            "integrity": "sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ",
+            "src": _static_asset_url("vendor/chartjs-plugin-annotation.min.js"),
+            "requires": "Chart",
         },
-        (
-            {
-                "src": (
-                    "https://cdn.jsdelivr.net/npm/"
-                    "chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"
-                ),
-                "integrity": "sha384-3N9GHhCtN3CQef6tNfqgZlv7sQLYIkcChN+uaTZ7xVdzKYp/SjBNPxa92+hM7EAY",
-                "requires": "Chart",
-            }
-        ),
-        (
-            {
-                "src": (
-                    "https://cdn.jsdelivr.net/npm/"
-                    "chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"
-                ),
-                "integrity": "sha384-cVMg8E3QFwTvGCDuK+ET4PD341jF3W8nO1auiXfuZNQkzbUUiBGLsIQUE+b1mxws",
-                "requires": "Chart",
-            }
-        ),
         {
-            "src": "https://cdn.jsdelivr.net/npm/elkjs@0.10.0/lib/elk.bundled.js",
-            "integrity": "sha384-BdOh9NQUUR8nSXhFgsTlbMi2zJr1SjvVwulU7AFbuJL2DekGTuP0pIiydrfS4G5k",
+            "src": _static_asset_url("vendor/chartjs-adapter-date-fns.bundle.min.js"),
+            "requires": "Chart",
         },
+        {"src": _static_asset_url("vendor/elk.bundled.js")},
     ]
     optional_assets_block = f"""<script>
   (function () {{
@@ -823,10 +796,6 @@ async def index(_request: Request) -> HTMLResponse:
       var script = document.createElement("script");
       script.src = src;
       script.async = false;
-      if (asset.integrity) {{
-        script.integrity = asset.integrity;
-        script.crossOrigin = "anonymous";
-      }}
       script.onload = function () {{
         notifyLoaded(src);
         loadNext(i + 1);
@@ -884,16 +853,15 @@ async def index(_request: Request) -> HTMLResponse:
        required KPress package. No flash of unstyled text on first paint. -->
   {kpress_font_head}
   {theme_bootstrap}
-  <!-- Single CDN origin (jsdelivr) so the connection-coalescing benefit
-       of HTTP/2 applies to every third-party asset. The TOML language
-       module is community-maintained and not on jsdelivr; we vendor
-       it locally under /static/vendor/ so we don't need a second
-       origin. preconnect saves the TLS handshake. -->
+  <!-- All third-party assets are vendored into the wheel and served
+       same-origin (see static/vendor/manifest.json), so the page loads
+       with no external origins and works offline. The highlight
+       stylesheet stays non-render-blocking: syntax CSS is enhancement,
+       not first-paint critical. -->
   <link rel="stylesheet" href="{styles_url}">
   {plugin_styles}
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" integrity="sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L" crossorigin="anonymous" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" integrity="sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L" crossorigin="anonymous"></noscript>
+  <link rel="stylesheet" href="{_static_asset_url("vendor/highlight-github.min.css")}" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="{_static_asset_url("vendor/highlight-github.min.css")}"></noscript>
 </head>
 <body>
   <main class="container">
@@ -947,12 +915,11 @@ async def index(_request: Request) -> HTMLResponse:
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional
-       third-party libraries are exact-pinned and loaded by the async
-       enhancement loader below so CDN latency cannot block initial
-       tree/readme rendering. The TOML language is vendored locally
-       because it's a community add-on not present on jsdelivr (the
-       official @highlightjs/cdn-assets/11.9.0 ships TOML grammar inside
-       ini.min.js with `aliases:["toml"]`; we vendor that file directly). -->
+       third-party libraries are vendored into the wheel and loaded by
+       the async enhancement loader below so they cannot block initial
+       tree/readme rendering. TOML support comes from the official
+       highlight.js ini.min.js grammar (`aliases:["toml"]`), vendored as
+       highlight-toml.min.js. -->
   {perf_block}
   {settings_block}
   <script src="{plugin_sdk_url}"></script>

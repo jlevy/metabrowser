@@ -1,0 +1,58 @@
+{
+  "chart.umd.min.js": {
+    "bytes": 208522,
+    "package": "chart.js",
+    "sha256": "48444a82d4edcb5bec0f1965faacdde18d9c17db3063d042abada2f705c9f54a",
+    "source": "dist/chart.umd.min.js",
+    "version": "4.5.1"
+  },
+  "chartjs-adapter-date-fns.bundle.min.js": {
+    "bytes": 50650,
+    "package": "chartjs-adapter-date-fns",
+    "sha256": "ea7ab30d26c38dcf1f2d26bb43e73a94537b58f1906f55e1a546dd09321b5615",
+    "source": "dist/chartjs-adapter-date-fns.bundle.min.js",
+    "version": "3.0.0"
+  },
+  "chartjs-plugin-annotation.min.js": {
+    "bytes": 38359,
+    "package": "chartjs-plugin-annotation",
+    "sha256": "ff03786a60f6c93ccacfe0fbb6c2e3c671d7930856a3689f2f393113d8d655ec",
+    "source": "dist/chartjs-plugin-annotation.min.js",
+    "version": "3.1.0"
+  },
+  "elk.bundled.js": {
+    "bytes": 1585569,
+    "package": "elkjs",
+    "sha256": "48d338d5aeddd9503ccf1d12661c11b5d7d43c6afc5f66c7ddb2ea4170c0f6bf",
+    "source": "lib/elk.bundled.js",
+    "version": "0.10.0"
+  },
+  "highlight-github.min.css": {
+    "bytes": 1309,
+    "package": "@highlightjs/cdn-assets",
+    "sha256": "3a9a5def8b9c311e5ae43abde85c63133185eed4f0d9f67fea4b00a8308cf066",
+    "source": "styles/github.min.css",
+    "version": "11.9.0"
+  },
+  "highlight-toml.min.js": {
+    "bytes": 1044,
+    "package": "@highlightjs/cdn-assets",
+    "sha256": "b98e2071ea87c331e64c25116c3dde60b413a2d71c20d63bc438bbcf0fd5461b",
+    "source": "languages/ini.min.js",
+    "version": "11.9.0"
+  },
+  "highlight.min.js": {
+    "bytes": 121727,
+    "package": "@highlightjs/cdn-assets",
+    "sha256": "837a6fa5b0c736b52bbde2b2b6190f305da3fc9ed41681db5321507057b5c846",
+    "source": "highlight.min.js",
+    "version": "11.9.0"
+  },
+  "mustache.min.js": {
+    "bytes": 11790,
+    "package": "mustache",
+    "sha256": "d7fd0603512461e8edbd81686bead2ab82df3389b9cca235dd9d5b408848e02a",
+    "source": "mustache.min.js",
+    "version": "4.2.0"
+  }
+}
