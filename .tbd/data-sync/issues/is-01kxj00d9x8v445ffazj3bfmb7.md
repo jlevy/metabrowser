@@ -5,13 +5,13 @@ title: "PR #1 review B5: remove extraction-phase production comments"
 kind: bug
 status: closed
 priority: 2
-version: 7
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 parent_id: is-01kxhztx5585r48tq7gja5refa
 created_at: 2026-07-15T04:19:23.068Z
-updated_at: 2026-07-15T06:02:32.685Z
+updated_at: 2026-07-17T21:16:47.425Z
 closed_at: 2026-07-15T06:02:32.685Z
 close_reason: Implemented or dispositioned with bead-specific evidence; post-fix make -j4 verify passes with 669 tests, all lint/type/Flowmark/audit/distribution gates clean, and the live manual browser checklist completed.
 ---

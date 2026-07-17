@@ -5,13 +5,13 @@ title: Pin tested runtime dependency floors
 kind: chore
 status: closed
 priority: 1
-version: 3
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 parent_id: is-01kxgmkc6gb2e8s23jf409j4bv
 created_at: 2026-07-15T03:30:07.862Z
-updated_at: 2026-07-15T03:36:44.139Z
+updated_at: 2026-07-17T21:16:34.650Z
 closed_at: 2026-07-15T03:36:44.138Z
 close_reason: Pinned every direct runtime dependency to its frozen tested version floor, preserved exact kpress==0.2.2, enforced the complete reviewed requirement list, updated maintainer and release-plan documentation, passed make verify, and pushed green PR checks.
 ---

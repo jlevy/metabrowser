@@ -5,12 +5,12 @@ title: Normalize CLI environment paths and browser opening
 kind: bug
 status: closed
 priority: 2
-version: 2
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 created_at: 2026-07-14T17:19:01.995Z
-updated_at: 2026-07-14T17:23:10.194Z
+updated_at: 2026-07-17T21:16:40.237Z
 closed_at: 2026-07-14T17:23:10.193Z
 close_reason: Normalized and validated plugin-directory configuration through one shared CLI helper, loaded dotenv before walk logging, replaced the macOS-only remote opener with webbrowser, added three regressions, and passed the complete 598-test release gate plus clean npm audit.
 ---

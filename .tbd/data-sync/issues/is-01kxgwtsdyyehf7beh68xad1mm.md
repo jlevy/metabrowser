@@ -5,12 +5,12 @@ title: Contain walk paths and isolate test configuration
 kind: bug
 status: closed
 priority: 2
-version: 2
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 created_at: 2026-07-14T18:04:38.718Z
-updated_at: 2026-07-14T18:08:59.929Z
+updated_at: 2026-07-17T21:16:42.029Z
 closed_at: 2026-07-14T18:08:59.928Z
 close_reason: Contained walk subpaths, isolated pytest collection from operator plugin env, and verified all 606 tests plus package gates
 ---
