@@ -466,6 +466,33 @@ def _clear_browser_caches() -> None:
     clear_charts_cache()
 
 
+# Concrete bind hosts registered by the CLI (``--host``). Wildcard binds
+# never land here; loopback names are always permitted by the middleware.
+_EXTRA_ALLOWED_HOSTS: set[str] = set()
+
+# Bind values that accept connections on every interface. They are not
+# meaningful Host-header names, so they are never added to the allowlist.
+_WILDCARD_BIND_HOSTS: frozenset[str] = frozenset({"", "0.0.0.0", "::", "[::]"})
+
+
+def _register_allowed_host(bind_host: str) -> None:
+    """Permit the CLI's concrete ``--host`` value at the HTTP boundary.
+
+    A wildcard bind is a no-op: it names interfaces, not a hostname a
+    browser would send, and allowing everything would defeat the
+    DNS-rebinding check. Operators reaching a wildcard bind through a
+    concrete name allow it explicitly with ``METABROWSER_ALLOWED_HOSTS``.
+    """
+    raw = bind_host.strip().lower()
+    if raw in _WILDCARD_BIND_HOSTS:
+        # Check before normalizing: the Host-header port-strip heuristic
+        # would mangle a bare IPv6 wildcard ("::" -> ":").
+        return
+    hostname = _HostValidationMiddleware._hostname(raw)
+    if hostname and hostname != ":" and hostname not in _WILDCARD_BIND_HOSTS:
+        _EXTRA_ALLOWED_HOSTS.add(hostname)
+
+
 class _HostValidationMiddleware:
     """Reject requests whose ``Host`` header is not a permitted name.
 
@@ -509,7 +536,7 @@ class _HostValidationMiddleware:
                 host_header = value.decode("latin-1")
                 break
         hostname = self._hostname(host_header)
-        allowed = self._DEFAULT_ALLOWED
+        allowed = self._DEFAULT_ALLOWED | _EXTRA_ALLOWED_HOSTS
         extra = os.environ.get("METABROWSER_ALLOWED_HOSTS", "")
         if extra:
             allowed = allowed | {
@@ -519,7 +546,11 @@ class _HostValidationMiddleware:
         # requires a browser, and browsers always send Host.
         if hostname and hostname not in allowed:
             response = PlainTextResponse(
-                f"Host {hostname!r} is not a permitted name for this local server.\n",
+                f"Host {hostname!r} is not a permitted name for this local server. "
+                "This guard blocks DNS-rebinding attacks. If this name is a "
+                "trusted way to reach this machine, restart with "
+                f"--host {hostname} or add it to the METABROWSER_ALLOWED_HOSTS "
+                "environment variable (comma-separated).\n",
                 status_code=421,
             )
             await response(scope, receive, send)

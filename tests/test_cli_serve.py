@@ -447,3 +447,43 @@ def test_server_module_execution_delegates_to_canonical_cli() -> None:
     assert result.returncode == 0, result.stderr
     assert "plugins" in result.stdout
     assert "remote" in result.stdout
+
+
+def test_serve_wildcard_bind_uses_loopback_url_and_keeps_host_validation(
+    tmp_path: Path,
+) -> None:
+    """--host 0.0.0.0 binds every interface but prints and probes loopback.
+
+    Regression: the Host-validation middleware rejected ``Host: 0.0.0.0``,
+    so the printed URL was unusable and auto-open never fired. The wildcard
+    bind must never be added to the allowlist (that would disable the
+    DNS-rebinding guard); the local URL uses loopback instead.
+    """
+    from metabrowser import server
+
+    with patch("uvicorn.run") as mock_run:
+        result = runner.invoke(_app, ["serve", str(tmp_path), "--no-open", "--host", "0.0.0.0"])
+    assert result.exit_code == 0, _plain_output(result)
+    assert "http://127.0.0.1:" in _plain_output(result)
+    assert "http://0.0.0.0" not in _plain_output(result)
+    assert mock_run.call_args.kwargs["host"] == "0.0.0.0"
+    assert not server._EXTRA_ALLOWED_HOSTS & {"0.0.0.0", "::", "[::]"}
+
+
+def test_serve_concrete_bind_host_is_permitted_by_middleware(tmp_path: Path) -> None:
+    """A concrete --host value is registered with the Host allowlist."""
+    from metabrowser import server
+
+    try:
+        with patch("uvicorn.run"):
+            result = runner.invoke(
+                _app, ["serve", str(tmp_path), "--no-open", "--host", "127.0.0.1"]
+            )
+        assert result.exit_code == 0, _plain_output(result)
+        # A non-loopback concrete host registers its normalized name. Use the
+        # registration helper directly for a LAN-style name so the test does
+        # not depend on binding a real non-local interface.
+        server._register_allowed_host("build-box.lan:9000")
+        assert "build-box.lan" in server._EXTRA_ALLOWED_HOSTS
+    finally:
+        server._EXTRA_ALLOWED_HOSTS.discard("build-box.lan")

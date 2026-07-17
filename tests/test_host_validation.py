@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from starlette.testclient import TestClient
 
+from metabrowser import server
 from metabrowser.server import _HostValidationMiddleware, app
 
 
@@ -44,6 +45,36 @@ def test_extra_hosts_from_environment(monkeypatch) -> None:  # type: ignore[no-u
     for host in ("workstation.lan", "workstation.lan:8411", "10.0.0.5:8411"):
         resp = client.get("/api/capabilities", headers={"host": host})
         assert resp.status_code == 200, host
+
+
+def test_registered_bind_host_is_allowed() -> None:
+    """A concrete --host value registered by the CLI passes validation."""
+    client = TestClient(app)
+    assert client.get("/api/capabilities", headers={"host": "devbox.lan"}).status_code == 421
+    try:
+        server._register_allowed_host("devbox.lan")
+        for host in ("devbox.lan", "devbox.lan:8411", "DevBox.LAN"):
+            resp = client.get("/api/capabilities", headers={"host": host})
+            assert resp.status_code == 200, host
+    finally:
+        server._EXTRA_ALLOWED_HOSTS.discard("devbox.lan")
+
+
+def test_wildcard_bind_hosts_are_never_registered() -> None:
+    """Wildcard binds must not disable Host validation."""
+    for wildcard in ("", "0.0.0.0", "::", "[::]", "0.0.0.0:8411"):
+        server._register_allowed_host(wildcard)
+    assert server._EXTRA_ALLOWED_HOSTS == set()
+    client = TestClient(app)
+    assert client.get("/api/capabilities", headers={"host": "0.0.0.0"}).status_code == 421
+
+
+def test_rejection_message_names_the_recovery_options() -> None:
+    client = TestClient(app)
+    resp = client.get("/api/capabilities", headers={"host": "workstation.example"})
+    assert resp.status_code == 421
+    assert "--host workstation.example" in resp.text
+    assert "METABROWSER_ALLOWED_HOSTS" in resp.text
 
 
 def test_hostname_parsing_handles_ports_and_ipv6() -> None:

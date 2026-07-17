@@ -120,6 +120,15 @@ function esc(s) {
     .replace(/'/g, "&#39;");
 }
 
+// Escape a filesystem path for embedding inside a double-quoted CSS
+// attribute selector: [data-path="…"]. Backslashes must be doubled
+// before quotes are escaped — POSIX filenames can contain both, and a
+// missed backslash silently breaks live insert/update/remove matching.
+// Used by every dynamic data-path selector in this file.
+function escapePathForSelector(path) {
+  return String(path).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /**
  * @param {string} selector
  * @param {ParentNode} [root]
@@ -3292,10 +3301,7 @@ function _mirrorActiveFromFsEntry(entry) {
 // Addressed by data-path so the same path on both Files and
 // Recent rows updates simultaneously.
 function refreshActivityBadge(path) {
-  var safe =
-    typeof CSS !== "undefined" && CSS.escape
-      ? CSS.escape(path)
-      : path.replace(/(["\\\][])/g, "\\$1");
+  var safe = escapePathForSelector(path);
   var rows = queryHtmlAll(`.tree-file[data-path="${safe}"]`);
   if (!rows.length) {
     return;
@@ -3483,7 +3489,9 @@ function _findChildContainerFor(parentRel, panelEl) {
   if (!parentRel) {
     return panelEl; // root
   }
-  var folder = panelEl.querySelector(`.tree-folder[data-path="${parentRel.replace(/"/g, '\\"')}"]`);
+  var folder = panelEl.querySelector(
+    `.tree-folder[data-path="${escapePathForSelector(parentRel)}"]`,
+  );
   if (!folder) {
     return null;
   }
@@ -3509,7 +3517,7 @@ function _findChildContainerFor(parentRel, panelEl) {
 // The class is auto-removed on `animationend` so subsequent layout
 // (selection, hover) doesn't fight a dangling class.
 function _insertRowSorted(container, entry, options) {
-  var safe = entry.path.replace(/"/g, '\\"');
+  var safe = escapePathForSelector(entry.path);
   var existing = container.querySelector(`:scope > .tree-item[data-path="${safe}"]`);
   if (existing) {
     return false;
@@ -3616,7 +3624,7 @@ function applyCellPatch(entry) {
     updateRootAggregatePresentation(entry);
     return;
   }
-  var safePath = entry.path.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  var safePath = escapePathForSelector(entry.path);
   var selector =
     entry.type === "dir"
       ? `.tree-folder[data-path="${safePath}"]`
@@ -3697,7 +3705,7 @@ function applyCellPatch(entry) {
 // arrive on the wire, and a collapsing tree-children container
 // reads as confusing motion).
 function _removeRenderedRows(path) {
-  var safe = path.replace(/"/g, '\\"');
+  var safe = escapePathForSelector(path);
   var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];

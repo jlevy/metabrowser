@@ -671,7 +671,7 @@
     // otherwise the delegate falls back to clipboard.writeText.
     return (
       '<div class="content-copy-wrap">' +
-      '<button class="content-copy-btn" title="Copy content">' +
+      '<button class="content-copy-btn" data-mb-copy="wrap" title="Copy content">' +
       ICON_COPY +
       "</button>" +
       innerHtml +
@@ -744,9 +744,51 @@
     return LANG_MAP[ext || ""] || "";
   }
 
-  // Delegated click handler for .content-copy-btn buttons emitted by
-  // wrapWithCopy. Installed once; uses the shell's copyContent when
-  // available, otherwise falls back to clipboard.writeText.
+  // Delegated click handler for the copy buttons wrapWithCopy emits.
+  // Fully SDK-owned: no reference to shell globals, so the documented
+  // wrapWithCopy behavior cannot change when app.js internals do. Scoped
+  // to buttons carrying data-mb-copy so plugin- or shell-built copy
+  // buttons with their own listeners are never double-handled.
+  /** @param {Element & {classList?: DOMTokenList, title?: string}} btn */
+  function _handleCopyClick(btn) {
+    var wrap = typeof btn.closest === "function" ? btn.closest(".content-copy-wrap") : null;
+    if (!wrap) {
+      return;
+    }
+    var code = typeof wrap.querySelector === "function" ? wrap.querySelector("code") : null;
+    var text = code ? code.textContent || "" : "";
+    if (!text) {
+      // No <code> child: copy the wrap's text minus the button's label.
+      const nodes = wrap.childNodes || [];
+      for (let ci = 0; ci < nodes.length; ci++) {
+        if (nodes[ci] !== btn) {
+          text += nodes[ci].textContent || "";
+        }
+      }
+    }
+    var clipboard = global.navigator?.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      return;
+    }
+    /** @param {string} title @param {boolean} copied */
+    function feedback(title, copied) {
+      if (copied && btn.classList) {
+        btn.classList.add("copied");
+      }
+      btn.title = title;
+      setTimeout(() => {
+        if (btn.classList) {
+          btn.classList.remove("copied");
+        }
+        btn.title = "Copy content";
+      }, 1500);
+    }
+    clipboard.writeText(text).then(
+      () => feedback("Copied!", true),
+      () => feedback("Copy failed", false),
+    );
+  }
+
   var _copyDelegationInstalled = false;
   if (global.document && typeof global.document.addEventListener === "function") {
     if (!_copyDelegationInstalled) {
@@ -756,33 +798,9 @@
         if (!target || typeof target.closest !== "function") {
           return;
         }
-        var btn = target.closest(".content-copy-btn");
-        if (!btn) {
-          return;
-        }
-        if (typeof global.copyContent === "function") {
-          global.copyContent(btn);
-          return;
-        }
-        // Fallback: extract text from the sibling content inside
-        // .content-copy-wrap, excluding the button's own text.
-        var wrap = btn.parentElement;
-        if (!wrap) {
-          return;
-        }
-        var text = "";
-        var ci = 0;
-        for (; ci < wrap.childNodes.length; ci++) {
-          if (wrap.childNodes[ci] !== btn) {
-            text += wrap.childNodes[ci].textContent || "";
-          }
-        }
-        try {
-          if (global.navigator?.clipboard?.writeText) {
-            global.navigator.clipboard.writeText(text);
-          }
-        } catch (_e) {
-          /* best effort */
+        var btn = target.closest(".content-copy-btn[data-mb-copy]");
+        if (btn) {
+          _handleCopyClick(btn);
         }
       });
     }
