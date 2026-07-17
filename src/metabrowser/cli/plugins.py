@@ -67,6 +67,60 @@ def _disabled_data_hooks(plugin: LoadedPlugin) -> list[DataHookSpec]:
     return []
 
 
+def _plugin_summary(plugin: LoadedPlugin) -> dict[str, object]:
+    """Return the stable plugin summary used by registry listings."""
+    return {
+        "name": plugin.name,
+        "display_name": plugin.manifest.plugin.display_name,
+        "version": plugin.manifest.plugin.version,
+        "source": plugin.source,
+        "static_root": str(plugin.static_root),
+        "kinds": sorted({kind.id for kind in plugin.manifest.kind}),
+        "views": [view.id for view in plugin.manifest.view],
+        "view_count": len(plugin.manifest.view),
+        "data_hooks": [hook.route for hook in _active_data_hooks(plugin)],
+        "disabled_data_hooks": [hook.route for hook in _disabled_data_hooks(plugin)],
+    }
+
+
+def _plugin_assets(plugin: LoadedPlugin) -> list[str]:
+    """Return sorted asset paths relative to the plugin root."""
+    if not plugin.static_root.is_dir():
+        return []
+    return [
+        child.relative_to(plugin.static_root).as_posix()
+        for child in sorted(plugin.static_root.rglob("*"))
+        if child.is_file()
+    ]
+
+
+def _plugin_details(plugin: LoadedPlugin) -> dict[str, object]:
+    """Return the resolved plugin details exposed by ``plugins show --json``."""
+    return {
+        "name": plugin.name,
+        "display_name": plugin.manifest.plugin.display_name,
+        "version": plugin.manifest.plugin.version,
+        "sdk_version": plugin.manifest.plugin.sdk_version,
+        "source": plugin.source,
+        "static_root": str(plugin.static_root),
+        "kinds": [kind.model_dump(mode="json", exclude_none=True) for kind in plugin.manifest.kind],
+        "views": [view.model_dump(mode="json") for view in plugin.manifest.view],
+        "data_hooks": [hook.model_dump(mode="json") for hook in _active_data_hooks(plugin)],
+        "disabled_data_hooks": [
+            hook.model_dump(mode="json") for hook in _disabled_data_hooks(plugin)
+        ],
+        "assets": _plugin_assets(plugin),
+    }
+
+
+def _echo_discovery_errors(errors: list[str]) -> None:
+    """Write human-readable discovery failures to stderr."""
+    typer.echo("", err=True)
+    typer.echo("Discovery errors:", err=True)
+    for error in errors:
+        typer.echo(f"  • {error}", err=True)
+
+
 @plugins_app.command("list")
 def cmd_list(
     plugins_dir: list[Path] | None = typer.Option(
@@ -87,24 +141,12 @@ def cmd_list(
 
     if as_json:
         out = {
-            "plugins": [
-                {
-                    "name": p.name,
-                    "display_name": p.manifest.plugin.display_name,
-                    "version": p.manifest.plugin.version,
-                    "source": p.source,
-                    "static_root": str(p.static_root),
-                    "kinds": sorted({k.id for k in p.manifest.kind}),
-                    "views": [view.id for view in p.manifest.view],
-                    "view_count": len(p.manifest.view),
-                    "data_hooks": [h.route for h in _active_data_hooks(p)],
-                    "disabled_data_hooks": [h.route for h in _disabled_data_hooks(p)],
-                }
-                for p in result.plugins
-            ],
+            "plugins": [_plugin_summary(plugin) for plugin in result.plugins],
             "errors": result.errors,
         }
         typer.echo(json.dumps(out, indent=2))
+        if result.errors:
+            raise typer.Exit(code=1)
         return
 
     rows: list[list[str]] = []
@@ -125,10 +167,8 @@ def cmd_list(
     else:
         typer.echo("(no plugins discovered)")
     if result.errors:
-        typer.echo("", err=True)
-        typer.echo("Discovery errors:", err=True)
-        for err in result.errors:
-            typer.echo(f"  • {err}", err=True)
+        _echo_discovery_errors(result.errors)
+        raise typer.Exit(code=1)
 
 
 @plugins_app.command("show")
@@ -139,6 +179,7 @@ def cmd_show(
         "--plugins-dir",
         help="Extra plugin directory; may repeat. Combines with METABROWSER_PLUGINS_DIRS.",
     ),
+    as_json: bool = typer.Option(False, "--json", help="Emit structured JSON."),
 ) -> None:
     """Print the full resolved manifest for one plugin."""
     extra = resolve_extra_plugin_dirs(plugins_dir)
@@ -147,9 +188,30 @@ def cmd_show(
     plugin = next((p for p in result.plugins if p.name == name), None)
     if plugin is None:
         names = sorted(p.name for p in result.plugins)
-        raise CLIError(
+        message = (
             f"plugin '{name}' not discovered. Found: {', '.join(names) if names else '(none)'}"
         )
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {"error": message, "discovery_errors": result.errors},
+                    indent=2,
+                ),
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        raise CLIError(message)
+
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {"plugin": _plugin_details(plugin), "errors": result.errors},
+                indent=2,
+            )
+        )
+        if result.errors:
+            raise typer.Exit(code=1)
+        return
 
     typer.echo(f"name:         {plugin.name}")
     typer.echo(f"display_name: {plugin.manifest.plugin.display_name or '(none)'}")
@@ -181,11 +243,11 @@ def cmd_show(
         typer.echo("  (none)")
     typer.echo("")
     typer.echo("assets in static_root:")
-    if plugin.static_root.is_dir():
-        for child in sorted(plugin.static_root.rglob("*")):
-            if child.is_file():
-                rel = child.relative_to(plugin.static_root)
-                typer.echo(f"  - {rel}")
+    for asset in _plugin_assets(plugin):
+        typer.echo(f"  - {asset}")
+    if result.errors:
+        _echo_discovery_errors(result.errors)
+        raise typer.Exit(code=1)
 
 
 @plugins_app.command("doctor")
@@ -195,6 +257,7 @@ def cmd_doctor(
         "--plugins-dir",
         help="Extra plugin directory; may repeat. Combines with METABROWSER_PLUGINS_DIRS.",
     ),
+    as_json: bool = typer.Option(False, "--json", help="Emit structured JSON."),
 ) -> None:
     """Validate every discovered plugin. Exit non-zero on any problem."""
     extra = resolve_extra_plugin_dirs(plugins_dir)
@@ -251,10 +314,25 @@ def cmd_doctor(
     for p in _plugins_with_index_check(result.plugins):
         problems.append(p)
 
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {
+                    "ok": not problems,
+                    "plugin_count": len(result.plugins),
+                    "problems": problems,
+                },
+                indent=2,
+            )
+        )
+        if problems:
+            raise typer.Exit(code=1)
+        return
+
     if problems:
-        typer.echo(f"metab plugins doctor: {len(problems)} problem(s):")
-        for prob in problems:
-            typer.echo(f"  • {prob}")
+        typer.echo(f"metab plugins doctor: {len(problems)} problem(s):", err=True)
+        for problem in problems:
+            typer.echo(f"  • {problem}", err=True)
         raise typer.Exit(code=1)
 
     typer.echo(f"metab plugins doctor: {len(result.plugins)} plugin(s) OK")
@@ -271,11 +349,9 @@ def _plugins_with_index_check(plugins: list[LoadedPlugin]) -> list[str]:
 
 def main() -> None:
     """Standalone entry point for `metab plugins` diagnostics."""
-    try:
-        plugins_app()
-    except CLIError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        sys.exit(1)
+    from metabrowser.cli.serve import _run_cli
+
+    _run_cli(["plugins", *sys.argv[1:]], prog_name="metab")
 
 
 if __name__ == "__main__":

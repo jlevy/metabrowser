@@ -46,7 +46,7 @@ import sys
 import time
 from html import escape as html_escape
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TextIO, cast
 from urllib.parse import quote
 
 from starlette.applications import Starlette
@@ -155,20 +155,30 @@ _TREE_COLD_START_WAIT_S = 0.10
 # The browser runs as a long-lived dev tool against potentially huge
 # trees, so timing visibility on every walk + handler is non-optional.
 # We route both our own ``metabrowser`` namespace and ``funlog``
-# (used for ``@log_calls`` decorators on hot paths) at INFO to stdout
-# whenever this module loads, so timings show up in the same terminal
-# the operator started ``metabrowser`` from. Idempotent so test imports
-# don't double-attach handlers.
+# (used for ``@log_calls`` decorators on hot paths) at INFO to stderr whenever
+# this module loads. A dynamic stream proxy keeps diagnostics separate from
+# machine-readable stdout and avoids retaining a closed test or embedding stream.
+# Idempotent so repeated imports don't double-attach handlers.
 
 _PERF_LOG_HANDLER_TAG = "metabrowser-perf"
 
 
+class _CurrentStderr:
+    """Resolve stderr at write time instead of retaining an import-time stream."""
+
+    def write(self, message: str) -> int:
+        return sys.stderr.write(message)
+
+    def flush(self) -> None:
+        sys.stderr.flush()
+
+
 def _setup_perf_logging() -> None:
-    """Attach an INFO-level stdout handler to the loggers we emit timing
+    """Attach an INFO-level stderr handler to the loggers we emit timing
     info from. Idempotent; safe to call multiple times. Format keeps
     each line short and grep-friendly: ``HH:MM:SS name | message``.
     """
-    handler = logging.StreamHandler(sys.stdout)
+    handler = logging.StreamHandler(cast(TextIO, _CurrentStderr()))
     handler.set_name(_PERF_LOG_HANDLER_TAG)
     handler.setFormatter(
         logging.Formatter(
@@ -206,7 +216,7 @@ _setup_perf_logging()
 # never awaits — observed: ``TypeError: 'coroutine' object is not
 # callable``). This is the equivalent for ``async def`` handlers:
 # same INFO-level emission, routed through this module's logger so
-# the perf-log setup above sends it to stdout.
+# the perf-log setup above sends it to stderr.
 
 import functools
 

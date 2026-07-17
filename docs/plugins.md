@@ -33,13 +33,20 @@ Inspect discovery without starting the server:
 metab plugins list
 metab plugins list --json
 metab plugins show markdown
+metab plugins show markdown --json
 metab plugins doctor
+metab plugins doctor --json
 metab plugins doctor --plugins-dir ./examples
 ```
 
 `doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
 operator-directory JavaScript-only boundaries, and high-priority kind conflicts.
 It exits nonzero when any problem is found.
+All three commands support `--json` for machine-readable output.
+Discovery errors preserve any plugins that loaded successfully but make the command exit
+nonzero, so scripts cannot mistake a partial registry for a complete one.
+Human-readable data goes to standard output, while human-readable errors go to standard
+error.
 
 ## Minimal Plugin
 

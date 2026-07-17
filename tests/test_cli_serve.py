@@ -21,12 +21,14 @@ from pathlib import Path
 from typing import Protocol
 from unittest.mock import patch
 
+import pytest
 from click import unstyle
 from typer.testing import CliRunner
 
 from metabrowser import __version__
-from metabrowser.cli.serve import _app, _rewrite_bare_form, _shutdown_noise_filter
+from metabrowser.cli.serve import _app, _rewrite_bare_form, _shutdown_noise_filter, main
 from metabrowser.errors import CLIError
+from metabrowser.server_utils import MAX_TCP_PORT
 
 runner = CliRunner()
 
@@ -156,6 +158,100 @@ def test_cli_remote_requires_explicit_path() -> None:
     output = _plain_output(result)
     assert result.exit_code != 0
     assert "--path" in output
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["walk", ".", "--format", "xml"],
+        ["walk", ".", "--detail", "verbose"],
+        ["walk", ".", "--log-level", "trace"],
+        ["walk", ".", "--max-depth", "-1"],
+        ["walk", ".", "--max-files", "0"],
+        ["serve", ".", "--port", "0", "--no-open"],
+        ["serve", ".", "--port", str(MAX_TCP_PORT + 1), "--no-open"],
+        ["serve", ".", "--log-level", "trace", "--no-open"],
+    ],
+)
+def test_cli_rejects_invalid_option_values_during_parsing(args: list[str]) -> None:
+    result = runner.invoke(_app, args)
+
+    assert result.exit_code == 2
+    assert "Invalid value" in _plain_output(result)
+
+
+def test_console_entry_point_reports_expected_errors_without_tracebacks(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "metabrowser.cli.serve", "serve", str(missing), "--no-open"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert f"Error: {missing} is not a directory" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_console_entry_point_treats_closed_output_pipe_as_success(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    # Exceed a typical pipe buffer so the producer is still writing after the
+    # consumer reads one record and closes its end of the pipe.
+    for index in range(1_000):
+        (root / f"artifact-{index:04d}.txt").write_text("payload")
+
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "metabrowser.cli.serve",
+            "walk",
+            str(root),
+            "--format",
+            "json",
+            "--stream",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdout is not None
+    assert process.stderr is not None
+    assert process.stdout.readline().startswith("{")
+    process.stdout.close()
+    stderr = process.stderr.read()
+    returncode = process.wait(timeout=30)
+
+    assert returncode == 0, stderr
+    assert "BrokenPipeError" not in stderr
+
+
+def test_console_entry_point_does_not_hide_unrelated_broken_pipe(monkeypatch) -> None:
+    def _raise_unrelated_broken_pipe(**_kwargs: object) -> None:
+        raise BrokenPipeError("internal pipe failed")
+
+    monkeypatch.setattr("metabrowser.cli.serve._app", _raise_unrelated_broken_pipe)
+
+    with pytest.raises(BrokenPipeError, match="internal pipe failed"):
+        main()
+
+
+def test_walk_restores_process_logging_state(tmp_path: Path) -> None:
+    logger = logging.getLogger("metabrowser")
+    original_handlers = list(logger.handlers)
+    original_level = logger.level
+    original_propagate = logger.propagate
+
+    result = runner.invoke(_app, ["walk", str(tmp_path), "--max-depth", "0"])
+
+    assert result.exit_code == 0, result.exception
+    assert logger.handlers == original_handlers
+    assert logger.level == original_level
+    assert logger.propagate is original_propagate
 
 
 def test_cli_plugins_list_works() -> None:
@@ -304,8 +400,25 @@ def test_walk_rejects_path_in_modes_that_cannot_scope_to_a_subtree(tmp_path: Pat
     ):
         result = runner.invoke(_app, args)
 
-        assert isinstance(result.exception, CLIError)
-        assert "--path requires --format json or yaml with --all-at-once" in str(result.exception)
+        assert result.exit_code == 2
+        output = " ".join(_plain_output(result).split())
+        assert "--path" in output
+        assert "requires --format json or yaml with --all-at-once" in output
+
+
+def test_serve_rejects_file_root_with_path_as_usage_error(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact.txt"
+    artifact.write_text("payload")
+
+    result = runner.invoke(
+        _app,
+        ["serve", str(artifact), "--path", "nested", "--no-open"],
+    )
+
+    assert result.exit_code == 2
+    output = " ".join(_plain_output(result).split())
+    assert "cannot" in output
+    assert "combine with --path" in output
 
 
 def test_walk_rejects_file_subpaths(tmp_path: Path) -> None:

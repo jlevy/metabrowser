@@ -10,11 +10,67 @@ from __future__ import annotations
 
 import contextlib
 import os
+import signal
 import subprocess
 from unittest.mock import patch
 
+import pytest
+import typer
+from click import unstyle
+from typer.testing import CliRunner
+
 from metabrowser.cli import remote
+from metabrowser.cli.serve import _app
 from metabrowser.cli.ssh_utils import build_ssh_tunnel_command
+from metabrowser.errors import CLIError
+from metabrowser.server_utils import MAX_TCP_PORT
+
+
+class _FakeProcess:
+    """Minimal ``Popen`` stand-in for remote CLI process-lifecycle tests."""
+
+    def __init__(self, returncode: int = 0) -> None:
+        self.returncode = returncode
+        self.forwarded_signals: list[int] = []
+        self.on_wait: object | None = None
+
+    def poll(self) -> int | None:
+        return None
+
+    def wait(self) -> int:
+        if callable(self.on_wait):
+            self.on_wait()
+        return self.returncode
+
+    def send_signal(self, signum: int) -> None:
+        self.forwarded_signals.append(signum)
+
+
+def _invoke_remote(monkeypatch, process: _FakeProcess) -> None:
+    monkeypatch.setattr(remote, "_probe_remote_free_port", lambda *a, **kw: 8412)
+    monkeypatch.setattr(remote, "find_available_local_port", lambda *a, **kw: 8411)
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: process)
+    remote.remote(
+        host="user@vm",
+        path="/runs",
+        base_port=8411,
+        no_open=True,
+        ssh_options="",
+        gcp=False,
+        zone="",
+        project="",
+    )
+
+
+@pytest.mark.parametrize("base_port", ["0", str(MAX_TCP_PORT + 1)])
+def test_remote_rejects_out_of_range_base_port(base_port: str) -> None:
+    result = CliRunner().invoke(
+        _app,
+        ["remote", "user@vm", "--path", "/runs", "--base-port", base_port],
+    )
+
+    assert result.exit_code == 2
+    assert "--base-port" in unstyle(result.output)
 
 
 def test_remote_inner_command_uses_explicit_serve_subcommand(monkeypatch) -> None:
@@ -183,3 +239,167 @@ def test_remote_loads_dotenv_before_resolving_gcp_project(monkeypatch) -> None:
         "probe_project": "dotenv-project",
         "tunnel_project": "dotenv-project",
     }
+
+
+def test_remote_port_probe_reports_command_launch_failure(monkeypatch) -> None:
+    error = FileNotFoundError(2, "No such file or directory", "ssh")
+
+    def _fail_to_launch(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(subprocess, "run", _fail_to_launch)
+
+    with pytest.raises(CLIError, match=r"ssh.*probing.*user@vm.*PATH") as caught:
+        remote._probe_remote_free_port(
+            "user@vm",
+            8411,
+            gcp=False,
+            zone="",
+            project="",
+            ssh_options="",
+        )
+
+    assert caught.value.__cause__ is error
+
+
+def test_remote_reports_tunnel_command_launch_failure(monkeypatch) -> None:
+    error = FileNotFoundError(2, "No such file or directory", "ssh")
+
+    def _fail_to_launch(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(remote, "_probe_remote_free_port", lambda *a, **kw: 8412)
+    monkeypatch.setattr(remote, "find_available_local_port", lambda *a, **kw: 8411)
+    monkeypatch.setattr(subprocess, "Popen", _fail_to_launch)
+
+    with pytest.raises(CLIError, match=r"ssh.*connecting.*user@vm.*PATH") as caught:
+        remote.remote(
+            host="user@vm",
+            path="/runs",
+            base_port=8411,
+            no_open=True,
+            ssh_options="",
+            gcp=False,
+            zone="",
+            project="",
+        )
+
+    assert caught.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    ("signum", "expected_exit_code"),
+    [(signal.SIGINT, 130), (signal.SIGTERM, 143)],
+)
+def test_remote_forwards_signals_restores_handlers_and_normalizes_exit(
+    monkeypatch, signum: int, expected_exit_code: int
+) -> None:
+    process = _FakeProcess(returncode=-signum)
+    original_handlers: dict[int, object] = {
+        signal.SIGINT: object(),
+        signal.SIGTERM: object(),
+    }
+    installed_handlers: dict[int, object] = {}
+    signal_calls: list[tuple[int, object]] = []
+
+    def _fake_signal(current_signum: int, handler: object) -> object:
+        signal_calls.append((current_signum, handler))
+        if handler is not original_handlers[current_signum]:
+            installed_handlers[current_signum] = handler
+        return original_handlers[current_signum]
+
+    monkeypatch.setattr(remote.signal, "signal", _fake_signal)
+
+    def _signal_while_waiting() -> None:
+        handler = installed_handlers[signum]
+        assert callable(handler)
+        handler(signum, None)
+
+    process.on_wait = _signal_while_waiting
+
+    with pytest.raises(typer.Exit) as caught:
+        _invoke_remote(monkeypatch, process)
+
+    assert caught.value.exit_code == expected_exit_code
+    assert process.forwarded_signals == [signum]
+    assert signal_calls[-2:] == [
+        (signal.SIGTERM, original_handlers[signal.SIGTERM]),
+        (signal.SIGINT, original_handlers[signal.SIGINT]),
+    ]
+
+
+def test_remote_preserves_non_signal_exit_code_and_restores_handlers(monkeypatch) -> None:
+    process = _FakeProcess(returncode=23)
+    original_handlers: dict[int, object] = {
+        signal.SIGINT: object(),
+        signal.SIGTERM: object(),
+    }
+    signal_calls: list[tuple[int, object]] = []
+
+    def _fake_signal(signum: int, handler: object) -> object:
+        signal_calls.append((signum, handler))
+        return original_handlers[signum]
+
+    monkeypatch.setattr(remote.signal, "signal", _fake_signal)
+
+    with pytest.raises(typer.Exit) as caught:
+        _invoke_remote(monkeypatch, process)
+
+    assert caught.value.exit_code == 23
+    assert signal_calls[-2:] == [
+        (signal.SIGTERM, original_handlers[signal.SIGTERM]),
+        (signal.SIGINT, original_handlers[signal.SIGINT]),
+    ]
+
+
+def test_remote_ignores_signal_forwarding_race_when_child_has_exited(monkeypatch) -> None:
+    process = _FakeProcess(returncode=-signal.SIGTERM)
+    installed_handlers: dict[int, object] = {}
+
+    def _fake_signal(signum: int, handler: object) -> object:
+        installed_handlers[signum] = handler
+        return signal.SIG_DFL
+
+    def _child_exited_before_signal(_signum: int) -> None:
+        raise ProcessLookupError("child exited")
+
+    def _signal_while_waiting() -> None:
+        handler = installed_handlers[signal.SIGTERM]
+        assert callable(handler)
+        handler(signal.SIGTERM, None)
+
+    process.on_wait = _signal_while_waiting
+    monkeypatch.setattr(process, "send_signal", _child_exited_before_signal)
+    monkeypatch.setattr(remote.signal, "signal", _fake_signal)
+
+    with pytest.raises(typer.Exit) as caught:
+        _invoke_remote(monkeypatch, process)
+
+    assert caught.value.exit_code == 143
+
+
+def test_remote_restores_handlers_when_wait_fails(monkeypatch) -> None:
+    process = _FakeProcess()
+    original_handlers: dict[int, object] = {
+        signal.SIGINT: object(),
+        signal.SIGTERM: object(),
+    }
+    signal_calls: list[tuple[int, object]] = []
+
+    def _fake_signal(signum: int, handler: object) -> object:
+        signal_calls.append((signum, handler))
+        return original_handlers[signum]
+
+    def _fail_while_waiting() -> None:
+        raise RuntimeError("wait failed")
+
+    process.on_wait = _fail_while_waiting
+    monkeypatch.setattr(remote.signal, "signal", _fake_signal)
+
+    with pytest.raises(RuntimeError, match="wait failed"):
+        _invoke_remote(monkeypatch, process)
+
+    assert signal_calls[-2:] == [
+        (signal.SIGTERM, original_handlers[signal.SIGTERM]),
+        (signal.SIGINT, original_handlers[signal.SIGINT]),
+    ]

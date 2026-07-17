@@ -33,7 +33,8 @@ guessing flags.
 - Browse a remote directory through SSH: inspect `remote --help`
 - Produce a text, JSON, YAML, or streaming inventory: inspect `walk --help`
 - Inspect or validate plugins: inspect `plugins --help`; use `plugins list --json` for
-  structured discovery and `plugins doctor` for validation
+  structured discovery, `plugins show <name> --json` for one resolved plugin, and
+  `plugins doctor --json` for machine-readable validation
 
 ## Operate Safely
 
@@ -47,10 +48,12 @@ guessing flags.
   use uv’s `--with` only for an explicitly trusted, version-pinned plugin distribution
 - Prefer `walk --format json` when the task needs machine-readable inventory rather than
   an interactive browser
+- Parse plugin command JSON from standard output; human-readable diagnostics use
+  standard error
 - In a headless environment, avoid opening a browser and report the local URL and
   whether the server is still running
-- Preserve nonzero exits and surface plugin-doctor failures instead of reporting partial
-  success as complete
+- Preserve nonzero exits from all plugin commands; discovery errors mean the registry is
+  partial even when some plugins were returned
 
 ## Report the Result
 

@@ -117,11 +117,15 @@ def test_walk_loads_dotenv_before_configuring_logging(tmp_path: Path) -> None:
     code = (
         "import logging\n"
         "from pathlib import Path\n"
+        "from unittest.mock import patch\n"
         "from metabrowser.cli.serve import walk\n"
         f"root = Path({str(root)!r})\n"
-        "walk(root, fmt='text', stream=False, subpath='', detail='summary', "
+        "levels = []\n"
+        "with patch('metabrowser.cli.serve._run_walk', "
+        "side_effect=lambda *args: levels.append(logging.getLogger('metabrowser').level)):\n"
+        "    walk(root, fmt='text', stream=False, subpath='', detail='summary', "
         "log_level='', max_depth=20, max_files=100)\n"
-        "print(logging.getLogger('metabrowser').level)\n"
+        "print(levels[0])\n"
     )
     env = os.environ.copy()
     env.pop("METABROWSER_LOG_LEVEL", None)

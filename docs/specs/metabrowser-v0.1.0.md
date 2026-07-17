@@ -104,6 +104,9 @@ Connect trusted publishing without a package token.
 - [x] Publish `metab` as the primary console script while retaining `metabrowser` for
   existing callers and the `uvx metabrowser` package-name shorthand; report the
   installed tag-derived package version through `--version` on both commands
+- [x] Apply the tbd CLI guidelines across the Typer surface: parser-level usage errors,
+  bounded ports, quiet closed-pipe handling, conventional signal exits, actionable
+  external-command failures, stdout/stderr separation, and structured plugin diagnostics
 - [x] Simplify the README around `uvx metabrowser`, the globally installed `metab`
   command, plugin discovery, and command help; publish the L1 Agent Skill at
   `skills/metabrowser/SKILL.md` with a pinned `uvx metabrowser@0.1.0` runner
@@ -212,7 +215,7 @@ The complete local `make -j4 verify` gate passes on the release-candidate workin
 - Flowmark and public-hygiene checks pass for the repository
 - The Metabrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
-- 674 Python and browser contract tests pass
+- 704 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
