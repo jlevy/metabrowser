@@ -101,7 +101,37 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
 
 def test_embedded_markdown_does_not_double_top_spacing() -> None:
     css = _read_styles_css()
+    assert "--embedded-document-padding-top: 8px;" in css
     assert ".metabrowser-kpress-host .kpress-doc" in css
-    assert "padding-block-start: var(--content-padding-y)" in css
+    assert "padding-block-start: var(--embedded-document-padding-top)" in css
     assert ".metabrowser-kpress-host .kpress-prose > h1:first-child" in css
     assert "margin-block-start: 0" in css
+
+
+def test_embedded_markdown_toggle_labels_match_tabs() -> None:
+    css = _read_styles_css()
+    rule_start = css.index(".metabrowser-kpress-host .kpress details > summary {")
+    rule_block = css[rule_start : rule_start + 500]
+    for token in (
+        "--label-color",
+        "--label-font-size",
+        "--label-font-weight",
+        "--label-letter-spacing",
+        "--label-text-transform",
+    ):
+        assert f"var({token})" in rule_block
+
+
+def test_embedded_markdown_body_uses_host_reading_size() -> None:
+    css = _read_styles_css()
+    assert "--document-body-font-size: 17px;" in css
+    rule_start = css.index(".metabrowser-kpress-host .kpress {")
+    rule_block = css[rule_start : rule_start + 200]
+    assert "--kpress-font-size-normal: var(--document-body-font-size);" in rule_block
+
+
+def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:
+    css = _read_styles_css()
+    rule_start = css.index(".metabrowser-kpress-host .kpress-toc li {")
+    rule_block = css[rule_start : rule_start + 140]
+    assert "margin-block: 0;" in rule_block

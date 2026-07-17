@@ -641,6 +641,7 @@ async def index(_request: Request) -> HTMLResponse:
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
+    tree_expansion_url = _static_asset_url("tree_expansion.js")
     app_url = _static_asset_url("app.js")
     perf_block = (
         f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
@@ -871,6 +872,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{plugin_sdk_url}"></script>
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
+  <script src="{tree_expansion_url}"></script>
   <script src="{app_url}"></script>
   {plugin_scripts}
   {optional_assets_block}
