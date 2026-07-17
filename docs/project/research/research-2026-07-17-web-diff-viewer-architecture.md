@@ -420,8 +420,8 @@ need it; Git-specific schemas should not.
 ### Platform Prerequisites
 
 The current plugin platform cannot yet host the design in this document.
-A review of the boundary as implemented found six concrete gaps, each of which is core
-work that must precede or accompany the first diff plugin:
+The boundary as implemented has six gaps; each is core work that must precede or
+accompany the first diff plugin:
 
 1. **Routing.** Data hooks mount one exact route per single path segment with `GET` and
    `POST` only, and the dispatcher converts sidekick 5xx responses into HTTP 200
@@ -726,7 +726,7 @@ Adopting the library is also a packaging decision, not only an API decision.
 Inspection of the published stable package shows an ESM-only distribution of several
 megabytes across hundreds of files with bare-specifier imports of Shiki and HAST
 utilities, React confined to the separate `react` and `ssr` entry points (the vanilla
-entry is genuinely React-free), and dedicated worker entry points.
+entry does not import React), and dedicated worker entry points.
 Metabrowser today has no JavaScript bundling pipeline, ships zero runtime npm
 dependencies by policy, and loads third parties from a pinned CDN or as single vendored
 files. Consuming this library therefore means introducing the repository’s first runtime
