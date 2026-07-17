@@ -10,7 +10,9 @@ Checked items below are supported today; unchecked items are planned work.
 - [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
   rendering can evolve independently
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
-- [ ] Add scalable search and optional persistent indexing for very large roots
+- [ ] Add
+  [scalable file search](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
+  and evaluate optional persistent indexing for very large roots
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
 - [ ] Define a generic writer event-log backend for append-only generated artifacts
 - [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for
@@ -18,8 +20,9 @@ Checked items below are supported today; unchecked items are planned work.
 
 ## Plugin Platform
 
-- [ ] Design an editor-capable plugin lifecycle without weakening the default read-only
-  plugin contract
+- [ ] Design and implement the
+  [editor plugin editing contract](docs/project/architecture/arch-editor-plugin-editing-contract.md)
+  without weakening the default read-only plugin contract
 - [ ] Document stable extension points for custom renderers, metadata, actions, and
   optional storage adapters as each capability graduates into the public API
 
@@ -29,15 +32,27 @@ public plugin API.
 
 ## Trusted-Local Workflows
 
-- [ ] Add [opt-in file operations](docs/specs/file-editing.md) with containment,
-  conflict handling, and trash-first semantics
+- [ ] Add
+  [opt-in file operations](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md)
+  with containment, conflict handling, and trash-first semantics
 - [ ] Expose
-  [scan progress and recent directories](docs/specs/scanning-state-and-recent-directories.md)
+  [scan progress and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
   without presenting incomplete trees as empty
 
 File mutation remains disabled by default.
 These workflows do not change Metabrowser’s trusted-client, local-filesystem security
 model.
+
+## Editor Integration
+
+- [ ] Build the
+  [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md)
+  around a native tree, one embedded content panel, a supervised authenticated server,
+  and uv-managed installation
+
+The editor integration reuses the public tree, event, view, and plugin contracts.
+Editor-specific readiness, authentication, and embed modes should remain host-neutral so
+other trusted desktop integrations can use them without entering Metabrowser core.
 
 ## Transparent Single-File Compression
 

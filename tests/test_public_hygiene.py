@@ -21,19 +21,17 @@ def test_public_issue_tracking_language_is_allowed() -> None:
     assert find_hygiene_findings("AGENTS.md", text) == []
 
 
-def test_private_plan_path_is_rejected() -> None:
-    private_plan_path = "docs" + "/project/specs/active/example.md"
+def test_public_project_plan_path_is_allowed() -> None:
+    public_plan_path = "docs" + "/project/specs/active/plan-2026-07-17-scalable-file-search.md"
 
-    assert find_hygiene_findings("README.md", private_plan_path) == [
-        "README.md:1: private plan path"
-    ]
+    assert find_hygiene_findings("README.md", public_plan_path) == []
 
 
 def test_private_guidance_path_is_rejected() -> None:
     private_guidance_path = "docs" + "/general/guidelines/example.md"
 
     assert find_hygiene_findings("README.md", private_guidance_path) == [
-        "README.md:1: private plan path"
+        "README.md:1: private guidance path"
     ]
 
 

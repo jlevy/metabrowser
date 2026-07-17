@@ -245,6 +245,7 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 - [End-to-end testing](docs/e2e-testing.md)
 - [Real-time debugging](docs/realtime-debugging.md)
 - [Publishing](docs/publishing.md)
+- [Project design and plans](docs/project/README.md)
 - [Security policy](SECURITY.md)
 - [Roadmap](TODO.md)
 

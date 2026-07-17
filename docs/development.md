@@ -194,15 +194,17 @@ without modifications.
 Apply `tbd guidelines common-doc-guidelines` to the README, guidance, specifications,
 and other human-authored documents; retain the standard footer.
 
-Documentation has two public trees plus a project-records area.
-`docs/` holds durable user and contributor guides, and `docs/specs/` holds normative
-plans and contracts the implementation must track.
-Dated research briefs and similar point-in-time records live in the project-records tree
-next to them; they capture rationale as of their date and receive addenda rather than
-rewrites, and the public-hygiene gate intentionally keeps public documents from
-referencing that tree by path.
-When a research brief produces decisions the code must follow, extract them into a
-`docs/specs/` document instead of treating the brief as the contract.
+Documentation is organized by lifecycle.
+`docs/` holds durable user and contributor guides.
+`docs/project/`, indexed by its own README, holds project design and planning records:
+maintained architecture documents under `architecture/`, dated feature plans the
+implementation must track under `specs/active/`, completed plans under `specs/done/`,
+and dated research briefs under `research/`. Dated records capture rationale as of their
+date and receive addenda rather than rewrites; when a research brief produces decisions
+the code must follow, extract them into a plan under `specs/active/` instead of treating
+the brief as the contract.
+The public-hygiene gate rejects references to the private guidance tree and other
+non-public residue; see `devtools/public_hygiene.py` for the enforced rules.
 
 Keep documentation public-safe.
 Do not include private repository names, internal issue identifiers, personal absolute
