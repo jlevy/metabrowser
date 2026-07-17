@@ -14,6 +14,9 @@ const TREE_SUBTREE_FETCH_DEPTH = 2;
 // on click. The full child list is still in memory; we only stage how
 // much hits the DOM.
 const TREE_PAGE_SIZE = 200;
+const TREE_AUTO_EXPAND_FALLBACK_ROWS =
+  window.METABROWSER_SETTINGS?.TREE_AUTO_EXPAND_FALLBACK_ROWS || 24;
+const TREE_AUTO_EXPAND_ROW_HEIGHT_PROPERTY = "--tree-auto-expand-row-height";
 const FILE_PREFETCH_HOVER_DELAY_MS = 250;
 const FILE_PREFETCH_MAX_BYTES = 512 * 1024;
 const FILE_PREFETCH_MAX_CONCURRENT = 1;
@@ -913,8 +916,29 @@ function treeDirChipHtml(totalFiles, totalSize, options) {
 //     total bytes when available; "count" (Recent panel) renders
 //     descendant file count. Recent uses count because aggregating
 //     bytes across "files modified in last 24h" is misleading.
+//   options.defaultExpandedPaths — folders selected by the viewport-bounded
+//     first-paint planner. Recursive calls share the same set.
 function renderTreeNodes(nodes, isRoot, options) {
   options = options || {};
+  if (isRoot && !options.defaultExpandedPaths) {
+    var treeContent = document.getElementById("tree-content");
+    var rowHeight = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        TREE_AUTO_EXPAND_ROW_HEIGHT_PROPERTY,
+      ),
+    );
+    var rowBudget = window.MetabrowserTreeExpansion.visibleRowBudget(
+      treeContent?.clientHeight || 0,
+      rowHeight,
+      TREE_AUTO_EXPAND_FALLBACK_ROWS,
+    );
+    options.defaultExpandedPaths = window.MetabrowserTreeExpansion.chooseDefaultExpandedPaths(
+      nodes,
+      rowBudget,
+      TREE_PAGE_SIZE,
+    );
+  }
+  var defaultExpandedPaths = options.defaultExpandedPaths || new Set();
   // Array-of-strings + join() is O(n); naive `+=` against a growing
   // string was hot on big trees because every concat copied the whole
   // accumulator. With ~35 k files at depth=4 this drops a frame's
@@ -934,17 +958,9 @@ function renderTreeNodes(nodes, isRoot, options) {
       mutedCls += " tree-item-empty";
     }
     if (node.type === "dir") {
-      var isSpecial = node.name === ".logs" || node.name === ".state";
-      // Auto-expand top-level dirs on first paint, but skip any
-      // dir rendered gray (gitignored or empty subtree); those
-      // are out-of-scope context and expanding them fills the
-      // nav with content the user didn't ask for. .logs / .state
-      // still default-expand when they have non-gray content.
-      // The Recent panel sets node.expanded explicitly to drive
-      // cluster-collapse, so an explicit boolean wins over the
-      // default rule.
-      var notGray = !node.gitignored && !node.empty;
-      var defaultExpanded = notGray && (isRoot || isSpecial);
+      // Explicit state (used by Recent clustering) wins over the bounded
+      // first-paint plan.
+      var defaultExpanded = defaultExpandedPaths.has(node.path);
       var expanded = typeof node.expanded === "boolean" ? node.expanded : defaultExpanded;
       var stateClass = expanded ? "expanded" : "collapsed";
       var dirAge = formatAge(node.mtime);
@@ -2136,9 +2152,8 @@ function clusterRecentTreeJs(files, nowSec, pct) {
     };
     // Coherent (clustered) dirs collapse explicitly so the cluster
     // chip stands in for its children. For non-clustered dirs we
-    // leave ``expanded`` unset so renderTreeNodes' default rule
-    // applies — top-level non-gitignored dirs auto-expand, deeper
-    // dirs stay collapsed. Same heuristic the Files panel uses.
+    // leave ``expanded`` unset so renderTreeNodes can apply the same
+    // viewport-bounded expansion plan as the Files panel.
     if (coherent) {
       out.expanded = false;
     }
@@ -2231,9 +2246,9 @@ function renderRecentList(data) {
   // show file count instead of total bytes (see comments on
   // renderTreeNodes: aggregating bytes across "files modified
   // in last 24h" mixes incomparable things). isRoot=true so the
-  // default-expand rule fires for top-level non-gitignored dirs;
+  // viewport-bounded expansion planner can select compact folders;
   // the Recent tree builder leaves ``expanded`` unset on those
-  // exact nodes so the rule applies without expanding deep subtrees.
+  // nodes so explicit cluster-collapse state still wins.
   var body = renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
   // Truncation banner: when total_matching exceeds the cap (server
   // tops out at ``RECENT_MAX_LIMIT = 2 000``), tell the user the
