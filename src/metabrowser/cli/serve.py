@@ -1,4 +1,4 @@
-"""MetaBrowser CLI with `serve`, `plugins`, `remote`, and `walk` subcommands.
+"""Metabrowser CLI with `serve`, `plugins`, `remote`, and `walk` subcommands.
 
 The canonical command is `metab`; `metabrowser` is a compatibility alias.
 The single-argument form `metab ./runs` is forwarded to ``serve`` when no subcommand is
@@ -113,7 +113,10 @@ def _apply_log_level(level: str | None) -> None:
 _app = typer.Typer(
     name="metab",
     add_completion=False,
-    help="Local web UI for browsing run logs and structured artifacts.",
+    help=(
+        "Browse local files from your web browser, with extensible plugin-based "
+        "rendering of Markdown, code, JSON, YAML, logs, and other files."
+    ),
     epilog=(
         "Examples:\n"
         "  metab ./path/to/artifacts\n"
@@ -151,7 +154,7 @@ def serve(
         "Overrides METABROWSER_LOG_LEVEL.",
     ),
 ) -> None:
-    """Launch a local web server to browse run logs and results.
+    """Launch a local web server to browse a directory's files.
 
     If ROOT is a file, automatically split into parent directory + --path.
     Use --path to deep-link directly to a file within the root directory.

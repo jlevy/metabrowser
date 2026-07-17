@@ -1,4 +1,4 @@
-"""MetaBrowser command-line interface for the canonical `metab` script.
+"""Metabrowser command-line interface for the canonical `metab` script.
 
 The top-level `metab` script dispatches to subcommands:
 

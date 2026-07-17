@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are provided for the latest published MetaBrowser release.
+Security fixes are provided for the latest published Metabrowser release.
 During the `0.x` series, upgrades may include compatibility changes documented in the
 release notes.
 
@@ -19,13 +19,13 @@ filesystem.
 
 ## Security Boundaries
 
-MetaBrowser is a trusted-local-client tool, not a public-facing web server.
+Metabrowser is a trusted-local-client tool, not a public-facing web server.
 It does not provide a public-service authentication or tenant-isolation boundary.
 Serving on another interface can expose file contents beneath the selected root and
-should be done only within a trusted network boundary; never expose MetaBrowser directly
+should be done only within a trusted network boundary; never expose Metabrowser directly
 to the internet.
 
-Plugins execute JavaScript in the MetaBrowser page and installed entry-point plugins may
+Plugins execute JavaScript in the Metabrowser page and installed entry-point plugins may
 execute Python data hooks.
 Install plugins only from trusted sources.
 The served data root is never an automatic plugin source.

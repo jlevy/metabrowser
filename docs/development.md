@@ -1,6 +1,6 @@
 # Development
 
-MetaBrowser uses uv for Python environments and dependency resolution.
+Metabrowser uses uv for Python environments and dependency resolution.
 The repository checks Python with Ruff and BasedPyright, browser assets with Biome and
 TypeScript check-JS, Markdown with Flowmark, and behavior with pytest and Node contract
 tests.
@@ -109,11 +109,11 @@ build, distribution inspection, and installed-wheel smoke tests.
 do not provide.
 
 KPress is an exact runtime dependency because its Python and browser rendering contract
-is part of the MetaBrowser release surface.
+is part of the Metabrowser release surface.
 Changing the KPress version requires the same rendering, wheel, and public-hygiene
 validation as a source change.
 KPress 0.2.2 provides the versioned asset-manifest contract used by the browser host:
-MetaBrowser serves the complete declared closure, emits browser tags only for entry
+Metabrowser serves the complete declared closure, emits browser tags only for entry
 points, honors stylesheet, module, and classic loading modes, and installs any import
 map before module entry points.
 

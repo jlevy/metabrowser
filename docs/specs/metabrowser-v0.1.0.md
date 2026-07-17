@@ -1,4 +1,4 @@
-# Feature: MetaBrowser v0.1.0 Standalone Package
+# Feature: Metabrowser v0.1.0 Standalone Package
 
 **Date:** 2026-07-14
 
@@ -8,7 +8,7 @@
 
 ## Overview
 
-Publish MetaBrowser as an MIT-licensed Python package with a self-contained source,
+Publish Metabrowser as an MIT-licensed Python package with a self-contained source,
 test, documentation, and release workflow.
 The package provides a local browser for files and structured artifacts, supports
 trusted extensions through its plugin API, and uses KPress as its Markdown renderer.
@@ -19,7 +19,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 - Expose `metab` as the primary CLI and retain `metabrowser` as a compatibility alias
 - Make zero-install, global-tool, plugin, and agent onboarding immediately discoverable
   from the top-level README
-- Publish a portable MetaBrowser Agent Skill that delegates to the pinned zero-install
+- Publish a portable Metabrowser Agent Skill that delegates to the pinned zero-install
   runner and treats CLI help as the command reference
 - Depend on the exact audited `kpress==0.2.2` release
 - Declare and enforce a tested minimum version for every other direct runtime dependency
@@ -49,7 +49,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 
 ### Package Boundary
 
-MetaBrowser owns the generic file browser, server, browser shell, inventory and event
+Metabrowser owns the generic file browser, server, browser shell, inventory and event
 APIs, built-in renderers, and plugin runtime.
 Application-specific behavior belongs in separate plugin distributions.
 Transparent compression belongs in core because it precedes file classification;
@@ -208,7 +208,7 @@ The complete local `make -j4 verify` gate passes on the release-candidate workin
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- The MetaBrowser skill passes the Agent Skills structure validator and uses the pinned
+- The Metabrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
 - 686 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
@@ -258,7 +258,7 @@ distribution, and Python 3.12 through 3.14 jobs.
 - [Architecture](../architecture.md)
 - [Development](../development.md)
 - [Plugin authoring](../plugins.md)
-- [MetaBrowser Agent Skill](../../skills/metabrowser/SKILL.md)
+- [Metabrowser Agent Skill](../../skills/metabrowser/SKILL.md)
 - [Publishing](../publishing.md)
 - [Supply-chain security](../../SUPPLY-CHAIN-SECURITY.md)
 - [KPress](https://github.com/jlevy/kpress)

@@ -1,4 +1,7 @@
-"""metabrowser — local web UI for browsing run logs, JSONL streams, and structured artifacts.
+"""Metabrowser: an extensible, web-based file browser.
+
+Browse local files from your web browser, with extensible plugin-based rendering
+of Markdown, code, JSON, YAML, logs, and other files.
 
 Pluggable via JS modules dynamically discovered at server startup. See
 ``metabrowser.plugin_loader`` for the discovery mechanism.

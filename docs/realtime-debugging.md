@@ -1,6 +1,6 @@
 # Real-Time Debugging
 
-MetaBrowser reports timing on both sides of the HTTP boundary so a slow preview can be
+Metabrowser reports timing on both sides of the HTTP boundary so a slow preview can be
 classified as server work, transport delay, event-loop queueing, or browser rendering.
 
 ## Default Signals
@@ -88,7 +88,7 @@ is replaced.
 
 Include:
 
-- MetaBrowser version and Python version;
+- Metabrowser version and Python version;
 - operating system and filesystem type;
 - artifact size and kind, with sensitive content removed;
 - total, server, transit, and render durations;

@@ -2,13 +2,13 @@
 name: metabrowser
 description: >-
   Browse local or remote directories, files, logs, JSONL streams, Markdown,
-  structured data, images, and binary metadata with MetaBrowser. Use when a user
+  structured data, images, and binary metadata with Metabrowser. Use when a user
   asks to explore artifacts, inspect live logs, open a local file browser,
-  inventory a directory, or inspect and validate MetaBrowser plugins.
+  inventory a directory, or inspect and validate Metabrowser plugins.
 ---
-# MetaBrowser
+# Metabrowser
 
-Use MetaBrowser through its self-documenting CLI. Keep the skill as a routing layer and
+Use Metabrowser through its self-documenting CLI. Keep the skill as a routing layer and
 use command help as the source of truth for arguments and options.
 
 ## Choose the Invocation
@@ -19,7 +19,7 @@ Use the pinned zero-install runner by default:
 uvx metabrowser@0.1.0
 ```
 
-If the user has already installed MetaBrowser globally, use `metab` instead.
+If the user has already installed Metabrowser globally, use `metab` instead.
 Do not install it persistently only to complete a task that `uvx` can handle.
 
 Run `<invocation> --help` before the first operation when the required command is not
@@ -39,11 +39,11 @@ guessing flags.
 
 - Serve only paths the user placed in scope
 - Keep the default localhost binding.
-  Never expose MetaBrowser directly to the public internet; change the binding only for
+  Never expose Metabrowser directly to the public internet; change the binding only for
   an explicitly requested trusted network.
 - Treat installed and operator-directory plugins as executable code; pass
   `--plugins-dir` only for a directory the user trusts
-- Keep Python entry-point plugins in the same uvx or uv tool environment as MetaBrowser;
+- Keep Python entry-point plugins in the same uvx or uv tool environment as Metabrowser;
   use uv’s `--with` only for an explicitly trusted, version-pinned plugin distribution
 - Prefer `walk --format json` when the task needs machine-readable inventory rather than
   an interactive browser
@@ -54,7 +54,7 @@ guessing flags.
 
 ## Report the Result
 
-State what MetaBrowser opened or inspected, the served root, the selected file when
+State what Metabrowser opened or inspected, the served root, the selected file when
 applicable, the local URL for a running server, and any plugin or validation errors.
 
 <!-- This document follows common-doc-guidelines.md.

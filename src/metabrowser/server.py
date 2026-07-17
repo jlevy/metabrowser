@@ -1,4 +1,4 @@
-"""Metabrowser — local web server for browsing run logs and results.
+"""Metabrowser: an extensible, web-based file browser.
 
 Serves a single-page application with:
   - File/folder tree browser (left pane)
@@ -1728,7 +1728,7 @@ async def api_kpress_export(request: Request) -> JSONResponse:
 
 
 async def kpress_static_asset(request: Request) -> Response:
-    """Serve KPress package assets through MetaBrowser's safe asset route."""
+    """Serve KPress package assets through Metabrowser's safe asset route."""
 
     rel = request.path_params.get("path", "")
     try:
@@ -1741,7 +1741,7 @@ async def kpress_static_asset(request: Request) -> Response:
         # Fonts are the one asset class we cache hard. They are large, stable
         # for a given KPress version (the URL is version-keyed), and — unlike
         # CSS/JS — are not edited during local development, so the staleness
-        # risk that drives `no-cache` below does not apply. MetaBrowser is
+        # risk that drives `no-cache` below does not apply. Metabrowser is
         # opened often, so an immutable cache means repeat visits pay zero font
         # bytes and skip the revalidation round-trip before first paint.
         headers = {

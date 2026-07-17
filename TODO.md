@@ -1,6 +1,6 @@
 # Roadmap
 
-MetaBrowser treats compression as a transport layer around one logical file.
+Metabrowser treats compression as a transport layer around one logical file.
 For example, `report.html.zst` should classify and render like `report.html` while all
 reads remain bounded.
 Checked items below are supported today; unchecked items are planned work.
@@ -23,7 +23,7 @@ Checked items below are supported today; unchecked items are planned work.
 - [ ] Document stable extension points for custom renderers, metadata, actions, and
   optional storage adapters as each capability graduates into the public API
 
-MetaBrowser’s core stays independent of domain-specific renderers.
+Metabrowser’s core stays independent of domain-specific renderers.
 Applications can ship their own plugin packages while depending only on the documented
 public plugin API.
 
@@ -36,7 +36,7 @@ public plugin API.
   without presenting incomplete trees as empty
 
 File mutation remains disabled by default.
-These workflows do not change MetaBrowser’s trusted-client, local-filesystem security
+These workflows do not change Metabrowser’s trusted-client, local-filesystem security
 model.
 
 ## Transparent Single-File Compression

@@ -33,7 +33,7 @@ from metabrowser.plugin_loader.manifest import DataHookSpec
 plugins_app = typer.Typer(
     name="plugins",
     add_completion=False,
-    help="Inspect MetaBrowser plugin discovery (list / show / doctor).",
+    help="Inspect Metabrowser plugin discovery (list / show / doctor).",
     no_args_is_help=True,
 )
 

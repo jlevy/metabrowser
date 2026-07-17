@@ -1,12 +1,12 @@
 # Plugin Authoring
 
-A MetaBrowser plugin is a directory with a `manifest.toml` and an `index.js`. The
+A Metabrowser plugin is a directory with a `manifest.toml` and an `index.js`. The
 manifest declares file kinds, preview views, optional assets, and optional Python data
 hooks. The JavaScript entry point registers renderers with the browser SDK.
 
 ## Trust Model and Discovery
 
-MetaBrowser discovers plugins in this order:
+Metabrowser discovers plugins in this order:
 
 1. built-ins shipped in `src/metabrowser/builtin_plugins/`;
 2. installed Python entry points in the `metabrowser.plugins` group;
@@ -19,12 +19,12 @@ deduplicated after environment entries are ordered before command-line entries.
 
 The served root and a user’s home directory are not automatic plugin sources.
 This is a security boundary: browsing data must not cause its JavaScript to execute in
-the MetaBrowser page.
+the Metabrowser page.
 
 Operator-supplied directory plugins are JavaScript-only.
 Python data hooks are accepted from installed entry-point packages, whose modules
 already belong to the active Python environment.
-When MetaBrowser runs through uvx or as a uv tool, install the plugin distribution into
+When Metabrowser runs through uvx or as a uv tool, install the plugin distribution into
 that same isolated environment with uv’s `--with` option.
 
 Inspect discovery without starting the server:
@@ -142,7 +142,7 @@ least one match field is required.
 Built-ins normally use priority `0`; a specialized plugin can use a higher priority to
 claim a narrower format.
 Specialized binary stores belong in installed plugins so their native readers and value
-decoders do not become mandatory MetaBrowser dependencies.
+decoders do not become mandatory Metabrowser dependencies.
 
 Content-based classification is deliberately bounded.
 JSON predicates parse only a complete document of at most 256 KiB; YAML predicates
@@ -194,7 +194,7 @@ The route is mounted at:
 
 Keep handlers defensive:
 
-- resolve user paths through MetaBrowser’s safe-path helpers;
+- resolve user paths through Metabrowser’s safe-path helpers;
 - bound reads and parsing work;
 - return useful validation errors without exposing local absolute paths;
 - avoid blocking the event loop with synchronous filesystem work;

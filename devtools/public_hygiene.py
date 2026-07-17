@@ -1,4 +1,4 @@
-"""Reject private workspace residue before MetaBrowser is published."""
+"""Reject private workspace residue before Metabrowser is published."""
 
 from __future__ import annotations
 

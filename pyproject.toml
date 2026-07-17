@@ -8,7 +8,7 @@ Issues = "https://github.com/jlevy/metabrowser/issues"
 
 [project]
 name = "metabrowser"
-description = "Local web UI for browsing files, logs, and structured artifacts with extensible renderers."
+description = "Browse local files from your web browser, with extensible plugin-based rendering of Markdown, code, JSON, YAML, logs, and other files."
 authors = [
     { name="Joshua Levy", email="joshua@cal.berkeley.edu" },
 ]

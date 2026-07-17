@@ -1,6 +1,6 @@
 # End-to-End Testing
 
-MetaBrowser uses layered tests so server routes, browser contracts, plugins, and built
+Metabrowser uses layered tests so server routes, browser contracts, plugins, and built
 artifacts can fail independently and report a useful cause.
 
 ## Test Layers
@@ -82,7 +82,7 @@ A plugin should cover:
 7. graceful fallback when the plugin is not installed.
 
 Keep consumer plugin fixtures in the consumer repository.
-The MetaBrowser suite should use generic sample plugins so it cannot pass only because
+The Metabrowser suite should use generic sample plugins so it cannot pass only because
 an unrelated workspace package happens to be installed.
 
 ## Manual Browser Check

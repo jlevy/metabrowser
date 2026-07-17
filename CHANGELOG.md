@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to MetaBrowser are documented here.
+All notable changes to Metabrowser are documented here.
 
 ## 0.1.0
 

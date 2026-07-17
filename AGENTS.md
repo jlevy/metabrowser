@@ -40,7 +40,7 @@ pre-push gates.
 
 ## Browser and Plugin Boundary
 
-- Keep MetaBrowser core consumer-agnostic.
+- Keep Metabrowser core consumer-agnostic.
   Domain schemas, routes, renderers, tests, and styles belong in downstream plugins.
 - Plugins use the documented `window.metabrowser` SDK. Do not reach into private
   `app.js` globals.

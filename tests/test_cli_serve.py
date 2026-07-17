@@ -1,4 +1,4 @@
-"""Tests for the MetaBrowser CLI bare-form rewrite and subcommand routing.
+"""Tests for the Metabrowser CLI bare-form rewrite and subcommand routing.
 
 The CLI accepts both ``metab <root>`` (bare form) and ``metab serve <root>``
 (explicit). The bare-form rewrite in

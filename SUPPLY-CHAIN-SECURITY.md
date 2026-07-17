@@ -39,7 +39,7 @@ Confirm:
 
 Two exact first-party releases are exempt from the ordinary cool-off for this release:
 
-- `kpress==0.2.2`, required for the first MetaBrowser release and reviewed as a
+- `kpress==0.2.2`, required for the first Metabrowser release and reviewed as a
   compatible first-party maintenance update with no added dependencies;
 - `flowmark-rs==0.3.2`, used to format and verify Markdown.
   This first-party release was reviewed against `0.3.1`; its formatting output is

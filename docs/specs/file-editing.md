@@ -2,7 +2,7 @@
 
 Status: planned after v0.1.0.
 
-MetaBrowser is a trusted-local file browser, not a public-facing web server.
+Metabrowser is a trusted-local file browser, not a public-facing web server.
 Editing must therefore be explicit, disabled by default, and bounded to the served root.
 
 ## Goals

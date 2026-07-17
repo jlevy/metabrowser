@@ -1,4 +1,4 @@
-"""metab remote — open MetaBrowser on a remote host via SSH tunnel.
+"""metab remote — open Metabrowser on a remote host via SSH tunnel.
 
 Walks both local and remote ports upward from a base port so multiple
 remote sessions can coexist on the same host pair. Ctrl-C tears down the

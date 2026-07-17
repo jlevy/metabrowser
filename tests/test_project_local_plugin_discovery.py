@@ -2,7 +2,7 @@
 
 Implicit discovery from ``<served-root>/.metabrowser/plugins/`` or
 ``~/.metabrowser/plugins/`` would let viewed data opt itself into running JavaScript in
-the MetaBrowser page. The only operator-supplied source is therefore the
+the Metabrowser page. The only operator-supplied source is therefore the
 ``--plugins-dir`` CLI flag merged with ``METABROWSER_PLUGINS_DIRS`` (loaded
 from ``.env`` / ``.env.local``).
 

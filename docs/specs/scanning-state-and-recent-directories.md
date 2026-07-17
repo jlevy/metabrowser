@@ -3,7 +3,7 @@
 Status: planned after v0.1.0.
 
 Large served roots are useful before their initial scan is complete.
-MetaBrowser should expose partial progress honestly, preserve directory recency, and
+Metabrowser should expose partial progress honestly, preserve directory recency, and
 avoid presenting an incomplete subtree as empty.
 
 ## Goals

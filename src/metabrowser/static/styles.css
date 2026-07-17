@@ -144,7 +144,7 @@
   --font-sans: var(--app-sans-clean);
   --font-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
 
-  /* KPress host bridge tokens. MetaBrowser owns shell tokens; KPress owns
+  /* KPress host bridge tokens. Metabrowser owns shell tokens; KPress owns
      document rendering. KPress style-tokens.css declares each --kpress-doc-*
      as var(--kpress-host-*, <default>), so setting --kpress-host-* on :root
      lets the host's palette flow into the embedded document scope.
@@ -177,7 +177,7 @@
      token below — never a one-off rem at a single use site. Use these
      tokens at use sites; do not inline pixel literals in rules. */
   --body-font-size: 14px;
-  --mono-block-font-size: 13px;
+  --mono-block-font-size: 12px;
 
   --tree-pane-width: 300px;
 
@@ -1244,7 +1244,7 @@ html.theme-anim .menu {
    two-column TOC grid, the table bleed/constraint rules, and the
    reading-measure cap/uncap chain) lives in KPress, NOT here: see the
    "Document layout + Table of Contents" block in KPress v0.2.2's
-   src/kpress/format/static/css/components.css. MetaBrowser supplies only the
+   src/kpress/format/static/css/components.css. Metabrowser supplies only the
    container and the bridge tokens (--kpress-host-*, --kpress-measure) declared
    on :root above. The external source is authoritative:
    https://github.com/jlevy/kpress/blob/v0.2.2/src/kpress/format/static/css/components.css */
@@ -1986,7 +1986,7 @@ html[data-prose-font="sans"] {
   gap: 8px;
   padding: 4px 10px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--mono-block-font-size);
   font-family: var(--font-mono);
   background: hsl(0 0% 98%);
   transition: background var(--transition-fast);
@@ -2841,7 +2841,7 @@ pre.code-block code.hljs {
   }
 
   .preview-pane[data-printable="false"]::before {
-    content: "This MetaBrowser view is not marked printable.";
+    content: "This Metabrowser view is not marked printable.";
     display: block;
     color: black;
     font: 11pt / 1.4 var(--font-sans);

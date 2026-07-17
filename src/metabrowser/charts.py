@@ -1,7 +1,7 @@
 """Chart data extraction for the browser — generic agent-log shapes only.
 
 Third-party plugins can supply chart data hooks for their own file kinds.
-MetaBrowser core only knows the generic agent-log adapters (Claude, Gemini,
+Metabrowser core only knows the generic agent-log adapters (Claude, Gemini,
 and Pi).
 
 Memoization

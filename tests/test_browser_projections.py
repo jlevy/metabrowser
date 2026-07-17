@@ -11,7 +11,7 @@ file's mtime fingerprint. Tests verify:
 * ``invalidate_path`` drops every cache entry for that path.
 * Root-swap clears every cache (`_reset_all_caches`).
 
-Plugin-defined chart projections are intentionally absent here. MetaBrowser
+Plugin-defined chart projections are intentionally absent here. Metabrowser
 core only caches its built-in agent-log projection.
 """
 

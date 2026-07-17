@@ -1,6 +1,6 @@
-"""Provisional Python helpers for installed MetaBrowser plugin sidekicks.
+"""Provisional Python helpers for installed Metabrowser plugin sidekicks.
 
-Plugin data hooks run inside the MetaBrowser server process. They need the
+Plugin data hooks run inside the Metabrowser server process. They need the
 same served-root containment, transparent artifact reads, log-adapter
 detection, and cache lifecycle as built-in handlers. This module exposes that
 small 0.x contract without requiring plugins to import private implementation

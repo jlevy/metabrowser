@@ -334,12 +334,14 @@
   async function renderCharts(container, ctx) {
     const generation = ++chartsRenderGeneration;
     container.innerHTML = '<div class="charts-placeholder preview-empty">Charts loading...</div>';
-    const chartData = await mb.fetchPluginData("agent-log", "charts", { path: ctx.path });
+    const chartData = await mb.fetchPluginData("agent-log", "charts", {
+      path: ctx.path,
+    });
     if (generation !== chartsRenderGeneration) {
       return;
     }
     if (!window.MetabrowserCharts) {
-      throw new Error("MetaBrowser chart runtime is unavailable");
+      throw new Error("Metabrowser chart runtime is unavailable");
     }
     window.MetabrowserCharts.renderPayload(container, chartData);
   }

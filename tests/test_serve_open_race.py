@@ -160,7 +160,7 @@ def test_wait_for_http_ok_then_open_does_not_open_on_404() -> None:
 
 
 def test_wait_for_http_ok_then_open_does_not_open_on_redirect() -> None:
-    """A redirect is not proof that the MetaBrowser shell is ready."""
+    """A redirect is not proof that the Metabrowser shell is ready."""
     server, port = _start_http_server(status=302)
     try:
         with patch.object(serve_module, "webbrowser") as wb:
