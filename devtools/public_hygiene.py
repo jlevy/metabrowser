@@ -38,8 +38,8 @@ PRIVATE_ISSUE_PREFIX_HASHES = frozenset(
 )
 BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
-        "private plan path",
-        re.compile(r"\bdocs/(?:general|project)/|\bplan-20\d{2}-", re.IGNORECASE),
+        "private guidance path",
+        re.compile(r"\bdocs/general/", re.IGNORECASE),
     ),
     ("private pull-request reference", re.compile(r"\bPR[- ]?#?\d+\b", re.IGNORECASE)),
     ("private home path", re.compile(r"/(?:Users|home)/[^/\s]+(?=/|\s|$)")),

@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy and contributors
 
-**Status:** Released
+**Status:** Implemented
 
 ## Overview
 
@@ -44,6 +44,14 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 - Add application-specific plugins, schemas, routes, fixtures, or operational docs to
   the generic package
 - Ship specialized binary-store readers or their native dependencies in the core wheel
+
+## Background
+
+Metabrowser originated inside a larger application repository.
+The standalone release separated the generic browser, plugin boundary, tests,
+documentation, and release tooling into a public package without carrying
+application-specific schemas, plugins, fixtures, or operational context into the new
+repository.
 
 ## Design
 
@@ -270,14 +278,19 @@ Python 3.12 through 3.14 jobs, and the tag-triggered publication gate.
 - Agent integration: portable L1 skill with a pinned zero-install runner and no hooks or
   project mutation
 
+## Open Questions
+
+None. This plan is implemented; future work is tracked through active plans and the
+roadmap.
+
 ## References
 
-- [Architecture](../architecture.md)
-- [Development](../development.md)
-- [Plugin authoring](../plugins.md)
-- [Metabrowser Agent Skill](../../skills/metabrowser/SKILL.md)
-- [Publishing](../publishing.md)
-- [Supply-chain security](../../SUPPLY-CHAIN-SECURITY.md)
+- [Architecture](../../../architecture.md)
+- [Development](../../../development.md)
+- [Plugin authoring](../../../plugins.md)
+- [Metabrowser Agent Skill](../../../../skills/metabrowser/SKILL.md)
+- [Publishing](../../../publishing.md)
+- [Supply-chain security](../../../../SUPPLY-CHAIN-SECURITY.md)
 - [KPress](https://github.com/jlevy/kpress)
 - [simple-modern-uv](https://github.com/jlevy/simple-modern-uv)
 
