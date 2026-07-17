@@ -67,6 +67,12 @@ format:
 format-markdown:
 	$(FLOWMARK) --auto --inplace --nobackup .
 
+# Refresh vendored browser assets from lockfile-verified node_modules.
+# Run after bumping a browser library pin in package.json; commit the
+# resulting static/vendor/ changes. Tests verify manifest parity.
+vendor-assets: install
+	$(UV_RUN) python devtools/vendor_assets.py --write
+
 # Check-only lint, matching CI (does not modify files).
 lint-check:
 	$(UV_RUN) python -m devtools.lint --check

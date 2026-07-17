@@ -178,7 +178,16 @@ def serve(
         max=MAX_TCP_PORT,
         help="Server port",
     ),
-    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        help=(
+            "Host to bind to. A concrete value is automatically permitted by "
+            "the Host-header allowlist; wildcard binds (0.0.0.0, ::) use "
+            "loopback for the local URL, and additional trusted names can be "
+            "allowed with METABROWSER_ALLOWED_HOSTS (see SECURITY.md)."
+        ),
+    ),
     no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open browser"),
     plugins_dir: list[Path] | None = typer.Option(
         None,
@@ -252,7 +261,15 @@ def serve(
 
     server._set_root_dir(resolved)
 
-    url = f"http://{host}:{actual_port}"
+    # A concrete --host is a trusted name the operator chose; permit it at
+    # the Host-validation boundary. Wildcard binds accept every interface,
+    # so the printed URL, readiness probe, and auto-open use loopback
+    # (which the allowlist always permits) instead of an unroutable
+    # 0.0.0.0-style name.
+    server._register_allowed_host(host)
+    display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
+
+    url = f"http://{display_host}:{actual_port}"
     if path:
         url += f"#{quote(path)}"
 
@@ -268,7 +285,7 @@ def serve(
     if not no_open:
         threading.Thread(
             target=_wait_for_http_ok_then_open,
-            args=(host, actual_port, url),
+            args=(display_host, actual_port, url),
             daemon=True,
         ).start()
 

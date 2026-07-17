@@ -204,6 +204,9 @@ known-first-party = ["metabrowser"]
 
 [tool.codespell]
 ignore-words-list = "browseable,fo,ue,unparseable"
+# Vendored third-party browser bundles are minified upstream artifacts;
+# their identifiers are not prose to spell-check.
+skip = "*/static/vendor/*"
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]

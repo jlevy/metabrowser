@@ -20,10 +20,11 @@ import json
 import logging
 import mimetypes
 from collections.abc import Awaitable, Callable
-from inspect import isawaitable
+from inspect import isawaitable, iscoroutinefunction
 from pathlib import Path
 from typing import Any, cast
 
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
@@ -144,9 +145,16 @@ def _make_data_hook_handler(
 
     async def handler(request: Request) -> Response:
         try:
-            result: Response | Any = sidekick(request)
-            if isawaitable(result):
-                result = await result
+            # Synchronous sidekicks run in the threadpool: this dispatcher is
+            # itself async, so calling them inline would execute their full
+            # (bounded, but real) parse/read work on the event loop —
+            # Starlette's own sync-endpoint path offloads the same way.
+            if iscoroutinefunction(sidekick):
+                result: Response | Any = await sidekick(request)
+            else:
+                result = await run_in_threadpool(sidekick, request)
+                if isawaitable(result):
+                    result = await result
         except Exception as exc:
             LOG.exception(
                 "metabrowser data-hook %s/%s raised %s",

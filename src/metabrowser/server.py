@@ -466,6 +466,98 @@ def _clear_browser_caches() -> None:
     clear_charts_cache()
 
 
+# Concrete bind hosts registered by the CLI (``--host``). Wildcard binds
+# never land here; loopback names are always permitted by the middleware.
+_EXTRA_ALLOWED_HOSTS: set[str] = set()
+
+# Bind values that accept connections on every interface. They are not
+# meaningful Host-header names, so they are never added to the allowlist.
+_WILDCARD_BIND_HOSTS: frozenset[str] = frozenset({"", "0.0.0.0", "::", "[::]"})
+
+
+def _register_allowed_host(bind_host: str) -> None:
+    """Permit the CLI's concrete ``--host`` value at the HTTP boundary.
+
+    A wildcard bind is a no-op: it names interfaces, not a hostname a
+    browser would send, and allowing everything would defeat the
+    DNS-rebinding check. Operators reaching a wildcard bind through a
+    concrete name allow it explicitly with ``METABROWSER_ALLOWED_HOSTS``.
+    """
+    raw = bind_host.strip().lower()
+    if raw in _WILDCARD_BIND_HOSTS:
+        # Check before normalizing: the Host-header port-strip heuristic
+        # would mangle a bare IPv6 wildcard ("::" -> ":").
+        return
+    hostname = _HostValidationMiddleware._hostname(raw)
+    if hostname and hostname != ":" and hostname not in _WILDCARD_BIND_HOSTS:
+        _EXTRA_ALLOWED_HOSTS.add(hostname)
+
+
+class _HostValidationMiddleware:
+    """Reject requests whose ``Host`` header is not a permitted name.
+
+    Metabrowser binds to loopback, but loopback alone does not stop DNS
+    rebinding: a malicious page on an attacker-controlled domain can point
+    that domain's DNS at 127.0.0.1 and issue what the browser considers
+    same-origin reads against this server. The browser sends the attacker's
+    hostname in ``Host``, so an allowlist check defeats the attack.
+
+    Permitted by default: loopback names (``localhost``, ``127.0.0.1``,
+    ``[::1]``) with any port, plus Starlette's ``testserver``. Additional
+    names (for a non-default ``--host`` bind) come from the
+    ``METABROWSER_ALLOWED_HOSTS`` environment variable, comma-separated,
+    read per request so tests and embedders can adjust it without
+    rebuilding the app.
+    """
+
+    _DEFAULT_ALLOWED: frozenset[str] = frozenset(
+        {"localhost", "127.0.0.1", "[::1]", "::1", "testserver"}
+    )
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    @staticmethod
+    def _hostname(host_header: str) -> str:
+        host = host_header.strip().lower()
+        if host.startswith("["):
+            # Bracketed IPv6 literal, optionally with a port suffix.
+            end = host.find("]")
+            return host[: end + 1] if end >= 0 else host
+        return host.rsplit(":", 1)[0] if ":" in host else host
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        host_header = ""
+        for name, value in scope.get("headers") or []:
+            if name == b"host":
+                host_header = value.decode("latin-1")
+                break
+        hostname = self._hostname(host_header)
+        allowed = self._DEFAULT_ALLOWED | _EXTRA_ALLOWED_HOSTS
+        extra = os.environ.get("METABROWSER_ALLOWED_HOSTS", "")
+        if extra:
+            allowed = allowed | {
+                self._hostname(entry) for entry in extra.split(",") if entry.strip()
+            }
+        # An absent Host header (HTTP/1.0 clients) is allowed: rebinding
+        # requires a browser, and browsers always send Host.
+        if hostname and hostname not in allowed:
+            response = PlainTextResponse(
+                f"Host {hostname!r} is not a permitted name for this local server. "
+                "This guard blocks DNS-rebinding attacks. If this name is a "
+                "trusted way to reach this machine, restart with "
+                f"--host {hostname} or add it to the METABROWSER_ALLOWED_HOSTS "
+                "environment variable (comma-separated).\n",
+                status_code=421,
+            )
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
 class _SlowRequestLogMiddleware:
     """Time + log browser server requests.
 
@@ -694,30 +786,24 @@ async def index(_request: Request) -> HTMLResponse:
     app_font_options = "".join(
         f'<option value="{s["value"]}">{s["label"]}</option>' for s in _FONT_SETS
     )
+    # Every third-party browser library is vendored into the wheel from
+    # lockfile-verified npm packages (see devtools/vendor_assets.py and
+    # static/vendor/manifest.json) and served same-origin, so the page has
+    # no external origins and works offline. Bump a version by updating
+    # package.json + package-lock.json, then run `make vendor-assets`.
     optional_script_assets = [
-        {"src": "https://cdn.jsdelivr.net/npm/mustache@4.2.0/mustache.min.js"},
-        {"src": "https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"},
+        {"src": _static_asset_url("vendor/mustache.min.js")},
+        {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
-        {"src": "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"},
-        (
-            {
-                "src": (
-                    "https://cdn.jsdelivr.net/npm/"
-                    "chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"
-                ),
-                "requires": "Chart",
-            }
-        ),
-        (
-            {
-                "src": (
-                    "https://cdn.jsdelivr.net/npm/"
-                    "chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"
-                ),
-                "requires": "Chart",
-            }
-        ),
-        {"src": "https://cdn.jsdelivr.net/npm/elkjs@0.10.0/lib/elk.bundled.js"},
+        {"src": _static_asset_url("vendor/chart.umd.min.js")},
+        {
+            "src": _static_asset_url("vendor/chartjs-plugin-annotation.min.js"),
+            "requires": "Chart",
+        },
+        {
+            "src": _static_asset_url("vendor/chartjs-adapter-date-fns.bundle.min.js"),
+            "requires": "Chart",
+        },
     ]
     optional_assets_block = f"""<script>
   (function () {{
@@ -798,16 +884,15 @@ async def index(_request: Request) -> HTMLResponse:
        required KPress package. No flash of unstyled text on first paint. -->
   {kpress_font_head}
   {theme_bootstrap}
-  <!-- Single CDN origin (jsdelivr) so the connection-coalescing benefit
-       of HTTP/2 applies to every third-party asset. The TOML language
-       module is community-maintained and not on jsdelivr; we vendor
-       it locally under /static/vendor/ so we don't need a second
-       origin. preconnect saves the TLS handshake. -->
+  <!-- All third-party assets are vendored into the wheel and served
+       same-origin (see static/vendor/manifest.json), so the page loads
+       with no external origins and works offline. The highlight
+       stylesheet stays non-render-blocking: syntax CSS is enhancement,
+       not first-paint critical. -->
   <link rel="stylesheet" href="{styles_url}">
   {plugin_styles}
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css"></noscript>
+  <link rel="stylesheet" href="{_static_asset_url("vendor/highlight-github.min.css")}" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="{_static_asset_url("vendor/highlight-github.min.css")}"></noscript>
 </head>
 <body>
   <main class="container">
@@ -861,12 +946,11 @@ async def index(_request: Request) -> HTMLResponse:
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional
-       third-party libraries are exact-pinned and loaded by the async
-       enhancement loader below so CDN latency cannot block initial
-       tree/readme rendering. The TOML language is vendored locally
-       because it's a community add-on not present on jsdelivr (the
-       official @highlightjs/cdn-assets/11.9.0 ships TOML grammar inside
-       ini.min.js with `aliases:["toml"]`; we vendor that file directly). -->
+       third-party libraries are vendored into the wheel and loaded by
+       the async enhancement loader below so they cannot block initial
+       tree/readme rendering. TOML support comes from the official
+       highlight.js ini.min.js grammar (`aliases:["toml"]`), vendored as
+       highlight-toml.min.js. -->
   {perf_block}
   {settings_block}
   <script src="{plugin_sdk_url}"></script>
@@ -2145,6 +2229,7 @@ routes = [
 # JSON payloads this app emits. ``FileResponse`` is excluded automatically
 # by Starlette since it sets its own headers.
 middleware = [
+    Middleware(_HostValidationMiddleware),
     Middleware(_SlowRequestLogMiddleware),
     Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
 ]

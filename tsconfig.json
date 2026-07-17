@@ -18,6 +18,7 @@
     "src/metabrowser/builtin_plugins/**/*.js"
   ],
   "exclude": [
+    "src/metabrowser/static/vendor",
     "src/metabrowser/static/app.js",
     "src/metabrowser/static/charts.js",
     "src/metabrowser/static/icons.js",

@@ -128,6 +128,12 @@ def _text_files() -> list[Path]:
 
 def find_hygiene_findings(source: str, text: str) -> list[str]:
     """Return public-hygiene findings for a path or archive member."""
+    # Vendored third-party browser bundles are upstream artifacts verified
+    # byte-for-byte against static/vendor/manifest.json; their minified
+    # identifiers are not repository prose. One rule here covers both the
+    # working-tree scan and the built-archive scan.
+    if "static/vendor/" in source.replace("\\", "/"):
+        return []
     findings: list[str] = []
     combined = f"{source}\n{text}"
     for match in TOKEN_PATTERN.finditer(combined):

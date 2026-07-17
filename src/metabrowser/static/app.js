@@ -109,9 +109,24 @@ function measureNextPaint(label, meta) {
 // ── Utilities ───────────────────────────────────────────────────
 
 function esc(s) {
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
+  if (s == null) {
+    return "";
+  }
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Escape a filesystem path for embedding inside a double-quoted CSS
+// attribute selector: [data-path="…"]. Backslashes must be doubled
+// before quotes are escaped — POSIX filenames can contain both, and a
+// missed backslash silently breaks live insert/update/remove matching.
+// Used by every dynamic data-path selector in this file.
+function escapePathForSelector(path) {
+  return String(path).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 /**
@@ -2293,6 +2308,13 @@ const fileCache = new Map();
 const fileETags = new Map();
 const fileNeedsRevalidate = new Set();
 const CACHE_MAX = 30; // file payloads are small
+const ETAG_REVALIDATE_MAX = 512;
+
+function boundMapSize(map, max) {
+  while (map.size > max) {
+    map.delete(map.keys().next().value);
+  }
+}
 
 function evictFileCacheMetadata(path) {
   fileETags.delete(path);
@@ -2349,6 +2371,7 @@ async function loadMoreCurrentText() {
     }
     if (chunk.mtime_hash && cached.mtime_hash && chunk.mtime_hash !== cached.mtime_hash) {
       fileNeedsRevalidate.add(path);
+      boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
       await selectFile(path);
       return;
     }
@@ -2371,6 +2394,7 @@ async function loadMoreCurrentText() {
 // →content flicker for fast local fetches.
 var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
+var selectFileAbortController = null;
 
 async function selectFile(path, skipHash) {
   return _perf.measureAsync(
@@ -2414,6 +2438,15 @@ async function selectFile(path, skipHash) {
         preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
+      if (selectFileAbortController) {
+        selectFileAbortController.abort();
+      }
+      selectFileAbortController =
+        typeof AbortController !== "undefined" ? new AbortController() : null;
+      var selectFileSignal = selectFileAbortController
+        ? selectFileAbortController.signal
+        : undefined;
+
       try {
         /** @type {Record<string, string>} */
         const headers = {};
@@ -2422,6 +2455,7 @@ async function selectFile(path, skipHash) {
         }
         const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
           headers: headers,
+          signal: selectFileSignal,
         });
         if (resp.status === 304 && cached) {
           // Server confirmed the cached payload is still fresh — zero-byte
@@ -2454,6 +2488,7 @@ async function selectFile(path, skipHash) {
         const etagHeader = resp.headers.get("etag");
         if (etagHeader) {
           fileETags.set(path, etagHeader);
+          boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
         }
         fileNeedsRevalidate.delete(path);
         if (currentPath === path) {
@@ -2465,6 +2500,9 @@ async function selectFile(path, skipHash) {
           maybeOpenLiveStream(path, data);
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         if (currentPath === path) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
@@ -3247,6 +3285,7 @@ function _mirrorActiveFromFsEntry(entry) {
     // the next view reflects the now-frozen content.
     if (currentPath === entry.path) {
       fileNeedsRevalidate.add(currentPath);
+      boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
       if (!currentLiveStream) {
         selectFile(currentPath);
       }
@@ -3262,10 +3301,7 @@ function _mirrorActiveFromFsEntry(entry) {
 // Addressed by data-path so the same path on both Files and
 // Recent rows updates simultaneously.
 function refreshActivityBadge(path) {
-  var safe =
-    typeof CSS !== "undefined" && CSS.escape
-      ? CSS.escape(path)
-      : path.replace(/(["\\\][])/g, "\\$1");
+  var safe = escapePathForSelector(path);
   var rows = queryHtmlAll(`.tree-file[data-path="${safe}"]`);
   if (!rows.length) {
     return;
@@ -3453,7 +3489,9 @@ function _findChildContainerFor(parentRel, panelEl) {
   if (!parentRel) {
     return panelEl; // root
   }
-  var folder = panelEl.querySelector(`.tree-folder[data-path="${parentRel.replace(/"/g, '\\"')}"]`);
+  var folder = panelEl.querySelector(
+    `.tree-folder[data-path="${escapePathForSelector(parentRel)}"]`,
+  );
   if (!folder) {
     return null;
   }
@@ -3479,7 +3517,7 @@ function _findChildContainerFor(parentRel, panelEl) {
 // The class is auto-removed on `animationend` so subsequent layout
 // (selection, hover) doesn't fight a dangling class.
 function _insertRowSorted(container, entry, options) {
-  var safe = entry.path.replace(/"/g, '\\"');
+  var safe = escapePathForSelector(entry.path);
   var existing = container.querySelector(`:scope > .tree-item[data-path="${safe}"]`);
   if (existing) {
     return false;
@@ -3586,7 +3624,7 @@ function applyCellPatch(entry) {
     updateRootAggregatePresentation(entry);
     return;
   }
-  var safePath = entry.path.replace(/"/g, '\\"');
+  var safePath = escapePathForSelector(entry.path);
   var selector =
     entry.type === "dir"
       ? `.tree-folder[data-path="${safePath}"]`
@@ -3667,7 +3705,7 @@ function applyCellPatch(entry) {
 // arrive on the wire, and a collapsing tree-children container
 // reads as confusing motion).
 function _removeRenderedRows(path) {
-  var safe = path.replace(/"/g, '\\"');
+  var safe = escapePathForSelector(path);
   var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];
@@ -3727,13 +3765,18 @@ function _scheduleRecentRecompute() {
   }, RECENT_RECLUSTER_DEBOUNCE_MS);
 }
 
-function startInventoryEventStream() {
-  if (typeof EventSource === "undefined") {
-    return; // graceful degradation
-  }
-  if (inventoryEventSource) {
-    return;
-  }
+var _esConsecutiveErrors = 0;
+var _esBackoffMs = 2000;
+var _esReconnectTimer = null;
+var _ES_MAX_CONSECUTIVE_ERRORS = 5;
+var _ES_BACKOFF_CAP_MS = 60000;
+
+function _resetEsCircuitBreaker() {
+  _esConsecutiveErrors = 0;
+  _esBackoffMs = 2000;
+}
+
+function _createInventoryEventSource() {
   try {
     inventoryEventSource = new EventSource("/api/events?scope=root-depth-2");
   } catch (_e) {
@@ -3741,6 +3784,7 @@ function startInventoryEventStream() {
     return;
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
+    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       fileStoreApplySnapshot(data.scope, data.entries || []);
@@ -3750,6 +3794,7 @@ function startInventoryEventStream() {
     }
   });
   inventoryEventSource.addEventListener("fs.change", (e) => {
+    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
@@ -3759,18 +3804,46 @@ function startInventoryEventStream() {
     }
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
-    // Server restart or root swap — drop everything; EventSource
-    // auto-reconnect will deliver a fresh snapshot.
+    _resetEsCircuitBreaker();
+    // Server restart or root swap — drop everything; reconnect
+    // will deliver a fresh snapshot.
     fileStore = new Map();
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
   });
-  // EventSource auto-reconnects on transient errors; we don't
-  // need an onerror handler beyond logging.
-  inventoryEventSource.onerror = () => {
-    // Connection bounced; nothing to do — auto-reconnect handles
-    // the recovery path.
+  inventoryEventSource.onopen = () => {
+    _resetEsCircuitBreaker();
   };
+  inventoryEventSource.onerror = () => {
+    _esConsecutiveErrors += 1;
+    if (_esConsecutiveErrors >= _ES_MAX_CONSECUTIVE_ERRORS) {
+      // Circuit breaker: too many consecutive errors without a
+      // successful open or message. Close and recreate with
+      // exponential backoff. A fresh connection gets a snapshot
+      // via the existing fs.snapshot/resync flow.
+      if (inventoryEventSource) {
+        inventoryEventSource.close();
+        inventoryEventSource = null;
+      }
+      var delay = _esBackoffMs;
+      _esBackoffMs = Math.min(_esBackoffMs * 2, _ES_BACKOFF_CAP_MS);
+      _esReconnectTimer = setTimeout(() => {
+        _esReconnectTimer = null;
+        _esConsecutiveErrors = 0;
+        _createInventoryEventSource();
+      }, delay);
+    }
+  };
+}
+
+function startInventoryEventStream() {
+  if (typeof EventSource === "undefined") {
+    return; // graceful degradation
+  }
+  if (inventoryEventSource) {
+    return;
+  }
+  _createInventoryEventSource();
 }
 
 // ── Hash routing ──────────────────────────────────────────────
