@@ -3,9 +3,9 @@ type: is
 id: is-01kxgmkc6gb2e8s23jf409j4bv
 title: Prepare MetaBrowser v0.1.0 standalone package
 kind: epic
-status: in_progress
+status: closed
 priority: 1
-version: 42
+version: 43
 labels:
   - release
 dependencies: []
@@ -42,7 +42,9 @@ child_order_hints:
   - is-01kxrgmxr607dw8d5ygsjt2bva
   - is-01kxrhq8cs0hr2qxhc518vr5rd
 created_at: 2026-07-14T15:40:47.183Z
-updated_at: 2026-07-17T17:24:24.088Z
+updated_at: 2026-07-17T20:20:35.632Z
+closed_at: 2026-07-17T20:20:35.632Z
+close_reason: MetaBrowser v0.1.0 was published from exact commit e4df7ac via successful trusted-publishing run 29610357474. GitHub release and PyPI wheel/sdist are public and not yanked; exact kpress==0.2.2 metadata, uvx, global metab/metabrowser CLIs, six built-in plugins, KPress rendering, extension discovery, and the pinned public Agent Skill runner were verified from published artifacts. Post-v0.1 work is retained under mb-08aj.
 ---
 Create a public-safe, MIT-licensed standalone MetaBrowser package with exact KPress integration, modern Python tooling, release automation, and complete validation.
 

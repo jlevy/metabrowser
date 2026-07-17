@@ -3,9 +3,9 @@ type: is
 id: is-01kxhq7jqryap25akmqvvxvhvr
 title: "Address review: PR #1 — end-to-end review findings"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 19
+version: 20
 labels: []
 dependencies: []
 child_order_hints:
@@ -28,6 +28,8 @@ child_order_hints:
   - is-01kxhq8fd79dk55yqsrhmxk672
   - is-01kxhq8fmw8cetm9fzw5p875gm
 created_at: 2026-07-15T01:46:00.823Z
-updated_at: 2026-07-15T01:46:30.427Z
+updated_at: 2026-07-17T20:20:35.319Z
+closed_at: 2026-07-17T20:20:35.318Z
+close_reason: "Shipped in 813304d and subsequent v0.1.0 hardening: every accepted PR #1 runtime, security, performance, tooling, documentation, fixture, and hygiene finding has regression coverage; PR #1 has 35/35 review threads resolved; the final release gate passes 705 tests plus all lint, type, audit, build, distribution, and installed-wheel checks. The strict CSP remains separately tracked as mb-gluj."
 ---
 Track every unresolved finding from the two top-level PR #1 review artifacts and the current inline review thread. Duplicate review IDs share one canonical child bead and one implementation.
