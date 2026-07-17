@@ -97,3 +97,11 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
     # §5.1). The old name was --kpress-doc-bg.
     assert "--kpress-host-bg" in css
     assert ".metabrowser-source-truncation-warning" in css
+
+
+def test_embedded_markdown_does_not_double_top_spacing() -> None:
+    css = _read_styles_css()
+    assert ".metabrowser-kpress-host .kpress-doc" in css
+    assert "padding-block-start: var(--content-padding-y)" in css
+    assert ".metabrowser-kpress-host .kpress-prose > h1:first-child" in css
+    assert "margin-block-start: 0" in css

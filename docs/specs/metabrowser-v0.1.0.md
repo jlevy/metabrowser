@@ -110,6 +110,8 @@ Connect trusted publishing without a package token.
 - [x] Simplify the README around `uvx metabrowser`, the globally installed `metab`
   command, plugin discovery, and command help; publish the L1 Agent Skill at
   `skills/metabrowser/SKILL.md` with a pinned `uvx metabrowser@0.1.0` runner
+- [x] Refresh the public README screenshot and remove redundant top spacing from
+  embedded KPress documents and their first headings
 - [x] Add CI, tag-driven publishing, artifact inspection, behavioral release gates, and
   focused cross-file supply-chain checks
 - [x] Align Python and JavaScript quality gates with KPress and tbd guidance using
@@ -215,7 +217,7 @@ The complete local `make -j4 verify` gate passes on the release-candidate workin
 - Flowmark and public-hygiene checks pass for the repository
 - The Metabrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
-- 704 Python and browser contract tests pass
+- 705 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities

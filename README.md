@@ -1,20 +1,53 @@
 # Metabrowser
 
-Metabrowser is an extensible, plugin-based local file browser.
+Metabrowser is an extensible, plugin-based file browser that runs as a small, local
+server and opens in any web browser.
 Use it where you might use an IDE or OS file manager but get beautifully rendered
 Markdown, code, YAML, JSON and JSONL, images, logs, and many other file types.
 
-It’s also a “meta browser” in the sense that it’s a framework: its plugin architecture
-lets extensions add custom web-based rendering for arbitrary files or folders.
+I use Metabrowser because I’m tired of the ugly and often clunky experience of browsing
+files, especially Markdown documents, logs, code, and other files while coding with
+agents.
 
-Metabrowser is a small Starlette Python server with a rich web interface.
-It aims to be the most readable way to view Markdown, using clean typography and
-full-featured Markdown rendering via [kpress](https://github.com/jlevy/kpress).
+It’s also a “meta browser” in the sense that it’s a file-browsing framework: it’s
+intended to be agent hackable.
+Its plugin architecture means you can ask an agent to add new web-based renderings or
+custom views for arbitrary file types or folders.
+
+## Why Use a New Browser-Based File Manager?
+
+I’ve long been frustrated when I try to browse files in macOS Finder, VS Code, or other
+tools:
+
+- Why is Markdown rendering often absent or clunky?
+- In a folder with 10,000 files, why can’t I easily see which files are largest?
+  Or which have been modified recently?
+- Why is it so hard to tail log files in a GUI?
+- How can I cleanly browse a large YAML, JSON, or JSONL file?
+- Do I really have to register customized default apps for every file extension in macOS
+  or Windows?
+- If I want a graphical rendering for a new language or file format, do I really need to
+  ship an entire VS Code extension or a new Electron app?
+
+Metabrowser combines a simple Starlette Python server with a navigator-style web
+interface.
+
+Unlike a typical local web view, it’s live and efficient about watching for updates from
+lots of files. The server watches the file tree in the background and streams updates to
+the frontend.
+
+It especially works well when browsing Markdown docs like agent-written specs.
+It supports clean typography and full-featured Markdown rendering via
+[KPress](https://github.com/jlevy/kpress).
+
+It aims to be the most readable way to view any common file and is my preferred way to
+read Markdown docs.
 
 ## Features
 
 - **Complete Markdown support.** Good typography, tables, footnotes, syntax
-  highlighting, math, links, images, and print-friendly output (supported via kpress).
+  highlighting, math, links, images, and print-friendly output (supported via
+  [kpress](https://github.com/jlevy/kpress)).
 
 - **Broad file support.** Render common text, syntax highlighted source code, logs,
   images, and tree-parsed JSON, JSONL, and YAML. Clean support for YAML frontmatter.
@@ -32,10 +65,14 @@ full-featured Markdown rendering via [kpress](https://github.com/jlevy/kpress).
   architecture adds file matching and browser views, with optional Python data hooks and
   JSONL adapters, without changing Metabrowser core.
 
+It doesn’t currently support editing (or commenting on Markdown docs), but it could in
+the future.
+
 ## Quick Start
 
-Metabrowser uses [uv](https://docs.astral.sh/uv/). Run the latest published release
-without installing a global tool:
+Metabrowser requires Python 3.12 or newer and uses [uv](https://docs.astral.sh/uv/).
+Node.js and npm are not required to install or run it.
+Run the latest published release without installing a global tool:
 
 ```shell
 uvx metabrowser .
@@ -180,6 +217,10 @@ its subcommands as the source of truth.
 A globally installed `metab` remains available as the faster local command.
 
 ## Develop
+
+Development requires uv 0.11.26 or newer, Node 24.18 or newer on the Node 24 LTS line,
+and npm 11.10 or newer on npm 11. The Node and npm requirements apply only to repository
+tooling.
 
 The repository uses uv, Ruff, BasedPyright, pytest, Biome, TypeScript check-JS, and
 Flowmark:

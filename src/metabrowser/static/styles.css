@@ -1906,6 +1906,17 @@ html[data-prose-font="sans"] {
   color: var(--text);
 }
 
+/* MetaBrowser's content wrapper already supplies the outer document gutter,
+   and KPress's content card supplies its own breathing room. Avoid stacking
+   those with KPress's standalone-page spacing at the top of the embed. */
+.metabrowser-kpress-host .kpress-doc {
+  padding-block-start: var(--content-padding-y);
+}
+
+.metabrowser-kpress-host .kpress-prose > h1:first-child {
+  margin-block-start: 0;
+}
+
 /* ── Embedded KPress documents ─────────────────────────────────────
    metabrowser consumes KPress's own TOC runtime rather than reimplementing
    it. The preview pane is marked `data-kpress-viewport` (see server.py) and
