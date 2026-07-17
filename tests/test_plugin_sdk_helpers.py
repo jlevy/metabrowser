@@ -42,10 +42,11 @@ def test_sdk_exports_is_large_text_preview() -> None:
 def test_sdk_exports_wrap_with_copy() -> None:
     src = _sdk_source()
     assert "wrapWithCopy: wrapWithCopy" in src
-    # Plugins emit onclick="copyContent(this)" — verify the helper still
-    # produces that handler (copyContent lives in app.js for now; plugins
-    # fire it at click time).
-    assert 'onclick="copyContent(this)"' in src
+    # wrapWithCopy emits a button with no inline handler; a delegated
+    # click listener installed at SDK init handles .content-copy-btn clicks.
+    assert "content-copy-btn" in src
+    assert 'onclick="copyContent(this)"' not in src
+    assert "_copyDelegationInstalled" in src
 
 
 def test_sdk_exports_icons_proxy() -> None:

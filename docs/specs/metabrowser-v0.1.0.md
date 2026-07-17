@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy and contributors
 
-**Status:** Release Candidate
+**Status:** Released
 
 ## Overview
 
@@ -145,7 +145,7 @@ Connect trusted publishing without a package token.
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
 - [x] Add tracked-file, source-distribution, and wheel public-hygiene checks
-- [ ] Complete final review reconciliation for the latest owner feedback, publish the
+- [x] Complete final review reconciliation for the latest owner feedback, publish the
   finding dispositions, and confirm all GitHub Actions checks are green on the
   reconciliation commit; retain the Content Security Policy work as a public follow-up
 - [x] Apply tbd Common Documentation Guidelines across project-authored Markdown, format
@@ -166,25 +166,24 @@ Connect trusted publishing without a package token.
 - [x] Enforce frozen, explicitly repository-configured uv execution in Make targets,
   hooks, workflows, and executable documentation; make parallel verification ordering
   safe and publish without mutable dependency caches
-- [ ] Publish the complete bead-to-finding reconciliation after `make verify`, confirm
+- [x] Publish the complete bead-to-finding reconciliation after `make verify`, confirm
   zero unresolved review threads, close the completed review beads, and keep only the
   explicit Content Security Policy follow-up open
 
 ### First Release
 
-The repository is public, while package publication and post-publication checks remain
-pending.
+Metabrowser v0.1.0 is public on GitHub and PyPI.
 
 - [x] Confirm the repository is public after the hygiene and artifact gates pass
-- [ ] Configure the PyPI trusted publisher for the repository workflow
-- [ ] Publish the GitHub `v0.1.0` release and verify the PyPI files and metadata
-- [ ] Verify `uvx metabrowser@0.1.0`, the globally installed `metab` command, server
+- [x] Configure the PyPI trusted publisher for the repository workflow
+- [x] Publish the GitHub `v0.1.0` release and verify the PyPI files and metadata
+- [x] Verify `uvx metabrowser@0.1.0`, the globally installed `metab` command, server
   startup, built-in plugins, extension discovery, and KPress rendering from published
   artifacts
-- [ ] Install the public skill with
+- [x] Install the public skill with
   `npx skills add jlevy/metabrowser --skill metabrowser` and confirm it invokes the
   published pinned runner and routes agents to current CLI help
-- [ ] Confirm the release remains available and is not yanked
+- [x] Confirm the release remains available and is not yanked
 
 ## Testing Strategy
 
@@ -209,7 +208,7 @@ pending.
 
 ## Validation Evidence
 
-The complete local `make -j4 verify` gate passes on the release-candidate working tree:
+The complete local `make -j4 verify` gate passes on the release commit:
 
 - Ruff and BasedPyright report no diagnostics
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
@@ -234,16 +233,26 @@ The complete local `make -j4 verify` gate passes on the release-candidate workin
   usable without browser warnings or errors
 - The exact public `kpress==0.2.2` wheel resolves from PyPI under the package-scoped
   first-party exception; its host-decoded export seam adds no transitive dependency
+- The public `v0.1.0` tag and GitHub release resolve to commit
+  `e4df7ac7247bc5b2ae7ffbd13d0375c77ca272bf`; the trusted-publishing workflow completed
+  successfully from that commit
+- PyPI serves a non-yanked MIT-licensed wheel and source distribution for Python 3.12
+  and newer, with the expected `kpress==0.2.2` dependency
+- Fresh `uvx` and global-tool installs report version `0.1.0`; both console commands,
+  all six built-in plugins, installed extension discovery, KPress rendering, and plugin
+  diagnostics pass against the published wheel
+- A clean Agent Skill installation uses the pinned `uvx metabrowser@0.1.0` runner and
+  preserves the trusted-local security guidance
 
-The pull request is ready to merge only when its latest commit has green lint,
-distribution, and Python 3.12 through 3.14 jobs.
+The release commit passed the complete local gate, GitHub lint and distribution jobs,
+Python 3.12 through 3.14 jobs, and the tag-triggered publication gate.
 
 ## Rollout Plan
 
-1. Review and merge the release-readiness pull request
-2. Configure trusted publishing and create the `v0.1.0` GitHub release
-3. Verify installation, the Agent Skill, and runtime behavior from PyPI
-4. Track future features and fixes in this repository using `mb-*` issues
+1. [x] Review and merge the release-readiness pull request
+2. [x] Configure trusted publishing and create the `v0.1.0` GitHub release
+3. [x] Verify installation, the Agent Skill, and runtime behavior from PyPI
+4. [x] Track future features and fixes in this repository
 
 ## Decisions
 

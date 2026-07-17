@@ -73,7 +73,9 @@ def test_index_template_versions_core_static_assets() -> None:
     assert 'href="/static/styles.css?v=' in html
     assert 'src="/static/plugin_sdk.js?v=' in html
     assert 'src="/static/icons.js?v=' in html
+    assert 'src="/static/tree_expansion.js?v=' in html
     assert 'src="/static/app.js?v=' in html
+    assert html.index("/static/tree_expansion.js") < html.index("/static/app.js")
 
 
 # ── DOM contract: every JS-referenced id present in HTML ───────
@@ -215,7 +217,7 @@ def test_recent_recompute_called_from_fs_change_handler() -> None:
     """Every fs.change op triggers a (debounced) Recent re-cluster."""
 
     js = _read_app_js()
-    fn_start = js.index("function startInventoryEventStream()")
+    fn_start = js.index("function _createInventoryEventSource()")
     fn_block = js[fn_start : fn_start + 3000]
     assert "_scheduleRecentRecompute()" in fn_block
 
@@ -224,8 +226,8 @@ def test_render_recent_list_uses_dir_metric_count_mode() -> None:
     js = _read_app_js()
     fn_start = js.index("function renderRecentList(data)")
     fn_block = js[fn_start : fn_start + 1200]
-    # isRoot=true so the same notGray-and-isRoot auto-expand rule used
-    # by the Files panel fires for top-level non-gitignored Recent dirs.
+    # isRoot=true so Recent uses the same viewport-bounded expansion
+    # planner as the Files panel.
     assert "renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT })" in fn_block
 
 
@@ -331,14 +333,14 @@ def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
 # ── Auto-expand behavior ───────────────────────────────────────
 
 
-def test_render_tree_nodes_auto_expand_skips_gitignored_top_level() -> None:
-    """Gray top-level dirs (gitignored or empty subtree) don't auto-expand."""
+def test_render_tree_nodes_auto_expand_uses_bounded_path_set() -> None:
+    """Default expansion comes from the viewport-bounded planner."""
 
     js = _read_app_js()
     fn_start = js.index("function renderTreeNodes(nodes, isRoot, options)")
     fn_block = js[fn_start : fn_start + 2500]
-    assert "var notGray = !node.gitignored && !node.empty;" in fn_block
-    assert "var defaultExpanded = notGray && (isRoot || isSpecial);" in fn_block
+    assert "defaultExpandedPaths" in fn_block
+    assert "defaultExpandedPaths.has(node.path)" in fn_block
 
 
 def test_render_tree_nodes_explicit_expanded_overrides_default() -> None:
@@ -359,6 +361,11 @@ def test_styles_css_promotes_tab_active_color_to_root() -> None:
     css = _read_styles_css()
     assert "--tab-active-color:" in css
     assert "--tab-active-border-width:" in css
+
+
+def test_styles_css_keeps_tab_padding_compact() -> None:
+    css = _read_styles_css()
+    assert "--file-tab-padding-y: 5px;" in css
 
 
 def test_styles_css_defines_recent_controls_and_chip() -> None:

@@ -143,6 +143,25 @@ type StructuredTreeGlobal = {
   ) => DisposableHandle | undefined;
 };
 
+type MetabrowserTreeExpansionNode = {
+  children?: Array<MetabrowserTreeExpansionNode> | null;
+  empty?: boolean;
+  expanded?: boolean;
+  gitignored?: boolean;
+  name: string;
+  path: string;
+  type: string;
+};
+
+type MetabrowserTreeExpansion = {
+  chooseDefaultExpandedPaths(
+    nodes: Array<MetabrowserTreeExpansionNode>,
+    maxVisibleRows: number,
+    pageSize: number,
+  ): Set<string>;
+  visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
+};
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -170,6 +189,7 @@ declare global {
       iconFor(path: string): unknown;
     };
     MetabrowserIcons?: Record<string, string>;
+    MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTooltip?: {
       hide(): void;
       move(event: MouseEvent): void;
@@ -184,6 +204,7 @@ declare global {
       RECENT_LIMIT?: number;
       RECENT_RECLUSTER_DEBOUNCE_MS?: number;
       RECENT_WINDOWS?: Array<string>;
+      TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
     };
     metabrowser: MetabrowserSdk;
     metabrowserAgentLog?: {

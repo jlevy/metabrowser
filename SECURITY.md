@@ -30,6 +30,15 @@ execute Python data hooks.
 Install plugins only from trusted sources.
 The served data root is never an automatic plugin source.
 
+Every request’s `Host` header is checked against an allowlist to defeat DNS rebinding,
+where a malicious website points its own domain at 127.0.0.1 and reads files with what
+the browser treats as same-origin requests.
+Loopback names and a concrete `--host` value are permitted automatically.
+Additional trusted names for reaching a wildcard bind can be listed in the
+`METABROWSER_ALLOWED_HOSTS` environment variable (comma-separated); every name added
+there extends the set of domains whose pages the browser will let read responses, so
+list only names you control.
+
 Path handling is designed to keep file access beneath the selected root.
 Reports of a path traversal, symlink escape, unsafe archive handling, cross-origin
 exposure, or plugin trust bypass are security issues.
