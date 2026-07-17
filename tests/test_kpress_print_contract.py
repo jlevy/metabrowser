@@ -128,3 +128,10 @@ def test_embedded_markdown_body_uses_host_reading_size() -> None:
     rule_start = css.index(".metabrowser-kpress-host .kpress {")
     rule_block = css[rule_start : rule_start + 200]
     assert "--kpress-font-size-normal: var(--document-body-font-size);" in rule_block
+
+
+def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:
+    css = _read_styles_css()
+    rule_start = css.index(".metabrowser-kpress-host .kpress-toc li {")
+    rule_block = css[rule_start : rule_start + 140]
+    assert "margin-block: 0;" in rule_block
