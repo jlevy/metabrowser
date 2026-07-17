@@ -10,7 +10,8 @@ Checked items below are supported today; unchecked items are planned work.
 - [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
   rendering can evolve independently
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
-- [ ] Add scalable search and optional persistent indexing for very large roots
+- [ ] Add [scalable file search](docs/specs/file-search.md) and evaluate optional
+  persistent indexing for very large roots
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
 - [ ] Define a generic writer event-log backend for append-only generated artifacts
 - [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for
@@ -18,8 +19,9 @@ Checked items below are supported today; unchecked items are planned work.
 
 ## Plugin Platform
 
-- [ ] Design an editor-capable plugin lifecycle without weakening the default read-only
-  plugin contract
+- [ ] Design and implement the
+  [editor-capable plugin lifecycle](docs/specs/editor-capable-plugins.md) without
+  weakening the default read-only plugin contract
 - [ ] Document stable extension points for custom renderers, metadata, actions, and
   optional storage adapters as each capability graduates into the public API
 
@@ -38,6 +40,16 @@ public plugin API.
 File mutation remains disabled by default.
 These workflows do not change Metabrowser’s trusted-client, local-filesystem security
 model.
+
+## Editor Integration
+
+- [ ] Build the [VS Code extension](docs/specs/vscode-extension.md) around a native
+  tree, one embedded content panel, a supervised authenticated server, and uv-managed
+  installation
+
+The editor integration reuses the public tree, event, view, and plugin contracts.
+Editor-specific readiness, authentication, and embed modes should remain host-neutral so
+other trusted desktop integrations can use them without entering Metabrowser core.
 
 ## Transparent Single-File Compression
 
