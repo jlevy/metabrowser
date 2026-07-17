@@ -3,9 +3,9 @@ type: is
 id: is-01kxry18kdjj6xk8nkz4bs4ba6
 title: "Address senior review: metabrowser core + PR #5 diff research"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 25
+version: 26
 labels: []
 dependencies: []
 child_order_hints:
@@ -34,6 +34,8 @@ child_order_hints:
   - is-01kxry31tw40txkbzctzv1mtsd
   - is-01kxry3234hgx9hgphz1xsqsmk
 created_at: 2026-07-17T20:59:34.893Z
-updated_at: 2026-07-17T21:00:33.764Z
+updated_at: 2026-07-17T21:16:43.879Z
+closed_at: 2026-07-17T21:16:43.879Z
+close_reason: "Doc findings fixed on the diff-research branch (cc92da0); code findings fixed on the review-fixes branch. Platform prerequisites for the diff viewer remain open as standalone Phase 0 beads: mb-xzj3 mb-7uta mb-t1wt mb-y1ax mb-uh6p mb-osqu."
 ---
 Parent for senior eng review findings (chat review 2026-07-17). Doc findings fixed on PR #5 branch; code findings in follow-up PR; platform gaps tracked for diff-viewer work.
