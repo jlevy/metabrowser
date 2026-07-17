@@ -138,9 +138,24 @@ async def _tick(inventory: InventoryIndex, root: Path, quiet_counters: dict[str,
     loop — it only manipulates dataclasses + asyncio queues.
     """
 
-    trackable: list[FsEntry] = [e for e in inventory.entries(scope="all-known") if _is_trackable(e)]
+    # The snapshot copy must happen on the loop (the inventory is only
+    # mutated there), but with hundreds of thousands of entries the
+    # trackable filter itself is measurable, so it runs in the thread too.
+    snapshot = inventory.entries(scope="all-known")
+    trackable: list[FsEntry] = await asyncio.to_thread(
+        lambda: [e for e in snapshot if _is_trackable(e)]
+    )
     if not trackable:
+        # Trackable files can disappear wholesale (root swap, cleanup);
+        # drop their quiet counters instead of retaining them forever.
+        quiet_counters.clear()
         return
+
+    # Bound quiet_counters to paths that are still trackable so deleted
+    # files do not accumulate entries for the life of the process.
+    trackable_paths = {e.path for e in trackable}
+    for stale_path in [p for p in quiet_counters if p not in trackable_paths]:
+        del quiet_counters[stale_path]
 
     # Use absolute paths for the tracker (it stat's filesystem).
     abs_paths = [_resolved_abs(root, e) for e in trackable]

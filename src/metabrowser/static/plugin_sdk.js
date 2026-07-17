@@ -34,6 +34,7 @@
 //     render(template, data)             — Mustache.render with auto-escape
 //     escapeHtml(s)                      — escape for raw HTML insertion
 //     wrapWithCopy(html)                 — wraps html in a copy-button frame
+//                                          (delegated click handler, no inline onclick)
 //     chart(container, type, data, opts) — Chart.js wrapper
 //
 //   Data fetches:
@@ -664,13 +665,13 @@
     "</svg>";
 
   function wrapWithCopy(innerHtml) {
-    // copyContent is defined in app.js (the shell); plugins emit an
-    // onclick="copyContent(this)" handler that resolves at click time
-    // against the global, so the function reference doesn't need to
-    // exist when this string is built.
+    // A delegated click listener (installed once at SDK init) handles
+    // .content-copy-btn clicks — no inline handler needed. If the
+    // shell's global copyContent exists it is called for full feedback;
+    // otherwise the delegate falls back to clipboard.writeText.
     return (
       '<div class="content-copy-wrap">' +
-      '<button class="content-copy-btn" onclick="copyContent(this)" title="Copy content">' +
+      '<button class="content-copy-btn" data-mb-copy="wrap" title="Copy content">' +
       ICON_COPY +
       "</button>" +
       innerHtml +
@@ -741,6 +742,68 @@
 
   function langForExtension(ext) {
     return LANG_MAP[ext || ""] || "";
+  }
+
+  // Delegated click handler for the copy buttons wrapWithCopy emits.
+  // Fully SDK-owned: no reference to shell globals, so the documented
+  // wrapWithCopy behavior cannot change when app.js internals do. Scoped
+  // to buttons carrying data-mb-copy so plugin- or shell-built copy
+  // buttons with their own listeners are never double-handled.
+  /** @param {Element & {classList?: DOMTokenList, title?: string}} btn */
+  function _handleCopyClick(btn) {
+    var wrap = typeof btn.closest === "function" ? btn.closest(".content-copy-wrap") : null;
+    if (!wrap) {
+      return;
+    }
+    var code = typeof wrap.querySelector === "function" ? wrap.querySelector("code") : null;
+    var text = code ? code.textContent || "" : "";
+    if (!text) {
+      // No <code> child: copy the wrap's text minus the button's label.
+      const nodes = wrap.childNodes || [];
+      for (let ci = 0; ci < nodes.length; ci++) {
+        if (nodes[ci] !== btn) {
+          text += nodes[ci].textContent || "";
+        }
+      }
+    }
+    var clipboard = global.navigator?.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      return;
+    }
+    /** @param {string} title @param {boolean} copied */
+    function feedback(title, copied) {
+      if (copied && btn.classList) {
+        btn.classList.add("copied");
+      }
+      btn.title = title;
+      setTimeout(() => {
+        if (btn.classList) {
+          btn.classList.remove("copied");
+        }
+        btn.title = "Copy content";
+      }, 1500);
+    }
+    clipboard.writeText(text).then(
+      () => feedback("Copied!", true),
+      () => feedback("Copy failed", false),
+    );
+  }
+
+  var _copyDelegationInstalled = false;
+  if (global.document && typeof global.document.addEventListener === "function") {
+    if (!_copyDelegationInstalled) {
+      _copyDelegationInstalled = true;
+      global.document.addEventListener("click", (e) => {
+        var target = /** @type {Element | null} */ (e.target);
+        if (!target || typeof target.closest !== "function") {
+          return;
+        }
+        var btn = target.closest(".content-copy-btn[data-mb-copy]");
+        if (btn) {
+          _handleCopyClick(btn);
+        }
+      });
+    }
   }
 
   global.metabrowser = {

@@ -101,6 +101,16 @@ release graph. `pyproject.toml` owns those requirements, while `uv.lock` records
 resolved graph. Update both through uv and run the complete release gate after a
 dependency change.
 
+Third-party browser libraries are not loaded from a CDN. They are exact-pinned npm dev
+dependencies vendored into the wheel by `make vendor-assets`, which copies each file out
+of the lockfile-verified `node_modules` into `src/metabrowser/static/vendor/` with its
+license text and a hash manifest.
+The test suite verifies the committed files against the manifest and that the served
+page references no external origins, so Metabrowser works offline.
+To bump a browser library, update its pin in `package.json`, run `npm install` to
+refresh `package-lock.json`, run `make vendor-assets`, and commit the vendored files
+with the lock.
+
 Configuration files own their respective tool versions, entry points, lint and type
 ratchets, and build behavior.
 The verification gate proves those settings by running the locked tools, tests, audits,

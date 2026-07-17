@@ -81,15 +81,15 @@ def test_format_age_renders_tally_pending_for_null() -> None:
 
 def test_event_source_opens_against_api_events_scope_root_depth_2() -> None:
     js = _read_app_js()
-    fn_start = js.index("function startInventoryEventStream()")
-    fn_block = js[fn_start : fn_start + 2000]
+    fn_start = js.index("function _createInventoryEventSource()")
+    fn_block = js[fn_start : fn_start + 3000]
     assert 'new EventSource("/api/events?scope=root-depth-2")' in fn_block
 
 
 def test_event_source_registers_fs_snapshot_listener() -> None:
     js = _read_app_js()
-    fn_start = js.index("function startInventoryEventStream()")
-    fn_block = js[fn_start : fn_start + 2500]
+    fn_start = js.index("function _createInventoryEventSource()")
+    fn_block = js[fn_start : fn_start + 3000]
     assert 'addEventListener("fs.snapshot"' in fn_block
     assert 'addEventListener("fs.change"' in fn_block
     assert 'addEventListener("fs.resync_required"' in fn_block
@@ -260,7 +260,7 @@ def test_apply_cell_patch_skips_root_entry() -> None:
     # through to insertion.
     fn_block = js[fn_start : fn_start + 600]
     assert "if (!entry.path)" in fn_block
-    assert fn_block.index("if (!entry.path)") < fn_block.index("entry.path.replace")
+    assert fn_block.index("if (!entry.path)") < fn_block.index("escapePathForSelector(entry.path)")
 
 
 def test_root_entry_refreshes_summary_and_tooltip_before_row_guard() -> None:

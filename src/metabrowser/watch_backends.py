@@ -261,7 +261,10 @@ async def _emit_for_path(
 
     is_symlink = stat_module.S_ISLNK(st.st_mode)
     existing = inventory.get(rel)
-    if p.is_dir() and not is_symlink:
+    # For non-symlinks the threaded lstat above already describes the entry
+    # itself, so reuse its mode instead of a second synchronous ``is_dir``
+    # stat on the event loop.
+    if stat_module.S_ISDIR(st.st_mode) and not is_symlink:
         # Real directories: re-walk the subtree so every descendant
         # lands in the inventory. ``rewalk_subtree`` reuses the boot
         # walker's machinery, including the generation counters, so a

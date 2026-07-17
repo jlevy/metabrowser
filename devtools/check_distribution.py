@@ -58,6 +58,11 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/__init__.py",
             "metabrowser/static/app.js",
             "metabrowser/static/charts.js",
+            # Vendored browser libraries: the offline-first page depends on
+            # these shipping in the wheel (see static/vendor/manifest.json).
+            "metabrowser/static/vendor/manifest.json",
+            "metabrowser/static/vendor/highlight.min.js",
+            "metabrowser/static/vendor/chart.umd.min.js",
             "metabrowser/builtin_plugins/markdown/manifest.toml",
         }
         for suffix in required_suffixes:
