@@ -44,6 +44,8 @@ uvx metabrowser .
 This will open the current directory (or any other directory you specify) in your web
 browser.
 
+[![Metabrowser showing a file tree and rendered Markdown](images/metabrowser-overview.jpg)](images/metabrowser-overview.jpg)
+
 To make Metabrowser available everywhere as `metab`:
 
 ```shell
