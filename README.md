@@ -1,22 +1,23 @@
 # Metabrowser
 
 Metabrowser is an extensible, plugin-based local file browser.
-Use it where you might use an IDE or OS file manager, but with proper renderings of
+Use it where you might use an IDE or OS file manager but get beautifully rendered
 Markdown, code, YAML, JSON and JSONL, images, logs, and many other file types.
 
-Its plugin architecture can add custom web-based rendering for any file type.
+It’s also a “meta browser” in the sense that it’s a framework: its plugin architecture
+lets extensions add custom web-based rendering for arbitrary files or folders.
 
 Metabrowser is a small Starlette Python server with a rich web interface.
 It aims to be the most readable way to view Markdown, using clean typography and
 full-featured Markdown rendering via [kpress](https://github.com/jlevy/kpress).
 
-## Why Metabrowser
+## Features
 
-- **Complete Markdown.** KPress provides careful typography, tables, footnotes, syntax
-  highlighting, math, links, images, and print-friendly output.
+- **Complete Markdown support.** Good typography, tables, footnotes, syntax
+  highlighting, math, links, images, and print-friendly output (supported via kpress).
 
-- **Broad file support.** Render common text and source code formats, logs, images, and
-  tree-parsed JSON, JSONL, and YAML. Clean support for YAML frontmatter.
+- **Broad file support.** Render common text, syntax highlighted source code, logs,
+  images, and tree-parsed JSON, JSONL, and YAML. Clean support for YAML frontmatter.
 
 - **Scalable browsing of large file trees.** Unlike a Finder or IDE/VSCode tree, the
   file and recent views keep file ages, file and folder counts, and aggregate disk usage
@@ -24,7 +25,8 @@ full-featured Markdown rendering via [kpress](https://github.com/jlevy/kpress).
   And the streaming architecture easily scales to 100,000 files or more in a folder.
 
 - **A fast, framework-free frontend.** Metabrowser ships direct CSS and JavaScript with
-  no browser framework, keeping rendering quick and customization straightforward.
+  no browser framework.
+  Rendering is quick even for large files and customization is straightforward.
 
 - **Custom rendering for arbitrary file types.** A compact manifest-based plugin
   architecture adds file matching and browser views, with optional Python data hooks and
@@ -36,20 +38,17 @@ Metabrowser uses [uv](https://docs.astral.sh/uv/). Run the latest published rele
 without installing a global tool:
 
 ```shell
-uvx metabrowser ./path/to/artifacts
+uvx metabrowser .
 ```
 
-For a reproducible run, pin the release:
-
-```shell
-uvx metabrowser@0.1.0 ./path/to/artifacts
-```
+This will open the current directory (or any other directory you specify) in your web
+browser.
 
 To make Metabrowser available everywhere as `metab`:
 
 ```shell
-uv tool install metabrowser==0.1.0
-metab ./path/to/artifacts
+uv tool install metabrowser
+metab .
 ```
 
 `metab` is the standard installed command.

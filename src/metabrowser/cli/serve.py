@@ -19,6 +19,7 @@ Examples:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -30,6 +31,7 @@ from urllib.parse import quote
 import typer
 import uvicorn
 
+from metabrowser import __version__
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.cli.plugins import plugins_app
@@ -76,6 +78,17 @@ def _wait_for_http_ok_then_open(
 
 
 _VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
+def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
+    """Drop Uvicorn's expected cancellation records during local shutdown.
+
+    `serve` cancels open SSE streams on Ctrl-C. Uvicorn reports those expected
+    cancellations as errors even though no actionable server failure occurred.
+    """
+    if record.exc_info is not None and isinstance(record.exc_info[1], asyncio.CancelledError):
+        return False
+    return "timeout graceful shutdown exceeded" not in record.getMessage()
 
 
 def _validate_contained_path(root: Path, requested: str) -> Path:
@@ -225,7 +238,20 @@ def serve(
             daemon=True,
         ).start()
 
-    uvicorn.run(server.app, host=host, port=actual_port, log_level="warning")
+    # Browser tabs hold open SSE streams, so cancel in-flight local requests rather
+    # than waiting indefinitely for graceful shutdown after Ctrl-C.
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    uvicorn_logger.addFilter(_shutdown_noise_filter)
+    try:
+        uvicorn.run(
+            server.app,
+            host=host,
+            port=actual_port,
+            log_level="warning",
+            timeout_graceful_shutdown=0,
+        )
+    finally:
+        uvicorn_logger.removeFilter(_shutdown_noise_filter)
 
 
 @_app.command("walk")
@@ -314,8 +340,6 @@ def walk(
             ):
                 typer.echo(line)
 
-        import asyncio
-
         asyncio.run(_emit())
         return
 
@@ -347,8 +371,19 @@ def _configure_walk_logging() -> None:
 
 
 @_app.callback(invoke_without_command=True)
-def _main_callback(ctx: typer.Context) -> None:
+def _main_callback(
+    ctx: typer.Context,
+    show_version: bool = typer.Option(
+        False,
+        "--version",
+        is_eager=True,
+        help="Show the installed version and exit.",
+    ),
+) -> None:
     """Root selection is explicit; the empty command shows help."""
+    if show_version:
+        typer.echo(f"{ctx.info_name or 'metab'} {__version__}")
+        raise typer.Exit()
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
         raise typer.Exit()

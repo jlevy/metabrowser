@@ -102,7 +102,8 @@ Connect trusted publishing without a package token.
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
 - [x] Publish `metab` as the primary console script while retaining `metabrowser` for
-  existing callers and the `uvx metabrowser` package-name shorthand
+  existing callers and the `uvx metabrowser` package-name shorthand; report the
+  installed tag-derived package version through `--version` on both commands
 - [x] Simplify the README around `uvx metabrowser`, the globally installed `metab`
   command, plugin discovery, and command help; publish the L1 Agent Skill at
   `skills/metabrowser/SKILL.md` with a pinned `uvx metabrowser@0.1.0` runner
@@ -192,8 +193,9 @@ pending.
 - Build and inspect the source distribution and wheel
 - Validate the public Agent Skill metadata and confirm it is included in the source
   distribution
-- Install the wheel in an isolated uv environment, import the package, and invoke both
-  console scripts
+- Install the wheel in an isolated uv environment, import the package, invoke both
+  console scripts, and confirm each command’s `--version` output matches installed
+  package metadata
 - Exercise command-line, server, plugin, filesystem, event, and KPress integration
   behavior through tests, including the complete KPress asset-manifest closure and
   compressed preview, frontmatter, render, and export paths
@@ -210,14 +212,15 @@ The complete local `make -j4 verify` gate passes on the release-candidate workin
 - Flowmark and public-hygiene checks pass for the repository
 - The Metabrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
-- 686 Python and browser contract tests pass
+- 674 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
 - The checked-in nvm and fnm version files select Node 24.18.0, and the Make targets use
   repository-owned `.npmrc` settings even when the host exports a conflicting cutoff
 - An isolated uv environment installs the wheel and exercises `metab`, the `metabrowser`
-  compatibility alias, packaged assets, built-in plugins, and KPress rendering
+  compatibility alias, metadata-backed version reporting, packaged assets, built-in
+  plugins, and KPress rendering
 - A clean synthetic `v0.1.0` tag builds version `0.1.0` source and wheel distributions,
   passes distribution inspection, and installs both console scripts under Python 3.12
 - A running source checkout renders the public Markdown, structured, source, JSONL,

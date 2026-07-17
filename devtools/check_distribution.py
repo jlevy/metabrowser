@@ -129,10 +129,19 @@ def _smoke_install(wheel: Path) -> None:
             "assert files('metabrowser').joinpath('static/app.js').is_file(); "
             "assert required == names; "
             "assert not plugins.errors; "
-            "assert 'Wheel smoke' in rendered['html']"
+            "assert 'Wheel smoke' in rendered['html']; "
+            "print(metabrowser.__version__)"
         ),
     ]
-    subprocess.run(python_command, cwd=ROOT, env=env, check=True)
+    python_result = subprocess.run(
+        python_command,
+        cwd=ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    expected_version = python_result.stdout.strip()
 
     for command in ("metab", "metabrowser"):
         cli_command = [
@@ -143,9 +152,23 @@ def _smoke_install(wheel: Path) -> None:
             "--with",
             str(wheel),
             command,
-            "--help",
         ]
-        subprocess.run(cli_command, cwd=ROOT, env=env, check=True)
+        subprocess.run([*cli_command, "--help"], cwd=ROOT, env=env, check=True)
+
+        version_result = subprocess.run(
+            [*cli_command, "--version"],
+            cwd=ROOT,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        expected_output = f"{command} {expected_version}"
+        if version_result.stdout.strip() != expected_output:
+            raise RuntimeError(
+                f"unexpected {command} --version output: {version_result.stdout!r}; "
+                f"expected {expected_output!r}"
+            )
 
     doctor_command = [
         *uv_command,

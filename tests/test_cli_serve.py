@@ -13,6 +13,8 @@ subcommand name.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -22,7 +24,8 @@ from unittest.mock import patch
 from click import unstyle
 from typer.testing import CliRunner
 
-from metabrowser.cli.serve import _app, _rewrite_bare_form
+from metabrowser import __version__
+from metabrowser.cli.serve import _app, _rewrite_bare_form, _shutdown_noise_filter
 from metabrowser.errors import CLIError
 
 runner = CliRunner()
@@ -80,8 +83,50 @@ def test_cli_help_works() -> None:
     assert "serve" in output
     assert "plugins" in output
     assert "remote" in output
+    assert "--version" in output
     assert "metab ./path/to/artifacts" in compact_output
     assert "metab serve ./path/to/artifacts --no-open" in compact_output
+
+
+def test_cli_version_uses_installed_package_metadata() -> None:
+    result = runner.invoke(_app, ["--version"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == f"metab {__version__}"
+
+
+def test_shutdown_noise_filter_drops_expected_cancellation_only() -> None:
+    cancelled = logging.LogRecord(
+        "uvicorn.error",
+        logging.ERROR,
+        "",
+        0,
+        "Exception in ASGI application",
+        (),
+        (asyncio.CancelledError, asyncio.CancelledError(), None),
+    )
+    timeout = logging.LogRecord(
+        "uvicorn.error",
+        logging.ERROR,
+        "",
+        0,
+        "Cancel 1 running task(s), timeout graceful shutdown exceeded",
+        (),
+        None,
+    )
+    unexpected = logging.LogRecord(
+        "uvicorn.error",
+        logging.ERROR,
+        "",
+        0,
+        "Exception in ASGI application",
+        (),
+        (RuntimeError, RuntimeError("unexpected"), None),
+    )
+
+    assert not _shutdown_noise_filter(cancelled)
+    assert not _shutdown_noise_filter(timeout)
+    assert _shutdown_noise_filter(unexpected)
 
 
 def test_cli_empty_command_shows_help_instead_of_serving_default_root() -> None:
@@ -166,7 +211,25 @@ def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 0, result.exception
     run_server.assert_called_once()
+    assert run_server.call_args.kwargs["timeout_graceful_shutdown"] == 0
+    assert _shutdown_noise_filter not in logging.getLogger("uvicorn.error").filters
     assert f"Serving {root.resolve()}" in result.output
+
+
+def test_serve_removes_shutdown_filter_when_uvicorn_fails(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    uvicorn_logger.removeFilter(_shutdown_noise_filter)
+
+    with (
+        patch("uvicorn.run", side_effect=RuntimeError("server stopped")),
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = runner.invoke(_app, ["serve", str(root), "--no-open"])
+
+    assert isinstance(result.exception, RuntimeError)
+    assert _shutdown_noise_filter not in uvicorn_logger.filters
 
 
 def test_serve_loads_dotenv_before_expanding_home_relative_root(
