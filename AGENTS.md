@@ -82,6 +82,27 @@ actions rather than telling them to run commands.
 
 <!-- END TBD INTEGRATION -->
 
+## Cursor Cloud specific instructions
+
+The VM snapshot already has the pinned toolchain installed: uv (in `~/.local/bin`) and
+Node 24.18.0 (via nvm).
+Login shells get both on `PATH` (configured in `~/.bashrc`), but a bare non-login shell
+resolves an injected Node 22 at `/exec-daemon/node`, which breaks `npm ci` with
+`EBADENGINE`. The startup update script refreshes dependencies with an explicit `PATH`,
+so no manual bootstrap is needed.
+
+Build/test/run commands are documented in [development](docs/development.md); use the
+Make targets (`make install`, `make lint-check`, `make test`, `make verify`).
+Non-obvious caveats:
+
+- The `metab` CLI is only installed inside `.venv`, not on `PATH`. Run it as
+  `uv run --frozen metab ...` (e.g.
+  `uv run --frozen metab serve ./tests/manual-fixtures --no-open`). It binds
+  `127.0.0.1:8411` by default.
+- On this overlay filesystem the file watcher logs `unrecognized fs type 'overlay'` and
+  falls back to polling.
+  This is expected and harmless.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
