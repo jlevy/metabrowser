@@ -5,13 +5,13 @@ title: Remove built-in LMDB support from the standalone core
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 parent_id: is-01kxgmkc6gb2e8s23jf409j4bv
 created_at: 2026-07-15T03:08:14.727Z
-updated_at: 2026-07-15T03:18:23.278Z
+updated_at: 2026-07-17T21:16:34.008Z
 closed_at: 2026-07-15T03:18:23.277Z
 close_reason: "Removed specialized database support and its two native dependencies from the core package; updated public docs/spec and wheel assertions; local make verify and the full PR #1 CI matrix pass."
 ---

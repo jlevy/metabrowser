@@ -5,8 +5,8 @@ title: Validate the standalone repository and distributions
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels:
   - validation
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01kxgmnvg1heqtbjjc3bnz1pxk
 parent_id: is-01kxgmkc6gb2e8s23jf409j4bv
 created_at: 2026-07-14T15:42:08.142Z
-updated_at: 2026-07-14T15:59:46.681Z
+updated_at: 2026-07-17T21:16:32.317Z
 closed_at: 2026-07-14T15:59:46.681Z
 close_reason: "Initial standalone import is committed and pushed in PR #1; local make verify and GitHub Actions pass on Python 3.12, 3.13, and 3.14 with clean distribution and installed-wheel validation."
 ---

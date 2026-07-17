@@ -5,12 +5,12 @@ title: Anchor Claude hooks to the project root
 kind: bug
 status: closed
 priority: 2
-version: 2
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 created_at: 2026-07-14T18:56:23.158Z
-updated_at: 2026-07-14T18:57:32.368Z
+updated_at: 2026-07-17T21:16:42.754Z
 closed_at: 2026-07-14T18:57:32.367Z
 close_reason: Anchored every Claude hook to CLAUDE_PROJECT_DIR, added regression coverage, and passed all 611 tests and package gates
 ---

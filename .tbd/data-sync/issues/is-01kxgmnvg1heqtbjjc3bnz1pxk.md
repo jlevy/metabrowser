@@ -5,14 +5,14 @@ title: Publish MetaBrowser v0.1.0 to PyPI
 kind: task
 status: closed
 priority: 2
-version: 10
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 11
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels:
   - release
 dependencies: []
 parent_id: is-01kxgmkc6gb2e8s23jf409j4bv
 created_at: 2026-07-14T15:42:08.385Z
-updated_at: 2026-07-17T20:20:35.622Z
+updated_at: 2026-07-17T21:16:39.488Z
 closed_at: 2026-07-17T20:20:35.621Z
 close_reason: MetaBrowser v0.1.0 was published from exact commit e4df7ac via successful trusted-publishing run 29610357474. GitHub release and PyPI wheel/sdist are public and not yanked; exact kpress==0.2.2 metadata, uvx, global metab/metabrowser CLIs, six built-in plugins, KPress rendering, extension discovery, and the pinned public Agent Skill runner were verified from published artifacts. Post-v0.1 work is retained under mb-08aj.
 ---

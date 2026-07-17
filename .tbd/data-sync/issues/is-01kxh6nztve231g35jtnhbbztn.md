@@ -5,13 +5,13 @@ title: "PR #1 review R4: bound cached stylesheet loading"
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 parent_id: is-01kxh6nz7zzeerc5xgd3enrev2
 created_at: 2026-07-14T20:56:47.195Z
-updated_at: 2026-07-14T21:14:03.920Z
+updated_at: 2026-07-17T21:16:45.103Z
 closed_at: 2026-07-14T21:14:03.920Z
 close_reason: Fixed in 8c5d6b2 with retryable shared loads, bounded cached-stylesheet detection, regression coverage, and a passing 618-test verify gate.
 ---

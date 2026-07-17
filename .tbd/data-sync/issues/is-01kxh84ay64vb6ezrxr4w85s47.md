@@ -5,13 +5,13 @@ title: Fix logical size passed to KPress render
 kind: bug
 status: closed
 priority: 1
-version: 2
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 parent_id: is-01kxh6nz7zzeerc5xgd3enrev2
 created_at: 2026-07-14T21:22:05.893Z
-updated_at: 2026-07-14T21:27:36.713Z
+updated_at: 2026-07-17T21:16:33.363Z
 closed_at: 2026-07-14T21:27:36.712Z
 close_reason: Fixed the final gzip logical-size finding in 38e78af, replied and resolved it, verified all 29 review threads are resolved, and completed the final CI watch with Cursor and all five Actions jobs passing.
 ---

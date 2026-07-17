@@ -5,8 +5,8 @@ title: "Address review: PR #1 — complete comment reconciliation"
 kind: task
 status: closed
 priority: 1
-version: 29
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 30
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 parent_id: is-01kxgmkc6gb2e8s23jf409j4bv
@@ -35,7 +35,7 @@ child_order_hints:
   - is-01kxj5305c3q0e1rr4hfc3wbxj
   - is-01kxj530jzsgrnhvd38ntd3a0g
 created_at: 2026-07-15T04:16:22.693Z
-updated_at: 2026-07-15T06:39:27.349Z
+updated_at: 2026-07-17T21:16:35.386Z
 closed_at: 2026-07-15T06:39:27.348Z
 close_reason: "Complete end-to-end review reconciliation: all review beads closed with evidence, public comments posted, working tree clean, 669-test release gate green, 35/35 threads resolved, and latest-head GitHub checks green on merge-clean PR #1."
 ---

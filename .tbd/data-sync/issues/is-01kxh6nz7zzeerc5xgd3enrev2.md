@@ -5,8 +5,8 @@ title: "Address review: PR #1 — final Cursor findings"
 kind: task
 status: closed
 priority: 1
-version: 9
-spec_path: docs/specs/metabrowser-v0.1.0.md
+version: 10
+spec_path: docs/project/specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md
 labels: []
 dependencies: []
 parent_id: is-01kxgmkc6gb2e8s23jf409j4bv
@@ -15,7 +15,7 @@ child_order_hints:
   - is-01kxh6nztve231g35jtnhbbztn
   - is-01kxh84ay64vb6ezrxr4w85s47
 created_at: 2026-07-14T20:56:46.590Z
-updated_at: 2026-07-14T21:27:36.723Z
+updated_at: 2026-07-17T21:16:32.966Z
 closed_at: 2026-07-14T21:27:36.723Z
 close_reason: Fixed the final gzip logical-size finding in 38e78af, replied and resolved it, verified all 29 review threads are resolved, and completed the final CI watch with Cursor and all five Actions jobs passing.
 ---
