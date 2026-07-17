@@ -177,6 +177,7 @@
      token below — never a one-off rem at a single use site. Use these
      tokens at use sites; do not inline pixel literals in rules. */
   --body-font-size: 14px;
+  --document-body-font-size: 17px;
   --mono-block-font-size: 12px;
 
   --tree-pane-width: 300px;
@@ -248,11 +249,12 @@
   /* Content spacing */
   --content-padding-x: 24px;
   --content-padding-y: 16px;
+  --embedded-document-padding-top: 8px;
   --pane-header-padding-x: 16px;
   --pane-header-padding-y: 8px;
   --file-header-padding-y: var(--pane-header-padding-y);
   --file-tab-padding-x: 12px;
-  --file-tab-padding-y: 8px;
+  --file-tab-padding-y: 5px;
   --file-tab-align-adjust: 3px;
   --file-tab-padding-top: calc(var(--file-tab-padding-y) + var(--file-tab-align-adjust));
   --file-tab-padding-bottom: var(--file-tab-padding-y);
@@ -312,6 +314,9 @@
      render time from --tree-row-height (parseFloat → px); changing
      this rebalances the windowed list automatically. */
   --tree-row-height: 18px;
+  /* Approximate file-tree row height used to keep first-paint expansion
+     within the visible navigation viewport. */
+  --tree-auto-expand-row-height: 24px;
 
   /* Filter active border — gentle low-saturation green, applied to the
      "Go to file" filter input and the tree content when any filter
@@ -1906,15 +1911,33 @@ html[data-prose-font="sans"] {
   color: var(--text);
 }
 
+.metabrowser-kpress-host .kpress {
+  --kpress-font-size-normal: var(--document-body-font-size);
+}
+
 /* MetaBrowser's content wrapper already supplies the outer document gutter,
    and KPress's content card supplies its own breathing room. Avoid stacking
    those with KPress's standalone-page spacing at the top of the embed. */
 .metabrowser-kpress-host .kpress-doc {
-  padding-block-start: var(--content-padding-y);
+  padding-block-start: var(--embedded-document-padding-top);
 }
 
 .metabrowser-kpress-host .kpress-prose > h1:first-child {
   margin-block-start: 0;
+}
+
+/* Disclosure controls use the same label system as unselected tabs. */
+.metabrowser-kpress-host .kpress details > summary {
+  color: var(--label-color);
+  font-size: var(--label-font-size);
+  font-variant-caps: normal;
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: normal;
+  text-transform: var(--label-text-transform);
+}
+.metabrowser-kpress-host .kpress details > summary:hover {
+  color: var(--text);
 }
 
 /* ── Embedded KPress documents ─────────────────────────────────────

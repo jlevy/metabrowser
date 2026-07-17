@@ -133,6 +133,10 @@ RECENT_RECLUSTER_DEBOUNCE_MS = 100
 INDEX_PROGRESS_POLL_MS = 1_000
 INDEX_PROGRESS_UPDATE_FILES = 1_024
 
+# Fallback first-paint row budget when the browser cannot measure the
+# navigation viewport. Normal rendering derives the budget from the live pane.
+TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
+
 
 # ── Client settings export ───────────────────────────────────
 
@@ -156,6 +160,7 @@ def client_settings_dict() -> dict[str, Any]:
         "RECENT_RECLUSTER_DEBOUNCE_MS": RECENT_RECLUSTER_DEBOUNCE_MS,
         "INDEX_PROGRESS_POLL_MS": INDEX_PROGRESS_POLL_MS,
         "INDEX_PROGRESS_UPDATE_FILES": INDEX_PROGRESS_UPDATE_FILES,
+        "TREE_AUTO_EXPAND_FALLBACK_ROWS": TREE_AUTO_EXPAND_FALLBACK_ROWS,
         "SSE_HEARTBEAT_INTERVAL_S": SSE_HEARTBEAT_INTERVAL_S,
     }
 
@@ -182,5 +187,6 @@ __all__ = [
     "SSE_HEARTBEAT_INTERVAL_S",
     "SSE_PER_CONNECTION_QUEUE_SIZE",
     "SSE_RING_BUFFER_CAPACITY",
+    "TREE_AUTO_EXPAND_FALLBACK_ROWS",
     "client_settings_dict",
 ]
