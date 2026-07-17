@@ -137,7 +137,7 @@ async def _tail_jsonl(
     detection_last_growth: float | None = None
 
     try:
-        initial_st = filepath.stat()
+        initial_st = await asyncio.to_thread(filepath.stat)
     except OSError:
         yield _sse_frame("closed", {"reason": "missing"})
         return
@@ -151,7 +151,10 @@ async def _tail_jsonl(
 
     while True:
         try:
-            st = filepath.stat()
+            # Threaded: this stat runs every poll cycle for the stream's
+            # lifetime, and a slow filesystem (NFS/FUSE) must not stall the
+            # event loop for every other connection.
+            st = await asyncio.to_thread(filepath.stat)
         except OSError:
             yield _sse_frame("closed", {"reason": "missing"})
             return

@@ -466,6 +466,67 @@ def _clear_browser_caches() -> None:
     clear_charts_cache()
 
 
+class _HostValidationMiddleware:
+    """Reject requests whose ``Host`` header is not a permitted name.
+
+    Metabrowser binds to loopback, but loopback alone does not stop DNS
+    rebinding: a malicious page on an attacker-controlled domain can point
+    that domain's DNS at 127.0.0.1 and issue what the browser considers
+    same-origin reads against this server. The browser sends the attacker's
+    hostname in ``Host``, so an allowlist check defeats the attack.
+
+    Permitted by default: loopback names (``localhost``, ``127.0.0.1``,
+    ``[::1]``) with any port, plus Starlette's ``testserver``. Additional
+    names (for a non-default ``--host`` bind) come from the
+    ``METABROWSER_ALLOWED_HOSTS`` environment variable, comma-separated,
+    read per request so tests and embedders can adjust it without
+    rebuilding the app.
+    """
+
+    _DEFAULT_ALLOWED: frozenset[str] = frozenset(
+        {"localhost", "127.0.0.1", "[::1]", "::1", "testserver"}
+    )
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    @staticmethod
+    def _hostname(host_header: str) -> str:
+        host = host_header.strip().lower()
+        if host.startswith("["):
+            # Bracketed IPv6 literal, optionally with a port suffix.
+            end = host.find("]")
+            return host[: end + 1] if end >= 0 else host
+        return host.rsplit(":", 1)[0] if ":" in host else host
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        host_header = ""
+        for name, value in scope.get("headers") or []:
+            if name == b"host":
+                host_header = value.decode("latin-1")
+                break
+        hostname = self._hostname(host_header)
+        allowed = self._DEFAULT_ALLOWED
+        extra = os.environ.get("METABROWSER_ALLOWED_HOSTS", "")
+        if extra:
+            allowed = allowed | {
+                self._hostname(entry) for entry in extra.split(",") if entry.strip()
+            }
+        # An absent Host header (HTTP/1.0 clients) is allowed: rebinding
+        # requires a browser, and browsers always send Host.
+        if hostname and hostname not in allowed:
+            response = PlainTextResponse(
+                f"Host {hostname!r} is not a permitted name for this local server.\n",
+                status_code=421,
+            )
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
 class _SlowRequestLogMiddleware:
     """Time + log browser server requests.
 
@@ -693,17 +754,35 @@ async def index(_request: Request) -> HTMLResponse:
     app_font_options = "".join(
         f'<option value="{s["value"]}">{s["label"]}</option>' for s in _FONT_SETS
     )
+    # Every CDN entry pins an exact version AND a Subresource Integrity
+    # hash of that exact file, so a compromised or tampering CDN cannot
+    # substitute script bytes — the browser refuses the load and the
+    # loader's onerror path degrades gracefully. Recompute when bumping a
+    # version:
+    #   curl -sS <url> | openssl dgst -sha384 -binary | openssl base64 -A
+    # The vendored local file needs no integrity attribute; it is served
+    # same-origin from the wheel.
     optional_script_assets = [
-        {"src": "https://cdn.jsdelivr.net/npm/mustache@4.2.0/mustache.min.js"},
-        {"src": "https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"},
+        {
+            "src": "https://cdn.jsdelivr.net/npm/mustache@4.2.0/mustache.min.js",
+            "integrity": "sha384-WASZCYHGuIg0bwkJEH65mhmbKS1x4/VKI2bzElPKmL5B3e0UaH45nIdqOm+BUuRA",
+        },
+        {
+            "src": "https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js",
+            "integrity": "sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp",
+        },
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
-        {"src": "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"},
+        {
+            "src": "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js",
+            "integrity": "sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ",
+        },
         (
             {
                 "src": (
                     "https://cdn.jsdelivr.net/npm/"
                     "chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"
                 ),
+                "integrity": "sha384-3N9GHhCtN3CQef6tNfqgZlv7sQLYIkcChN+uaTZ7xVdzKYp/SjBNPxa92+hM7EAY",
                 "requires": "Chart",
             }
         ),
@@ -713,10 +792,14 @@ async def index(_request: Request) -> HTMLResponse:
                     "https://cdn.jsdelivr.net/npm/"
                     "chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"
                 ),
+                "integrity": "sha384-cVMg8E3QFwTvGCDuK+ET4PD341jF3W8nO1auiXfuZNQkzbUUiBGLsIQUE+b1mxws",
                 "requires": "Chart",
             }
         ),
-        {"src": "https://cdn.jsdelivr.net/npm/elkjs@0.10.0/lib/elk.bundled.js"},
+        {
+            "src": "https://cdn.jsdelivr.net/npm/elkjs@0.10.0/lib/elk.bundled.js",
+            "integrity": "sha384-BdOh9NQUUR8nSXhFgsTlbMi2zJr1SjvVwulU7AFbuJL2DekGTuP0pIiydrfS4G5k",
+        },
     ]
     optional_assets_block = f"""<script>
   (function () {{
@@ -740,6 +823,10 @@ async def index(_request: Request) -> HTMLResponse:
       var script = document.createElement("script");
       script.src = src;
       script.async = false;
+      if (asset.integrity) {{
+        script.integrity = asset.integrity;
+        script.crossOrigin = "anonymous";
+      }}
       script.onload = function () {{
         notifyLoaded(src);
         loadNext(i + 1);
@@ -805,8 +892,8 @@ async def index(_request: Request) -> HTMLResponse:
   <link rel="stylesheet" href="{styles_url}">
   {plugin_styles}
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css"></noscript>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" integrity="sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L" crossorigin="anonymous" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" integrity="sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L" crossorigin="anonymous"></noscript>
 </head>
 <body>
   <main class="container">
@@ -2143,6 +2230,7 @@ routes = [
 # JSON payloads this app emits. ``FileResponse`` is excluded automatically
 # by Starlette since it sets its own headers.
 middleware = [
+    Middleware(_HostValidationMiddleware),
     Middleware(_SlowRequestLogMiddleware),
     Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
 ]

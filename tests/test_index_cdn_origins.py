@@ -19,11 +19,14 @@ These tests assert:
    ``aliases:["toml"]``).
 6. Local core assets load before optional CDN assets so first paint
    never waits on jsdelivr.
+7. Every fetched CDN asset pins a Subresource Integrity hash so a
+   tampered CDN response fails closed instead of executing.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -66,8 +69,43 @@ def test_highlight_stylesheet_is_not_render_blocking() -> None:
     html = _index_html()
     assert (
         'href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" '
-        'media="print" onload="this.media=\'all\'"'
+        'integrity="sha384-'
     ) in html
+    assert 'media="print" onload="this.media=\'all\'"' in html
+
+
+def test_all_cdn_references_carry_subresource_integrity() -> None:
+    """Every jsdelivr asset must pin an SRI hash alongside its exact version.
+
+    Version pinning alone leaves the browser trusting whatever bytes the CDN
+    serves; ``integrity`` makes substitution fail closed (the loader's onerror
+    path degrades gracefully). The preconnect hint has no fetched body and is
+    exempt. The vendored local grammar is same-origin and needs no SRI.
+    """
+    html = _index_html()
+
+    # The stylesheet <link> tags (including the noscript fallback) carry
+    # integrity + crossorigin.
+    for fragment in html.split("<link "):
+        if "cdn.jsdelivr.net" not in fragment or 'rel="preconnect"' in fragment:
+            continue
+        head = fragment.split(">", 1)[0]
+        assert 'integrity="sha384-' in head, f"CDN <link> without SRI: {head[:120]}"
+        assert 'crossorigin="anonymous"' in head, f"CDN <link> without crossorigin: {head[:120]}"
+
+    # Every entry in the optional-asset loader list with a jsdelivr src
+    # declares an integrity hash, and the loader applies it. The list is
+    # embedded as a JSON literal: ``var assets = [...];``.
+    assets_json = html.split("var assets = ", 1)[1].split(";", 1)[0]
+    assets = json.loads(assets_json)
+    assert assets, "optional-asset list unexpectedly empty"
+    for asset in assets:
+        if "cdn.jsdelivr.net" in asset["src"]:
+            assert asset.get("integrity", "").startswith("sha384-"), (
+                f"CDN script without SRI: {asset['src']}"
+            )
+    assert "script.integrity = asset.integrity" in html
+    assert 'script.crossOrigin = "anonymous"' in html
 
 
 def test_toml_language_is_served_from_local_vendor() -> None:

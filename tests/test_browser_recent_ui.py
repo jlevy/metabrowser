@@ -215,7 +215,7 @@ def test_recent_recompute_called_from_fs_change_handler() -> None:
     """Every fs.change op triggers a (debounced) Recent re-cluster."""
 
     js = _read_app_js()
-    fn_start = js.index("function startInventoryEventStream()")
+    fn_start = js.index("function _createInventoryEventSource()")
     fn_block = js[fn_start : fn_start + 3000]
     assert "_scheduleRecentRecompute()" in fn_block
 

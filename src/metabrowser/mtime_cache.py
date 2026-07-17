@@ -79,26 +79,28 @@ class MtimeCache[T]:
     def read(self, path: Path) -> CacheRead[T]:
         """Look up ``path``. Returns a hit, miss, or absent CacheRead.
 
-        The stat-then-lookup sequence runs under :attr:`lock` so a
-        concurrent :meth:`update` or :meth:`delete` cannot reorder
-        against the hash. Without that serialization, a slow stat
-        could read a pre-modification fingerprint while a concurrent
-        update writes the post-modification entry — a hit returned in
-        that window would still be self-consistent (cached value
-        matches cached hash), but the lock keeps the contract
-        observable and stops cache thrash on concurrent writers.
+        The stat runs *outside* :attr:`lock`: on a slow filesystem it can
+        block for a long time, and holding the lock across it would
+        serialize every concurrent cache read behind that one stat. A hit
+        is self-consistent regardless of interleaving — the cached value
+        is only returned when it matches the cached fingerprint — and a
+        stat that races an :meth:`update` merely degrades to a miss or a
+        one-generation-stale-but-consistent hit, which mtime keying
+        already tolerates.
         """
 
         key = self._cache_key(path)
-        with self.lock:
-            self.log_stats()
-            try:
-                mtime_hash = file_mtime_hash(path)
-            except FileNotFoundError:
+        try:
+            mtime_hash = file_mtime_hash(path)
+        except FileNotFoundError:
+            with self.lock:
+                self.log_stats()
                 if key in self.cache:
                     del self.cache[key]
                 self.stats.absents += 1
-                return _ABSENT
+            return _ABSENT
+        with self.lock:
+            self.log_stats()
             cache_entry = self.cache.get(key)
             if cache_entry:
                 cached_mtime_hash, cached_value = cache_entry

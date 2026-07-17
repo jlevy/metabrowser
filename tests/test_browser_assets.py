@@ -56,7 +56,8 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     assert "async function loadMoreCurrentText()" in app
     assert 'onclick="copyPath(this,' in app
     assert "function copyPath(btn, path)" in app
-    assert 'onclick="copyContent(this)"' in sdk
+    assert "content-copy-btn" in sdk
+    assert "_copyDelegationInstalled" in sdk
     assert "function copyContent(btn)" in app
     assert 'onclick="toggleEvent(this)"' in agent_log
     assert "function toggleEvent(header)" in app
