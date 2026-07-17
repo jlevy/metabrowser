@@ -1,4 +1,4 @@
-"""Reject private workspace residue before MetaBrowser is published."""
+"""Reject private workspace residue before Metabrowser is published."""
 
 from __future__ import annotations
 
@@ -11,6 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 GIT_CHECK_IGNORE_TIMEOUT_SECONDS = 30
 SKIP_PARTS = {".git", ".venv", "dist", "node_modules", "__pycache__"}
 SKIP_ROOTS = (ROOT / ".tbd" / "docs",)
+COMMON_DOC_FOOTER = "This document follows common-doc-guidelines.md."
+COMMON_DOC_EXEMPT_ROOTS = (
+    ROOT / ".agents" / "skills",
+    ROOT / ".claude" / "skills",
+)
+COMMON_DOC_EXEMPT_FILES = {ROOT / "tests" / "manual-fixtures" / "overview.md"}
 BANNED_TOKEN_HASHES: dict[str, str] = {
     "31523fdddcd5294e2bc6cc775fba79e2597e6d45bc0a995c548493038ebea33f": "private name",
     "431c8f4eb977db1139192b703a0dbb36e9e3d89352c6983851ead2faf62a40a8": "private name",
@@ -146,12 +152,26 @@ def find_hygiene_findings(source: str, text: str) -> list[str]:
     return findings
 
 
+def find_documentation_findings(path: Path, text: str) -> list[str]:
+    """Return common-document-policy findings for a repository file."""
+    if path.suffix.lower() != ".md":
+        return []
+    if path in COMMON_DOC_EXEMPT_FILES:
+        return []
+    if any(path.is_relative_to(root) for root in COMMON_DOC_EXEMPT_ROOTS):
+        return []
+    if COMMON_DOC_FOOTER not in text:
+        return [f"{path.relative_to(ROOT)}: missing common-doc-guidelines footer"]
+    return []
+
+
 def main() -> int:
     findings: list[str] = []
     for path in _text_files():
         relative = path.relative_to(ROOT)
         text = path.read_text(encoding="utf-8")
         findings.extend(find_hygiene_findings(str(relative), text))
+        findings.extend(find_documentation_findings(path, text))
     if findings:
         print("Public hygiene check failed:")
         print("\n".join(f"- {finding}" for finding in findings))

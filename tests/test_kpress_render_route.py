@@ -264,7 +264,7 @@ def test_kpress_versioned_font_asset_is_immutable() -> None:
     assert response.status_code == 200
     # Fonts are the one asset class cached hard: large, stable per KPress
     # version, and not edited during local dev. An immutable cache means repeat
-    # MetaBrowser visits pay zero font bytes and skip the revalidation round-trip
+    # Metabrowser visits pay zero font bytes and skip the revalidation round-trip
     # before first paint (the preloaded chrome face in the page <head>).
     assert response.headers["Cache-Control"] == "public, max-age=31536000, immutable"
 

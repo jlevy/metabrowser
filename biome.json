@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
   "files": {
     "includes": ["**", "!**/dist", "!**/vendor", "!**/*.min.js", "!**/*.min.css"]
   },
@@ -20,13 +20,37 @@
     "rules": {
       "preset": "recommended",
       "style": {
-        "useBlockStatements": "error",
-        "noDescendingSpecificity": "off"
-      },
-      "correctness": {
-        "noInnerDeclarations": "off"
+        "useBlockStatements": "error"
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["src/metabrowser/static/styles.css"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/metabrowser/static/app.js",
+        "src/metabrowser/static/charts.js",
+        "src/metabrowser/static/perf.js",
+        "src/metabrowser/builtin_plugins/structured/preview.js",
+        "src/metabrowser/builtin_plugins/structured/tree.js"
+      ],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noInnerDeclarations": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": { "actions": { "source": { "organizeImports": "on" } } }
 }

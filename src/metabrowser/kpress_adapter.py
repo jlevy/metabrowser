@@ -1,4 +1,4 @@
-"""Thin boundary between MetaBrowser and the KPress runtime package."""
+"""Thin boundary between Metabrowser and the KPress runtime package."""
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ def render_kpress_view(
     theme_mode: str = "system",
     resolved_theme: str = "light",
 ) -> dict[str, Any]:
-    """Render a MetaBrowser file through KPress."""
+    """Render a Metabrowser file through KPress."""
 
     runtime = _kpress_runtime
     if theme_mode not in {"system", "light", "dark"}:

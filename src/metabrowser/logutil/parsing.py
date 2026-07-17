@@ -145,7 +145,7 @@ def register_log_adapter(
 
     The detector receives a parsed JSON object from the first non-empty lines.
     The parser factory must return a fresh ``LogParser`` for each stream. Plugin
-    names cannot replace MetaBrowser's built-in agent adapters.
+    names cannot replace Metabrowser's built-in agent adapters.
     """
     normalized = name.strip().lower()
     if not normalized:

@@ -1,4 +1,7 @@
-"""metabrowser — local web UI for browsing run logs, JSONL streams, and structured artifacts.
+"""Metabrowser: an extensible, web-based file browser.
+
+Browse local files from your web browser, with extensible plugin-based rendering
+of Markdown, code, JSON, YAML, logs, and other files.
 
 Pluggable via JS modules dynamically discovered at server startup. See
 ``metabrowser.plugin_loader`` for the discovery mechanism.
@@ -10,19 +13,21 @@ Public API for plugin authors (typically only relevant to Python sidekicks
 from importlib.metadata import PackageNotFoundError, version
 
 from metabrowser.errors import CLIError
-from metabrowser.logutil.parsing import LogEvent, LogParser, register_log_adapter
-from metabrowser.plugin_loader.discovery import (
-    LoadedPlugin,
-    discover_plugins,
-)
-from metabrowser.plugin_loader.manifest import (
-    DataHookSpec,
-    KindMatch,
-    KindRule,
-    PluginInfo,
-    PluginManifest,
-    ViewSpec,
-    load_manifest,
+from metabrowser.plugin_api import (
+    ArtifactCompressionError,
+    ArtifactDecompressionLimitError,
+    ArtifactDecompressionTimeoutError,
+    ArtifactPath,
+    JsonlParseLimitError,
+    LogEvent,
+    LogParser,
+    detect_adapter,
+    extract_agent_charts_cached,
+    register_log_adapter,
+    register_root_callback,
+    relativize_path,
+    resolve_directory,
+    resolve_path,
 )
 
 try:
@@ -31,18 +36,20 @@ except PackageNotFoundError:  # pragma: no cover - source tree without installat
     __version__ = "0.0.0"
 
 __all__ = [
+    "ArtifactCompressionError",
+    "ArtifactDecompressionLimitError",
+    "ArtifactDecompressionTimeoutError",
+    "ArtifactPath",
     "CLIError",
-    "DataHookSpec",
-    "KindMatch",
-    "KindRule",
-    "LoadedPlugin",
+    "JsonlParseLimitError",
     "LogEvent",
     "LogParser",
-    "PluginInfo",
-    "PluginManifest",
-    "ViewSpec",
     "__version__",
-    "discover_plugins",
-    "load_manifest",
+    "detect_adapter",
+    "extract_agent_charts_cached",
     "register_log_adapter",
+    "register_root_callback",
+    "relativize_path",
+    "resolve_directory",
+    "resolve_path",
 ]

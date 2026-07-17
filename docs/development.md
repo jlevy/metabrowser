@@ -1,13 +1,13 @@
 # Development
 
-MetaBrowser uses uv for Python environments and dependency resolution.
+Metabrowser uses uv for Python environments and dependency resolution.
 The repository checks Python with Ruff and BasedPyright, browser assets with Biome and
 TypeScript check-JS, Markdown with Flowmark, and behavior with pytest and Node contract
 tests.
 
 ## Set Up
 
-Install uv 0.11.21 or newer using the
+Install uv 0.11.26 or newer using the
 [official uv instructions](https://docs.astral.sh/uv/getting-started/installation/),
 install Node 24.18.0 or a newer Node 24 release with npm 11.10 or newer, clone the
 repository, and run:
@@ -16,9 +16,10 @@ repository, and run:
 make install
 ```
 
-This installs the exact Python and JavaScript dependency locks with `uv sync --locked`
-and `npm ci`. `--locked` also asserts that `uv.lock` matches `pyproject.toml` and
-`uv.toml`, so a stale or locally contaminated lock fails at install instead of shipping.
+This installs the exact Python and JavaScript dependency locks with
+`uv --config-file uv.toml sync --locked` and `npm ci`. `--locked` also asserts that
+`uv.lock` matches `pyproject.toml` and `uv.toml`, so a stale or locally contaminated
+lock fails at install instead of shipping.
 The required Node version is pinned in `.node-version` for fnm and mise and in `.nvmrc`
 for nvm. Select it with `fnm use`, `nvm use`, or `mise install` before running the Make
 targets. `npm ci` refuses to run under an older Node with an `EBADENGINE` error.
@@ -29,13 +30,13 @@ make hooks-install
 ```
 
 Do not activate `.venv` or invoke `python` or `pip` directly.
-Use `uv run --frozen`, exact-version `uvx`, repository-configured dependency commands,
-and the Make targets so commands use the locked environment and repository supply-chain
-policy.
+Use `uv --config-file uv.toml run --frozen`, exact-version `uvx`, repository-configured
+dependency commands, and the Make targets so commands use the locked environment and
+repository supply-chain policy.
 
 A machine-global uv configuration such as `~/.config/uv/uv.toml` merges into direct `uv`
 invocations and can silently rewrite the `[options]` block of `uv.lock`. The Make
-targets pin `UV_CONFIG_FILE` to the repository `uv.toml` to prevent this, and
+targets pass `--config-file` explicitly to select the repository `uv.toml`, and
 `make install` fails on a contaminated lock.
 Pass `--config-file uv.toml` to direct dependency commands outside Make.
 After running them, check `git diff uv.lock` before committing and restore the lock if
@@ -60,19 +61,25 @@ make verify
 make audit
 
 # Run a targeted test.
-uv run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
+uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
 # Start the development server with the manual browser corpus.
-uv run --frozen metab serve ./tests/manual-fixtures --no-open
+uv --config-file uv.toml run --frozen metab serve ./tests/manual-fixtures --no-open
 ```
 
-`make lint` applies the ordinary auto-fixes and then runs policy and public-hygiene
-checks. `make verify` is the handoff standard before a pull request or release.
+The quality, test, audit, and build targets install both locked environments before
+running. Make keeps these stages ordered even when invoked with parallel jobs.
+
+`make lint` applies the ordinary auto-fixes and then runs supply-chain and
+public-hygiene checks.
+`make verify` is the handoff standard before a pull request or release.
 It also audits both locked dependency graphs.
 Its artifact gate rejects local environments, build trees, and repository-only metadata
 before an isolated wheel smoke test exercises the installed `metab` command and
 `metabrowser` compatibility alias, packaged assets, built-in plugin discovery, and
-KPress rendering.
+KPress rendering. The installed wheel must also pass `metab plugins doctor`, so the
+release gate validates the user-facing plugin diagnostics rather than only importing
+plugin internals.
 
 ## Dependencies
 
@@ -90,16 +97,23 @@ JavaScript tool change.
 Do not add requirements files, Poetry, or another environment manager.
 
 Every direct runtime requirement declares the minimum version covered by the frozen
-release graph. When a direct runtime package is upgraded, update its floor and the
-reviewed runtime requirement set in `devtools/npm_policy.py` together, then run the
-complete release gate.
+release graph. `pyproject.toml` owns those requirements, while `uv.lock` records the
+resolved graph. Update both through uv and run the complete release gate after a
+dependency change.
+
+Configuration files own their respective tool versions, entry points, lint and type
+ratchets, and build behavior.
+The verification gate proves those settings by running the locked tools, tests, audits,
+build, distribution inspection, and installed-wheel smoke tests.
+`devtools/check_supply_chain.py` adds only the cross-file safety checks that those tools
+do not provide.
 
 KPress is an exact runtime dependency because its Python and browser rendering contract
-is part of the MetaBrowser release surface.
+is part of the Metabrowser release surface.
 Changing the KPress version requires the same rendering, wheel, and public-hygiene
 validation as a source change.
 KPress 0.2.2 provides the versioned asset-manifest contract used by the browser host:
-MetaBrowser serves the complete declared closure, emits browser tags only for entry
+Metabrowser serves the complete declared closure, emits browser tags only for entry
 points, honors stylesheet, module, and classic loading modes, and installs any import
 map before module entry points.
 
@@ -114,9 +128,13 @@ map before module entry points.
   creating parallel implementations.
 
 Run Ruff and BasedPyright through `make lint-check` before handoff.
-BasedPyright runs in strict mode; narrow exceptions in `pyproject.toml` cover documented
-dynamic plugin, compatibility, and untyped dependency boundaries.
-Do not broaden those exceptions without recording why strict narrowing is impractical.
+BasedPyright runs in strict mode globally.
+Its remaining compatibility exceptions are scoped separately to `src` and `tests`;
+`devtools` receives the unmodified strict floor.
+The 2026-07-16 ratchet baseline is 121 suppressed source diagnostics at dynamic plugin
+and cross-module compatibility boundaries and 362 at pytest fixture and monkeypatch
+boundaries. Reduce those counts and remove an exception category when it reaches zero.
+Never add a broad global suppression.
 
 ## Browser Code
 
@@ -139,15 +157,20 @@ not combine an unrelated rewrite with a release fix.
 modules automatically.
 `tsconfig.legacy.json` is an explicit allowlist of older modules that still permit
 implicit `any` while retaining strict null and other strict checks.
-`app.js` is checked under that legacy configuration while its older dynamic shell is
-incrementally typed.
+The 2026-07-16 baseline is 10 files, 7,124 JavaScript lines, and 532 diagnostics when
+the allowlist is checked with `noImplicitAny` enabled.
+`text/index.js` has graduated to the strict project; move each additional file as its
+JSDoc contracts become complete.
 No new file may enter the legacy configuration as an ordinary implementation shortcut.
 An exceptional addition requires a documented architecture reason and an explicit
 follow-up; otherwise the allowlist only shrinks as JSDoc contracts become complete.
 
 Biome checks every shipped browser module, including the legacy application shell, with
-the recommended rule set and only two configuration-level compatibility exceptions for
-intentional CSS ordering and legacy inner declarations.
+the recommended rule set.
+Its compatibility overrides are file-scoped: 244 legacy inner declarations across
+`app.js`, `charts.js`, `perf.js`, `structured/preview.js`, and `structured/tree.js`,
+plus 24 descending-specificity findings in `styles.css` at the 2026-07-16 baseline.
+Shrink each override list as those files become clean.
 Globals invoked from generated HTML retain their public names through narrow inline
 suppressions because those call sites are not visible to static analysis.
 All Biome and TypeScript commands run from `package-lock.json` with `npx --no-install`,
@@ -158,6 +181,8 @@ so quality checks cannot fetch tools at runtime.
 Human-authored Markdown is formatted with the exact Flowmark release pinned in the
 Makefile. Run `make format` after editing docs and `make lint-check` to verify the tree
 without modifications.
+Apply `tbd guidelines common-doc-guidelines` to the README, guidance, specifications,
+and other human-authored documents; retain the standard footer.
 
 Keep documentation public-safe.
 Do not include private repository names, internal issue identifiers, personal absolute

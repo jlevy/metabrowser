@@ -27,7 +27,6 @@
     "src/metabrowser/builtin_plugins/markdown/index.js",
     "src/metabrowser/builtin_plugins/structured/index.js",
     "src/metabrowser/builtin_plugins/structured/preview.js",
-    "src/metabrowser/builtin_plugins/structured/tree.js",
-    "src/metabrowser/builtin_plugins/text/index.js"
+    "src/metabrowser/builtin_plugins/structured/tree.js"
   ]
 }

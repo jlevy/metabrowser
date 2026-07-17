@@ -1,4 +1,4 @@
-"""KPress is MetaBrowser's required, released rendering dependency."""
+"""KPress is Metabrowser's required, released rendering dependency."""
 
 from __future__ import annotations
 

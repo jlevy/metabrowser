@@ -1,14 +1,14 @@
-# Feature: MetaBrowser v0.1.0 Standalone Package
+# Feature: Metabrowser v0.1.0 Standalone Package
 
 **Date:** 2026-07-14
 
 **Author:** Joshua Levy and contributors
 
-**Status:** In Review
+**Status:** Release Candidate
 
 ## Overview
 
-Publish MetaBrowser as an MIT-licensed Python package with a self-contained source,
+Publish Metabrowser as an MIT-licensed Python package with a self-contained source,
 test, documentation, and release workflow.
 The package provides a local browser for files and structured artifacts, supports
 trusted extensions through its plugin API, and uses KPress as its Markdown renderer.
@@ -16,10 +16,10 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 ## Goals
 
 - Publish the `metabrowser` package for Python 3.12 and newer
-- Expose `metab` as the canonical CLI and retain `metabrowser` as a compatibility alias
+- Expose `metab` as the primary CLI and retain `metabrowser` as a compatibility alias
 - Make zero-install, global-tool, plugin, and agent onboarding immediately discoverable
   from the top-level README
-- Publish a portable MetaBrowser Agent Skill that delegates to the pinned zero-install
+- Publish a portable Metabrowser Agent Skill that delegates to the pinned zero-install
   runner and treats CLI help as the command reference
 - Depend on the exact audited `kpress==0.2.2` release
 - Declare and enforce a tested minimum version for every other direct runtime dependency
@@ -49,7 +49,7 @@ trusted extensions through its plugin API, and uses KPress as its Markdown rende
 
 ### Package Boundary
 
-MetaBrowser owns the generic file browser, server, browser shell, inventory and event
+Metabrowser owns the generic file browser, server, browser shell, inventory and event
 APIs, built-in renderers, and plugin runtime.
 Application-specific behavior belongs in separate plugin distributions.
 Transparent compression belongs in core because it precedes file classification;
@@ -101,19 +101,28 @@ Connect trusted publishing without a package token.
   decompression-bomb limits
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
   package metadata
-- [x] Publish `metab` as the canonical console script while retaining `metabrowser` for
-  existing callers and the `uvx metabrowser` package-name shorthand
+- [x] Publish `metab` as the primary console script while retaining `metabrowser` for
+  existing callers and the `uvx metabrowser` package-name shorthand; report the
+  installed tag-derived package version through `--version` on both commands
+- [x] Apply the tbd CLI guidelines across the Typer surface: parser-level usage errors,
+  bounded ports, quiet closed-pipe handling, conventional signal exits, actionable
+  external-command failures, stdout/stderr separation, and structured plugin diagnostics
 - [x] Simplify the README around `uvx metabrowser`, the globally installed `metab`
   command, plugin discovery, and command help; publish the L1 Agent Skill at
   `skills/metabrowser/SKILL.md` with a pinned `uvx metabrowser@0.1.0` runner
-- [x] Add CI, tag-driven publishing, artifact inspection, and a package policy that
-  enforces the reviewed runtime floors and exact KPress compatibility pin
+- [x] Add CI, tag-driven publishing, artifact inspection, behavioral release gates, and
+  focused cross-file supply-chain checks
 - [x] Align Python and JavaScript quality gates with KPress and tbd guidance using
   strict BasedPyright, correctness-oriented Ruff rules, recommended Biome rules, strict
   TypeScript check-JS, exact npm locks, Lefthook, and SHA-pinned actions
+- [x] Pin Node 24.18.0 for nvm and fnm, require npm 11.10 or newer, and isolate Make
+  targets from conflicting host-level npm release-cutoff configuration
 - [x] Apply CLI configuration before server initialization, call the documented plugin
   entry-point factory, report incomplete installed plugins, and enforce JavaScript-only
   operator-directory plugins in both runtime behavior and diagnostic output
+- [x] Expose the provisional root-level Python sidekick API used by installed plugins
+  and validate callable packaged-resource factories, safe-path helpers, transparent
+  compression, log adapters, root lifecycle callbacks, and chart projections
 - [x] Reject duplicate data-hook routes before server startup so manifest order cannot
   silently shadow a plugin endpoint
 - [x] Normalize and validate plugin paths across commands and direct server imports,
@@ -125,7 +134,7 @@ Connect trusted publishing without a package token.
   walk path flags in output modes that cannot apply them and file targets that cannot
   form subtrees
 - [x] Anchor Codex hooks to the git root and Claude hooks to the project root, and
-  delegate legacy module execution to the canonical CLI before bootstrap side effects
+  delegate legacy module execution to the primary CLI before bootstrap side effects
 - [x] Keep optional GitHub CLI setup non-fatal on unsupported platforms and enforce the
   repository’s exact tbd v0.4.0 pin across generated agent guidance
 - [x] Isolate test discovery from operator plugin environment variables before tests
@@ -134,9 +143,12 @@ Connect trusted publishing without a package token.
   design, testing, debugging, publishing, security, and contribution
 - [x] Configure Flowmark and tbd v0.4.0 with the `mb-` issue prefix
 - [x] Add tracked-file, source-distribution, and wheel public-hygiene checks
-- [x] Complete final review reconciliation with all tracked findings closed, the full
-  local release gate passing, no unresolved review threads, and all GitHub Actions
-  checks green on the reconciliation commit
+- [ ] Complete final review reconciliation for the latest owner feedback, publish the
+  finding dispositions, and confirm all GitHub Actions checks are green on the
+  reconciliation commit; retain the Content Security Policy work as a public follow-up
+- [x] Apply tbd Common Documentation Guidelines across project-authored Markdown, format
+  it with Flowmark, and enforce the standard footer without modifying generated template
+  copies or rendering fixtures
 
 ### Final Review Reconciliation
 
@@ -149,15 +161,19 @@ Connect trusted publishing without a package token.
   running source checkout
 - [x] Preserve KPress sanitization as an explicit dependency contract and keep its
   auxiliary browser assets non-fatal after the rendered document is available
-- [x] Enforce frozen uv execution in Make targets, hooks, workflows, and executable
-  documentation; make parallel verification ordering safe and publish without mutable
-  dependency caches
-- [x] Run `make verify`, confirm zero unresolved review threads, publish the complete
-  bead-to-finding reconciliation, and close and sync the review bead tree
+- [x] Enforce frozen, explicitly repository-configured uv execution in Make targets,
+  hooks, workflows, and executable documentation; make parallel verification ordering
+  safe and publish without mutable dependency caches
+- [ ] Publish the complete bead-to-finding reconciliation after `make verify`, confirm
+  zero unresolved review threads, close the completed review beads, and keep only the
+  explicit Content Security Policy follow-up open
 
 ### First Release
 
-- [ ] Make the repository public after the hygiene and artifact gates pass
+The repository is public, while package publication and post-publication checks remain
+pending.
+
+- [x] Confirm the repository is public after the hygiene and artifact gates pass
 - [ ] Configure the PyPI trusted publisher for the repository workflow
 - [ ] Publish the GitHub `v0.1.0` release and verify the PyPI files and metadata
 - [ ] Verify `uvx metabrowser@0.1.0`, the globally installed `metab` command, server
@@ -170,18 +186,19 @@ Connect trusted publishing without a package token.
 
 ## Testing Strategy
 
-- Run Ruff, BasedPyright, codespell, npm policy, Biome, TypeScript check-JS, Flowmark,
-  and public-hygiene checks
-- Require the package-policy check to reject missing, weakened, or unreviewed direct
-  runtime requirements
+- Run Ruff, BasedPyright, codespell, Biome, TypeScript check-JS, Flowmark, focused
+  supply-chain checks, and public-hygiene checks
+- Keep version floors and ratchets in their owning configuration files and prove them by
+  running the locked tools instead of mirroring project configuration in custom code
 - Install Python and JavaScript tooling from committed locks, run JavaScript tools with
   `npx --no-install`, and audit both frozen dependency graphs for known vulnerabilities
 - Run the full pytest and browser contract suites on every supported Python version
 - Build and inspect the source distribution and wheel
 - Validate the public Agent Skill metadata and confirm it is included in the source
   distribution
-- Install the wheel in an isolated uv environment, import the package, and invoke both
-  console scripts
+- Install the wheel in an isolated uv environment, import the package, invoke both
+  console scripts, and confirm each command’s `--version` output matches installed
+  package metadata
 - Exercise command-line, server, plugin, filesystem, event, and KPress integration
   behavior through tests, including the complete KPress asset-manifest closure and
   compressed preview, frontmatter, render, and export paths
@@ -190,21 +207,25 @@ Connect trusted publishing without a package token.
 
 ## Validation Evidence
 
-The complete local `make -j4 verify` gate passes on the final reconciliation working
-tree:
+The complete local `make -j4 verify` gate passes on the release-candidate working tree:
 
 - Ruff and BasedPyright report no diagnostics
 - Biome passes for every shipped browser module, and TypeScript check-JS passes for both
   the fully strict new-module configuration and the explicit legacy-module allowlist
 - Flowmark and public-hygiene checks pass for the repository
-- The MetaBrowser skill passes the Agent Skills structure validator and uses the pinned
+- The Metabrowser skill passes the Agent Skills structure validator and uses the pinned
   first-release `uvx` runner
-- 669 Python and browser contract tests pass
+- 704 Python and browser contract tests pass
 - The source distribution and wheel contain the required assets and no local
   environments, build trees, or repository-only tbd and agent metadata
 - The frozen Python and npm dependency graphs have no known vulnerabilities
+- The checked-in nvm and fnm version files select Node 24.18.0, and the Make targets use
+  repository-owned `.npmrc` settings even when the host exports a conflicting cutoff
 - An isolated uv environment installs the wheel and exercises `metab`, the `metabrowser`
-  compatibility alias, packaged assets, built-in plugins, and KPress rendering
+  compatibility alias, metadata-backed version reporting, packaged assets, built-in
+  plugins, and KPress rendering
+- A clean synthetic `v0.1.0` tag builds version `0.1.0` source and wheel distributions,
+  passes distribution inspection, and installs both console scripts under Python 3.12
 - A running source checkout renders the public Markdown, structured, source, JSONL,
   image, and binary fixtures; live create/delete updates Files and Recent; direct hash
   links, light/dark themes, a 480-pixel viewport, keyboard focus, and print handoff are
@@ -217,16 +238,15 @@ distribution, and Python 3.12 through 3.14 jobs.
 
 ## Rollout Plan
 
-1. Review and merge the complete standalone repository import
-2. Change repository visibility only after repeating public-hygiene checks
-3. Configure trusted publishing and create the `v0.1.0` GitHub release
-4. Verify installation and runtime behavior from PyPI
-5. Track future features and fixes in this repository using `mb-*` issues
+1. Review and merge the release-readiness pull request
+2. Configure trusted publishing and create the `v0.1.0` GitHub release
+3. Verify installation, the Agent Skill, and runtime behavior from PyPI
+4. Track future features and fixes in this repository using `mb-*` issues
 
 ## Decisions
 
 - Package and import name: `metabrowser`
-- Canonical CLI and compatibility alias: `metab` and `metabrowser`
+- Primary CLI and compatibility alias: `metab` and `metabrowser`
 - License: MIT
 - First release: `v0.1.0`
 - Supported Python: 3.12 through 3.14
@@ -244,7 +264,7 @@ distribution, and Python 3.12 through 3.14 jobs.
 - [Architecture](../architecture.md)
 - [Development](../development.md)
 - [Plugin authoring](../plugins.md)
-- [MetaBrowser Agent Skill](../../skills/metabrowser/SKILL.md)
+- [Metabrowser Agent Skill](../../skills/metabrowser/SKILL.md)
 - [Publishing](../publishing.md)
 - [Supply-chain security](../../SUPPLY-CHAIN-SECURITY.md)
 - [KPress](https://github.com/jlevy/kpress)

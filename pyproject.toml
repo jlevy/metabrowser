@@ -8,7 +8,7 @@ Issues = "https://github.com/jlevy/metabrowser/issues"
 
 [project]
 name = "metabrowser"
-description = "Local web UI for browsing files, logs, and structured artifacts with extensible renderers."
+description = "Browse local files from your web browser, with extensible plugin-based rendering of Markdown, code, JSON, YAML, logs, and other files."
 authors = [
     { name="Joshua Levy", email="joshua@cal.berkeley.edu" },
 ]
@@ -189,18 +189,15 @@ reportMissingTypeStubs = false
 reportUnusedCallResult = false
 reportImplicitStringConcatenation = false
 reportImplicitOverride = false
-# MetaBrowser's compatibility facade intentionally re-exports underscored helpers,
-# and its JSON/plugin boundaries narrow unknown values at runtime.
-reportPrivateUsage = false
-reportUnknownArgumentType = false
-reportUnknownLambdaType = false
-reportUnknownMemberType = false
-reportUnknownParameterType = false
-reportUnknownVariableType = false
-reportMissingParameterType = false
-reportUnusedClass = false
-reportUnusedFunction = false
-reportUnusedImport = false
+executionEnvironments = [
+    # The source tree still has legacy cross-module private helpers and dynamic
+    # JSON/plugin boundaries. Keep those diagnostics local to source code so
+    # devtools remain at the KPress strict floor.
+    { root = "src", reportPrivateUsage = false, reportUnknownArgumentType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnusedFunction = false },
+    # Pytest fixtures and monkeypatched boundaries are dynamically typed. This
+    # environment contains that debt without weakening source or devtools.
+    { root = "tests", extraPaths = ["."], reportPrivateUsage = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportUnknownMemberType = false, reportUnknownParameterType = false, reportUnknownVariableType = false, reportMissingParameterType = false },
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["metabrowser"]

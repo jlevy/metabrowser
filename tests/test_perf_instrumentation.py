@@ -33,6 +33,16 @@ from unittest.mock import Mock
 from metabrowser import server
 
 
+def test_perf_logging_writes_to_current_stderr(capsys) -> None:
+    token = "metabrowser-dynamic-stderr"
+
+    logging.getLogger("metabrowser.server").warning(token)
+
+    captured = capsys.readouterr()
+    assert token in captured.err
+    assert token not in captured.out
+
+
 def _scope(method: str = "GET", path: str = "/api/tree") -> dict[str, Any]:
     return {
         "type": "http",

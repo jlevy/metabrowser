@@ -1,12 +1,12 @@
 # Plugin Authoring
 
-A MetaBrowser plugin is a directory with a `manifest.toml` and an `index.js`. The
+A Metabrowser plugin is a directory with a `manifest.toml` and an `index.js`. The
 manifest declares file kinds, preview views, optional assets, and optional Python data
 hooks. The JavaScript entry point registers renderers with the browser SDK.
 
 ## Trust Model and Discovery
 
-MetaBrowser discovers plugins in this order:
+Metabrowser discovers plugins in this order:
 
 1. built-ins shipped in `src/metabrowser/builtin_plugins/`;
 2. installed Python entry points in the `metabrowser.plugins` group;
@@ -19,12 +19,12 @@ deduplicated after environment entries are ordered before command-line entries.
 
 The served root and a user’s home directory are not automatic plugin sources.
 This is a security boundary: browsing data must not cause its JavaScript to execute in
-the MetaBrowser page.
+the Metabrowser page.
 
 Operator-supplied directory plugins are JavaScript-only.
 Python data hooks are accepted from installed entry-point packages, whose modules
 already belong to the active Python environment.
-When MetaBrowser runs through uvx or as a uv tool, install the plugin distribution into
+When Metabrowser runs through uvx or as a uv tool, install the plugin distribution into
 that same isolated environment with uv’s `--with` option.
 
 Inspect discovery without starting the server:
@@ -33,13 +33,20 @@ Inspect discovery without starting the server:
 metab plugins list
 metab plugins list --json
 metab plugins show markdown
+metab plugins show markdown --json
 metab plugins doctor
+metab plugins doctor --json
 metab plugins doctor --plugins-dir ./examples
 ```
 
 `doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
 operator-directory JavaScript-only boundaries, and high-priority kind conflicts.
 It exits nonzero when any problem is found.
+All three commands support `--json` for machine-readable output.
+Discovery errors preserve any plugins that loaded successfully but make the command exit
+nonzero, so scripts cannot mistake a partial registry for a complete one.
+Human-readable data goes to standard output, while human-readable errors go to standard
+error.
 
 ## Minimal Plugin
 
@@ -142,7 +149,7 @@ least one match field is required.
 Built-ins normally use priority `0`; a specialized plugin can use a higher priority to
 claim a narrower format.
 Specialized binary stores belong in installed plugins so their native readers and value
-decoders do not become mandatory MetaBrowser dependencies.
+decoders do not become mandatory Metabrowser dependencies.
 
 Content-based classification is deliberately bounded.
 JSON predicates parse only a complete document of at most 256 KiB; YAML predicates
@@ -194,7 +201,7 @@ The route is mounted at:
 
 Keep handlers defensive:
 
-- resolve user paths through MetaBrowser’s safe-path helpers;
+- resolve user paths through Metabrowser’s safe-path helpers;
 - bound reads and parsing work;
 - return useful validation errors without exposing local absolute paths;
 - avoid blocking the event loop with synchronous filesystem work;
@@ -316,6 +323,53 @@ detection for every JSONL file.
 Keep it fast, deterministic, and free of filesystem or network work.
 The factory must return a fresh parser for each file or live stream.
 Built-in adapter names cannot be replaced.
+
+### Python Sidekick API
+
+Import server-integrated helpers from `metabrowser`, not private package modules:
+
+```python
+from metabrowser import (
+    ArtifactCompressionError,
+    ArtifactPath,
+    JsonlParseLimitError,
+    relativize_path,
+    resolve_directory,
+    resolve_path,
+)
+```
+
+- `resolve_path(value)` resolves a served-root-relative path and rejects traversal.
+  An empty string returns the served root, and any successful result may be a file or
+  directory.
+- `resolve_directory(value)` applies the same containment rule and requires a directory.
+- `relativize_path(value)` converts an absolute path under the served root to a client
+  path.
+- `ArtifactPath` reads supported single-file compression formats transparently and with
+  decompression limits.
+- `register_root_callback(callback)` invalidates plugin caches when the served root
+  changes.
+- `LogEvent`, `LogParser`, `detect_adapter(lines)`, and
+  `register_log_adapter(name, detector, parser_factory)` define the JSONL adapter
+  contract described above.
+- `extract_agent_charts_cached(path)` reuses the generic agent-log chart projection and
+  returns `None` if the file is absent.
+- `ArtifactCompressionError`, `ArtifactDecompressionLimitError`, and
+  `ArtifactDecompressionTimeoutError` let sidekicks distinguish malformed compressed
+  data from resource-limit and CPU-time failures.
+  `ArtifactPath` and chart extraction can raise them.
+- `JsonlParseLimitError` is raised when chart extraction exceeds the JSONL parser’s
+  decompressed-input limit.
+
+These helpers share the server’s active root and lifecycle.
+Do not cache the resolved root or import underscored helpers from
+`metabrowser.paths_safe`. The sidekick surface is provisional during the 0.x series;
+release notes will identify changes before 1.0. `metabrowser.plugin_api.__all__`
+contains the sidekick names above, and `metabrowser.__all__` adds `CLIError` and
+`__version__`. CLI integrations can catch `CLIError` to preserve the command’s
+user-facing message and exit code.
+Plugin-loader and manifest implementation types remain available from their defining
+modules but are not part of this compatibility contract.
 
 Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets.
 Test the built wheel in an isolated environment; an editable source checkout can conceal

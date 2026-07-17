@@ -15,6 +15,10 @@
     return;
   }
 
+  /**
+   * @param {Record<string, unknown> & {content?: string, ext?: string}} data
+   * @returns {string}
+   */
   function renderSourceHtml(data) {
     const truncationWarning = mb.renderTextTruncationWarning(data);
     if (mb.isLargeTextPreview(data)) {
@@ -41,10 +45,17 @@
     );
   }
 
+  /**
+   * @param {HTMLElement} container
+   * @param {{raw?: unknown}} ctx
+   */
   function renderSource(container, ctx) {
+    const data = /** @type {Record<string, unknown> & {content?: string, ext?: string}} */ (
+      ctx.raw || {}
+    );
     container.classList.add("metabrowser-source-host");
     mb.perf.measure("renderText:source", () => {
-      container.innerHTML = renderSourceHtml(ctx.raw);
+      container.innerHTML = renderSourceHtml(data);
     });
   }
 

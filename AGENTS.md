@@ -40,7 +40,7 @@ pre-push gates.
 
 ## Browser and Plugin Boundary
 
-- Keep MetaBrowser core consumer-agnostic.
+- Keep Metabrowser core consumer-agnostic.
   Domain schemas, routes, renderers, tests, and styles belong in downstream plugins.
 - Plugins use the documented `window.metabrowser` SDK. Do not reach into private
   `app.js` globals.
@@ -52,13 +52,15 @@ pre-push gates.
 
 ## Documentation and Public Hygiene
 
-- Follow the common document guidelines footer used throughout the repository.
-- Format all human-authored Markdown with Flowmark through `make format`.
+- Apply `tbd guidelines common-doc-guidelines` to every human-authored document and
+  retain the standard footer.
+- Format all human-authored Markdown with the exact `flowmark-rs==0.3.2` pin through
+  `make format`.
 - Link to source documentation instead of duplicating long policy text.
 - Never add credentials, private organization or repository names, private issue IDs,
   personal absolute paths, customer data, or copied operational artifacts.
-- Run `uv run --frozen python devtools/public_hygiene.py` before every public release or
-  repository-visibility change.
+- Run `uv --config-file uv.toml run --frozen python devtools/public_hygiene.py` before
+  every public release or repository-visibility change.
 
 ## Git
 

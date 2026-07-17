@@ -1,4 +1,4 @@
-"""Shared plugin-directory configuration for MetaBrowser CLI commands."""
+"""Shared plugin-directory configuration for Metabrowser CLI commands."""
 
 from __future__ import annotations
 

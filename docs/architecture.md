@@ -1,6 +1,6 @@
 # Architecture
 
-MetaBrowser is a Python server, a browser shell, and a manifest-driven plugin system.
+Metabrowser is a Python server, a browser shell, and a manifest-driven plugin system.
 The package deliberately keeps file navigation, safe filesystem access, live updates,
 and plugin lifecycle management in core while delegating file-kind rendering to plugins.
 

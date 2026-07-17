@@ -1,4 +1,4 @@
-"""Error types raised by the `metab` CLI and MetaBrowser library code."""
+"""Error types raised by the `metab` CLI and Metabrowser library code."""
 
 from __future__ import annotations
 

@@ -15,6 +15,24 @@ from collections.abc import Iterable
 DEFAULT_PORT_SEARCH_COUNT = 32
 """How many consecutive ports to try when walking from a start port."""
 
+MIN_TCP_PORT = 1
+"""Lowest assignable TCP port accepted by CLI port selection."""
+
+MAX_TCP_PORT = 65_535
+"""Highest TCP port allowed by the socket APIs."""
+
+
+def port_search_range(
+    base_port: int,
+    count: int = DEFAULT_PORT_SEARCH_COUNT,
+) -> range:
+    """Return a nonempty candidate range bounded to valid TCP ports."""
+    if not MIN_TCP_PORT <= base_port <= MAX_TCP_PORT:
+        raise ValueError(f"base port must be between {MIN_TCP_PORT} and {MAX_TCP_PORT}")
+    if count < 1:
+        raise ValueError("port search count must be positive")
+    return range(base_port, min(base_port + count, MAX_TCP_PORT + 1))
+
 
 def local_port_is_free(host: str, port: int) -> bool:
     """Return True if *port* on *host* can be bound right now."""
@@ -52,9 +70,10 @@ def remote_port_probe_script(base_port: int, count: int = DEFAULT_PORT_SEARCH_CO
 
     Exits non-zero and prints nothing if no port in the range is free.
     """
+    ports = port_search_range(base_port, count)
     script = (
         "import socket, sys\n"
-        f"for p in range({base_port}, {base_port + count}):\n"
+        f"for p in range({ports.start}, {ports.stop}):\n"
         "    s = socket.socket()\n"
         "    try:\n"
         "        s.bind(('127.0.0.1', p))\n"

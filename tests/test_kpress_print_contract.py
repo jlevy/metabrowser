@@ -1,4 +1,4 @@
-"""MetaBrowser KPress print/theme shell contract tests."""
+"""Metabrowser KPress print/theme shell contract tests."""
 
 from __future__ import annotations
 

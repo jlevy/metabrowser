@@ -72,6 +72,11 @@ _IGNORE_CACHE = TTLCache[str, tuple[Any, Path | None]](maxsize=64, ttl=300.0)
 _FOLDER_MARKERS: set[str] = set()
 
 
+def _never_ignore(_path: Path | str, is_dir: bool = False) -> bool:
+    """Fallback ignore predicate when no repository filter applies."""
+    return False
+
+
 def set_folder_markers(markers: set[str]) -> None:
     """Replace the in-memory set of known folder markers. Idempotent; intended
     to be called once at server startup from
@@ -155,7 +160,7 @@ def build_gitignore_check(root: Path) -> tuple[Any, Path | None]:
     git_root = _find_git_root(root)
     base = make_ignore_filter(git_root, IgnoreMode.gitignore) if git_root else ignore_none
     if base is ignore_none or git_root is None:
-        checker: Any = lambda abs_path, is_dir=False: False
+        checker: Any = _never_ignore
     else:
         git_root_str = str(git_root)
         prefix_len = len(git_root_str) + 1
@@ -361,7 +366,7 @@ def _dir_tree(
     ``stat`` separately).
     """
     if ignore_check is None:
-        ignore_check = lambda p, is_dir=False: False
+        ignore_check = _never_ignore
     if max_depth <= 0:
         return []
 

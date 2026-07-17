@@ -1,4 +1,4 @@
-"""Tests for MetaBrowser's centralized file-extension settings."""
+"""Tests for Metabrowser's centralized file-extension settings."""
 
 from __future__ import annotations
 

@@ -1,6 +1,5 @@
 import argparse
 import subprocess
-import sys
 from pathlib import Path
 
 from funlog import log_calls
@@ -36,6 +35,7 @@ BIOME_PATHS = [
     "tsconfig.json",
     "tsconfig.legacy.json",
 ]
+TSC_CONFIGS = ["tsconfig.json", "tsconfig.legacy.json"]
 
 
 reconfigure(emoji=not get_console().options.legacy_windows)  # No emojis on legacy windows.
@@ -60,14 +60,15 @@ def main() -> int:
         errcount += run(["ruff", "check", "--fix", *SRC_PATHS])
         errcount += run(["ruff", "format", *SRC_PATHS])
     errcount += run(["basedpyright", "--stats", *SRC_PATHS])
-    biome_args = [sys.executable, "-m", "devtools.biome"]
+    biome_args = ["npx", "--no-install", "biome"]
     if args.check:
         biome_args.append("ci")
     else:
         biome_args.extend(["check", "--write", "--unsafe"])
     biome_args.extend(BIOME_PATHS)
     errcount += run(biome_args)
-    errcount += run([sys.executable, "-m", "devtools.tsc_check"])
+    for config in TSC_CONFIGS:
+        errcount += run(["npx", "--no-install", "tsc", "--noEmit", "-p", config])
 
     rprint()
 
@@ -98,4 +99,4 @@ def run(cmd: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

@@ -1,6 +1,6 @@
 # Publishing
 
-MetaBrowser versions come from Git tags.
+Metabrowser versions come from Git tags.
 Publishing is performed by the `publish.yml` workflow with PyPI trusted publishing; no
 long-lived PyPI token belongs in the repository.
 

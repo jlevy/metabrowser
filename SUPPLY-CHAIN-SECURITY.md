@@ -9,8 +9,9 @@ Review this document before adding, upgrading, or invoking a package.
   Do not use raw `pip` or an activated virtual environment.
 - Apply a 14-day release cool-off with `uv.toml`, `UV_EXCLUDE_NEWER`, or the equivalent
   explicit uv flag.
-- Commit `uv.lock`, install it with `uv sync --locked` so lock drift fails the build,
-  and execute commands with `uv run --frozen` so they cannot resolve dependencies.
+- Commit `uv.lock`, install it with `uv --config-file uv.toml sync --locked` so lock
+  drift fails the build, and execute commands with
+  `uv --config-file uv.toml run --frozen` so they cannot resolve dependencies.
 - Commit `package-lock.json`, use exact JavaScript tool versions, and install it with
   `npm ci`.
 - Run locked JavaScript tools with `npx --no-install`; use exact versions for one-shot
@@ -38,9 +39,12 @@ Confirm:
 
 Two exact first-party releases are exempt from the ordinary cool-off for this release:
 
-- `kpress==0.2.2`, required for the first MetaBrowser release and reviewed as a
+- `kpress==0.2.2`, required for the first Metabrowser release and reviewed as a
   compatible first-party maintenance update with no added dependencies;
-- `flowmark-rs==0.3.1`, used to format and verify Markdown.
+- `flowmark-rs==0.3.2`, used to format and verify Markdown.
+  This first-party release was reviewed against `0.3.1`; its formatting output is
+  unchanged, while its skill, publishing, and Markdown-parser configuration are more
+  reliable.
 
 The exceptions are package-scoped in configuration and do not weaken the global gate.
 Changing either version requires a new review and an updated rationale.
@@ -48,16 +52,20 @@ Changing either version requires a new review and an updated rationale.
 The copied agent-skill instructions name exact `get-tbd@0.4.0` bootstrap commands.
 Those commands are operator-invoked documentation for installing this repository’s issue
 tracker; no build, hook, CI, test, or publishing path executes them.
-The package-policy check rejects moving `@latest` references and enforces this exact
-bootstrap version until it is deliberately reviewed.
+The skill files own that reviewed version and must be updated deliberately.
 
 ## Verification
 
-`devtools/npm_policy.py` checks the repository configuration, exact KPress dependency,
-Python and JavaScript lockfile sources and integrity fields, Node and npm requirements,
-full-SHA action pins, and release-workflow controls.
-`make lint-check` runs that policy together with public-hygiene, formatting, lint, and
-type checks.
+`devtools/check_supply_chain.py` checks only safeguards that span configuration files:
+npm safety settings, exact direct npm specifications, npm registry and integrity data,
+the uv cool-off, matching nvm and fnm versions, full-SHA action references, and trusted
+publishing controls.
+
+The configuration files own dependency versions, build behavior, lint and type ratchets,
+workflows, and documentation.
+`make verify` installs both locks, runs the configured linters and type checkers,
+executes the tests and audits, builds the package, inspects its contents, and exercises
+the installed wheel and plugin surface.
 
 CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
 lock.

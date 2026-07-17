@@ -358,20 +358,20 @@
   function report() {
     var snap = snapshot();
     if (typeof console !== "undefined") {
-      console.log("%cMetaBrowser perf — fetch", "font-weight:bold");
+      console.log("%cMetabrowser perf — fetch", "font-weight:bold");
       if (console.table) {
         console.table(snap.fetch_summary);
       } else {
         console.log(snap.fetch_summary);
       }
-      console.log("%cMetaBrowser perf — render spans", "font-weight:bold");
+      console.log("%cMetabrowser perf — render spans", "font-weight:bold");
       if (console.table) {
         console.table(snap.measure_summary);
       } else {
         console.log(snap.measure_summary);
       }
       if (snap.slow_fetch.length || snap.slow_measure.length) {
-        console.warn(`MetaBrowser perf — slow samples >= ${snap.slow_threshold_ms} ms`);
+        console.warn(`Metabrowser perf — slow samples >= ${snap.slow_threshold_ms} ms`);
         if (console.table) {
           console.table(snap.slow_fetch.concat(snap.slow_measure));
         } else {

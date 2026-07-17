@@ -1,4 +1,4 @@
-"""MetaBrowser CLI with `serve`, `plugins`, `remote`, and `walk` subcommands.
+"""Metabrowser CLI with `serve`, `plugins`, `remote`, and `walk` subcommands.
 
 The canonical command is `metab`; `metabrowser` is a compatibility alias.
 The single-argument form `metab ./runs` is forwarded to ``serve`` when no subcommand is
@@ -19,17 +19,22 @@ Examples:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
 import threading
 import webbrowser
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, TextIO, cast
 from urllib.parse import quote
 
 import typer
 import uvicorn
 
+from metabrowser import __version__
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.cli.plugins import plugins_app
@@ -37,8 +42,9 @@ from metabrowser.cli.remote import remote as _remote_command
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import (
-    DEFAULT_PORT_SEARCH_COUNT,
+    MAX_TCP_PORT,
     find_available_local_port,
+    port_search_range,
 )
 from metabrowser.settings import DEFAULT_BROWSER_PORT
 from metabrowser.walk import DETAIL_LEVELS, FORMATS, dump_tree, stream_dump_lines, walk_report
@@ -78,6 +84,38 @@ def _wait_for_http_ok_then_open(
 _VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
 
+def _validate_format(value: str) -> str:
+    if value not in FORMATS:
+        raise typer.BadParameter(f"must be one of {', '.join(FORMATS)}")
+    return value
+
+
+def _validate_detail(value: str) -> str:
+    if value not in DETAIL_LEVELS:
+        raise typer.BadParameter(f"must be one of {', '.join(DETAIL_LEVELS)}")
+    return value
+
+
+def _validate_log_level(value: str | None) -> str:
+    if not value:
+        return ""
+    upper = value.upper()
+    if upper not in _VALID_LOG_LEVELS:
+        raise typer.BadParameter(f"must be one of {', '.join(_VALID_LOG_LEVELS)}")
+    return upper
+
+
+def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
+    """Drop Uvicorn's expected cancellation records during local shutdown.
+
+    `serve` cancels open SSE streams on Ctrl-C. Uvicorn reports those expected
+    cancellations as errors even though no actionable server failure occurred.
+    """
+    if record.exc_info is not None and isinstance(record.exc_info[1], asyncio.CancelledError):
+        return False
+    return "timeout graceful shutdown exceeded" not in record.getMessage()
+
+
 def _validate_contained_path(root: Path, requested: str) -> Path:
     """Require a requested path to exist within the resolved root."""
     target = (root / requested).resolve()
@@ -113,7 +151,10 @@ def _apply_log_level(level: str | None) -> None:
 _app = typer.Typer(
     name="metab",
     add_completion=False,
-    help="Local web UI for browsing run logs and structured artifacts.",
+    help=(
+        "Browse local files from your web browser, with extensible plugin-based "
+        "rendering of Markdown, code, JSON, YAML, logs, and other files."
+    ),
     epilog=(
         "Examples:\n"
         "  metab ./path/to/artifacts\n"
@@ -130,7 +171,13 @@ _app.command("remote")(_remote_command)
 def serve(
     root: Path = typer.Argument(..., help="Root directory (or file) to serve"),
     path: str = typer.Option("", "--path", help="Relative path from root to select on launch"),
-    port: int = typer.Option(DEFAULT_BROWSER_PORT, "--port", help="Server port"),
+    port: int = typer.Option(
+        DEFAULT_BROWSER_PORT,
+        "--port",
+        min=1,
+        max=MAX_TCP_PORT,
+        help="Server port",
+    ),
     host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
     no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open browser"),
     plugins_dir: list[Path] | None = typer.Option(
@@ -146,12 +193,14 @@ def serve(
     log_level: str = typer.Option(
         "",
         "--log-level",
+        callback=_validate_log_level,
+        metavar="LEVEL",
         help="Log verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
         "DEBUG traces the inventory walker (rewalk targets + resolved paths). "
         "Overrides METABROWSER_LOG_LEVEL.",
     ),
 ) -> None:
-    """Launch a local web server to browse run logs and results.
+    """Launch a local web server to browse a directory's files.
 
     If ROOT is a file, automatically split into parent directory + --path.
     Use --path to deep-link directly to a file within the root directory.
@@ -169,9 +218,10 @@ def serve(
     resolved = root.expanduser().resolve()
     if resolved.is_file():
         if path:
-            raise CLIError(
+            raise typer.BadParameter(
                 f"{resolved} is a file — cannot combine with --path. "
-                "Use the parent directory as ROOT instead."
+                "Use the parent directory as ROOT instead.",
+                param_hint="--path",
             )
         path = resolved.name
         resolved = resolved.parent
@@ -196,7 +246,7 @@ def serve(
     from metabrowser import server
 
     try:
-        actual_port = find_available_local_port(host, range(port, port + DEFAULT_PORT_SEARCH_COUNT))
+        actual_port = find_available_local_port(host, port_search_range(port))
     except RuntimeError as exc:
         raise CLIError(str(exc)) from exc
 
@@ -222,7 +272,20 @@ def serve(
             daemon=True,
         ).start()
 
-    uvicorn.run(server.app, host=host, port=actual_port, log_level="warning")
+    # Browser tabs hold open SSE streams, so cancel in-flight local requests rather
+    # than waiting indefinitely for graceful shutdown after Ctrl-C.
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    uvicorn_logger.addFilter(_shutdown_noise_filter)
+    try:
+        uvicorn.run(
+            server.app,
+            host=host,
+            port=actual_port,
+            log_level="warning",
+            timeout_graceful_shutdown=0,
+        )
+    finally:
+        uvicorn_logger.removeFilter(_shutdown_noise_filter)
 
 
 @_app.command("walk")
@@ -231,6 +294,8 @@ def walk(
     fmt: str = typer.Option(
         "text",
         "--format",
+        callback=_validate_format,
+        metavar="FORMAT",
         help="Output format: text (human report) | json | yaml. "
         "json/yaml dump the exact data the nav panel consumes.",
     ),
@@ -249,15 +314,24 @@ def walk(
     detail: str = typer.Option(
         "all",
         "--detail",
+        callback=_validate_detail,
+        metavar="LEVEL",
         help="Text-report detail: summary | dirs | all (only with --format text)",
     ),
     log_level: str = typer.Option(
         "",
         "--log-level",
+        callback=_validate_log_level,
+        metavar="LEVEL",
         help="Log verbosity (DEBUG traces every walker step). Overrides METABROWSER_LOG_LEVEL.",
     ),
-    max_depth: int = typer.Option(20, "--max-depth", help="Max walk depth"),
-    max_files: int = typer.Option(500_000, "--max-files", help="Max files before truncation"),
+    max_depth: int = typer.Option(20, "--max-depth", min=0, help="Max walk depth"),
+    max_files: int = typer.Option(
+        500_000,
+        "--max-files",
+        min=1,
+        help="Max files before truncation",
+    ),
 ) -> None:
     """Walk a directory with the inventory walker and dump the result.
 
@@ -278,7 +352,20 @@ def walk(
 
     _load_dotenv_chain()
     _apply_log_level(log_level)
-    _configure_walk_logging()
+    with _walk_logging():
+        _run_walk(root, fmt, stream, subpath, detail, max_depth, max_files)
+
+
+def _run_walk(
+    root: Path,
+    fmt: str,
+    stream: bool,
+    subpath: str,
+    detail: str,
+    max_depth: int,
+    max_files: int,
+) -> None:
+    """Execute a validated walk while the command logging scope is active."""
 
     resolved = root.expanduser().resolve()
     if not resolved.is_dir():
@@ -286,7 +373,10 @@ def walk(
     if fmt not in FORMATS:
         raise CLIError(f"invalid --format {fmt!r}; expected one of {', '.join(FORMATS)}")
     if subpath and (fmt == "text" or stream):
-        raise CLIError("--path requires --format json or yaml with --all-at-once")
+        raise typer.BadParameter(
+            "requires --format json or yaml with --all-at-once",
+            param_hint="--path",
+        )
     if subpath:
         target = _validate_contained_path(resolved, subpath)
         if not target.is_dir():
@@ -311,8 +401,6 @@ def walk(
             ):
                 typer.echo(line)
 
-        import asyncio
-
         asyncio.run(_emit())
         return
 
@@ -322,30 +410,51 @@ def walk(
     )
 
 
-def _configure_walk_logging() -> None:
-    """Attach a stdout handler to the ``metabrowser`` logger at the
-    configured level so ``walk --log-level debug`` actually prints the
-    walker traces. Mirrors ``server._setup_perf_logging`` but stays
-    lightweight (no server/plugin import)."""
+@contextmanager
+def _walk_logging() -> Generator[None]:
+    """Scope a stderr handler to one ``walk`` command invocation.
+
+    Attach the handler at the configured level so ``walk --log-level debug`` prints
+    walker traces. Mirrors ``server._setup_perf_logging`` but stays lightweight (no
+    server/plugin import). Restore process-global logger state so repeated in-process
+    commands never retain a closed standard-error stream.
+    """
 
     level_name = os.environ.get("METABROWSER_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
-    lg = logging.getLogger("metabrowser")
-    lg.setLevel(level)
-    tag = "metabrowser-walk"
-    if not any(getattr(h, "name", None) == tag for h in lg.handlers):
-        handler = logging.StreamHandler()
-        handler.set_name(tag)
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s %(name)s | %(message)s", datefmt="%H:%M:%S")
-        )
-        lg.addHandler(handler)
-    lg.propagate = False
+    logger = logging.getLogger("metabrowser")
+    previous_level = logger.level
+    previous_propagate = logger.propagate
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(name)s | %(message)s", datefmt="%H:%M:%S")
+    )
+    logger.setLevel(level)
+    logger.addHandler(handler)
+    logger.propagate = False
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+        logger.setLevel(previous_level)
+        logger.propagate = previous_propagate
 
 
 @_app.callback(invoke_without_command=True)
-def _main_callback(ctx: typer.Context) -> None:
+def _main_callback(
+    ctx: typer.Context,
+    show_version: bool = typer.Option(
+        False,
+        "--version",
+        is_eager=True,
+        help="Show the installed version and exit.",
+    ),
+) -> None:
     """Root selection is explicit; the empty command shows help."""
+    if show_version:
+        typer.echo(f"{ctx.info_name or 'metab'} {__version__}")
+        raise typer.Exit()
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
         raise typer.Exit()
@@ -376,14 +485,81 @@ def _rewrite_bare_form(argv: list[str]) -> list[str]:
     return ["serve", *argv]
 
 
+class _PipeTrackingStream:
+    """Delegate a text stream while recording downstream pipe closure."""
+
+    def __init__(self, stream: TextIO) -> None:
+        self.stream = stream
+        self.broken_pipe = False
+
+    def write(self, data: str) -> int:
+        try:
+            return self.stream.write(data)
+        except BrokenPipeError:
+            self.broken_pipe = True
+            raise
+
+    def flush(self) -> None:
+        try:
+            self.stream.flush()
+        except BrokenPipeError:
+            self.broken_pipe = True
+            raise
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.stream, name)
+
+
+def _silence_broken_pipe(stream: TextIO) -> None:
+    """Redirect a closed standard stream before interpreter finalization."""
+    try:
+        stream_fd = stream.fileno()
+        null_fd = os.open(os.devnull, os.O_WRONLY)
+    except (AttributeError, OSError):
+        return
+    try:
+        os.dup2(null_fd, stream_fd)
+    finally:
+        os.close(null_fd)
+
+
+def _run_cli(argv: list[str], *, prog_name: str | None = None) -> None:
+    """Run the canonical CLI with explicit arguments and shared error handling."""
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    stdout = _PipeTrackingStream(original_stdout)
+    stderr = _PipeTrackingStream(original_stderr)
+    sys.stdout = cast(TextIO, stdout)
+    sys.stderr = cast(TextIO, stderr)
+    try:
+        try:
+            _app(args=_rewrite_bare_form(argv), prog_name=prog_name)
+        except CLIError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise SystemExit(1) from None
+    except SystemExit as exc:
+        if exc.code == 1 and (stdout.broken_pipe or stderr.broken_pipe):
+            if stdout.broken_pipe:
+                _silence_broken_pipe(original_stdout)
+            if stderr.broken_pipe:
+                _silence_broken_pipe(original_stderr)
+            return
+        raise
+    except BrokenPipeError:
+        if not (stdout.broken_pipe or stderr.broken_pipe):
+            raise
+        if stdout.broken_pipe:
+            _silence_broken_pipe(original_stdout)
+        if stderr.broken_pipe:
+            _silence_broken_pipe(original_stderr)
+    finally:
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+
+
 def main() -> None:
     """Console-script entry point for `metab` and its `metabrowser` alias."""
-
-    try:
-        _app(args=_rewrite_bare_form(sys.argv[1:]))
-    except CLIError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+    _run_cli(sys.argv[1:])
 
 
 if __name__ == "__main__":

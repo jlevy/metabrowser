@@ -1,4 +1,4 @@
-"""metab remote — open MetaBrowser on a remote host via SSH tunnel.
+"""metab remote — open Metabrowser on a remote host via SSH tunnel.
 
 Walks both local and remote ports upward from a base port so multiple
 remote sessions can coexist on the same host pair. Ctrl-C tears down the
@@ -17,6 +17,7 @@ import signal
 import subprocess
 import sys
 import webbrowser
+from contextlib import suppress
 
 import typer
 
@@ -29,8 +30,9 @@ from metabrowser.cli.ssh_utils import (
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import (
-    DEFAULT_PORT_SEARCH_COUNT,
+    MAX_TCP_PORT,
     find_available_local_port,
+    port_search_range,
     remote_port_probe_script,
 )
 from metabrowser.settings import DEFAULT_BROWSER_PORT
@@ -69,7 +71,14 @@ def _probe_remote_free_port(
         zone=zone,
         project=project,
     )
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        executable = cmd[0]
+        raise CLIError(
+            f"Unable to start {executable} while probing remote port on {host}: {exc}. "
+            f"Install {executable} and ensure it is available on PATH."
+        ) from exc
     if result.returncode != 0:
         raise CLIError(
             f"Failed to probe remote port on {host} "
@@ -90,6 +99,8 @@ def remote(
     base_port: int = typer.Option(
         DEFAULT_BROWSER_PORT,
         "--base-port",
+        min=1,
+        max=MAX_TCP_PORT,
         help="Starting port for local + remote port search (walks upward)",
     ),
     no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open local browser"),
@@ -113,7 +124,8 @@ def remote(
 
     try:
         local_port = find_available_local_port(
-            "127.0.0.1", range(base_port, base_port + DEFAULT_PORT_SEARCH_COUNT)
+            "127.0.0.1",
+            port_search_range(base_port),
         )
     except RuntimeError as exc:
         raise CLIError(str(exc)) from exc
@@ -158,28 +170,42 @@ def remote(
     typer.echo(f"Browser URL: {url}")
     typer.echo("Press Ctrl-C to stop.\n")
 
-    proc = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
+    try:
+        proc = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
+    except OSError as exc:
+        executable = cmd[0]
+        raise CLIError(
+            f"Unable to start {executable} while connecting to {host}: {exc}. "
+            f"Install {executable} and ensure it is available on PATH."
+        ) from exc
 
     def _forward_signal(signum: int, _frame: object) -> None:
         if proc.poll() is None:
-            proc.send_signal(signum)
+            # The child can exit between the liveness check and delivery.
+            with suppress(ProcessLookupError):
+                proc.send_signal(signum)
 
-    signal.signal(signal.SIGINT, _forward_signal)  # type: ignore[arg-type]
-    signal.signal(signal.SIGTERM, _forward_signal)  # type: ignore[arg-type]
+    previous_handlers = []
+    try:
+        previous_handlers.append((signal.SIGINT, signal.signal(signal.SIGINT, _forward_signal)))
+        previous_handlers.append((signal.SIGTERM, signal.signal(signal.SIGTERM, _forward_signal)))
 
-    if not no_open:
-        wait_for_http_ok_then(
-            "127.0.0.1",
-            local_port,
-            url,
-            on_ready=lambda: _open_browser(url) if proc.poll() is None else None,
-            on_error=lambda message: typer.echo(message, err=True),
-            is_cancelled=lambda: proc.poll() is not None,
-        )
+        if not no_open:
+            wait_for_http_ok_then(
+                "127.0.0.1",
+                local_port,
+                url,
+                on_ready=lambda: _open_browser(url) if proc.poll() is None else None,
+                on_error=lambda message: typer.echo(message, err=True),
+                is_cancelled=lambda: proc.poll() is not None,
+            )
 
-    proc.wait()
+        returncode = proc.wait()
+    finally:
+        for signum, previous_handler in reversed(previous_handlers):
+            signal.signal(signum, previous_handler)
 
-    if proc.returncode == 127:
+    if returncode == 127:
         typer.echo(
             f"\nThe metab command is not available on {host}.\n"
             "Install the metabrowser package on the remote host "
@@ -187,5 +213,6 @@ def remote(
             err=True,
         )
 
-    if proc.returncode != 0:
-        raise typer.Exit(code=proc.returncode)
+    if returncode != 0:
+        exit_code = 128 + abs(returncode) if returncode < 0 else returncode
+        raise typer.Exit(code=exit_code)

@@ -5,7 +5,14 @@ import os
 import subprocess
 from pathlib import Path
 
-from devtools.public_hygiene import ROOT, _git_ignored, _text_files, find_hygiene_findings
+from devtools.public_hygiene import (
+    COMMON_DOC_FOOTER,
+    ROOT,
+    _git_ignored,
+    _text_files,
+    find_documentation_findings,
+    find_hygiene_findings,
+)
 
 
 def test_public_issue_tracking_language_is_allowed() -> None:
@@ -91,6 +98,24 @@ def test_generated_tbd_document_cache_is_not_scanned() -> None:
     tbd_docs = ROOT / ".tbd" / "docs"
 
     assert all(not path.is_relative_to(tbd_docs) for path in _text_files())
+
+
+def test_project_markdown_requires_common_document_footer() -> None:
+    project_doc = ROOT / "docs" / "example.md"
+
+    assert find_documentation_findings(project_doc, "# Example\n") == [
+        "docs/example.md: missing common-doc-guidelines footer"
+    ]
+    assert find_documentation_findings(project_doc, COMMON_DOC_FOOTER) == []
+    assert find_documentation_findings(ROOT / "src" / "example.py", "") == []
+
+
+def test_generated_skills_and_rendering_fixtures_are_footer_exempt() -> None:
+    generated_skill = ROOT / ".agents" / "skills" / "tbd" / "SKILL.md"
+    rendering_fixture = ROOT / "tests" / "manual-fixtures" / "overview.md"
+
+    assert find_documentation_findings(generated_skill, "") == []
+    assert find_documentation_findings(rendering_fixture, "") == []
 
 
 def test_git_ignored_local_residue_is_excluded_but_tracked_files_kept() -> None:

@@ -671,7 +671,11 @@ var FILE_TYPES = [
   { match: hasExt(".jsonl"), icon: "activity", cls: "ft-jsonl" },
   // Source code — one shared shape/color across the family; append
   // an extension to the list to pick it up.
-  { match: hasAnyExt([".py", ".sh", ".js", ".ts"]), icon: "alignLeft", cls: "ft-code" },
+  {
+    match: hasAnyExt([".py", ".sh", ".js", ".ts"]),
+    icon: "alignLeft",
+    cls: "ft-code",
+  },
   // Tabular + document.
   { match: hasExt(".csv"), icon: "grid", cls: "ft-csv" },
   { match: hasExt(".pid"), icon: "fileText", cls: "ft-text" },
@@ -707,7 +711,10 @@ function getFileTypeClass(pathOrName) {
 }
 
 if (typeof window !== "undefined") {
-  window.MetabrowserFileTypes = { classFor: getFileTypeClass, iconFor: getFileIcon };
+  window.MetabrowserFileTypes = {
+    classFor: getFileTypeClass,
+    iconFor: getFileIcon,
+  };
 }
 
 // ── Tree ────────────────────────────────────────────────────────
@@ -1256,7 +1263,7 @@ function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
 
 const treePane = /** @type {HTMLElement} */ (document.getElementById("tree-pane"));
 if (!treePane) {
-  throw new Error("MetaBrowser shell is missing #tree-pane");
+  throw new Error("Metabrowser shell is missing #tree-pane");
 }
 
 treePane.addEventListener(
@@ -3487,7 +3494,10 @@ function _insertRowSorted(container, entry, options) {
       }
     } else if (ch.classList.contains("tree-file")) {
       var name2 = ch.querySelector(".tree-item-name");
-      var k2 = _treeSortKey({ type: "file", name: name2 ? name2.textContent : "" });
+      var k2 = _treeSortKey({
+        type: "file",
+        name: name2 ? name2.textContent : "",
+      });
       if (_treeKeyCmp(entryKey, k2) < 0) {
         anchor = ch;
         break;

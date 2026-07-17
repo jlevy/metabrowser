@@ -1,6 +1,6 @@
 # Design System
 
-MetaBrowser’s interface is an information-dense developer tool.
+Metabrowser’s interface is an information-dense developer tool.
 Its design system prioritizes readable artifacts, stable spatial relationships,
 keyboard-sized controls, and consistent status cues over decorative chrome.
 
@@ -118,7 +118,7 @@ Avoid looping animation except for active progress indicators.
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
 
-### Progress spinners stay neutral
+### Progress Spinners Stay Neutral
 
 Loading and progress spinners use the shared neutral-gray track and accent tokens.
 They must not borrow link, status, file-type, or chart colors because a spinner conveys

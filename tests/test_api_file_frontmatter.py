@@ -25,12 +25,6 @@ class _FakeQuery:
         return self._params.get(key, default)
 
 
-class _FakeRequest:
-    def __init__(self, query: dict[str, str]) -> None:
-        self.query_params = _FakeQuery(query)
-        self.headers = {}
-
-
 def _api_file(path: str) -> dict[str, Any]:
     request = Mock(spec=["query_params", "headers"])
     request.query_params = _FakeQuery({"path": path})

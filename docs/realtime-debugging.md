@@ -1,6 +1,6 @@
 # Real-Time Debugging
 
-MetaBrowser reports timing on both sides of the HTTP boundary so a slow preview can be
+Metabrowser reports timing on both sides of the HTTP boundary so a slow preview can be
 classified as server work, transport delay, event-loop queueing, or browser rendering.
 
 ## Default Signals
@@ -26,7 +26,7 @@ Interpret it as follows:
 Enable one line for every request when correlation is more useful than log volume:
 
 ```shell
-METABROWSER_REQUEST_LOG=verbose uv run --frozen metab serve ./artifacts --no-open
+METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab serve ./artifacts --no-open
 ```
 
 The events and tail routes are intentionally long-lived and are excluded from ordinary
@@ -37,7 +37,7 @@ slow-request warnings.
 Enable the debug endpoint only for local investigation:
 
 ```shell
-METABROWSER_DEBUG=1 uv run --frozen metab serve ./artifacts --no-open
+METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab serve ./artifacts --no-open
 ```
 
 During a stall, request `/_debug/tasks` from another terminal.
@@ -65,8 +65,8 @@ Do not repair a gap by replaying operations whose order is no longer known.
 Start with the registry:
 
 ```shell
-uv run --frozen metab plugins list --json
-uv run --frozen metab plugins doctor
+uv --config-file uv.toml run --frozen metab plugins list --json
+uv --config-file uv.toml run --frozen metab plugins doctor
 ```
 
 Then verify:
@@ -88,7 +88,7 @@ is replaced.
 
 Include:
 
-- MetaBrowser version and Python version;
+- Metabrowser version and Python version;
 - operating system and filesystem type;
 - artifact size and kind, with sensitive content removed;
 - total, server, transit, and render durations;

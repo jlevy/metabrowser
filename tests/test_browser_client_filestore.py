@@ -469,7 +469,7 @@ def test_progress_spinners_use_neutral_gray_tokens() -> None:
     assert "--spinner-mini-track: hsl(0 0% 87%)" in css
     assert "--spinner-mini-accent: hsl(0 0% 55%)" in css
     assert "--spinner-mini-accent: hsl(39" not in css
-    assert "Progress spinners stay neutral" in design_system
+    assert "Progress Spinners Stay Neutral" in design_system
 
 
 # ── CSS skeleton tokens ───────────────────────────────────────

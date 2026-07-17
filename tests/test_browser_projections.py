@@ -11,7 +11,7 @@ file's mtime fingerprint. Tests verify:
 * ``invalidate_path`` drops every cache entry for that path.
 * Root-swap clears every cache (`_reset_all_caches`).
 
-Plugin-defined chart projections are intentionally absent here. MetaBrowser
+Plugin-defined chart projections are intentionally absent here. Metabrowser
 core only caches its built-in agent-log projection.
 """
 
@@ -110,7 +110,7 @@ def test_invalidate_path_drops_all_caches(tmp_path: Path) -> None:
     _write_agent_jsonl(f)
     parse_jsonl_file_cached(f)
     # Manually populate the chart cache to exercise invalidation.
-    _AGENT_CHARTS_CACHE.update(f, "agent-charts-payload")
+    _AGENT_CHARTS_CACHE.update(f, {"charts": [], "summary": None})
     assert _PARSE_CACHE.read(f).hit is True
     assert _AGENT_CHARTS_CACHE.read(f).hit is True
 
@@ -127,7 +127,7 @@ def test_reset_all_caches_clears_state(tmp_path: Path) -> None:
     f = tmp_path / "a.jsonl"
     _write_agent_jsonl(f)
     parse_jsonl_file_cached(f)
-    _AGENT_CHARTS_CACHE.update(f, "x")
+    _AGENT_CHARTS_CACHE.update(f, {"charts": [], "summary": None})
 
     _reset_all_caches()
     assert len(_PARSE_CACHE.cache) == 0

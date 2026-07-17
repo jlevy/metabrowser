@@ -1,4 +1,4 @@
-"""End-to-end smoke test for the MetaBrowser → KPress dynamic render path.
+"""End-to-end smoke test for the Metabrowser → KPress dynamic render path.
 
 This is the "you'd be surprised if this broke" gate. It exercises a real
 Markdown document with rich content (frontmatter, headings, code, table,
@@ -54,7 +54,7 @@ _RICH_MARKDOWN = """\
 ---
 title: Smoke Doc
 author: Ada
-description: End-to-end smoke for the MetaBrowser→KPress dynamic render
+description: End-to-end smoke for the Metabrowser→KPress dynamic render
 ---
 
 # Smoke Doc
