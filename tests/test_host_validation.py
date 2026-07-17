@@ -64,7 +64,9 @@ def test_wildcard_bind_hosts_are_never_registered() -> None:
     """Wildcard binds must not disable Host validation."""
     for wildcard in ("", "0.0.0.0", "::", "[::]", "0.0.0.0:8411"):
         server._register_allowed_host(wildcard)
-    assert server._EXTRA_ALLOWED_HOSTS == set()
+    # Other tests may legitimately register concrete hosts; the invariant
+    # here is that no wildcard-derived name ever lands in the allowlist.
+    assert not server._EXTRA_ALLOWED_HOSTS & {"", ":", "0.0.0.0", "::", "[::]"}
     client = TestClient(app)
     assert client.get("/api/capabilities", headers={"host": "0.0.0.0"}).status_code == 421
 

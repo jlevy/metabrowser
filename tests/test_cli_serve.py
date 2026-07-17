@@ -480,6 +480,7 @@ def test_serve_concrete_bind_host_is_permitted_by_middleware(tmp_path: Path) -> 
                 _app, ["serve", str(tmp_path), "--no-open", "--host", "127.0.0.1"]
             )
         assert result.exit_code == 0, _plain_output(result)
+        assert "127.0.0.1" in server._EXTRA_ALLOWED_HOSTS
         # A non-loopback concrete host registers its normalized name. Use the
         # registration helper directly for a LAN-style name so the test does
         # not depend on binding a real non-local interface.
@@ -487,3 +488,4 @@ def test_serve_concrete_bind_host_is_permitted_by_middleware(tmp_path: Path) -> 
         assert "build-box.lan" in server._EXTRA_ALLOWED_HOSTS
     finally:
         server._EXTRA_ALLOWED_HOSTS.discard("build-box.lan")
+        server._EXTRA_ALLOWED_HOSTS.discard("127.0.0.1")

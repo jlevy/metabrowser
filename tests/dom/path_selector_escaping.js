@@ -55,7 +55,7 @@ if (!match) {
   const trickyPaths = [
     "plain/file.txt",
     "back\\slash.txt",
-    'quo"te.txt',
+    'quo"tation.txt',
     'mix\\"ed\\\\name',
     "trailing\\",
     'a"b\\c"d',

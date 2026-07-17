@@ -260,7 +260,7 @@ def test_apply_cell_patch_skips_root_entry() -> None:
     # through to insertion.
     fn_block = js[fn_start : fn_start + 600]
     assert "if (!entry.path)" in fn_block
-    assert fn_block.index("if (!entry.path)") < fn_block.index("entry.path.replace")
+    assert fn_block.index("if (!entry.path)") < fn_block.index("escapePathForSelector(entry.path)")
 
 
 def test_root_entry_refreshes_summary_and_tooltip_before_row_guard() -> None:
