@@ -953,7 +953,7 @@ Use:
 
 - Specify `ComparisonIntent`, `ResolvedComparison`, `ChangeSetManifest`, `ContentRef`,
   `FilePatch`, completeness, and review-anchor schemas.
-- Extract those schemas into a short normative specification under `docs/specs/`; this
+- Extract those schemas into a dated plan under `docs/project/specs/active/`; this
   research document remains the rationale, not the contract.
 - Deliver the platform prerequisites: plugin sub-router mounting, SDK support for
   request bodies, streaming, and event subscription, plugin access to the change-event

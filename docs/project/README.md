@@ -16,6 +16,10 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Scalable file search](specs/active/plan-2026-07-17-scalable-file-search.md)
 
+## Research
+
+- [Web diff viewer architecture and intermediate representations](research/research-2026-07-17-web-diff-viewer-architecture.md)
+
 ## Done Plans
 
 - [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
