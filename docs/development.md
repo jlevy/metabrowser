@@ -184,6 +184,16 @@ without modifications.
 Apply `tbd guidelines common-doc-guidelines` to the README, guidance, specifications,
 and other human-authored documents; retain the standard footer.
 
+Documentation has two public trees plus a project-records area.
+`docs/` holds durable user and contributor guides, and `docs/specs/` holds normative
+plans and contracts the implementation must track.
+Dated research briefs and similar point-in-time records live in the project-records tree
+next to them; they capture rationale as of their date and receive addenda rather than
+rewrites, and the public-hygiene gate intentionally keeps public documents from
+referencing that tree by path.
+When a research brief produces decisions the code must follow, extract them into a
+`docs/specs/` document instead of treating the brief as the contract.
+
 Keep documentation public-safe.
 Do not include private repository names, internal issue identifiers, personal absolute
 paths, credentials, customer data, or copied run artifacts.

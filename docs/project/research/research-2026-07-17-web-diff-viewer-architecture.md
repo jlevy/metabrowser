@@ -86,6 +86,10 @@ The major conclusions are:
 - Use a safe Git subprocess adapter first.
   Treat configured external diff tools and text-conversion programs as executable code
   and disable them unless the user explicitly trusts the repository and opts in.
+- Close the plugin-platform gaps before writing the plugin.
+  Sub-router mounting, SDK request bodies and event subscription, plugin access to the
+  change-event bus, a bounded subprocess runner, and a repository-scoped surface are
+  Phase 0 deliverables, not implementation details to improvise later.
 - Treat Rust as a measured optimization and capability step.
   `gix` is the best fit for repository semantics, and its use in GitButler provides a
   relevant production example.
@@ -413,6 +417,54 @@ event streams when replaced.
 Repository discovery could become a generic core capability later if multiple plugins
 need it; Git-specific schemas should not.
 
+### Platform Prerequisites
+
+The current plugin platform cannot yet host the design in this document.
+A review of the boundary as implemented found six concrete gaps, each of which is core
+work that must precede or accompany the first diff plugin:
+
+1. **Routing.** Data hooks mount one exact route per single path segment with `GET` and
+   `POST` only, and the dispatcher converts sidekick 5xx responses into HTTP 200
+   `plugin_error` envelopes.
+   The comparison API below needs nested routes with path parameters, honest status
+   codes for conditional requests, and byte-range support on content endpoints.
+   Core should let an installed plugin mount a sub-router under `/api/plugin/<plugin>/`
+   rather than encode identifiers in query parameters.
+2. **SDK data plane.** `fetchPluginData` sends only `GET` requests with query parameters
+   and assumes a JSON body.
+   Posting a comparison intent, streaming NDJSON file patches, and subscribing to
+   server-sent events all need supported SDK calls whose cleanup integrates with view
+   disposal.
+3. **Event subscription.** The inventory event bus and the
+   `ProjectionInvalidate`/`ProjectionUpdate` event types are exactly the invalidation
+   mechanism this design assumes, but they are not exposed through the plugin API.
+   Watcher-driven comparison invalidation requires a supported subscription and emission
+   surface for installed plugins.
+4. **A mount point for repository-scoped UI.** Views bind to file kinds, file kinds come
+   from classifying files, and the file endpoint rejects directories.
+   A review surface is not a view of any one file.
+   Core needs either a manifest-declared tool surface (a shell-level entry that receives
+   a full pane with the standard render and dispose contract) or directory-scoped
+   container kinds. The tool surface is the smaller first step; container kinds also
+   serve the archive browsing roadmap and can absorb it later.
+   Anchoring the surface on a synthetic marker file is not acceptable.
+5. **Subprocess execution.** Core contains no general subprocess runner.
+   The Git adapter needs a bounded async runner — timeout, output caps, sanitized
+   environment, cancellation on client disconnect — with the same discipline the bounded
+   decompression helpers apply to streams.
+   This belongs in core, where archives and future tools can reuse it.
+6. **Blocking hooks.** The data-hook dispatcher awaits coroutine sidekicks but calls
+   synchronous ones inline on the event loop, and plugin caches have no supported
+   equivalent of the core mtime-keyed cache.
+   Synchronous sidekicks should be offloaded to the thread pool by default, and the
+   cache helper should become part of the plugin API so patch and manifest caches reuse
+   core invalidation.
+
+These items are small individually and are scheduled into Phase 0 below.
+Building the diff plugin against the boundary as it exists today would force workarounds
+— query-parameter routing, private imports, a private watcher — that would outlive the
+plugin.
+
 ### Initial Git Adapter
 
 The system `git` executable is the recommended first backend because it is already the
@@ -441,6 +493,19 @@ sanitized environment variables; and preserved exception causes.
 Git should run with no color, no pager, no prompts, no optional locks, no external diff,
 and no text conversion by default.
 Arguments must be passed as an array, never through a shell.
+
+Read-only commands are not automatically free of code execution.
+`git status` can invoke a repository-configured filesystem-monitor program, so the
+adapter must force `core.fsmonitor` off and pin `core.hooksPath` to an empty location
+for every invocation.
+Git’s `safe.directory` ownership check will refuse to operate on trees owned by another
+user, which is routine when browsing servers or containers; the adapter needs a
+deliberate policy and a clear error rather than a confusing failure.
+The adapter must also feature-detect the installed Git version: porcelain v2 status is
+old enough to assume, but `cat-file --batch-command` with NUL termination is recent, and
+platform system Gits lag.
+Finally, linked worktrees store `.git` as a file pointing at the repository, so
+repository discovery must accept both layouts.
 
 Git attributes can classify text and binary content, define word regexes and function
 headers, and configure custom diff drivers.
@@ -484,6 +549,14 @@ process.
 ETags and cache keys derive from the resolved comparison, file content identities, diff
 options, and producer version.
 Volatile worktree content is never cached under a symbolic name alone.
+
+Creating a comparison must not create fragile server session state.
+The comparison ID should be self-describing: it encodes or deterministically derives
+from the resolved endpoints, options, and generation, so creation is idempotent and any
+`GET` can rebuild an evicted comparison from its ID instead of failing.
+Server-side storage then reduces to a bounded LRU of materialized manifests and patches,
+with eviction invisible to clients apart from latency, and `stale` remains the only
+lifecycle state a client must handle.
 
 ### Native and Library Options
 
@@ -648,6 +721,23 @@ pin the audited version, bundle assets locally, and retain a plain renderer for
 unsupported or degraded cases.
 The spike should test the released stable version and the newer `CodeView` version
 separately under the repository’s dependency cool-off and lockfile rules.
+
+Adopting the library is also a packaging decision, not only an API decision.
+Inspection of the published stable package shows an ESM-only distribution of several
+megabytes across hundreds of files with bare-specifier imports of Shiki and HAST
+utilities, React confined to the separate `react` and `ssr` entry points (the vanilla
+entry is genuinely React-free), and dedicated worker entry points.
+Metabrowser today has no JavaScript bundling pipeline, ships zero runtime npm
+dependencies by policy, and loads third parties from a pinned CDN or as single vendored
+files. Consuming this library therefore means introducing the repository’s first runtime
+npm dependency graph and a development-time bundling step that emits pinned, vendored
+plugin assets served from the plugin-static route, all under the cool-off and exact-pin
+rules. Shiki’s pure-JavaScript regex engine avoids vendoring the Oniguruma WebAssembly
+binary and should be the spike’s default.
+The spike must score these integration axes — bundled size, worker operation from
+plugin-static under the target Content Security Policy, and dependency count and update
+cadence — alongside render performance, with `@git-diff-view/core` as the named fallback
+if integration costs disqualify the first choice.
 
 `react-diff-viewer` and similar two-string components are attractive demos but poor
 multi-file foundations.
@@ -859,10 +949,16 @@ Use:
 
 ## Delivery Plan
 
-### Phase 0: Contracts and Benchmark Harness
+### Phase 0: Contracts, Platform Capabilities, and Benchmark Harness
 
 - Specify `ComparisonIntent`, `ResolvedComparison`, `ChangeSetManifest`, `ContentRef`,
   `FilePatch`, completeness, and review-anchor schemas.
+- Extract those schemas into a short normative specification under `docs/specs/`; this
+  research document remains the rationale, not the contract.
+- Deliver the platform prerequisites: plugin sub-router mounting, SDK support for
+  request bodies, streaming, and event subscription, plugin access to the change-event
+  bus and mtime cache, the bounded subprocess runner, threadpool offload for synchronous
+  sidekicks, and the repository-scoped tool surface.
 - Create Git golden repositories for the fixture matrix.
 - Add adapter contract tests and browser performance harnesses.
 - Record baseline Git command, parsing, transfer, and rendering costs.
@@ -928,6 +1024,13 @@ The implementation project should decide, with benchmark evidence:
 - Which schema serialization best preserves arbitrary path and content bytes while
   remaining pleasant for plugins.
 - What stable Jujutsu machine interface is available at implementation time.
+- Whether the repository-scoped surface ships as a manifest-declared tool entry first or
+  waits for directory-scoped container kinds, and how the two later unify.
+- Whether and when the core file tree gains a decoration API so the plugin can badge
+  changed, staged, and untracked files in place.
+  Tree rows are core-owned, editor users expect change indicators there, and the answer
+  moves the core/plugin boundary, so it should be decided before the plugin’s first
+  release rather than after.
 
 ## Methodology and Evidence Limits
 
