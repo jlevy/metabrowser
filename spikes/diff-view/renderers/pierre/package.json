@@ -1,0 +1,9 @@
+{
+  "name": "spike-pierre",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "@pierre/diffs": "1.2.12",
+    "esbuild": "0.28.1"
+  }
+}

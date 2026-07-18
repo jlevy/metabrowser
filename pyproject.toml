@@ -117,6 +117,7 @@ exclude = [
     "/.venv/",
     "/dist/",
     "/node_modules/",
+    "/spikes/",
 ]
 
 [tool.hatch.build.targets.wheel]

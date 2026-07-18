@@ -68,6 +68,24 @@ Agent-generated change sets make bounded acquisition a first-slice requirement r
 than a scale nicety: a single lockfile rewrite or generated bundle can dwarf the rest of
 the change set, and the changes list must not wait for it.
 
+Spikes under `spikes/diff-view/` (see its `REPORT.md`) validated the core decisions with
+measurements. On a 519-file dirty repository the hardened adapter builds the manifest in
+~109 ms, of which ~98 ms is numstat totals, so the manifest must be able to return from
+porcelain status alone (~10 ms) with totals deferred.
+Typical per-file patches cost 2-3 ms; a 30k-line lockfile patch costs ~116 ms.
+The custom renderer meets the interactive bar (10-70 ms typical files; a 50-file
+changeset paints in ~65 ms with progressive mounting), and row gating is the decisive
+control: the pathological 37k-line patch renders in ~195 ms gated versus ~2 s fully
+mounted.
+Library findings: client-side diff computation from contents is disqualifying on
+pathological files (minutes in jsdiff), `@pierre/diffs` is viable only in its
+virtualized worker configuration with language-subset bundles (its default full mount
+took ~76 s and its full-language bundle is 10.6 MB raw / 1.8 MB gzip), and
+`@git-diff-view/core` requires git hunks as input and its DOM path was slower than the
+custom table. Single-entry unminified esbuild vendor bundles were byte-deterministic
+across rebuilds, validating the committed-artifact vendoring path for any future library
+adoption.
+
 ## Design
 
 ### Approach
@@ -214,8 +232,9 @@ time, output, and concurrency caps and cancellation on client disconnect.
 - [ ] Mount the comparison, patch, and content routes with security and
   conditional-request tests
 - [ ] Build the Changes panel: change count badge, status list with staged/unstaged
-  provenance and additions/deletions when cheaply available, and explicit empty,
-  non-repository, and unavailable states
+  provenance, and explicit empty, non-repository, and unavailable states; totals and
+  per-file additions/deletions arrive as a deferred second step so the list paints from
+  status alone
 - [ ] Build the per-file unified diff renderer as a strict-TypeScript module: selectable
   text, line numbers, hunk headers, design tokens, and explicit binary, too-large,
   renamed, and mode-change presentations with load-more caps
@@ -244,9 +263,11 @@ time, output, and concurrency caps and cancellation on client disconnect.
 - [ ] Build the full-pane review surface: one scroll owner, sticky file headers,
   keyboard navigation, local viewed state, and adaptive mounting tiers with
   virtualization only above measured thresholds
-- [ ] Run the pinned renderer spike (`@pierre/diffs` stable and `CodeView`;
-  `@git-diff-view/core` fallback) scored on bundle size, CSP and worker behavior,
-  dependency count, and benchmark results; adopt it or recommit to the custom renderer
+- [ ] Run the pinned renderer gate (`@pierre/diffs` stable and `CodeView`;
+  `@git-diff-view/core` fallback) in virtualized worker configuration with
+  language-subset bundles, scored on bundle size, CSP and worker behavior, dependency
+  count, and the committed spike fixtures; adopt only if it beats the custom renderer’s
+  recorded numbers, otherwise recommit to the custom renderer
 - [ ] Decide the Files-tree change-decoration question with a core API if accepted
 
 Native backends, Jujutsu, review comments, and mutations follow the research brief’s

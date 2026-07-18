@@ -1,0 +1,9 @@
+{
+  "name": "spike-gdv",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "@git-diff-view/core": "0.1.6",
+    "esbuild": "0.28.1"
+  }
+}

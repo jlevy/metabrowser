@@ -1,0 +1,4 @@
+# Generated spike artifacts. Sources, lockfiles, and the report are committed.
+fixtures/out/
+harness/results/
+*.tsbuildinfo

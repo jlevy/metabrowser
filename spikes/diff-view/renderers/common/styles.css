@@ -1,0 +1,76 @@
+/* Minimal diff tokens for the spike; the real feature uses design-system tokens. */
+body {
+  margin: 0;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+.dv-table {
+  border-collapse: collapse;
+  width: 100%;
+  font: 12px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.dv-table td {
+  padding: 0 8px;
+  vertical-align: top;
+}
+td.dv-num {
+  width: 1%;
+  min-width: 42px;
+  text-align: right;
+  color: #6e7781;
+  user-select: none;
+  background: #f6f8fa;
+}
+td.dv-sign {
+  width: 1%;
+  user-select: none;
+}
+td.dv-code {
+  white-space: pre;
+}
+tr.dv-add td.dv-code,
+tr.dv-add td.dv-sign {
+  background: #e6ffec;
+}
+tr.dv-add td.dv-num {
+  background: #ccffd8;
+}
+tr.dv-del td.dv-code,
+tr.dv-del td.dv-sign {
+  background: #ffebe9;
+}
+tr.dv-del td.dv-num {
+  background: #ffd7d5;
+}
+tr.dv-hunk td {
+  background: #ddf4ff;
+  color: #57606a;
+  padding: 2px 8px;
+}
+.dv-file {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  margin: 12px;
+  overflow: hidden;
+}
+.dv-file-header {
+  background: #f6f8fa;
+  border-bottom: 1px solid #d0d7de;
+  font: 12px/1 ui-monospace, monospace;
+  padding: 8px 12px;
+  position: sticky;
+  top: 0;
+}
+.dv-adds {
+  color: #1a7f37;
+}
+.dv-dels {
+  color: #cf222e;
+}
+.dv-gate td {
+  background: #fff8c5;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+.dv-placeholder {
+  background: repeating-linear-gradient(#fafbfc 0 19px, #f0f1f2 19px 20px);
+}
