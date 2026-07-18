@@ -2,6 +2,33 @@
 
 All notable changes to Metabrowser are documented here.
 
+## 0.1.1
+
+Hardening, offline support, and UI refinement:
+
+- Offline-first assets: every third-party browser library is vendored into the wheel
+  from lockfile-verified npm packages with a hash manifest, license texts, and size
+  caps. The served page references no external origins, so Metabrowser works without
+  network access; unused elkjs was dropped.
+- Host-header validation defends against DNS rebinding.
+  Loopback names and a concrete `--host` value are permitted automatically; wildcard
+  binds keep validation and use loopback for the printed URL and auto-open, and
+  `METABROWSER_ALLOWED_HOSTS` extends the allowlist (see SECURITY.md).
+- First-paint navigation expands folders within a visible-row budget instead of
+  expanding every top-level folder; document and tab spacing tightened, prose sized
+  relative to navigation, compact TOC rows, and Markdown tables right-align signed
+  percentages and localized number formats.
+- Server responsiveness: live-tail polling, watcher classification, active-file sweeps,
+  and synchronous plugin data hooks no longer block the event loop, and the mtime cache
+  no longer serializes reads behind slow filesystem stats.
+- Browser resilience: superseded file loads abort, client caches are bounded, the
+  inventory event stream reconnects with backoff after repeated failures, live tree
+  updates handle filenames containing backslashes and quotes, and the SDK owns
+  copy-button behavior end to end.
+- Documentation: project design records reorganized under a dedicated records tree with
+  maintained architecture documents and dated plans, plus a research brief on the
+  planned diff viewer architecture.
+
 ## 0.1.0
 
 Initial standalone release:
