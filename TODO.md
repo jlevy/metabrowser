@@ -30,6 +30,17 @@ Metabrowser’s core stays independent of domain-specific renderers.
 Applications can ship their own plugin packages while depending only on the documented
 public plugin API.
 
+## Change Review and Diffs
+
+- [ ] Deliver the
+  [Git diff view plan](docs/project/specs/active/plan-2026-07-18-git-diff-view.md) in
+  stages: the platform capability slice, an uncommitted-changes surface with per-file
+  diffs, comparison modes with history browsing, then a multi-file review surface
+
+The staged plan follows the
+[diff viewer research brief](docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md)
+and keeps Git logic behind the plugin boundary.
+
 ## Trusted-Local Workflows
 
 - [ ] Add
