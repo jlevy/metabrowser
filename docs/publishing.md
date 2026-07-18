@@ -4,6 +4,31 @@ Metabrowser versions come from Git tags.
 Publishing is performed by the `publish.yml` workflow with PyPI trusted publishing; no
 long-lived PyPI token belongs in the repository.
 
+## Agent-Operated Releases
+
+The release process is designed to be operated end to end by a coding agent: the agent
+runs the checklist below, lands the release-preparation pull request, creates the GitHub
+release, watches the publish workflow, and runs the post-release verification.
+The human maintainer’s role is review and the platform entitlements, not manual release
+mechanics.
+
+The agent creates the release with the GitHub CLI:
+
+```shell
+gh release create vX.Y.Z --target main --title vX.Y.Z --notes-file <notes>
+```
+
+`.claude/scripts/ensure-gh-cli.sh` installs a checksum-pinned `gh` and authenticates
+from the session’s `GH_TOKEN`. Two platform prerequisites apply to remote agent
+sessions: the session’s environment must allow GitHub API egress (the Claude GitHub App
+must be connected with GitHub access enabled for sessions), and the token must carry
+`contents: write`. Session git credentials are branch-scoped, so tags and releases go
+through `gh`, never `git push --tags`. A release created this way fires
+`release: published` normally, which is what triggers `publish.yml`; do not add
+`workflow_dispatch` to `publish.yml` (the supply-chain check rejects it) and do not
+create releases from workflow `GITHUB_TOKEN` credentials, whose events do not trigger
+workflows.
+
 ## First-Time PyPI Setup
 
 Create a pending trusted publisher for:
