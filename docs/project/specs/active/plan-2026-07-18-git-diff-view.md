@@ -307,6 +307,7 @@ vendoring rules.
 ## References
 
 - [Web diff viewer architecture research](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+- [Diff interface stacks and browser build options research](../../research/research-2026-07-18-diff-ui-stacks-and-browser-build-options.md)
 - [Core architecture](../../../architecture.md)
 - [Plugin authoring](../../../plugins.md)
 - [Design system](../../../design-system.md)
