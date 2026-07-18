@@ -55,9 +55,9 @@ else
 
     EXPECTED=$(checksum_for "$PLATFORM")
     if [ -z "$EXPECTED" ]; then
-        echo "[gh] ERROR: no pinned checksum for platform ${PLATFORM}; refusing to install"
-        echo "[gh] Add the checksum from gh_${GH_VERSION}_checksums.txt to this script"
-        exit 1
+        echo "[gh] WARNING: no pinned checksum for platform ${PLATFORM}"
+        echo "[gh] Unsupported platform; skipping automatic installation"
+        exit 0
     fi
 
     ASSET="gh_${GH_VERSION}_${PLATFORM}"

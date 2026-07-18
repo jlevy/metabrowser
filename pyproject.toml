@@ -204,7 +204,7 @@ executionEnvironments = [
 known-first-party = ["metabrowser"]
 
 [tool.codespell]
-ignore-words-list = "browseable,fo,ue,unparseable"
+ignore-words-list = "browseable,fo,rouge,ue,unparseable"
 # Vendored third-party browser bundles are minified upstream artifacts;
 # their identifiers are not prose to spell-check.
 skip = "*/static/vendor/*"
