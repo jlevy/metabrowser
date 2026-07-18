@@ -5,7 +5,7 @@ title: "Git diff view: staged delivery of the Changes surface and comparison API
 kind: epic
 status: open
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
 labels:
   - diff
@@ -17,7 +17,8 @@ child_order_hints:
   - is-01kxse0w3xhsyhbksdbn2kt33e
   - is-01kxse0wddy6je24t1dm5caber
   - is-01kxse0wpvpg9vx64phcr3bh8s
+  - is-01kxshvjpjxser6nqeeah1qm7y
 created_at: 2026-07-18T01:38:43.961Z
-updated_at: 2026-07-18T01:38:59.931Z
+updated_at: 2026-07-18T02:46:00.145Z
 ---
 Epic for plan-2026-07-18-git-diff-view.md. Phases: platform slice + fixtures, uncommitted-changes surface with per-file diffs, comparison modes and history, review surface and renderer gate. Research rationale: docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md.
