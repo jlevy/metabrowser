@@ -23,25 +23,25 @@ uv python install 3.12
 For a one-shot run of the latest published release:
 
 ```shell
-uvx metabrowser ./path/to/artifacts
+uvx metabrowser@latest ./path/to/artifacts
 ```
 
 Pin the release for a reproducible local, CI, or agent run:
 
 ```shell
-uvx metabrowser@0.1.0 ./path/to/artifacts
+uvx metabrowser@0.1.1 ./path/to/artifacts
 ```
 
 For a persistent global tool installation:
 
 ```shell
-uv tool install metabrowser==0.1.0
+uv tool install metabrowser
 metab ./path/to/artifacts
 ```
 
 `metab` is the standard installed command.
 The `metabrowser` compatibility command matches the package name and enables the concise
-`uvx metabrowser ...` form.
+`uvx metabrowser@latest ...` form.
 
 Upgrade deliberately to a reviewed release by naming its exact version:
 
@@ -74,7 +74,7 @@ The repository publishes a portable Metabrowser skill for coding agents:
 npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
-The skill invokes the pinned `uvx metabrowser@0.1.0 ...` runner, so it does not require
+The skill invokes the pinned `uvx metabrowser@0.1.1 ...` runner, so it does not require
 a persistent Metabrowser installation.
 It routes agents to `--help` for current command details and documents the plugin trust
 boundary.

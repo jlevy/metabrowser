@@ -16,7 +16,7 @@ use command help as the source of truth for arguments and options.
 Use the pinned zero-install runner by default:
 
 ```shell
-uvx metabrowser@0.1.0
+uvx metabrowser@0.1.1
 ```
 
 If the user has already installed Metabrowser globally, use `metab` instead.
