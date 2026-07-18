@@ -1,0 +1,7 @@
+forks:
+  - name: setup-github-cli
+    kind: shortcut
+    path: docs/tbd/shortcuts/setup-github-cli.md
+    source: internal:shortcuts/standard/setup-github-cli.md
+    base_hash: sha256:7f3c74852071a65bda622ac7a90b28603ed306287bd903e1c35debe3409f9c9f
+    tbd_version: 0.4.0

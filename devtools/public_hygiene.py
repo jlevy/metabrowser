@@ -16,7 +16,11 @@ COMMON_DOC_EXEMPT_ROOTS = (
     ROOT / ".agents" / "skills",
     ROOT / ".claude" / "skills",
 )
-COMMON_DOC_EXEMPT_FILES = {ROOT / "tests" / "manual-fixtures" / "overview.md"}
+COMMON_DOC_EXEMPT_FILES = {
+    ROOT / "tests" / "manual-fixtures" / "overview.md",
+    # Generated index for forked tbd docs; `tbd docs` commands rewrite it.
+    ROOT / "docs" / "tbd" / "README.md",
+}
 BANNED_TOKEN_HASHES: dict[str, str] = {
     "31523fdddcd5294e2bc6cc775fba79e2597e6d45bc0a995c548493038ebea33f": "private name",
     "431c8f4eb977db1139192b703a0dbb36e9e3d89352c6983851ead2faf62a40a8": "private name",
