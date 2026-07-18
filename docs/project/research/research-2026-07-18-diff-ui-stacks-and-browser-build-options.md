@@ -23,8 +23,13 @@ remains the rationale for the diff data model; this brief covers implementation 
 build tooling, and rewrite testability.
 
 A large rewrite is acceptable with agent labor.
-The controlling constraint is therefore not effort but verifiability: contracts and
-tests that let a rewritten shell prove it still behaves like the old one.
+The controlling constraints are therefore verifiability — contracts and tests that let a
+rewritten shell prove it still behaves like the old one — and contributor scalability:
+which toolchain lets people and agents who want to use and improve Metabrowser’s front
+end work productively with standard skills.
+Supply-chain discipline (lockfiles, cool-off, disabled lifecycle scripts, audits) is a
+routine baseline that every finalist toolchain satisfies; it is checked throughout but
+it is not an architectural shaping force and does not decide between options.
 
 ## Questions to Answer
 
@@ -35,12 +40,16 @@ tests that let a rewritten shell prove it still behaves like the old one.
    lifecycle scripts, and offline-first serving?
 3. What has to be true of the test suite before a browser-shell rewrite is safe to
    attempt?
+4. Which toolchain best lets outside contributors and coding agents use and improve
+   Metabrowser’s front end at scale, and what do comparable Python-served web
+   applications actually use?
 
 ## Scope
 
 Included: product and library survey with stack details, bundler and no-bundler
 toolchain facts as of mid-2026, import-map and CSP constraints, vendored-artifact
-precedents, supply-chain tooling, and a testability strategy.
+precedents, a verified survey of the front-end toolchains of major Python-served web
+applications, supply-chain tooling, and a testability strategy.
 Excluded: the diff data model and API (covered by the prior brief) and any decision to
 adopt a specific renderer library (owned by the plan’s phase 3 gate).
 
@@ -251,6 +260,34 @@ Local-first CI scanners beyond `npm audit`: `audit-ci`, `lockfile-lint`,
 Bundling tools themselves add only 2-4 packages (esbuild, rolldown, rollup) and none
 require lifecycle scripts, so the `ignore-scripts` posture holds.
 
+## Findings: Toolchains of Python-Served Web UIs
+
+Metabrowser’s shape — a pip-installed Python server shipping a browser UI — has a
+well-populated precedent class.
+Verified directly from each repository’s committed package manifests (July 2026):
+
+| Application | UI framework | Build tool | Tests | Notes |
+| --- | --- | --- | --- | --- |
+| Streamlit | React 18 | Vite 8 | Vitest 4 | TypeScript 6 workspace |
+| Gradio | Svelte 5 | Vite 8 (+esbuild utility) | Vitest browser (Playwright) | pnpm workspace |
+| Airflow 3 UI | React | Vite 8 | Vitest 4 | TypeScript 6 |
+| marimo | React | rolldown-vite | Vitest 3 | Storybook, WASM plugins |
+| Home Assistant frontend | Lit | rspack 2 | Vitest 4 | TypeScript 7 native |
+| JupyterLab | Lumino/React | own webpack-based builder | jest-era harnesses | oldest of the set |
+
+The convergence is total: every serious Python-served web application ships a full
+TypeScript toolchain with a modern bundler (Vite or a Vite-generation Rust bundler) and
+Vitest, builds its assets at release time, and packages the built artifacts into the
+Python distribution.
+None is buildless, and none asks end users to run npm: `pip install` delivers prebuilt
+assets, while contributors get a standard front-end workspace.
+This is the pattern that has proven to scale contributor communities for exactly
+Metabrowser’s architecture, and it cleanly separates two planes that the earlier options
+analysis blurred: the **contributor plane** (how people build, run, and test the front
+end) and the **distribution plane** (what the wheel ships and how users run it).
+The distribution-plane invariants — offline-first, same-origin, no runtime npm, prebuilt
+assets in the wheel — are compatible with any contributor-plane choice.
+
 ## Findings: Testability for a Rewrite
 
 Current safety net, verified in-repo: Python route/lifespan tests, Node `vm` contract
@@ -303,20 +340,42 @@ freely while the suite acts as referee.**
   `@codemirror/merge` for narrower roles, Sapling’s MIT diff utilities and Gerrit’s
   `GrDiff` as reference code, and the new `@vscode/diff` WASM algorithm as a
   future-watch item. Everything else is locked inside products.
-- The repo can go surprisingly far with no bundler at all: native ESM first-party code
-  under the existing strict `tsc --checkJs` gate, import maps for any vendored bare
-  specifiers, and strict CSP fully intact.
-- A bundler becomes necessary only at two well-defined points: worker entry points
-  (import-map gap) and ESM-only third-party graphs (Shiki/Pierre).
-  esbuild used as a vendor compiler — two packages, no lifecycle scripts, byte-stable
-  unminified single-entry output — fits the existing vendoring policy with minimal
-  surface.
-- TypeScript 7 changes the authoring calculus (fast native `tsc`), but adopting it is a
-  normal cool-off-governed upgrade; nothing in this plan depends on it.
+- The deciding axis is contributor scalability, not supply-chain minimalism: every
+  finalist toolchain passes the supply-chain baseline (no lifecycle scripts, small
+  dependency trees, lockfiles, cool-off support), so hygiene checks are a minor, uniform
+  cost rather than a differentiator between options.
+- The Python-served web-app ecosystem has converged on one answer to “what scales for
+  contributors”: TypeScript, a Vite-generation bundler, and Vitest, with built assets
+  shipped in the Python package.
+  Nobody in that class is buildless.
+- The contributor plane and the distribution plane are separable: a standard dev
+  toolchain for the people improving the front end, and an offline-first wheel with
+  prebuilt, same-origin assets for the people running it.
+  All distribution invariants survive any contributor-plane choice.
+- Buildless native ESM remains technically viable (import maps are baseline; strict CSP
+  intact; the only hard gaps are worker entry points and ESM-only dependency graphs) —
+  but it optimizes for a minimal-toolchain value that the precedent class shows is not
+  what makes front ends thrive.
+  Its lasting value here is as the low-ceremony migration step for extracting modules
+  from `app.js`, and esbuild single-entry vendor bundling (verified byte-deterministic)
+  as the mechanism for committed artifacts wherever they are wanted.
+- TypeScript 7’s native compiler (8-12x faster) and rolldown-era Vite (15 packages)
+  removed the historical costs of the standard toolchain; Home Assistant already ships
+  on TypeScript 7 native.
 - The rewrite risk is concentrated in test debt, not code volume: the missing layer is
-  real-browser coverage, and it is prerequisite work.
+  real-browser coverage, and it is prerequisite work regardless of toolchain.
+  Standard runners (Vitest, Playwright) also make that layer something new contributors
+  already know how to extend, unlike the bespoke Node `vm` shims.
 
 ## Options Considered
+
+The options are evaluated on contributor scalability first: familiarity to front-end
+engineers and coding agents, dev-loop speed (edit-to-feedback, HMR), typed authoring in
+real `.ts`, standard test runners, access to the ESM-only library ecosystem, the story
+for plugin authors, and long-run maintenance.
+Distribution invariants (offline-first wheel, same-origin prebuilt assets, no runtime
+npm for users) and the supply-chain baseline are requirements every option must meet,
+not scoring axes.
 
 ### Option A: Stay on Classic Scripts and Single-File Vendor Copies
 
@@ -332,6 +391,8 @@ freely while the suite acts as referee.**
 - Cannot consume ESM-only libraries (Shiki, Pierre, CodeMirror 6)
 - Blocks the shell modularization epic; `app.js` keeps growing monolithically
 - Worker adoption stays ad hoc
+- Alien to incoming front-end contributors: window globals, JSDoc-only typing, and
+  bespoke test shims have no ecosystem on-ramp
 
 ### Option B: Buildless Native ESM for First-Party Code
 
@@ -350,6 +411,9 @@ emit as a later ratchet), with an import map for any vendored bare specifiers.
 - Worker entries cannot use import maps (must use relative imports or Option C
   artifacts)
 - Import discipline (explicit extensions, no path magic) must be enforced by lint
+- Nonstandard as a destination: no `.ts` authoring, no HMR, no Vitest — contributors and
+  agents must learn a house style instead of using what they know
+- No precedent among comparable Python-served web applications
 
 ### Option C: esbuild as a Vendor Compiler Only (Hybrid)
 
@@ -371,44 +435,91 @@ manifest, license capture, and a CI rebuild-and-byte-compare job.
 - Determinism must be re-verified per esbuild upgrade (no upstream guarantee)
 - A second build input (bundle config) joins the review surface
 
-### Option D: Full Bundler Pipeline (Vite 8 / Rolldown)
+### Option D: Standard Toolchain — TypeScript + Vite + Vitest (Contributor Plane)
 
-**Description:** Adopt a dev-server-plus-production-bundle pipeline for all browser
-code.
+**Description:** A conventional front-end workspace for Metabrowser’s browser code:
+`.ts` sources under strict TypeScript, Vite 8 as dev server (proxying the Python API)
+and release bundler, Vitest for unit and component tests, Playwright for end-to-end,
+with `vite build` output shipped in the wheel as today’s static assets are.
 
 **Pros:**
 
-- Best developer ergonomics (HMR), hashed assets, code splitting at scale
-- Rolldown-era Vite is far leaner than its 2024 self (15 packages)
+- The lingua franca: what front-end engineers and coding agents already know, and what
+  every comparable Python-served application (Streamlit, Gradio, Airflow, marimo, Home
+  Assistant modulo rspack) converged on
+- Real `.ts` authoring, instant HMR for UI work, standard test runners that new
+  contributors can extend without learning house mechanisms
+- Trivial access to the ESM-only ecosystem and worker bundling; the renderer-library
+  gate becomes an ordinary dependency decision
+- Enables a typed, published plugin SDK and a plugin project template
+- Rolldown-era Vite is lean (15 packages, no lifecycle scripts) and passes the
+  supply-chain baseline like every other finalist
 
 **Cons:**
 
-- All first-party code becomes build output; wheel no longer ships served source
+- Served code is build output, so debugging leans on source maps, and the wheel build
+  (or a committed-dist flow) gains a Node step
 - Hard postcss/lightningcss dependencies and two native-binary families
-- Dev server and HMR solve problems a locally-served Python app barely has
-- Largest audit and drift surface of the options
+- A config surface (vite.config, plugins) that can accrete if not curated
+
+### Option E: rspack / Bun / tsdown Variants
+
+**Description:** The same contributor-plane shape as Option D with a different engine.
+
+rspack is proven in this class (Home Assistant) but is webpack-shaped and less common in
+new projects than Vite; Bun consolidates package manager, bundler, and test runner into
+one binary but adds a second runtime, has partial `node:vm` compatibility for the
+existing shims, and buys nothing browser-visible; tsdown targets library bundling, not
+applications. All are viable, none beats Vite on the familiarity axis that this
+evaluation weights first.
 
 ### Eliminated Options
 
-- **Bun as bundler:** second pinned runtime and LGPL-linked engine for no unique
-  capability here.
-- **tsdown/rspack/webpack:** library-bundler or webpack-compat scope mismatches; 31
-  packages (tsdown) or eval-based dev defaults (webpack).
-- **CDN or downloaded-at-runtime modules:** violates offline-first and the no-external-
-  origins test.
+- **webpack:** legacy-generation tooling with eval-based dev defaults; the precedent
+  class that used it (JupyterLab) is the oldest member, not the model.
+- **CDN or downloaded-at-runtime modules:** violates offline-first and the
+  no-external-origins test — a distribution invariant, not a preference.
 
 ## Recommended Direction
 
-Adopt B plus C, staged: split new browser code (starting with the diff renderer) into
-strict-checked native ESM; extend the vendoring script with an esbuild single-entry
-bundling mode for worker entries and ESM-only libraries, with manifest hashes and a CI
-rebuild-diff gate; raise vendor caps only when a specific artifact (for example a Shiki
-language subset) justifies it.
-Revisit Option D only if a framework-style dev loop becomes a demonstrated need at the
-review-surface phase.
-Before any shell rewrite: land the real-browser test layer, payload and SDK contract
-suites, and perf budgets, then strangle `app.js` module by module with contract parity.
-Adopting TypeScript 7 authoring is a separate, cool-off-governed upgrade decision.
+Optimize for the people who will build on this: adopt the standard toolchain (Option D)
+as the contributor plane, while keeping today’s distribution plane intact — an
+offline-first wheel of prebuilt, same-origin assets that end users get with
+`pip install` and no npm.
+This is the shape every comparable Python-served application landed on.
+
+Staged adoption:
+
+1. **Testability first, toolchain-independent.** Land the real-browser Playwright layer,
+   payload and SDK contract suites, and perf budgets before any rewrite; then strangle
+   `app.js` module by module with contract parity.
+   This work transfers unchanged into the new toolchain.
+2. **Stand up the front-end workspace with the diff renderer.** The Changes surface is
+   the first substantial new UI: author it as `.ts` under strict TypeScript in a Vite
+   workspace with Vitest, with `vite dev` proxying `metab serve` for HMR. New code
+   proves the toolchain before legacy code migrates into it.
+3. **Wire the distribution build.** `vite build` emits the assets the wheel ships
+   (either built at release in CI, which already pins Node, or committed with the
+   existing manifest-plus-rebuild-diff honesty mechanism — the esbuild determinism
+   result generalizes the same gate to any pinned bundler).
+   The offline, no-external- origins tests continue to enforce the invariants.
+4. **Migrate the shell as the strangler proceeds**, retiring window globals, the
+   JSDoc-only typing gate, and the Node `vm` shims in favor of `.ts` modules, Vitest,
+   and Playwright as each seam moves.
+5. **Grow the plugin ecosystem on top**: publish a typed `window.metabrowser` SDK
+   package and a plugin template with the same toolchain, while keeping the zero-build
+   plain-JavaScript plugin path as the low-ceremony on-ramp.
+
+Buildless native ESM and the esbuild vendor mode remain useful mechanics inside this
+direction — as the low-ceremony extraction format during the strangler phase and as the
+committed-artifact mechanism where wanted — but they are stepping stones, not the
+destination. The supply-chain baseline (exact pins, lockfiles, `ignore-scripts`,
+cool-off, audits) carries over to the new toolchain as routine configuration; it
+constrains how tools are installed, not which tools are chosen.
+The UI framework question for the review surface (stay vanilla, adopt Lit-style web
+components as GitLab and Gerrit did, or accept a framework island with a renderer
+library) is deliberately left to the plan’s phase 3 gate, now unblocked by the toolchain
+rather than constrained by it.
 
 ## Methodology and Evidence Limits
 
@@ -416,11 +527,14 @@ Product claims were verified where possible by cloning sources (VS Code, GitButl
 Sapling, Gerrit, gg, difit), reading official docs and engineering posts (GitLab, Zed,
 Linear, Lovable, Graphite), and querying the npm registry; package counts and
 esbuild/Shiki behavior were measured locally with `npm install --ignore-scripts` and
-repeated builds on Linux x86_64. Claude Code CLI internals and Cursor internals come
-from secondary write-ups and reverse-engineering notes and are labeled reported, not
-verified.
-Proprietary products (Cursor, Graphite, Linear) disclose no renderer internals;
-absence of evidence there is noted rather than filled with inference.
+repeated builds on Linux x86_64. The Python-served toolchain table was verified from
+each project’s committed package manifests fetched from its repository (Streamlit,
+Gradio, Airflow, marimo, Home Assistant); JupyterLab’s builder architecture is
+characterized from its documentation rather than a manifest hit.
+Claude Code CLI internals and Cursor internals come from secondary write-ups and
+reverse-engineering notes and are labeled reported, not verified.
+Proprietary products (Cursor, Graphite, Linear) disclose no renderer internals; absence
+of evidence there is noted rather than filled with inference.
 Web-search quota limits in the research environment bounded some follow-up queries;
 primary-source fetches and local measurements were unaffected.
 
@@ -465,6 +579,15 @@ primary-source fetches and local measurements were unaffected.
 - [Rails importmap-rails](https://github.com/rails/importmap-rails)
 - [Go modules vendoring reference](https://go.dev/ref/mod)
 - [Deno supply-chain and vendoring](https://docs.deno.com/runtime/packages/supply_chain/)
+
+### Python-Served Web UI Precedents
+
+- [Streamlit frontend](https://github.com/streamlit/streamlit/tree/develop/frontend)
+- [Gradio js workspace](https://github.com/gradio-app/gradio)
+- [Airflow 3 UI](https://github.com/apache/airflow/tree/main/airflow-core/src/airflow/ui)
+- [marimo frontend](https://github.com/marimo-team/marimo/tree/main/frontend)
+- [Home Assistant frontend](https://github.com/home-assistant/frontend)
+- [JupyterLab](https://github.com/jupyterlab/jupyterlab)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
