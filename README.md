@@ -75,7 +75,7 @@ Node.js and npm are not required to install or run it.
 Run the latest published release without installing a global tool:
 
 ```shell
-uvx metabrowser .
+uvx metabrowser@latest .
 ```
 
 This will open the current directory (or any other directory you specify) in your web
@@ -92,7 +92,7 @@ metab .
 
 `metab` is the standard installed command.
 The `metabrowser` compatibility command matches the package name, which is why the short
-`uvx metabrowser ...` form works.
+`uvx metabrowser@latest ...` form works.
 
 The CLI documents every command and option:
 
@@ -212,7 +212,7 @@ npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
 The skill requires no persistent Metabrowser installation.
-It calls the pinned `uvx metabrowser@0.1.0 ...` runner and uses `--help` on the CLI and
+It calls the pinned `uvx metabrowser@0.1.1 ...` runner and uses `--help` on the CLI and
 its subcommands as the source of truth.
 A globally installed `metab` remains available as the faster local command.
 
