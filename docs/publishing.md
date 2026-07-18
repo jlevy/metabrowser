@@ -19,15 +19,16 @@ gh release create vX.Y.Z --target main --title vX.Y.Z --notes-file <notes>
 ```
 
 `.claude/scripts/ensure-gh-cli.sh` installs a checksum-pinned `gh` and authenticates
-from the session’s `GH_TOKEN`. Two platform prerequisites apply to remote agent
-sessions: the session’s environment must allow GitHub API egress (the Claude GitHub App
-must be connected with GitHub access enabled for sessions), and the token must carry
-`contents: write`. Session git credentials are branch-scoped, so tags and releases go
-through `gh`, never `git push --tags`. A release created this way fires
-`release: published` normally, which is what triggers `publish.yml`; do not add
-`workflow_dispatch` to `publish.yml` (the supply-chain check rejects it) and do not
-create releases from workflow `GITHUB_TOKEN` credentials, whose events do not trigger
-workflows.
+from the session’s `GH_TOKEN`, which must carry `contents: write`. In proxied remote
+sessions, route GitHub hosts directly with `NO_PROXY` before running the script — the
+session’s HTTPS relay can intercept GitHub with its own 403 even when the environment’s
+egress policy allows it; `gh` honors `NO_PROXY` natively.
+Run `tbd shortcut setup-github-cli` for the verified recipe and the diagnostic decision
+tree. Session git credentials are branch-scoped, so tags and releases go through `gh`,
+never `git push --tags`. A release created this way fires `release: published` normally,
+which is what triggers `publish.yml`; do not add `workflow_dispatch` to `publish.yml`
+(the supply-chain check rejects it) and do not create releases from workflow
+`GITHUB_TOKEN` credentials, whose events do not trigger workflows.
 
 ## First-Time PyPI Setup
 
