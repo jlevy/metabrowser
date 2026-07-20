@@ -975,8 +975,8 @@ function renderTreeNodes(nodes, isRoot, options) {
       var dirAge = formatAge(node.mtime);
       var dirChip = treeDirChipHtml(node.total_files, node.total_size, options);
       parts.push(
-        `<div class="tree-item tree-folder ${stateClass}${mutedCls}" data-action="toggle" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
-        ICONS.toggle,
+        `<div class="tree-item tree-folder ${stateClass}${mutedCls}" data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
+        `<span class="tree-toggle" data-role="toggle">${ICONS.toggle}</span>`,
         '<span class="tree-item-name">',
         esc(node.name),
         "</span>",
@@ -1503,7 +1503,10 @@ treePane.addEventListener("click", (e) => {
     return;
   }
   const action = item.dataset.action;
-  if (action === "toggle") {
+  // The chevron hotspot expands/collapses without selecting; anywhere
+  // else on a folder row selects the folder for preview (select-dir).
+  const isToggleHotspot = !!target.closest('[data-role="toggle"]');
+  if (action === "toggle" || isToggleHotspot) {
     var children = /** @type {HTMLElement | null} */ (item.nextElementSibling);
     if (!children) {
       return;
@@ -1541,6 +1544,23 @@ treePane.addEventListener("click", (e) => {
   } else if (action === "select") {
     setSelectedPath(item.dataset.path);
     selectFile(item.dataset.path);
+  } else if (action === "select-dir") {
+    setSelectedPath(item.dataset.path);
+    selectFile(item.dataset.path);
+    // Selecting a folder also reveals its children (expand-only: a
+    // second click re-previews without collapsing; collapse lives on
+    // the chevron hotspot).
+    var dirChildren = /** @type {HTMLElement | null} */ (item.nextElementSibling);
+    if (dirChildren?.classList.contains("tree-children")) {
+      if (dirChildren.style.display === "none") {
+        dirChildren.style.display = "block";
+        item.classList.remove("collapsed");
+        item.classList.add("expanded");
+      }
+      if (dirChildren.querySelector(":scope > .tree-lazy-placeholder")) {
+        loadSubtree(item.dataset.path, dirChildren);
+      }
+    }
   }
 });
 
@@ -2484,11 +2504,21 @@ async function selectFile(path, skipHash) {
           () => resp.json(),
           responsePerfMeta(resp, path),
         );
-        cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
-        const etagHeader = resp.headers.get("etag");
-        if (etagHeader) {
-          fileETags.set(path, etagHeader);
-          boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
+        if (data.kind === "folder") {
+          // Folder envelopes are no-store (aggregates move during a
+          // scan): keep them out of the file cache and ETag books, and
+          // rewrite the hash with the directory marker now that the
+          // server confirmed the path is a folder.
+          if (!skipHash) {
+            writeHashForPath(path, true);
+          }
+        } else {
+          cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
+          const etagHeader = resp.headers.get("etag");
+          if (etagHeader) {
+            fileETags.set(path, etagHeader);
+            boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
+          }
         }
         fileNeedsRevalidate.delete(path);
         if (currentPath === path) {
@@ -2518,6 +2548,55 @@ async function selectFile(path, skipHash) {
 }
 
 // ── File rendering ──────────────────────────────────────────────
+
+// Breadcrumb / up-button navigation target for folder headers. On
+// window because header HTML uses inline onclick (same pattern as
+// copyPath). "" is the served root.
+// biome-ignore lint/correctness/noUnusedVariables: referenced from generated header HTML.
+function navigateToFolder(path) {
+  navigateToPath(path === "" ? "/" : `${path}/`);
+}
+
+// Folder preview header: up control, clickable breadcrumb, aggregate
+// summary. The shell owns this chrome so every folder view shares it.
+function renderFolderHeader(data) {
+  var path = typeof data.path === "string" ? data.path : "";
+  var segments = path ? path.split("/") : [];
+  var rootCrumb =
+    '<button class="folder-crumb folder-crumb-root" onclick="navigateToFolder(\'\')" title="Served root">/</button>';
+  var crumbs = [];
+  var prefix = "";
+  for (var i = 0; i < segments.length; i++) {
+    prefix = prefix ? `${prefix}/${segments[i]}` : segments[i];
+    var escapedArg = esc(prefix).replace(/'/g, "\\'");
+    var isLast = i === segments.length - 1;
+    crumbs.push(
+      isLast
+        ? `<span class="folder-crumb folder-crumb-current">${esc(segments[i])}</span>`
+        : `<button class="folder-crumb" onclick="navigateToFolder('${escapedArg}')">${esc(segments[i])}</button>`,
+    );
+  }
+  var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
+  var upEscaped = parent === null ? "" : esc(parent).replace(/'/g, "\\'");
+  var upButton =
+    parent === null
+      ? '<button class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" disabled>↑</button>'
+      : `<button class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" onclick="navigateToFolder('${upEscaped}')">↑</button>`;
+  var dirInfo = data.dir || {};
+  var summary =
+    sizeHtml(dirInfo.total_size, "file-header-size") +
+    (typeof dirInfo.total_files === "number"
+      ? `<span class="folder-header-count">${dirInfo.total_files} files</span>`
+      : "") +
+    `<span class="folder-header-age">${formatAge(dirInfo.mtime ?? 0)}</span>`;
+  return (
+    '<div class="file-header folder-header">' +
+    upButton +
+    `<span class="file-header-path folder-breadcrumb">${rootCrumb}${crumbs.join('<span class="folder-crumb-sep">/</span>')}</span>` +
+    summary +
+    "</div>"
+  );
+}
 
 // Build badges based on file kind (data-driven)
 function renderBadges(data) {
@@ -2737,26 +2816,32 @@ function renderFile(data) {
       // replace preview.innerHTML below, which detaches their containers.
       disposeActivePluginViews();
 
-      // Build header
-      var badges = renderBadges(data);
-      let html = '<div class="file-header">';
-      html +=
-        '<span class="file-header-path">' +
-        esc(data.path) +
-        '<button class="file-header-copy" onclick="copyPath(this, \'' +
-        esc(data.path).replace(/'/g, "\\'") +
-        '\')" title="Copy path">' +
-        ICON_COPY +
-        "</button>" +
-        "</span>";
-      html += badges;
-      html += sizeHtml(data.size, "file-header-size");
-      html += renderTextPreviewControls(data);
-      html +=
-        '<button class="file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
-        (ICONS.print || "") +
-        "</button>";
-      html += "</div>";
+      // Build header — folders get breadcrumb chrome (renderFolderHeader),
+      // files the path/badges/size strip.
+      let html;
+      if (data.kind === "folder") {
+        html = renderFolderHeader(data);
+      } else {
+        var badges = renderBadges(data);
+        html = '<div class="file-header">';
+        html +=
+          '<span class="file-header-path">' +
+          esc(data.path) +
+          '<button class="file-header-copy" onclick="copyPath(this, \'' +
+          esc(data.path).replace(/'/g, "\\'") +
+          '\')" title="Copy path">' +
+          ICON_COPY +
+          "</button>" +
+          "</span>";
+        html += badges;
+        html += sizeHtml(data.size, "file-header-size");
+        html += renderTextPreviewControls(data);
+        html +=
+          '<button class="file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+          (ICONS.print || "") +
+          "</button>";
+        html += "</div>";
+      }
 
       // Data-driven tab rendering from server views.
       //
@@ -3344,6 +3429,25 @@ function notifyFileStoreSubscribers(evt) {
       /* isolate listener failure */
     }
   }
+  // Re-dispatch as a DOM event so SDK consumers (watchRollup) observe
+  // inventory activity without reaching into shell internals. ``paths``
+  // is null for snapshot/resync (treat as "anything may have changed").
+  var changedPaths = null;
+  if (evt && Array.isArray(evt.ops)) {
+    changedPaths = [];
+    for (var oi = 0; oi < evt.ops.length; oi++) {
+      var op = evt.ops[oi];
+      var opPath = op && (op.entry?.path ?? op.path);
+      if (typeof opPath === "string") {
+        changedPaths.push(opPath);
+      }
+    }
+  }
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", {
+      detail: { kind: evt ? evt.kind : "", paths: changedPaths },
+    }),
+  );
 }
 
 // Pure function: derive the patched cell HTML for a single
@@ -3853,7 +3957,16 @@ function parseHashRoute() {
   if (!hash || hash === "#") {
     return "";
   }
-  var frag = decodeURIComponent(hash.slice(1)).replace(/\/+$/, "");
+  var raw = decodeURIComponent(hash.slice(1));
+  // A trailing slash marks a directory route ("#src/", root as "#/").
+  // Directory fragments skip the in-doc-anchor heuristic below — a bare
+  // top-level folder name would otherwise be rejected for having no
+  // extension. The returned route keeps the marker; callers strip it.
+  var isDirRoute = /\/$/.test(raw);
+  var frag = raw.replace(/\/+$/, "");
+  if (isDirRoute) {
+    return `${frag}/`;
+  }
   if (!frag) {
     return "";
   }
@@ -3866,6 +3979,25 @@ function parseHashRoute() {
     return "";
   }
   return frag;
+}
+
+// Split a parseHashRoute() result into {path, isDir}. "#/" yields the
+// served root: {path: "", isDir: true}.
+/** @param {string} route */
+function splitHashRoute(route) {
+  if (route.endsWith("/")) {
+    return { path: route.replace(/\/+$/, ""), isDir: true };
+  }
+  return { path: route, isDir: false };
+}
+
+// Write the location hash for a path. Directories carry a trailing
+// slash (the served root is "#/") so parseHashRoute can tell them from
+// in-document anchors; files keep the existing encoded form.
+/** @param {string} path @param {boolean} isDir */
+function writeHashForPath(path, isDir) {
+  var frag = isDir ? `${encodeURIComponent(path)}/` : encodeURIComponent(path);
+  history.replaceState(null, "", `#${frag}`);
 }
 
 function serverInitialPath() {
@@ -3925,7 +4057,7 @@ async function revealInTree(path) {
       }
     }
   }
-  var target = document.querySelector(`.tree-file[data-path="${path}"]`);
+  var target = document.querySelector(`.tree-item[data-path="${path}"]`);
   if (!target) {
     return false;
   }
@@ -3935,18 +4067,32 @@ async function revealInTree(path) {
 }
 
 async function navigateToPath(path) {
-  if (!path) {
+  // selectFile owns the hash write (skipHash=false): callers include
+  // breadcrumbs, treemap cells, and plugin openPath, where the hash is
+  // not set yet. hashchange-driven calls rewrite an identical value,
+  // which replaceState makes a no-op.
+  if (path === "" || path === "/") {
+    // The served root has no tree row; select it directly (folder view).
+    setSelectedPath(null);
+    selectFile("", false);
     return;
   }
-  if (await revealInTree(path)) {
-    selectFile(path, true);
-  }
+  var normalized = path.replace(/\/+$/, "");
+  // Reveal is best-effort: a row past the pagination cap (or a folder
+  // route) may not resolve to a DOM node, but the preview should still
+  // open — selectFile handles files and folders alike.
+  await revealInTree(normalized);
+  selectFile(normalized, false);
 }
 
 window.addEventListener("hashchange", () => {
-  var path = parseHashRoute();
-  if (path && path !== currentPath) {
-    navigateToPath(path);
+  var route = parseHashRoute();
+  if (!route) {
+    return;
+  }
+  var parts = splitHashRoute(route);
+  if (parts.path !== currentPath) {
+    navigateToPath(route);
   }
 });
 
@@ -3956,7 +4102,7 @@ window.addEventListener("metabrowser:open-path", (event) => {
   }
   var path = event.detail?.path;
   if (typeof path === "string" && path) {
-    selectFile(path);
+    navigateToPath(path);
   }
 });
 
@@ -4004,9 +4150,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   // can render as soon as /api/file lands instead of waiting for the
   // full tree to come back. revealInTree below still waits on the
   // tree because it queries DOM the renderer just produced.
-  var hashPath = parseHashRoute();
-  var initialPath = hashPath || serverInitialPath();
-  if (initialPath) {
+  var hashRoute = parseHashRoute();
+  var hashParts = splitHashRoute(hashRoute);
+  var initialPath = hashRoute ? hashParts.path : serverInitialPath();
+  var initialIsDir = hashRoute ? hashParts.isDir : false;
+  if (initialPath || initialIsDir) {
     selectFile(initialPath, true);
   }
   startIndexProgressPolling();
@@ -4014,10 +4162,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   initPaneResize("tree-resize", ".tree-pane", 180, null);
   if (initialPath) {
     revealInTree(initialPath);
-  } else {
+  } else if (!initialIsDir) {
     var readme = findRootReadme();
     if (readme) {
       navigateToPath(readme);
+    } else {
+      // No hash, no server-seeded file, no root README: land on the
+      // root folder view (treemap) instead of the empty pane.
+      selectFile("", true);
     }
   }
   // /api/events is the single source for tree decoration and

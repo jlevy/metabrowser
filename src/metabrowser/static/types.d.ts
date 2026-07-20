@@ -93,17 +93,90 @@ type TextBuiltins = {
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
+type MarkdownBuiltins = {
+  renderRendered: (container: HTMLElement, ctx: MetabrowserRenderContext) => Promise<void>;
+  renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+  disposeToc: () => void;
+};
+
 type MetabrowserBuiltins = {
   agentLog?: AgentLogBuiltins;
-  markdown?: Record<string, unknown>;
+  markdown?: MarkdownBuiltins;
   structured?: StructuredBuiltins;
   text?: TextBuiltins;
   [name: string]: unknown;
 };
 
+type MetabrowserRollupEnvelope = {
+  root: string;
+  path: string;
+  node: Record<string, unknown> | null;
+  ext_tallies: Array<Array<unknown>>;
+  index_status: string;
+  indexed_files: number;
+  max_files: number;
+  truncated: boolean;
+};
+
+type MetabrowserRollupWatch = {
+  refresh(): void;
+  dispose(): void;
+};
+
+type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
+
+type MetabrowserTreemapCell = {
+  kind: string;
+  name: string;
+  path: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  depth: number;
+  value: number;
+  mtime?: number;
+  ext?: string;
+  gitignored?: boolean;
+  state?: string;
+  nested?: boolean;
+  files?: number;
+  bytes?: number;
+};
+
+type MetabrowserTreemapWeightedItem = { value: number } & Record<string, unknown>;
+
+type MetabrowserTreemapLayoutApi = {
+  LAYOUT_DEFAULTS: Record<string, number>;
+  squarify(
+    items: Array<MetabrowserTreemapWeightedItem>,
+    rect: { x: number; y: number; w: number; h: number },
+  ): Array<{ item: MetabrowserTreemapWeightedItem; x: number; y: number; w: number; h: number }>;
+  layoutTree(
+    rootNode: Record<string, unknown>,
+    viewport: { w: number; h: number },
+    options: Record<string, unknown>,
+  ): Array<MetabrowserTreemapCell>;
+  worstAspect(areas: Array<number>, side: number): number;
+};
+
 type MetabrowserSdk = {
+  ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
   builtins: MetabrowserBuiltins;
   escapeHtml(value: string): string;
+  fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
+  fileTypeClass(path: string): string;
+  formatTimestamp(secondsSinceEpoch: number): string;
+  tooltip: {
+    hide(): void;
+    move(event: MouseEvent): void;
+    show(html: string, event: MouseEvent): void;
+  };
+  watchRollup(
+    path: string,
+    opts: Record<string, unknown>,
+    onUpdate: (envelope: MetabrowserRollupEnvelope) => void,
+  ): MetabrowserRollupWatch;
   fetchKpressRender(
     ctx: MetabrowserRenderContext,
     viewId?: string,
@@ -190,6 +263,7 @@ declare global {
     };
     MetabrowserIcons?: Record<string, string>;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
+    MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
       hide(): void;
       move(event: MouseEvent): void;
@@ -204,6 +278,10 @@ declare global {
       RECENT_LIMIT?: number;
       RECENT_RECLUSTER_DEBOUNCE_MS?: number;
       RECENT_WINDOWS?: Array<string>;
+      ROLLUP_DEFAULT_DEPTH?: number;
+      ROLLUP_DEFAULT_EXT_TOP?: number;
+      ROLLUP_DEFAULT_TOP?: number;
+      ROLLUP_WATCH_DEBOUNCE_MS?: number;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
     };
     metabrowser: MetabrowserSdk;

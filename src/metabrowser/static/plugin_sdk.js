@@ -203,6 +203,197 @@
     );
   }
 
+  // Age buckets shared with the shell's tree column. The thresholds
+  // mirror app.js formatAge exactly (sec <1m, min <1h, hr <1d, day
+  // <7d, wk <30d, old beyond); keep the two lists in sync so a
+  // treemap fill and a tree row never disagree about freshness.
+  /** @type {Array<[string, number]>} */
+  const AGE_BUCKET_STEPS = [
+    ["sec", 60 * 1000],
+    ["min", 60 * 60 * 1000],
+    ["hr", 24 * 60 * 60 * 1000],
+    ["day", 7 * 24 * 60 * 60 * 1000],
+    ["wk", 30 * 24 * 60 * 60 * 1000],
+  ];
+
+  function ageBucket(mtimeSeconds) {
+    if (typeof mtimeSeconds !== "number" || !Number.isFinite(mtimeSeconds) || mtimeSeconds <= 0) {
+      return null;
+    }
+    const absMs = Math.abs(Date.now() - mtimeSeconds * 1000);
+    for (const [bucket, limitMs] of AGE_BUCKET_STEPS) {
+      if (absMs < limitMs) {
+        return bucket;
+      }
+    }
+    return "old";
+  }
+
+  const ROLLUP_FALLBACK_DEBOUNCE_MS = 1000;
+
+  function _rollupSettings() {
+    const settings = global.METABROWSER_SETTINGS || {};
+    return {
+      depth: settings.ROLLUP_DEFAULT_DEPTH,
+      top: settings.ROLLUP_DEFAULT_TOP,
+      ext_top: settings.ROLLUP_DEFAULT_EXT_TOP,
+      debounceMs: settings.ROLLUP_WATCH_DEBOUNCE_MS || ROLLUP_FALLBACK_DEBOUNCE_MS,
+    };
+  }
+
+  async function fetchRollup(path, opts) {
+    // Core rollup endpoint for directory subtrees (see /api/rollup).
+    // ``path`` may be "" for the served root. Optional opts:
+    // depth / top / ext_top query overrides plus ``signal`` for aborts.
+    if (typeof path !== "string") {
+      throw new Error("fetchRollup: path must be a string");
+    }
+    const defaults = _rollupSettings();
+    const options = opts && typeof opts === "object" ? opts : {};
+    const url = new URL("/api/rollup", global.location.origin);
+    url.searchParams.set("path", path);
+    for (const key of ["depth", "top", "ext_top"]) {
+      const value = options[key] !== undefined ? options[key] : defaults[key];
+      if (value !== undefined && value !== null) {
+        url.searchParams.set(key, String(value));
+      }
+    }
+    const resp = await fetch(url.toString(), { signal: options.signal });
+    if (!resp.ok) {
+      throw new Error(`fetchRollup ${path || "<root>"}: ${resp.status}`);
+    }
+    return resp.json();
+  }
+
+  function _pathsIntersectScope(changedPaths, scopePath) {
+    // A change matters when it is the scope itself, inside it, or an
+    // ancestor of it — ancestor aggregate upserts are how deep changes
+    // surface at the shell's depth-2 event scope.
+    if (!Array.isArray(changedPaths)) {
+      return true; // snapshot / resync: treat as "anything changed"
+    }
+    for (const changed of changedPaths) {
+      if (typeof changed !== "string") {
+        continue;
+      }
+      if (
+        changed === scopePath ||
+        scopePath === "" ||
+        changed === "" ||
+        changed.startsWith(`${scopePath}/`) ||
+        scopePath.startsWith(`${changed}/`)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function watchRollup(path, opts, onUpdate) {
+    // Fetch a rollup now and refresh it (trailing debounce) whenever the
+    // shell's inventory store reports a change touching ``path``'s
+    // subtree or ancestor chain. Returns {refresh, dispose}; dispose
+    // detaches the listener and aborts any in-flight fetch. Pair every
+    // watch with a view dispose — a leaked watch keeps refetching.
+    if (typeof onUpdate !== "function") {
+      throw new Error("watchRollup: onUpdate callback is required");
+    }
+    const options = opts && typeof opts === "object" ? opts : {};
+    const debounceMs =
+      typeof options.debounceMs === "number" ? options.debounceMs : _rollupSettings().debounceMs;
+    let disposed = false;
+    let timer = null;
+    let controller = null;
+
+    async function refresh() {
+      if (disposed) {
+        return;
+      }
+      if (controller) {
+        controller.abort();
+      }
+      controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      try {
+        const envelope = await fetchRollup(
+          path,
+          Object.assign({}, options, { signal: controller ? controller.signal : undefined }),
+        );
+        if (!disposed) {
+          onUpdate(envelope);
+        }
+      } catch (err) {
+        const isAbort = err instanceof Error && err.name === "AbortError";
+        if (!disposed && !isAbort) {
+          console.warn("watchRollup refresh failed:", err);
+        }
+      }
+    }
+
+    function onInventoryChange(event) {
+      if (disposed) {
+        return;
+      }
+      const detail = event && event.detail ? event.detail : {};
+      if (!_pathsIntersectScope(detail.paths, path)) {
+        return;
+      }
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        refresh();
+      }, debounceMs);
+    }
+
+    global.addEventListener("metabrowser:inventory-change", onInventoryChange);
+    refresh();
+    return {
+      refresh: refresh,
+      dispose() {
+        disposed = true;
+        global.removeEventListener("metabrowser:inventory-change", onInventoryChange);
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (controller) {
+          controller.abort();
+          controller = null;
+        }
+      },
+    };
+  }
+
+  // Shell-surface proxies — same pattern as `icons`: plugins reach the
+  // shared tooltip and file-type classifier through the SDK so they
+  // never touch app.js globals directly, and get safe no-ops when the
+  // shell has not installed them (tests, partial harnesses).
+  const tooltip = {
+    show(html, event) {
+      if (global.MetabrowserTooltip) {
+        global.MetabrowserTooltip.show(html, event);
+      }
+    },
+    move(event) {
+      if (global.MetabrowserTooltip) {
+        global.MetabrowserTooltip.move(event);
+      }
+    },
+    hide() {
+      if (global.MetabrowserTooltip) {
+        global.MetabrowserTooltip.hide();
+      }
+    },
+  };
+
+  function fileTypeClass(path) {
+    if (global.MetabrowserFileTypes && typeof global.MetabrowserFileTypes.classFor === "function") {
+      return global.MetabrowserFileTypes.classFor(path);
+    }
+    return "";
+  }
+
   function formatKpressError(payload, status) {
     const body = payload && typeof payload === "object" ? payload : {};
     const base = body.error || "KPress render failed";
@@ -815,6 +1006,11 @@
     escapeHtml: escapeHtml,
     fetchPluginData: fetchPluginData,
     fetchJsonl: fetchJsonl,
+    fetchRollup: fetchRollup,
+    watchRollup: watchRollup,
+    ageBucket: ageBucket,
+    tooltip: tooltip,
+    fileTypeClass: fileTypeClass,
     openPath: openPath,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,

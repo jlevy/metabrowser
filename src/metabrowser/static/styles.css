@@ -611,6 +611,17 @@
   --file-age-wk: hsl(50 35% 42%); /* < 1 month — dim yellow */
   --file-age-old: hsl(52 18% 40%); /* ≥ 1 month — desaturated khaki */
 
+  /* Freshness ramp as area fills (treemap cells). Same hue walk as the
+     text ramp above but as translucent washes so cell labels keep
+     contrast; alpha fades with age so "louder = newer" holds for
+     areas. Dark theme raises alpha to survive the darker surface. */
+  --file-age-fill-sec: hsl(8 85% 52% / 0.32);
+  --file-age-fill-min: hsl(22 78% 48% / 0.28);
+  --file-age-fill-hr: hsl(34 68% 46% / 0.24);
+  --file-age-fill-day: hsl(44 55% 44% / 0.19);
+  --file-age-fill-wk: hsl(50 35% 42% / 0.14);
+  --file-age-fill-old: hsl(52 18% 40% / 0.1);
+
   /* File-type design system (used everywhere a filename shows up —
      file tree, viz dep icons, drawer path rows).
      Rule: icon = major type (doc / list / code / grid / activity),
@@ -723,6 +734,15 @@
   --link: hsl(204 88% 66%);
   --muted: hsl(215 12% 68%);
   --code-bg: hsl(220 18% 14%);
+
+  /* Treemap age fills: higher alpha than light theme so the washes
+     stay legible on the dark surface. */
+  --file-age-fill-sec: hsl(8 85% 58% / 0.42);
+  --file-age-fill-min: hsl(22 78% 54% / 0.36);
+  --file-age-fill-hr: hsl(34 68% 52% / 0.3);
+  --file-age-fill-day: hsl(44 55% 50% / 0.24);
+  --file-age-fill-wk: hsl(50 35% 48% / 0.18);
+  --file-age-fill-old: hsl(52 18% 46% / 0.12);
 
   --panel-header-bg: hsl(222 17% 18%);
   --scrollbar-thumb: hsl(220 10% 36%);
@@ -1703,6 +1723,51 @@ html[data-prose-font="sans"] {
   align-items: center;
   gap: 6px;
 }
+/* Folder preview header: up control + clickable breadcrumb + summary.
+   Shares .file-header chrome; crumbs are real buttons for keyboard use. */
+.folder-breadcrumb {
+  gap: 2px;
+}
+.folder-crumb {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  padding: 0 2px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.folder-crumb:hover {
+  background: var(--hover-bg);
+}
+.folder-crumb:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+}
+.folder-crumb-current {
+  color: var(--text);
+  cursor: default;
+  font-weight: var(--weight-bold);
+}
+.folder-crumb-sep {
+  color: var(--muted);
+}
+.folder-up {
+  font-size: 14px;
+  line-height: 1;
+}
+.folder-up[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+.folder-header-count,
+.folder-header-age {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .file-header-copy {
   display: inline-flex;
   align-items: center;
@@ -2601,13 +2666,25 @@ pre.code-block code.hljs {
   transform: rotate(90deg);
 }
 /* Left-align folder names with file names. A file row leads with a 16px icon
-   box (.tree-item-icon); a folder row leads with the bare 12px chevron, so
-   folder names sat 4px to the left. The 2px inline margins make the chevron's
-   margin-box 16px to match the icon box (glyph stays 12px, centered), so names
-   align at every indent level. Scoped to .tree-folder so the shared tally-tree
-   chevron is unaffected. */
-.tree-folder > .toggle-chevron {
+   box (.tree-item-icon); a folder row leads with the chevron inside its
+   .tree-toggle hotspot, so the wrapper's 2px inline margins make its
+   margin-box 16px to match the icon box (glyph stays 12px, centered), so
+   names align at every indent level. Scoped to .tree-folder so the shared
+   tally-tree chevron is unaffected. The hotspot is the expand/collapse
+   control; the rest of the row selects the folder for preview. */
+.tree-folder > .tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-inline: 2px;
+  flex-shrink: 0;
+  border-radius: var(--radius-circle);
+}
+.tree-folder > .tree-toggle:hover {
+  background: var(--hover-bg);
+}
+.tree-folder > .tree-toggle .toggle-chevron {
+  margin: 0;
 }
 
 /* ── Activity indicators ────────────────────────────────────── */
