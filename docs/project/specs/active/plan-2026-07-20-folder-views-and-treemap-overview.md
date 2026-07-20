@@ -279,14 +279,14 @@ The mechanics this feature needs already exist for files and for aggregates:
 
 Shippable on its own: folder selection, breadcrumb, and the README tab.
 
-- [ ] Folder envelope: `_api_folder_envelope`, `_find_dir_readme` (with
+- [x] Folder envelope: `_api_folder_envelope`, `_find_dir_readme` (with
   `_initial_file_path` refactor), `VIEW_REGISTRY["folder"]`, no-store headers, tests
   (`tests/test_api_folder_envelope.py`)
-- [ ] Shell wiring: tree-row toggle/select split, click handler branch, directory hash
+- [x] Shell wiring: tree-row toggle/select split, click handler branch, directory hash
   marker in `parseHashRoute` and `selectFile`, `revealInTree` generalization,
   `renderFolderHeader` with breadcrumb and up, README-less-root landing in `init()`,
   `.tree-toggle` and header styles, DOM tests under `tests/dom/`
-- [ ] Built-in `folder` plugin with manifest and the README view (markdown built-ins
+- [x] Built-in `folder` plugin with manifest and the README view (markdown built-ins
   reuse, explicit empty state), Node `vm` registration tests
   (`tests/test_folder_plugin_behavior_js.py`)
 
@@ -294,25 +294,25 @@ Shippable on its own: folder selection, breadcrumb, and the README tab.
 
 Independent of Phase 1; Phase 3 needs both.
 
-- [ ] `InventoryIndex.rollup` with deterministic fixtures (partial, truncated,
+- [x] `InventoryIndex.rollup` with deterministic fixtures (partial, truncated,
   gitignored, symlinked, moved, deleted), budget measurement on a synthetic 100k-entry
   index (`tests/test_browser_rollup.py`)
-- [ ] `api_rollup` route, `_ensure_inventory_serving` refactor shared with `api_tree`,
+- [x] `api_rollup` route, `_ensure_inventory_serving` refactor shared with `api_tree`,
   settings constants and client exposure, `wire_models` rollup validators, route tests
   (`tests/test_rollup_route.py`, `tests/test_browser_wire_shape.py`)
-- [ ] SDK surface: `fetchRollup`, `watchRollup` (debounce, ancestor filtering, dispose),
+- [x] SDK surface: `fetchRollup`, `watchRollup` (debounce, ancestor filtering, dispose),
   `ageBucket` with the `formatAge` refactor, `tooltip` and `fileTypeClass` proxies, the
   `metabrowser:inventory-change` shell event, SDK `vm` tests
 
 ### Phase 3: Treemap View
 
-- [ ] Prior-art brief and layout spike: survey the disk-usage tools named in Background
+- [x] Prior-art brief and layout spike: survey the disk-usage tools named in Background
   for layout, small-file aggregation, and zoom conventions; spike `squarify` on fixture
   data against the layout budget (≤16 ms for 800 cells); record both in
   `docs/project/research/` and fold corrections into this spec
-- [ ] `treemap_layout.js`: squarify, `layoutTree`, culling, remainder synthesis,
+- [x] `treemap_layout.js`: squarify, `layoutTree`, culling, remainder synthesis,
   type-grouping mode, golden `vm` tests (`tests/test_folder_treemap_layout_js.py`)
-- [ ] Treemap renderer in `index.js`: toolbar toggles with persistence, cell rendering
+- [x] Treemap renderer in `index.js`: toolbar toggles with persistence, cell rendering
   with age and type color modes, gitignored three-state, hover tooltip, click
   navigation, keyboard model, pending and truncated presentations, plugin styles, core
   fill tokens

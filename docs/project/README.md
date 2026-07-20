@@ -20,6 +20,7 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 ## Research
 
 - [Web diff viewer architecture and intermediate representations](research/research-2026-07-17-web-diff-viewer-architecture.md)
+- [Folder treemap layout and prior art](research/research-2026-07-20-folder-treemap-layout.md)
 
 ## Done Plans
 

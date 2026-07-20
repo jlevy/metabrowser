@@ -148,6 +148,12 @@ Fields within one rule combine with AND. Rules with the same kind ID combine wit
 least one match field is required.
 Built-ins normally use priority `0`; a specialized plugin can use a higher priority to
 claim a narrower format.
+
+Three kinds are assigned imperatively by core instead of through match rules: `text` and
+`binary` (the fallback chain in `file_kinds.py`) and `folder` (the `api_file` directory
+branch). A plugin can still contribute `[[view]]` blocks for these kinds — the built-in
+folder plugin declares the treemap and README views for `folder` this way — but cannot
+claim their classification.
 Specialized binary stores belong in installed plugins so their native readers and value
 decoders do not become mandatory Metabrowser dependencies.
 

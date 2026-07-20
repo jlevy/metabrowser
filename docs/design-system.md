@@ -24,6 +24,8 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 - base surfaces, text, borders, links, and shadows;
 - semantic status colors;
 - file-type foreground, background, and border triplets;
+- freshness ramp text colors and their translucent area-fill variants
+  (`--file-age-fill-*`, used by the folder treemap);
 - chart colors and annotation states;
 - component dimensions, radii, typography, and motion.
 

@@ -32,6 +32,8 @@ Opening a file follows this sequence:
 1. The URL hash or tree selection supplies a served-root-relative path.
 2. `/api/file` safely resolves the path, determines its logical extension, and runs
    plugin classifiers before built-in fallbacks.
+   Directories resolve to the `folder` kind with plugin-contributed views; the default
+   treemap view reads bounded subtree aggregates from `/api/rollup`.
 3. The response includes the chosen kind and the ordered view descriptors contributed by
    manifests.
 4. The shell creates one container per view and resolves each `(kind, view)` pair in the
