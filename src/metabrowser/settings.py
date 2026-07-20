@@ -172,6 +172,24 @@ PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES = 64 * 1_024
 # navigation viewport. Normal rendering derives the budget from the live pane.
 TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 
+# ── Folder rollup (/api/rollup) ──────────────────────────────
+
+# Emitted-node bounds for the treemap rollup. Depth bounds the emitted
+# tree only (totals stay full-subtree); ``top`` caps children per
+# directory before the rest bucket; ``ext_top`` caps envelope
+# extension-tally rows before the remainder row. The route clamps
+# query params to the max values.
+ROLLUP_DEFAULT_DEPTH = 3
+ROLLUP_MAX_DEPTH = 6
+ROLLUP_DEFAULT_TOP = 40
+ROLLUP_MAX_TOP = 200
+ROLLUP_DEFAULT_EXT_TOP = 12
+ROLLUP_MAX_EXT_TOP = 32
+
+# Trailing debounce for treemap refresh after inventory change events;
+# read by the SDK's watchRollup.
+ROLLUP_WATCH_DEBOUNCE_MS = 1_000
+
 
 # ── Client settings export ───────────────────────────────────
 
@@ -199,6 +217,10 @@ def client_settings_dict() -> dict[str, Any]:
         "PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT": PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
         "TREE_AUTO_EXPAND_FALLBACK_ROWS": TREE_AUTO_EXPAND_FALLBACK_ROWS,
         "SSE_HEARTBEAT_INTERVAL_S": SSE_HEARTBEAT_INTERVAL_S,
+        "ROLLUP_DEFAULT_DEPTH": ROLLUP_DEFAULT_DEPTH,
+        "ROLLUP_DEFAULT_TOP": ROLLUP_DEFAULT_TOP,
+        "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
+        "ROLLUP_WATCH_DEBOUNCE_MS": ROLLUP_WATCH_DEBOUNCE_MS,
     }
 
 
@@ -224,6 +246,13 @@ __all__ = [
     "RECENT_MAX_LIMIT",
     "RECENT_RECLUSTER_DEBOUNCE_MS",
     "RECENT_WINDOW_SECONDS",
+    "ROLLUP_DEFAULT_DEPTH",
+    "ROLLUP_DEFAULT_EXT_TOP",
+    "ROLLUP_DEFAULT_TOP",
+    "ROLLUP_MAX_DEPTH",
+    "ROLLUP_MAX_EXT_TOP",
+    "ROLLUP_MAX_TOP",
+    "ROLLUP_WATCH_DEBOUNCE_MS",
     "SSE_BUS_INVENTORY_QUEUE_SIZE",
     "SSE_HEARTBEAT_INTERVAL_S",
     "SSE_PER_CONNECTION_QUEUE_SIZE",

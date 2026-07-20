@@ -246,7 +246,7 @@ def test_api_file_codex_turn_completed_without_usage_helper_crash(tmp_path: Path
     proc_browser._set_root_dir(tmp_path)
     try:
         resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "codex.jsonl"}))))
-        body = json.loads(resp.body)
+        body = json.loads(bytes(resp.body))
         assert resp.status_code == 200
         assert body["type"] == "jsonl"
         assert body["summary"]["adapter"] == "codex"
@@ -270,7 +270,7 @@ def test_api_file_internal_error_degrades_to_error_view(tmp_path: Path, monkeypa
     proc_browser._set_root_dir(tmp_path)
     try:
         resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "broken.jsonl"}))))
-        body = json.loads(resp.body)
+        body = json.loads(bytes(resp.body))
         assert resp.status_code == 200
         assert body["type"] == "error"
         assert "Internal error while rendering this file" in body["error"]

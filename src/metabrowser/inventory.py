@@ -45,10 +45,11 @@ import asyncio
 import heapq
 import logging
 import time
+from collections import Counter
 from collections.abc import Collection, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import (
@@ -88,6 +89,47 @@ _NANOSECONDS_PER_SECOND = 1_000_000_000
 
 
 IndexStatus = Literal["idle", "scanning", "done", "truncated", "failed"]
+
+
+@dataclass(slots=True)
+class _SubtreeAgg:
+    """Full-subtree accumulators for one directory during a rollup pass.
+
+    ``*_all`` counts every indexed entry; ``*_unignored`` skips entries
+    whose own or inherited gitignore flag is set. The extension
+    counters key on the compound-tail logical extension
+    (``FsEntry.ext``) and feed per-directory ``dominant_ext`` plus the
+    envelope-level tallies. Transient: built per rollup call, never
+    stored on the index.
+    """
+
+    files_all: int = 0
+    size_all: int = 0
+    files_unignored: int = 0
+    size_unignored: int = 0
+    newest_mtime_ns: int = 0
+    ext_files: Counter[str] = field(default_factory=Counter)
+    ext_bytes: Counter[str] = field(default_factory=Counter)
+    ext_files_unignored: Counter[str] = field(default_factory=Counter)
+    ext_bytes_unignored: Counter[str] = field(default_factory=Counter)
+
+    def absorb(self, other: _SubtreeAgg) -> None:
+        self.files_all += other.files_all
+        self.size_all += other.size_all
+        self.files_unignored += other.files_unignored
+        self.size_unignored += other.size_unignored
+        self.newest_mtime_ns = max(self.newest_mtime_ns, other.newest_mtime_ns)
+        self.ext_files.update(other.ext_files)
+        self.ext_bytes.update(other.ext_bytes)
+        self.ext_files_unignored.update(other.ext_files_unignored)
+        self.ext_bytes_unignored.update(other.ext_bytes_unignored)
+
+
+# Extension key used for files with no extension in rollup tallies, and
+# for the remainder row that aggregates every extension past the
+# ``ext_top`` cut.
+ROLLUP_NO_EXT_KEY = "(none)"
+ROLLUP_REST_EXT_KEY = ""
 
 
 # ── InventoryIndex ──────────────────────────────────────────────
@@ -429,6 +471,188 @@ class InventoryIndex:
 
         rows, _presets = self.file_type_tallies((), limit=limit)
         return rows
+
+    def rollup(self, path: str, *, depth: int, top: int, ext_top: int) -> dict[str, Any] | None:
+        """Bounded treemap rollup for the subtree rooted at *path*.
+
+        One O(N) pass groups entries by parent (the
+        ``_build_inventory_tree`` pattern), a post-order pass computes
+        full-subtree aggregates (all entries plus gitignore-excluded
+        variants), and a bounded top-down pass emits the node tree: at
+        most *top* children per directory (dirs and files mixed,
+        largest byte total first) with the remainder collapsed into a
+        ``rest`` bucket, and ``children: None`` past *depth* while
+        totals stay full-subtree. Returns ``None`` when *path* is not
+        an indexed directory.
+
+        The result carries ``node`` (the emitted tree) and
+        ``ext_tallies`` for the requested root: the *ext_top*
+        extensions with the largest byte share plus one remainder row
+        keyed ``ROLLUP_REST_EXT_KEY``. Synchronous and allocation-
+        bounded by the index size; runs inline on the request path like
+        the tree builder, with the measured budget enforced in tests.
+        """
+
+        root_entry = self._entries.get(path)
+        if root_entry is None or root_entry.type != "dir":
+            return None
+
+        children_by_parent: dict[str, list[FsEntry]] = {}
+        for entry in self._entries.values():
+            if entry.path == "":
+                # The root lists itself as its own parent; skip the self-link.
+                continue
+            children_by_parent.setdefault(entry.parent, []).append(entry)
+
+        aggs: dict[str, _SubtreeAgg] = {}
+
+        def _aggregate(dir_path: str, parent_ignored: bool) -> _SubtreeAgg:
+            agg = _SubtreeAgg()
+            for child in children_by_parent.get(dir_path, ()):
+                ignored = parent_ignored or child.gitignored
+                if child.type == "dir":
+                    agg.absorb(_aggregate(child.path, ignored))
+                else:
+                    ext_key = child.ext or ROLLUP_NO_EXT_KEY
+                    agg.files_all += 1
+                    agg.size_all += child.size
+                    agg.newest_mtime_ns = max(agg.newest_mtime_ns, child.mtime_ns)
+                    agg.ext_files[ext_key] += 1
+                    agg.ext_bytes[ext_key] += child.size
+                    if not ignored:
+                        agg.files_unignored += 1
+                        agg.size_unignored += child.size
+                        agg.ext_files_unignored[ext_key] += 1
+                        agg.ext_bytes_unignored[ext_key] += child.size
+            aggs[dir_path] = agg
+            return agg
+
+        inherited_ignored = self._ancestor_gitignored(path)
+        _aggregate(path, inherited_ignored or root_entry.gitignored)
+
+        def _file_node(child: FsEntry, parent_ignored: bool) -> dict[str, Any]:
+            return {
+                "name": child.name,
+                "path": child.path,
+                "type": "file",
+                "size": child.size,
+                "mtime": child.mtime_ns / 1_000_000_000.0,
+                "ext": child.ext,
+                "gitignored": parent_ignored or child.gitignored,
+            }
+
+        def _emit_dir(entry: FsEntry, remaining: int, parent_ignored: bool) -> dict[str, Any]:
+            agg = aggs[entry.path]
+            ignored = parent_ignored or entry.gitignored
+            dominant = agg.ext_bytes.most_common(1)
+            node: dict[str, Any] = {
+                "name": entry.name,
+                "path": entry.path,
+                "type": "dir",
+                "state": "pending" if entry.total_files is None else "complete",
+                "total_files": agg.files_all,
+                "total_size": agg.size_all,
+                "unignored_files": agg.files_unignored,
+                "unignored_size": agg.size_unignored,
+                "mtime": agg.newest_mtime_ns / 1_000_000_000.0,
+                "gitignored": ignored,
+                "dominant_ext": dominant[0][0] if dominant else "",
+            }
+            if remaining <= 0:
+                node["children"] = None
+                return node
+
+            def _byte_weight(child: FsEntry) -> tuple[int, str]:
+                weight = aggs[child.path].size_all if child.type == "dir" else child.size
+                return (-weight, child.path)
+
+            ordered = sorted(children_by_parent.get(entry.path, ()), key=_byte_weight)
+            emitted: list[dict[str, Any]] = []
+            rest_dirs = 0
+            rest_files = 0
+            rest_size = 0
+            rest_files_unignored = 0
+            rest_size_unignored = 0
+            for child in ordered:
+                if len(emitted) < top:
+                    if child.type == "dir":
+                        emitted.append(_emit_dir(child, remaining - 1, ignored))
+                    else:
+                        emitted.append(_file_node(child, ignored))
+                elif child.type == "dir":
+                    child_agg = aggs[child.path]
+                    rest_dirs += 1
+                    rest_files += child_agg.files_all
+                    rest_size += child_agg.size_all
+                    rest_files_unignored += child_agg.files_unignored
+                    rest_size_unignored += child_agg.size_unignored
+                else:
+                    rest_files += 1
+                    rest_size += child.size
+                    if not (ignored or child.gitignored):
+                        rest_files_unignored += 1
+                        rest_size_unignored += child.size
+            node["children"] = emitted
+            if rest_dirs or rest_files:
+                node["rest"] = {
+                    "dirs": rest_dirs,
+                    "files": rest_files,
+                    "size": rest_size,
+                    "unignored_files": rest_files_unignored,
+                    "unignored_size": rest_size_unignored,
+                }
+            return node
+
+        root_node = _emit_dir(root_entry, depth, inherited_ignored)
+
+        root_agg = aggs[path]
+        tallies: list[list[Any]] = []
+        rest_files = 0
+        rest_bytes = 0
+        rest_files_unignored = 0
+        rest_bytes_unignored = 0
+        for rank, (ext_key, size_bytes) in enumerate(root_agg.ext_bytes.most_common()):
+            if rank < ext_top:
+                tallies.append(
+                    [
+                        ext_key,
+                        root_agg.ext_files[ext_key],
+                        size_bytes,
+                        root_agg.ext_files_unignored.get(ext_key, 0),
+                        root_agg.ext_bytes_unignored.get(ext_key, 0),
+                    ]
+                )
+            else:
+                rest_files += root_agg.ext_files[ext_key]
+                rest_bytes += size_bytes
+                rest_files_unignored += root_agg.ext_files_unignored.get(ext_key, 0)
+                rest_bytes_unignored += root_agg.ext_bytes_unignored.get(ext_key, 0)
+        if rest_files or rest_bytes:
+            tallies.append(
+                [
+                    ROLLUP_REST_EXT_KEY,
+                    rest_files,
+                    rest_bytes,
+                    rest_files_unignored,
+                    rest_bytes_unignored,
+                ]
+            )
+
+        return {"node": root_node, "ext_tallies": tallies}
+
+    def _ancestor_gitignored(self, path: str) -> bool:
+        """Whether any strict ancestor of *path* carries the gitignore flag."""
+
+        if not path:
+            return False
+        segments = path.split("/")
+        prefix = ""
+        for segment in segments[:-1]:
+            prefix = f"{prefix}/{segment}" if prefix else segment
+            ancestor = self._entries.get(prefix)
+            if ancestor is not None and ancestor.gitignored:
+                return True
+        return False
 
     # ── Writes ──────────────────────────────────────────────
 

@@ -190,8 +190,123 @@ def _validate_dir(node: dict[str, Any], *, _path: str) -> None:
         assert isinstance(node["has_children"], bool), f"dir.has_children not bool at {_path!r}"
 
 
+class RollupFileNode(TypedDict):
+    """A file leaf in a `/api/rollup` node tree. All keys required;
+    `mtime` is always numeric (state lives on directories)."""
+
+    name: str
+    path: str
+    type: Literal["file"]
+    size: int
+    mtime: float
+    ext: str
+    gitignored: bool
+
+
+class RollupRest(TypedDict):
+    """Aggregate bucket for children past the per-directory `top` cap."""
+
+    dirs: int
+    files: int
+    size: int
+    unignored_files: int
+    unignored_size: int
+
+
+class RollupDirNode(TypedDict, total=False):
+    """A directory node in a `/api/rollup` response.
+
+    Unlike tree nodes, aggregates are always numeric — partial scans
+    are flagged by ``state: "pending"`` instead of null tallies, so the
+    treemap can lay out whatever is indexed so far. ``children`` is
+    required and ``None`` past the emission depth (totals stay
+    full-subtree); ``rest`` appears only when children were capped.
+    """
+
+    name: str
+    path: str
+    type: Literal["dir"]
+    state: Literal["pending", "complete"]
+    total_files: int
+    total_size: int
+    unignored_files: int
+    unignored_size: int
+    mtime: float
+    gitignored: bool
+    dominant_ext: str
+    children: list[Any] | None
+    rest: RollupRest
+
+
+_ROLLUP_FILE_REQUIRED: frozenset[str] = frozenset(
+    {"name", "path", "type", "size", "mtime", "ext", "gitignored"}
+)
+_ROLLUP_DIR_REQUIRED: frozenset[str] = frozenset(
+    {
+        "name",
+        "path",
+        "type",
+        "state",
+        "total_files",
+        "total_size",
+        "unignored_files",
+        "unignored_size",
+        "mtime",
+        "gitignored",
+        "dominant_ext",
+        "children",
+    }
+)
+_ROLLUP_REST_REQUIRED: frozenset[str] = frozenset(
+    {"dirs", "files", "size", "unignored_files", "unignored_size"}
+)
+
+
+def validate_rollup_node(node: dict[str, Any], *, _path: str = "") -> None:
+    """Raise :class:`AssertionError` if *node* doesn't match
+    :class:`RollupFileNode` / :class:`RollupDirNode`. Recurses into
+    ``children``. Route tests call this on every emitted shape."""
+
+    assert isinstance(node, dict), f"rollup node not a dict at {_path!r}"
+    kind = node.get("type")
+    if kind == "file":
+        missing = _ROLLUP_FILE_REQUIRED - node.keys()
+        assert not missing, f"rollup file at {_path!r} missing keys: {sorted(missing)}"
+        assert isinstance(node["size"], int)
+        assert isinstance(node["mtime"], (int, float))
+        assert isinstance(node["ext"], str)
+        assert isinstance(node["gitignored"], bool)
+        return
+    assert kind == "dir", f"unknown rollup node type {kind!r} at {_path!r}"
+    missing = _ROLLUP_DIR_REQUIRED - node.keys()
+    assert not missing, f"rollup dir at {_path!r} missing keys: {sorted(missing)}"
+    assert node["state"] in ("pending", "complete"), f"bad state at {_path!r}: {node['state']!r}"
+    for agg_key in ("total_files", "total_size", "unignored_files", "unignored_size"):
+        assert isinstance(node[agg_key], int), f"rollup dir.{agg_key} not int at {_path!r}"
+    assert node["unignored_files"] <= node["total_files"], f"unignored > total at {_path!r}"
+    assert node["unignored_size"] <= node["total_size"], f"unignored > total at {_path!r}"
+    assert isinstance(node["mtime"], (int, float)), f"rollup dir.mtime not numeric at {_path!r}"
+    assert isinstance(node["dominant_ext"], str)
+    if "rest" in node:
+        rest = node["rest"]
+        missing_rest = _ROLLUP_REST_REQUIRED - rest.keys()
+        assert not missing_rest, f"rollup rest at {_path!r} missing keys: {sorted(missing_rest)}"
+        for rest_key in _ROLLUP_REST_REQUIRED:
+            assert isinstance(rest[rest_key], int), f"rest.{rest_key} not int at {_path!r}"
+    children = node["children"]
+    if children is not None:
+        assert isinstance(children, list), f"rollup dir.children not list/None at {_path!r}"
+        for i, child in enumerate(children):
+            child_path = f"{_path}/{node['name']}#{i}" if _path else f"{node['name']}#{i}"
+            validate_rollup_node(child, _path=child_path)
+
+
 __all__ = [
     "DirNode",
     "FileNode",
+    "RollupDirNode",
+    "RollupFileNode",
+    "RollupRest",
+    "validate_rollup_node",
     "validate_tree_node",
 ]
