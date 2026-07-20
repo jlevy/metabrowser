@@ -269,6 +269,7 @@ type MetabrowserTreemapLayoutApi = {
 
 type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
+  ageLabelHtml(mtimeSeconds: number | null | undefined): string;
   builtins: MetabrowserBuiltins;
   chart(
     container: HTMLElement | HTMLCanvasElement,

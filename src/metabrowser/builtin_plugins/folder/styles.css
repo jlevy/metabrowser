@@ -2,10 +2,14 @@
    Every color references a design token on :root (host tokens plus the
    --file-age-fill-* ramp core styles.css defines); no literals. */
 
+/* The host keeps content-body's normal padding so the treemap sits on
+   the page like a figure with margins rather than bleeding edge to
+   edge; the shared width cap keeps cells from over-stretching on very
+   wide panes. */
 .folder-treemap-host {
+  --tm-max-width: 1240px;
   display: flex;
   flex-direction: column;
-  padding: 0;
 }
 
 .tm-toolbar {
@@ -13,9 +17,8 @@
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--sidebar-bg);
+  margin: 0 0 10px;
+  max-width: var(--tm-max-width);
 }
 
 .tm-seg {
@@ -54,11 +57,12 @@
 
 .tm-viewport {
   position: relative;
-  flex: 1;
-  min-height: 320px;
-  height: calc(100vh - 240px);
+  min-height: 280px;
+  height: calc(100vh - 330px);
+  max-width: var(--tm-max-width);
   overflow: hidden;
   outline: none;
+  border: 1px solid var(--viz-border);
   background: var(--viz-surface-sunken);
 }
 
@@ -104,15 +108,32 @@
   background: transparent;
 }
 
+.tm-cell-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .tm-cell-label {
   font-size: 11px;
   line-height: 14px;
   font-weight: var(--weight-medium);
   color: var(--viz-text);
   white-space: nowrap;
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: text;
+}
+
+/* The colored age chip beside the name reuses the shared age-* text
+   tokens, so a cell and its tree row always agree about freshness. */
+.tm-cell-age {
+  font-size: 10px;
+  line-height: 14px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
   user-select: text;
 }
 
@@ -191,8 +212,8 @@
 }
 
 .tm-status {
-  padding: 4px 10px;
-  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  max-width: var(--tm-max-width);
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;

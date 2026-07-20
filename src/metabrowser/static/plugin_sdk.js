@@ -345,6 +345,37 @@
     return "old";
   }
 
+  // Compact age text mirrors app.js formatAge ("3h", "2d", "<1m", …)
+  // so a plugin label and a tree row read identically.
+  /** @type {Array<[string, number]>} */
+  const AGE_LABEL_STEPS = [
+    ["y", 365 * 24 * 60 * 60 * 1000],
+    ["mo", 30 * 24 * 60 * 60 * 1000],
+    ["w", 7 * 24 * 60 * 60 * 1000],
+    ["d", 24 * 60 * 60 * 1000],
+    ["h", 60 * 60 * 1000],
+    ["m", 60 * 1000],
+  ];
+
+  function ageLabelHtml(mtimeSeconds) {
+    // The colored age chip the shell shows in tree rows and headers:
+    // `<span class="age-<bucket>">3h</span>` on the shared freshness
+    // tokens, or "" when there is no meaningful mtime.
+    const bucket = ageBucket(mtimeSeconds);
+    if (bucket === null) {
+      return "";
+    }
+    const absMs = Math.abs(Date.now() - /** @type {number} */ (mtimeSeconds) * 1000);
+    let text = "<1m";
+    for (const [suffix, stepMs] of AGE_LABEL_STEPS) {
+      if (absMs >= stepMs) {
+        text = `${Math.round(absMs / stepMs)}${suffix}`;
+        break;
+      }
+    }
+    return `<span class="age-${bucket}">${escapeHtml(text)}</span>`;
+  }
+
   const ROLLUP_FALLBACK_DEBOUNCE_MS = 1000;
 
   function _rollupSettings() {
@@ -1177,6 +1208,7 @@
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
     ageBucket: ageBucket,
+    ageLabelHtml: ageLabelHtml,
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
     openPath: openPath,

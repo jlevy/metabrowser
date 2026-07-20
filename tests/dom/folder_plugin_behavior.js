@@ -241,7 +241,17 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
       container.viewport.innerHTML.includes("a.py"),
     container.viewport.innerHTML.slice(0, 200),
   );
-  check("age fill class applied", container.viewport.innerHTML.includes("tm-age-"), "no age class");
+  check(
+    "type fill is the default",
+    container.viewport.innerHTML.includes("tm-type-fill"),
+    "no ft class on initial render",
+  );
+  check(
+    "age chip beside the name",
+    container.viewport.innerHTML.includes("tm-cell-age") &&
+      container.viewport.innerHTML.includes('class="age-old"'),
+    "no colored age label in cells",
+  );
   check(
     "status line totals",
     container.status.textContent.includes("3 files"),
@@ -269,7 +279,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   check("toolbar click handler bound", typeof toolbarClick === "function");
   if (toolbarClick) {
     const btn = {
-      dataset: { tmKey: "color", tmValue: "type" },
+      dataset: { tmKey: "color", tmValue: "age" },
       parentElement: { querySelectorAll: () => [] },
       closest() {
         return btn;
@@ -278,9 +288,9 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     toolbarClick({ target: { closest: () => btn } });
     check("toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
-      "type fill applied",
-      container.viewport.innerHTML.includes("tm-type-fill"),
-      "no ft class after color toggle",
+      "age fill applied after toggle",
+      container.viewport.innerHTML.includes("tm-age-"),
+      "no age fill class after color toggle",
     );
   }
 

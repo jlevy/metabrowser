@@ -25,11 +25,13 @@
 
   /** Persisted toggle state (one key; absent fields fall to defaults). */
   const STORAGE_KEY = "metabrowser.folder.treemap";
-  const DEFAULT_STATE = { metric: "size", grouping: "folder", color: "age", ignored: "dimmed" };
+  const DEFAULT_STATE = { metric: "size", grouping: "folder", color: "type", ignored: "dimmed" };
   /** Label paint thresholds: name needs LABEL_MIN, the size sub-label SUB_MIN. */
   const LABEL_MIN_W = 56;
   const LABEL_MIN_H = 16;
   const SUB_MIN_H = 30;
+  /** Minimum cell width before the age chip joins the name row. */
+  const AGE_MIN_W = 88;
 
   function loadState() {
     try {
@@ -142,8 +144,8 @@
       segmentHtml(
         "color",
         [
-          ["age", "Age"],
           ["type", "Type"],
+          ["age", "Age"],
         ],
         state.color,
       ) +
@@ -175,9 +177,16 @@
       state.metric === "files" && cell.kind !== "file"
         ? `${cell.kind === "ext" ? cell.files : cell.value} files`
         : mb.formatSize(cell.kind === "ext" ? cell.bytes : cell.value);
+    // The header's colored age chip rides next to the name (dir and
+    // file cells only — ext/rest cells have no meaningful mtime).
+    const ageHtml =
+      showLabel && cell.w >= AGE_MIN_W && (cell.kind === "dir" || cell.kind === "file")
+        ? mb.ageLabelHtml(cell.mtime)
+        : "";
     const label = showLabel
-      ? `<span class="tm-cell-label">${mb.escapeHtml(cell.name)}</span>` +
-        (showSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : "")
+      ? `<span class="tm-cell-title"><span class="tm-cell-label">${mb.escapeHtml(cell.name)}</span>${
+          ageHtml ? `<span class="tm-cell-age">${ageHtml}</span>` : ""
+        }</span>${showSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : ""}`
       : "";
     return (
       `<div class="${cellClasses(cell, state)}" role="button" tabindex="${index === 0 ? 0 : -1}"` +
