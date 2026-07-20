@@ -16,6 +16,7 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Scalable file search](specs/active/plan-2026-07-17-scalable-file-search.md)
 - [Folder views and the treemap overview](specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md)
+- [Unified filtering across navigation and folder views](specs/active/plan-2026-07-20-unified-filtering.md)
 
 ## Research
 

@@ -16,6 +16,10 @@ Checked items below are supported today; unchecked items are planned work.
 - [ ] Add
   [folder views and the treemap overview](docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md)
   so directories join the multi-view framework with a treemap default view
+- [ ] Add
+  [unified filtering](docs/project/specs/active/plan-2026-07-20-unified-filtering.md) so
+  the nav pane and folder views share one filter vocabulary and the Recent tab becomes a
+  preset
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
 - [ ] Define a generic writer event-log backend for append-only generated artifacts
 - [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for

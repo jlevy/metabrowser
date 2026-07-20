@@ -276,6 +276,29 @@ The mechanics this feature needs already exist for files and for aggregates:
   dark-theme overrides (the existing age tokens are text colors and too saturated for
   large fills), `.tree-toggle` hover, and folder-header/breadcrumb rules.
 
+### Navigation Equivalence
+
+The navigation pane and the folder overviews are two faces of one traversal; clicking
+around either must reach everything and keep the other in sync.
+Invariants:
+
+1. **Same reachability.** Any folder or file reachable from tree rows is reachable from
+   overview clicks (directory cells, breadcrumb segments, the up control) and vice
+   versa; overview navigation works even for rows the tree has not materialized
+   (`navigateToPath` opens the preview when `revealInTree` cannot resolve a row).
+2. **One current location.** The tree selection, the overview’s root, and the URL hash
+   always agree; every navigation path funnels through `navigateToPath`.
+3. **Symmetric side effects.** A tree folder click previews without collapsing; an
+   overview click reveals and expands the tree along the path.
+4. **History walks folders.** Folder-to-folder navigation pushes history entries so the
+   browser back button retraces zooms (the up button remains the structural ancestor
+   move); file selection keeps today’s lateral `replaceState`.
+5. **Same filters.** Whatever filtering is active applies identically to both surfaces
+   (the unified-filtering plan owns the mechanism).
+
+Invariants 1–3 hold in the current implementation; 4 is open work tracked in this plan’s
+remaining phase, and 5 lands with the unified-filtering plan.
+
 ## Implementation Plan
 
 ### Phase 1: Folder Views Framework
@@ -322,6 +345,10 @@ Independent of Phase 1; Phase 3 needs both.
 - [ ] Live refresh: `watchRollup` wiring end to end (filesystem change to ancestor
   upsert to debounced refetch to relayout), plus an integration test from a real
   filesystem mutation
+- [ ] History semantics for navigation equivalence: folder-to-folder navigation uses
+  `history.pushState` so browser back retraces zooms; file selection keeps
+  `replaceState`; `popstate` routes through `navigateToPath`; DOM tests for the
+  back-button trail
 - [ ] Validation: budgets on a synthetic large root, the design-system review checklist
   in both themes, docs updates (`docs/plugins.md` folder kind, `docs/design-system.md`
   fill tokens, `docs/architecture.md` folder envelope note)
