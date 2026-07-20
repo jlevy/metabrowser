@@ -6,7 +6,25 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-from devtools.check_distribution import ROOT, _smoke_install
+import pytest
+
+from devtools.check_distribution import ROOT, _check_project_metadata, _smoke_install
+
+
+def test_wheel_metadata_declares_project_license_and_notice() -> None:
+    _check_project_metadata(
+        b"Metadata-Version: 2.4\n"
+        b"License-Expression: AGPL-3.0-or-later\n"
+        b"License-File: LICENSE\n"
+        b"License-File: NOTICE.md\n"
+    )
+
+
+def test_wheel_metadata_rejects_incomplete_license_declarations() -> None:
+    with pytest.raises(RuntimeError, match="License-File: NOTICE.md"):
+        _check_project_metadata(
+            b"Metadata-Version: 2.4\nLicense-Expression: AGPL-3.0-or-later\nLicense-File: LICENSE\n"
+        )
 
 
 def test_wheel_smoke_commands_select_repository_config_and_validate_versions() -> None:

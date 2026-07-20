@@ -64,7 +64,8 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
 
 6. Watch the `Publish to PyPI` workflow through completion.
 
-7. Verify the published metadata and files on PyPI.
+7. Verify the published metadata and files on PyPI, including the AGPL license, Python
+   classifiers, source and issue links, and release notes.
 
 8. Run an isolated smoke test against the released version:
 

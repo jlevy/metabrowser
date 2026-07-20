@@ -28,6 +28,9 @@ Hardening, offline support, and UI refinement:
 - Documentation: project design records reorganized under a dedicated records tree with
   maintained architecture documents and dated plans, plus a research brief on the
   planned diff viewer architecture.
+- Licensing: Metabrowser is licensed under AGPL-3.0-or-later, aligned with its required
+  KPress runtime. Vendored browser components remain under their own licenses listed in
+  `NOTICE.md`.
 
 ## 0.1.0
 
@@ -43,7 +46,8 @@ Initial standalone release:
   and KPress export with bounded input, output, and text windows.
 - Background inventory indexing, live filesystem updates, and recent-file navigation.
 - SSH and optional GCP remote tunnels.
-- MIT licensing, PyPI packaging, locked uv environments, and isolated wheel checks.
+- AGPL-3.0-or-later licensing, PyPI packaging, locked uv environments, and isolated
+  wheel checks.
 - Review hardening for bounded compressed reads, safe rendered labels, byte-accurate
   event streaming, renderer disposal, explicitly repository-configured development
   commands, and release builds without mutable dependency caches.

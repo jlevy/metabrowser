@@ -44,7 +44,7 @@ Choose the narrowest test layer that proves the behavior.
 See [end-to-end testing](docs/e2e-testing.md) for the suite structure.
 
 By contributing, you agree that your contribution is licensed under the repository’s
-[MIT License](LICENSE).
+[GNU Affero General Public License v3.0 or later](LICENSE).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -16,14 +16,13 @@ maintainers = [
     { name="Joshua Levy", email="joshua@cal.berkeley.edu" },
 ]
 readme = "README.md"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.12,<4.0"
 dynamic = ["version"]
 
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",

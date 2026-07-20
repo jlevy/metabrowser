@@ -251,7 +251,8 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 ## License
 
-Metabrowser is available under the [MIT License](LICENSE).
+AGPL-3.0-or-later; see [`LICENSE`](LICENSE). Vendored components and their licenses are
+listed in [`NOTICE.md`](NOTICE.md).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
