@@ -195,6 +195,7 @@
     mb.builtins = {};
   }
   mb.builtins.markdown = {
+    disposeToc: disposeToc,
     renderRendered: renderRendered,
     renderSource: renderSource,
   };
