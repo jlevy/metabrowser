@@ -21,8 +21,9 @@ Rollup data reuses the existing bottom-up inventory crawl and streams incrementa
 complete subtrees render before the root scan finishes and the navigation panel is never
 delayed.
 
-Implementation starts with a background research phase whose findings are recorded in a
-research brief and folded back into this spec before the build phases begin.
+The design below is resolved to file and function level.
+Two validation tasks remain before the treemap renderer lands: a prior-art brief and a
+layout spike that confirms the stated performance budgets.
 
 ## Goals
 
@@ -38,10 +39,10 @@ research brief and folded back into this spec before the build phases begin.
     its aggregates
 - Support hover details, click-to-zoom on folders with navigation sync, click-to-open on
   files, a breadcrumb path, and an up control after zooming
-- Reuse the existing walker and `InventoryIndex` aggregates; extend them only where the
-  treemap needs more (per-extension tallies, gitignore-excluded totals)
-- Deliver rollups incrementally bottom-up: each directory becomes renderable when its
-  scan completes, stitched client-side with explicit pending and truncated states
+- Reuse the existing walker and `InventoryIndex` aggregates; compute treemap-specific
+  rollups (gitignore-excluded totals, extension tallies) at query time from the index
+- Deliver rollups incrementally: refresh from the live event channel as directories
+  finalize, with explicit pending and truncated states client-side
 - Keep first paint, the tree panel, and file previews independent of rollup readiness
 
 ## Non-Goals
@@ -51,6 +52,7 @@ research brief and folded back into this spec before the build phases begin.
 - Replacing the tree panel or Recent view
 - Rendering a treemap cell for every file in very large subtrees; small items aggregate
   into explicit remainder cells
+- Changing startup behavior for roots with a README (the seeded README preview stays)
 - Archive or container contents (separate roadmap item)
 - Editing or file operations from the treemap
 
@@ -63,189 +65,294 @@ The mechanics this feature needs already exist for files and for aggregates:
   default view immediately, lazily mounts other tabs, and disposes plugin views when the
   pane is replaced. Built-in plugins such as markdown declare kinds and views in
   `manifest.toml` and register renderers through `window.metabrowser.registerView`.
-- Directories are excluded: `/api/file` returns 404 for them, folder rows only toggle,
-  and hash routing rejects directory paths.
-- The walker (`walk_tree` and `_maybe_finalize` in `walker.py`) already finalizes
-  directories deepest-first during a breadth-first crawl and records `total_files`,
-  `total_size`, and `newest_mtime_ns` per directory; `InventoryIndex` maintains those
-  aggregates incrementally on filesystem events and publishes them as `fs.change`
-  upserts over `/api/events`. A pending directory is explicit (`total_files` is null),
-  which the tree already renders as a skeleton tally.
+- Directories are excluded: `/api/file` returns 404 for them (`_api_file_impl` guards on
+  `target.is_file()`), folder rows carry `data-action="toggle"` only, and
+  `parseHashRoute` rejects extensionless top-level fragments as in-document anchors.
+- The walker (`walk_tree` and `_maybe_finalize` in `walker.py`) finalizes directories
+  deepest-first during a breadth-first crawl and records `total_files`, `total_size`,
+  and `newest_mtime_ns` per directory; `InventoryIndex` maintains those aggregates
+  incrementally on filesystem events (`_update_ancestor_aggregates`) and publishes every
+  change as `fs.change` upserts over `/api/events`. Because ancestor aggregates bubble
+  to the root on every deep change, the browser’s depth-2 event scope already observes a
+  signal for any change anywhere in the tree.
+- `_build_inventory_tree` (`tree.py`) demonstrates the bounded read pattern the rollup
+  reuses: one O(N) parent-to-children scan of `inventory.entries()` per request, with a
+  documented cold-target budget.
 - Gitignored entries are indexed and flagged (`FsEntry.gitignored`) but are always
-  included in aggregates today.
+  included in the stored aggregates.
 - The design system provides the age ramp tokens (`--file-age-sec` through
-  `--file-age-old`), file-type token triplets (`ft-*`), viz surface tokens, and a shared
-  tooltip.
-
-What is missing: a directory kind and envelope, folder selection and routing, treemap
-rendering, per-extension rollups, gitignore-excluded totals, and a bounded way to fetch
-deep subtree rollups (the live event scope covers only depth 2).
-
-Disk-usage visualizers (WinDirStat, SequoiaView, GrandPerspective, DaisyDisk, Baobab,
-SpaceSniffer, TreeSize, WizTree, and terminal tools such as ncdu, dust, dua, and gdu)
-have converged on patterns for layout, small-file aggregation, and zoom that the
-research phase surveys before we commit to a design.
+  `--file-age-old`), file-type token triplets (`ft-*`), viz surface tokens, and the
+  shared tooltip singleton.
 
 ## Design
 
-The sections below record the intended shape; items marked *research-gated* are
-confirmed or revised by Phase 1 findings.
+### Resolved Decisions
 
-### Approach
+1. **Directory envelope through `/api/file`.** The existing selection pipeline
+   (`selectFile` to `renderFile`) is path-based; one envelope route keeps hash routing,
+   caching, and error handling uniform.
+   No parallel folder route.
+2. **Core assigns the `folder` kind; plugins contribute the views.** Directory
+   classification cannot be expressed in manifest match rules, so it lives in the
+   `api_file` handler, exactly as the imperative fallback chain owns `text` and
+   `binary`. The built-in `folder` plugin declares only `[[view]]` blocks, like the text
+   and binary manifests.
+3. **Both folder tabs always render; no conditional view lists.** The README tab shows
+   an explicit empty state when the folder has no README, per the design-system rule on
+   empty states. The server never filters view descriptors by content.
+4. **Startup behavior is unchanged.** `_initial_file_path` and `findRootReadme` keep
+   seeding a root README file preview.
+   New behavior appears only when neither a hash nor a README exists: the shell selects
+   the root folder instead of showing the empty “Select a file” pane.
+5. **Rollups are computed at query time from the index, not stored.** A single
+   parent-to-children scan per request follows the `_build_inventory_tree` precedent.
+   Stored per-directory aggregates stay exactly as they are.
+   If measurement exceeds the stated budget, the escape hatch is a generation-keyed
+   cache of the adjacency map, not walker changes.
+6. **Treemap rendering is hand-rolled squarified layout in plain DOM.** No new
+   dependency: the squarify algorithm is ~150 lines, cells are positioned `div`s with
+   real selectable text labels, and culling bounds DOM size.
+   Canvas conflicts with the design-system rules on selectable text; a vendored layout
+   library is not worth a supply-chain review for one algorithm.
+7. **Zoom is navigation.** Clicking a directory cell opens that folder through the
+   normal selection pipeline (hash, tree selection, new envelope, treemap remount at the
+   new root). The treemap holds no private zoom state; breadcrumb and up controls are
+   shell chrome shared by every folder view.
+8. **Live refresh rides the existing event stream.** The shell re-dispatches store
+   changes as a DOM `CustomEvent`; the SDK wraps fetch-plus-refresh in a `watchRollup`
+   helper with trailing debounce.
+   No new SSE scope in this plan.
+9. **Toggle state persists in `localStorage`** under one key; toggles never appear in
+   the hash.
 
-Three parts, layered:
+### Server: Folder Envelope (`server.py`, `file_kinds.py`)
 
-1. **Folder views framework (core).** Directories resolve to a `folder` kind through the
-   same classification and view-merge path as files, so built-in and installed plugins
-   can contribute folder views and exactly one default applies.
-   Folder rows separate the expand/collapse affordance from selection, selection routes
-   the directory path through the hash and preview pipeline, and the folder view header
-   carries a breadcrumb with an up control.
-2. **Rollup data (core).** The inventory answers bounded subtree rollup queries and
-   keeps streaming per-directory finalization through the existing event channel.
-   The walker and inventory gain per-extension tallies and gitignore-excluded totals
-   alongside the current aggregates (*research-gated:* precomputed and maintained versus
-   computed per query behind a generation-keyed cache).
-3. **Treemap view (built-in plugin).** The treemap renderer, its toggles, and its styles
-   ship as a built-in plugin like markdown, using only the documented SDK plus the
-   rollup endpoint. The layout algorithm and rendering technology are *research-gated*
-   with a strong prior toward squarified layout in plain DOM with culling, given the
-   design-system rules on selectable text and canvas.
+- `_api_file_impl` (server.py): split the current
+  `if target is None or not target.is_file()` guard.
+  `target is None` stays 404; a new `target.is_dir()` branch returns
+  `await _api_folder_envelope(subpath, target)`; remaining non-files stay 404.
+- New `_api_folder_envelope(subpath: str, target: Path) -> JSONResponse`:
+  - reads `inventory.get(subpath)` for aggregates (entry may be absent early in a scan);
+  - finds a direct-child README via `_find_dir_readme(target)` in a thread, a
+    generalization of the loop in `_initial_file_path` (which is refactored to call it);
+  - returns
+    `{type: "folder", kind: "folder", path, name, views: _views_for_kind("folder"), dir: {total_files, total_size, mtime, gitignored, state}, readme_path}`
+    where `state` is `"pending"` when aggregates are null and `mtime` follows the tree
+    contract (null pending, `0.0` empty, else seconds);
+  - sets `cache-control: no-store` (the envelope is tiny and aggregates change during
+    scans; the client also skips its `fileCache` for folder envelopes).
+- `VIEW_REGISTRY` (file_kinds.py): add `"folder": []` documenting the core-owned kind;
+  the merged views arrive from the plugin manifest through `_PLUGIN_VIEWS_BY_KIND`.
+- `_views_for_kind` needs no change; the merge and forced-default rules are generic.
 
-### Components
+### Server: Rollup Query and Route (`inventory.py`, `server.py`, `wire_models.py`, `settings.py`)
 
-- Core server: directory classification into the view envelope (`_views_for_kind`
-  merge), a bounded rollup query on `InventoryIndex`, dual all/visible accumulators and
-  per-extension tallies in `walker.py` and `inventory.py`, wire models and validation
-- Core browser shell: folder selection and hash routes for directories, breadcrumb and
-  up control, dispatch of folder envelopes through `renderFile`
-- Built-in `folder_treemap` plugin: manifest declaring the `folder` kind views (treemap
-  overview default; README tab when the folder has a direct-child README, reusing the
-  markdown built-ins), renderer, toggle controls, plugin styles on design tokens
-- Client rollup store: per-scope subtree store fed by an initial fetch plus `fs.change`
-  upserts, with explicit pending, complete, and truncated node states the renderer maps
-  to skeleton, live, and truncation presentations
+- New `InventoryIndex.rollup(path, *, depth, top, ext_top) -> dict | None`
+  (inventory.py). Returns `None` when the index has no entry for `path`. One pass over
+  `self._entries` builds `children_by_parent`; a recursive helper then computes, per
+  directory, full-subtree totals regardless of `depth`:
+  - `total_files` / `total_size` (all entries) and `unignored_files` / `unignored_size`
+    (skipping entries whose own or inherited `gitignored` flag is set, propagated down
+    the recursion like `parent_ignored` in `_build_inventory_subtree`);
+  - `mtime` (newest descendant, seconds, tree contract) and `state` (`"pending"` when
+    the stored `total_files` is `None`, else `"complete"`);
+  - `dominant_ext`: the extension with the largest byte share in the subtree;
+  - children: dirs and files mixed, sorted by `total_size`/`size` descending; the first
+    `top` emit as nodes (files as `{name, path, type, size, mtime, ext, gitignored}`),
+    the remainder collapses into
+    `rest: {dirs, files, size, unignored_size, unignored_files}`;
+  - below `depth`, a directory node emits `children: null` (the tree’s lazy sentinel)
+    while its totals remain full-subtree.
+  - The envelope also carries `ext_tallies` for the requested root only: the top
+    `ext_top` extensions by bytes as `[ext, files, size]` rows plus one remainder row.
+- New route `api_rollup` (server.py) at `GET /api/rollup?path=&depth=&top=&ext_top=`:
+  `_safe_path` plus `is_dir` guard exactly like `api_tree`; the same inventory
+  start/cold-start-wait block as `api_tree`, factored into a shared helper
+  `_ensure_inventory_serving(subpath)` used by both routes; clamped params; response
+  `{root, path, node, ext_tallies, index_status, indexed_files, max_files, truncated}`.
+  No ETag in v1; bodies ride the existing gzip middleware.
+- `settings.py`: `ROLLUP_DEFAULT_DEPTH = 3`, `ROLLUP_MAX_DEPTH = 6`,
+  `ROLLUP_DEFAULT_TOP = 40`, `ROLLUP_MAX_TOP = 200`, `ROLLUP_DEFAULT_EXT_TOP = 12`,
+  `ROLLUP_MAX_EXT_TOP = 32`, exposed to the browser through `client_settings_dict`.
+- `wire_models.py`: `RollupDirNode`, `RollupFileNode`, `RollupRest` TypedDicts and a
+  recursive `validate_rollup_node`, following the `validate_tree_node` pattern, used by
+  the route tests.
+- Budgets (measured in tests, not aspirations): `rollup()` at defaults on a synthetic
+  100k-entry index completes in ≤150 ms of server CPU and ≤128 KiB of pre-gzip JSON.
+  Exceeding either triggers decision 5’s cache escape hatch.
 
-### API Changes
+### Browser Shell (`app.js`, `styles.css`)
 
-Provisional contract, finalized by research task R3:
+- `renderTreeNodes` folder branch: wrap the chevron in
+  `<span class="tree-toggle" data-role="toggle">` and change the row’s `data-action` to
+  `"select-dir"`. The chevron keeps a distinct hover affordance (new `.tree-toggle`
+  rules in styles.css).
+- Tree click handler: a `target.closest('[data-role="toggle"]')` hit runs the existing
+  toggle logic (including shift-recursive expand); otherwise `"select-dir"` runs
+  `setSelectedPath(path)` plus `selectFile(path)` and expands (never collapses) the row,
+  reusing the lazy-subtree load.
+- `parseHashRoute`: capture whether the decoded fragment ends with `/` before stripping.
+  A trailing slash marks a directory path: skip the in-document-anchor heuristic and
+  return the stripped path (the fragment `#/` means the served root).
+  `selectFile` writes folder hashes with the trailing-slash marker once the envelope
+  identifies a folder.
+- `revealInTree`: final row lookup generalizes from `.tree-file[data-path=…]` to
+  `.tree-item[data-path=…]` so directory rows resolve; `navigateToPath` then works for
+  directories unchanged.
+- `selectFile`: on a `kind: "folder"` response, skip `fileCache` insertion, revalidation
+  bookkeeping, and `maybeOpenLiveStream`; everything else (abort handling, spinner,
+  `renderFile`) is shared.
+- `renderFile`: when `data.kind === "folder"`, the header is built by a new
+  `renderFolderHeader(data)`: breadcrumb segments (root plus each ancestor, each
+  navigating to that directory), an up button (disabled at the root), and the aggregate
+  summary (`sizeHtml`, count, age).
+  Tabs, lazy mounting, and disposal flow through the existing code path; `ctx.raw` is
+  the folder envelope.
+- `init()`: when there is no hash, no server initial path, and no root README, call
+  `selectFile("")` so a README-less root lands on the treemap instead of the empty pane.
+- The store notifier (`notifyFileStoreSubscribers`) additionally dispatches `window`
+  CustomEvent `metabrowser:inventory-change` with the changed paths, the signal
+  `watchRollup` listens for.
 
-- `/api/file` (or a parallel folder route) returns a directory envelope:
-  `kind: "folder"` and merged view descriptors, instead of 404
+### Plugin SDK (`plugin_sdk.js`)
 
-- A bounded rollup endpoint with semantics equivalent to:
+- `fetchRollup(path, opts)`: GET `/api/rollup` with abort support, defaults from
+  `window.METABROWSER_SETTINGS`.
+- `watchRollup(path, opts, onUpdate)`: initial fetch plus refresh on
+  `metabrowser:inventory-change` events whose paths are ancestors of, equal to, or under
+  `path` (ancestor bubbling makes this sufficient for deep changes), with a trailing
+  debounce (default 1000 ms).
+  Returns `{refresh, dispose}`; `dispose` detaches the listener and aborts in-flight
+  fetches.
+- `ageBucket(mtimeSeconds)`: returns `"sec" | "min" | "hr" | "day" | "wk" | "old"` or
+  null, sharing the thresholds `formatAge` uses (app.js refactors to call it so the ramp
+  cannot drift).
+- `tooltip` and `fileTypeClass(path)`: thin proxies over the shell’s
+  `MetabrowserTooltip` and `MetabrowserFileTypes.classFor`, following the existing
+  `icons` proxy pattern, so the plugin never touches app.js globals.
 
-  ```text
-  GET /api/rollup?path=src&depth=3&top=40
-  ```
+### Built-in Folder Plugin (`src/metabrowser/builtin_plugins/folder/`)
 
-  returning, per directory node: totals and visible-only totals for bytes and file
-  counts, `newest_mtime_ns`, a bounded per-extension tally, the top children by the
-  requested metric with an explicit remainder bucket, scan state (pending, complete, or
-  truncated), and the inventory generation
-
-- Live updates reuse `fs.change` upserts for finalized directories; clients stitch them
-  into the rollup store and refetch on generation gaps, matching the resync behavior in
-  the scanning-state plan
-
-Payloads stay bounded regardless of subtree size, remain compressed by the existing gzip
-middleware, and never present capped or pending totals as exhaustive.
-
-### Interactions
-
-- Hover highlights a cell and shows the shared tooltip: path, size, file count, age
-- Clicking a directory cell zooms the treemap to that directory, updates the hash, and
-  syncs the tree selection; clicking a file cell opens the file through the normal file
-  preview
-- A breadcrumb shows the zoom path; an up control returns toward the served root
-- Toggle changes relayout the current data without refetching when the loaded rollup
-  already covers the selection
-- Keyboard access and non-color cues follow the design-system accessibility checklist
-  (*research-gated:* the keyboard navigation model for treemap cells)
+- `manifest.toml`: `[plugin] name = "folder"`, `extra_scripts = ["treemap_layout.js"]`;
+  two `[[view]]` blocks for kind `folder`: `treemap` ("Treemap", `default = true`) and
+  `readme` ("README", `render_runtime = "kpress"`, printable,
+  `print_profile = "document"`). No `[[kind]]` rules (decision 2).
+- `treemap_layout.js` (classic script, global `MetabrowserTreemapLayout`, strict
+  check-JS): pure geometry, no DOM. `squarify(items, rect)` implements the Bruls,
+  Huizing, and van Wijk algorithm; `layoutTree(rollupNode, viewport, opts)` walks the
+  rollup, applies the active metric and grouping, and returns positioned cells with
+  nesting depth, culling cells below `opts.minCellPx`, capping total cells at
+  `opts.maxCells` (default 800), and synthesizing remainder cells from `rest` buckets
+  and culled children.
+  Grouping `"type"` lays out the envelope `ext_tallies` instead of the directory
+  hierarchy, one cell per extension.
+- `index.js` registers both views:
+  - `readme`: renders through the exported markdown built-ins (`mb.builtins.markdown`)
+    against a context whose `path` is `raw.readme_path`, or an explicit “No README in
+    this folder” empty state.
+  - `treemap`: mounts a toolbar (three joined toggle groups plus the three-state
+    gitignored control), the cell viewport, and a compact legend; holds
+    `{metric, grouping, color, ignored}` persisted under the
+    `metabrowser.folder.treemap` localStorage key; starts `mb.watchRollup(ctx.path, …)`
+    and relayouts on data or toggle changes (toggle changes never refetch — both
+    aggregate variants and `dominant_ext` are already in the payload); registers a
+    `dispose` that tears down the watch handle.
+  - Cells: directory cells navigate via `mb.openPath` (zoom is navigation, decision 7);
+    file cells open the file the same way; hover uses `mb.tooltip` with path, size, file
+    count, and age; every cell has an accessible name; keyboard support is roving
+    tabindex with arrow-key movement in layout order, Enter to activate, and Backspace
+    for the parent directory.
+  - Color: `age` maps `mb.ageBucket` to the new fill tokens; `type` applies the `ft-*`
+    class (files) or `dominant_ext` class (directories); the `dimmed` ignored state
+    applies a muted opacity class, `hidden` relayouts from the unignored aggregates.
+  - Pending directories render skeleton cells (tally-pending pattern); a truncated index
+    renders a persistent notice sourced from the envelope fields.
+- `styles.css` (plugin-owned): consumes host tokens plus the new age fill tokens; no
+  literal colors, mirroring the structured plugin’s stylesheet contract.
+- Core `styles.css` additions: `--file-age-fill-sec` … `--file-age-fill-old` with
+  dark-theme overrides (the existing age tokens are text colors and too saturated for
+  large fills), `.tree-toggle` hover, and folder-header/breadcrumb rules.
 
 ## Implementation Plan
 
-### Phase 1: Background Research
+### Phase 1: Folder Views Framework
 
-Deliverable: a research brief in `docs/project/research/` recording decisions, budgets,
-and rejected alternatives, plus updates to the research-gated items in this spec.
+Shippable on its own: folder selection, breadcrumb, and the README tab.
 
-- [ ] R1 Prior art: survey how WinDirStat, SequoiaView, GrandPerspective, DaisyDisk,
-  Baobab, SpaceSniffer, TreeSize, WizTree, ncdu, dust, dua, and gdu handle
-  scan-while-render, layout choice, small-file aggregation, remainder and free-space
-  cells, color mapping, and zoom controls
-- [ ] R2 Layout and rendering: compare slice-and-dice, squarified, strip, and
-  order-preserving layouts for readability and stability under live updates; compare
-  DOM, SVG, and canvas against the design-system constraints (selectable text, tokens,
-  reduced motion, accessibility); define culling and label thresholds; decide
-  hand-rolled squarify versus a vendored layout library under the supply-chain policy
-  and vendor size caps; measure layout and paint on a synthetic large-tree fixture
-- [ ] R3 Rollups and transport: decide the per-extension tally representation and its
-  memory bound; decide precomputed versus query-time visible-only totals; choose the
-  rollup payload shape (nesting, top-N, remainder buckets) and confirm reuse of
-  `fs.change` for stitching; measure rollup query cost, payload sizes, and update churn
-  at the inventory cap
-- [ ] R4 Folder-kind framework: choose the directory envelope route; define folder
-  selection versus expand/collapse in the tree and hash semantics for directories;
-  define the default-view policy where a README exists; define the treemap keyboard
-  model; confirm the core-versus-plugin split of endpoint, store, and renderer
+- [ ] Folder envelope: `_api_folder_envelope`, `_find_dir_readme` (with
+  `_initial_file_path` refactor), `VIEW_REGISTRY["folder"]`, no-store headers, tests
+  (`tests/test_api_folder_envelope.py`)
+- [ ] Shell wiring: tree-row toggle/select split, click handler branch, directory hash
+  marker in `parseHashRoute` and `selectFile`, `revealInTree` generalization,
+  `renderFolderHeader` with breadcrumb and up, README-less-root landing in `init()`,
+  `.tree-toggle` and header styles, DOM tests under `tests/dom/`
+- [ ] Built-in `folder` plugin with manifest and the README view (markdown built-ins
+  reuse, explicit empty state), Node `vm` registration tests
+  (`tests/test_folder_plugin_behavior_js.py`)
 
-### Phase 2: Folder Views Framework
+### Phase 2: Rollup Data Plane
 
-- [ ] Classify directories into the view envelope with merged plugin views and one
-  default; keep 404 semantics for paths outside the root
-- [ ] Wire folder selection, directory hash routes, breadcrumb, and up control without
-  changing expand/collapse behavior
-- [ ] Add the README folder view backed by the markdown built-ins
-- [ ] Test envelope contracts, routing, lazy mount and disposal for folder views, and
-  independence of tree rendering from folder-view readiness
+Independent of Phase 1; Phase 3 needs both.
 
-### Phase 3: Treemap Data and View
+- [ ] `InventoryIndex.rollup` with deterministic fixtures (partial, truncated,
+  gitignored, symlinked, moved, deleted), budget measurement on a synthetic 100k-entry
+  index (`tests/test_browser_rollup.py`)
+- [ ] `api_rollup` route, `_ensure_inventory_serving` refactor shared with `api_tree`,
+  settings constants and client exposure, `wire_models` rollup validators, route tests
+  (`tests/test_rollup_route.py`, `tests/test_browser_wire_shape.py`)
+- [ ] SDK surface: `fetchRollup`, `watchRollup` (debounce, ancestor filtering, dispose),
+  `ageBucket` with the `formatAge` refactor, `tooltip` and `fileTypeClass` proxies, the
+  `metabrowser:inventory-change` shell event, SDK `vm` tests
 
-- [ ] Add dual accumulators and per-extension tallies to the walker and inventory with
-  deterministic partial, truncated, ignored, and symlinked fixtures
-- [ ] Add the bounded rollup endpoint with validation, generation metadata, and wire
-  tests
-- [ ] Build the treemap renderer with the four toggle groups, hover, zoom, open-file,
-  pending and truncated presentations, and plugin styles on design tokens
-- [ ] Stitch live `fs.change` updates into the rollup store with debounced relayout and
-  resync on generation gaps
-- [ ] Validate performance budgets on synthetic large roots and run the design-system
-  review checklist in both themes
+### Phase 3: Treemap View
+
+- [ ] Prior-art brief and layout spike: survey the disk-usage tools named in Background
+  for layout, small-file aggregation, and zoom conventions; spike `squarify` on fixture
+  data against the layout budget (≤16 ms for 800 cells); record both in
+  `docs/project/research/` and fold corrections into this spec
+- [ ] `treemap_layout.js`: squarify, `layoutTree`, culling, remainder synthesis,
+  type-grouping mode, golden `vm` tests (`tests/test_folder_treemap_layout_js.py`)
+- [ ] Treemap renderer in `index.js`: toolbar toggles with persistence, cell rendering
+  with age and type color modes, gitignored three-state, hover tooltip, click
+  navigation, keyboard model, pending and truncated presentations, plugin styles, core
+  fill tokens
+- [ ] Live refresh: `watchRollup` wiring end to end (filesystem change to ancestor
+  upsert to debounced refetch to relayout), plus an integration test from a real
+  filesystem mutation
+- [ ] Validation: budgets on a synthetic large root, the design-system review checklist
+  in both themes, docs updates (`docs/plugins.md` folder kind, `docs/design-system.md`
+  fill tokens, `docs/architecture.md` folder envelope note)
 
 ## Testing Strategy
 
-- Unit-test accumulator math (including gitignore-excluded totals and extension tallies)
-  across partial, truncated, moved, and deleted subtrees
-- Contract-test rollup payload bounds, node states, and generation behavior
-- Node `vm` tests for plugin registration; DOM tests for toggle state, zoom, and
-  navigation sync; end-to-end coverage from filesystem change to treemap update
-- Measure crawl overhead added by new accumulators, rollup latency, payload size, and
-  relayout cost on public synthetic large-tree fixtures
+- Python unit and contract tests as listed per phase; every new wire shape passes its
+  `wire_models` validator in tests
+- Node `vm` tests for plugin registration, layout geometry (areas sum to the rect,
+  aspect-ratio quality, culling, remainder cells), and SDK debounce behavior
+- DOM tests for the toggle/select split, hash round-tripping, breadcrumb navigation, and
+  treemap toggle state
+- One end-to-end test from filesystem mutation through `fs.change` to a treemap refresh
+- Budget measurements recorded in test output on public synthetic fixtures: rollup CPU
+  and payload, layout time, render-to-paint on 800 cells
 
 ## Rollout Plan
 
-Complete Phase 1 and update this spec before building.
-Ship the framework with the README folder view first so folder selection is immediately
-useful, then enable the treemap plugin as the default folder view.
-The nav panel, Recent view, and file previews keep their current behavior and timing
-throughout; rollup work stays off the request path for unrelated views.
+Land phases in order; each is releasable.
+Phase 1 changes folder clicks from toggle-only to select-plus-expand and adds the README
+tab; the treemap tab appears in Phase 3 as the default folder view.
+Startup with a root README is unchanged throughout (decision 4). The nav panel, Recent
+view, and file previews keep their current behavior and timing; rollup work stays off
+the request path for unrelated views.
 
 ## Open Questions
 
-- Default-view policy when a folder has a README: does the treemap remain the default
-  everywhere, or does a README-bearing folder (including the served root at startup)
-  default to the README tab?
-- Is the three-state gitignored control (shown, dimmed, hidden) one joined toggle, or a
-  checkbox plus a dim option?
-- How should symlinks and hard links count toward totals (the walker currently does not
-  follow symlinks)?
-- Do extension tallies stay bounded per directory (top-K plus remainder), and what K
-  keeps type grouping honest on messy trees?
-- Should zoom state live in the hash beyond the directory path (for example the active
-  toggles), or reset per navigation?
-- Do the age ramp tokens need a dark-theme override before the treemap uses them as
-  large fills rather than text color?
+- Should treemap toggle preferences move from `localStorage` to the host-only cookie
+  pattern the theme uses, so they follow the user across per-folder server ports?
+- Is `dominant_ext` coloring readable enough for directory cells in type mode, or should
+  directories stay neutral there?
+  (Settle during the layout spike.)
+- Does the rollup budget hold at the 500k-entry index cap, or does the generation-keyed
+  adjacency cache (decision 5) become necessary?
 
 ## References
 
@@ -256,9 +363,9 @@ throughout; rollup work stays off the request path for unrelated views.
 - [Scalable file search](plan-2026-07-17-scalable-file-search.md)
 - [Web diff viewer research brief](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
   (research-brief format precedent)
-- Related beads: mb-7uta (SDK streaming), mb-uh6p (non-file plugin surfaces), mb-7l9k
-  (large-directory budgets), mb-0b2h (shell modularization), mb-725d (vendored ESM
-  bundling)
+- Related beads: mb-7uta (SDK streaming), mb-t1wt (plugin event subscription;
+  `watchRollup` is a scoped step toward it), mb-uh6p (non-file plugin surfaces), mb-7l9k
+  (large-directory budgets), mb-0b2h (shell modularization)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
