@@ -34,7 +34,8 @@ layout spike that confirms the stated performance budgets.
 - Provide small joined toggle groups for each axis, combinable independently:
   - Size metric: total bytes (default) or file count
   - Grouping: folder hierarchy (default) or file type by logical extension
-  - Color: age (default, same semantics and tokens as the tree column) or file type
+  - Color: file type (default) or age; every named cell also carries the tree column’s
+    colored age label beside the name
   - Gitignored entries: shown, dimmed (default), or excluded from the visualization and
     its aggregates
 - Support hover details, click-to-zoom on folders with navigation sync, click-to-open on
@@ -262,9 +263,11 @@ The mechanics this feature needs already exist for files and for aggregates:
     count, and age; every cell has an accessible name; keyboard support is roving
     tabindex with arrow-key movement in layout order, Enter to activate, and Backspace
     for the parent directory.
-  - Color: `age` maps `mb.ageBucket` to the new fill tokens; `type` applies the `ft-*`
-    class (files) or `dominant_ext` class (directories); the `dimmed` ignored state
-    applies a muted opacity class, `hidden` relayouts from the unignored aggregates.
+  - Color: `type` (default) applies the `ft-*` class (files) or `dominant_ext` class
+    (directories); `age` maps `mb.ageBucket` to the new fill tokens; independent of the
+    fill, `mb.ageLabelHtml` puts the header’s colored age chip beside each dir and file
+    name; the `dimmed` ignored state applies a muted opacity class, `hidden` relayouts
+    from the unignored aggregates.
   - Pending directories render skeleton cells (tally-pending pattern); a truncated index
     renders a persistent notice sourced from the envelope fields.
 - `styles.css` (plugin-owned): consumes host tokens plus the new age fill tokens; no

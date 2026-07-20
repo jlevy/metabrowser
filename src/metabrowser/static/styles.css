@@ -783,6 +783,23 @@
   --ft-text-border: hsl(220 10% 30%);
   --ft-config-bg: hsl(220 12% 18%);
   --ft-config-border: hsl(220 10% 30%);
+  /* Hued file-type washes: same hue as the light triplets, dropped to
+     dark-surface lightness. The treemap uses --ft-bg as large area
+     fills, so every subtype needs a dark stop, not just the greys. */
+  --ft-md-bg: hsl(210 30% 18%);
+  --ft-md-border: hsl(210 22% 32%);
+  --ft-md-runbook-bg: hsl(142 25% 16%);
+  --ft-md-runbook-border: hsl(142 18% 30%);
+  --ft-md-template-bg: hsl(43 35% 16%);
+  --ft-md-template-border: hsl(43 28% 30%);
+  --ft-yaml-bg: hsl(28 35% 17%);
+  --ft-yaml-border: hsl(28 26% 31%);
+  --ft-jsonl-bg: hsl(247 25% 20%);
+  --ft-jsonl-border: hsl(247 18% 34%);
+  --ft-code-bg: hsl(162 25% 16%);
+  --ft-code-border: hsl(162 18% 30%);
+  --ft-csv-bg: hsl(41 32% 16%);
+  --ft-csv-border: hsl(41 25% 30%);
   --chart-grid: hsl(220 13% 24%);
   --chart-label-text: var(--viz-text-meta);
 }

@@ -162,6 +162,7 @@ type MetabrowserTreemapLayoutApi = {
 
 type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
+  ageLabelHtml(mtimeSeconds: number | null | undefined): string;
   builtins: MetabrowserBuiltins;
   escapeHtml(value: string): string;
   fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
