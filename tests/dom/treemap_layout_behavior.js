@@ -1,0 +1,232 @@
+// Geometry checks for the folder plugin's treemap layout module.
+//
+// Pure-function tests: squarified area conservation, bounds
+// containment, aspect quality, culling + rest synthesis, type-grouping
+// mode, and a timed 800-cell layout against the spec budget (16 ms,
+// asserted with slack for CI jitter; the measured value is printed for
+// the budget record).
+
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+const repoRoot = path.resolve(process.argv[2]);
+const failures = [];
+
+const sandbox = { console, Math, performance };
+sandbox.window = sandbox;
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+const source = fs.readFileSync(
+  path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/treemap_layout.js"),
+  "utf8",
+);
+vm.runInContext(source, sandbox, { filename: "treemap_layout.js" });
+
+const layout = sandbox.MetabrowserTreemapLayout;
+if (!layout) {
+  console.error("MetabrowserTreemapLayout global missing");
+  process.exit(1);
+}
+
+function check(name, cond, detail) {
+  if (!cond) {
+    failures.push(`${name}: ${detail || "failed"}`);
+  }
+}
+
+// ── squarify: area conservation + containment + order ───────────
+{
+  const items = [40, 25, 15, 10, 6, 4].map((v, i) => ({ value: v, id: i }));
+  const rect = { x: 0, y: 0, w: 200, h: 100 };
+  const placed = layout.squarify(items, rect);
+  check("squarify count", placed.length === items.length, `${placed.length}`);
+  const total = placed.reduce((s, p) => s + p.w * p.h, 0);
+  check("area conservation", Math.abs(total - 200 * 100) < 1, `sum=${total}`);
+  for (const p of placed) {
+    check(
+      "containment",
+      p.x >= -0.01 && p.y >= -0.01 && p.x + p.w <= 200.01 && p.y + p.h <= 100.01,
+      JSON.stringify(p),
+    );
+    const area = p.w * p.h;
+    const expected = (p.item.value / 100) * 20000;
+    check("proportional area", Math.abs(area - expected) < 1, `${area} vs ${expected}`);
+  }
+  // Squarified quality: no cell should be pathologically thin.
+  for (const p of placed) {
+    const aspect = Math.max(p.w / p.h, p.h / p.w);
+    check("aspect quality", aspect < 8, `aspect=${aspect.toFixed(2)}`);
+  }
+  // Zero/negative values are skipped.
+  const withZero = layout.squarify([{ value: 10 }, { value: 0 }, { value: -5 }], {
+    x: 0,
+    y: 0,
+    w: 10,
+    h: 10,
+  });
+  check("zero skipped", withZero.length === 1, `${withZero.length}`);
+}
+
+// ── layoutTree: folder grouping, rest bucket, nesting ───────────
+function dirNode(name, pathStr, extras) {
+  return Object.assign(
+    {
+      name,
+      path: pathStr,
+      type: "dir",
+      state: "complete",
+      total_files: 10,
+      total_size: 1000,
+      unignored_files: 10,
+      unignored_size: 1000,
+      mtime: 1700000000,
+      gitignored: false,
+      dominant_ext: ".py",
+      children: [],
+    },
+    extras || {},
+  );
+}
+function fileNode(name, pathStr, size, extras) {
+  return Object.assign(
+    {
+      name,
+      path: pathStr,
+      type: "file",
+      size,
+      mtime: 1700000000,
+      ext: ".py",
+      gitignored: false,
+    },
+    extras || {},
+  );
+}
+
+{
+  const root = dirNode("root", "", {
+    total_size: 3000,
+    children: [
+      dirNode("sub", "sub", {
+        total_size: 2000,
+        children: [fileNode("inner.py", "sub/inner.py", 2000)],
+      }),
+      fileNode("a.py", "a.py", 700),
+      fileNode("b.md", "b.md", 300, { ext: ".md" }),
+    ],
+    rest: { dirs: 1, files: 5, size: 500, unignored_files: 5, unignored_size: 500 },
+  });
+  const cells = layout.layoutTree(root, { w: 400, h: 300 }, { metric: "size" });
+  const kinds = cells.map((c) => c.kind).sort();
+  check("has dir cell", kinds.includes("dir"), kinds.join(","));
+  check("has file cells", kinds.filter((k) => k === "file").length >= 2, kinds.join(","));
+  check("has rest cell", kinds.includes("rest"), kinds.join(","));
+  const sub = cells.find((c) => c.kind === "dir" && c.path === "sub");
+  check("dir nested flag", !!sub && sub.nested === true, JSON.stringify(sub));
+  const inner = cells.find((c) => c.path === "sub/inner.py");
+  check("nested child emitted", !!inner && inner.depth === 1, JSON.stringify(inner));
+  if (inner && sub) {
+    check(
+      "nested child inside parent",
+      inner.x >= sub.x && inner.y >= sub.y && inner.x + inner.w <= sub.x + sub.w + 0.01,
+      "child escapes parent rect",
+    );
+  }
+  // hidden mode uses unignored values: gitignored file drops out.
+  const rootHidden = dirNode("root", "", {
+    total_size: 1000,
+    unignored_size: 400,
+    children: [
+      fileNode("kept.py", "kept.py", 400),
+      fileNode("ignored.log", "ignored.log", 600, { gitignored: true, ext: ".log" }),
+    ],
+  });
+  const hiddenCells = layout.layoutTree(
+    rootHidden,
+    { w: 200, h: 100 },
+    { metric: "size", ignored: "hidden" },
+  );
+  check(
+    "hidden drops gitignored",
+    !hiddenCells.some((c) => c.path === "ignored.log"),
+    JSON.stringify(hiddenCells.map((c) => c.path)),
+  );
+}
+
+// ── layoutTree: type grouping from ext tallies ──────────────────
+{
+  const root = dirNode("root", "");
+  const cells = layout.layoutTree(
+    root,
+    { w: 300, h: 200 },
+    {
+      grouping: "type",
+      metric: "size",
+      extTallies: [
+        [".py", 10, 6000, 10, 6000],
+        [".md", 5, 3000, 5, 3000],
+        ["", 2, 1000, 2, 1000],
+      ],
+    },
+  );
+  check("type cells", cells.length === 3, `${cells.length}`);
+  check(
+    "type kind",
+    cells.every((c) => c.kind === "ext"),
+    "non-ext cell",
+  );
+  const other = cells.find((c) => c.ext === "");
+  check("rest ext labeled", !!other && other.name === "other", JSON.stringify(other));
+  // files metric with hidden variant reads columns 3.
+  const filesCells = layout.layoutTree(
+    root,
+    { w: 300, h: 200 },
+    {
+      grouping: "type",
+      metric: "files",
+      ignored: "hidden",
+      extTallies: [[".py", 10, 6000, 4, 2000]],
+    },
+  );
+  check(
+    "type files metric",
+    filesCells[0] && filesCells[0].value === 4,
+    JSON.stringify(filesCells),
+  );
+}
+
+// ── maxCells cap + budget timing ────────────────────────────────
+{
+  const wide = dirNode("root", "", {
+    children: Array.from({ length: 3000 }, (_, i) => fileNode(`f${i}.py`, `f${i}.py`, 3000 - i)),
+  });
+  const capped = layout.layoutTree(wide, { w: 1200, h: 800 }, { metric: "size", maxCells: 100 });
+  check("maxCells cap", capped.length <= 100, `${capped.length}`);
+
+  // Budget: lay out a two-level tree that emits ~800 cells.
+  const subdirs = Array.from({ length: 40 }, (_, d) =>
+    dirNode(`d${d}`, `d${d}`, {
+      total_size: 100000 - d * 100,
+      children: Array.from({ length: 30 }, (_, i) =>
+        fileNode(`f${i}.py`, `d${d}/f${i}.py`, 3000 - i),
+      ),
+    }),
+  );
+  const big = dirNode("root", "", { total_size: 4000000, children: subdirs });
+  const t0 = performance.now();
+  const bigCells = layout.layoutTree(big, { w: 1600, h: 900 }, { metric: "size", maxCells: 800 });
+  const elapsed = performance.now() - t0;
+  console.log(
+    `budget: layoutTree emitted ${bigCells.length} cells in ${elapsed.toFixed(2)}ms (spec budget 16ms)`,
+  );
+  check("budget cells", bigCells.length > 400 && bigCells.length <= 800, `${bigCells.length}`);
+  // Hard gate is generous (4x) to absorb CI jitter; the printed value
+  // is the budget record.
+  check("layout budget", elapsed < 64, `${elapsed.toFixed(2)}ms`);
+}
+
+if (failures.length > 0) {
+  console.error(`treemap layout FAILURES:\n- ${failures.join("\n- ")}`);
+  process.exit(1);
+}
+console.log("treemap layout OK");

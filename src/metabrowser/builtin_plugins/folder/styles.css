@@ -1,0 +1,200 @@
+/* Folder plugin — treemap view styles.
+   Every color references a design token on :root (host tokens plus the
+   --file-age-fill-* ramp core styles.css defines); no literals. */
+
+.folder-treemap-host {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.tm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+.tm-seg {
+  display: inline-flex;
+  border: 1px solid var(--viz-border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--viz-surface);
+}
+
+.tm-seg button {
+  font: inherit;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 2px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tm-seg button + button {
+  border-left: 1px solid var(--viz-border-subtle);
+}
+
+.tm-seg button[aria-pressed="true"] {
+  background: var(--hover-bg);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.tm-seg button:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+.tm-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  height: calc(100vh - 240px);
+  overflow: hidden;
+  outline: none;
+  background: var(--viz-surface-sunken);
+}
+
+.tm-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.tm-cell {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 1px 4px;
+  border: 1px solid var(--viz-border-subtle);
+  background: var(--viz-surface);
+  overflow: hidden;
+  cursor: pointer;
+  transition: filter var(--viz-hover-duration) ease;
+}
+
+.tm-cell:hover {
+  filter: brightness(1.06);
+  border-color: var(--viz-border-strong);
+  z-index: 2;
+}
+
+.tm-cell:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  z-index: 3;
+}
+
+.tm-dir {
+  border-color: var(--viz-border);
+}
+
+.tm-nested {
+  background: transparent;
+}
+
+.tm-cell-label {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: var(--weight-medium);
+  color: var(--viz-text);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+.tm-cell-sub {
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--viz-text-muted);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+/* Age ramp fills (tokens in core styles.css, light + dark). */
+.tm-age-sec {
+  background: var(--file-age-fill-sec);
+}
+.tm-age-min {
+  background: var(--file-age-fill-min);
+}
+.tm-age-hr {
+  background: var(--file-age-fill-hr);
+}
+.tm-age-day {
+  background: var(--file-age-fill-day);
+}
+.tm-age-wk {
+  background: var(--file-age-fill-wk);
+}
+.tm-age-old {
+  background: var(--file-age-fill-old);
+}
+.tm-age-none {
+  background: var(--viz-surface);
+}
+
+/* File-type fills reuse the ft-* token triplets applied by
+   mb.fileTypeClass; the cell reads the custom properties the class
+   sets rather than naming per-type tokens here. */
+.tm-type-fill {
+  background: var(--ft-bg, var(--viz-surface));
+  border-color: var(--ft-border, var(--viz-border-subtle));
+}
+
+.tm-ignored {
+  opacity: 0.45;
+}
+
+.tm-rest {
+  background: var(--hover-bg);
+  color: var(--muted);
+  align-items: center;
+  justify-content: center;
+}
+
+.tm-pending {
+  animation: tm-pending-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes tm-pending-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-pending {
+    animation: none;
+    opacity: 0.75;
+  }
+  .tm-cell {
+    transition: none;
+  }
+}
+
+.tm-status {
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}

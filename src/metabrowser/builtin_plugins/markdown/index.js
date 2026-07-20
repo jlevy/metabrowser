@@ -198,6 +198,7 @@
     disposeToc: disposeToc,
     renderRendered: renderRendered,
     renderSource: renderSource,
+    disposeToc: disposeToc,
   };
 
   mb.registerView("markdown", "rendered", { render: renderRendered, dispose: disposeToc });
