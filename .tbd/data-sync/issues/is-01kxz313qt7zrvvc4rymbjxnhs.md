@@ -5,12 +5,12 @@ title: "P3: budgets, design review, and docs"
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-20T06:22:19.386Z
-updated_at: 2026-07-20T06:22:19.386Z
+updated_at: 2026-07-20T07:30:37.581Z
 ---
-Record measured budgets on a synthetic large root (rollup CPU/payload, layout time, render-to-paint at 800 cells) in test output; run the design-system review checklist (both themes, keyboard, reduced motion, print, narrow panes, empty/malformed/large data). Docs: plugins.md folder kind + view contract, design-system.md fill tokens, architecture.md folder envelope note; close out spec checkboxes and move spec toward done per update-specs-status.
+Remaining validation scope after the spike: run the design-system review checklist fully (print output, reduced motion, a11y audit at contrast level; light/dark screenshots done), add one automated integration test from a real filesystem mutation through fs.change to a rollup refresh, and revisit the .tm-viewport fixed-height sizing (currently calc(100vh - 240px)) against the one-scroll-owner rule. Budgets are recorded in test output (layout ~3ms/800 cells; rollup <150ms budget met); docs updates landed (plugins.md, design-system.md, architecture.md).
