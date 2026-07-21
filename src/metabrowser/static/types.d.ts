@@ -281,6 +281,10 @@ type MetabrowserSdk = {
   fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
   fileTypeClass(path: string): string;
   formatTimestamp(secondsSinceEpoch: number): string;
+  prefs: {
+    get<T>(name: string, fallback: T): T;
+    set(name: string, value: unknown): boolean;
+  };
   tooltip: {
     hide(): void;
     move(event: MouseEvent): void;

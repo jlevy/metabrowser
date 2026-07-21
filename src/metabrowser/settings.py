@@ -186,6 +186,14 @@ ROLLUP_MAX_TOP = 200
 ROLLUP_DEFAULT_EXT_TOP = 12
 ROLLUP_MAX_EXT_TOP = 32
 
+# Global emission budget for one rollup response. ``top`` bounds a
+# single directory; a balanced tree multiplies per level, so this cap
+# is what actually bounds response size (nodes past it become
+# children:null lazy sentinels or fold into rest buckets). The browser
+# renders at most ~800 cells, so 1200 leaves headroom for hide-mode
+# filtering without amplification.
+ROLLUP_MAX_NODES = 1_200
+
 # Trailing debounce for treemap refresh after inventory change events;
 # read by the SDK's watchRollup.
 ROLLUP_WATCH_DEBOUNCE_MS = 1_000
@@ -251,6 +259,7 @@ __all__ = [
     "ROLLUP_DEFAULT_TOP",
     "ROLLUP_MAX_DEPTH",
     "ROLLUP_MAX_EXT_TOP",
+    "ROLLUP_MAX_NODES",
     "ROLLUP_MAX_TOP",
     "ROLLUP_WATCH_DEBOUNCE_MS",
     "SSE_BUS_INVENTORY_QUEUE_SIZE",

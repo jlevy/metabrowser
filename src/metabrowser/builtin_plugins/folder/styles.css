@@ -116,6 +116,28 @@
   min-width: 0;
 }
 
+/* A nested directory's label strip is the cell's button (the body is
+   covered by child cells); give the strip its own affordance. */
+.tm-cell-title[role="button"] {
+  cursor: pointer;
+  padding: 0 3px;
+  margin-left: -3px;
+  border-radius: 3px;
+}
+
+.tm-cell-title[role="button"]:hover {
+  background: var(--hover-bg);
+}
+
+.tm-cell-title[role="button"]:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+}
+
+.tm-nested {
+  cursor: default;
+}
+
 .tm-cell-label {
   font-size: 11px;
   line-height: 14px;
