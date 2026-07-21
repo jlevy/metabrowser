@@ -697,21 +697,29 @@ def _initial_path_html() -> str:
 def _find_dir_readme(dir_path: Path) -> str:
     """Return the basename of a direct-child README.md (any case), or "".
 
-    One bounded directory listing; no recursion. Shared by the startup
-    seed (`_initial_file_path`) and the folder envelope
+    One bounded directory listing; no recursion, and no probing of
+    guessed spellings — on a case-insensitive filesystem a probe for
+    ``README.md`` would match ``ReadMe.MD`` and return a name that does
+    not exist on disk. The listing yields real child names; preferred
+    spellings only break ties when several casings coexist. Shared by
+    the startup seed (`_initial_file_path`) and the folder envelope
     (`_api_folder_envelope`).
     """
 
-    for name in ("README.md", "readme.md", "Readme.md"):
-        if (dir_path / name).is_file():
-            return name
     try:
-        for child in dir_path.iterdir():
-            if child.is_file() and child.name.lower() == "readme.md":
-                return child.name
+        candidates = [
+            child.name
+            for child in dir_path.iterdir()
+            if child.name.lower() == "readme.md" and child.is_file()
+        ]
     except OSError:
         return ""
-    return ""
+    if not candidates:
+        return ""
+    for preferred in ("README.md", "readme.md", "Readme.md"):
+        if preferred in candidates:
+            return preferred
+    return min(candidates)
 
 
 def _initial_file_path() -> str:

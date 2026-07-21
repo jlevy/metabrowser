@@ -272,7 +272,15 @@ class InventoryIndex:
     def max_files(self) -> int:
         return self._max_files
 
-    def rollup(self, path: str, *, depth: int, top: int, ext_top: int) -> dict[str, Any] | None:
+    def rollup(
+        self,
+        path: str,
+        *,
+        depth: int,
+        top: int,
+        ext_top: int,
+        max_nodes: int | None = None,
+    ) -> dict[str, Any] | None:
         """Bounded treemap rollup for the subtree rooted at *path*.
 
         One O(N) pass groups entries by parent (the
@@ -285,17 +293,32 @@ class InventoryIndex:
         totals stay full-subtree. Returns ``None`` when *path* is not
         an indexed directory.
 
+        ``top`` bounds one directory, not the response: a balanced tree
+        multiplies per-level, so *max_nodes* (default
+        ``ROLLUP_MAX_NODES``) is the global emission budget. It is
+        spent largest-first while emitting; a directory reached with no
+        budget left keeps full-subtree totals and emits the
+        ``children: None`` lazy sentinel (the client refetches on
+        zoom), and children cut mid-list fold into the ``rest`` bucket.
+        The response can therefore never amplify past the budget no
+        matter the tree shape.
+
         The result carries ``node`` (the emitted tree) and
         ``ext_tallies`` for the requested root: the *ext_top*
         extensions with the largest byte share plus one remainder row
         keyed ``ROLLUP_REST_EXT_KEY``. Synchronous and allocation-
         bounded by the index size; runs inline on the request path like
-        the tree builder, with the measured budget enforced in tests.
+        the tree builder, with node-count and payload gates enforced in
+        tests.
         """
 
         root_entry = self._entries.get(path)
         if root_entry is None or root_entry.type != "dir":
             return None
+
+        from metabrowser.settings import ROLLUP_MAX_NODES
+
+        node_budget = [max_nodes if max_nodes is not None else ROLLUP_MAX_NODES]
 
         children_by_parent: dict[str, list[FsEntry]] = {}
         for entry in self._entries.values():
@@ -342,6 +365,7 @@ class InventoryIndex:
             }
 
         def _emit_dir(entry: FsEntry, remaining: int, parent_ignored: bool) -> dict[str, Any]:
+            node_budget[0] -= 1  # this directory node
             agg = aggs[entry.path]
             ignored = parent_ignored or entry.gitignored
             dominant = agg.ext_bytes.most_common(1)
@@ -358,7 +382,7 @@ class InventoryIndex:
                 "gitignored": ignored,
                 "dominant_ext": dominant[0][0] if dominant else "",
             }
-            if remaining <= 0:
+            if remaining <= 0 or node_budget[0] <= 0:
                 node["children"] = None
                 return node
 
@@ -374,10 +398,11 @@ class InventoryIndex:
             rest_files_unignored = 0
             rest_size_unignored = 0
             for child in ordered:
-                if len(emitted) < top:
+                if len(emitted) < top and node_budget[0] > 0:
                     if child.type == "dir":
                         emitted.append(_emit_dir(child, remaining - 1, ignored))
                     else:
+                        node_budget[0] -= 1
                         emitted.append(_file_node(child, ignored))
                 elif child.type == "dir":
                     child_agg = aggs[child.path]

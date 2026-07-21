@@ -123,8 +123,9 @@ The mechanics this feature needs already exist for files and for aggregates:
    changes as a DOM `CustomEvent`; the SDK wraps fetch-plus-refresh in a `watchRollup`
    helper with trailing debounce.
    No new SSE scope in this plan.
-9. **Toggle state persists in `localStorage`** under one key; toggles never appear in
-   the hash.
+9. **Toggle state persists through the SDK preference service** (`mb.prefs`, one
+   versioned key over host-only cookies so the choice survives across per-root ports);
+   toggles never appear in the hash.
 
 ### Server: Folder Envelope (`server.py`, `file_kinds.py`)
 
@@ -178,9 +179,14 @@ The mechanics this feature needs already exist for files and for aggregates:
 - `wire_models.py`: `RollupDirNode`, `RollupFileNode`, `RollupRest` TypedDicts and a
   recursive `validate_rollup_node`, following the `validate_tree_node` pattern, used by
   the route tests.
-- Budgets (measured in tests, not aspirations): `rollup()` at defaults on a synthetic
-  100k-entry index completes in ≤150 ms of server CPU and ≤128 KiB of pre-gzip JSON.
-  Exceeding either triggers decision 5’s cache escape hatch.
+- Bounds: `top` caps one directory and `ROLLUP_MAX_NODES` (1,200) caps the whole
+  response — a balanced tree multiplies per level, so only the global budget bounds
+  payloads. Enforced by tests: an adversarial 40×40×40 tree (64k files) emits exactly the
+  cap (~160 KiB pre-gzip, asserted <400 KiB) with rest buckets and `children: null`
+  sentinels marking every cut; query CPU is printed by the same tests (~250 ms at 65k
+  entries for the full-index adversarial case, single-digit ms on ordinary
+  repositories). A generation-keyed adjacency cache remains decision 5’s escape hatch if
+  scoped-request CPU becomes the bottleneck.
 
 ### Browser Shell (`app.js`, `styles.css`)
 
@@ -345,7 +351,7 @@ Independent of Phase 1; Phase 3 needs both.
 - [ ] Live refresh: `watchRollup` wiring end to end (filesystem change to ancestor
   upsert to debounced refetch to relayout), plus an integration test from a real
   filesystem mutation
-- [ ] History semantics for navigation equivalence: folder-to-folder navigation uses
+- [x] History semantics for navigation equivalence: folder-to-folder navigation uses
   `history.pushState` so browser back retraces zooms; file selection keeps
   `replaceState`; `popstate` routes through `navigateToPath`; DOM tests for the
   back-button trail

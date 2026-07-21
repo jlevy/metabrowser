@@ -12,9 +12,10 @@
 //   ("folder", "readme")  — the folder's direct-child README rendered
 //       through the markdown built-ins, or an explicit empty state.
 //
-// Geometry comes from treemap_layout.js (extra_scripts), state
-// persists under one localStorage key, and live refresh rides
-// mb.watchRollup's debounced /api/events signal.
+// Geometry comes from treemap_layout.js (extra_scripts), toggle state
+// persists through mb.prefs (host-only cookies, shared across per-root
+// ports), and live refresh rides mb.watchRollup's debounced
+// /api/events signal.
 
 (() => {
   const mb = window.metabrowser;
@@ -23,9 +24,35 @@
     return;
   }
 
-  /** Persisted toggle state (one key; absent fields fall to defaults). */
-  const STORAGE_KEY = "metabrowser.folder.treemap";
+  /** Persisted toggle state (one preference key; absent or invalid
+   * fields fall to defaults). Stored through mb.prefs so the choice
+   * survives across Metabrowser instances (each served root runs on
+   * its own port and therefore its own localStorage origin). */
+  const PREF_KEY = "folder.treemap";
+  const LEGACY_STORAGE_KEY = "metabrowser.folder.treemap";
   const DEFAULT_STATE = { metric: "size", grouping: "folder", color: "type", ignored: "dimmed" };
+  /** @type {Record<string, string[]>} */
+  const VALID_STATE_VALUES = {
+    metric: ["size", "files"],
+    grouping: ["folder", "type"],
+    color: ["type", "age"],
+    ignored: ["shown", "dimmed", "hidden"],
+  };
+
+  /** @param {unknown} raw @returns {Record<string, string>} */
+  function sanitizeState(raw) {
+    /** @type {Record<string, string>} */
+    const state = Object.assign({}, DEFAULT_STATE);
+    if (raw && typeof raw === "object") {
+      for (const key of Object.keys(VALID_STATE_VALUES)) {
+        const value = /** @type {Record<string, unknown>} */ (raw)[key];
+        if (typeof value === "string" && VALID_STATE_VALUES[key].includes(value)) {
+          state[key] = value;
+        }
+      }
+    }
+    return state;
+  }
   /** Label paint thresholds: name needs LABEL_MIN, the size sub-label SUB_MIN. */
   const LABEL_MIN_W = 56;
   const LABEL_MIN_H = 16;
@@ -34,24 +61,29 @@
   const AGE_MIN_W = 88;
 
   function loadState() {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return Object.assign({}, DEFAULT_STATE);
-      }
-      return Object.assign({}, DEFAULT_STATE, JSON.parse(raw));
-    } catch (_err) {
-      return Object.assign({}, DEFAULT_STATE);
+    const stored = mb.prefs.get(PREF_KEY, null);
+    if (stored !== null) {
+      return sanitizeState(stored);
     }
+    // One-time migration from the pre-prefs localStorage key (which
+    // was invisible to instances on other ports).
+    try {
+      const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy) {
+        const state = sanitizeState(JSON.parse(legacy));
+        mb.prefs.set(PREF_KEY, state);
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+        return state;
+      }
+    } catch (_err) {
+      // No usable legacy value; fall through to defaults.
+    }
+    return sanitizeState(null);
   }
 
   /** @param {Record<string, string>} state */
   function saveState(state) {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (_err) {
-      // Private-mode storage failures only cost persistence.
-    }
+    mb.prefs.set(PREF_KEY, sanitizeState(state));
   }
 
   /** @param {number | null | undefined} mtimeSec @returns {string} */
@@ -92,16 +124,43 @@
     return cls.join(" ");
   }
 
-  /** @param {Record<string, any>} cell @returns {string} */
-  function cellAriaLabel(cell) {
+  /**
+   * Value phrase for a cell under the active metric: byte sizes in
+   * Bytes mode, "N files" in Files mode (a file cell keeps its real
+   * byte size in either mode — "1 file" carries no information).
+   * @param {Record<string, any>} cell
+   * @param {Record<string, string>} state
+   * @returns {string}
+   */
+  function cellValueText(cell, state) {
+    if (cell.kind === "file") {
+      return mb.formatSize(cell.bytes ?? cell.value);
+    }
+    if (state.metric === "files") {
+      return `${cell.files ?? cell.value} files`;
+    }
+    return mb.formatSize(cell.kind === "ext" ? cell.bytes : cell.value);
+  }
+
+  /**
+   * @param {Record<string, any>} cell
+   * @param {Record<string, string>} state
+   * @returns {string}
+   */
+  function cellAriaLabel(cell, state) {
     if (cell.kind === "rest") {
-      return `${cell.files || 0} more items, ${mb.formatSize(cell.value)}`;
+      return `${cell.files || 0} more items, ${cellValueText(cell, state)}`;
     }
     if (cell.kind === "ext") {
       return `${cell.name}: ${cell.files} files, ${mb.formatSize(cell.bytes)}`;
     }
     const what = cell.kind === "dir" ? "folder" : "file";
-    return `${cell.name} (${what}, ${mb.formatSize(cell.value)})`;
+    return `${cell.name} (${what}, ${cellValueText(cell, state)})`;
+  }
+
+  /** @param {Record<string, any>} cell @returns {boolean} */
+  function cellIsActionable(cell) {
+    return cell.kind === "dir" || cell.kind === "file";
   }
 
   /**
@@ -172,26 +231,37 @@
       `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
       `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px`;
     const showLabel = cell.w >= LABEL_MIN_W && cell.h >= LABEL_MIN_H;
-    const showSub = showLabel && cell.h >= SUB_MIN_H && cell.kind !== "rest";
-    const sub =
-      state.metric === "files" && cell.kind !== "file"
-        ? `${cell.kind === "ext" ? cell.files : cell.value} files`
-        : mb.formatSize(cell.kind === "ext" ? cell.bytes : cell.value);
+    // Nested parents suppress the sublabel: the reserved header strip
+    // is one line tall, and a second line would overlap child cells.
+    const showSub = showLabel && cell.h >= SUB_MIN_H && cell.kind !== "rest" && !cell.nested;
+    const sub = cellValueText(cell, state);
     // The header's colored age chip rides next to the name (dir and
     // file cells only — ext/rest cells have no meaningful mtime).
     const ageHtml =
-      showLabel && cell.w >= AGE_MIN_W && (cell.kind === "dir" || cell.kind === "file")
-        ? mb.ageLabelHtml(cell.mtime)
-        : "";
+      showLabel && cell.w >= AGE_MIN_W && cellIsActionable(cell) ? mb.ageLabelHtml(cell.mtime) : "";
+    const aria = mb.escapeHtml(cellAriaLabel(cell, state));
+    const actionable = cellIsActionable(cell);
+    // A nested directory cell contains its children's cells, so the
+    // cell itself is a group and only its label strip is the button —
+    // no button-inside-button tree, and the click target matches the
+    // visible affordance.
+    const titleInteractive = actionable && cell.nested;
+    const titleAttrs = titleInteractive
+      ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
+      : "";
     const label = showLabel
-      ? `<span class="tm-cell-title"><span class="tm-cell-label">${mb.escapeHtml(cell.name)}</span>${
+      ? `<span class="tm-cell-title"${titleAttrs}><span class="tm-cell-label">${mb.escapeHtml(cell.name)}</span>${
           ageHtml ? `<span class="tm-cell-age">${ageHtml}</span>` : ""
         }</span>` + (showSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : "")
       : "";
+    const outerInteractive = actionable && !titleInteractive;
+    const outerAttrs = outerInteractive
+      ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
+      : ` role="group" aria-label="${aria}"`;
     return (
-      `<div class="${cellClasses(cell, state)}" role="button" tabindex="${index === 0 ? 0 : -1}"` +
-      ` data-tm-index="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
-      ` style="${style}" aria-label="${mb.escapeHtml(cellAriaLabel(cell))}">${label}</div>`
+      `<div class="${cellClasses(cell, state)}"${outerAttrs}` +
+      ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
+      ` style="${style}">${label}</div>`
     );
   }
 
@@ -270,7 +340,9 @@
     /** @type {Record<string, any>[]} */
     let cells = [];
     let disposed = false;
-    let focusIndex = 0;
+    /** @type {number[]} */
+    let actionableIndexes = [];
+    let focusPos = 0;
 
     container.innerHTML =
       toolbarHtml(state) +
@@ -305,19 +377,55 @@
       const html = cells.map((cell, i) => cellHtml(cell, state, i)).join("");
       viewport.innerHTML =
         html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
-      focusIndex = 0;
+      // Roving tabindex over actionable cells only (dir/file); ext and
+      // rest cells are descriptive groups outside the focus order.
+      actionableIndexes = [];
+      cells.forEach((cell, i) => {
+        if (cell.kind === "dir" || cell.kind === "file") {
+          actionableIndexes.push(i);
+        }
+      });
+      focusPos = 0;
+      const first = /** @type {HTMLElement | null} */ (
+        viewport.querySelector(`[data-tm-index="${actionableIndexes[0] ?? -1}"]`)
+      );
+      if (first) {
+        first.setAttribute("tabindex", "0");
+      }
     }
 
-    /** @param {Element | null} el @returns {Record<string, any> | null} */
+    /**
+     * Cell for hover/tooltip lookup: every cell carries data-tm-cell.
+     * @param {Element | null} el
+     * @returns {Record<string, any> | null}
+     */
     function cellForElement(el) {
       if (!el) {
         return null;
       }
-      const host = el.closest(".tm-cell");
+      const host = /** @type {HTMLElement | null} */ (el.closest("[data-tm-cell]"));
       if (!host) {
         return null;
       }
-      const idx = Number(/** @type {HTMLElement} */ (host).dataset.tmIndex);
+      const idx = Number(host.dataset.tmCell);
+      return Number.isInteger(idx) && idx >= 0 && idx < cells.length ? cells[idx] : null;
+    }
+
+    /**
+     * Cell for activation: only actionable elements carry data-tm-index
+     * (a nested directory's label strip, or the whole cell otherwise).
+     * @param {Element | null} el
+     * @returns {Record<string, any> | null}
+     */
+    function actionableCellForElement(el) {
+      if (!el) {
+        return null;
+      }
+      const host = /** @type {HTMLElement | null} */ (el.closest("[data-tm-index]"));
+      if (!host) {
+        return null;
+      }
+      const idx = Number(host.dataset.tmIndex);
       return Number.isInteger(idx) && idx >= 0 && idx < cells.length ? cells[idx] : null;
     }
 
@@ -331,18 +439,18 @@
       // rest / ext cells have no navigation target.
     }
 
-    /** @param {number} nextIndex */
-    function moveFocus(nextIndex) {
-      if (nextIndex < 0 || nextIndex >= cells.length) {
+    /** @param {number} nextPos position within actionableIndexes */
+    function moveFocus(nextPos) {
+      if (nextPos < 0 || nextPos >= actionableIndexes.length) {
         return;
       }
-      const prev = viewport.querySelector(`[data-tm-index="${focusIndex}"]`);
+      const prev = viewport.querySelector(`[data-tm-index="${actionableIndexes[focusPos]}"]`);
       if (prev) {
         prev.setAttribute("tabindex", "-1");
       }
-      focusIndex = nextIndex;
+      focusPos = nextPos;
       const next = /** @type {HTMLElement | null} */ (
-        viewport.querySelector(`[data-tm-index="${focusIndex}"]`)
+        viewport.querySelector(`[data-tm-index="${actionableIndexes[focusPos]}"]`)
       );
       if (next) {
         next.setAttribute("tabindex", "0");
@@ -351,7 +459,7 @@
     }
 
     viewport.addEventListener("click", (e) => {
-      const cell = cellForElement(/** @type {Element} */ (e.target));
+      const cell = actionableCellForElement(/** @type {Element} */ (e.target));
       if (cell) {
         activateCell(cell);
       }
@@ -371,16 +479,16 @@
     viewport.addEventListener("keydown", (e) => {
       const key = e.key;
       if (key === "Enter" || key === " ") {
-        const cell = cells[focusIndex];
+        const cell = cells[actionableIndexes[focusPos]];
         if (cell) {
           activateCell(cell);
         }
         e.preventDefault();
       } else if (key === "ArrowRight" || key === "ArrowDown") {
-        moveFocus(focusIndex + 1);
+        moveFocus(focusPos + 1);
         e.preventDefault();
       } else if (key === "ArrowLeft" || key === "ArrowUp") {
-        moveFocus(focusIndex - 1);
+        moveFocus(focusPos - 1);
         e.preventDefault();
       } else if (key === "Backspace") {
         if (ctx.path) {

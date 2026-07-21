@@ -34,8 +34,9 @@ gdu:
   silently. Terminal tools cap list length the same way.
 - **Color encodes one dimension at a time.** WinDirStat and GrandPerspective color by
   file type; DaisyDisk by depth ring; none mix encodings in one view.
-  Age coloring is uncommon in disk tools but matches Metabrowser’s existing tree
-  semantics, so it is the default here with type as the alternative.
+  Metabrowser colors by file type by default with age as the alternative, and always
+  shows the tree column’s colored age label beside cell names, so the second dimension
+  rides as text rather than a second fill encoding.
 - **Zoom is re-rooting.** Double-click (WinDirStat) or click (DaisyDisk, Baobab)
   re-roots the visualization at the chosen directory with a breadcrumb or up control to
   return — the same model as “zoom is navigation” in the plan.
@@ -64,8 +65,9 @@ prior-art convention of aggregating the tail.
   directory is homogeneous and neutral otherwise; kept, with the tooltip carrying the
   exact breakdown.
 - Nested directory cells intercept clicks over their area, so the parent’s activation
-  target is its label strip — the WinDirStat behavior; keyboard users get the parent
-  cell in layout order regardless.
+  target is its label strip — the WinDirStat behavior, made explicit: the strip is the
+  button (no nested interactive ancestors) and keyboard users reach the parent in layout
+  order regardless.
 
 ## References
 

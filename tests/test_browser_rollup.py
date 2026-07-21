@@ -15,6 +15,7 @@ import subprocess
 import time
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from metabrowser.events import FsEntry
 from metabrowser.inventory import InventoryIndex
@@ -128,6 +129,80 @@ def test_rollup_none_for_files_and_unknown_paths(tmp_path: Path) -> None:
     index = _build_index(tmp_path)
     assert index.rollup("file.txt", depth=2, top=10, ext_top=4) is None
     assert index.rollup("missing", depth=2, top=10, ext_top=4) is None
+
+
+def _count_nodes(node: dict[str, Any]) -> int:
+    children = node.get("children") or []
+    return 1 + sum(_count_nodes(child) for child in children)
+
+
+def test_rollup_global_node_budget_on_adversarial_branching() -> None:
+    """`top` bounds one directory, not the response: a balanced
+    40x40x40 tree would emit ~65k nodes (~8 MB JSON) without the
+    global budget. The budget caps emitted nodes and therefore payload
+    bytes regardless of tree shape; cut children fold into rest
+    buckets or children:null sentinels, and totals stay full-subtree.
+    """
+
+    import json
+
+    from metabrowser.settings import ROLLUP_MAX_NODES
+
+    index = InventoryIndex()
+    entries = index._entries  # synthetic index setup, test-only
+    mtime_ns = 1_700_000_000_000_000_000
+
+    def _add_dir(path: str, parent: str, name: str) -> None:
+        placeholder = FsEntry.for_observed_dir(path=path, parent=parent, name=name)
+        entries[path] = replace(placeholder, total_files=1, total_size=1, newest_mtime_ns=mtime_ns)
+
+    _add_dir("", "", "root")
+    total_files = 0
+    for a in range(40):
+        top_dir = f"d{a:02d}"
+        _add_dir(top_dir, "", top_dir)
+        for b in range(40):
+            mid_dir = f"{top_dir}/d{b:02d}"
+            _add_dir(mid_dir, top_dir, f"d{b:02d}")
+            for c in range(40):
+                file_path = f"{mid_dir}/f{c:02d}.py"
+                entries[file_path] = FsEntry.for_observed_file(
+                    path=file_path,
+                    parent=mid_dir,
+                    name=f"f{c:02d}.py",
+                    size=100 + c,
+                    mtime_ns=mtime_ns,
+                )
+                total_files += 1
+
+    result = index.rollup("", depth=3, top=40, ext_top=12)
+    assert result is not None
+    node = result["node"]
+    validate_rollup_node(node)
+
+    emitted = _count_nodes(node)
+    payload_bytes = len(json.dumps(result))
+    print(
+        f"adversarial rollup: {total_files} files -> {emitted} nodes, "
+        f"{payload_bytes:,} bytes (cap {ROLLUP_MAX_NODES} nodes)"
+    )
+    assert emitted <= ROLLUP_MAX_NODES
+    assert payload_bytes < 400_000, f"payload {payload_bytes:,} bytes exceeds the budget"
+    # Totals stay full-subtree even where emission was cut.
+    assert node["total_files"] == total_files
+
+    # The cut is visible, never silent: budget-exhausted directories
+    # carry the children:null lazy sentinel and/or a rest bucket.
+    def _has_cut_marker(n: dict[str, Any]) -> bool:
+        if n.get("children") is None or "rest" in n:
+            return True
+        return any(
+            _has_cut_marker(child)
+            for child in n.get("children") or []
+            if child.get("type") == "dir"
+        )
+
+    assert _has_cut_marker(node)
 
 
 def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:

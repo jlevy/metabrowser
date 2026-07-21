@@ -171,12 +171,15 @@ function fileNode(name, pathStr, size, extras) {
   );
   check("type cells", cells.length === 3, `${cells.length}`);
   check(
-    "type kind",
-    cells.every((c) => c.kind === "ext"),
-    "non-ext cell",
+    "type kinds",
+    cells.filter((c) => c.kind === "ext").length === 2 &&
+      cells.filter((c) => c.kind === "rest").length === 1,
+    cells.map((c) => c.kind).join(","),
   );
-  const other = cells.find((c) => c.ext === "");
+  const other = cells.find((c) => c.kind === "rest");
   check("rest ext labeled", !!other && other.name === "other", JSON.stringify(other));
+  const typeTotal = cells.reduce((s, c) => s + c.value, 0);
+  check("type value conservation", typeTotal === 6000 + 3000 + 1000, `${typeTotal}`);
   // files metric with hidden variant reads columns 3.
   const filesCells = layout.layoutTree(
     root,
@@ -195,14 +198,46 @@ function fileNode(name, pathStr, size, extras) {
   );
 }
 
-// ── maxCells cap + budget timing ────────────────────────────────
+// ── conservation under culling and the cap (R7 regression) ──────
 {
+  // Culling with NO server rest bucket: tiny slivers must fold into a
+  // synthesized remainder, never vanish.
+  const sliverRoot = dirNode("root", "", {
+    total_size: 10230,
+    children: [fileNode("big.py", "big.py", 10000)].concat(
+      Array.from({ length: 230 }, (_, i) => fileNode(`s${i}.py`, `s${i}.py`, 1)),
+    ),
+  });
+  const sliverCells = layout.layoutTree(sliverRoot, { w: 120, h: 60 }, { metric: "size" });
+  const sliverTotal = sliverCells.reduce((s, c) => s + c.value, 0);
+  check("cull conservation (value)", sliverTotal === 10230, `${sliverTotal}`);
+  const sliverArea = sliverCells.filter((c) => c.depth === 0).reduce((s, c) => s + c.w * c.h, 0);
+  check("cull conservation (area)", Math.abs(sliverArea - 120 * 60) < 1, `${sliverArea}`);
+  check(
+    "cull synthesizes remainder",
+    sliverCells.some((c) => c.kind === "rest" && c.value > 0),
+    JSON.stringify(sliverCells.map((c) => [c.kind, c.value]).slice(0, 5)),
+  );
+
+  // Cap exhaustion: the unemitted tail aggregates into the remainder
+  // instead of silently disappearing.
   const wide = dirNode("root", "", {
     children: Array.from({ length: 3000 }, (_, i) => fileNode(`f${i}.py`, `f${i}.py`, 3000 - i)),
   });
+  const wideTotal = wide.children.reduce((s, c) => s + c.size, 0);
   const capped = layout.layoutTree(wide, { w: 1200, h: 800 }, { metric: "size", maxCells: 100 });
   check("maxCells cap", capped.length <= 100, `${capped.length}`);
+  const cappedTotal = capped.reduce((s, c) => s + c.value, 0);
+  check("cap conservation (value)", cappedTotal === wideTotal, `${cappedTotal} vs ${wideTotal}`);
+  check(
+    "cap remainder present",
+    capped.some((c) => c.kind === "rest" && c.value > 0),
+    "no remainder after cap",
+  );
+}
 
+// ── budget timing ───────────────────────────────────────────────
+{
   // Budget: lay out a two-level tree that emits ~800 cells.
   const subdirs = Array.from({ length: 40 }, (_, d) =>
     dirNode(`d${d}`, `d${d}`, {

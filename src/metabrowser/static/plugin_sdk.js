@@ -425,6 +425,74 @@
     return "";
   }
 
+  // ── Preferences ─────────────────────────────────────────────────
+  //
+  // Versioned display-preference storage that survives across
+  // Metabrowser instances. Every served root runs on its own port and
+  // therefore its own browser origin, so localStorage silos per
+  // folder; host-only cookies ignore the port (the mechanism the
+  // theme already uses) and share small preferences across every
+  // local instance. Values are JSON, size-bounded, and versioned;
+  // consumers never learn which backend stores them. Not for
+  // sensitive data or absolute paths.
+  const PREF_COOKIE_PREFIX = "mbpref_";
+  const PREF_VERSION_TAG = "v1:";
+  const PREF_MAX_ENCODED_BYTES = 2048;
+  const PREF_MAX_AGE_S = 365 * 24 * 60 * 60;
+  const PREF_NAME_RE = /^[a-z][a-z0-9_.-]*$/i;
+
+  function _prefCookieName(name) {
+    return PREF_COOKIE_PREFIX + name.replace(/\./g, "_");
+  }
+
+  function prefsGet(name, fallback) {
+    if (typeof name !== "string" || !PREF_NAME_RE.test(name)) {
+      return fallback;
+    }
+    try {
+      const doc = global.document;
+      if (!doc || typeof doc.cookie !== "string") {
+        return fallback;
+      }
+      const key = `${_prefCookieName(name)}=`;
+      for (const part of doc.cookie.split("; ")) {
+        if (part.startsWith(key)) {
+          const raw = decodeURIComponent(part.slice(key.length));
+          if (!raw.startsWith(PREF_VERSION_TAG)) {
+            return fallback; // unknown future version: ignore, don't guess
+          }
+          return JSON.parse(raw.slice(PREF_VERSION_TAG.length));
+        }
+      }
+    } catch (_err) {
+      // Unreadable cookie or malformed JSON degrades to the fallback.
+    }
+    return fallback;
+  }
+
+  function prefsSet(name, value) {
+    if (typeof name !== "string" || !PREF_NAME_RE.test(name)) {
+      return false;
+    }
+    try {
+      const doc = global.document;
+      if (!doc || typeof doc.cookie !== "string") {
+        return false;
+      }
+      const encoded = encodeURIComponent(PREF_VERSION_TAG + JSON.stringify(value));
+      if (encoded.length > PREF_MAX_ENCODED_BYTES) {
+        console.warn(`prefs.set(${name}): value exceeds ${PREF_MAX_ENCODED_BYTES} bytes; ignored`);
+        return false;
+      }
+      doc.cookie = `${_prefCookieName(name)}=${encoded}; path=/; max-age=${PREF_MAX_AGE_S}; samesite=lax`;
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  const prefs = { get: prefsGet, set: prefsSet };
+
   function formatKpressError(payload, status) {
     const body = payload && typeof payload === "object" ? payload : {};
     const base = body.error || "KPress render failed";
@@ -1043,6 +1111,7 @@
     ageLabelHtml: ageLabelHtml,
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
+    prefs: prefs,
     openPath: openPath,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,

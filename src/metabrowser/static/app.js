@@ -2416,7 +2416,7 @@ var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
-async function selectFile(path, skipHash) {
+async function selectFile(path, skipHistory) {
   return _perf.measureAsync(
     "selectFile",
     async () => {
@@ -2424,10 +2424,8 @@ async function selectFile(path, skipHash) {
       // the same file) starts fresh.
       closeLiveStream();
       currentPath = path;
-      // Update URL hash for deep-linking (replaceState — lateral navigation, not history).
-      if (!skipHash) {
-        history.replaceState(null, "", `#${encodeURIComponent(path)}`);
-      }
+      // The route write happens once, after the response identifies
+      // whether the path is a file or a folder — see commitRoute.
       const preview = document.getElementById("preview-pane");
       if (!preview) {
         return;
@@ -2441,6 +2439,7 @@ async function selectFile(path, skipHash) {
       const cached = fileCache.get(path);
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
+        commitRoute(path, cached.kind === "folder", skipHistory);
         renderFile(cached);
         maybeOpenLiveStream(path, cached);
         return;
@@ -2455,6 +2454,7 @@ async function selectFile(path, skipHash) {
           return;
         }
         disposeActivePluginViews();
+        stopFolderHeaderRefresh();
         preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
@@ -2486,6 +2486,7 @@ async function selectFile(path, skipHash) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
+            commitRoute(path, cached.kind === "folder", skipHistory);
             renderFile(cached);
             maybeOpenLiveStream(path, cached);
           }
@@ -2504,15 +2505,9 @@ async function selectFile(path, skipHash) {
           () => resp.json(),
           responsePerfMeta(resp, path),
         );
-        if (data.kind === "folder") {
+        if (data.kind !== "folder") {
           // Folder envelopes are no-store (aggregates move during a
-          // scan): keep them out of the file cache and ETag books, and
-          // rewrite the hash with the directory marker now that the
-          // server confirmed the path is a folder.
-          if (!skipHash) {
-            writeHashForPath(path, true);
-          }
-        } else {
+          // scan): keep them out of the file cache and ETag books.
           cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
           const etagHeader = resp.headers.get("etag");
           if (etagHeader) {
@@ -2526,6 +2521,7 @@ async function selectFile(path, skipHash) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
+          commitRoute(path, data.kind === "folder", skipHistory);
           renderFile(data);
           maybeOpenLiveStream(path, data);
         }
@@ -2539,20 +2535,22 @@ async function selectFile(path, skipHash) {
             loadingIndicatorTimer = null;
           }
           disposeActivePluginViews();
+          stopFolderHeaderRefresh();
           preview.innerHTML = `<div class="preview-empty">Error: ${esc(errorMessage(err))}</div>`;
         }
       }
     },
-    { path: path, skip_hash: !!skipHash },
+    { path: path, skip_history: !!skipHistory },
   );
 }
 
 // ── File rendering ──────────────────────────────────────────────
 
-// Breadcrumb / up-button navigation target for folder headers. On
-// window because header HTML uses inline onclick (same pattern as
-// copyPath). "" is the served root.
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated header HTML.
+// Folder navigation targets never ride in inline handlers: an inline
+// onclick HTML-decodes its attribute before compiling JavaScript, so a
+// filename containing a quote re-opens the string no matter how it was
+// HTML-escaped. Buttons carry the raw path in data-nav-dir and one
+// delegated listener (installed in init) reads it back via dataset.
 function navigateToFolder(path) {
   navigateToPath(path === "" ? "/" : `${path}/`);
 }
@@ -2563,32 +2561,24 @@ function renderFolderHeader(data) {
   var path = typeof data.path === "string" ? data.path : "";
   var segments = path ? path.split("/") : [];
   var rootCrumb =
-    '<button class="folder-crumb folder-crumb-root" onclick="navigateToFolder(\'\')" title="Served root">/</button>';
+    '<button class="folder-crumb folder-crumb-root" data-nav-dir="" title="Served root">/</button>';
   var crumbs = [];
   var prefix = "";
   for (var i = 0; i < segments.length; i++) {
     prefix = prefix ? `${prefix}/${segments[i]}` : segments[i];
-    var escapedArg = esc(prefix).replace(/'/g, "\\'");
     var isLast = i === segments.length - 1;
     crumbs.push(
       isLast
         ? `<span class="folder-crumb folder-crumb-current">${esc(segments[i])}</span>`
-        : `<button class="folder-crumb" onclick="navigateToFolder('${escapedArg}')">${esc(segments[i])}</button>`,
+        : `<button class="folder-crumb" data-nav-dir="${esc(prefix)}">${esc(segments[i])}</button>`,
     );
   }
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
-  var upEscaped = parent === null ? "" : esc(parent).replace(/'/g, "\\'");
   var upButton =
     parent === null
       ? '<button class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" disabled>↑</button>'
-      : `<button class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" onclick="navigateToFolder('${upEscaped}')">↑</button>`;
-  var dirInfo = data.dir || {};
-  var summary =
-    sizeHtml(dirInfo.total_size, "file-header-size") +
-    (typeof dirInfo.total_files === "number"
-      ? `<span class="folder-header-count">${dirInfo.total_files} files</span>`
-      : "") +
-    `<span class="folder-header-age">${formatAge(dirInfo.mtime ?? 0)}</span>`;
+      : `<button class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" data-nav-dir="${esc(parent)}">↑</button>`;
+  var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
   return (
     '<div class="file-header folder-header">' +
     upButton +
@@ -2596,6 +2586,112 @@ function renderFolderHeader(data) {
     summary +
     "</div>"
   );
+}
+
+// Aggregate strip of the folder header. Split out so the live
+// refresher below can patch it in place when the inventory changes.
+function folderHeaderSummaryHtml(dirInfo) {
+  return (
+    sizeHtml(dirInfo.total_size, "file-header-size") +
+    (typeof dirInfo.total_files === "number"
+      ? `<span class="folder-header-count">${dirInfo.total_files} files</span>`
+      : "") +
+    `<span class="folder-header-age">${formatAge(dirInfo.mtime ?? 0)}</span>`
+  );
+}
+
+// ── Folder header live refresh ──────────────────────────────────
+//
+// The folder envelope is no-store, so its header aggregates would
+// otherwise freeze at first render while the treemap keeps updating.
+// While a folder is previewed, inventory-change events touching its
+// subtree (deep changes surface via ancestor aggregate upserts)
+// trigger a debounced envelope refetch that patches the summary strip
+// in place — the server envelope stays the single authority.
+
+/** @type {{path: string, timer: number | null, listener: (e: Event) => void} | null} */
+var activeFolderHeaderRefresh = null;
+
+function stopFolderHeaderRefresh() {
+  if (!activeFolderHeaderRefresh) {
+    return;
+  }
+  window.removeEventListener("metabrowser:inventory-change", activeFolderHeaderRefresh.listener);
+  if (activeFolderHeaderRefresh.timer) {
+    clearTimeout(activeFolderHeaderRefresh.timer);
+  }
+  activeFolderHeaderRefresh = null;
+}
+
+// Change-relevance predicate shared with the SDK's watchRollup: the
+// change is the folder itself, inside it, or an ancestor (ancestor
+// upserts are how deep changes surface at the depth-2 event scope).
+function pathsTouchFolder(changedPaths, folderPath) {
+  if (!Array.isArray(changedPaths)) {
+    return true; // snapshot / resync
+  }
+  for (var i = 0; i < changedPaths.length; i++) {
+    var changed = changedPaths[i];
+    if (typeof changed !== "string") {
+      continue;
+    }
+    if (
+      changed === folderPath ||
+      folderPath === "" ||
+      changed === "" ||
+      changed.startsWith(`${folderPath}/`) ||
+      folderPath.startsWith(`${changed}/`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function startFolderHeaderRefresh(path) {
+  stopFolderHeaderRefresh();
+  var debounceMs = _METABROWSER_SETTINGS.ROLLUP_WATCH_DEBOUNCE_MS || 1000;
+  /** @type {{path: string, timer: number | null, listener: (e: Event) => void}} */
+  var refresher = {
+    path: path,
+    timer: null,
+    listener: (evt) => {
+      var detail = evt instanceof CustomEvent && evt.detail ? evt.detail : {};
+      if (!pathsTouchFolder(detail.paths, path)) {
+        return;
+      }
+      if (refresher.timer) {
+        clearTimeout(refresher.timer);
+      }
+      refresher.timer = setTimeout(async () => {
+        refresher.timer = null;
+        if (activeFolderHeaderRefresh !== refresher || currentPath !== path) {
+          return;
+        }
+        try {
+          var resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+          if (!resp.ok) {
+            return;
+          }
+          var data = await resp.json();
+          if (activeFolderHeaderRefresh !== refresher || currentPath !== path) {
+            return;
+          }
+          if (data.kind !== "folder") {
+            return;
+          }
+          var summaryEl = document.querySelector("#preview-pane .folder-header-summary");
+          if (summaryEl) {
+            summaryEl.innerHTML = folderHeaderSummaryHtml(data.dir || {});
+          }
+        } catch (_err) {
+          // Transient refresh failure; the next change retries.
+        }
+      }, debounceMs);
+    },
+  };
+  window.addEventListener("metabrowser:inventory-change", refresher.listener);
+  activeFolderHeaderRefresh = refresher;
 }
 
 // Build badges based on file kind (data-driven)
@@ -2818,18 +2914,20 @@ function renderFile(data) {
 
       // Build header — folders get breadcrumb chrome (renderFolderHeader),
       // files the path/badges/size strip.
-      let html;
+      let html = "";
       if (data.kind === "folder") {
         html = renderFolderHeader(data);
+        startFolderHeaderRefresh(data.path);
       } else {
+        stopFolderHeaderRefresh();
+      }
+      if (data.kind !== "folder") {
         var badges = renderBadges(data);
         html = '<div class="file-header">';
         html +=
           '<span class="file-header-path">' +
           esc(data.path) +
-          '<button class="file-header-copy" onclick="copyPath(this, \'' +
-          esc(data.path).replace(/'/g, "\\'") +
-          '\')" title="Copy path">' +
+          `<button class="file-header-copy" data-copy-path="${esc(data.path)}" title="Copy path">` +
           ICON_COPY +
           "</button>" +
           "</span>";
@@ -3042,7 +3140,6 @@ function toggleEvent(header) {
 
 // ── Charts loading + rendering ──────────────────────────────────
 
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 function copyPath(btn, path) {
   navigator.clipboard.writeText(path).then(() => {
     btn.classList.add("copied");
@@ -3053,6 +3150,27 @@ function copyPath(btn, path) {
     }, 1500);
   });
 }
+
+// Delegated handlers for header controls. Paths ride in data-*
+// attributes (HTML-escaped at render, decoded by dataset) instead of
+// inline onclick handlers, which HTML-decode their attribute before
+// compiling JavaScript and therefore cannot safely carry filenames
+// containing quotes.
+document.addEventListener("click", (e) => {
+  var origin = eventTargetElement(e);
+  if (!origin) {
+    return;
+  }
+  var navBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-dir]"));
+  if (navBtn && !navBtn.hasAttribute("disabled")) {
+    navigateToFolder(navBtn.dataset.navDir ?? "");
+    return;
+  }
+  var copyBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-copy-path]"));
+  if (copyBtn && typeof copyBtn.dataset.copyPath === "string") {
+    copyPath(copyBtn, copyBtn.dataset.copyPath);
+  }
+});
 
 // biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 function copyContent(btn) {
@@ -3991,13 +4109,30 @@ function splitHashRoute(route) {
   return { path: route, isDir: false };
 }
 
-// Write the location hash for a path. Directories carry a trailing
-// slash (the served root is "#/") so parseHashRoute can tell them from
-// in-document anchors; files keep the existing encoded form.
-/** @param {string} path @param {boolean} isDir */
-function writeHashForPath(path, isDir) {
-  var frag = isDir ? `${encodeURIComponent(path)}/` : encodeURIComponent(path);
-  history.replaceState(null, "", `#${frag}`);
+// ── Route writing ───────────────────────────────────────────────
+//
+// One writer for the location hash, called once per navigation after
+// the response has identified the path as file or folder. Directories
+// carry a trailing slash (the served root is "#/") so parseHashRoute
+// can tell them from in-document anchors. History semantics: a route
+// CHANGE pushes an entry (browser Back retraces zooms and file opens);
+// re-writing the same route — canonicalization, refreshes, popstate/
+// hashchange-driven renders — replaces in place.
+
+/** @type {{path: string, isDir: boolean} | null} */
+var lastWrittenRoute = null;
+
+/** @param {string} path @param {boolean} isDir @param {boolean | undefined} skipHistory */
+function commitRoute(path, isDir, skipHistory) {
+  var frag = isDir ? (path ? `${encodeURIComponent(path)}/` : "/") : encodeURIComponent(path);
+  var routeChanged =
+    !lastWrittenRoute || lastWrittenRoute.path !== path || lastWrittenRoute.isDir !== isDir;
+  if (!skipHistory && routeChanged) {
+    history.pushState(null, "", `#${frag}`);
+  } else {
+    history.replaceState(null, "", `#${frag}`);
+  }
+  lastWrittenRoute = { path: path, isDir: isDir };
 }
 
 function serverInitialPath() {
@@ -4042,7 +4177,7 @@ async function revealInTree(path) {
   var current = "";
   for (var i = 0; i < segments.length - 1; i++) {
     current = current ? `${current}/${segments[i]}` : segments[i];
-    var folder = queryHtml(`.tree-folder[data-path="${current}"]`);
+    var folder = queryHtml(`.tree-folder[data-path="${escapePathForSelector(current)}"]`);
     if (folder) {
       var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
@@ -4057,7 +4192,7 @@ async function revealInTree(path) {
       }
     }
   }
-  var target = document.querySelector(`.tree-item[data-path="${path}"]`);
+  var target = document.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`);
   if (!target) {
     return false;
   }
@@ -4066,15 +4201,16 @@ async function revealInTree(path) {
   return true;
 }
 
-async function navigateToPath(path) {
-  // selectFile owns the hash write (skipHash=false): callers include
-  // breadcrumbs, treemap cells, and plugin openPath, where the hash is
-  // not set yet. hashchange-driven calls rewrite an identical value,
-  // which replaceState makes a no-op.
+async function navigateToPath(path, skipHistory) {
+  // selectFile owns the route write (commitRoute) once the response
+  // identifies file vs folder. skipHistory is set by history-driven
+  // callers (popstate, hashchange, init) whose entries already exist;
+  // user-initiated callers (breadcrumbs, treemap cells, plugin
+  // openPath) leave it unset so route changes push entries.
   if (path === "" || path === "/") {
     // The served root has no tree row; select it directly (folder view).
     setSelectedPath(null);
-    selectFile("", false);
+    selectFile("", skipHistory);
     return;
   }
   var normalized = path.replace(/\/+$/, "");
@@ -4082,19 +4218,34 @@ async function navigateToPath(path) {
   // route) may not resolve to a DOM node, but the preview should still
   // open — selectFile handles files and folders alike.
   await revealInTree(normalized);
-  selectFile(normalized, false);
+  selectFile(normalized, skipHistory);
 }
 
-window.addEventListener("hashchange", () => {
+// One handler serves both history traversal (popstate) and manual hash
+// edits (hashchange); Back/Forward over our pushed entries fires both,
+// and the currentPath guard makes the second firing a no-op.
+/** @param {Event} event */
+function handleRouteChange(event) {
   var route = parseHashRoute();
   if (!route) {
+    // An empty route on hashchange is an in-document anchor (#section)
+    // the browser scrolls natively — leave it alone. On popstate it
+    // means Back reached the initial pre-navigation entry: restore the
+    // landing view instead of leaving the stale preview in place.
+    if (event.type === "popstate" && lastWrittenRoute) {
+      var fallback = serverInitialPath();
+      navigateToPath(fallback ? fallback : "/", true);
+    }
     return;
   }
   var parts = splitHashRoute(route);
   if (parts.path !== currentPath) {
-    navigateToPath(route);
+    navigateToPath(route, true);
   }
-});
+}
+
+window.addEventListener("hashchange", handleRouteChange);
+window.addEventListener("popstate", handleRouteChange);
 
 window.addEventListener("metabrowser:open-path", (event) => {
   if (!(event instanceof CustomEvent)) {
@@ -4165,7 +4316,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else if (!initialIsDir) {
     var readme = findRootReadme();
     if (readme) {
-      navigateToPath(readme);
+      navigateToPath(readme, true);
     } else {
       // No hash, no server-seeded file, no root README: land on the
       // root folder view (treemap) instead of the empty pane.

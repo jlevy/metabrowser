@@ -168,6 +168,104 @@
   }
 
   /**
+   * Pack weighted items into `rect` within a cell-count capacity while
+   * conserving represented weight. Two passes: items cut by capacity
+   * plus items whose first-pass rectangle falls under `minPx` merge
+   * into one remainder item, then geometry is recomputed from the
+   * final weights so every emitted rectangle's area matches the weight
+   * it represents — nothing is dropped silently.
+   *
+   * @param {WeightedItem[]} items  sorted descending by value; at most
+   *   one `{rest: true}` seed carrying server-side remainder weight
+   * @param {Rect} rect
+   * @param {number} capacity  max rects to emit, including the remainder
+   * @param {number} minPx
+   * @returns {{placed: {item: WeightedItem, x: number, y: number, w: number, h: number}[],
+   *   remainder: {x: number, y: number, w: number, h: number, value: number, count: number} | null}}
+   */
+  function packLevel(items, rect, capacity, minPx) {
+    /** @type {{item: WeightedItem, x: number, y: number, w: number, h: number}[]} */
+    const none = [];
+    if (capacity <= 0 || items.length === 0 || rect.w <= 0 || rect.h <= 0) {
+      return { placed: none, remainder: null };
+    }
+    let remainderValue = 0;
+    let remainderCount = 0;
+    /** @type {WeightedItem[]} */
+    let survivors = [];
+    for (const it of items) {
+      if (it.rest) {
+        remainderValue += it.value;
+        remainderCount += Number(it.count) || 0;
+      } else if (it.value > 0) {
+        survivors.push(it);
+      }
+    }
+
+    /** @param {WeightedItem[]} kept @param {WeightedItem[]} cut */
+    const foldCut = (kept, cut) => {
+      for (const it of cut) {
+        remainderValue += it.value;
+        remainderCount += Number(it.count) || 0;
+      }
+      survivors = kept;
+    };
+
+    // Capacity pass: reserve one slot for the remainder when anything
+    // must fold into it.
+    const needsRemainderSlot = () => remainderValue > 0 || false;
+    let limit = capacity - (needsRemainderSlot() ? 1 : 0);
+    if (survivors.length > limit) {
+      limit = Math.max(0, capacity - 1);
+      foldCut(survivors.slice(0, limit), survivors.slice(limit));
+    }
+
+    /** @returns {{item: WeightedItem, x: number, y: number, w: number, h: number}[]} */
+    const layoutOnce = () => {
+      /** @type {WeightedItem[]} */
+      const withRemainder = survivors.slice();
+      if (remainderValue > 0) {
+        withRemainder.push({ value: remainderValue, rest: true });
+      }
+      withRemainder.sort((a, b) => b.value - a.value);
+      return squarify(withRemainder, rect);
+    };
+
+    let placed = layoutOnce();
+    const tooSmall = placed.filter((p) => !p.item.rest && (p.w < minPx || p.h < minPx));
+    if (tooSmall.length > 0) {
+      const cutSet = new Set(tooSmall.map((p) => p.item));
+      foldCut(
+        survivors.filter((it) => !cutSet.has(it)),
+        survivors.filter((it) => cutSet.has(it)),
+      );
+      // Final pass: geometry from the final weights. Any rect still
+      // tiny after this is emitted anyway — its area stays true.
+      placed = layoutOnce();
+    }
+
+    /** @type {{x: number, y: number, w: number, h: number, value: number, count: number} | null} */
+    let remainder = null;
+    /** @type {{item: WeightedItem, x: number, y: number, w: number, h: number}[]} */
+    const emitted = [];
+    for (const p of placed) {
+      if (p.item.rest) {
+        remainder = {
+          x: p.x,
+          y: p.y,
+          w: p.w,
+          h: p.h,
+          value: remainderValue,
+          count: remainderCount,
+        };
+      } else {
+        emitted.push(p);
+      }
+    }
+    return { placed: emitted, remainder };
+  }
+
+  /**
    * Flatten a rollup tree (or ext tallies) into positioned cells.
    *
    * @param {Record<string, any>} rootNode  /api/rollup `node`
@@ -192,19 +290,25 @@
       const items = tallies
         .map((row) => ({
           value: opts.metric === "files" ? (hidden ? row[3] : row[1]) : hidden ? row[4] : row[2],
+          count: hidden ? row[3] : row[1],
+          // The server's remainder tally row (ext "") seeds the rest cell.
+          rest: row[0] === "",
           ext: row[0],
           files: hidden ? row[3] : row[1],
           bytes: hidden ? row[4] : row[2],
         }))
         .filter((it) => it.value > 0)
         .sort((a, b) => b.value - a.value);
-      for (const p of squarify(items, { x: 0, y: 0, w: viewport.w, h: viewport.h })) {
-        if (p.w < opts.minCellPx || p.h < opts.minCellPx) {
-          continue;
-        }
+      const packedTypes = packLevel(
+        items,
+        { x: 0, y: 0, w: viewport.w, h: viewport.h },
+        opts.maxCells,
+        opts.minCellPx,
+      );
+      for (const p of packedTypes.placed) {
         cells.push({
           kind: "ext",
-          name: p.item.ext === "" ? "other" : p.item.ext,
+          name: p.item.ext,
           ext: p.item.ext,
           path: "",
           x: p.x,
@@ -215,6 +319,22 @@
           value: p.item.value,
           files: p.item.files,
           bytes: p.item.bytes,
+        });
+      }
+      if (packedTypes.remainder) {
+        cells.push({
+          kind: "rest",
+          name: "other",
+          ext: "",
+          path: "",
+          x: packedTypes.remainder.x,
+          y: packedTypes.remainder.y,
+          w: packedTypes.remainder.w,
+          h: packedTypes.remainder.h,
+          depth: 0,
+          value: packedTypes.remainder.value,
+          files: packedTypes.remainder.count,
+          bytes: packedTypes.remainder.value,
         });
       }
       return cells;
@@ -231,57 +351,31 @@
       const children = Array.isArray(dirNode.children) ? dirNode.children : [];
       /** @type {WeightedItem[]} */
       const items = [];
-      const restVal = dirNode.rest ? restValue(dirNode.rest, opts) : 0;
-      const restCount = dirNode.rest
-        ? opts.ignored === "hidden"
-          ? dirNode.rest.unignored_files
-          : dirNode.rest.files
-        : 0;
+      const hidden = opts.ignored === "hidden";
       for (const child of children) {
         const value = nodeValue(child, opts);
         if (value > 0) {
-          items.push({ value, node: child });
+          items.push({
+            value,
+            count: child.type === "dir" ? (hidden ? child.unignored_files : child.total_files) : 1,
+            node: child,
+          });
         }
+      }
+      const restVal = dirNode.rest ? restValue(dirNode.rest, opts) : 0;
+      if (restVal > 0) {
+        items.push({
+          value: restVal,
+          count: hidden ? dirNode.rest.unignored_files : dirNode.rest.files,
+          rest: true,
+        });
       }
       items.sort((a, b) => b.value - a.value);
-      if (restVal > 0) {
-        items.push({ value: restVal, node: null, rest: true });
-      }
 
-      const placed = squarify(items, rect);
+      const packed = packLevel(items, rect, opts.maxCells - cells.length, opts.minCellPx);
       /** @type {{cell: Record<string, any>, node: Record<string, any>}[]} */
       const nestable = [];
-      let culledValue = 0;
-      let culledCount = 0;
-      /** @type {Record<string, any> | null} */
-      let restCell = null;
-
-      for (const p of placed) {
-        if (cells.length >= opts.maxCells) {
-          break;
-        }
-        const tooSmall = p.w < opts.minCellPx || p.h < opts.minCellPx;
-        if (p.item.rest || tooSmall) {
-          if (tooSmall) {
-            culledValue += p.item.value;
-            culledCount += 1;
-            continue;
-          }
-          restCell = {
-            kind: "rest",
-            name: "…",
-            path: dirNode.path,
-            x: p.x,
-            y: p.y,
-            w: p.w,
-            h: p.h,
-            depth,
-            value: p.item.value,
-            files: restCount,
-          };
-          cells.push(restCell);
-          continue;
-        }
+      for (const p of packed.placed) {
         const node = p.item.node;
         const cell = {
           kind: node.type,
@@ -293,6 +387,10 @@
           h: p.h,
           depth,
           value: p.item.value,
+          // Real magnitudes regardless of the active metric, so labels
+          // can always show true bytes/counts.
+          bytes: node.type === "dir" ? (hidden ? node.unignored_size : node.total_size) : node.size,
+          files: p.item.count,
           mtime: node.mtime,
           ext: node.type === "dir" ? node.dominant_ext : node.ext,
           gitignored: !!node.gitignored,
@@ -310,12 +408,19 @@
           nestable.push({ cell, node });
         }
       }
-
-      // Fold culled slivers into the rest cell so their share of the
-      // area is not silently missing from the picture.
-      if (culledValue > 0 && restCell) {
-        restCell.value += culledValue;
-        restCell.files = (restCell.files || 0) + culledCount;
+      if (packed.remainder) {
+        cells.push({
+          kind: "rest",
+          name: "…",
+          path: dirNode.path,
+          x: packed.remainder.x,
+          y: packed.remainder.y,
+          w: packed.remainder.w,
+          h: packed.remainder.h,
+          depth,
+          value: packed.remainder.value,
+          files: packed.remainder.count,
+        });
       }
 
       for (const entry of nestable) {
@@ -336,6 +441,6 @@
     return cells;
   }
 
-  const api = { LAYOUT_DEFAULTS, squarify, layoutTree, worstAspect };
+  const api = { LAYOUT_DEFAULTS, squarify, packLevel, layoutTree, worstAspect };
   /** @type {any} */ (globalThis).MetabrowserTreemapLayout = api;
 })();

@@ -54,7 +54,11 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
 
     assert 'onclick="loadMoreCurrentText()"' in app
     assert "async function loadMoreCurrentText()" in app
-    assert 'onclick="copyPath(this,' in app
+    # Header copy/navigation buttons carry paths in data-* attributes
+    # consumed by a delegated listener (inline onclick would HTML-decode
+    # quotes back into the JavaScript string).
+    assert "data-copy-path=" in app
+    assert "data-nav-dir=" in app
     assert "function copyPath(btn, path)" in app
     assert "content-copy-btn" in sdk
     assert "_copyDelegationInstalled" in sdk
