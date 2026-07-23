@@ -687,10 +687,24 @@
     function isVisible() {
       return viewport.isConnected !== false && viewport.offsetParent !== null;
     }
-    const watch = mb.watchRollup(ctx.path, { active: isVisible }, (env) => {
-      envelope = env;
-      relayout();
-    });
+    const watch = mb.watchRollup(
+      ctx.path,
+      {
+        active: isVisible,
+        onError: (/** @type {unknown} */ err) => {
+          if (disposed || envelope) {
+            return; // A stale map beats an error card; retry is armed.
+          }
+          viewport.innerHTML =
+            '<div class="preview-empty">Rollup failed — retrying on the next filesystem change</div>';
+          status.textContent = `Rollup failed: ${err instanceof Error ? err.message : String(err)}`;
+        },
+      },
+      (env) => {
+        envelope = env;
+        relayout();
+      },
+    );
     // When the tab shows again after changes were skipped, catch up.
     const intersectionObserver =
       typeof IntersectionObserver !== "undefined"

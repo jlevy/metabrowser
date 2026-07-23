@@ -363,6 +363,16 @@
         const isAbort = err instanceof Error && err.name === "AbortError";
         if (!disposed && !isAbort) {
           console.warn("watchRollup refresh failed:", err);
+          // Surface the failure to the view (opts.onError) so it can
+          // replace its loading state; the watch stays armed and the
+          // next inventory change retries.
+          if (typeof options.onError === "function") {
+            try {
+              options.onError(err);
+            } catch (_cbErr) {
+              // A failing error handler must not kill the watch.
+            }
+          }
         }
       }
     }
