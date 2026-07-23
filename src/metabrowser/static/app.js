@@ -1506,7 +1506,9 @@ treePane.addEventListener("click", (e) => {
   // The chevron hotspot expands/collapses without selecting; anywhere
   // else on a folder row selects the folder for preview (select-dir).
   const isToggleHotspot = !!target.closest('[data-role="toggle"]');
-  if (action === "toggle" || isToggleHotspot) {
+  // Shift+click keeps its historical meaning on the whole folder row
+  // (recursive expand/collapse), not just the chevron hotspot.
+  if (action === "toggle" || isToggleHotspot || (e.shiftKey && action === "select-dir")) {
     var children = /** @type {HTMLElement | null} */ (item.nextElementSibling);
     if (!children) {
       return;
@@ -2547,6 +2549,8 @@ async function selectFile(path, skipHistory) {
           // failure; URL and state describe the last rendered location.
           if (lastWrittenRoute) {
             commitRoute(lastWrittenRoute.path, lastWrittenRoute.isDir, true);
+            // The tree highlight must follow the same rollback.
+            setSelectedPath(currentPath ?? "");
           }
         }
       }
