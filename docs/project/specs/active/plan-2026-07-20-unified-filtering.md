@@ -76,6 +76,40 @@ What exists, and what each piece contributes to the unified model:
 
 ## Design
 
+### Resolved Decisions
+
+Defaults chosen to unblock implementation; each is cheap to change during review.
+
+1. **Current means the active tracker’s live files, exactly.** No hidden fallback to a
+   short age window: composing Current with an age filter is explicit in the menu, and a
+   fully-dimmed tree when nothing is live is honest.
+   Rollup nodes carry no activity flag, so the treemap ignores the activity dimension in
+   v1 and its caption says so while Current is on.
+2. **Filter state stays out of the URL hash and persists per-user through `mb.prefs`**
+   (host-only cookies shared across per-root ports — the spec predates `mb.prefs`;
+   localStorage is superseded).
+   The nav bar always shows an active-filter badge and a Clear action so persisted
+   filters are never invisible state.
+3. **The type menu unit is the `ft-*` family via `mb.fileTypeClass`** — the same
+   classifier that colors filenames everywhere, so the filter can never disagree with
+   the colors. `FilterState.types` also accepts exact logical extensions for future
+   surfaces; the v1 menu lists families only, and a family matches its subtypes (`md`
+   matches `md-runbook`).
+4. **The Recent preset defaults to the tab’s `24h` window**, adjustable in the menu from
+   the `RECENT_WINDOWS` set (minus `all`).
+5. **v1 has no standalone mode switch: age and type apply as dim everywhere; visibility
+   keeps its three-state.** The hide half needs completeness guarantees (filtered rollup
+   aggregates server-side; `/api/search` for the nav) and lands in Phase 2. Visibility’s
+   `hidden` already has server support (`unignored_*` aggregates in the treemap) and
+   applies to the nav as a client-side prune of gitignored subtrees.
+6. **Filtering is a decoration layer over the tree, not a render fork.** The nav applies
+   filter classes by walking rendered rows (every predicate input — mtime, name,
+   gitignored, active — is already on the row), on filter changes and debounced after
+   inventory patches. Render paths stay untouched, so no-filter behavior is
+   byte-identical to today.
+7. **The Recent chip filters the Files tree; the Recent tab is untouched until the Phase
+   3 parity checklist passes.** Nothing existing changes shape in Phase 1.
+
 ### The Vocabulary
 
 Three orthogonal parts, fixed across surfaces:
@@ -100,11 +134,13 @@ dims cells or relayouts.
 ### FilterState (core shell)
 
 - New strict module `static/filter_state.js` exposing `window.MetabrowserFilterState`:
-  `get()`, `set(patch)`, `subscribe(listener)`, `clear()`, and the preset definitions.
-  State shape:
-  `{current: bool, ageWindow: "1h"|"24h"|"7d"|"30d"|null, types: string[]|null, ignored: "shown"|"dimmed"|"hidden", mode: "dim"|"hide"}`.
-- Persisted under one localStorage key (`metabrowser.filters`); every change dispatches
-  a `metabrowser:filter-change` CustomEvent (the `watchRollup` pattern).
+  `get()`, `set(patch)`, `subscribe(listener)`, `clear()`, `activeCount()`, the shared
+  predicate helpers (`rowMatches`, `typeMatches`, `windowSeconds`), and the preset
+  definitions. State shape:
+  `{current: bool, ageWindow: "1h"|"24h"|"7d"|"30d"|null, types: string[]|null, ignored: "shown"|"dimmed"|"hidden"}`
+  (no mode field in v1 — Resolved Decision 5).
+- Persisted through `mb.prefs` under one versioned key (`filters`); every change
+  dispatches a `metabrowser:filter-change` CustomEvent (the `watchRollup` pattern).
 - SDK proxy `mb.filters` (get / set / subscribe) so plugin views never touch the global
   directly. The treemap’s ignored control migrates from its private localStorage state to
   this shared dimension.
@@ -157,14 +193,17 @@ dims cells or relayouts.
 
 ### Phase 1: FilterState and the Nav Filter Bar (dim mode)
 
-- [ ] `static/filter_state.js` with persistence, change events, presets, and SDK
-  `mb.filters` proxy; vm tests
+- [ ] `static/filter_state.js` with prefs persistence, change events, presets, shared
+  predicates, and the SDK `mb.filters` proxy; vm tests
 - [ ] Nav filter bar with Current and Recent chips, the filter menu (age, type,
-  visibility, mode, clear), and the active-filter badge; shared chip and menu styles
-- [ ] Client-side dim application in tree rendering and store patches; DOM tests for
-  chip state, dimming, and persistence
-- [ ] Recent chip activates the existing clustered presentation scoped by active filters
-  (tab untouched)
+  visibility, clear), and the active-filter badge; shared chip and menu styles
+- [ ] Decoration-layer filter application over rendered tree rows (dim for age, type,
+  activity; subtree prune for hidden gitignored), reapplied on filter changes and
+  debounced inventory patches; live-insert rows (`_buildRowHtml`) brought back to parity
+  with `renderTreeNodes` (select-dir action + chevron hotspot)
+- [ ] Treemap binds visibility to the shared state (its toggle writes through) and dims
+  cells for age and type; caption reports active filters and the nav-only activity
+  dimension
 
 ### Phase 2: Folder Views on Shared State
 
@@ -199,18 +238,22 @@ unaffected. Phase 3 removes the tab only after the parity checklist passes in a 
 browser session. Filter state stays out of the URL hash (matching the treemap-toggle
 decision) in this version.
 
-## Open Questions
+## Review Notes for the Maintainer
 
-- Is **Current** correctly defined as the active tracker’s live files, or should it mean
-  something broader (files touched in the last few minutes regardless of tracking)?
-- Should filters eventually serialize into the hash for shareable filtered links, or
-  stay per-user state?
-  (This version: per-user localStorage.)
-- Type filter granularity: are the `ft-*` families the right menu unit, with exact
-  extensions as a detail level, or should the menu list raw extensions from the index’s
-  suffix tally?
-- Does the Recent preset default to `24h` (the tab’s default) and does Current imply a
-  short age window when no files are actively live?
+The former open questions are answered in Resolved Decisions 1–4 with defaults chosen
+for predictability; all four are one-line changes if review says otherwise:
+
+- Current = tracker-live only (no implicit age fallback) — Decision 1
+- Filters stay out of the hash; `mb.prefs` persistence with a visible badge — Decision 2
+- Type menu lists `ft-*` families; exact extensions stay a state-level capability —
+  Decision 3
+- Recent preset defaults to `24h` — Decision 4
+
+Still genuinely open (deferred, not blocking):
+
+- Phase 2: whether nav hide-mode should ship before `/api/search` lands, using pruned
+  loaded-rows-only semantics with an explicit incompleteness note
+- Phase 3: the clustered presentation’s exact styling under the Recent preset
 
 ## References
 

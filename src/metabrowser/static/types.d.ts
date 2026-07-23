@@ -126,6 +126,33 @@ type MetabrowserRollupWatch = {
 
 type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
 
+type MetabrowserFilterStateValue = {
+  current: boolean;
+  ageWindow: "1h" | "24h" | "7d" | "30d" | null;
+  types: string[] | null;
+  ignored: "shown" | "dimmed" | "hidden";
+};
+
+type MetabrowserFilterRow = {
+  mtime?: number | null;
+  path?: string;
+  active?: boolean;
+  isDir?: boolean;
+};
+
+type MetabrowserFilterStateApi = {
+  AGE_WINDOWS: string[];
+  RECENT_DEFAULT_WINDOW: string;
+  get(): MetabrowserFilterStateValue;
+  set(patch: Partial<MetabrowserFilterStateValue>): void;
+  clear(): void;
+  subscribe(listener: (s: MetabrowserFilterStateValue) => void): () => void;
+  activeCount(): number;
+  windowSeconds(win: string): number;
+  typeMatches(pathLike: string, types: string[] | null): boolean;
+  rowMatches(row: MetabrowserFilterRow, s: MetabrowserFilterStateValue, nowSec: number): boolean;
+};
+
 type MetabrowserTreemapCell = {
   kind: string;
   name: string;
@@ -172,6 +199,15 @@ type MetabrowserSdk = {
   prefs: {
     get<T>(name: string, fallback: T): T;
     set(name: string, value: unknown): boolean;
+  };
+  filters: {
+    get(): MetabrowserFilterStateValue;
+    set(patch: Partial<MetabrowserFilterStateValue>): void;
+    clear(): void;
+    subscribe(listener: (s: MetabrowserFilterStateValue) => void): () => void;
+    activeCount(): number;
+    rowMatches(row: MetabrowserFilterRow, s: MetabrowserFilterStateValue, nowSec: number): boolean;
+    typeMatches(pathLike: string, types: string[] | null): boolean;
   };
   tooltip: {
     hide(): void;
@@ -267,6 +303,7 @@ declare global {
       classFor(path: string): string;
       iconFor(path: string): unknown;
     };
+    MetabrowserFilterState?: MetabrowserFilterStateApi;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;

@@ -440,6 +440,44 @@
     return "";
   }
 
+  // Shared filter state (static/filter_state.js). Plugin views bind to
+  // the same vocabulary the nav filter bar edits; safe no-ops when the
+  // module is absent (tests, partial harnesses).
+  const filters = {
+    get() {
+      const fs = global.MetabrowserFilterState;
+      return fs ? fs.get() : { current: false, ageWindow: null, types: null, ignored: "dimmed" };
+    },
+    set(patch) {
+      const fs = global.MetabrowserFilterState;
+      if (fs) {
+        fs.set(patch);
+      }
+    },
+    clear() {
+      const fs = global.MetabrowserFilterState;
+      if (fs) {
+        fs.clear();
+      }
+    },
+    subscribe(listener) {
+      const fs = global.MetabrowserFilterState;
+      return fs ? fs.subscribe(listener) : () => {};
+    },
+    activeCount() {
+      const fs = global.MetabrowserFilterState;
+      return fs ? fs.activeCount() : 0;
+    },
+    rowMatches(row, state, nowSec) {
+      const fs = global.MetabrowserFilterState;
+      return fs ? fs.rowMatches(row, state, nowSec) : true;
+    },
+    typeMatches(pathLike, types) {
+      const fs = global.MetabrowserFilterState;
+      return fs ? fs.typeMatches(pathLike, types) : true;
+    },
+  };
+
   // ── Preferences ─────────────────────────────────────────────────
   //
   // Versioned display-preference storage that survives across
@@ -1126,6 +1164,7 @@
     ageLabelHtml: ageLabelHtml,
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
+    filters: filters,
     prefs: prefs,
     openPath: openPath,
     fetchKpressRender: fetchKpressRender,

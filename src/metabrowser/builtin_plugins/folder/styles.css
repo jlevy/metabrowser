@@ -266,3 +266,9 @@
     transition: none;
   }
 }
+
+/* Shared-filter dim (age/type from mb.filters): non-matching cells
+   fade in place, same treatment as the gitignored dim. */
+.tm-filter-dim {
+  opacity: 0.45;
+}

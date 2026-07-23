@@ -30,14 +30,17 @@
    * its own port and therefore its own localStorage origin). */
   const PREF_KEY = "folder.treemap";
   const LEGACY_STORAGE_KEY = "metabrowser.folder.treemap";
-  const DEFAULT_STATE = { metric: "size", grouping: "folder", color: "type", ignored: "dimmed" };
+  /** View-local encodings only. The gitignored three-state moved to
+   * the shared filter vocabulary (mb.filters), where the nav bar and
+   * this toolbar edit the same value. */
+  const DEFAULT_STATE = { metric: "size", grouping: "folder", color: "type" };
   /** @type {Record<string, string[]>} */
   const VALID_STATE_VALUES = {
     metric: ["size", "files"],
     grouping: ["folder", "type"],
     color: ["type", "age"],
-    ignored: ["shown", "dimmed", "hidden"],
   };
+  const IGNORED_VALUES = ["shown", "dimmed", "hidden"];
 
   /** @param {unknown} raw @returns {Record<string, string>} */
   function sanitizeState(raw) {
@@ -68,9 +71,23 @@
   const VIEWPORT_MAX_H = 900;
   const VIEWPORT_BOTTOM_RESERVE = 64;
 
+  /** One-time migration of a legacy per-view ignored value into the
+   * shared filter state (defaults never overwrite a shared choice).
+   * @param {unknown} raw */
+  function migrateLegacyIgnored(raw) {
+    if (!raw || typeof raw !== "object") {
+      return;
+    }
+    const value = /** @type {Record<string, unknown>} */ (raw).ignored;
+    if (typeof value === "string" && IGNORED_VALUES.includes(value) && value !== "dimmed") {
+      mb.filters.set({ ignored: /** @type {"shown" | "hidden"} */ (value) });
+    }
+  }
+
   function loadState() {
     const stored = mb.prefs.get(PREF_KEY, null);
     if (stored !== null) {
+      migrateLegacyIgnored(stored);
       return sanitizeState(stored);
     }
     // One-time migration from the pre-prefs localStorage key (which
@@ -78,7 +95,9 @@
     try {
       const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
       if (legacy) {
-        const state = sanitizeState(JSON.parse(legacy));
+        const parsed = JSON.parse(legacy);
+        migrateLegacyIgnored(parsed);
+        const state = sanitizeState(parsed);
         mb.prefs.set(PREF_KEY, state);
         window.localStorage.removeItem(LEGACY_STORAGE_KEY);
         return state;
@@ -112,16 +131,50 @@
     return mb.fileTypeClass(pathLike) || "ft-text";
   }
 
-  /** @param {Record<string, any>} cell @param {Record<string, string>} state */
-  function cellClasses(cell, state) {
+  /**
+   * Non-matching cells for the shared age/type filters dim in place.
+   * The activity dimension is nav-only in v1 (rollup nodes carry no
+   * active flag), so it is stripped before matching; dir cells keep
+   * their context role (type filters skip them via isDir), and rest
+   * cells never dim.
+   * @param {Record<string, any>} cell
+   * @param {Record<string, any>} filters
+   * @param {number} nowSec
+   */
+  function cellFilterDim(cell, filters, nowSec) {
+    if (!filters || cell.kind === "rest" || (!filters.ageWindow && !filters.types)) {
+      return false;
+    }
+    const sansCurrent = Object.assign({}, filters, { current: false });
+    return !mb.filters.rowMatches(
+      {
+        mtime: cell.mtime,
+        path: cell.kind === "file" ? cell.path : `_${cell.ext || ""}`,
+        isDir: cell.kind === "dir",
+      },
+      /** @type {any} */ (sansCurrent),
+      nowSec,
+    );
+  }
+
+  /**
+   * @param {Record<string, any>} cell
+   * @param {Record<string, string>} state
+   * @param {Record<string, any>} filters
+   * @param {boolean} filterDim
+   */
+  function cellClasses(cell, state, filters, filterDim) {
     const cls = ["tm-cell", `tm-${cell.kind}`];
     if (state.color === "age") {
       cls.push(ageFillClass(cell.mtime));
     } else {
       cls.push("tm-type-fill", typeFillClass(cell));
     }
-    if (cell.gitignored && state.ignored === "dimmed") {
+    if (cell.gitignored && filters.ignored === "dimmed") {
       cls.push("tm-ignored");
+    }
+    if (filterDim) {
+      cls.push("tm-filter-dim");
     }
     if (cell.state === "pending") {
       cls.push("tm-pending");
@@ -189,7 +242,11 @@
   }
 
   /** @param {Record<string, string>} state */
-  function toolbarHtml(state) {
+  /**
+   * @param {Record<string, string>} state view-local encodings
+   * @param {string} ignoredValue shared visibility dimension (mb.filters)
+   */
+  function toolbarHtml(state, ignoredValue) {
     return (
       '<div class="tm-toolbar">' +
       segmentHtml(
@@ -223,7 +280,7 @@
           ["dimmed", "Dimmed"],
           ["hidden", "Hidden"],
         ],
-        state.ignored,
+        ignoredValue,
       ) +
       "</div>"
     );
@@ -233,8 +290,10 @@
    * @param {Record<string, any>} cell
    * @param {Record<string, string>} state
    * @param {number} index
+   * @param {Record<string, any>} filters
+   * @param {number} nowSec
    */
-  function cellHtml(cell, state, index) {
+  function cellHtml(cell, state, index, filters, nowSec) {
     const style =
       `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
       `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px`;
@@ -267,7 +326,7 @@
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
       : ` role="group" aria-label="${aria}"`;
     return (
-      `<div class="${cellClasses(cell, state)}"${outerAttrs}` +
+      `<div class="${cellClasses(cell, state, filters, cellFilterDim(cell, filters, nowSec))}"${outerAttrs}` +
       ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
       ` style="${style}">${label}</div>`
     );
@@ -278,10 +337,10 @@
    * the unignored_* weights, so the caption must quote those figures —
    * totals that disagree with the picture read as a bug.
    * @param {Record<string, any> | null} envelope
-   * @param {Record<string, string>} state
+   * @param {Record<string, any>} filters
    * @returns {string}
    */
-  function statusHtml(envelope, state) {
+  function statusHtml(envelope, filters) {
     if (!envelope) {
       return "Loading rollup…";
     }
@@ -289,7 +348,7 @@
     if (!node) {
       return "Indexing… the treemap fills in as the scan completes.";
     }
-    const hideIgnored = state.ignored === "hidden";
+    const hideIgnored = filters.ignored === "hidden";
     const files = hideIgnored ? node.unignored_files : node.total_files;
     const size = hideIgnored ? node.unignored_size : node.total_size;
     const parts = [`${files} files`, mb.formatSize(size), `scan: ${envelope.index_status}`];
@@ -301,6 +360,21 @@
     }
     if (envelope.truncated) {
       parts.push(`index capped at ${envelope.max_files} files — totals are lower bounds`);
+    }
+    const active = [];
+    if (filters.ageWindow) {
+      active.push(`age ≤${filters.ageWindow}`);
+    }
+    if (filters.types) {
+      active.push(
+        `types ${filters.types.map((/** @type {string} */ t) => t.replace(/^ft-/, "")).join(",")}`,
+      );
+    }
+    if (filters.current) {
+      active.push("Current applies in the tree only");
+    }
+    if (active.length > 0) {
+      parts.push(`filters: ${active.join(" · ")}`);
     }
     return parts.join(" · ");
   }
@@ -352,6 +426,7 @@
    */
   function renderTreemap(container, ctx) {
     const state = loadState();
+    let filters = mb.filters.get();
     /** @type {Record<string, any> | null} */
     let envelope = null;
     /** @type {Record<string, any>[]} */
@@ -362,9 +437,9 @@
     let focusPos = 0;
 
     container.innerHTML =
-      toolbarHtml(state) +
+      toolbarHtml(state, filters.ignored) +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
-      `<div class="tm-status">${statusHtml(null, state)}</div>`;
+      `<div class="tm-status">${statusHtml(null, filters)}</div>`;
     const viewport = /** @type {HTMLElement} */ (container.querySelector(".tm-viewport"));
     const status = /** @type {HTMLElement} */ (container.querySelector(".tm-status"));
 
@@ -382,7 +457,15 @@
       if (!Number.isFinite(winH) || winH <= 0 || !Number.isFinite(rect.top)) {
         return;
       }
-      const avail = winH - rect.top - VIEWPORT_BOTTOM_RESERVE;
+      // Reserve what the caption actually needs (it can wrap to two
+      // lines), not a blind constant: measured status height + its
+      // top margin + the pane's bottom padding, floored at the
+      // constant for harnesses that cannot measure.
+      const statusH = status ? Number(status.offsetHeight) : Number.NaN;
+      const reserve = Number.isFinite(statusH)
+        ? Math.max(statusH + 8 + 24, VIEWPORT_BOTTOM_RESERVE)
+        : VIEWPORT_BOTTOM_RESERVE;
+      const avail = winH - rect.top - reserve;
       const next = `${Math.round(Math.max(VIEWPORT_MIN_H, Math.min(VIEWPORT_MAX_H, avail)))}px`;
       if (viewport.style.height !== next) {
         viewport.style.height = next;
@@ -393,9 +476,13 @@
       if (disposed || !viewport) {
         return;
       }
+      // Caption first (its height feeds the reserve), then size, then
+      // measure — so a wrapping caption shrinks the map instead of
+      // pushing the pane into scroll.
+      status.textContent = statusHtml(envelope, filters);
+      sizeViewport();
       const rect = viewport.getBoundingClientRect();
       const node = envelope ? envelope.node : null;
-      status.textContent = statusHtml(envelope, state);
       if (!node || rect.width < 10 || rect.height < 10) {
         viewport.innerHTML = envelope
           ? ""
@@ -408,11 +495,12 @@
         {
           metric: state.metric,
           grouping: state.grouping,
-          ignored: state.ignored,
+          ignored: filters.ignored,
           extTallies: envelope ? envelope.ext_tallies : [],
         },
       );
-      const html = cells.map((cell, i) => cellHtml(cell, state, i)).join("");
+      const nowSec = Date.now() / 1000;
+      const html = cells.map((cell, i) => cellHtml(cell, state, i, filters, nowSec)).join("");
       viewport.innerHTML =
         html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
       // Roving tabindex over actionable cells only (dir/file); ext and
@@ -545,7 +633,18 @@
       }
       const key = btn.dataset.tmKey || "";
       const value = btn.dataset.tmValue || "";
-      if (!key || !value || state[key] === value) {
+      if (!key || !value) {
+        return;
+      }
+      if (key === "ignored") {
+        // Shared dimension: write through mb.filters; the subscription
+        // below re-syncs the toolbar and relayouts (nav stays in step).
+        if (filters.ignored !== value) {
+          mb.filters.set({ ignored: /** @type {"shown" | "dimmed" | "hidden"} */ (value) });
+        }
+        return;
+      }
+      if (state[key] === value) {
         return;
       }
       state[key] = value;
@@ -556,6 +655,25 @@
           b.setAttribute("aria-pressed", String(b === btn));
         });
       }
+      relayout();
+    });
+
+    /** Reflect the shared visibility value on the toolbar's ignored
+     * segment (stub containers without querySelectorAll skip). */
+    function syncIgnoredToolbar() {
+      if (typeof container.querySelectorAll !== "function") {
+        return;
+      }
+      container.querySelectorAll('[data-tm-key="ignored"]').forEach((btn) => {
+        btn.setAttribute(
+          "aria-pressed",
+          String(/** @type {HTMLElement} */ (btn).dataset.tmValue === filters.ignored),
+        );
+      });
+    }
+    const unsubscribeFilters = mb.filters.subscribe((next) => {
+      filters = next;
+      syncIgnoredToolbar();
       relayout();
     });
 
@@ -615,6 +733,7 @@
     activeTreemapDispose = () => {
       disposed = true;
       watch.dispose();
+      unsubscribeFilters();
       window.removeEventListener("resize", onWindowResize);
       if (intersectionObserver) {
         intersectionObserver.disconnect();

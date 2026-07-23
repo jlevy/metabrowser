@@ -3210,6 +3210,10 @@ function initTabs() {
       queryHtmlAll("[data-tab-content]", container).forEach((c) => {
         c.style.display = c.dataset.tabContent === tabId ? "" : "none";
       });
+      var filterBar = container.querySelector("#filter-bar");
+      if (filterBar instanceof HTMLElement) {
+        filterBar.hidden = tabId !== "files";
+      }
       if (container && container.id === "preview-pane") {
         setActivePreviewView(tabId, container);
       }
@@ -3221,6 +3225,270 @@ function initTabs() {
       }
     });
   });
+}
+
+// ── Unified filter bar (dim decoration layer) ───────────────────
+//
+// See docs/project/specs/active/plan-2026-07-20-unified-filtering.md.
+// The bar edits window.MetabrowserFilterState (shared with the
+// treemap through mb.filters); filters apply as a class decoration
+// over already-rendered tree rows, so render paths stay untouched and
+// the no-filter DOM is byte-identical to before.
+
+var FILTER_TYPE_FAMILIES = [
+  ["ft-md", "Markdown"],
+  ["ft-code", "Code"],
+  ["ft-config", "Config"],
+  ["ft-yaml", "YAML"],
+  ["ft-jsonl", "JSONL"],
+  ["ft-csv", "CSV"],
+  ["ft-text", "Text"],
+];
+var FILTER_REAPPLY_DEBOUNCE_MS = 200;
+var filterReapplyTimer = null;
+
+function filterStateApi() {
+  return window.MetabrowserFilterState || null;
+}
+
+// Decoration pass over every rendered tree row. All predicate inputs
+// already live on the row (data-path, data-tip-mtime, the gitignored
+// class) or in app state (activeFiles); a dir row's `.tree-children`
+// sibling hides with it so a pruned gitignored subtree disappears
+// wholesale.
+function applyTreeFilters() {
+  var fs = filterStateApi();
+  var panel = document.getElementById("tab-files");
+  if (!fs || !panel) {
+    return;
+  }
+  var s = fs.get();
+  var nowSec = Date.now() / 1000;
+  var anyDim = s.current || !!s.ageWindow || !!s.types;
+  var hideIgnored = s.ignored === "hidden";
+  var showIgnored = s.ignored === "shown";
+  var rows = panel.querySelectorAll(".tree-item");
+  for (var i = 0; i < rows.length; i++) {
+    var row = /** @type {HTMLElement} */ (rows[i]);
+    var isDir = row.classList.contains("tree-folder");
+    var path = row.dataset.path || "";
+    var gitignored = row.classList.contains("tree-item-gitignored");
+    var matches =
+      !anyDim ||
+      fs.rowMatches(
+        {
+          mtime: parseTipNumber(row.dataset.tipMtime),
+          path: path,
+          active: activeFiles.has(path),
+          isDir: isDir,
+        },
+        s,
+        nowSec,
+      );
+    row.classList.toggle("tree-item-filter-dim", anyDim && !matches);
+    row.classList.toggle("tree-item-ignored-shown", showIgnored && gitignored);
+    var hideRow = hideIgnored && gitignored;
+    row.classList.toggle("tree-item-filter-hidden", hideRow);
+    if (isDir) {
+      var kids = row.nextElementSibling;
+      if (kids && kids.classList.contains("tree-children")) {
+        kids.classList.toggle("tree-item-filter-hidden", hideRow);
+      }
+    }
+  }
+}
+
+function filterMenuSegHtml(key, value, label, on) {
+  return (
+    '<button type="button" class="menu-seg filter-seg" role="menuitemradio" aria-checked="' +
+    String(!!on) +
+    '" data-filter-key="' +
+    key +
+    '" data-filter-value="' +
+    esc(value) +
+    '">' +
+    label +
+    "</button>"
+  );
+}
+
+function filterMenuHtml(s, fs) {
+  var parts = ['<div class="filter-menu-label">Age</div>'];
+  parts.push('<div class="menu-chooser" role="group" aria-label="Age window">');
+  parts.push(filterMenuSegHtml("age", "", "Any", !s.ageWindow));
+  for (var i = 0; i < fs.AGE_WINDOWS.length; i++) {
+    var w = fs.AGE_WINDOWS[i];
+    parts.push(filterMenuSegHtml("age", w, w, s.ageWindow === w));
+  }
+  parts.push("</div>");
+  parts.push('<div class="menu-separator"></div>');
+  parts.push('<div class="filter-menu-label">Types</div>');
+  parts.push('<div class="menu-chooser filter-type-row" role="group" aria-label="File types">');
+  for (var t = 0; t < FILTER_TYPE_FAMILIES.length; t++) {
+    var fam = FILTER_TYPE_FAMILIES[t];
+    parts.push(
+      filterMenuSegHtml("type", fam[0], fam[1], !!(s.types && s.types.indexOf(fam[0]) >= 0)),
+    );
+  }
+  parts.push("</div>");
+  parts.push('<div class="menu-separator"></div>');
+  parts.push('<div class="filter-menu-label">Gitignored</div>');
+  parts.push('<div class="menu-chooser" role="group" aria-label="Gitignored entries">');
+  parts.push(filterMenuSegHtml("ignored", "shown", "Shown", s.ignored === "shown"));
+  parts.push(filterMenuSegHtml("ignored", "dimmed", "Dimmed", s.ignored === "dimmed"));
+  parts.push(filterMenuSegHtml("ignored", "hidden", "Hidden", s.ignored === "hidden"));
+  parts.push("</div>");
+  parts.push('<div class="menu-separator"></div>');
+  parts.push('<button type="button" class="filter-clear" data-filter-clear>Clear filters</button>');
+  return parts.join("");
+}
+
+function filterBarHtml(s, fs) {
+  var count = fs.activeCount();
+  return (
+    '<button type="button" class="filter-chip" data-filter-chip="current" aria-pressed="' +
+    String(s.current) +
+    '" title="Only files a running process is writing">Current</button>' +
+    '<button type="button" class="filter-chip" data-filter-chip="recent" aria-pressed="' +
+    String(!!s.ageWindow) +
+    '" title="Only recently modified entries">Recent' +
+    (s.ageWindow ? " · " + s.ageWindow : "") +
+    "</button>" +
+    '<div class="filter-menu-wrap" id="filter-menu-wrap" aria-expanded="false">' +
+    '<button type="button" class="filter-chip filter-menu-btn" aria-haspopup="true" aria-label="Filter options">Filters' +
+    (count > 0 ? '<span class="filter-badge">' + count + "</span>" : "") +
+    "</button>" +
+    '<div class="menu filter-menu" role="menu" aria-label="Filters">' +
+    filterMenuHtml(s, fs) +
+    "</div></div>"
+  );
+}
+
+function initFilterBar() {
+  var bar = document.getElementById("filter-bar");
+  var fs = filterStateApi();
+  if (!bar || !fs) {
+    return;
+  }
+  var barEl = bar;
+  var fsApi = fs;
+  function rerender() {
+    barEl.innerHTML = filterBarHtml(fsApi.get(), fsApi);
+  }
+  rerender();
+  bar.addEventListener("click", (e) => {
+    var t = e.target instanceof Element ? e.target : null;
+    if (!t) {
+      return;
+    }
+    var chip = t.closest("[data-filter-chip]");
+    if (chip instanceof HTMLElement) {
+      var kind = chip.dataset.filterChip;
+      var s = fsApi.get();
+      if (kind === "current") {
+        fsApi.set({ current: !s.current });
+      } else if (kind === "recent") {
+        fsApi.set({
+          ageWindow: /** @type {any} */ (s.ageWindow ? null : fsApi.RECENT_DEFAULT_WINDOW),
+        });
+      }
+      return;
+    }
+    if (t.closest(".filter-menu-btn")) {
+      var wrap = document.getElementById("filter-menu-wrap");
+      if (wrap) {
+        wrap.setAttribute(
+          "aria-expanded",
+          wrap.getAttribute("aria-expanded") === "true" ? "false" : "true",
+        );
+      }
+      return;
+    }
+    var seg = t.closest("[data-filter-key]");
+    if (seg instanceof HTMLElement) {
+      var key = seg.dataset.filterKey;
+      var value = seg.dataset.filterValue || "";
+      var cur = fsApi.get();
+      if (key === "age") {
+        fsApi.set({ ageWindow: /** @type {any} */ (value || null) });
+      } else if (key === "ignored") {
+        fsApi.set({ ignored: /** @type {any} */ (value) });
+      } else if (key === "type") {
+        var list = cur.types ? cur.types.slice() : [];
+        var idx = list.indexOf(value);
+        if (idx >= 0) {
+          list.splice(idx, 1);
+        } else {
+          list.push(value);
+        }
+        fsApi.set({ types: list.length > 0 ? list : null });
+      }
+      return;
+    }
+    if (t.closest("[data-filter-clear]")) {
+      fsApi.clear();
+    }
+  });
+  // Re-render on any state change (the treemap toolbar edits the same
+  // state), keeping the menu open across multi-select edits.
+  fsApi.subscribe(() => {
+    var wrap = document.getElementById("filter-menu-wrap");
+    var open = !!wrap && wrap.getAttribute("aria-expanded") === "true";
+    rerender();
+    if (open) {
+      var reopened = document.getElementById("filter-menu-wrap");
+      if (reopened) {
+        reopened.setAttribute("aria-expanded", "true");
+      }
+    }
+    applyTreeFilters();
+  });
+  document.addEventListener("click", (e) => {
+    var wrap = document.getElementById("filter-menu-wrap");
+    // A click on a menu control re-renders the bar mid-dispatch, so
+    // the original target is detached by the time this outside-click
+    // closer runs — a disconnected target was inside, never outside.
+    if (
+      wrap &&
+      wrap.getAttribute("aria-expanded") === "true" &&
+      e.target instanceof Element &&
+      e.target.isConnected &&
+      !wrap.contains(e.target)
+    ) {
+      wrap.setAttribute("aria-expanded", "false");
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      var wrap = document.getElementById("filter-menu-wrap");
+      if (wrap) {
+        wrap.setAttribute("aria-expanded", "false");
+      }
+    }
+  });
+  // Every row-insertion path (initial render, lazy expand, paging,
+  // live fs.change inserts) flows through #tab-files childList
+  // mutations; one debounced observer keeps decorations current
+  // without touching any render path. Class toggles from
+  // applyTreeFilters are attribute mutations, invisible to a
+  // childList-only observer — no feedback loop.
+  if (typeof MutationObserver !== "undefined") {
+    var panel = document.getElementById("tab-files");
+    if (panel) {
+      new MutationObserver(() => {
+        if (fsApi.activeCount() === 0) {
+          return;
+        }
+        if (filterReapplyTimer) {
+          clearTimeout(filterReapplyTimer);
+        }
+        filterReapplyTimer = setTimeout(() => {
+          filterReapplyTimer = null;
+          applyTreeFilters();
+        }, FILTER_REAPPLY_DEBOUNCE_MS);
+      }).observe(panel, { childList: true, subtree: true });
+    }
+  }
 }
 
 // ── Pane resizing ───────────────────────────────────────────────
@@ -3642,7 +3910,7 @@ function _buildRowHtml(entry, options) {
     return (
       '<div class="tree-item tree-folder collapsed' +
       muted +
-      '" data-action="toggle" data-path="' +
+      '" data-action="select-dir" data-path="' +
       esc(entry.path) +
       '" data-tip-type="dir" data-tip-name="' +
       esc(name) +
@@ -3653,7 +3921,9 @@ function _buildRowHtml(entry, options) {
       '" data-tip-mtime="' +
       nullableDataValue((entry.newest_mtime_ns || 0) / 1e9) +
       '">' +
+      '<span class="tree-toggle" data-role="toggle">' +
       ICONS.toggle +
+      "</span>" +
       '<span class="tree-item-name">' +
       esc(name) +
       "</span>" +
@@ -4241,7 +4511,14 @@ function handleRouteChange(event) {
     return;
   }
   var parts = splitHashRoute(route);
-  if (parts.path !== currentPath) {
+  // Compare the full route (path AND the trailing-slash folder
+  // marker), not just the path string: `#README.md` -> `#README.md/`
+  // changes what renders without changing the path.
+  var sameAsWritten =
+    lastWrittenRoute &&
+    lastWrittenRoute.path === parts.path &&
+    lastWrittenRoute.isDir === parts.isDir;
+  if (parts.path !== currentPath || !sameAsWritten) {
     navigateToPath(route, true);
   }
 }
@@ -4297,6 +4574,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();
   initSettingsControl();
   initNavTabs();
+  initFilterBar();
   initNavScrollShadow();
   // Fire the URL-pinned file fetch in parallel with the tree walk: the
   // two requests don't depend on each other, so a deep-link's preview
@@ -4312,6 +4590,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   startIndexProgressPolling();
   await loadTree();
+  applyTreeFilters();
   initPaneResize("tree-resize", ".tree-pane", 180, null);
   if (initialPath) {
     revealInTree(initialPath);

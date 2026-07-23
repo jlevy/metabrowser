@@ -758,6 +758,7 @@ async def index(_request: Request) -> HTMLResponse:
     initial_file_path = _initial_file_path()
     styles_url = _static_asset_url("styles.css")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
+    filter_state_url = _static_asset_url("filter_state.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree_expansion.js")
@@ -956,6 +957,11 @@ async def index(_request: Request) -> HTMLResponse:
         <button class="tab-btn active" role="tab" data-tab="files" aria-selected="true">Files</button>
         <button class="tab-btn" role="tab" data-tab="recent" aria-selected="false">Recent</button>
       </div>
+      <!-- Shared filter vocabulary, simplified form: two preset chips
+           plus one menu (app.js initFilterBar fills and wires it).
+           Lives outside the replaceable tree container; shown only
+           while the Files tab is active. -->
+      <div class="filter-bar" id="filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
           <div class="loading"><div class="spinner"></div>Loading...</div>
@@ -981,6 +987,7 @@ async def index(_request: Request) -> HTMLResponse:
   {perf_block}
   {settings_block}
   <script src="{plugin_sdk_url}"></script>
+  <script src="{filter_state_url}"></script>
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>

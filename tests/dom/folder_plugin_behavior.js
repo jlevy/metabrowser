@@ -101,6 +101,20 @@ const sandbox = {
     },
   },
   location: { origin: "http://127.0.0.1:8411" },
+  MetabrowserFileTypes: {
+    classFor(p) {
+      if (/\.md$/.test(p)) {
+        return "ft-md";
+      }
+      if (/\.py$/.test(p)) {
+        return "ft-code";
+      }
+      return "ft-text";
+    },
+    iconFor() {
+      return "";
+    },
+  },
   document: {
     addEventListener() {},
     createElement: () => ({ appendChild() {} }),
@@ -175,6 +189,7 @@ sandbox.fetch = async (url) => {
 vm.createContext(sandbox);
 for (const relative of [
   "src/metabrowser/static/plugin_sdk.js",
+  "src/metabrowser/static/filter_state.js",
   "src/metabrowser/builtin_plugins/folder/treemap_layout.js",
   "src/metabrowser/builtin_plugins/markdown/index.js",
   "src/metabrowser/builtin_plugins/folder/index.js",
@@ -334,6 +349,42 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
   check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
+
+  // ── Shared filters drive the treemap (mb.filters) ──────────────
+  {
+    const c2 = makeElement();
+    c2.viewport = makeElement();
+    c2.status = makeElement();
+    Object.defineProperty(c2.status, "textContent", {
+      set(v) {
+        c2.status._text = v;
+      },
+      get() {
+        return c2.status._text || "";
+      },
+    });
+    Object.defineProperty(c2.viewport, "textContent", {
+      set() {},
+      get() {
+        return "";
+      },
+    });
+    const view2 = mb.getRegisteredView("folder", "treemap");
+    view2.render(c2, { path: "", kind: "folder", raw: { readme_path: "" } });
+    await new Promise((resolve) => setImmediate(resolve));
+    mb.filters.set({ types: ["ft-md"] });
+    const dimCount = (c2.viewport.innerHTML.match(/tm-filter-dim/g) || []).length;
+    check("shared type filter dims non-matching cells", dimCount === 2, `${dimCount}`);
+    check(
+      "caption reports active filters",
+      c2.status.textContent.includes("filters: types md"),
+      c2.status.textContent,
+    );
+    mb.filters.clear();
+    const cleared = (c2.viewport.innerHTML.match(/tm-filter-dim/g) || []).length;
+    check("clear undims", cleared === 0, `${cleared}`);
+    view2.dispose();
+  }
 
   // ── watchRollup active-gate: hidden views spend no fetches ──────
   {
