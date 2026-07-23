@@ -227,6 +227,7 @@ type MetabrowserRollupEnvelope = {
 
 type MetabrowserRollupWatch = {
   refresh(): void;
+  stale(): boolean;
   dispose(): void;
 };
 

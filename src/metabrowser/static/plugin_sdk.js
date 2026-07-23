@@ -439,9 +439,14 @@
   function watchRollup(path, opts, onUpdate) {
     // Fetch a rollup now and refresh it (trailing debounce) whenever the
     // shell's inventory store reports a change touching ``path``'s
-    // subtree or ancestor chain. Returns {refresh, dispose}; dispose
-    // detaches the listener and aborts any in-flight fetch. Pair every
-    // watch with a view dispose — a leaked watch keeps refetching.
+    // subtree or ancestor chain. Returns {refresh, dispose, stale};
+    // dispose detaches the listener and aborts any in-flight fetch.
+    // Pair every watch with a view dispose — a leaked watch keeps
+    // refetching. ``opts.active`` (optional callback) gates the
+    // debounced refresh: while it returns false (e.g. the view's tab
+    // is hidden) the fetch is skipped and the watch marks itself
+    // stale instead; call ``refresh()`` when the view shows again and
+    // ``stale()`` reports true.
     if (typeof onUpdate !== "function") {
       throw new Error("watchRollup: onUpdate callback is required");
     }
@@ -451,11 +456,13 @@
     let disposed = false;
     let timer = null;
     let controller = null;
+    let stale = false;
 
     async function refresh() {
       if (disposed) {
         return;
       }
+      stale = false;
       if (controller) {
         controller.abort();
       }
@@ -489,6 +496,11 @@
       }
       timer = setTimeout(() => {
         timer = null;
+        if (typeof options.active === "function" && !options.active()) {
+          // Hidden view: remember that data went stale, spend nothing.
+          stale = true;
+          return;
+        }
         refresh();
       }, debounceMs);
     }
@@ -497,6 +509,9 @@
     refresh();
     return {
       refresh: refresh,
+      stale() {
+        return stale;
+      },
       dispose() {
         disposed = true;
         global.removeEventListener("metabrowser:inventory-change", onInventoryChange);

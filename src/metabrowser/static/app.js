@@ -3773,12 +3773,14 @@ function renderFolderHeader(data) {
 // Aggregate strip of the folder header. Split out so the live
 // refresher below can patch it in place when the inventory changes.
 function folderHeaderSummaryHtml(dirInfo) {
+  // A still-finalizing directory reports null aggregates; sizeHtml,
+  // countHtml, and formatAge(null) all render the tally-pending
+  // skeleton the tree rows use, so the header paints with shape
+  // instead of blanks until the live refresher patches it.
   return (
     sizeHtml(dirInfo.total_size, "file-header-size") +
-    (typeof dirInfo.total_files === "number"
-      ? `<span class="folder-header-count">${dirInfo.total_files} files</span>`
-      : "") +
-    `<span class="folder-header-age">${formatAge(dirInfo.mtime ?? 0)}</span>`
+    countHtml(dirInfo.total_files, "folder-header-count") +
+    `<span class="folder-header-age">${formatAge(dirInfo.mtime ?? null)}</span>`
   );
 }
 
