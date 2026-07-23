@@ -296,21 +296,34 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   const before = fetchCalls.length;
   const toolbarClick = container.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
-  if (toolbarClick) {
+  const clickToggle = (key, value) => {
     const btn = {
-      dataset: { tmKey: "color", tmValue: "age" },
+      dataset: { tmKey: key, tmValue: value },
       parentElement: { querySelectorAll: () => [] },
       closest() {
         return btn;
       },
     };
     toolbarClick({ target: { closest: () => btn } });
+  };
+  if (toolbarClick) {
+    clickToggle("color", "age");
     check("toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
       "age fill applied after toggle",
       container.viewport.innerHTML.includes("tm-age-"),
       "no age fill class after color toggle",
     );
+    // Hidden gitignored mode: the caption must quote the unignored
+    // figures and say the gitignored entries are hidden, matching the
+    // weights the layout switched to.
+    clickToggle("ignored", "hidden");
+    check(
+      "hidden mode status disclosure",
+      container.status.textContent.includes("gitignored hidden"),
+      container.status.textContent,
+    );
+    clickToggle("ignored", "dimmed");
   }
 
   // Dispose detaches the inventory-change and window-resize listeners.
@@ -321,6 +334,37 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
   check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
+
+  // ── watchRollup active-gate: hidden views spend no fetches ──────
+  {
+    const start = fetchCalls.length;
+    let visible = true;
+    const watch = mb.watchRollup("", { active: () => visible }, () => {});
+    await new Promise((resolve) => setImmediate(resolve));
+    check("gate: initial fetch", fetchCalls.length === start + 1, `${fetchCalls.length}`);
+    visible = false;
+    sandbox.dispatchEvent(
+      new sandbox.CustomEvent("metabrowser:inventory-change", {
+        detail: { kind: "change", paths: [""] },
+      }),
+    );
+    const gateTimers = pendingTimers.slice();
+    pendingTimers = [];
+    for (const fn of gateTimers) {
+      fn();
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    check("gate: hidden view skips the fetch", fetchCalls.length === start + 1, `${fetchCalls.length}`);
+    check("gate: watch reports stale", watch.stale() === true, String(watch.stale()));
+    visible = true;
+    await watch.refresh();
+    check(
+      "gate: refresh catches up and clears stale",
+      fetchCalls.length === start + 2 && watch.stale() === false,
+      `${fetchCalls.length}/${watch.stale()}`,
+    );
+    watch.dispose();
+  }
 
   if (failures.length > 0) {
     console.error(`folder plugin FAILURES:\n- ${failures.join("\n- ")}`);

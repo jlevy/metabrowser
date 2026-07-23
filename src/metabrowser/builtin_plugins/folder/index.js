@@ -273,8 +273,15 @@
     );
   }
 
-  /** @param {Record<string, any> | null} envelope @returns {string} */
-  function statusHtml(envelope) {
+  /**
+   * Footer caption. In hidden-gitignored mode the map lays out from
+   * the unignored_* weights, so the caption must quote those figures —
+   * totals that disagree with the picture read as a bug.
+   * @param {Record<string, any> | null} envelope
+   * @param {Record<string, string>} state
+   * @returns {string}
+   */
+  function statusHtml(envelope, state) {
     if (!envelope) {
       return "Loading rollup…";
     }
@@ -282,11 +289,13 @@
     if (!node) {
       return "Indexing… the treemap fills in as the scan completes.";
     }
-    const parts = [
-      `${node.total_files} files`,
-      mb.formatSize(node.total_size),
-      `scan: ${envelope.index_status}`,
-    ];
+    const hideIgnored = state.ignored === "hidden";
+    const files = hideIgnored ? node.unignored_files : node.total_files;
+    const size = hideIgnored ? node.unignored_size : node.total_size;
+    const parts = [`${files} files`, mb.formatSize(size), `scan: ${envelope.index_status}`];
+    if (hideIgnored) {
+      parts.push("gitignored hidden");
+    }
     if (node.state === "pending") {
       parts.push("this folder is still being scanned");
     }
@@ -355,7 +364,7 @@
     container.innerHTML =
       toolbarHtml(state) +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
-      `<div class="tm-status">${statusHtml(null)}</div>`;
+      `<div class="tm-status">${statusHtml(null, state)}</div>`;
     const viewport = /** @type {HTMLElement} */ (container.querySelector(".tm-viewport"));
     const status = /** @type {HTMLElement} */ (container.querySelector(".tm-status"));
 
@@ -386,7 +395,7 @@
       }
       const rect = viewport.getBoundingClientRect();
       const node = envelope ? envelope.node : null;
-      status.textContent = statusHtml(envelope);
+      status.textContent = statusHtml(envelope, state);
       if (!node || rect.width < 10 || rect.height < 10) {
         viewport.innerHTML = envelope
           ? ""
@@ -551,13 +560,41 @@
     });
 
     sizeViewport();
-    const watch = mb.watchRollup(ctx.path, {}, (env) => {
+    /** Tab switches hide inactive view containers (display:none)
+     * without disposing them, so the watch must not spend fetches on
+     * a map nobody can see. The stub-tolerant checks treat missing
+     * properties (vm harness) as visible. */
+    function isVisible() {
+      return viewport.isConnected !== false && viewport.offsetParent !== null;
+    }
+    const watch = mb.watchRollup(ctx.path, { active: isVisible }, (env) => {
       envelope = env;
       relayout();
     });
+    // When the tab shows again after changes were skipped, catch up.
+    const intersectionObserver =
+      typeof IntersectionObserver !== "undefined"
+        ? new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting && watch.stale()) {
+                watch.refresh();
+                break;
+              }
+            }
+          })
+        : null;
+    if (intersectionObserver) {
+      intersectionObserver.observe(viewport);
+    }
     const resizeObserver =
       typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
+            // The container can resize without a window resize (pane
+            // drag wraps the toolbar or breadcrumb above, moving this
+            // viewport's top edge) — re-measure before laying out.
+            // sizeViewport only writes when the value changes, so the
+            // observer settles after one extra tick.
+            sizeViewport();
             relayout();
           })
         : null;
@@ -579,6 +616,9 @@
       disposed = true;
       watch.dispose();
       window.removeEventListener("resize", onWindowResize);
+      if (intersectionObserver) {
+        intersectionObserver.disconnect();
+      }
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
