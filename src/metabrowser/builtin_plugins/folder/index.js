@@ -59,6 +59,14 @@
   const SUB_MIN_H = 30;
   /** Minimum cell width before the age chip joins the name row. */
   const AGE_MIN_W = 88;
+  /** Viewport height bounds: the map fills the space between its own
+   * top edge and the window bottom (minus the status line and pane
+   * padding), so wrapped toolbars or long breadcrumbs never push it
+   * past the pane's single scroll owner. The CSS calc() height is
+   * only the pre-measurement fallback. */
+  const VIEWPORT_MIN_H = 280;
+  const VIEWPORT_MAX_H = 900;
+  const VIEWPORT_BOTTOM_RESERVE = 64;
 
   function loadState() {
     const stored = mb.prefs.get(PREF_KEY, null);
@@ -351,6 +359,27 @@
     const viewport = /** @type {HTMLElement} */ (container.querySelector(".tm-viewport"));
     const status = /** @type {HTMLElement} */ (container.querySelector(".tm-status"));
 
+    /** Measure the height actually available below the viewport's top
+     * edge and pin it as an inline style (clamped to the bounds
+     * above). Skips silently where layout metrics are unavailable
+     * (the vm test harness without a shim, a detached container) —
+     * the CSS fallback height governs there. */
+    function sizeViewport() {
+      if (disposed || !viewport || !viewport.style) {
+        return;
+      }
+      const winH = window.innerHeight;
+      const rect = viewport.getBoundingClientRect();
+      if (!Number.isFinite(winH) || winH <= 0 || !Number.isFinite(rect.top)) {
+        return;
+      }
+      const avail = winH - rect.top - VIEWPORT_BOTTOM_RESERVE;
+      const next = `${Math.round(Math.max(VIEWPORT_MIN_H, Math.min(VIEWPORT_MAX_H, avail)))}px`;
+      if (viewport.style.height !== next) {
+        viewport.style.height = next;
+      }
+    }
+
     function relayout() {
       if (disposed || !viewport) {
         return;
@@ -521,6 +550,7 @@
       relayout();
     });
 
+    sizeViewport();
     const watch = mb.watchRollup(ctx.path, {}, (env) => {
       envelope = env;
       relayout();
@@ -534,10 +564,21 @@
     if (resizeObserver) {
       resizeObserver.observe(viewport);
     }
+    // Window resize re-measures the available height; the observer
+    // then relayouts off the height change (directly where there is
+    // no ResizeObserver, e.g. the vm harness).
+    function onWindowResize() {
+      sizeViewport();
+      if (!resizeObserver) {
+        relayout();
+      }
+    }
+    window.addEventListener("resize", onWindowResize);
 
     activeTreemapDispose = () => {
       disposed = true;
       watch.dispose();
+      window.removeEventListener("resize", onWindowResize);
       if (resizeObserver) {
         resizeObserver.disconnect();
       }

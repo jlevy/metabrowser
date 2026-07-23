@@ -58,6 +58,10 @@
 .tm-viewport {
   position: relative;
   min-height: 280px;
+  /* Pre-measurement fallback only: index.js measures the space below
+     the viewport's top edge on mount and window resize and pins an
+     inline height (clamped 280-900px), so wrapped toolbars or long
+     breadcrumbs never force the pane's scroll owner to scroll. */
   height: calc(100vh - 330px);
   max-width: var(--tm-max-width);
   overflow: hidden;
@@ -94,9 +98,13 @@
   z-index: 2;
 }
 
+/* Two-tone focus ring: the accent ring is backed by a neutral halo so
+   it stays >= 3:1 against ANY cell wash (the saturated recent-age
+   fills sit too close to the accent for a bare ring). */
 .tm-cell:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: -2px;
+  box-shadow: inset 0 0 0 4px var(--viz-surface);
   z-index: 3;
 }
 
@@ -132,6 +140,7 @@
 .tm-cell-title[role="button"]:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: -1px;
+  box-shadow: 0 0 0 2px var(--viz-surface);
 }
 
 .tm-nested {
@@ -162,7 +171,11 @@
 .tm-cell-sub {
   font-size: 10px;
   line-height: 12px;
-  color: var(--viz-text-muted);
+  /* Full-strength text faded via opacity, not the muted token: the
+     muted color dips under AA on the tinted washes; opacity keeps the
+     hierarchy while the blend stays >= 4.5:1 on every fill. */
+  color: var(--viz-text);
+  opacity: 0.8;
   font-variant-numeric: tabular-nums;
   user-select: text;
 }
@@ -240,4 +253,16 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   user-select: text;
+}
+
+/* Print keeps the map as a figure at its measured size and drops the
+   interactive chrome; the host's print rules already hide the app
+   shell around it. */
+@media print {
+  .tm-toolbar {
+    display: none;
+  }
+  .tm-cell {
+    transition: none;
+  }
 }

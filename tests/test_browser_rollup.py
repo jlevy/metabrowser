@@ -17,8 +17,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from metabrowser.events import FsEntry
+from watchfiles import Change
+
+from metabrowser.events import FsChange, FsEntry, FsUpsert
 from metabrowser.inventory import InventoryIndex
+from metabrowser.watch_backends import _emit_for_path
 from metabrowser.wire_models import validate_rollup_node
 
 
@@ -129,6 +132,77 @@ def test_rollup_none_for_files_and_unknown_paths(tmp_path: Path) -> None:
     index = _build_index(tmp_path)
     assert index.rollup("file.txt", depth=2, top=10, ext_top=4) is None
     assert index.rollup("missing", depth=2, top=10, ext_top=4) is None
+
+
+def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> None:
+    """Integration leg of the live-refresh chain: a real filesystem
+    mutation, driven through the watcher's producer (`_emit_for_path`,
+    the code `awatch` feeds), must emit `fs.change` upserts that reach
+    root scope AND be visible in the next rollup. The client half —
+    `fs.change` on SSE → `metabrowser:inventory-change` → watchRollup
+    refetch — is covered by tests/dom/folder_plugin_behavior.js; this
+    test pins the server half those events promise.
+    """
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("x" * 100)
+
+    async def run() -> tuple[dict[str, Any], set[str], dict[str, Any], dict[str, Any]]:
+        index = InventoryIndex()
+        index.start(tmp_path)
+        await index.wait_until_done(10)
+
+        before = index.rollup("", depth=3, top=40, ext_top=12)
+        assert before is not None
+        sub_q = index.subscribe(max_queue=1024)
+
+        target = tmp_path / "src" / "table.csv"
+        target.write_bytes(b"c" * 500)
+        await _emit_for_path(index, tmp_path, str(target), Change.added)
+
+        upserts: set[str] = set()
+        while not sub_q.empty():
+            evt = sub_q.get_nowait()
+            if isinstance(evt, FsChange):
+                for op in evt.ops:
+                    if isinstance(op, FsUpsert):
+                        upserts.add(op.entry.path)
+
+        after_add = index.rollup("", depth=3, top=40, ext_top=12)
+        assert after_add is not None
+
+        target.unlink()
+        await _emit_for_path(index, tmp_path, str(target), Change.deleted)
+        after_delete = index.rollup("", depth=3, top=40, ext_top=12)
+        assert after_delete is not None
+        return before, upserts, after_add, after_delete
+
+    before, upserts, after_add, after_delete = asyncio.run(run())
+
+    node = before["node"]
+    validate_rollup_node(node)
+    assert (node["total_files"], node["total_size"]) == (1, 100)
+
+    # The upsert batch covers the file AND its bubbled ancestors: the
+    # root upsert is what lands inside the client's root-depth-2 SSE
+    # scope no matter how deep the change, so watchRollup always sees
+    # a trigger.
+    assert "src/table.csv" in upserts
+    assert "src" in upserts
+    assert "" in upserts
+
+    node = after_add["node"]
+    validate_rollup_node(node)
+    assert (node["total_files"], node["total_size"]) == (2, 600)
+    src_node = next(child for child in node["children"] if child["name"] == "src")
+    assert src_node["total_size"] == 600
+    tallies = {row[0]: row for row in after_add["ext_tallies"]}
+    assert tallies[".csv"][1:] == [1, 500, 1, 500]
+
+    node = after_delete["node"]
+    validate_rollup_node(node)
+    assert (node["total_files"], node["total_size"]) == (1, 100)
+    assert ".csv" not in {row[0] for row in after_delete["ext_tallies"]}
 
 
 def _count_nodes(node: dict[str, Any]) -> int:

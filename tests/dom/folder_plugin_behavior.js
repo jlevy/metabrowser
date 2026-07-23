@@ -25,6 +25,7 @@ function makeElement() {
     innerHTML: "",
     listeners: {},
     attributes: {},
+    style: {},
     addEventListener(type, fn) {
       el.listeners[type] = el.listeners[type] || [];
       el.listeners[type].push(fn);
@@ -38,7 +39,7 @@ function makeElement() {
       }
       return null;
     },
-    getBoundingClientRect: () => ({ width: 800, height: 600 }),
+    getBoundingClientRect: () => ({ width: 800, height: 600, top: 120 }),
     setAttribute(k, v) {
       el.attributes[k] = v;
     },
@@ -89,6 +90,7 @@ const sandbox = {
       this.detail = opts ? opts.detail : undefined;
     }
   },
+  innerHeight: 1000,
   localStorage: {
     _data: {},
     getItem(k) {
@@ -258,6 +260,23 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     container.status.textContent,
   );
 
+  // Viewport height is measured, not the CSS calc: innerHeight 1000
+  // minus rect.top 120 minus the 64px bottom reserve.
+  check(
+    "viewport height measured on mount",
+    container.viewport.style.height === "816px",
+    container.viewport.style.height || "unset",
+  );
+  // Window resize re-measures; a too-short window clamps to the floor.
+  sandbox.innerHeight = 300;
+  sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+  check(
+    "viewport height clamped at the minimum",
+    container.viewport.style.height === "280px",
+    container.viewport.style.height || "unset",
+  );
+  sandbox.innerHeight = 1000;
+
   // Inventory change → debounce timer → refetch.
   sandbox.dispatchEvent(
     new sandbox.CustomEvent("metabrowser:inventory-change", {
@@ -294,11 +313,14 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     );
   }
 
-  // Dispose detaches the inventory-change listener.
+  // Dispose detaches the inventory-change and window-resize listeners.
   const listenerCount = (windowListeners["metabrowser:inventory-change"] || []).length;
+  const resizeCount = (windowListeners.resize || []).length;
   view.dispose();
   const afterDispose = (windowListeners["metabrowser:inventory-change"] || []).length;
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
+  const resizeAfter = (windowListeners.resize || []).length;
+  check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
 
   if (failures.length > 0) {
     console.error(`folder plugin FAILURES:\n- ${failures.join("\n- ")}`);
