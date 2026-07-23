@@ -3500,23 +3500,31 @@ function initFilterBar() {
   // without touching any render path. Class toggles from
   // applyTreeFilters are attribute mutations, invisible to a
   // childList-only observer — no feedback loop.
+  function scheduleFilterReapply() {
+    if (fsApi.activeCount() === 0) {
+      return;
+    }
+    if (filterReapplyTimer) {
+      clearTimeout(filterReapplyTimer);
+    }
+    filterReapplyTimer = setTimeout(() => {
+      filterReapplyTimer = null;
+      applyTreeFilters();
+    }, FILTER_REAPPLY_DEBOUNCE_MS);
+  }
   if (typeof MutationObserver !== "undefined") {
     var panel = document.getElementById("tab-files");
     if (panel) {
-      new MutationObserver(() => {
-        if (fsApi.activeCount() === 0) {
-          return;
-        }
-        if (filterReapplyTimer) {
-          clearTimeout(filterReapplyTimer);
-        }
-        filterReapplyTimer = setTimeout(() => {
-          filterReapplyTimer = null;
-          applyTreeFilters();
-        }, FILTER_REAPPLY_DEBOUNCE_MS);
-      }).observe(panel, { childList: true, subtree: true });
+      new MutationObserver(scheduleFilterReapply).observe(panel, {
+        childList: true,
+        subtree: true,
+      });
     }
   }
+  // Activity flips (the Current dimension) arrive as store changes
+  // that may not touch the tree's childList (badge class toggles), so
+  // the decoration also refreshes off the inventory-change event.
+  window.addEventListener("metabrowser:inventory-change", scheduleFilterReapply);
 }
 
 // ── Pane resizing ───────────────────────────────────────────────
