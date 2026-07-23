@@ -4639,7 +4639,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadTree();
   applyTreeFilters();
   initPaneResize("tree-resize", ".tree-pane", 180, null);
-  if (initialPath) {
+  // Reveal only while the deep link is still what's loading or
+  // loaded: a failed fetch rolled currentPath back (and cleared the
+  // selection), and re-highlighting the failed path would disagree
+  // with the error pane.
+  if (initialPath && currentPath === initialPath) {
     revealInTree(initialPath);
   } else if (!initialIsDir) {
     var readme = findRootReadme();
