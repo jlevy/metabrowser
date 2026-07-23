@@ -2440,7 +2440,17 @@ async function selectFile(path, skipHistory) {
       //   - cold: not in fileCache → unconditional fetch.
       const cached = fileCache.get(path);
       const needsRevalidate = fileNeedsRevalidate.has(path);
-      if (cached && !needsRevalidate && !activeFiles.has(path)) {
+      // A cached FILE envelope must not serve a path the inventory now
+      // says is a directory (folder envelopes are never cached, so a
+      // kind mismatch means the cache entry is stale).
+      const storeEntry = fileStore.get(path);
+      const staleKind = !!(
+        cached &&
+        storeEntry &&
+        storeEntry.type === "dir" &&
+        cached.kind !== "folder"
+      );
+      if (cached && !needsRevalidate && !staleKind && !activeFiles.has(path)) {
         commitRoute(path, cached.kind === "folder", skipHistory);
         renderFile(cached);
         maybeOpenLiveStream(path, cached);
@@ -2547,11 +2557,14 @@ async function selectFile(path, skipHistory) {
           // Also normalize a hash that still names the failed path
           // (manual #missing/ edits): the error pane keeps naming the
           // failure; URL and state describe the last rendered location.
+          // With no committed route yet (a failed deep link), the hash
+          // deliberately keeps naming the requested path — reload
+          // retries it — while the cleared selection matches the
+          // empty result.
           if (lastWrittenRoute) {
             commitRoute(lastWrittenRoute.path, lastWrittenRoute.isDir, true);
-            // The tree highlight must follow the same rollback.
-            setSelectedPath(currentPath ?? "");
           }
+          setSelectedPath(currentPath ?? "");
         }
       }
     },
