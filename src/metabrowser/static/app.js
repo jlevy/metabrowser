@@ -2542,6 +2542,12 @@ async function selectFile(path, skipHistory) {
           // to the committed route, keeping hash, selection state, and
           // route-change comparisons coherent with what is on screen.
           currentPath = lastWrittenRoute ? lastWrittenRoute.path : null;
+          // Also normalize a hash that still names the failed path
+          // (manual #missing/ edits): the error pane keeps naming the
+          // failure; URL and state describe the last rendered location.
+          if (lastWrittenRoute) {
+            commitRoute(lastWrittenRoute.path, lastWrittenRoute.isDir, true);
+          }
         }
       }
     },
@@ -4398,12 +4404,19 @@ function splitHashRoute(route) {
 
 /** @type {{path: string, isDir: boolean} | null} */
 var lastWrittenRoute = null;
+// The first route this session committed — what the user actually
+// landed on (hash deep link, seeded README, or the root folder).
+// Back past the newest history entry restores this, not a guess.
+var firstCommittedRoute = null;
 
 /** @param {string} path @param {boolean} isDir @param {boolean | undefined} skipHistory */
 function commitRoute(path, isDir, skipHistory) {
   var frag = isDir ? (path ? `${encodeURIComponent(path)}/` : "/") : encodeURIComponent(path);
   var routeChanged =
     !lastWrittenRoute || lastWrittenRoute.path !== path || lastWrittenRoute.isDir !== isDir;
+  if (!firstCommittedRoute) {
+    firstCommittedRoute = { path: path, isDir: isDir };
+  }
   if (!skipHistory && routeChanged) {
     history.pushState(null, "", `#${frag}`);
   } else {
@@ -4510,8 +4523,12 @@ function handleRouteChange(event) {
     // means Back reached the initial pre-navigation entry: restore the
     // landing view instead of leaving the stale preview in place.
     if (event.type === "popstate" && lastWrittenRoute) {
-      var fallback = serverInitialPath();
-      navigateToPath(fallback ? fallback : "/", true);
+      var landing = firstCommittedRoute;
+      var landingRoute = "/";
+      if (landing) {
+        landingRoute = landing.isDir ? (landing.path ? `${landing.path}/` : "/") : landing.path;
+      }
+      navigateToPath(landingRoute, true);
     }
     return;
   }
