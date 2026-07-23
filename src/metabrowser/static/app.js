@@ -2537,6 +2537,11 @@ async function selectFile(path, skipHistory) {
           disposeActivePluginViews();
           stopFolderHeaderRefresh();
           preview.innerHTML = `<div class="preview-empty">Error: ${esc(errorMessage(err))}</div>`;
+          // Failed loads never commit a route (the URL must not point
+          // at a path that did not render) — so roll currentPath back
+          // to the committed route, keeping hash, selection state, and
+          // route-change comparisons coherent with what is on screen.
+          currentPath = lastWrittenRoute ? lastWrittenRoute.path : null;
         }
       }
     },

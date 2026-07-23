@@ -391,7 +391,7 @@
       rows.push(`${cell.files} files · ${mb.formatSize(cell.bytes)}`);
     } else if (cell.kind === "rest") {
       rows.push(`<strong>${cell.files || 0} more items</strong>`);
-      rows.push(mb.formatSize(cell.value));
+      rows.push(cellValueText(cell, state));
     } else {
       rows.push(`<strong>${mb.escapeHtml(cell.path || cell.name)}</strong>`);
       rows.push(
@@ -617,10 +617,12 @@
         moveFocus(focusPos - 1);
         e.preventDefault();
       } else if (key === "Backspace") {
+        // At the served root there is no parent to open — let the
+        // browser keep its own Backspace behavior (e.g. history back).
         if (ctx.path) {
           mb.openPath(parentPath(ctx.path) || "/");
+          e.preventDefault();
         }
-        e.preventDefault();
       }
     });
 
