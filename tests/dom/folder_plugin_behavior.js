@@ -354,7 +354,11 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
       fn();
     }
     await new Promise((resolve) => setImmediate(resolve));
-    check("gate: hidden view skips the fetch", fetchCalls.length === start + 1, `${fetchCalls.length}`);
+    check(
+      "gate: hidden view skips the fetch",
+      fetchCalls.length === start + 1,
+      `${fetchCalls.length}`,
+    );
     check("gate: watch reports stale", watch.stale() === true, String(watch.stale()));
     visible = true;
     await watch.refresh();
