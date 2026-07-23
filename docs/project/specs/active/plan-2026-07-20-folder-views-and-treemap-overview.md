@@ -348,16 +348,18 @@ Independent of Phase 1; Phase 3 needs both.
   with age and type color modes, gitignored three-state, hover tooltip, click
   navigation, keyboard model, pending and truncated presentations, plugin styles, core
   fill tokens
-- [ ] Live refresh: `watchRollup` wiring end to end (filesystem change to ancestor
+- [x] Live refresh: `watchRollup` wiring end to end (filesystem change to ancestor
   upsert to debounced refetch to relayout), plus an integration test from a real
-  filesystem mutation
+  filesystem mutation (`test_rollup_reflects_real_fs_mutation_through_fs_change`)
 - [x] History semantics for navigation equivalence: folder-to-folder navigation uses
   `history.pushState` so browser back retraces zooms; file selection keeps
   `replaceState`; `popstate` routes through `navigateToPath`; DOM tests for the
   back-button trail
-- [ ] Validation: budgets on a synthetic large root, the design-system review checklist
-  in both themes, docs updates (`docs/plugins.md` folder kind, `docs/design-system.md`
-  fill tokens, `docs/architecture.md` folder envelope note)
+- [x] Validation: budgets on a synthetic large root, the design-system review checklist
+  in both themes (contrast audit darkened the `--file-age-*` text ramp for AA and added
+  its dark variants; two-tone treemap focus ring; print and reduced-motion verified),
+  docs updates (`docs/plugins.md` folder kind, `docs/design-system.md` fill tokens,
+  `docs/architecture.md` folder envelope note)
 
 ## Testing Strategy
 

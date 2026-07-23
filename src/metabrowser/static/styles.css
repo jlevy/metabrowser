@@ -599,17 +599,20 @@
   --file-age-weight-recent: var(--weight-bold); /* seconds + minutes pop */
 
   /* Freshness ramp (red → orange → dim yellow). Single-family encoding:
-     hue walks monotonically from red to yellow as age grows, saturation
-     drops from loud to quiet, and lightness stays in the mid-40s so
-     contrast against the page background is roughly constant. The
-     reading is "warmer + louder = newer; cooler + quieter = older"
-     without ever crossing into a different color family. */
-  --file-age-sec: hsl(8 85% 52%); /* < 1 min — saturated red */
-  --file-age-min: hsl(22 78% 48%); /* < 1 hour — red-orange */
-  --file-age-hr: hsl(34 68% 46%); /* < 1 day — orange */
-  --file-age-day: hsl(44 55% 44%); /* < 1 week — amber */
-  --file-age-wk: hsl(50 35% 42%); /* < 1 month — dim yellow */
-  --file-age-old: hsl(52 18% 40%); /* ≥ 1 month — desaturated khaki */
+     hue walks monotonically from red to yellow as age grows and
+     saturation drops from loud to quiet, so the reading is "warmer +
+     louder = newer; cooler + quieter = older" without ever crossing
+     into a different color family. Lightness sits near 30-35% so the
+     text clears WCAG AA (>= 4.5:1) not just on the page background but
+     on every tinted surface it rides: the matching --file-age-fill-*
+     wash, the ft-* washes, hover and selection tints. Dark theme has
+     matching lightened variants below. */
+  --file-age-sec: hsl(8 85% 33%); /* < 1 min — saturated red */
+  --file-age-min: hsl(22 78% 32%); /* < 1 hour — red-orange */
+  --file-age-hr: hsl(34 68% 30%); /* < 1 day — orange */
+  --file-age-day: hsl(44 55% 30%); /* < 1 week — amber */
+  --file-age-wk: hsl(50 35% 32%); /* < 1 month — dim yellow */
+  --file-age-old: hsl(52 18% 35%); /* ≥ 1 month — desaturated khaki */
 
   /* Freshness ramp as area fills (treemap cells). Same hue walk as the
      text ramp above but as translucent washes so cell labels keep
@@ -734,6 +737,17 @@
   --link: hsl(204 88% 66%);
   --muted: hsl(215 12% 68%);
   --code-bg: hsl(220 18% 14%);
+
+  /* Freshness text ramp, lightened for dark surfaces: same hue and
+     saturation walk as the light ramp, lightness raised until every
+     bucket clears WCAG AA on its own wash, the ft-* washes, and the
+     hover/selection tints. */
+  --file-age-sec: hsl(8 85% 77%);
+  --file-age-min: hsl(22 78% 70%);
+  --file-age-hr: hsl(34 68% 62%);
+  --file-age-day: hsl(44 55% 52%);
+  --file-age-wk: hsl(50 35% 51%);
+  --file-age-old: hsl(52 18% 57%);
 
   /* Treemap age fills: higher alpha than light theme so the washes
      stay legible on the dark surface. */
@@ -1776,6 +1790,11 @@ html[data-prose-font="sans"] {
 .folder-up[disabled] {
   opacity: 0.4;
   cursor: default;
+}
+.folder-header-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
 }
 .folder-header-count,
 .folder-header-age {
