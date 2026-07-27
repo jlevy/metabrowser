@@ -50,9 +50,10 @@ def test_directory_returns_folder_envelope(tmp_path: Path) -> None:
     assert body["path"] == "sub"
     assert body["name"] == "sub"
     view_ids = [v["id"] for v in body["views"]]
-    assert view_ids == ["treemap", "readme"]
+    assert view_ids == ["treemap"]
     defaults = [v["id"] for v in body["views"] if v.get("default")]
     assert defaults == ["treemap"]
+    assert body["readme_path"] == ""
     assert response.headers["cache-control"] == "no-store"
 
 
@@ -99,8 +100,10 @@ def test_readme_detection_direct_children_only(tmp_path: Path) -> None:
 
     body, _ = _api_file("docs")
     assert body["readme_path"] == "docs/ReadMe.MD"
+    assert [view["id"] for view in body["views"]] == ["treemap", "readme"]
     nested_body, _ = _api_file("docs/nested")
     assert nested_body["readme_path"] == ""
+    assert [view["id"] for view in nested_body["views"]] == ["treemap"]
 
 
 def test_traversal_still_404(tmp_path: Path) -> None:

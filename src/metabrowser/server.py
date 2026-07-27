@@ -1287,15 +1287,19 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
     so `renderFile` routes folders through the same tab pipeline. The
     `dir` block carries the inventory aggregates (null while the walker
     is still finalizing, matching the tree wire contract) and
-    `readme_path` names a direct-child README for the README view.
-    Served no-store: the envelope is tiny and its aggregates change
-    while a scan is running.
+    `readme_path` names a direct-child README when one exists. The
+    README view is omitted otherwise, which lets the shell render the
+    single Treemap view without a tab bar. Served no-store: the envelope
+    is tiny and its aggregates change while a scan is running.
     """
 
     inventory = get_inventory()
     entry = inventory.get(subpath)
     readme_name = await asyncio.to_thread(_find_dir_readme, target)
     readme_path = f"{subpath}/{readme_name}" if subpath and readme_name else readme_name
+    views = _views_for_kind("folder")
+    if not readme_path:
+        views = [view for view in views if view["id"] != "readme"]
     total_files = entry.total_files if entry is not None else None
     total_size = entry.total_size if entry is not None else None
     newest_ns = entry.newest_mtime_ns if entry is not None else None
@@ -1304,7 +1308,7 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
         "kind": "folder",
         "path": subpath,
         "name": target.name,
-        "views": _views_for_kind("folder"),
+        "views": views,
         "dir": {
             "total_files": total_files,
             "total_size": total_size,

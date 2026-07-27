@@ -1,6 +1,6 @@
 # Feature: Folder Views and the Treemap Overview
 
-**Date:** 2026-07-20 (last updated 2026-07-20)
+**Date:** 2026-07-20 (last updated 2026-07-26)
 
 **Author:** Metabrowser maintainers
 
@@ -53,7 +53,6 @@ layout spike that confirms the stated performance budgets.
 - Replacing the tree panel or Recent view
 - Rendering a treemap cell for every file in very large subtrees; small items aggregate
   into explicit remainder cells
-- Changing startup behavior for roots with a README (the seeded README preview stays)
 - Archive or container contents (separate roadmap item)
 - Editing or file operations from the treemap
 
@@ -98,9 +97,10 @@ The mechanics this feature needs already exist for files and for aggregates:
    `api_file` handler, exactly as the imperative fallback chain owns `text` and
    `binary`. The built-in `folder` plugin declares only `[[view]]` blocks, like the text
    and binary manifests.
-3. **Both folder tabs always render; no conditional view lists.** The README tab shows
-   an explicit empty state when the folder has no README, per the design-system rule on
-   empty states. The server never filters view descriptors by content.
+3. **Folder view lists are content-aware.** The Treemap view is always present.
+   The server includes the README view only when the folder has a direct-child README,
+   so a README-less folder renders the Treemap without a redundant one-item tab bar.
+   Other plugin-provided folder views remain unaffected.
 4. **The root folder is the homepage.** With no explicit hash route, the shell selects
    the root folder and its default treemap view.
    A direct-child README remains available through the folder’s README tab and never
@@ -140,9 +140,11 @@ The mechanics this feature needs already exist for files and for aggregates:
   - finds a direct-child README via the bounded `_find_dir_readme(target)` helper in a
     thread;
   - returns
-    `{type: "folder", kind: "folder", path, name, views: _views_for_kind("folder"), dir: {total_files, total_size, mtime, gitignored, state}, readme_path}`
+    `{type: "folder", kind: "folder", path, name, views, dir: {total_files, total_size, mtime, gitignored, state}, readme_path}`
     where `state` is `"pending"` when aggregates are null and `mtime` follows the tree
     contract (null pending, `0.0` empty, else seconds);
+  - derives `views` from `_views_for_kind("folder")` and omits the built-in `readme`
+    descriptor when `readme_path` is empty;
   - sets `cache-control: no-store` (the envelope is tiny and aggregates change during
     scans; the client also skips its `fileCache` for folder envelopes).
 - `VIEW_REGISTRY` (file_kinds.py): add `"folder": []` documenting the core-owned kind;
@@ -215,8 +217,8 @@ The mechanics this feature needs already exist for files and for aggregates:
   `renderFolderHeader(data)`: breadcrumb segments (root plus each ancestor, each
   navigating to that directory), an up button (disabled at the root), and the aggregate
   summary (`sizeHtml`, count, age).
-  Tabs, lazy mounting, and disposal flow through the existing code path; `ctx.raw` is
-  the folder envelope.
+  Tabs, lazy mounting, and disposal flow through the existing code path; a single view
+  renders without a tab bar, and `ctx.raw` is the folder envelope.
 - `init()`: when there is no hash, call `selectFile("")` immediately so the root folder
   request runs in parallel with the tree load and lands on the default treemap.
   The server and shell do not seed a root README as the initial file.
@@ -258,8 +260,9 @@ The mechanics this feature needs already exist for files and for aggregates:
   hierarchy, one cell per extension.
 - `index.js` registers both views:
   - `readme`: renders through the exported markdown built-ins (`mb.builtins.markdown`)
-    against a context whose `path` is `raw.readme_path`, or an explicit “No README in
-    this folder” empty state.
+    against a context whose `path` is `raw.readme_path`. The folder envelope advertises
+    this view only when the path exists; the renderer retains a defensive empty state
+    for direct SDK invocation.
   - `treemap`: mounts a toolbar (three joined toggle groups plus the three-state
     gitignored control), the cell viewport, and a compact legend; holds
     `{metric, grouping, color, ignored}` persisted under the
@@ -312,7 +315,7 @@ remaining phase, and 5 lands with the unified-filtering plan.
 
 ### Phase 1: Folder Views Framework
 
-Shippable on its own: folder selection, breadcrumb, and the README tab.
+Shippable on its own: folder selection, breadcrumb, and the conditional README view.
 
 - [x] Folder envelope: `_api_folder_envelope`, `_find_dir_readme`,
   `VIEW_REGISTRY["folder"]`, no-store headers, tests
@@ -321,8 +324,8 @@ Shippable on its own: folder selection, breadcrumb, and the README tab.
   marker in `parseHashRoute` and `selectFile`, `revealInTree` generalization,
   `renderFolderHeader` with breadcrumb and up, root-folder landing in `init()`,
   `.tree-toggle` and header styles, DOM tests under `tests/dom/`
-- [x] Built-in `folder` plugin with manifest and the README view (markdown built-ins
-  reuse, explicit empty state), Node `vm` registration tests
+- [x] Built-in `folder` plugin with manifest and the conditionally exposed README view
+  (markdown built-ins reuse, defensive empty state), Node `vm` registration tests
   (`tests/test_folder_plugin_behavior_js.py`)
 
 ### Phase 2: Rollup Data Plane
@@ -379,11 +382,11 @@ Independent of Phase 1; Phase 3 needs both.
 ## Rollout Plan
 
 Land phases in order; each is releasable.
-Phase 1 changes folder clicks from toggle-only to select-plus-expand and adds the README
-tab; the treemap tab appears in Phase 3 as the default folder view.
-Startup with a root README is unchanged throughout (decision 4). The nav panel, Recent
-view, and file previews keep their current behavior and timing; rollup work stays off
-the request path for unrelated views.
+Phase 1 changes folder clicks from toggle-only to select-plus-expand and adds the
+conditional README view; the treemap appears in Phase 3 as the default folder view.
+The root folder opens on the Treemap whether or not it has a README (decision 4). The
+nav panel, Recent view, and file previews keep their current behavior and timing; rollup
+work stays off the request path for unrelated views.
 
 ## Open Questions
 
