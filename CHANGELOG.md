@@ -19,6 +19,10 @@ Flat single-command CLI:
   Metabrowser at or above this version.
 - Golden console-output tests now pin the CLI surface (help, every mode, and the
   usage-error matrix) under `tests/golden/`.
+- The agent skill, README, and installation guide pin `uvx metabrowser@0.2.0`, the first
+  release with the flat CLI. The publish workflow refuses a release whose tag does not
+  match the documented pins and smoke-tests the skill’s pinned invocation (`--help` and
+  `--doctor`) from PyPI after publishing, so the pin and the CLI grammar cannot diverge.
 
 ## 0.1.1
 

@@ -10,11 +10,11 @@ Regenerate after an intended change with:
 
     GOLDEN_UPDATE=1 uv --config-file uv.toml run --frozen pytest tests/test_cli_golden.py
 
-Normalization keeps only stable fields: ANSI styling is stripped, the
-terminal width is pinned, and the package version, temporary roots, the
-repository checkout path, and log timestamps are replaced with
-placeholders. Walk fixtures get fixed mtimes so sizes and timestamps in
-walker output are deterministic.
+Normalization keeps only stable fields: ANSI styling and Rich's
+end-of-line padding are stripped, the terminal width is pinned, and the
+package version, temporary roots, the repository checkout path, and log
+timestamps are replaced with placeholders. Walk fixtures get fixed mtimes
+so sizes and timestamps in walker output are deterministic.
 """
 
 from __future__ import annotations
@@ -70,7 +70,10 @@ def _normalize(text: str, root: Path | None = None) -> str:
         out = out.replace(str(root), "<ROOT>")
     out = out.replace(str(REPO_ROOT), "<REPO>")
     out = out.replace(__version__, "<VERSION>")
-    return _LOG_LINE.sub("", out)
+    out = _LOG_LINE.sub("", out)
+    # Rich pads rendered lines to the console width; the padding is not part
+    # of the CLI contract and trips `git diff --check` on the goldens.
+    return re.sub(r"[ \t]+$", "", out, flags=re.MULTILINE)
 
 
 def check_golden(name: str, actual: str) -> None:
@@ -151,6 +154,10 @@ def test_golden_version() -> None:
         ("error-old-subcommand.txt", ["serve", "."]),
         ("error-bad-format.txt", [".", "--walk", "--format", "xml"]),
         ("error-bad-port.txt", [".", "--port", "0"]),
+        # Value validation runs at parse time, before mode applicability:
+        # an invalid value on a mode-inapplicable option reports the value,
+        # not the mode (see the flat-CLI spec's Validation section).
+        ("error-value-precedence.txt", ["--plugins", "--port", "0"]),
     ],
 )
 def test_golden_usage_errors(name: str, args: list[str]) -> None:

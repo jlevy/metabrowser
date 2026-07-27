@@ -1,16 +1,16 @@
 # metab --help
 exit: 0
 --- stdout ---
-                                                                                                    
- Usage: metab [OPTIONS] [ROOT]                                                                      
-                                                                                                    
- Browse local files from your web browser, with extensible plugin-based rendering of Markdown,      
- code, JSON, YAML, logs, and other files.                                                           
-                                                                                                    
- Serving is the default: `metab .` serves the current directory and opens                           
- it in your browser. Select another operation with a mode flag (--walk,                             
- --remote, --plugins, --plugin, --doctor).                                                          
-                                                                                                    
+
+ Usage: metab [OPTIONS] [ROOT]
+
+ Browse local files from your web browser, with extensible plugin-based rendering of Markdown,
+ code, JSON, YAML, logs, and other files.
+
+ Serving is the default: `metab .` serves the current directory and opens
+ it in your browser. Select another operation with a mode flag (--walk,
+ --remote, --plugins, --plugin, --doctor).
+
 ╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
 │   [root]      PATH  Directory (or file) to serve or walk. With no ROOT and no mode, prints help. │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -26,7 +26,7 @@ exit: 0
 │ --plugin         NAME  Print the full resolved manifest for one plugin.                          │
 │ --doctor               Validate every discovered plugin; exit non-zero on any problem.           │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Serve, walk, and remote ────────────────────────────────────────────────────────────────────────╮
+╭─ Shared by multiple modes (each option names its modes) ─────────────────────────────────────────╮
 │ --path               TEXT   Serve: relative path from ROOT to select on launch. Walk: subtree    │
 │                             for a JSON/YAML all-at-once tree envelope. Remote: remote directory  │
 │                             to serve (required).                                                 │
@@ -79,13 +79,13 @@ exit: 0
 ╭─ Plugins (--plugins / --plugin / --doctor) ──────────────────────────────────────────────────────╮
 │ --json          Emit structured JSON (plugin modes).                                             │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-                                                                                                    
- Examples:                                                                                          
- metab .                                                                                            
- metab ./path/to/artifacts --no-open                                                                
- metab . --walk --format json                                                                       
- metab --remote my-vm --path /srv/runs                                                              
- metab --plugins                                                                                    
-                                                                                                    
+
+ Examples:
+ metab .
+ metab ./path/to/artifacts --no-open
+ metab . --walk --format json
+ metab --remote my-vm --path /srv/runs
+ metab --plugins
+
 
 --- stderr ---

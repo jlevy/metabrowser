@@ -88,7 +88,7 @@ def _plugin_assets(plugin: LoadedPlugin) -> list[str]:
 
 
 def _plugin_details(plugin: LoadedPlugin) -> dict[str, object]:
-    """Return the resolved plugin details exposed by ``plugins show --json``."""
+    """Return the resolved plugin details exposed by ``--plugin NAME --json``."""
     return {
         "name": plugin.name,
         "display_name": plugin.manifest.plugin.display_name,

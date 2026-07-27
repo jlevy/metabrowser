@@ -212,8 +212,8 @@ npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
 The skill requires no persistent Metabrowser installation.
-It calls the pinned `uvx metabrowser@0.1.1 ...` runner and uses `--help` on the CLI and
-its subcommands as the source of truth.
+It calls the pinned `uvx metabrowser@0.2.0 ...` runner and uses `--help` on the CLI as
+the source of truth.
 A globally installed `metab` remains available as the faster local command.
 
 ## Develop

@@ -38,7 +38,7 @@ from metabrowser.server_utils import MAX_TCP_PORT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
 
 _PANEL_MODES = "Modes (default: serve ROOT)"
-_PANEL_SHARED = "Serve, walk, and remote"
+_PANEL_SHARED = "Shared by multiple modes (each option names its modes)"
 _PANEL_SERVE = "Serve"
 _PANEL_WALK = "Walk (--walk)"
 _PANEL_REMOTE = "Remote (--remote)"

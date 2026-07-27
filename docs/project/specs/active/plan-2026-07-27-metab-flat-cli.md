@@ -67,9 +67,9 @@ Modes and their options:
 | serve (default) | none | required | `--path`, `--port`, `--host`, `--no-open`, `--plugins-dir`, `--log-level` |
 | walk | `--walk` | required | `--format`, `--stream/--all-at-once`, `--path`, `--detail`, `--max-depth`, `--max-files`, `--log-level` |
 | remote | `--remote HOST` | rejected | `--path` (required), `--base-port`, `--no-open`, `--ssh-options`, `--gcp`, `--zone`, `--project` |
-| plugins list | `--plugins` | rejected | `--plugins-dir`, `--json` |
-| plugin show | `--plugin NAME` | rejected | `--plugins-dir`, `--json` |
-| plugins doctor | `--doctor` | rejected | `--plugins-dir`, `--json` |
+| plugins | `--plugins` | rejected | `--plugins-dir`, `--json` |
+| plugin | `--plugin NAME` | rejected | `--plugins-dir`, `--json` |
+| doctor | `--doctor` | rejected | `--plugins-dir`, `--json` |
 
 `--path` stays one flag with mode-dependent meaning: launch selection under the served
 root, walk subtree, or remote directory.
@@ -86,7 +86,12 @@ are meaningful and are rejected elsewhere.
   Click’s `ctx.get_parameter_source` distinguishes explicit values from defaults, so
   defaulted options never trigger false rejections.
 - Value validation (port ranges, `--format`, `--detail`, `--log-level` choices, walk
-  bounds) is unchanged.
+  bounds) is unchanged and runs during parsing, before mode resolution.
+  A syntactically invalid value is therefore reported as an invalid-value usage error
+  even when the option is also inapplicable to the selected mode (for example
+  `metab --plugins --port 0` reports the port range, not the mode).
+  The mode-naming diagnostic is guaranteed for inapplicable options whose values parse.
+  A golden test pins this precedence.
 
 ### Components
 
@@ -147,8 +152,14 @@ The console interface changes as described; the old subcommands no longer parse.
 
 ## Rollout Plan
 
-Ships in the next alpha release with a changelog entry spelling out the new command
-forms, including that `metab remote` sessions require matching versions on both hosts.
+Ships in the 0.2.0 alpha release with a changelog entry spelling out the new command
+forms, including that `metab --remote` sessions require matching versions on both hosts.
+
+The agent skill teaches only the flat grammar and pins `uvx metabrowser@0.2.0`, so
+merging this change and publishing 0.2.0 form one release transaction.
+The publish workflow enforces it: publishing fails when the release tag does not match
+the version pinned in the skill, README, and installation guide, and after publishing it
+executes the skill’s pinned invocation (`--help` and `--doctor`) against PyPI.
 
 ## Open Questions
 

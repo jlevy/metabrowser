@@ -12,7 +12,7 @@ once, outside the server, and print every entry.
 ``walk_tree`` the server uses, keeps the finalized form of each entry,
 annotates symlinks (which the walker records as leaf entries because it
 scans with ``follow_symlinks=False``), and renders a deterministic,
-diff-friendly text report. The ``walk`` CLI subcommand is a thin
+diff-friendly text report. The ``--walk`` CLI mode is a thin
 wrapper; a golden test pins the report shape against a fixture tree
 that includes files, nested dirs, gitignored content, and several
 kinds of symlink (in-tree, escaping, ancestor).

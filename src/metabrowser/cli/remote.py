@@ -54,7 +54,7 @@ def _probe_remote_free_port(
     project: str,
     ssh_options: str,
 ) -> int:
-    """Ask the remote host which port to use for ``metab serve``.
+    """Ask the remote host which port to use for the remote ``metab`` server.
 
     Walks from *base_port* upward so multiple remote sessions on the same
     target host coexist. Coordinating the port choice before opening the

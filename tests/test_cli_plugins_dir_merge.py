@@ -119,8 +119,8 @@ def test_serve_expands_env_plugin_paths_before_server_import(tmp_path: Path) -> 
 def test_env_var_and_cli_configure_server_before_import(tmp_path: Path) -> None:
     """When both sources name distinct dirs, plugins from both load.
 
-    This exercises the CLI's argv-merge path: simulate ``metab serve
-    <root> --plugins-dir <cli_root>`` with ``METABROWSER_PLUGINS_DIRS=<env_root>``
+    This exercises serve's env-merge path: simulate ``metab <root>
+    --plugins-dir <cli_root>`` with ``METABROWSER_PLUGINS_DIRS=<env_root>``
     pre-set in the env. After the CLI runs, the env var must contain
     BOTH dirs (env_root first, then cli_root).
     """
