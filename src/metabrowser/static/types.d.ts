@@ -168,6 +168,7 @@ type MetabrowserTreemapCell = {
   gitignored?: boolean;
   state?: string;
   nested?: boolean;
+  inner?: { x: number; y: number; w: number; h: number };
   files?: number;
   bytes?: number;
 };
@@ -180,6 +181,14 @@ type MetabrowserTreemapLayoutApi = {
     items: Array<MetabrowserTreemapWeightedItem>,
     rect: { x: number; y: number; w: number; h: number },
   ): Array<{ item: MetabrowserTreemapWeightedItem; x: number; y: number; w: number; h: number }>;
+  focusTransform(
+    focus: { x: number; y: number; w: number; h: number },
+    viewport: { w: number; h: number },
+  ): { scaleX: number; scaleY: number; translateX: number; translateY: number };
+  projectRect(
+    rect: { x: number; y: number; w: number; h: number },
+    transform: { scaleX: number; scaleY: number; translateX: number; translateY: number },
+  ): { x: number; y: number; w: number; h: number };
   layoutTree(
     rootNode: Record<string, unknown>,
     viewport: { w: number; h: number },

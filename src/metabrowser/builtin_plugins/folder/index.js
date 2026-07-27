@@ -33,12 +33,18 @@
   /** View-local encodings only. The gitignored three-state moved to
    * the shared filter vocabulary (mb.filters), where the nav bar and
    * this toolbar edit the same value. */
-  const DEFAULT_STATE = { metric: "size", grouping: "folder", color: "type" };
+  const DEFAULT_STATE = {
+    metric: "size",
+    grouping: "folder",
+    color: "type",
+    depth: "all",
+  };
   /** @type {Record<string, string[]>} */
   const VALID_STATE_VALUES = {
     metric: ["size", "files"],
     grouping: ["folder", "type"],
     color: ["type", "age"],
+    depth: ["1", "2", "3", "all"],
   };
   const IGNORED_VALUES = ["shown", "dimmed", "hidden"];
 
@@ -72,14 +78,142 @@
   const VIEWPORT_BOTTOM_RESERVE = 64;
   /** Keep the route handoff aligned with the shared layout-motion token. */
   const ZOOM_DURATION_MS = 180;
-  /** A pending entrance is useful only for the immediately replacing view. */
+  /** A pending camera handoff is useful only for the immediately replacing view. */
   const ZOOM_PENDING_TTL_MS = 5000;
-  /** @type {{direction: "in" | "out", targetPath: string, expiresAt: number} | null} */
-  let pendingZoomTransition = null;
+  /** Keep a bounded ancestor scene across route changes so the same
+   * world rectangles can drive both sides of a camera transition. */
+  const RETAINED_SCENE_MAX_NODES = 2400;
+  /**
+   * @typedef {{
+   *   direction: "in" | "out",
+   *   sourcePath: string,
+   *   targetPath: string,
+   *   refineFromDepth: number,
+   *   expiresAt: number
+   * }} SceneTransition
+   */
+  /** @type {SceneTransition | null} */
+  let pendingSceneTransition = null;
+  /** @type {{rootPath: string, node: Record<string, any>} | null} */
+  let retainedScene = null;
 
   /** @param {string} path @returns {string} */
   function normalizedNavigationPath(path) {
     return path === "/" ? "" : path.replace(/^\/+|\/+$/g, "");
+  }
+
+  /** @param {Record<string, any>} node @returns {number} */
+  function countSceneNodes(node) {
+    let count = 1;
+    const stack = Array.isArray(node.children) ? node.children.slice() : [];
+    while (stack.length > 0 && count <= RETAINED_SCENE_MAX_NODES) {
+      const current = stack.pop();
+      count += 1;
+      if (current && Array.isArray(current.children)) {
+        stack.push(...current.children);
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Replace a matching directory subtree without disturbing ancestor
+   * ordering or weights. Those ancestors define the stable world.
+   *
+   * @param {Record<string, any>} root
+   * @param {string} targetPath
+   * @param {Record<string, any>} replacement
+   * @returns {boolean}
+   */
+  function replaceSceneSubtree(root, targetPath, replacement) {
+    const children = Array.isArray(root.children) ? root.children : [];
+    for (let index = 0; index < children.length; index += 1) {
+      const child = children[index];
+      if (normalizedNavigationPath(child.path) === targetPath) {
+        children[index] = replacement;
+        return true;
+      }
+      if (
+        child.type === "dir" &&
+        targetPath.startsWith(`${normalizedNavigationPath(child.path)}/`) &&
+        replaceSceneSubtree(child, targetPath, replacement)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Keep full detail only for the active camera subtree. Sibling
+   * directory nodes retain totals and outer geometry, but their
+   * descendants can be reloaded if the camera returns to them.
+   *
+   * @param {Record<string, any>} root
+   * @param {string} targetPath
+   */
+  function pruneSceneOutsidePath(root, targetPath) {
+    if (normalizedNavigationPath(root.path) === targetPath) {
+      return;
+    }
+    const children = Array.isArray(root.children) ? root.children : [];
+    for (const child of children) {
+      if (child.type !== "dir") {
+        continue;
+      }
+      const childPath = normalizedNavigationPath(child.path);
+      if (targetPath === childPath || targetPath.startsWith(`${childPath}/`)) {
+        pruneSceneOutsidePath(child, targetPath);
+      } else {
+        child.children = null;
+      }
+    }
+  }
+
+  /**
+   * Merge the newly fetched route subtree into a bounded retained
+   * ancestor scene. Unrelated/deep-linked routes start a new world.
+   *
+   * @param {Record<string, any>} node
+   * @param {string} requestedPath
+   * @returns {Record<string, any>}
+   */
+  function updateRetainedScene(node, requestedPath) {
+    const targetPath = normalizedNavigationPath(requestedPath);
+    const incomingPath = normalizedNavigationPath(node.path);
+    if (!retainedScene) {
+      retainedScene = { rootPath: incomingPath, node };
+      return node;
+    }
+    if (targetPath === retainedScene.rootPath && incomingPath === targetPath) {
+      retainedScene.node = node;
+    } else if (
+      incomingPath === targetPath &&
+      targetPath.startsWith(retainedScene.rootPath ? `${retainedScene.rootPath}/` : "") &&
+      replaceSceneSubtree(retainedScene.node, targetPath, node)
+    ) {
+      // The target subtree now has a deeper rollup; ancestors remain
+      // untouched so their geometry is identical across the handoff.
+      pruneSceneOutsidePath(retainedScene.node, targetPath);
+    } else {
+      retainedScene = { rootPath: incomingPath, node };
+    }
+    if (countSceneNodes(retainedScene.node) > RETAINED_SCENE_MAX_NODES) {
+      retainedScene = { rootPath: incomingPath, node };
+    }
+    return retainedScene.node;
+  }
+
+  /**
+   * CSS matrix for a projected directory's child rectangle.
+   * @param {Record<string, any>} cell
+   * @param {{w: number, h: number}} viewport
+   * @returns {string}
+   */
+  function cellFocusMatrix(cell, viewport) {
+    const focus = cell.inner || cell;
+    const transform = window.MetabrowserTreemapLayout.focusTransform(focus, viewport);
+    return `matrix(${transform.scaleX},0,0,${transform.scaleY},${transform.translateX},${transform.translateY})`;
   }
 
   /** @returns {boolean} */
@@ -271,7 +405,15 @@
           ` aria-pressed="${value === active}">${label}</button>`,
       )
       .join("");
-    return `<span class="tm-seg" role="group">${buttons}</span>`;
+    /** @type {Record<string, string>} */
+    const labels = {
+      metric: "Area metric",
+      grouping: "Grouping",
+      color: "Color",
+      depth: "Visible detail depth",
+      ignored: "Gitignored files",
+    };
+    return `<span class="tm-seg" role="group" aria-label="${labels[key] || key}">${buttons}</span>`;
   }
 
   /** @param {Record<string, string>} state */
@@ -313,6 +455,16 @@
         state.color,
       ) +
       segmentHtml(
+        "depth",
+        [
+          ["1", "Depth 1"],
+          ["2", "2"],
+          ["3", "3"],
+          ["all", "All"],
+        ],
+        state.depth,
+      ) +
+      segmentHtml(
         "ignored",
         [
           ["shown", "Ignored: shown"],
@@ -331,11 +483,13 @@
    * @param {number} index
    * @param {Record<string, any>} filters
    * @param {number} nowSec
+   * @param {number | null} refineFromDepth
    */
-  function cellHtml(cell, state, index, filters, nowSec) {
+  function cellHtml(cell, state, index, filters, nowSec, refineFromDepth) {
     const style =
       `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
-      `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px`;
+      `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px` +
+      (cell.nested ? `;z-index:${100 - cell.depth}` : "");
     const showLabel = cell.w >= LABEL_MIN_W && cell.h >= LABEL_MIN_H;
     // Nested parents suppress the sublabel: the reserved header strip
     // is one line tall, and a second line would overlap child cells.
@@ -369,8 +523,12 @@
     const outerAttrs = outerInteractive
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
       : ` role="group" aria-label="${aria}"`;
+    const pendingRefinement = refineFromDepth !== null && cell.depth >= refineFromDepth;
+    const classes =
+      cellClasses(cell, state, filters, cellFilterDim(cell, filters, nowSec)) +
+      (pendingRefinement ? " tm-lod-refine" : "");
     return (
-      `<div class="${cellClasses(cell, state, filters, cellFilterDim(cell, filters, nowSec))}"${outerAttrs}` +
+      `<div class="${classes}"${outerAttrs}` +
       ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
       ` data-tm-depth="${cell.depth}"` +
       ` style="${style}">${label}</div>`
@@ -477,6 +635,8 @@
     let filters = mb.filters.get();
     /** @type {Record<string, any> | null} */
     let envelope = null;
+    /** @type {Record<string, any> | null} */
+    let sceneNode = null;
     /** @type {Record<string, any>[]} */
     let cells = [];
     let disposed = false;
@@ -486,7 +646,7 @@
     let exitTimer = null;
     /** @type {number | null} */
     let entranceTimer = null;
-    /** @type {{direction: "in" | "out", targetPath: string, expiresAt: number} | null} */
+    /** @type {SceneTransition | null} */
     let ownedPendingTransition = null;
     /** @type {number[]} */
     let actionableIndexes = [];
@@ -495,9 +655,11 @@
     container.innerHTML =
       toolbarHtml(state, filters.ignored, ctx.path) +
       '<div class="tm-viewport" role="application" ' +
-      'aria-label="Folder treemap. Select a folder to zoom in."></div>' +
+      'aria-label="Folder treemap. Select a folder to zoom in.">' +
+      '<div class="tm-scene"></div></div>' +
       `<div class="tm-status">${statusHtml(null, filters)}</div>`;
     const viewport = /** @type {HTMLElement} */ (container.querySelector(".tm-viewport"));
+    const scene = /** @type {HTMLElement} */ (viewport.querySelector(".tm-scene"));
     const status = /** @type {HTMLElement} */ (container.querySelector(".tm-status"));
 
     /** Measure the height actually available below the viewport's top
@@ -530,32 +692,53 @@
     }
 
     /**
-     * The route remains the source of truth. This transient marker
-     * only lets the replacement renderer continue the visual motion
-     * once its rollup has produced something paintable.
+     * Complete a route handoff against the same recursive world. A
+     * zoom-out mounts the parent scene already focused on the prior
+     * child and lets the compositor expand to identity. A zoom-in is
+     * already at its exact destination after the outgoing transform,
+     * so only newly eligible LOD cells refine into place.
      */
     function playPendingEntrance() {
       if (entrancePlayed || prefersReducedMotion()) {
         return;
       }
-      const transition = pendingZoomTransition;
+      const transition = pendingSceneTransition;
       if (!transition) {
         return;
       }
       if (transition.expiresAt <= Date.now()) {
-        pendingZoomTransition = null;
+        pendingSceneTransition = null;
         return;
       }
       if (normalizedNavigationPath(transition.targetPath) !== normalizedNavigationPath(ctx.path)) {
         return;
       }
-      pendingZoomTransition = null;
+      pendingSceneTransition = null;
       entrancePlayed = true;
-      const cls = transition.direction === "in" ? "tm-zoom-enter-in" : "tm-zoom-enter-out";
-      viewport.classList.add(cls);
+      if (transition.direction === "out") {
+        const sourceCell = cells.find(
+          (cell) =>
+            cell.kind === "dir" &&
+            normalizedNavigationPath(cell.path) === normalizedNavigationPath(transition.sourcePath),
+        );
+        const rect = viewport.getBoundingClientRect();
+        if (sourceCell && scene.style && typeof scene.style.setProperty === "function") {
+          scene.style.setProperty(
+            "--tm-scene-start-transform",
+            cellFocusMatrix(sourceCell, { w: rect.width, h: rect.height }),
+          );
+          scene.classList.add("tm-scene-enter-out");
+        }
+      } else {
+        // Newly materialized cells already carry tm-lod-refine. The
+        // stable cells do not fade, preserving spatial continuity.
+      }
       entranceTimer = window.setTimeout(() => {
         entranceTimer = null;
-        viewport.classList.remove(cls);
+        scene.classList.remove("tm-scene-enter-out");
+        if (scene.style && typeof scene.style.removeProperty === "function") {
+          scene.style.removeProperty("--tm-scene-start-transform");
+        }
       }, ZOOM_DURATION_MS);
     }
 
@@ -569,13 +752,17 @@
       status.textContent = statusHtml(envelope, filters);
       sizeViewport();
       const rect = viewport.getBoundingClientRect();
-      const node = envelope ? envelope.node : null;
+      const node = state.grouping === "folder" ? sceneNode : envelope ? envelope.node : null;
       if (!node || rect.width < 10 || rect.height < 10) {
-        viewport.innerHTML = envelope
+        scene.innerHTML = envelope
           ? ""
           : '<div class="tm-loading"><div class="spinner"></div></div>';
         return;
       }
+      const visibleDepth =
+        state.depth === "all"
+          ? window.MetabrowserTreemapLayout.LAYOUT_DEFAULTS.nestDepth
+          : Number(state.depth);
       cells = window.MetabrowserTreemapLayout.layoutTree(
         node,
         { w: rect.width, h: rect.height },
@@ -584,11 +771,22 @@
           grouping: state.grouping,
           ignored: filters.ignored,
           extTallies: envelope ? envelope.ext_tallies : [],
+          focusPath: state.grouping === "folder" ? ctx.path : node.path,
+          nestDepth: visibleDepth,
         },
       );
       const nowSec = Date.now() / 1000;
-      const html = cells.map((cell, i) => cellHtml(cell, state, i, filters, nowSec)).join("");
-      viewport.innerHTML =
+      const refineFromDepth =
+        pendingSceneTransition &&
+        pendingSceneTransition.direction === "in" &&
+        normalizedNavigationPath(pendingSceneTransition.targetPath) ===
+          normalizedNavigationPath(ctx.path)
+          ? pendingSceneTransition.refineFromDepth
+          : null;
+      const html = cells
+        .map((cell, i) => cellHtml(cell, state, i, filters, nowSec, refineFromDepth))
+        .join("");
+      scene.innerHTML =
         html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
       playPendingEntrance();
       // Roving tabindex over actionable cells only (dir/file); ext and
@@ -621,25 +819,43 @@
       }
       mb.tooltip.hide();
       if (prefersReducedMotion()) {
-        pendingZoomTransition = null;
+        pendingSceneTransition = null;
         mb.openPath(targetPath);
         return;
       }
       zooming = true;
       const transition = {
         direction,
+        sourcePath: ctx.path,
         targetPath,
+        refineFromDepth:
+          direction === "in" && originCell
+            ? Math.max(
+                0,
+                (state.depth === "all"
+                  ? window.MetabrowserTreemapLayout.LAYOUT_DEFAULTS.nestDepth
+                  : Number(state.depth)) -
+                  Number(originCell.depth || 0) -
+                  1,
+              )
+            : 0,
         expiresAt: Date.now() + ZOOM_PENDING_TTL_MS,
       };
-      pendingZoomTransition = transition;
+      pendingSceneTransition = transition;
       ownedPendingTransition = transition;
-      if (originCell && viewport.style && typeof viewport.style.setProperty === "function") {
-        const originX = originCell.x + originCell.w / 2;
-        const originY = originCell.y + originCell.h / 2;
-        viewport.style.setProperty("--tm-zoom-origin", `${originX}px ${originY}px`);
+      if (direction === "out") {
+        ownedPendingTransition = null;
+        mb.openPath(targetPath);
+        return;
       }
-      const cls = direction === "in" ? "tm-zoom-exit-in" : "tm-zoom-exit-out";
-      viewport.classList.add(cls);
+      const rect = viewport.getBoundingClientRect();
+      if (originCell && scene.style && typeof scene.style.setProperty === "function") {
+        scene.style.setProperty(
+          "--tm-scene-end-transform",
+          cellFocusMatrix(originCell, { w: rect.width, h: rect.height }),
+        );
+      }
+      scene.classList.add("tm-scene-exit-in");
       exitTimer = window.setTimeout(() => {
         exitTimer = null;
         ownedPendingTransition = null;
@@ -829,13 +1045,14 @@
           if (disposed || envelope) {
             return; // A stale map beats an error card; retry is armed.
           }
-          viewport.innerHTML =
+          scene.innerHTML =
             '<div class="preview-empty">Rollup failed — retrying on the next filesystem change</div>';
           status.textContent = `Rollup failed: ${err instanceof Error ? err.message : String(err)}`;
         },
       },
       (env) => {
         envelope = env;
+        sceneNode = env.node ? updateRetainedScene(env.node, ctx.path) : null;
         relayout();
       },
     );
@@ -885,8 +1102,8 @@
       if (exitTimer !== null) {
         window.clearTimeout(exitTimer);
         exitTimer = null;
-        if (pendingZoomTransition === ownedPendingTransition) {
-          pendingZoomTransition = null;
+        if (pendingSceneTransition === ownedPendingTransition) {
+          pendingSceneTransition = null;
         }
       }
       if (entranceTimer !== null) {

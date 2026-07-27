@@ -79,7 +79,6 @@
 }
 
 .tm-viewport {
-  --tm-zoom-origin: center;
   position: relative;
   min-height: 280px;
   /* Pre-measurement fallback only: index.js measures the space below
@@ -94,72 +93,54 @@
   background: var(--viz-surface-sunken);
 }
 
-.tm-viewport.tm-zoom-exit-in,
-.tm-viewport.tm-zoom-exit-out,
-.tm-viewport.tm-zoom-enter-in,
-.tm-viewport.tm-zoom-enter-out {
+.tm-scene {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+.tm-scene.tm-scene-exit-in,
+.tm-scene.tm-scene-enter-out {
   pointer-events: none;
-  transform-origin: var(--tm-zoom-origin);
-  will-change: transform, opacity;
+  will-change: transform;
 }
 
-.tm-viewport.tm-zoom-exit-in {
-  animation: tm-zoom-exit-in var(--viz-layout-transition) both;
+.tm-scene.tm-scene-exit-in {
+  animation: tm-scene-exit-in var(--viz-layout-transition) both;
 }
 
-.tm-viewport.tm-zoom-enter-in {
-  animation: tm-zoom-enter-in var(--viz-layout-transition) both;
+.tm-scene.tm-scene-enter-out {
+  animation: tm-scene-enter-out var(--viz-layout-transition) both;
 }
 
-.tm-viewport.tm-zoom-exit-out {
-  animation: tm-zoom-exit-out var(--viz-layout-transition) both;
+.tm-lod-refine {
+  animation: tm-lod-refine var(--viz-layout-transition) both;
 }
 
-.tm-viewport.tm-zoom-enter-out {
-  animation: tm-zoom-enter-out var(--viz-layout-transition) both;
-}
-
-@keyframes tm-zoom-exit-in {
+@keyframes tm-scene-exit-in {
   from {
-    opacity: 1;
-    transform: scale(1);
+    transform: none;
   }
   to {
-    opacity: 0;
-    transform: scale(1.06);
+    transform: var(--tm-scene-end-transform);
   }
 }
 
-@keyframes tm-zoom-enter-in {
+@keyframes tm-scene-enter-out {
   from {
-    opacity: 0;
-    transform: scale(0.94);
+    transform: var(--tm-scene-start-transform);
   }
   to {
-    opacity: 1;
-    transform: scale(1);
+    transform: none;
   }
 }
 
-@keyframes tm-zoom-exit-out {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.94);
-  }
-}
-
-@keyframes tm-zoom-enter-out {
+@keyframes tm-lod-refine {
   from {
     opacity: 0;
-    transform: scale(1.06);
   }
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
@@ -215,10 +196,11 @@
   border-color: var(--viz-border);
 }
 
-.tm-nested {
+.tm-cell.tm-nested {
   background: transparent;
   border-width: 2px;
   box-shadow: inset 0 0 0 1px var(--viz-surface);
+  pointer-events: none;
 }
 
 .tm-cell-title {
@@ -236,6 +218,7 @@
   margin-left: -3px;
   border-radius: 3px;
   background: var(--viz-surface);
+  pointer-events: auto;
 }
 
 .tm-cell-title[role="button"]:hover {
@@ -364,10 +347,9 @@
   .tm-cell {
     transition: none;
   }
-  .tm-viewport.tm-zoom-exit-in,
-  .tm-viewport.tm-zoom-exit-out,
-  .tm-viewport.tm-zoom-enter-in,
-  .tm-viewport.tm-zoom-enter-out {
+  .tm-scene.tm-scene-exit-in,
+  .tm-scene.tm-scene-enter-out,
+  .tm-lod-refine {
     animation: none;
   }
 }

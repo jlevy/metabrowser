@@ -1,10 +1,11 @@
 // Geometry checks for the folder plugin's treemap layout module.
 //
 // Pure-function tests: squarified area conservation, bounds
-// containment, aspect quality, culling + rest synthesis, type-grouping
-// mode, and a timed 800-cell layout against the spec budget (16 ms,
-// asserted with slack for CI jitter; the measured value is printed for
-// the budget record).
+// containment, aspect quality, arbitrary bounded recursion, spatial
+// focus transforms, culling + rest synthesis, type-grouping mode, and
+// a timed 800-cell layout against the spec budget (16 ms, asserted
+// with slack for CI jitter; the measured value is printed for the
+// budget record).
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -113,7 +114,12 @@ function fileNode(name, pathStr, size, extras) {
           fileNode("inner.py", "sub/inner.py", 1000),
           dirNode("nested", "sub/nested", {
             total_size: 1000,
-            children: [fileNode("too-deep.py", "sub/nested/too-deep.py", 1000)],
+            children: [
+              dirNode("deeper", "sub/nested/deeper", {
+                total_size: 1000,
+                children: [fileNode("leaf.py", "sub/nested/deeper/leaf.py", 1000)],
+              }),
+            ],
           }),
         ],
       }),
@@ -131,11 +137,35 @@ function fileNode(name, pathStr, size, extras) {
   check("dir nested flag", !!sub && sub.nested === true, JSON.stringify(sub));
   const inner = cells.find((c) => c.path === "sub/inner.py");
   check("nested child emitted", !!inner && inner.depth === 1, JSON.stringify(inner));
+  const leaf = cells.find((c) => c.path === "sub/nested/deeper/leaf.py");
   check(
-    "nested preview stops after one child layer",
-    cells.every((cell) => cell.depth <= 1) &&
-      !cells.some((cell) => cell.path === "sub/nested/too-deep.py"),
+    "default scene recurses through available depth",
+    !!leaf && leaf.depth === 3 && Math.max(...cells.map((cell) => cell.depth)) >= 3,
     JSON.stringify(cells.map((cell) => [cell.path, cell.depth])),
+  );
+  const twoLevels = layout.layoutTree(root, { w: 400, h: 300 }, { metric: "size", nestDepth: 2 });
+  check(
+    "explicit depth two stops at the requested intermediate level",
+    twoLevels.every((cell) => cell.depth <= 1) &&
+      !twoLevels.some((cell) => cell.path === "sub/nested/deeper"),
+    JSON.stringify(twoLevels.map((cell) => [cell.path, cell.depth])),
+  );
+  const threeLevels = layout.layoutTree(root, { w: 400, h: 300 }, { metric: "size", nestDepth: 3 });
+  check(
+    "explicit depth three renders the next intermediate level",
+    threeLevels.some((cell) => cell.path === "sub/nested/deeper" && cell.depth === 2) &&
+      !threeLevels.some((cell) => cell.path === "sub/nested/deeper/leaf.py"),
+    JSON.stringify(threeLevels.map((cell) => [cell.path, cell.depth])),
+  );
+  check(
+    "nested cell exposes its child coordinate rect",
+    !!sub &&
+      !!sub.inner &&
+      sub.inner.x > sub.x &&
+      sub.inner.y > sub.y &&
+      sub.inner.x + sub.inner.w < sub.x + sub.w + 0.01 &&
+      sub.inner.y + sub.inner.h < sub.y + sub.h + 0.01,
+    JSON.stringify(sub),
   );
   if (inner && sub) {
     check(
@@ -144,6 +174,80 @@ function fileNode(name, pathStr, size, extras) {
       "child escapes parent rect",
     );
   }
+  const focused = layout.layoutTree(
+    root,
+    { w: 400, h: 300 },
+    { metric: "size", focusPath: "sub", nestDepth: 3 },
+  );
+  check(
+    "focused camera trims siblings outside its subtree",
+    !focused.some((cell) => cell.path === "a.py" || cell.path === "b.md"),
+    JSON.stringify(focused.map((cell) => cell.path)),
+  );
+  const focusedInner = focused.find((cell) => cell.path === "sub/inner.py");
+  check(
+    "focused camera makes direct children the visible root level",
+    !!focusedInner &&
+      focusedInner.depth === 0 &&
+      focusedInner.x < 400 &&
+      focusedInner.y < 300 &&
+      focusedInner.x + focusedInner.w > 0 &&
+      focusedInner.y + focusedInner.h > 0,
+    JSON.stringify(focusedInner),
+  );
+  if (sub?.inner && inner && focusedInner) {
+    const expectedFocusedInner = layout.projectRect(
+      inner,
+      layout.focusTransform(sub.inner, { w: 400, h: 300 }),
+    );
+    check(
+      "settled focus geometry exactly matches the compositor transform",
+      Math.abs(expectedFocusedInner.x - focusedInner.x) < 0.01 &&
+        Math.abs(expectedFocusedInner.y - focusedInner.y) < 0.01 &&
+        Math.abs(expectedFocusedInner.w - focusedInner.w) < 0.01 &&
+        Math.abs(expectedFocusedInner.h - focusedInner.h) < 0.01,
+      `${JSON.stringify(expectedFocusedInner)} vs ${JSON.stringify(focusedInner)}`,
+    );
+  }
+  check(
+    "focused camera preserves arbitrary recursive detail",
+    focused.some((cell) => cell.path === "sub/nested/deeper/leaf.py" && cell.depth === 2),
+    JSON.stringify(focused.map((cell) => [cell.path, cell.depth])),
+  );
+  const budgetFocusRoot = dirNode("root", "", {
+    children: [
+      dirNode("huge", "huge", {
+        total_size: 9000,
+        children: Array.from({ length: 20 }, (_, i) =>
+          dirNode(`branch-${i}`, `huge/branch-${i}`, {
+            total_size: 400 - i,
+            children: [fileNode("deep.py", `huge/branch-${i}/deep.py`, 400 - i)],
+          }),
+        ),
+      }),
+      dirNode("target", "target", {
+        total_size: 1000,
+        children: [fileNode("wanted.py", "target/wanted.py", 1000)],
+      }),
+    ],
+  });
+  const budgetFocused = layout.layoutTree(
+    budgetFocusRoot,
+    { w: 400, h: 300 },
+    {
+      metric: "size",
+      focusPath: "target",
+      minCellPx: 0,
+      maxCells: 20,
+      maxWorldCells: 8,
+    },
+  );
+  check(
+    "world budget prioritizes the active camera corridor",
+    budgetFocused.some((cell) => cell.path === "target/wanted.py" && cell.depth === 0) &&
+      !budgetFocused.some((cell) => cell.path.startsWith("huge/")),
+    JSON.stringify(budgetFocused.map((cell) => [cell.path, cell.depth])),
+  );
   // hidden mode uses unignored values: gitignored file drops out.
   const rootHidden = dirNode("root", "", {
     total_size: 1000,
@@ -210,6 +314,31 @@ function fileNode(name, pathStr, size, extras) {
   );
 }
 
+// ── spatial focus transform uniformly covers and clips viewport ──
+{
+  const focus = { x: 100, y: 50, w: 200, h: 100 };
+  const transform = layout.focusTransform(focus, { w: 400, h: 300 });
+  check(
+    "focus transform preserves world aspect ratio",
+    transform.scaleX === 3 && transform.scaleY === 3,
+    JSON.stringify(transform),
+  );
+  const projected = layout.projectRect(focus, transform);
+  check(
+    "focus transform covers the viewport",
+    projected.x <= 0 &&
+      projected.y <= 0 &&
+      projected.x + projected.w >= 400 &&
+      projected.y + projected.h >= 300,
+    JSON.stringify(projected),
+  );
+  check(
+    "focus transform centers clipped excess",
+    projected.x === (400 - projected.w) / 2 && projected.y === (300 - projected.h) / 2,
+    JSON.stringify(projected),
+  );
+}
+
 // ── conservation under culling and the cap (R7 regression) ──────
 {
   // Culling with NO server rest bucket: tiny slivers must fold into a
@@ -250,7 +379,7 @@ function fileNode(name, pathStr, size, extras) {
 
 // ── budget timing ───────────────────────────────────────────────
 {
-  // Budget: lay out a two-level tree that emits ~800 cells.
+  // Budget: lay out a recursive tree that emits ~800 cells.
   const subdirs = Array.from({ length: 40 }, (_, d) =>
     dirNode(`d${d}`, `d${d}`, {
       total_size: 100000 - d * 100,

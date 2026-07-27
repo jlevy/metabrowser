@@ -1,6 +1,6 @@
 # Research: Folder Treemap Layout and Prior Art
 
-**Date:** 2026-07-20 (last updated 2026-07-20)
+**Date:** 2026-07-20 (last updated 2026-07-27)
 
 **Author:** Metabrowser maintainers
 
@@ -68,6 +68,41 @@ prior-art convention of aggregating the tail.
   target is its label strip — the WinDirStat behavior, made explicit: the strip is the
   button (no nested interactive ancestors) and keyboard users reach the parent in layout
   order regardless.
+
+## Addendum: Recursive Scene and Camera (2026-07-27)
+
+The initial one-level preview and whole-viewport scale/fade made zoom direction visible
+but did not preserve spatial identity.
+A convincing transition requires the outgoing, intermediate, and settled frames to be
+projections of the same geometry.
+
+The revised layout therefore has two stages:
+
+1. Build stable squarified world rectangles for every available node in the bounded
+   rollup, independent of its current projected pixel size.
+   Directory insets are proportional world geometry so a camera cannot magnify a fixed
+   20-pixel header into a large blank region.
+2. Cover the viewport with any folder’s inner world rectangle using one uniform affine
+   camera, centering and clipping the excess instead of stretching the geometry
+   transform. Traverse descendants breadth-first by projected area, clipping to the
+   viewport plus overscan and stopping at the chosen visible depth, projected-size
+   threshold, or 800-cell DOM budget.
+
+Route navigation remains authoritative.
+Across an adjacent folder handoff, the plugin retains a bounded scene of at most two
+1,200-node rollup envelopes, prunes descendants outside the active camera corridor while
+preserving their aggregate nodes, merges the destination’s deeper subtree, and discards
+the scene for unrelated paths.
+Zoom-in is one compositor transform to the selected rectangle; zoom-out mounts the
+parent at the inverse camera and expands to identity.
+Only newly eligible deep cells fade in after the handoff.
+
+The recursive 800-cell fixture now lays out in about **9 ms** against the 16 ms budget.
+Live validation on the 6.8k-file repository materialized 208 cells at the root and 114
+cells when focused on `src`, each with three useful visible levels.
+Choosing “Depth 1” reduced the root to 13 direct cells without refetching; “All”
+restored adaptive recursion.
+These results confirm that full rollup geometry need not imply a full DOM.
 
 ## References
 

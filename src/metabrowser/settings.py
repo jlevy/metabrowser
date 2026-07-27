@@ -144,7 +144,7 @@ TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 # directory before the rest bucket; ``ext_top`` caps envelope
 # extension-tally rows before the remainder row. The route clamps
 # query params to the max values.
-ROLLUP_DEFAULT_DEPTH = 3
+ROLLUP_DEFAULT_DEPTH = 6
 ROLLUP_MAX_DEPTH = 6
 ROLLUP_DEFAULT_TOP = 40
 ROLLUP_MAX_TOP = 200

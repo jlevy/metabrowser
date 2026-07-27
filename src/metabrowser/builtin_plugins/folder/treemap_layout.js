@@ -7,12 +7,13 @@
 // side of the free rectangle, accepting an item into the current row
 // only while it improves the row's worst aspect ratio.
 //
-// `layoutTree` walks a /api/rollup node tree (or the envelope
-// ext_tallies in type-grouping mode) and returns a flat array of
-// positioned cells. Bounds: cells below `minCellPx` in either
-// dimension merge into their parent's rest cell, and nesting stops
-// once `maxCells` cells exist, so pathological trees cannot flood the
-// DOM.
+// `layoutTree` first assigns every available rollup node a stable
+// rectangle in a recursive "world", then projects an arbitrary folder
+// camera into the viewport. The projection traverses breadth-first,
+// clips outside the camera (plus overscan), and stops at the requested
+// visible depth or DOM-cell budget. A zoom therefore changes only the
+// camera: shared nodes retain the same world geometry at every
+// intermediate scale, while deeper detail can fill in after motion.
 
 (() => {
   /**
@@ -24,15 +25,21 @@
     minCellPx: 4,
     /** Hard cap on emitted cells across all nesting levels. */
     maxCells: 800,
-    /** Nested levels drawn inside directory cells (1 = flat). */
-    nestDepth: 2,
-    /** Directory cells narrower/shorter than this never nest children. */
+    /** Visible recursive levels (1 = direct children only). */
+    nestDepth: 6,
+    /** Projected directory cells narrower/shorter than this stay at the current LOD. */
     nestMinW: 64,
     nestMinH: 44,
-    /** Reserved label strip at the top of a nested directory cell (px). */
-    headerPx: 20,
-    /** Inner padding between a directory cell border and its children (px). */
-    padPx: 3,
+    /** Stable world-space fractions reserved for a directory label and border. */
+    headerRatio: 0.03,
+    padRatio: 0.005,
+    /** Retained scenes may hold two bounded server-rollup envelopes;
+     * repeat that combined bound here so supplied trees cannot flood geometry. */
+    maxWorldCells: 2400,
+    /** Defensive recursion bound above the server's supported depth. */
+    maxWorldDepth: 64,
+    /** Keep near-edge cells mounted during camera motion. */
+    overscanPx: 24,
   };
 
   /**
@@ -266,6 +273,68 @@
   }
 
   /**
+   * Uniform affine transform that covers the viewport with a world
+   * rectangle and clips the excess on its longer axis. Preserving
+   * aspect ratio keeps the treemap geometry stable at every camera
+   * position. The compositor uses the same numbers as the settled
+   * layout projection, avoiding a visual snap at route handoff.
+   *
+   * @param {Rect} focus
+   * @param {{w: number, h: number}} viewport
+   * @returns {{scaleX: number, scaleY: number, translateX: number, translateY: number}}
+   */
+  function focusTransform(focus, viewport) {
+    const scale =
+      focus.w > 0 && focus.h > 0 ? Math.max(viewport.w / focus.w, viewport.h / focus.h) : 1;
+    return {
+      scaleX: scale,
+      scaleY: scale,
+      translateX: (viewport.w - focus.w * scale) / 2 - focus.x * scale,
+      translateY: (viewport.h - focus.h * scale) / 2 - focus.y * scale,
+    };
+  }
+
+  /**
+   * Project one world rectangle through a camera transform.
+   * @param {Rect} rect
+   * @param {{scaleX: number, scaleY: number, translateX: number, translateY: number}} transform
+   * @returns {Rect}
+   */
+  function projectRect(rect, transform) {
+    return {
+      x: rect.x * transform.scaleX + transform.translateX,
+      y: rect.y * transform.scaleY + transform.translateY,
+      w: rect.w * transform.scaleX,
+      h: rect.h * transform.scaleY,
+    };
+  }
+
+  /**
+   * Child coordinate space inside a directory. Header and padding
+   * shrink proportionally for tiny world cells, so recursion never
+   * collapses merely because an ancestor is small before zoom.
+   * @param {Rect} rect
+   * @param {Record<string, any>} opts
+   * @returns {Rect}
+   */
+  function childRect(rect, opts) {
+    const padX = rect.w * opts.padRatio;
+    const padY = rect.h * opts.padRatio;
+    const header = rect.h * opts.headerRatio;
+    return {
+      x: rect.x + padX,
+      y: rect.y + header,
+      w: Math.max(0, rect.w - 2 * padX),
+      h: Math.max(0, rect.h - header - padY),
+    };
+  }
+
+  /** @param {string} path @returns {string} */
+  function normalizePath(path) {
+    return String(path || "").replace(/^\/+|\/+$/g, "");
+  }
+
+  /**
    * Flatten a rollup tree (or ext tallies) into positioned cells.
    *
    * @param {Record<string, any>} rootNode  /api/rollup `node`
@@ -341,13 +410,32 @@
     }
 
     /**
-     * Emit one directory's children into `rect`; recurse into large
-     * directory cells while depth and cell budget allow.
+     * Geometry record retained in world coordinates.
+     * @typedef {{
+     *   cell: Rect & Record<string, any>,
+     *   node: Record<string, any> | null,
+     *   inner: Rect | null,
+     *   children: WorldCell[]
+     * }} WorldCell
+     */
+
+    let worldCellCount = 0;
+    /** @type {Map<string, {node: Record<string, any>, rect: Rect, children: WorldCell[]}>} */
+    const directories = new Map();
+    const requestedFocus = normalizePath(opts.focusPath);
+
+    /**
+     * Assign stable recursive world rectangles. Only the scene root
+     * applies pixel sliver culling: deeper nodes must keep geometry so
+     * they can become visible after a camera zoom.
+     *
      * @param {Record<string, any>} dirNode
      * @param {Rect} rect
-     * @param {number} depth
+     * @param {number} worldDepth
+     * @param {boolean} sceneRoot
+     * @returns {WorldCell[]}
      */
-    function emitLevel(dirNode, rect, depth) {
+    function buildWorld(dirNode, rect, worldDepth, sceneRoot) {
       const children = Array.isArray(dirNode.children) ? dirNode.children : [];
       /** @type {WeightedItem[]} */
       const items = [];
@@ -372,9 +460,10 @@
       }
       items.sort((a, b) => b.value - a.value);
 
-      const packed = packLevel(items, rect, opts.maxCells - cells.length, opts.minCellPx);
-      /** @type {{cell: Record<string, any>, node: Record<string, any>}[]} */
-      const nestable = [];
+      const capacity = sceneRoot ? opts.maxCells : Math.max(0, opts.maxWorldCells - worldCellCount);
+      const packed = packLevel(items, rect, capacity, sceneRoot ? opts.minCellPx : 0);
+      /** @type {WorldCell[]} */
+      const worldCells = [];
       for (const p of packed.placed) {
         const node = p.item.node;
         const cell = {
@@ -385,7 +474,7 @@
           y: p.y,
           w: p.w,
           h: p.h,
-          depth,
+          depth: worldDepth,
           value: p.item.value,
           // Real magnitudes regardless of the active metric, so labels
           // can always show true bytes/counts.
@@ -396,51 +485,170 @@
           gitignored: !!node.gitignored,
           state: node.state,
         };
-        cells.push(cell);
-        if (
-          node.type === "dir" &&
-          Array.isArray(node.children) &&
-          depth + 1 < opts.nestDepth &&
-          p.w >= opts.nestMinW &&
-          p.h >= opts.nestMinH &&
-          cells.length < opts.maxCells
-        ) {
-          nestable.push({ cell, node });
-        }
+        worldCellCount += 1;
+        const inner = node.type === "dir" ? childRect(cell, opts) : null;
+        /** @type {WorldCell} */
+        const worldCell = { cell, node, inner, children: [] };
+        worldCells.push(worldCell);
       }
       if (packed.remainder) {
-        cells.push({
-          kind: "rest",
-          name: "…",
-          path: dirNode.path,
-          x: packed.remainder.x,
-          y: packed.remainder.y,
-          w: packed.remainder.w,
-          h: packed.remainder.h,
-          depth,
-          value: packed.remainder.value,
-          files: packed.remainder.count,
+        worldCellCount += 1;
+        worldCells.push({
+          cell: {
+            kind: "rest",
+            name: "…",
+            path: dirNode.path,
+            x: packed.remainder.x,
+            y: packed.remainder.y,
+            w: packed.remainder.w,
+            h: packed.remainder.h,
+            depth: worldDepth,
+            value: packed.remainder.value,
+            files: packed.remainder.count,
+          },
+          node: null,
+          inner: null,
+          children: [],
         });
       }
-
-      for (const entry of nestable) {
-        const inner = {
-          x: entry.cell.x + opts.padPx,
-          y: entry.cell.y + opts.headerPx,
-          w: entry.cell.w - 2 * opts.padPx,
-          h: entry.cell.h - opts.headerPx - opts.padPx,
-        };
-        if (inner.w >= opts.minCellPx && inner.h >= opts.minCellPx) {
-          entry.cell.nested = true;
-          emitLevel(entry.node, inner, depth + 1);
+      const nestable = worldCells
+        .filter(
+          (record) =>
+            record.node?.type === "dir" &&
+            Array.isArray(record.node.children) &&
+            record.inner &&
+            record.inner.w > 0 &&
+            record.inner.h > 0,
+        )
+        .sort((a, b) => {
+          const aPath = normalizePath(a.node?.path);
+          const bPath = normalizePath(b.node?.path);
+          const aFocus = requestedFocus === aPath || requestedFocus.startsWith(`${aPath}/`);
+          const bFocus = requestedFocus === bPath || requestedFocus.startsWith(`${bPath}/`);
+          return Number(bFocus) - Number(aFocus);
+        });
+      for (const record of nestable) {
+        if (
+          worldDepth + 1 < opts.maxWorldDepth &&
+          worldCellCount < opts.maxWorldCells &&
+          record.node &&
+          record.inner
+        ) {
+          record.children = buildWorld(record.node, record.inner, worldDepth + 1, false);
+        }
+        if (record.node && record.inner) {
+          directories.set(normalizePath(record.node.path), {
+            node: record.node,
+            rect: record.inner,
+            children: record.children,
+          });
         }
       }
+      return worldCells;
     }
 
-    emitLevel(rootNode, { x: 0, y: 0, w: viewport.w, h: viewport.h }, 0);
+    const worldRoot = { x: 0, y: 0, w: viewport.w, h: viewport.h };
+    const worldChildren = buildWorld(rootNode, worldRoot, 0, true);
+    const rootPath = normalizePath(rootNode.path);
+    directories.set(rootPath, { node: rootNode, rect: worldRoot, children: worldChildren });
+
+    const focus = directories.get(requestedFocus) || directories.get(rootPath);
+    if (!focus) {
+      return cells;
+    }
+    const camera = focus.rect;
+    const transform = focusTransform(camera, viewport);
+    const overscan = Math.max(0, Number(opts.overscanPx) || 0);
+
+    /** @param {Rect} rect @returns {boolean} */
+    function intersectsViewport(rect) {
+      return (
+        rect.x + rect.w >= -overscan &&
+        rect.y + rect.h >= -overscan &&
+        rect.x <= viewport.w + overscan &&
+        rect.y <= viewport.h + overscan
+      );
+    }
+
+    /**
+     * Materialize a projected LOD level. All candidates at one depth
+     * compete by projected area before any deeper branch is visited,
+     * preventing a single early subtree from consuming the DOM budget.
+     *
+     * @param {WorldCell[]} candidates
+     * @param {number} visibleDepth
+     * @returns {WorldCell[]} directory records eligible for the next level
+     */
+    function emitVisibleLevel(candidates, visibleDepth) {
+      const projected = candidates
+        .map((record) => ({
+          record,
+          rect: projectRect(record.cell, transform),
+          inner: record.inner ? projectRect(record.inner, transform) : null,
+        }))
+        .filter((entry) => intersectsViewport(entry.rect))
+        .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h);
+      /** @type {WorldCell[]} */
+      const next = [];
+      for (const entry of projected) {
+        if (cells.length >= opts.maxCells) {
+          break;
+        }
+        const cell = Object.assign({}, entry.record.cell, entry.rect, {
+          depth: visibleDepth,
+        });
+        if (entry.inner) {
+          cell.inner = entry.inner;
+        }
+        cells.push(cell);
+        entry.record.cell.projectedCell = cell;
+        if (
+          entry.record.children.length > 0 &&
+          visibleDepth + 1 < opts.nestDepth &&
+          entry.rect.w >= opts.nestMinW &&
+          entry.rect.h >= opts.nestMinH
+        ) {
+          next.push(entry.record);
+        }
+      }
+      return next;
+    }
+
+    let depth = 0;
+    let frontier = emitVisibleLevel(focus.children, depth);
+    while (frontier.length > 0 && cells.length < opts.maxCells && depth + 1 < opts.nestDepth) {
+      const candidates = frontier.flatMap((record) => record.children);
+      depth += 1;
+      const next = emitVisibleLevel(candidates, depth);
+      for (const record of frontier) {
+        const parentCell = record.cell.projectedCell;
+        if (
+          parentCell &&
+          record.children.some((child) => child.cell.projectedCell?.depth === depth)
+        ) {
+          parentCell.nested = true;
+        }
+      }
+      frontier = next;
+    }
+    // Projection bookkeeping is transient and must not leak into the
+    // next layout call if a caller reuses a node tree.
+    for (const record of directories.values()) {
+      for (const child of record.children) {
+        delete child.cell.projectedCell;
+      }
+    }
     return cells;
   }
 
-  const api = { LAYOUT_DEFAULTS, squarify, packLevel, layoutTree, worstAspect };
+  const api = {
+    LAYOUT_DEFAULTS,
+    squarify,
+    packLevel,
+    focusTransform,
+    projectRect,
+    layoutTree,
+    worstAspect,
+  };
   /** @type {any} */ (globalThis).MetabrowserTreemapLayout = api;
 })();

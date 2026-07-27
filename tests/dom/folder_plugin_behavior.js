@@ -42,6 +42,9 @@ function makeElement() {
       if (selector === ".tm-viewport") {
         return el.viewport;
       }
+      if (selector === ".tm-scene") {
+        return el.scene;
+      }
       if (selector === ".tm-status") {
         return el.status;
       }
@@ -114,6 +117,12 @@ const sandbox = {
     }
   },
   innerHeight: 1000,
+  METABROWSER_SETTINGS: {
+    ROLLUP_DEFAULT_DEPTH: 6,
+    ROLLUP_DEFAULT_TOP: 40,
+    ROLLUP_DEFAULT_EXT_TOP: 12,
+    ROLLUP_WATCH_DEBOUNCE_MS: 1000,
+  },
   matchMedia() {
     return { matches: reducedMotion };
   },
@@ -206,13 +215,28 @@ const envelope = {
         dominant_ext: ".py",
         children: [
           {
-            name: "a.py",
-            path: "src/a.py",
-            type: "file",
-            size: 600,
+            name: "lib",
+            path: "src/lib",
+            type: "dir",
+            state: "complete",
+            total_files: 1,
+            total_size: 600,
+            unignored_files: 1,
+            unignored_size: 600,
             mtime: 1700000000,
-            ext: ".py",
             gitignored: false,
+            dominant_ext: ".py",
+            children: [
+              {
+                name: "a.py",
+                path: "src/lib/a.py",
+                type: "file",
+                size: 600,
+                mtime: 1700000000,
+                ext: ".py",
+                gitignored: false,
+              },
+            ],
           },
         ],
       },
@@ -239,7 +263,13 @@ const envelope = {
 };
 sandbox.fetch = async (url) => {
   fetchCalls.push(String(url));
-  return { ok: true, json: async () => JSON.parse(JSON.stringify(envelope)) };
+  const response = JSON.parse(JSON.stringify(envelope));
+  const requested = new URL(String(url)).searchParams.get("path") || "";
+  if (requested === "src") {
+    response.path = "src";
+    response.node = response.node.children.find((child) => child.path === "src");
+  }
+  return { ok: true, json: async () => response };
 };
 
 vm.createContext(sandbox);
@@ -280,6 +310,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
 (async () => {
   const container = makeElement();
   container.viewport = makeElement();
+  container.viewport.scene = makeElement();
   container.status = makeElement();
   container.viewport.textContent = "";
   Object.defineProperty(container.viewport, "textContent", {
@@ -307,7 +338,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   );
   check(
     "toggle groups present",
-    ["metric", "grouping", "color", "ignored"].every((k) =>
+    ["metric", "grouping", "color", "depth", "ignored"].every((k) =>
       container.innerHTML.includes(`data-tm-key="${k}"`),
     ),
     "missing toggle group",
@@ -318,31 +349,37 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   await new Promise((resolve) => setImmediate(resolve));
   check("initial fetch", fetchCalls.length === 1, `${fetchCalls.length} fetches`);
   check(
-    "cells rendered",
-    container.viewport.innerHTML.includes("tm-cell") &&
-      container.viewport.innerHTML.includes("a.py"),
-    container.viewport.innerHTML.slice(0, 200),
+    "rollup requests the full bounded scene depth",
+    new URL(fetchCalls[0]).searchParams.get("depth") === "6",
+    fetchCalls[0],
   );
   check(
-    "one-level nested preview is explicit",
-    container.viewport.innerHTML.includes("tm-nested") &&
-      container.viewport.innerHTML.includes('data-tm-depth="1"'),
-    container.viewport.innerHTML.slice(0, 500),
+    "cells rendered",
+    container.viewport.scene.innerHTML.includes("tm-cell") &&
+      container.viewport.scene.innerHTML.includes("a.py"),
+    container.viewport.scene.innerHTML.slice(0, 200),
+  );
+  check(
+    "recursive scene exposes multiple visible levels",
+    container.viewport.scene.innerHTML.includes("tm-nested") &&
+      container.viewport.scene.innerHTML.includes('data-tm-depth="1"') &&
+      container.viewport.scene.innerHTML.includes('data-tm-depth="2"'),
+    container.viewport.scene.innerHTML.slice(0, 800),
   );
   check(
     "folder announces zoom action",
-    container.viewport.innerHTML.includes("zoom in"),
-    container.viewport.innerHTML.slice(0, 500),
+    container.viewport.scene.innerHTML.includes("zoom in"),
+    container.viewport.scene.innerHTML.slice(0, 500),
   );
   check(
     "type fill is the default",
-    container.viewport.innerHTML.includes("tm-type-fill"),
+    container.viewport.scene.innerHTML.includes("tm-type-fill"),
     "no ft class on initial render",
   );
   check(
     "age chip beside the name",
-    container.viewport.innerHTML.includes("tm-cell-age") &&
-      container.viewport.innerHTML.includes('class="age-old"'),
+    container.viewport.scene.innerHTML.includes("tm-cell-age") &&
+      container.viewport.scene.innerHTML.includes('class="age-old"'),
     "no colored age label in cells",
   );
   check(
@@ -398,11 +435,23 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     toolbarClick({ target: btn });
   };
   if (toolbarClick) {
+    clickToggle("depth", "2");
+    check(
+      "intermediate depth relayouts without deeper descendants",
+      !container.viewport.scene.innerHTML.includes('data-tm-depth="2"'),
+      container.viewport.scene.innerHTML.slice(0, 800),
+    );
+    clickToggle("depth", "all");
+    check(
+      "all depth restores recursively visible descendants",
+      container.viewport.scene.innerHTML.includes('data-tm-depth="2"'),
+      container.viewport.scene.innerHTML.slice(0, 800),
+    );
     clickToggle("color", "age");
     check("toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
       "age fill applied after toggle",
-      container.viewport.innerHTML.includes("tm-age-"),
+      container.viewport.scene.innerHTML.includes("tm-age-"),
       "no age fill class after color toggle",
     );
     // Hidden gitignored mode: the caption must quote the unignored
@@ -417,9 +466,8 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     clickToggle("ignored", "dimmed");
   }
 
-  // Folder activation plays a directional exit before normal route
-  // navigation. The destination view consumes the pending direction
-  // and enters from the inverse scale.
+  // Folder activation magnifies that cell's recursive inner scene
+  // before normal route navigation.
   const viewportClick = container.viewport.listeners.click?.[0];
   check("cell click handler bound", typeof viewportClick === "function");
   if (viewportClick) {
@@ -437,9 +485,10 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
       `${openedPaths.length - beforeOpen} opens / ${pendingTimers.length} timers`,
     );
     check(
-      "zoom-in exit direction",
-      container.viewport.classList.contains("tm-zoom-exit-in"),
-      "missing tm-zoom-exit-in",
+      "zoom-in transforms the persistent scene toward the folder",
+      container.viewport.scene.classList.contains("tm-scene-exit-in") &&
+        String(container.viewport.scene.style["--tm-scene-end-transform"]).startsWith("matrix("),
+      "missing recursive scene transform",
     );
     const finishExit = pendingTimers.shift();
     if (finishExit) {
@@ -466,6 +515,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   {
     const cZoom = makeElement();
     cZoom.viewport = makeElement();
+    cZoom.viewport.scene = makeElement();
     cZoom.status = makeElement();
     const zoomView = mb.getRegisteredView("folder", "treemap");
     zoomView.render(cZoom, { path: "src", kind: "folder", raw: { readme_path: "" } });
@@ -475,16 +525,6 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
       cZoom.innerHTML,
     );
     await new Promise((resolve) => setImmediate(resolve));
-    check(
-      "destination enters as zoom-in",
-      cZoom.viewport.classList.contains("tm-zoom-enter-in"),
-      "missing tm-zoom-enter-in",
-    );
-    const finishEnter = pendingTimers.shift();
-    if (finishEnter) {
-      finishEnter();
-    }
-
     const click = cZoom.listeners.click?.[0];
     const zoomOutButton = {
       dataset: { tmZoomOut: "" },
@@ -497,17 +537,28 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
       click({ target: zoomOutButton });
     }
     check(
-      "zoom-out waits for inverse exit transition",
-      openedPaths.length === beforeOpen &&
-        cZoom.viewport.classList.contains("tm-zoom-exit-out") &&
-        pendingTimers.length === 1,
+      "zoom-out navigates immediately so the parent scene can expand",
+      openedPaths.length === beforeOpen + 1 && openedPaths.at(-1) === "/",
       `${openedPaths.length - beforeOpen} opens / ${pendingTimers.length} timers`,
     );
-    const finishExit = pendingTimers.shift();
-    if (finishExit) {
-      finishExit();
+    zoomView.dispose();
+
+    const cParent = makeElement();
+    cParent.viewport = makeElement();
+    cParent.viewport.scene = makeElement();
+    cParent.status = makeElement();
+    zoomView.render(cParent, { path: "", kind: "folder", raw: { readme_path: "" } });
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "parent scene expands out from the previous root cell",
+      cParent.viewport.scene.classList.contains("tm-scene-enter-out") &&
+        String(cParent.viewport.scene.style["--tm-scene-start-transform"]).startsWith("matrix("),
+      "missing inverse recursive scene transform",
+    );
+    const finishEnter = pendingTimers.shift();
+    if (finishEnter) {
+      finishEnter();
     }
-    check("zoom-out opens parent", openedPaths.at(-1) === "/", openedPaths.join(","));
     zoomView.dispose();
   }
 
@@ -516,6 +567,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     reducedMotion = true;
     const cReduced = makeElement();
     cReduced.viewport = makeElement();
+    cReduced.viewport.scene = makeElement();
     cReduced.status = makeElement();
     const reducedView = mb.getRegisteredView("folder", "treemap");
     reducedView.render(cReduced, { path: "src", kind: "folder", raw: { readme_path: "" } });
@@ -546,6 +598,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   {
     const c2 = makeElement();
     c2.viewport = makeElement();
+    c2.viewport.scene = makeElement();
     c2.status = makeElement();
     Object.defineProperty(c2.status, "textContent", {
       set(v) {
@@ -565,7 +618,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     view2.render(c2, { path: "", kind: "folder", raw: { readme_path: "" } });
     await new Promise((resolve) => setImmediate(resolve));
     mb.filters.set({ types: ["ft-md"] });
-    const dimCount = (c2.viewport.innerHTML.match(/tm-filter-dim/g) || []).length;
+    const dimCount = (c2.viewport.scene.innerHTML.match(/tm-filter-dim/g) || []).length;
     check("shared type filter dims non-matching cells", dimCount === 2, `${dimCount}`);
     check(
       "caption reports active filters",
@@ -573,7 +626,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
       c2.status.textContent,
     );
     mb.filters.clear();
-    const cleared = (c2.viewport.innerHTML.match(/tm-filter-dim/g) || []).length;
+    const cleared = (c2.viewport.scene.innerHTML.match(/tm-filter-dim/g) || []).length;
     check("clear undims", cleared === 0, `${cleared}`);
     view2.dispose();
   }
@@ -583,6 +636,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     mb.prefs.set("folder.treemap", { metric: "files", ignored: "hidden" });
     const c3 = makeElement();
     c3.viewport = makeElement();
+    c3.viewport.scene = makeElement();
     c3.status = makeElement();
     const view3 = mb.getRegisteredView("folder", "treemap");
     view3.render(c3, { path: "", kind: "folder", raw: { readme_path: "" } });
@@ -602,6 +656,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     mb.filters.set({ ignored: "dimmed" });
     const c4 = makeElement();
     c4.viewport = makeElement();
+    c4.viewport.scene = makeElement();
     c4.status = makeElement();
     const view4 = mb.getRegisteredView("folder", "treemap");
     view4.render(c4, { path: "", kind: "folder", raw: { readme_path: "" } });
