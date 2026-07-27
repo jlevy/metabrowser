@@ -26,7 +26,7 @@ Interpret it as follows:
 Enable one line for every request when correlation is more useful than log volume:
 
 ```shell
-METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab serve ./artifacts --no-open
+METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab ./artifacts --no-open
 ```
 
 The events and tail routes are intentionally long-lived and are excluded from ordinary
@@ -37,7 +37,7 @@ slow-request warnings.
 Enable the debug endpoint only for local investigation:
 
 ```shell
-METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab serve ./artifacts --no-open
+METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab ./artifacts --no-open
 ```
 
 During a stall, request `/_debug/tasks` from another terminal.
@@ -65,8 +65,8 @@ Do not repair a gap by replaying operations whose order is no longer known.
 Start with the registry:
 
 ```shell
-uv --config-file uv.toml run --frozen metab plugins list --json
-uv --config-file uv.toml run --frozen metab plugins doctor
+uv --config-file uv.toml run --frozen metab --plugins --json
+uv --config-file uv.toml run --frozen metab --doctor
 ```
 
 Then verify:

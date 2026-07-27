@@ -57,5 +57,49 @@ jobs:
             exit 1
           fi
 
+      - name: Verify documented version pins match the release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          status=0
+          for doc in skills/metabrowser/SKILL.md README.md docs/installation.md; do
+            stale="$(grep -nE 'metabrowser[@=]=?[0-9]+\.[0-9]+\.[0-9]+' "$doc" \
+              | grep -vE "metabrowser[@=]=?$version" || true)"
+            if [ -n "$stale" ]; then
+              printf '%s pins a version other than %s:\n%s\n' "$doc" "$version" "$stale" >&2
+              status=1
+            fi
+          done
+          if ! grep -q "uvx metabrowser@$version" skills/metabrowser/SKILL.md; then
+            printf 'SKILL.md does not pin uvx metabrowser@%s\n' "$version" >&2
+            status=1
+          fi
+          exit "$status"
+
       - name: Publish to PyPI
         run: uv --config-file uv.toml publish --trusted-publishing always
+
+      - name: Smoke-test the skill's pinned invocation from PyPI
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          # The just-published release is newer than the 14-day cool-off, so
+          # exempt this one first-party package (dependencies keep the
+          # cool-off). Retries cover PyPI index propagation delay.
+          bound="$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)"
+          for attempt in $(seq 1 10); do
+            if uv --config-file uv.toml tool run \
+                --exclude-newer-package "metabrowser=$bound" \
+                "metabrowser@$version" --help \
+              && uv --config-file uv.toml tool run \
+                --exclude-newer-package "metabrowser=$bound" \
+                "metabrowser@$version" --doctor; then
+              exit 0
+            fi
+            printf 'Pinned invocation not ready (attempt %s); retrying...\n' "$attempt" >&2
+            sleep 30
+          done
+          printf 'uvx metabrowser@%s failed --help/--doctor after publish\n' "$version" >&2
+          exit 1

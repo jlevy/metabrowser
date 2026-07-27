@@ -63,9 +63,9 @@ def find_available_local_port(host: str, ports: Iterable[int]) -> int:
 def remote_port_probe_script(base_port: int, count: int = DEFAULT_PORT_SEARCH_COUNT) -> str:
     """Return a shell command that prints the first free port on 127.0.0.1.
 
-    Used by ``metab remote`` to discover a free port on the remote host
+    Used by ``metab --remote`` to discover a free port on the remote host
     before opening the SSH tunnel, so local and remote always agree on which
-    port the remote ``metab serve`` will bind to. This lets multiple
+    port the remote ``metab`` server will bind to. This lets multiple
     browser sessions coexist on the same remote host.
 
     Exits non-zero and prints nothing if no port in the range is free.

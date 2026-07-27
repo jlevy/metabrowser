@@ -1,26 +1,27 @@
-"""metab plugins — diagnostic CLI for the plugin discovery layer.
+"""Plugin modes: diagnostics for the plugin discovery layer.
 
-Three subcommands:
+Three modes on the ``metab`` CLI (parsing lives in
+:mod:`metabrowser.cli.main`):
 
-* ``metab plugins list``  — table of every discovered plugin.
-* ``metab plugins show``  — full manifest dump for one plugin.
-* ``metab plugins doctor`` — sanity-check every plugin: validate the
-  manifest, confirm sidekick handlers import, check for asset / kind-id
-  collisions across plugins. Exit code != 0 when any plugin is broken.
+* ``metab --plugins``: table of every discovered plugin.
+* ``metab --plugin NAME``: full manifest dump for one plugin.
+* ``metab --doctor``: sanity-check every plugin, validating the
+  manifest, confirming sidekick handlers import, and checking for
+  asset and kind-id collisions across plugins. Exit code != 0 when
+  any plugin is broken.
 
-These commands answer the operator question 'is my plugin loaded?'
+These modes answer the operator question 'is my plugin loaded?'
 without having to start the server. They use the same discovery
-sources ``serve`` does, including the same ``.env`` / ``.env.local``
-walk + ``METABROWSER_PLUGINS_DIRS`` env var, so ``serve`` and
-``plugins list`` agree by default — no need to repeat ``--plugins-dir``
-flags between commands.
+sources serving does, including the same ``.env``/``.env.local``
+walk and ``METABROWSER_PLUGINS_DIRS`` env var, so serving and
+``--plugins`` agree by default; there is no need to repeat
+``--plugins-dir`` flags between invocations.
 """
 
 from __future__ import annotations
 
 import importlib
 import json
-import sys
 from pathlib import Path
 
 import typer
@@ -29,13 +30,6 @@ from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.errors import CLIError
 from metabrowser.plugin_loader.discovery import LoadedPlugin, discover_plugins
 from metabrowser.plugin_loader.manifest import DataHookSpec
-
-plugins_app = typer.Typer(
-    name="plugins",
-    add_completion=False,
-    help="Inspect Metabrowser plugin discovery (list / show / doctor).",
-    no_args_is_help=True,
-)
 
 
 def _format_table(rows: list[list[str]], headers: list[str]) -> str:
@@ -95,7 +89,7 @@ def _plugin_assets(plugin: LoadedPlugin) -> list[str]:
 
 
 def _plugin_details(plugin: LoadedPlugin) -> dict[str, object]:
-    """Return the resolved plugin details exposed by ``plugins show --json``."""
+    """Return the resolved plugin details exposed by ``--plugin NAME --json``."""
     return {
         "name": plugin.name,
         "display_name": plugin.manifest.plugin.display_name,
@@ -121,20 +115,7 @@ def _echo_discovery_errors(errors: list[str]) -> None:
         typer.echo(f"  • {error}", err=True)
 
 
-@plugins_app.command("list")
-def cmd_list(
-    plugins_dir: list[Path] | None = typer.Option(
-        None,
-        "--plugins-dir",
-        help=(
-            "Extra directory to scan for plugins. Each subdirectory containing "
-            "manifest.toml is loaded. May be passed multiple times. Combines "
-            "additively with the METABROWSER_PLUGINS_DIRS env var (loaded from "
-            "the nearest .env / .env.local)."
-        ),
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
-) -> None:
+def list_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
     """List every discovered plugin (name, source, kinds, view count, hooks)."""
     extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
@@ -171,16 +152,7 @@ def cmd_list(
         raise typer.Exit(code=1)
 
 
-@plugins_app.command("show")
-def cmd_show(
-    name: str = typer.Argument(..., help="Plugin name to show."),
-    plugins_dir: list[Path] | None = typer.Option(
-        None,
-        "--plugins-dir",
-        help="Extra plugin directory; may repeat. Combines with METABROWSER_PLUGINS_DIRS.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit structured JSON."),
-) -> None:
+def show_plugin(name: str, plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
     """Print the full resolved manifest for one plugin."""
     extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
@@ -250,15 +222,7 @@ def cmd_show(
         raise typer.Exit(code=1)
 
 
-@plugins_app.command("doctor")
-def cmd_doctor(
-    plugins_dir: list[Path] | None = typer.Option(
-        None,
-        "--plugins-dir",
-        help="Extra plugin directory; may repeat. Combines with METABROWSER_PLUGINS_DIRS.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit structured JSON."),
-) -> None:
+def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
     """Validate every discovered plugin. Exit non-zero on any problem."""
     extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
@@ -330,12 +294,12 @@ def cmd_doctor(
         return
 
     if problems:
-        typer.echo(f"metab plugins doctor: {len(problems)} problem(s):", err=True)
+        typer.echo(f"metab --doctor: {len(problems)} problem(s):", err=True)
         for problem in problems:
             typer.echo(f"  • {problem}", err=True)
         raise typer.Exit(code=1)
 
-    typer.echo(f"metab plugins doctor: {len(result.plugins)} plugin(s) OK")
+    typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
 
 
 def _plugins_with_index_check(plugins: list[LoadedPlugin]) -> list[str]:
@@ -345,14 +309,3 @@ def _plugins_with_index_check(plugins: list[LoadedPlugin]) -> list[str]:
         if not (p.static_root / "index.js").is_file():
             out.append(f"plugin '{p.name}': index.js missing in {p.static_root}")
     return out
-
-
-def main() -> None:
-    """Standalone entry point for `metab plugins` diagnostics."""
-    from metabrowser.cli.serve import _run_cli
-
-    _run_cli(["plugins", *sys.argv[1:]], prog_name="metab")
-
-
-if __name__ == "__main__":
-    main()

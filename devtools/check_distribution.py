@@ -202,8 +202,7 @@ def _smoke_install(wheel: Path) -> None:
         "--with",
         str(wheel),
         "metab",
-        "plugins",
-        "doctor",
+        "--doctor",
     ]
     subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
 

@@ -1,40 +1,24 @@
-"""Tests for the metab plugins diagnostic CLI.
+"""Tests for the plugin diagnostic modes of the metab CLI.
 
-Drives ``metab plugins list / show / doctor`` via Typer's CliRunner.
-Confirms the discovered set, the JSON output shape, and the doctor's
-exit-code contract on broken / valid plugins.
+Drives ``metab --plugins / --plugin NAME / --doctor`` via Typer's
+CliRunner. Confirms the discovered set, the JSON output shape, and the
+doctor's exit-code contract on broken / valid plugins.
 """
 
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
 
-from metabrowser.cli.plugins import plugins_app
+from metabrowser.cli.main import _app
 
 _runner = CliRunner()
 
 
-def test_plugins_module_execution_uses_canonical_cli() -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "metabrowser.cli.plugins", "--help"],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "metab plugins" in result.stdout
-    assert "doctor" in result.stdout
-
-
 def test_plugins_list_table_includes_builtin_plugins() -> None:
-    result = _runner.invoke(plugins_app, ["list"])
+    result = _runner.invoke(_app, ["--plugins"])
     assert result.exit_code == 0
     assert "markdown" in result.stdout
     assert "builtin" in result.stdout
@@ -44,7 +28,7 @@ def test_plugins_list_table_includes_builtin_plugins() -> None:
 
 
 def test_plugins_list_json_emits_structured_output() -> None:
-    result = _runner.invoke(plugins_app, ["list", "--json"])
+    result = _runner.invoke(_app, ["--plugins", "--json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert "plugins" in data
@@ -62,8 +46,8 @@ def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> No
     (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\n')
 
     table_result = _runner.invoke(
-        plugins_app,
-        ["list", "--plugins-dir", str(tmp_path)],
+        _app,
+        ["--plugins", "--plugins-dir", str(tmp_path)],
     )
     assert table_result.exit_code == 1
     assert "markdown" in table_result.stdout
@@ -71,8 +55,8 @@ def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> No
     assert "index.js missing" in table_result.stderr
 
     json_result = _runner.invoke(
-        plugins_app,
-        ["list", "--json", "--plugins-dir", str(tmp_path)],
+        _app,
+        ["--plugins", "--json", "--plugins-dir", str(tmp_path)],
     )
     assert json_result.exit_code == 1
     payload = json.loads(json_result.stdout)
@@ -81,7 +65,7 @@ def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> No
 
 
 def test_plugins_show_builtin_dumps_manifest() -> None:
-    result = _runner.invoke(plugins_app, ["show", "markdown"])
+    result = _runner.invoke(_app, ["--plugin", "markdown"])
     assert result.exit_code == 0
     assert "name:         markdown" in result.stdout
     assert "markdown/rendered" in result.stdout
@@ -89,7 +73,7 @@ def test_plugins_show_builtin_dumps_manifest() -> None:
 
 
 def test_plugins_show_json_emits_resolved_plugin() -> None:
-    result = _runner.invoke(plugins_app, ["show", "markdown", "--json"])
+    result = _runner.invoke(_app, ["--plugin", "markdown", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     plugin = payload["plugin"]
@@ -102,15 +86,15 @@ def test_plugins_show_json_emits_resolved_plugin() -> None:
 
 
 def test_plugins_show_unknown_plugin_errors() -> None:
-    result = _runner.invoke(plugins_app, ["show", "no-such-plugin"])
+    result = _runner.invoke(_app, ["--plugin", "no-such-plugin"])
     assert result.exit_code != 0
-    # The CLIError from cmd_show propagates through Typer; the runner records
-    # it as result.exception.
+    # The CLIError from show_plugin propagates through Typer; the runner
+    # records it as result.exception.
     assert "no-such-plugin" in str(result.exception)
 
 
 def test_plugins_show_unknown_plugin_json_emits_structured_error() -> None:
-    result = _runner.invoke(plugins_app, ["show", "no-such-plugin", "--json"])
+    result = _runner.invoke(_app, ["--plugin", "no-such-plugin", "--json"])
     assert result.exit_code == 1
     assert result.stdout == ""
     payload = json.loads(result.stderr)
@@ -118,13 +102,13 @@ def test_plugins_show_unknown_plugin_json_emits_structured_error() -> None:
 
 
 def test_plugins_doctor_exits_zero_on_clean_install() -> None:
-    result = _runner.invoke(plugins_app, ["doctor"])
+    result = _runner.invoke(_app, ["--doctor"])
     assert result.exit_code == 0
     assert "OK" in result.stdout
 
 
 def test_plugins_doctor_json_emits_structured_result() -> None:
-    result = _runner.invoke(plugins_app, ["doctor", "--json"])
+    result = _runner.invoke(_app, ["--doctor", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
@@ -152,15 +136,15 @@ sidekick = "nonexistent.module:nope"
     )
     (pdir / "index.js").write_text("// stub\n")
 
-    result = _runner.invoke(plugins_app, ["doctor", "--plugins-dir", str(tmp_path)])
+    result = _runner.invoke(_app, ["--doctor", "--plugins-dir", str(tmp_path)])
     assert result.exit_code != 0
     assert result.stdout == ""
     assert "broken" in result.stderr
     assert "JavaScript-only" in result.stderr
 
     json_result = _runner.invoke(
-        plugins_app,
-        ["doctor", "--json", "--plugins-dir", str(tmp_path)],
+        _app,
+        ["--doctor", "--json", "--plugins-dir", str(tmp_path)],
     )
     assert json_result.exit_code == 1
     payload = json.loads(json_result.stdout)
@@ -189,8 +173,8 @@ sidekick = "nonexistent.module:nope"
     (pdir / "index.js").write_text("// stub\n")
 
     json_result = _runner.invoke(
-        plugins_app,
-        ["list", "--json", "--plugins-dir", str(tmp_path)],
+        _app,
+        ["--plugins", "--json", "--plugins-dir", str(tmp_path)],
     )
     assert json_result.exit_code == 0
     data = json.loads(json_result.stdout)
@@ -198,13 +182,13 @@ sidekick = "nonexistent.module:nope"
     assert local["data_hooks"] == []
     assert local["disabled_data_hooks"] == ["boom"]
 
-    table_result = _runner.invoke(plugins_app, ["list", "--plugins-dir", str(tmp_path)])
+    table_result = _runner.invoke(_app, ["--plugins", "--plugins-dir", str(tmp_path)])
     assert table_result.exit_code == 0
     assert "boom" not in table_result.stdout
 
     show_result = _runner.invoke(
-        plugins_app,
-        ["show", "local-demo", "--plugins-dir", str(tmp_path)],
+        _app,
+        ["--plugin", "local-demo", "--plugins-dir", str(tmp_path)],
     )
     assert show_result.exit_code == 0
     assert "disabled for operator-directory plugins" in show_result.stdout

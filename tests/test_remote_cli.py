@@ -1,9 +1,7 @@
-"""Tests for the `metab remote` subcommand's remote command construction.
+"""Tests for the ``metab --remote`` mode's remote command construction.
 
-The SSH inner command must use the
-explicit ``metab serve <path>`` form. The bare ``metab
-<path>`` rewrite works too (see test_cli_serve.py), but ``serve`` is
-explicit and insulates this command from any future routing change.
+The SSH inner command uses the flat ``metab <path>`` form, so the remote
+host must run the same flat-CLI Metabrowser version.
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from click import unstyle
 from typer.testing import CliRunner
 
 from metabrowser.cli import remote
-from metabrowser.cli.serve import _app
+from metabrowser.cli.main import _app
 from metabrowser.cli.ssh_utils import build_ssh_tunnel_command
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
@@ -50,8 +48,8 @@ def _invoke_remote(monkeypatch, process: _FakeProcess) -> None:
     monkeypatch.setattr(remote, "_probe_remote_free_port", lambda *a, **kw: 8412)
     monkeypatch.setattr(remote, "find_available_local_port", lambda *a, **kw: 8411)
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: process)
-    remote.remote(
-        host="user@vm",
+    remote.run_remote(
+        "user@vm",
         path="/runs",
         base_port=8411,
         no_open=True,
@@ -66,15 +64,15 @@ def _invoke_remote(monkeypatch, process: _FakeProcess) -> None:
 def test_remote_rejects_out_of_range_base_port(base_port: str) -> None:
     result = CliRunner().invoke(
         _app,
-        ["remote", "user@vm", "--path", "/runs", "--base-port", base_port],
+        ["--remote", "user@vm", "--path", "/runs", "--base-port", base_port],
     )
 
     assert result.exit_code == 2
     assert "--base-port" in unstyle(result.output)
 
 
-def test_remote_inner_command_uses_explicit_serve_subcommand(monkeypatch) -> None:
-    """The remote command piped into SSH must call ``metab serve …``."""
+def test_remote_inner_command_uses_flat_cli_form(monkeypatch) -> None:
+    """The remote command piped into SSH must call ``metab <path> …``."""
     captured: dict[str, list[str]] = {}
 
     def _fake_popen(cmd, *args, **kwargs):
@@ -106,8 +104,8 @@ def test_remote_inner_command_uses_explicit_serve_subcommand(monkeypatch) -> Non
         patch.object(remote, "signal", create=True),
         contextlib.suppress(Exception),
     ):
-        remote.remote(
-            host="user@vm",
+        remote.run_remote(
+            "user@vm",
             path="/runs",
             base_port=8411,
             no_open=True,
@@ -120,15 +118,16 @@ def test_remote_inner_command_uses_explicit_serve_subcommand(monkeypatch) -> Non
     cmd = captured["cmd"]
     assert cmd[0] == "ssh"
     inner = cmd[-1]
-    assert "metab serve" in inner, f"remote command should call 'metab serve …', got: {inner!r}"
-    assert "metab /runs" not in inner.split("&&", 1)[1] or "serve" in inner
+    assert "metab /runs" in inner, f"remote command should call 'metab <path> …', got: {inner!r}"
+    assert "metab serve" not in inner
+    assert "--port 8412 --host 127.0.0.1 --no-open" in inner
 
 
 def test_ssh_tunnel_helper_unchanged() -> None:
     """The lower-level SSH-tunnel builder still constructs the right shape."""
     cmd = build_ssh_tunnel_command(
         "user@vm",
-        remote_cmd="metab serve /runs --port 8412 --host 127.0.0.1 --no-open",
+        remote_cmd="metab /runs --port 8412 --host 127.0.0.1 --no-open",
         local_port=8411,
         remote_port=8412,
     )
@@ -136,7 +135,7 @@ def test_ssh_tunnel_helper_unchanged() -> None:
     assert "-L" in cmd
     tunnel_idx = cmd.index("-L")
     assert cmd[tunnel_idx + 1] == "8411:localhost:8412"
-    assert "metab serve" in cmd[-1]
+    assert "metab /runs" in cmd[-1]
 
 
 def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:
@@ -169,8 +168,8 @@ def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:
         patch.object(remote.signal, "signal"),
     ):
         wait_for_ready.side_effect = lambda *args, **kwargs: kwargs["on_ready"]()
-        remote.remote(
-            host="user@vm",
+        remote.run_remote(
+            "user@vm",
             path="/runs",
             base_port=8411,
             no_open=False,
@@ -224,8 +223,8 @@ def test_remote_loads_dotenv_before_resolving_gcp_project(monkeypatch) -> None:
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _FakeProc())
 
     with patch.object(remote.signal, "signal"):
-        remote.remote(
-            host="my-vm",
+        remote.run_remote(
+            "my-vm",
             path="/runs",
             base_port=8411,
             no_open=True,
@@ -273,8 +272,8 @@ def test_remote_reports_tunnel_command_launch_failure(monkeypatch) -> None:
     monkeypatch.setattr(subprocess, "Popen", _fail_to_launch)
 
     with pytest.raises(CLIError, match=r"ssh.*connecting.*user@vm.*PATH") as caught:
-        remote.remote(
-            host="user@vm",
+        remote.run_remote(
+            "user@vm",
             path="/runs",
             base_port=8411,
             no_open=True,

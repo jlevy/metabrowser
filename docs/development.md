@@ -2,8 +2,8 @@
 
 Metabrowser uses uv for Python environments and dependency resolution.
 The repository checks Python with Ruff and BasedPyright, browser assets with Biome and
-TypeScript check-JS, Markdown with Flowmark, and behavior with pytest and Node contract
-tests.
+TypeScript check-JS, Markdown with Flowmark, and behavior with pytest, tryscript CLI
+goldens, and Node contract tests.
 
 ## Set Up
 
@@ -63,8 +63,12 @@ make audit
 # Run a targeted test.
 uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
+# Regenerate the CLI console goldens (tests/golden/) after an intended
+# surface change, then review the diff.
+make golden-update
+
 # Start the development server with the manual browser corpus.
-uv --config-file uv.toml run --frozen metab serve ./tests/manual-fixtures --no-open
+uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
 
 The quality, test, audit, and build targets install both locked environments before
@@ -77,9 +81,9 @@ It also audits both locked dependency graphs.
 Its artifact gate rejects local environments, build trees, and repository-only metadata
 before an isolated wheel smoke test exercises the installed `metab` command and
 `metabrowser` compatibility alias, packaged assets, built-in plugin discovery, and
-KPress rendering. The installed wheel must also pass `metab plugins doctor`, so the
-release gate validates the user-facing plugin diagnostics rather than only importing
-plugin internals.
+KPress rendering. The installed wheel must also pass `metab --doctor`, so the release
+gate validates the user-facing plugin diagnostics rather than only importing plugin
+internals.
 
 ## Dependencies
 

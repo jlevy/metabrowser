@@ -1,4 +1,4 @@
-"""Tests for `metab remote` — SSH command construction."""
+"""Tests for `metab --remote` SSH command construction."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ class TestBuildSshTunnelCommand:
     def test_plain_ssh_basic(self) -> None:
         cmd = build_ssh_tunnel_command(
             "user@myhost",
-            remote_cmd="metab serve /mnt/filestore/runs --port 8411 --host 127.0.0.1 --no-open",
+            remote_cmd="metab /mnt/filestore/runs --port 8411 --host 127.0.0.1 --no-open",
             local_port=8411,
             remote_port=8411,
         )
@@ -24,12 +24,12 @@ class TestBuildSshTunnelCommand:
         tunnel_idx = cmd.index("-L")
         assert cmd[tunnel_idx + 1] == "8411:localhost:8411"
         assert "user@myhost" in cmd
-        assert "metab serve" in cmd[-1]
+        assert "metab /mnt/filestore/runs" in cmd[-1]
 
     def test_plain_ssh_with_options(self) -> None:
         cmd = build_ssh_tunnel_command(
             "devbox",
-            remote_cmd="metab serve /data/runs --port 8500 --host 127.0.0.1 --no-open",
+            remote_cmd="metab /data/runs --port 8500 --host 127.0.0.1 --no-open",
             local_port=9000,
             remote_port=8500,
             ssh_options="-i ~/.ssh/mykey -o StrictHostKeyChecking=no",
@@ -44,7 +44,7 @@ class TestBuildSshTunnelCommand:
     def test_plain_ssh_different_ports(self) -> None:
         cmd = build_ssh_tunnel_command(
             "user@host",
-            remote_cmd="metab serve /data --port 8080 --host 127.0.0.1 --no-open",
+            remote_cmd="metab /data --port 8080 --host 127.0.0.1 --no-open",
             local_port=9090,
             remote_port=8080,
         )
@@ -54,7 +54,7 @@ class TestBuildSshTunnelCommand:
     def test_gcp_mode_basic(self) -> None:
         cmd = build_ssh_tunnel_command(
             "my-browser-vm",
-            remote_cmd="metab serve /mnt/filestore/runs --port 8411 --host 127.0.0.1 --no-open",
+            remote_cmd="metab /mnt/filestore/runs --port 8411 --host 127.0.0.1 --no-open",
             local_port=8411,
             remote_port=8411,
             gcp=True,
@@ -72,12 +72,12 @@ class TestBuildSshTunnelCommand:
         separator_idx = cmd.index("--")
         assert cmd[separator_idx + 1] == "-L"
         assert cmd[separator_idx + 2] == "8411:localhost:8411"
-        assert "metab serve" in cmd[-1]
+        assert "metab /mnt/filestore/runs" in cmd[-1]
 
     def test_gcp_mode_no_project(self) -> None:
         cmd = build_ssh_tunnel_command(
             "my-vm",
-            remote_cmd="metab serve /data/runs --port 8411 --host 127.0.0.1 --no-open",
+            remote_cmd="metab /data/runs --port 8411 --host 127.0.0.1 --no-open",
             local_port=8411,
             remote_port=8411,
             gcp=True,
@@ -91,7 +91,7 @@ class TestStdinWatchdog:
     """Tests for wrap_with_stdin_watchdog — orphan prevention on SSH disconnect."""
 
     def test_wrapper_structure(self) -> None:
-        wrapped = wrap_with_stdin_watchdog("metab serve /data/runs --port 8411")
+        wrapped = wrap_with_stdin_watchdog("metab /data/runs --port 8411")
         # Must run via bash -c with a single quoted script argument.
         assert wrapped.startswith("bash -c ")
         # Inner command must be backgrounded with stdin from /dev/null.
@@ -107,7 +107,7 @@ class TestStdinWatchdog:
             assert sig in wrapped
 
     def test_wrapper_preserves_inner_command(self) -> None:
-        inner = 'export PATH="$HOME/.local/bin:$PATH" && metab serve /data --port 8411'
+        inner = 'export PATH="$HOME/.local/bin:$PATH" && metab /data --port 8411'
         wrapped = wrap_with_stdin_watchdog(inner)
         # Inner command is wrapped in a subshell so compound commands
         # (with &&) work under the background + redirect.
@@ -183,7 +183,7 @@ class TestBuildSshCommand:
     def test_gcp_tunnel_with_iap(self) -> None:
         cmd = build_ssh_tunnel_command(
             "my-vm",
-            remote_cmd="metab serve /data/runs --port 8411 --host 127.0.0.1 --no-open",
+            remote_cmd="metab /data/runs --port 8411 --host 127.0.0.1 --no-open",
             local_port=8411,
             remote_port=8411,
             gcp=True,

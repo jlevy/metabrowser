@@ -9,7 +9,7 @@ response), not that the system under test failed.
 
 Each probe assumes a server is already running. Start one with::
 
-    metab serve ./tests/manual-fixtures --no-open
+    metab ./tests/manual-fixtures --no-open
 
 Usage::
 

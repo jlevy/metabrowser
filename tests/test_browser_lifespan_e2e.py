@@ -1,12 +1,12 @@
 """End-to-end test of the full browser lifespan + route stack.
 
-Exercises the wiring as a real ``metab serve`` deployment
+Exercises the wiring as a real ``metab`` serving deployment
 sees it: the lifespan hook spawns walker + active-tracker +
 watcher; routes serve from the in-memory inventory; SSE
 delivers fs.change ops; the watcher picks up new files.
 
-This is the test that proves "the user can hit `metabrowser
-serve` and everything works" without actually opening a
+This is the test that proves "the user can run `metab .`
+and everything works" without actually opening a
 browser. Coverage:
 
 * Lifespan startup + clean teardown.

@@ -1,14 +1,15 @@
 """Metabrowser command-line interface for the canonical `metab` script.
 
-The top-level `metab` script dispatches to subcommands:
+`metab` is one flat command whose default operation is serving:
 
-* `metab serve ROOT` — launch the local web UI.
-* `metab plugins list` — list every discovered plugin.
-* `metab plugins show <name>` — full manifest for one plugin.
-* `metab plugins doctor` — sanity-check every discovered plugin.
-* `metab remote <host> --path <remote-root>` — SSH-tunnel into a remote
-  `metab serve`.
+* `metab ROOT`: launch the local web UI.
+* `metab ROOT --walk`: inventory walk with no server.
+* `metab --remote <host> --path <remote-root>`: SSH-tunnel into a remote
+  `metab` server.
+* `metab --plugins`: list every discovered plugin.
+* `metab --plugin <name>`: full manifest for one plugin.
+* `metab --doctor`: sanity-check every discovered plugin.
 
-The `metabrowser` compatibility alias and the bare path form `metab ./runs` use the same
-top-level callback. The root path is required.
+The `metabrowser` compatibility alias uses the same entry point.
+See `metabrowser.cli.main` for mode resolution and option applicability.
 """
