@@ -116,6 +116,21 @@ const sandbox = {
     },
   },
   document: {
+    // Minimal cookie jar so mb.prefs round-trips in the vm (real
+    // browsers merge by name; attributes after the first ; drop).
+    _cookies: {},
+    get cookie() {
+      return Object.entries(this._cookies)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("; ");
+    },
+    set cookie(str) {
+      const pair = String(str).split(";")[0];
+      const eq = pair.indexOf("=");
+      if (eq > 0) {
+        this._cookies[pair.slice(0, eq).trim()] = pair.slice(eq + 1);
+      }
+    },
     addEventListener() {},
     createElement: () => ({ appendChild() {} }),
     querySelector: () => null,
@@ -384,6 +399,42 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     const cleared = (c2.viewport.innerHTML.match(/tm-filter-dim/g) || []).length;
     check("clear undims", cleared === 0, `${cleared}`);
     view2.dispose();
+  }
+
+  // ── Legacy ignored migration is one-shot ───────────────────────
+  {
+    mb.prefs.set("folder.treemap", { metric: "files", ignored: "hidden" });
+    const c3 = makeElement();
+    c3.viewport = makeElement();
+    c3.status = makeElement();
+    const view3 = mb.getRegisteredView("folder", "treemap");
+    view3.render(c3, { path: "", kind: "folder", raw: { readme_path: "" } });
+    check(
+      "legacy ignored migrates to shared state",
+      mb.filters.get().ignored === "hidden",
+      mb.filters.get().ignored,
+    );
+    const stored = mb.prefs.get("folder.treemap", null);
+    check(
+      "legacy field stripped from stored pref",
+      stored && stored.ignored === undefined && stored.metric === "files",
+      JSON.stringify(stored),
+    );
+    view3.dispose();
+    // A later shared choice must survive a remount (no re-migration).
+    mb.filters.set({ ignored: "dimmed" });
+    const c4 = makeElement();
+    c4.viewport = makeElement();
+    c4.status = makeElement();
+    const view4 = mb.getRegisteredView("folder", "treemap");
+    view4.render(c4, { path: "", kind: "folder", raw: { readme_path: "" } });
+    check(
+      "remount keeps the later shared choice",
+      mb.filters.get().ignored === "dimmed",
+      mb.filters.get().ignored,
+    );
+    view4.dispose();
+    mb.filters.clear();
   }
 
   // ── watchRollup active-gate: hidden views spend no fetches ──────

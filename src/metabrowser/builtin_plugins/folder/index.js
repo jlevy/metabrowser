@@ -73,22 +73,35 @@
 
   /** One-time migration of a legacy per-view ignored value into the
    * shared filter state (defaults never overwrite a shared choice).
-   * @param {unknown} raw */
+   * Returns whether *raw* carried the legacy field at all, so the
+   * caller can strip it from storage — without that, every remount
+   * would re-apply the stale value over a later shared choice.
+   * @param {unknown} raw @returns {boolean} */
   function migrateLegacyIgnored(raw) {
     if (!raw || typeof raw !== "object") {
-      return;
+      return false;
     }
-    const value = /** @type {Record<string, unknown>} */ (raw).ignored;
+    const record = /** @type {Record<string, unknown>} */ (raw);
+    if (!("ignored" in record)) {
+      return false;
+    }
+    const value = record.ignored;
     if (typeof value === "string" && IGNORED_VALUES.includes(value) && value !== "dimmed") {
       mb.filters.set({ ignored: /** @type {"shown" | "hidden"} */ (value) });
     }
+    return true;
   }
 
   function loadState() {
     const stored = mb.prefs.get(PREF_KEY, null);
     if (stored !== null) {
-      migrateLegacyIgnored(stored);
-      return sanitizeState(stored);
+      const state = sanitizeState(stored);
+      if (migrateLegacyIgnored(stored)) {
+        // One-shot: persist the sanitized state (legacy field
+        // stripped) so a remount can never migrate again.
+        mb.prefs.set(PREF_KEY, state);
+      }
+      return state;
     }
     // One-time migration from the pre-prefs localStorage key (which
     // was invisible to instances on other ports).
