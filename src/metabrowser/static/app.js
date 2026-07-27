@@ -4442,7 +4442,11 @@ function commitRoute(path, isDir, skipHistory) {
   if (!firstCommittedRoute) {
     firstCommittedRoute = { path: path, isDir: isDir };
   }
-  if (!skipHistory && routeChanged) {
+  // Per the folder-views history decision: only DIRECTORY routes push
+  // (Back retraces folder zooms), while file selection always
+  // replaces — lateral file browsing from the tree must not spam the
+  // history stack.
+  if (!skipHistory && routeChanged && isDir) {
     history.pushState(null, "", `#${frag}`);
   } else {
     history.replaceState(null, "", `#${frag}`);
