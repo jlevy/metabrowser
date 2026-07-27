@@ -32,8 +32,8 @@ def apply_log_level(level: str | None) -> None:
     """Export ``METABROWSER_LOG_LEVEL`` so the logging setup at server
     import (``server._setup_perf_logging``) and the walk mode pick
     up the requested verbosity. ``--log-level debug`` is the general
-    knob for tracing the walker — e.g. every ``rewalk_subtree`` target
-    and its resolved path — without a feature-specific flag.
+    knob for tracing the walker (for example, every ``rewalk_subtree``
+    target and its resolved path) without a feature-specific flag.
     """
 
     # ``isinstance str`` guard: when a mode implementation is invoked as a

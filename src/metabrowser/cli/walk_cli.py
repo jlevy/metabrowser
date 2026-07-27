@@ -1,9 +1,9 @@
 """Walk mode: run the inventory walker and dump the result, no server.
 
-Selected with ``metab ROOT --walk``. Runs the *same* walker + tree builder
-the server uses, with no HTTP server and no browser — the web UI only
-renders what these produce, so this is the full walk → analyze → build
-pipeline under test. Argument parsing lives in
+Selected with ``metab ROOT --walk``. Runs the *same* walker and tree
+builder the server uses, with no HTTP server and no browser. The web UI
+only renders what these produce, so this is the full walk, analyze, and
+build pipeline under test. Argument parsing lives in
 :mod:`metabrowser.cli.main`.
 """
 

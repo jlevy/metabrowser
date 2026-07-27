@@ -6,8 +6,8 @@ tunnel and kills the remote server cleanly.
 
 Selected with ``metab --remote <host> --path <remote-root>``; argument
 parsing lives in :mod:`metabrowser.cli.main`. The remote host must have
-the same Metabrowser version installed — the tunneled invocation uses
-the flat CLI syntax.
+the same Metabrowser version installed, since the tunneled invocation
+uses the flat CLI syntax.
 """
 
 from __future__ import annotations
@@ -137,8 +137,8 @@ def run_remote(
         f"metab {shlex.quote(path)}"
         f" --port {remote_port} --host 127.0.0.1 --no-open"
     )
-    # Wrap so the remote server dies when the SSH channel closes — prevents
-    # orphan servers from accumulating on the remote host across sessions.
+    # Wrap so the remote server dies when the SSH channel closes; this
+    # prevents orphan servers from accumulating on the remote host.
     remote_cmd = wrap_with_stdin_watchdog(inner_cmd)
 
     cmd = build_ssh_tunnel_command(

@@ -1,5 +1,0 @@
-# metab --doctor
-exit: 0
---- stdout ---
-metab --doctor: 6 plugin(s) OK
---- stderr ---

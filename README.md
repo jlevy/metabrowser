@@ -94,8 +94,8 @@ metab .
 The `metabrowser` compatibility command matches the package name, which is why the short
 `uvx metabrowser@latest ...` form works.
 
-The CLI is one flat command — serving is the default operation, and every other
-operation is a mode flag documented in one place:
+The CLI is one flat command: serving is the default operation, and every other operation
+is a mode flag documented in one place:
 
 ```shell
 metab --help

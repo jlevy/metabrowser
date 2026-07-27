@@ -1,5 +1,0 @@
-# metab --version
-exit: 0
---- stdout ---
-metab <VERSION>
---- stderr ---

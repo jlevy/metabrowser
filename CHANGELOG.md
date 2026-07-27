@@ -18,7 +18,9 @@ Flat single-command CLI:
   `metab --remote` starts the remote side with the flat syntax, so both hosts need a
   Metabrowser at or above this version.
 - Golden console-output tests now pin the CLI surface (help, every mode, and the
-  usage-error matrix) under `tests/golden/`.
+  usage-error matrix) under `tests/golden/`, run with tryscript
+  (github.com/jlevy/tryscript) via `make test` and regenerated with
+  `make golden-update`.
 - The agent skill, README, and installation guide pin `uvx metabrowser@0.2.0`, the first
   release with the flat CLI. The publish workflow refuses a release whose tag does not
   match the documented pins and smoke-tests the skill’s pinned invocation (`--help` and

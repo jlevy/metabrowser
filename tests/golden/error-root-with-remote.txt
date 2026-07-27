@@ -1,9 +1,0 @@
-# metab . --remote vm --path /runs
-exit: 2
---- stdout ---
---- stderr ---
-Usage: metab [OPTIONS] [ROOT]
-Try 'metab --help' for help.
-╭─ Error ──────────────────────────────────────────────────────────────────────────────────────────╮
-│ ROOT is not used with --remote; pass the remote directory with --path                            │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

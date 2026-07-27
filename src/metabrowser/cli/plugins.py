@@ -3,18 +3,19 @@
 Three modes on the ``metab`` CLI (parsing lives in
 :mod:`metabrowser.cli.main`):
 
-* ``metab --plugins``      — table of every discovered plugin.
-* ``metab --plugin NAME``  — full manifest dump for one plugin.
-* ``metab --doctor``       — sanity-check every plugin: validate the
-  manifest, confirm sidekick handlers import, check for asset / kind-id
-  collisions across plugins. Exit code != 0 when any plugin is broken.
+* ``metab --plugins``: table of every discovered plugin.
+* ``metab --plugin NAME``: full manifest dump for one plugin.
+* ``metab --doctor``: sanity-check every plugin, validating the
+  manifest, confirming sidekick handlers import, and checking for
+  asset and kind-id collisions across plugins. Exit code != 0 when
+  any plugin is broken.
 
 These modes answer the operator question 'is my plugin loaded?'
 without having to start the server. They use the same discovery
-sources serving does, including the same ``.env`` / ``.env.local``
-walk + ``METABROWSER_PLUGINS_DIRS`` env var, so serving and
-``--plugins`` agree by default — no need to repeat ``--plugins-dir``
-flags between invocations.
+sources serving does, including the same ``.env``/``.env.local``
+walk and ``METABROWSER_PLUGINS_DIRS`` env var, so serving and
+``--plugins`` agree by default; there is no need to repeat
+``--plugins-dir`` flags between invocations.
 """
 
 from __future__ import annotations

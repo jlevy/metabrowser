@@ -285,7 +285,7 @@ def _metab(
         False,
         "--stream/--all-at-once",
         help="Streaming emits one walker record per line (json→JSONL, yaml→doc stream), "
-        "in walk order — the SSE upsert surface. All-at-once emits the full /api/tree "
+        "in walk order (the SSE upsert surface). All-at-once emits the full /api/tree "
         "envelope. Ignored for --format text.",
         rich_help_panel=_PANEL_WALK,
     ),

@@ -2,8 +2,8 @@
 
 Metabrowser uses uv for Python environments and dependency resolution.
 The repository checks Python with Ruff and BasedPyright, browser assets with Biome and
-TypeScript check-JS, Markdown with Flowmark, and behavior with pytest and Node contract
-tests.
+TypeScript check-JS, Markdown with Flowmark, and behavior with pytest, tryscript CLI
+goldens, and Node contract tests.
 
 ## Set Up
 
@@ -62,6 +62,10 @@ make audit
 
 # Run a targeted test.
 uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
+
+# Regenerate the CLI console goldens (tests/golden/) after an intended
+# surface change, then review the diff.
+make golden-update
 
 # Start the development server with the manual browser corpus.
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open

@@ -15,6 +15,8 @@ COMMON_DOC_FOOTER = "This document follows common-doc-guidelines.md."
 COMMON_DOC_EXEMPT_ROOTS = (
     ROOT / ".agents" / "skills",
     ROOT / ".claude" / "skills",
+    # Golden CLI captures; `make golden-update` rewrites their content.
+    ROOT / "tests" / "golden",
 )
 COMMON_DOC_EXEMPT_FILES = {
     ROOT / "tests" / "manual-fixtures" / "overview.md",

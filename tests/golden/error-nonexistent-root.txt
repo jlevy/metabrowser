@@ -1,3 +1,0 @@
-# metab <ROOT>/missing --no-open
-exit: 1
-exception: <ROOT>/missing is not a directory

@@ -1,4 +1,4 @@
-"""Tests for `metab --remote` — SSH command construction."""
+"""Tests for `metab --remote` SSH command construction."""
 
 from __future__ import annotations
 

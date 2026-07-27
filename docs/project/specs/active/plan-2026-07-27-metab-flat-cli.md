@@ -134,19 +134,22 @@ The console interface changes as described; the old subcommands no longer parse.
   `test_remote_cli.py`, `test_cli_plugins_dir_merge.py`, and CLI-invoking e2e tests) are
   migrated to the new syntax, keeping their assertions.
 - New golden console-output tests, following the console-capture strategy from
-  `tbd guidelines golden-testing-guidelines`: each scenario’s stdout/stderr and exit
-  code are captured, normalized, and diffed against a checked-in golden file under
-  `tests/golden/`. `GOLDEN_UPDATE=1` regenerates goldens; failures print a unified diff.
-  Normalization pins terminal width, strips ANSI codes, and replaces the version string,
-  temporary paths, ports, and file timestamps (fixture mtimes are fixed with
-  `os.utime`). Scenarios: help, version, bare invocation, every plugin mode in text and
-  JSON, walk in text/json/yaml and streaming forms, the serve startup banner (uvicorn
-  mocked), and the full usage-error matrix (mode conflicts, inapplicable options,
-  missing or invalid ROOT, invalid option values).
-- The harness is dependency-free pytest.
-  tryscript is the guideline’s recommended runner but would add an npm dependency
-  subject to the supply-chain cool-off review; a later switch stays open since goldens
-  are plain captured console output.
+  `tbd guidelines golden-testing-guidelines`, using tryscript, the guideline’s
+  recommended runner for CLI goldens.
+  The scenarios live in `tests/golden/*.tryscript.md` as markdown files of commands with
+  expected output and exit codes, run through `make test` and regenerated with
+  `make golden-update`. Determinism comes from a pinned environment (`TERM=dumb` for
+  ANSI-free 80-column Rich output, `TZ=UTC`, fixture mtimes pinned with `touch -t`) and
+  elision patterns for the version string, sandbox paths, and the builtin-plugin
+  checkout prefix. Scenarios: help, version, bare invocation, every plugin mode in text
+  and JSON, walk in text/json/yaml and streaming forms, and the full usage-error matrix
+  (mode conflicts, inapplicable options, missing or invalid ROOT, invalid option
+  values).
+- The serve banner scenarios stay in pytest (`tests/test_cli_golden.py`) because they
+  mock `uvicorn.run` and the port search in-process, which a tryscript subprocess cannot
+  do.
+- tryscript is a first-party dependency (github.com/jlevy/tryscript), pinned exactly in
+  `package.json`; the 0.1.7 release predates the supply-chain cool-off window by months.
 - `make verify` is the gate, including the installed-wheel smoke tests that exercise the
   console scripts.
 

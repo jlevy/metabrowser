@@ -1,6 +1,6 @@
 """Serve mode: launch a local web server to browse a directory's files.
 
-This is the default operation of the ``metab`` CLI — ``metab ./runs``
+This is the default operation of the ``metab`` CLI: ``metab ./runs``
 serves that directory. Argument parsing and mode selection live in
 :mod:`metabrowser.cli.main`; this module owns only the serve
 implementation.

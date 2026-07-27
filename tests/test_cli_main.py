@@ -82,7 +82,7 @@ def test_cli_empty_command_shows_help_instead_of_serving_default_root() -> None:
 
 
 def test_cli_old_subcommand_spelling_is_rejected() -> None:
-    """``metab serve .`` is not a subcommand anymore — the extra positional
+    """``metab serve .`` is not a subcommand anymore; the extra positional
     is a usage error rather than silently serving a directory named `serve`.
     """
     result = runner.invoke(_app, ["serve", "."])

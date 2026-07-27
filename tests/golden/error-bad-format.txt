@@ -1,9 +1,0 @@
-# metab . --walk --format xml
-exit: 2
---- stdout ---
---- stderr ---
-Usage: metab [OPTIONS] [ROOT]
-Try 'metab --help' for help.
-╭─ Error ──────────────────────────────────────────────────────────────────────────────────────────╮
-│ Invalid value for '--format': must be one of text, json, yaml                                    │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
