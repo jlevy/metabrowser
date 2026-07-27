@@ -701,9 +701,7 @@ def _find_dir_readme(dir_path: Path) -> str:
     guessed spellings — on a case-insensitive filesystem a probe for
     ``README.md`` would match ``ReadMe.MD`` and return a name that does
     not exist on disk. The listing yields real child names; preferred
-    spellings only break ties when several casings coexist. Shared by
-    the startup seed (`_initial_file_path`) and the folder envelope
-    (`_api_folder_envelope`).
+    spellings only break ties when several casings coexist.
     """
 
     try:
@@ -720,12 +718,6 @@ def _find_dir_readme(dir_path: Path) -> str:
         if preferred in candidates:
             return preferred
     return min(candidates)
-
-
-def _initial_file_path() -> str:
-    """Return a cheap first-preview file path, without walking the tree."""
-
-    return _find_dir_readme(_paths_safe.ROOT_DIR.resolve())
 
 
 def _static_asset_url(rel_path: str) -> str:
@@ -755,7 +747,6 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
-    initial_file_path = _initial_file_path()
     styles_url = _static_asset_url("styles.css")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
@@ -770,8 +761,7 @@ async def index(_request: Request) -> HTMLResponse:
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
     settings_block = (
-        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};"
-        f"window.METABROWSER_INITIAL_PATH={_json.dumps(initial_file_path)};</script>"
+        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance

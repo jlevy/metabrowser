@@ -4450,35 +4450,6 @@ function commitRoute(path, isDir, skipHistory) {
   lastWrittenRoute = { path: path, isDir: isDir };
 }
 
-function serverInitialPath() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  var path = window.METABROWSER_INITIAL_PATH || "";
-  return typeof path === "string" ? path.replace(/\/+$/, "") : "";
-}
-
-// Top-level README (case-insensitive). Returns its path or "" if absent.
-// Auto-navigates on first load when no hash is set, so a worktree with
-// a root readme never opens to the empty "select a file" pane. Scoped
-// to direct children of the tree root: never auto-navs to a README in
-// some nested subdirectory.
-function findRootReadme() {
-  // Files are direct children of the Files panel; Recent is its sibling.
-  var rootFiles = queryHtmlAll("#tab-files > .tree-item.tree-file");
-  for (var i = 0; i < rootFiles.length; i++) {
-    var path = rootFiles[i].dataset.path;
-    if (!path) {
-      continue;
-    }
-    var base = path.split("/").pop();
-    if (base && /^readme\.md$/i.test(base)) {
-      return path;
-    }
-  }
-  return "";
-}
-
 // Expand tree folders along ``path`` (loading lazy subtrees as needed)
 // and mark the target row selected. Returns true if the row exists.
 // Pair with selectFile() for the body; init() kicks off both legs in
@@ -4629,11 +4600,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   // full tree to come back. revealInTree below still waits on the
   // tree because it queries DOM the renderer just produced.
   var hashRoute = parseHashRoute();
-  var hashParts = splitHashRoute(hashRoute);
-  var initialPath = hashRoute ? hashParts.path : serverInitialPath();
-  var initialIsDir = hashRoute ? hashParts.isDir : false;
-  if (initialPath || initialIsDir) {
+  var initialPath = "";
+  if (hashRoute) {
+    initialPath = splitHashRoute(hashRoute).path;
     selectFile(initialPath, true);
+  } else {
+    // The root folder is the homepage. Its default view is the
+    // treemap; a direct-child README remains available as a folder tab.
+    selectFile("", true);
   }
   startIndexProgressPolling();
   await loadTree();
@@ -4645,15 +4619,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   // with the error pane.
   if (initialPath && currentPath === initialPath) {
     revealInTree(initialPath);
-  } else if (!initialIsDir) {
-    var readme = findRootReadme();
-    if (readme) {
-      navigateToPath(readme, true);
-    } else {
-      // No hash, no server-seeded file, no root README: land on the
-      // root folder view (treemap) instead of the empty pane.
-      selectFile("", true);
-    }
   }
   // /api/events is the single source for tree decoration and
   // active-file badges; ActiveFileTracker emits fs.change ops

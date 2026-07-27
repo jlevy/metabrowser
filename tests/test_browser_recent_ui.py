@@ -387,19 +387,6 @@ def test_styles_css_recent_chip_active_uses_tab_active_color_token() -> None:
     assert "var(--tab-active-color)" in rule_block
 
 
-# ── findRootReadme follows the tab refactor ─────────────────
-
-
-def test_find_root_readme_targets_tab_files_panel() -> None:
-    """The selector must match files inside #tab-files, not the
-    old #tree-content > selector that broke after the tab refactor."""
-
-    js = _read_app_js()
-    fn_start = js.index("function findRootReadme()")
-    fn_block = js[fn_start : fn_start + 800]
-    assert "#tab-files > .tree-item.tree-file" in fn_block
-
-
 # ── DOMContentLoaded wiring ─────────────────────────────────
 
 
@@ -408,3 +395,13 @@ def test_dom_content_loaded_calls_init_nav_tabs() -> None:
     handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     handler_block = js[handler_start : handler_start + 3000]
     assert "initNavTabs();" in handler_block
+
+
+def test_dom_content_loaded_opens_root_folder_without_a_route() -> None:
+    js = _read_app_js()
+    handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
+    handler_block = js[handler_start : handler_start + 3000]
+    assert "if (hashRoute) {" in handler_block
+    assert 'selectFile("", true);' in handler_block
+    assert handler_block.index('selectFile("", true);') < handler_block.index("await loadTree();")
+    assert "findRootReadme" not in js

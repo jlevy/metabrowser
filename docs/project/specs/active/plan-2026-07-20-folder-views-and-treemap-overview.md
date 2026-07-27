@@ -101,10 +101,12 @@ The mechanics this feature needs already exist for files and for aggregates:
 3. **Both folder tabs always render; no conditional view lists.** The README tab shows
    an explicit empty state when the folder has no README, per the design-system rule on
    empty states. The server never filters view descriptors by content.
-4. **Startup behavior is unchanged.** `_initial_file_path` and `findRootReadme` keep
-   seeding a root README file preview.
-   New behavior appears only when neither a hash nor a README exists: the shell selects
-   the root folder instead of showing the empty “Select a file” pane.
+4. **The root folder is the homepage.** With no explicit hash route, the shell selects
+   the root folder and its default treemap view.
+   A direct-child README remains available through the folder’s README tab and never
+   replaces the folder view.
+   Explicit file and folder deep links, including CLI `--path`, still select their
+   requested target.
 5. **Rollups are computed at query time from the index, not stored.** A single
    parent-to-children scan per request follows the `_build_inventory_tree` precedent.
    Stored per-directory aggregates stay exactly as they are.
@@ -135,8 +137,8 @@ The mechanics this feature needs already exist for files and for aggregates:
   `await _api_folder_envelope(subpath, target)`; remaining non-files stay 404.
 - New `_api_folder_envelope(subpath: str, target: Path) -> JSONResponse`:
   - reads `inventory.get(subpath)` for aggregates (entry may be absent early in a scan);
-  - finds a direct-child README via `_find_dir_readme(target)` in a thread, a
-    generalization of the loop in `_initial_file_path` (which is refactored to call it);
+  - finds a direct-child README via the bounded `_find_dir_readme(target)` helper in a
+    thread;
   - returns
     `{type: "folder", kind: "folder", path, name, views: _views_for_kind("folder"), dir: {total_files, total_size, mtime, gitignored, state}, readme_path}`
     where `state` is `"pending"` when aggregates are null and `mtime` follows the tree
@@ -215,8 +217,9 @@ The mechanics this feature needs already exist for files and for aggregates:
   summary (`sizeHtml`, count, age).
   Tabs, lazy mounting, and disposal flow through the existing code path; `ctx.raw` is
   the folder envelope.
-- `init()`: when there is no hash, no server initial path, and no root README, call
-  `selectFile("")` so a README-less root lands on the treemap instead of the empty pane.
+- `init()`: when there is no hash, call `selectFile("")` immediately so the root folder
+  request runs in parallel with the tree load and lands on the default treemap.
+  The server and shell do not seed a root README as the initial file.
 - The store notifier (`notifyFileStoreSubscribers`) additionally dispatches `window`
   CustomEvent `metabrowser:inventory-change` with the changed paths, the signal
   `watchRollup` listens for.
@@ -311,12 +314,12 @@ remaining phase, and 5 lands with the unified-filtering plan.
 
 Shippable on its own: folder selection, breadcrumb, and the README tab.
 
-- [x] Folder envelope: `_api_folder_envelope`, `_find_dir_readme` (with
-  `_initial_file_path` refactor), `VIEW_REGISTRY["folder"]`, no-store headers, tests
+- [x] Folder envelope: `_api_folder_envelope`, `_find_dir_readme`,
+  `VIEW_REGISTRY["folder"]`, no-store headers, tests
   (`tests/test_api_folder_envelope.py`)
 - [x] Shell wiring: tree-row toggle/select split, click handler branch, directory hash
   marker in `parseHashRoute` and `selectFile`, `revealInTree` generalization,
-  `renderFolderHeader` with breadcrumb and up, README-less-root landing in `init()`,
+  `renderFolderHeader` with breadcrumb and up, root-folder landing in `init()`,
   `.tree-toggle` and header styles, DOM tests under `tests/dom/`
 - [x] Built-in `folder` plugin with manifest and the README view (markdown built-ins
   reuse, explicit empty state), Node `vm` registration tests

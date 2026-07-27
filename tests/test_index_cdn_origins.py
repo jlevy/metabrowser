@@ -92,8 +92,8 @@ def test_duplicate_markdown_assets_are_absent() -> None:
     assert "marked.min.js" not in html
 
 
-def test_index_seeds_root_readme_for_immediate_preview(tmp_path: Path) -> None:
-    """The root README preview is chosen without waiting for the tree index."""
+def test_index_does_not_seed_root_readme_as_initial_file(tmp_path: Path) -> None:
+    """A root README stays a folder tab instead of replacing the folder view."""
     previous_root = server._resolved_root_dir()
     try:
         (tmp_path / "README.md").write_text("# Fast first paint\n")
@@ -102,4 +102,4 @@ def test_index_seeds_root_readme_for_immediate_preview(tmp_path: Path) -> None:
     finally:
         server._set_root_dir(previous_root)
 
-    assert 'window.METABROWSER_INITIAL_PATH="README.md"' in html
+    assert "METABROWSER_INITIAL_PATH" not in html

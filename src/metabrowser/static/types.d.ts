@@ -312,7 +312,6 @@ declare global {
       move(event: MouseEvent): void;
       show(html: string, event: MouseEvent): void;
     };
-    METABROWSER_INITIAL_PATH?: string;
     METABROWSER_SETTINGS?: {
       INDEX_PROGRESS_POLL_MS?: number;
       INDEX_PROGRESS_UPDATE_FILES?: number;
