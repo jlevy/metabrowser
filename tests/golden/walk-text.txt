@@ -1,0 +1,15 @@
+# metab <ROOT>/walkroot --walk
+exit: 0
+--- stdout ---
+walk: walkroot
+status: done
+counts: files=3 dirs=2 symlinks=0
+totals: total_files=3 total_size=72
+
+entries:
+  . [dir] files=3 size=72
+  README.md [file] size=17
+  data.jsonl [file] size=37
+  logs [dir] files=1 size=18
+  logs/run.log [file] size=18
+--- stderr ---

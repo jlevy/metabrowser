@@ -2,6 +2,24 @@
 
 All notable changes to Metabrowser are documented here.
 
+## Unreleased
+
+Flat single-command CLI:
+
+- Serving is the default operation: `metab .` serves the current directory the way
+  `open .` opens a folder on macOS. The `serve`, `walk`, `plugins`, and `remote`
+  subcommands are removed and replaced by mode flags on one command: `--walk`,
+  `--remote HOST`, `--plugins`, `--plugin NAME`, and `--doctor`.
+- Exactly one mode applies per invocation.
+  Options explicitly passed outside their mode are rejected as usage errors, and
+  `--help` groups options by mode.
+- Breaking change with no compatibility aliases: scripts that invoked a subcommand
+  spelling must drop `serve` or switch to the matching mode flag.
+  `metab --remote` starts the remote side with the flat syntax, so both hosts need a
+  Metabrowser at or above this version.
+- Golden console-output tests now pin the CLI surface (help, every mode, and the
+  usage-error matrix) under `tests/golden/`.
+
 ## 0.1.1
 
 Hardening, offline support, and UI refinement:

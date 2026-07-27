@@ -1,0 +1,9 @@
+# metab --remote vm
+exit: 2
+--- stdout ---
+--- stderr ---
+Usage: metab [OPTIONS] [ROOT]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────────────────────────╮
+│ --remote requires --path with the remote directory to serve                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

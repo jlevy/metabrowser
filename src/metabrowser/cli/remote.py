@@ -1,12 +1,13 @@
-"""metab remote — open Metabrowser on a remote host via SSH tunnel.
+"""Remote mode: open Metabrowser on a remote host via SSH tunnel.
 
 Walks both local and remote ports upward from a base port so multiple
 remote sessions can coexist on the same host pair. Ctrl-C tears down the
-tunnel and kills the remote serve cleanly.
+tunnel and kills the remote server cleanly.
 
-Registered as a subcommand on the unified ``metab`` Typer app
-(see :mod:`metabrowser.cli.serve`). There's no standalone console
-script — invoke as ``metab remote <host> --path <remote-root>``.
+Selected with ``metab --remote <host> --path <remote-root>``; argument
+parsing lives in :mod:`metabrowser.cli.main`. The remote host must have
+the same Metabrowser version installed — the tunneled invocation uses
+the flat CLI syntax.
 """
 
 from __future__ import annotations
@@ -30,7 +31,6 @@ from metabrowser.cli.ssh_utils import (
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import (
-    MAX_TCP_PORT,
     find_available_local_port,
     port_search_range,
     remote_port_probe_script,
@@ -58,9 +58,8 @@ def _probe_remote_free_port(
 
     Walks from *base_port* upward so multiple remote sessions on the same
     target host coexist. Coordinating the port choice before opening the
-    tunnel is what prevents the local tunnel from landing on the wrong
-    remote process (the original bug that made the remote view show a
-    stale path).
+    tunnel prevents the local tunnel from landing on the wrong remote
+    process, which would make the remote view show a stale path.
     """
     probe_cmd = remote_port_probe_script(base_port)
     cmd = build_ssh_command(
@@ -93,29 +92,22 @@ def _probe_remote_free_port(
         ) from exc
 
 
-def remote(
-    host: str = typer.Argument(..., help="SSH target (e.g. user@hostname, my-vm)"),
-    path: str = typer.Option(..., "--path", help="Remote directory to serve"),
-    base_port: int = typer.Option(
-        DEFAULT_BROWSER_PORT,
-        "--base-port",
-        min=1,
-        max=MAX_TCP_PORT,
-        help="Starting port for local + remote port search (walks upward)",
-    ),
-    no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open local browser"),
-    ssh_options: str = typer.Option(
-        "", "--ssh-options", help="Extra SSH flags (e.g. '-i ~/.ssh/mykey')"
-    ),
-    gcp: bool = typer.Option(False, "--gcp", help="Use gcloud compute ssh instead of plain ssh"),
-    zone: str = typer.Option("us-central1-b", "--zone", help="GCP zone (only with --gcp)"),
-    project: str = typer.Option("", "--project", help="GCP project (only with --gcp)"),
+def run_remote(
+    host: str,
+    *,
+    path: str,
+    base_port: int = DEFAULT_BROWSER_PORT,
+    no_open: bool = False,
+    ssh_options: str = "",
+    gcp: bool = False,
+    zone: str = "us-central1-b",
+    project: str = "",
 ) -> None:
-    """SSH into a remote host, start metab serve, and tunnel it to localhost.
+    """SSH into ``host``, start metab serving ``path``, and tunnel it locally.
 
     Both local and remote ports are chosen by walking upward from --base-port,
     so multiple remote sessions can coexist on the same host pair. Ctrl-C
-    tears down the tunnel and kills the remote serve cleanly.
+    tears down the tunnel and kills the remote server cleanly.
     """
     _load_dotenv_chain()
 
@@ -140,17 +132,13 @@ def remote(
         ssh_options=ssh_options,
     )
 
-    # Use the explicit ``serve`` subcommand on the remote: the bare-form
-    # rewrite in metabrowser.cli.serve.main() also accepts ``metab
-    # <path>``, but being explicit here insulates this command from any
-    # future change in subcommand routing.
     inner_cmd = (
         'export PATH="$HOME/.local/bin:$PATH" && '
-        f"metab serve {shlex.quote(path)}"
+        f"metab {shlex.quote(path)}"
         f" --port {remote_port} --host 127.0.0.1 --no-open"
     )
-    # Wrap so remote serve dies when the SSH channel closes — prevents orphan
-    # servers from accumulating on the remote host across sessions.
+    # Wrap so the remote server dies when the SSH channel closes — prevents
+    # orphan servers from accumulating on the remote host across sessions.
     remote_cmd = wrap_with_stdin_watchdog(inner_cmd)
 
     cmd = build_ssh_tunnel_command(
@@ -165,7 +153,7 @@ def remote(
     )
 
     url = f"http://localhost:{local_port}"
-    typer.echo(f"Connecting to {host} and starting metab serve...")
+    typer.echo(f"Connecting to {host} and starting metab...")
     typer.echo(f"Tunnel: localhost:{local_port} → {host}:{remote_port}")
     typer.echo(f"Browser URL: {url}")
     typer.echo("Press Ctrl-C to stop.\n")

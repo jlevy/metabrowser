@@ -1,0 +1,9 @@
+# metab --doctor --json
+exit: 0
+--- stdout ---
+{
+  "ok": true,
+  "plugin_count": 6,
+  "problems": []
+}
+--- stderr ---

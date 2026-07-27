@@ -1,0 +1,9 @@
+# metab --no-open
+exit: 2
+--- stdout ---
+--- stderr ---
+Usage: metab [OPTIONS] [ROOT]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────────────────────────╮
+│ ROOT is required for serve mode (the default); e.g. `metab .`                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

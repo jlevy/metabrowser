@@ -1,0 +1,12 @@
+# metab --plugins
+exit: 0
+--- stdout ---
+NAME           SOURCE   KINDS       VIEWS  HOOKS 
+-------------  -------  ----------  -----  ------
+agent-log      builtin  agent-log   3      charts
+binary         builtin  -           0      -     
+markdown       builtin  markdown    2      -     
+structured     builtin  structured  2      parsed
+text           builtin  -           1      -     
+unknown-jsonl  builtin  -           2      -     
+--- stderr ---

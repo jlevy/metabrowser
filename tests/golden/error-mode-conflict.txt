@@ -1,0 +1,9 @@
+# metab . --walk --plugins
+exit: 2
+--- stdout ---
+--- stderr ---
+Usage: metab [OPTIONS] [ROOT]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────────────────────────╮
+│ mode flags are mutually exclusive; got --walk and --plugins                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

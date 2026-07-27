@@ -1,0 +1,106 @@
+# metab --plugins --json
+exit: 0
+--- stdout ---
+{
+  "plugins": [
+    {
+      "name": "agent-log",
+      "display_name": "Agent log (Claude / Gemini / Pi)",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "<REPO>/src/metabrowser/builtin_plugins/agent_log",
+      "kinds": [
+        "agent-log"
+      ],
+      "views": [
+        "log",
+        "charts",
+        "raw"
+      ],
+      "view_count": 3,
+      "data_hooks": [
+        "charts"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "binary",
+      "display_name": "Binary",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "<REPO>/src/metabrowser/builtin_plugins/binary",
+      "kinds": [],
+      "views": [],
+      "view_count": 0,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "markdown",
+      "display_name": "Markdown",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "<REPO>/src/metabrowser/builtin_plugins/markdown",
+      "kinds": [
+        "markdown"
+      ],
+      "views": [
+        "rendered",
+        "source"
+      ],
+      "view_count": 2,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "structured",
+      "display_name": "Structured Data",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "<REPO>/src/metabrowser/builtin_plugins/structured",
+      "kinds": [
+        "structured"
+      ],
+      "views": [
+        "tree",
+        "source"
+      ],
+      "view_count": 2,
+      "data_hooks": [
+        "parsed"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "text",
+      "display_name": "Text",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "<REPO>/src/metabrowser/builtin_plugins/text",
+      "kinds": [],
+      "views": [
+        "source"
+      ],
+      "view_count": 1,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "unknown-jsonl",
+      "display_name": "Unknown JSONL",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "<REPO>/src/metabrowser/builtin_plugins/unknown_jsonl",
+      "kinds": [],
+      "views": [
+        "log",
+        "raw"
+      ],
+      "view_count": 2,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    }
+  ],
+  "errors": []
+}
+--- stderr ---
