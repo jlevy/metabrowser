@@ -21,11 +21,19 @@ function check(name, cond, detail) {
 
 // ── Minimal DOM stub ────────────────────────────────────────────
 function makeElement() {
+  const classes = new Set();
   const el = {
     innerHTML: "",
     listeners: {},
     attributes: {},
-    style: {},
+    style: {
+      setProperty(k, v) {
+        this[k] = v;
+      },
+      removeProperty(k) {
+        delete this[k];
+      },
+    },
     addEventListener(type, fn) {
       el.listeners[type] = el.listeners[type] || [];
       el.listeners[type].push(fn);
@@ -43,12 +51,27 @@ function makeElement() {
     setAttribute(k, v) {
       el.attributes[k] = v;
     },
-    classList: { add() {}, remove() {}, contains: () => false },
+    classList: {
+      add(...names) {
+        names.forEach((name) => {
+          classes.add(name);
+        });
+      },
+      remove(...names) {
+        names.forEach((name) => {
+          classes.delete(name);
+        });
+      },
+      contains(name) {
+        return classes.has(name);
+      },
+    },
   };
   return el;
 }
 
 const windowListeners = {};
+let reducedMotion = false;
 const sandbox = {
   console,
   Math,
@@ -91,6 +114,9 @@ const sandbox = {
     }
   },
   innerHeight: 1000,
+  matchMedia() {
+    return { matches: reducedMotion };
+  },
   localStorage: {
     _data: {},
     getItem(k) {
@@ -167,13 +193,28 @@ const envelope = {
     dominant_ext: ".py",
     children: [
       {
-        name: "a.py",
-        path: "a.py",
-        type: "file",
-        size: 600,
+        name: "src",
+        path: "src",
+        type: "dir",
+        state: "complete",
+        total_files: 1,
+        total_size: 600,
+        unignored_files: 1,
+        unignored_size: 600,
         mtime: 1700000000,
-        ext: ".py",
         gitignored: false,
+        dominant_ext: ".py",
+        children: [
+          {
+            name: "a.py",
+            path: "src/a.py",
+            type: "file",
+            size: 600,
+            mtime: 1700000000,
+            ext: ".py",
+            gitignored: false,
+          },
+        ],
       },
       {
         name: "b.py",
@@ -214,6 +255,10 @@ for (const relative of [
 }
 
 const mb = sandbox.metabrowser;
+const openedPaths = [];
+sandbox.addEventListener("metabrowser:open-path", (event) => {
+  openedPaths.push(event.detail.path);
+});
 check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
 check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
 
@@ -256,6 +301,11 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   view.render(container, { path: "", kind: "folder", raw: { readme_path: "README.md" } });
   check("toolbar rendered", container.innerHTML.includes("tm-toolbar"), "no toolbar");
   check(
+    "root omits zoom-out control",
+    !container.innerHTML.includes("data-tm-zoom-out"),
+    container.innerHTML,
+  );
+  check(
     "toggle groups present",
     ["metric", "grouping", "color", "ignored"].every((k) =>
       container.innerHTML.includes(`data-tm-key="${k}"`),
@@ -272,6 +322,17 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     container.viewport.innerHTML.includes("tm-cell") &&
       container.viewport.innerHTML.includes("a.py"),
     container.viewport.innerHTML.slice(0, 200),
+  );
+  check(
+    "one-level nested preview is explicit",
+    container.viewport.innerHTML.includes("tm-nested") &&
+      container.viewport.innerHTML.includes('data-tm-depth="1"'),
+    container.viewport.innerHTML.slice(0, 500),
+  );
+  check(
+    "folder announces zoom action",
+    container.viewport.innerHTML.includes("zoom in"),
+    container.viewport.innerHTML.slice(0, 500),
   );
   check(
     "type fill is the default",
@@ -330,11 +391,11 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     const btn = {
       dataset: { tmKey: key, tmValue: value },
       parentElement: { querySelectorAll: () => [] },
-      closest() {
-        return btn;
+      closest(selector) {
+        return selector === "[data-tm-key]" ? btn : null;
       },
     };
-    toolbarClick({ target: { closest: () => btn } });
+    toolbarClick({ target: btn });
   };
   if (toolbarClick) {
     clickToggle("color", "age");
@@ -356,6 +417,41 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     clickToggle("ignored", "dimmed");
   }
 
+  // Folder activation plays a directional exit before normal route
+  // navigation. The destination view consumes the pending direction
+  // and enters from the inverse scale.
+  const viewportClick = container.viewport.listeners.click?.[0];
+  check("cell click handler bound", typeof viewportClick === "function");
+  if (viewportClick) {
+    const srcCell = {
+      dataset: { tmIndex: "0" },
+      closest(selector) {
+        return selector === "[data-tm-index]" ? srcCell : null;
+      },
+    };
+    const beforeOpen = openedPaths.length;
+    viewportClick({ target: srcCell });
+    check(
+      "zoom-in waits for exit transition",
+      openedPaths.length === beforeOpen && pendingTimers.length === 1,
+      `${openedPaths.length - beforeOpen} opens / ${pendingTimers.length} timers`,
+    );
+    check(
+      "zoom-in exit direction",
+      container.viewport.classList.contains("tm-zoom-exit-in"),
+      "missing tm-zoom-exit-in",
+    );
+    const finishExit = pendingTimers.shift();
+    if (finishExit) {
+      finishExit();
+    }
+    check(
+      "zoom-in opens folder through normal navigation",
+      openedPaths.at(-1) === "src",
+      openedPaths.join(","),
+    );
+  }
+
   // Dispose detaches the inventory-change and window-resize listeners.
   const listenerCount = (windowListeners["metabrowser:inventory-change"] || []).length;
   const resizeCount = (windowListeners.resize || []).length;
@@ -364,6 +460,87 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
   check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
+
+  // The destination renders a visible structural way back out and
+  // consumes the matching entrance transition.
+  {
+    const cZoom = makeElement();
+    cZoom.viewport = makeElement();
+    cZoom.status = makeElement();
+    const zoomView = mb.getRegisteredView("folder", "treemap");
+    zoomView.render(cZoom, { path: "src", kind: "folder", raw: { readme_path: "" } });
+    check(
+      "nested root exposes zoom-out control",
+      cZoom.innerHTML.includes("data-tm-zoom-out") && cZoom.innerHTML.includes("Zoom out"),
+      cZoom.innerHTML,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "destination enters as zoom-in",
+      cZoom.viewport.classList.contains("tm-zoom-enter-in"),
+      "missing tm-zoom-enter-in",
+    );
+    const finishEnter = pendingTimers.shift();
+    if (finishEnter) {
+      finishEnter();
+    }
+
+    const click = cZoom.listeners.click?.[0];
+    const zoomOutButton = {
+      dataset: { tmZoomOut: "" },
+      closest(selector) {
+        return selector === "[data-tm-zoom-out]" ? zoomOutButton : null;
+      },
+    };
+    const beforeOpen = openedPaths.length;
+    if (click) {
+      click({ target: zoomOutButton });
+    }
+    check(
+      "zoom-out waits for inverse exit transition",
+      openedPaths.length === beforeOpen &&
+        cZoom.viewport.classList.contains("tm-zoom-exit-out") &&
+        pendingTimers.length === 1,
+      `${openedPaths.length - beforeOpen} opens / ${pendingTimers.length} timers`,
+    );
+    const finishExit = pendingTimers.shift();
+    if (finishExit) {
+      finishExit();
+    }
+    check("zoom-out opens parent", openedPaths.at(-1) === "/", openedPaths.join(","));
+    zoomView.dispose();
+  }
+
+  // Reduced-motion mode preserves navigation but skips the delay.
+  {
+    reducedMotion = true;
+    const cReduced = makeElement();
+    cReduced.viewport = makeElement();
+    cReduced.status = makeElement();
+    const reducedView = mb.getRegisteredView("folder", "treemap");
+    reducedView.render(cReduced, { path: "src", kind: "folder", raw: { readme_path: "" } });
+    const click = cReduced.listeners.click?.[0];
+    const zoomOutButton = {
+      dataset: { tmZoomOut: "" },
+      closest(selector) {
+        return selector === "[data-tm-zoom-out]" ? zoomOutButton : null;
+      },
+    };
+    const beforeTimers = pendingTimers.length;
+    const beforeOpen = openedPaths.length;
+    if (click) {
+      click({ target: zoomOutButton });
+    }
+    check(
+      "reduced motion navigates immediately",
+      openedPaths.length === beforeOpen + 1 &&
+        openedPaths.at(-1) === "/" &&
+        pendingTimers.length === beforeTimers,
+      `${openedPaths.length - beforeOpen} opens / ${pendingTimers.length - beforeTimers} timers`,
+    );
+    reducedView.dispose();
+    reducedMotion = false;
+  }
 
   // ── Shared filters drive the treemap (mb.filters) ──────────────
   {

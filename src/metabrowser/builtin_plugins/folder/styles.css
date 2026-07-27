@@ -21,6 +21,29 @@
   max-width: var(--tm-max-width);
 }
 
+.tm-zoom-out {
+  align-self: stretch;
+  border: 1px solid var(--viz-border);
+  border-radius: var(--radius-pill);
+  background: var(--viz-surface);
+  color: var(--viz-text);
+  padding: 2px 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  cursor: zoom-out;
+  transition: var(--viz-hover-transition);
+}
+
+.tm-zoom-out:hover {
+  background: var(--hover-bg);
+}
+
+.tm-zoom-out:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
 .tm-seg {
   display: inline-flex;
   border: 1px solid var(--viz-border);
@@ -56,6 +79,7 @@
 }
 
 .tm-viewport {
+  --tm-zoom-origin: center;
   position: relative;
   min-height: 280px;
   /* Pre-measurement fallback only: index.js measures the space below
@@ -68,6 +92,75 @@
   outline: none;
   border: 1px solid var(--viz-border);
   background: var(--viz-surface-sunken);
+}
+
+.tm-viewport.tm-zoom-exit-in,
+.tm-viewport.tm-zoom-exit-out,
+.tm-viewport.tm-zoom-enter-in,
+.tm-viewport.tm-zoom-enter-out {
+  pointer-events: none;
+  transform-origin: var(--tm-zoom-origin);
+  will-change: transform, opacity;
+}
+
+.tm-viewport.tm-zoom-exit-in {
+  animation: tm-zoom-exit-in var(--viz-layout-transition) both;
+}
+
+.tm-viewport.tm-zoom-enter-in {
+  animation: tm-zoom-enter-in var(--viz-layout-transition) both;
+}
+
+.tm-viewport.tm-zoom-exit-out {
+  animation: tm-zoom-exit-out var(--viz-layout-transition) both;
+}
+
+.tm-viewport.tm-zoom-enter-out {
+  animation: tm-zoom-enter-out var(--viz-layout-transition) both;
+}
+
+@keyframes tm-zoom-exit-in {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes tm-zoom-enter-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tm-zoom-exit-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes tm-zoom-enter-out {
+  from {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .tm-loading {
@@ -88,14 +181,24 @@
   border: 1px solid var(--viz-border-subtle);
   background: var(--viz-surface);
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
   transition: filter var(--viz-hover-duration) ease;
 }
 
-.tm-cell:hover {
+.tm-cell[role="button"]:hover,
+.tm-nested:has(.tm-cell-title[role="button"]:hover) {
   filter: brightness(1.06);
   border-color: var(--viz-border-strong);
   z-index: 2;
+}
+
+.tm-dir[role="button"],
+.tm-cell-title[role="button"] {
+  cursor: zoom-in;
+}
+
+.tm-file[role="button"] {
+  cursor: pointer;
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so
@@ -114,6 +217,8 @@
 
 .tm-nested {
   background: transparent;
+  border-width: 2px;
+  box-shadow: inset 0 0 0 1px var(--viz-surface);
 }
 
 .tm-cell-title {
@@ -127,10 +232,10 @@
 /* A nested directory's label strip is the cell's button (the body is
    covered by child cells); give the strip its own affordance. */
 .tm-cell-title[role="button"] {
-  cursor: pointer;
   padding: 0 3px;
   margin-left: -3px;
   border-radius: 3px;
+  background: var(--viz-surface);
 }
 
 .tm-cell-title[role="button"]:hover {
@@ -145,6 +250,21 @@
 
 .tm-nested {
   cursor: default;
+}
+
+.tm-cell-zoom {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--viz-text);
+  opacity: 0.72;
 }
 
 .tm-cell-label {
@@ -243,6 +363,12 @@
   }
   .tm-cell {
     transition: none;
+  }
+  .tm-viewport.tm-zoom-exit-in,
+  .tm-viewport.tm-zoom-exit-out,
+  .tm-viewport.tm-zoom-enter-in,
+  .tm-viewport.tm-zoom-enter-out {
+    animation: none;
   }
 }
 

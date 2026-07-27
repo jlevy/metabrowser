@@ -109,7 +109,13 @@ function fileNode(name, pathStr, size, extras) {
     children: [
       dirNode("sub", "sub", {
         total_size: 2000,
-        children: [fileNode("inner.py", "sub/inner.py", 2000)],
+        children: [
+          fileNode("inner.py", "sub/inner.py", 1000),
+          dirNode("nested", "sub/nested", {
+            total_size: 1000,
+            children: [fileNode("too-deep.py", "sub/nested/too-deep.py", 1000)],
+          }),
+        ],
       }),
       fileNode("a.py", "a.py", 700),
       fileNode("b.md", "b.md", 300, { ext: ".md" }),
@@ -125,6 +131,12 @@ function fileNode(name, pathStr, size, extras) {
   check("dir nested flag", !!sub && sub.nested === true, JSON.stringify(sub));
   const inner = cells.find((c) => c.path === "sub/inner.py");
   check("nested child emitted", !!inner && inner.depth === 1, JSON.stringify(inner));
+  check(
+    "nested preview stops after one child layer",
+    cells.every((cell) => cell.depth <= 1) &&
+      !cells.some((cell) => cell.path === "sub/nested/too-deep.py"),
+    JSON.stringify(cells.map((cell) => [cell.path, cell.depth])),
+  );
   if (inner && sub) {
     check(
       "nested child inside parent",

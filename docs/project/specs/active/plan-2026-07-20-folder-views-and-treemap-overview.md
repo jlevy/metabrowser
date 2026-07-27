@@ -119,8 +119,11 @@ The mechanics this feature needs already exist for files and for aggregates:
    library is not worth a supply-chain review for one algorithm.
 7. **Zoom is navigation.** Clicking a directory cell opens that folder through the
    normal selection pipeline (hash, tree selection, new envelope, treemap remount at the
-   new root). The treemap holds no private zoom state; breadcrumb and up controls are
-   shell chrome shared by every folder view.
+   new root). The treemap holds no private location state; it may retain only a
+   short-lived transition direction and destination so the old and new roots read as one
+   spatial zoom. Reduced-motion users navigate immediately.
+   Breadcrumb and up controls remain shell chrome shared by every folder view, while the
+   treemap also exposes an explicit Zoom out control beside its visualization settings.
 8. **Live refresh rides the existing event stream.** The shell re-dispatches store
    changes as a DOM `CustomEvent`; the SDK wraps fetch-plus-refresh in a `watchRollup`
    helper with trailing debounce.
@@ -252,10 +255,10 @@ The mechanics this feature needs already exist for files and for aggregates:
 - `treemap_layout.js` (classic script, global `MetabrowserTreemapLayout`, strict
   check-JS): pure geometry, no DOM. `squarify(items, rect)` implements the Bruls,
   Huizing, and van Wijk algorithm; `layoutTree(rollupNode, viewport, opts)` walks the
-  rollup, applies the active metric and grouping, and returns positioned cells with
-  nesting depth, culling cells below `opts.minCellPx`, capping total cells at
-  `opts.maxCells` (default 800), and synthesizing remainder cells from `rest` buckets
-  and culled children.
+  rollup, applies the active metric and grouping, and returns positioned cells with one
+  bounded preview layer inside sufficiently large directory cells, culling cells below
+  `opts.minCellPx`, capping total cells at `opts.maxCells` (default 800), and
+  synthesizing remainder cells from `rest` buckets and culled children.
   Grouping `"type"` lays out the envelope `ext_tallies` instead of the directory
   hierarchy, one cell per extension.
 - `index.js` registers both views:
@@ -266,15 +269,24 @@ The mechanics this feature needs already exist for files and for aggregates:
   - `treemap`: mounts a toolbar (three joined toggle groups plus the three-state
     gitignored control), the cell viewport, and a compact legend; holds
     `{metric, grouping, color, ignored}` persisted under the
-    `metabrowser.folder.treemap` localStorage key; starts `mb.watchRollup(ctx.path, …)`
+    `metabrowser.folder.treemap` preference key; starts `mb.watchRollup(ctx.path, …)`
     and relayouts on data or toggle changes (toggle changes never refetch — both
     aggregate variants and `dominant_ext` are already in the payload); registers a
     `dispose` that tears down the watch handle.
-  - Cells: directory cells navigate via `mb.openPath` (zoom is navigation, decision 7);
-    file cells open the file the same way; hover uses `mb.tooltip` with path, size, file
-    count, and age; every cell has an accessible name; keyboard support is roving
-    tabindex with arrow-key movement in layout order, Enter to activate, and Backspace
-    for the parent directory.
+  - Cells and zoom: directory cells use a zoom-in cursor and accessible zoom language,
+    play a short exit transition, then navigate via `mb.openPath` (decision 7); the
+    replacement treemap plays the matching entrance transition once its rollup is ready.
+    A visible Zoom out button performs the inverse transition and navigates to the
+    structural parent. File cells open without a spatial zoom.
+    Reduced-motion mode skips both transition delays.
+    Hover uses `mb.tooltip` with path, size, file count, age, and the directory action;
+    keyboard support is roving tabindex with arrow-key movement in layout order, Enter
+    to activate, and Backspace for the parent directory.
+  - Nested preview: hierarchy grouping draws at most one child layer inside each
+    sufficiently large directory cell.
+    The parent header and inner boundary remain visually distinct, and nested
+    directories remain independently zoomable.
+    Smaller descendants continue to aggregate instead of producing illegible targets.
   - Color: `type` (default) applies the `ft-*` class (files) or `dominant_ext` class
     (directories); `age` maps `mb.ageBucket` to the new fill tokens; independent of the
     fill, `mb.ageLabelHtml` puts the header’s colored age chip beside each dir and file
@@ -366,6 +378,9 @@ Independent of Phase 1; Phase 3 needs both.
   its dark variants; two-tone treemap focus ring; print and reduced-motion verified),
   docs updates (`docs/plugins.md` folder kind, `docs/design-system.md` fill tokens,
   `docs/architecture.md` folder envelope note)
+- [x] Spatial zoom refinement: directional enter/exit transitions around route
+  navigation, an explicit Zoom out control, clearer one-level nested previews, and
+  reduced-motion behavior (`mb-xojs`)
 
 ## Testing Strategy
 
@@ -375,6 +390,8 @@ Independent of Phase 1; Phase 3 needs both.
   aspect-ratio quality, culling, remainder cells), and SDK debounce behavior
 - DOM tests for the toggle/select split, hash round-tripping, breadcrumb navigation, and
   treemap toggle state
+- Renderer behavior tests for zoom-in and zoom-out destinations, directional transition
+  classes, reduced-motion timing, and bounded nested-preview markup
 - One end-to-end test from filesystem mutation through `fs.change` to a treemap refresh
 - Budget measurements recorded in test output on public synthetic fixtures: rollup CPU
   and payload, layout time, render-to-paint on 800 cells

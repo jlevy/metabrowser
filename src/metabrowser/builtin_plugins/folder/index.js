@@ -70,6 +70,25 @@
   const VIEWPORT_MIN_H = 280;
   const VIEWPORT_MAX_H = 900;
   const VIEWPORT_BOTTOM_RESERVE = 64;
+  /** Keep the route handoff aligned with the shared layout-motion token. */
+  const ZOOM_DURATION_MS = 180;
+  /** A pending entrance is useful only for the immediately replacing view. */
+  const ZOOM_PENDING_TTL_MS = 5000;
+  /** @type {{direction: "in" | "out", targetPath: string, expiresAt: number} | null} */
+  let pendingZoomTransition = null;
+
+  /** @param {string} path @returns {string} */
+  function normalizedNavigationPath(path) {
+    return path === "/" ? "" : path.replace(/^\/+|\/+$/g, "");
+  }
+
+  /** @returns {boolean} */
+  function prefersReducedMotion() {
+    return (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
 
   /** One-time migration of a legacy per-view ignored value into the
    * shared filter state (defaults never overwrite a shared choice).
@@ -229,7 +248,8 @@
       return `${cell.name}: ${cell.files} files, ${mb.formatSize(cell.bytes)}`;
     }
     const what = cell.kind === "dir" ? "folder" : "file";
-    return `${cell.name} (${what}, ${cellValueText(cell, state)})`;
+    const action = cell.kind === "dir" ? ", zoom in" : "";
+    return `${cell.name} (${what}, ${cellValueText(cell, state)}${action})`;
   }
 
   /** @param {Record<string, any>} cell @returns {boolean} */
@@ -258,10 +278,16 @@
   /**
    * @param {Record<string, string>} state view-local encodings
    * @param {string} ignoredValue shared visibility dimension (mb.filters)
+   * @param {string} path current folder path
    */
-  function toolbarHtml(state, ignoredValue) {
+  function toolbarHtml(state, ignoredValue, path) {
+    const zoomOut = path
+      ? '<button type="button" class="tm-zoom-out" data-tm-zoom-out ' +
+        'aria-label="Zoom out to the parent folder">↑ Zoom out</button>'
+      : "";
     return (
       '<div class="tm-toolbar">' +
+      zoomOut +
       segmentHtml(
         "metric",
         [
@@ -329,10 +355,15 @@
     const titleAttrs = titleInteractive
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
       : "";
+    const zoomCue =
+      showLabel && cell.kind === "dir"
+        ? '<span class="tm-cell-zoom" aria-hidden="true">+</span>'
+        : "";
     const label = showLabel
       ? `<span class="tm-cell-title"${titleAttrs}><span class="tm-cell-label">${mb.escapeHtml(cell.name)}</span>${
           ageHtml ? `<span class="tm-cell-age">${ageHtml}</span>` : ""
-        }</span>` + (showSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : "")
+        }${zoomCue}</span>` +
+        (showSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : "")
       : "";
     const outerInteractive = actionable && !titleInteractive;
     const outerAttrs = outerInteractive
@@ -341,6 +372,7 @@
     return (
       `<div class="${cellClasses(cell, state, filters, cellFilterDim(cell, filters, nowSec))}"${outerAttrs}` +
       ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
+      ` data-tm-depth="${cell.depth}"` +
       ` style="${style}">${label}</div>`
     );
   }
@@ -421,6 +453,9 @@
       if (cell.state === "pending") {
         rows.push("still scanning");
       }
+      if (cell.kind === "dir") {
+        rows.push("Click to zoom in");
+      }
     }
     return rows.join("<br>");
   }
@@ -445,13 +480,22 @@
     /** @type {Record<string, any>[]} */
     let cells = [];
     let disposed = false;
+    let zooming = false;
+    let entrancePlayed = false;
+    /** @type {number | null} */
+    let exitTimer = null;
+    /** @type {number | null} */
+    let entranceTimer = null;
+    /** @type {{direction: "in" | "out", targetPath: string, expiresAt: number} | null} */
+    let ownedPendingTransition = null;
     /** @type {number[]} */
     let actionableIndexes = [];
     let focusPos = 0;
 
     container.innerHTML =
-      toolbarHtml(state, filters.ignored) +
-      '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
+      toolbarHtml(state, filters.ignored, ctx.path) +
+      '<div class="tm-viewport" role="application" ' +
+      'aria-label="Folder treemap. Select a folder to zoom in."></div>' +
       `<div class="tm-status">${statusHtml(null, filters)}</div>`;
     const viewport = /** @type {HTMLElement} */ (container.querySelector(".tm-viewport"));
     const status = /** @type {HTMLElement} */ (container.querySelector(".tm-status"));
@@ -485,6 +529,36 @@
       }
     }
 
+    /**
+     * The route remains the source of truth. This transient marker
+     * only lets the replacement renderer continue the visual motion
+     * once its rollup has produced something paintable.
+     */
+    function playPendingEntrance() {
+      if (entrancePlayed || prefersReducedMotion()) {
+        return;
+      }
+      const transition = pendingZoomTransition;
+      if (!transition) {
+        return;
+      }
+      if (transition.expiresAt <= Date.now()) {
+        pendingZoomTransition = null;
+        return;
+      }
+      if (normalizedNavigationPath(transition.targetPath) !== normalizedNavigationPath(ctx.path)) {
+        return;
+      }
+      pendingZoomTransition = null;
+      entrancePlayed = true;
+      const cls = transition.direction === "in" ? "tm-zoom-enter-in" : "tm-zoom-enter-out";
+      viewport.classList.add(cls);
+      entranceTimer = window.setTimeout(() => {
+        entranceTimer = null;
+        viewport.classList.remove(cls);
+      }, ZOOM_DURATION_MS);
+    }
+
     function relayout() {
       if (disposed || !viewport) {
         return;
@@ -516,6 +590,7 @@
       const html = cells.map((cell, i) => cellHtml(cell, state, i, filters, nowSec)).join("");
       viewport.innerHTML =
         html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
+      playPendingEntrance();
       // Roving tabindex over actionable cells only (dir/file); ext and
       // rest cells are descriptive groups outside the focus order.
       actionableIndexes = [];
@@ -531,6 +606,45 @@
       if (first) {
         first.setAttribute("tabindex", "0");
       }
+    }
+
+    /**
+     * Play the old-root half of a spatial zoom, then hand the
+     * destination to the normal open-path pipeline.
+     * @param {"in" | "out"} direction
+     * @param {string} targetPath
+     * @param {Record<string, any> | null} originCell
+     */
+    function startZoom(direction, targetPath, originCell) {
+      if (disposed || zooming) {
+        return;
+      }
+      mb.tooltip.hide();
+      if (prefersReducedMotion()) {
+        pendingZoomTransition = null;
+        mb.openPath(targetPath);
+        return;
+      }
+      zooming = true;
+      const transition = {
+        direction,
+        targetPath,
+        expiresAt: Date.now() + ZOOM_PENDING_TTL_MS,
+      };
+      pendingZoomTransition = transition;
+      ownedPendingTransition = transition;
+      if (originCell && viewport.style && typeof viewport.style.setProperty === "function") {
+        const originX = originCell.x + originCell.w / 2;
+        const originY = originCell.y + originCell.h / 2;
+        viewport.style.setProperty("--tm-zoom-origin", `${originX}px ${originY}px`);
+      }
+      const cls = direction === "in" ? "tm-zoom-exit-in" : "tm-zoom-exit-out";
+      viewport.classList.add(cls);
+      exitTimer = window.setTimeout(() => {
+        exitTimer = null;
+        ownedPendingTransition = null;
+        mb.openPath(targetPath);
+      }, ZOOM_DURATION_MS);
     }
 
     /**
@@ -571,7 +685,7 @@
     /** @param {Record<string, any>} cell */
     function activateCell(cell) {
       if (cell.kind === "dir" && cell.path !== ctx.path) {
-        mb.openPath(cell.path);
+        startZoom("in", cell.path, cell);
       } else if (cell.kind === "file") {
         mb.openPath(cell.path);
       }
@@ -633,13 +747,20 @@
         // At the served root there is no parent to open — let the
         // browser keep its own Backspace behavior (e.g. history back).
         if (ctx.path) {
-          mb.openPath(parentPath(ctx.path) || "/");
+          startZoom("out", parentPath(ctx.path) || "/", null);
           e.preventDefault();
         }
       }
     });
 
     container.addEventListener("click", (e) => {
+      const zoomOut = /** @type {HTMLElement | null} */ (
+        /** @type {Element} */ (e.target).closest("[data-tm-zoom-out]")
+      );
+      if (zoomOut) {
+        startZoom("out", parentPath(ctx.path) || "/", null);
+        return;
+      }
       const btn = /** @type {HTMLElement | null} */ (
         /** @type {Element} */ (e.target).closest("[data-tm-key]")
       );
@@ -761,6 +882,17 @@
 
     activeTreemapDispose = () => {
       disposed = true;
+      if (exitTimer !== null) {
+        window.clearTimeout(exitTimer);
+        exitTimer = null;
+        if (pendingZoomTransition === ownedPendingTransition) {
+          pendingZoomTransition = null;
+        }
+      }
+      if (entranceTimer !== null) {
+        window.clearTimeout(entranceTimer);
+        entranceTimer = null;
+      }
       watch.dispose();
       unsubscribeFilters();
       window.removeEventListener("resize", onWindowResize);

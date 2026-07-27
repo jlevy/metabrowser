@@ -27,12 +27,12 @@
     /** Nested levels drawn inside directory cells (1 = flat). */
     nestDepth: 2,
     /** Directory cells narrower/shorter than this never nest children. */
-    nestMinW: 72,
-    nestMinH: 48,
+    nestMinW: 64,
+    nestMinH: 44,
     /** Reserved label strip at the top of a nested directory cell (px). */
-    headerPx: 16,
+    headerPx: 20,
     /** Inner padding between a directory cell border and its children (px). */
-    padPx: 2,
+    padPx: 3,
   };
 
   /**
