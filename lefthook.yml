@@ -36,4 +36,7 @@ pre-commit:
 pre-push:
   commands:
     quality:
-      run: make lint-check test
+      # Git exports repository-local variables to hooks. Clear them before the
+      # test suite creates fixture repositories, or `git init <fixture>` can
+      # reinitialize the real shared Git directory instead.
+      run: unset $(git rev-parse --local-env-vars) && make lint-check test
