@@ -5,7 +5,7 @@ title: "P2: folder views on shared filter state and filtered rollups"
 kind: task
 status: open
 priority: 2
-version: 2
+version: 5
 spec_path: docs/project/specs/active/plan-2026-07-20-unified-filtering.md
 labels: []
 dependencies:
@@ -13,6 +13,10 @@ dependencies:
     target: is-01ky071dz7zqcfxgxf97pc9vfn
 parent_id: is-01ky070wk6z56ghjc9wyhf0sye
 created_at: 2026-07-20T16:51:38.175Z
-updated_at: 2026-07-20T16:51:50.517Z
+updated_at: 2026-07-23T23:29:32.192Z
 ---
-Migrate the treemap ignored control from metabrowser.folder.treemap localStorage to mb.filters (one-time key migration); bind age/type dim mode to cells. InventoryIndex.rollup gains age_max_s + types filtered aggregate variants (generalizing the unignored_* dual accumulators, one filtered set per request); /api/rollup params + wire validators (filtered_files/filtered_size); hide-mode relayout + watchRollup refetch on filter change; re-measure the rollup budget with filters active. Nav hide mode via /api/search with empty keyword once the scalable-search endpoint lands (falls back to dim until then — cross-reference plan-2026-07-17-scalable-file-search.md).
+Phase 2, hide mode with completeness: InventoryIndex.rollup grows filtered accumulator sets (age_max_s + types params, generalizing the unignored_* dual accumulators) with filtered_files/filtered_size on nodes + filtered ext tally column; /api/rollup param validation + wire validators; adversarial budget re-measured with filters active; treemap hide-mode relayout weights + watchRollup refetch on hide-value changes; a mode switch appears in the shared menu only when this lands; nav hide waits on /api/search (or ships pruned loaded-rows-only semantics with an explicit incompleteness note — open review question).
+
+## Notes
+
+Also from Bugbot R9 (deferred): Types-grouping ext tiles under shared filters — tiles carry no mtime (age can't judge them) and unmapped extensions classify unknown (unknown-keeps rule), so v1 dims only classifiable tiles; the Phase 2 filtered ext-tally column gives exact per-extension filtered bytes/files for both dimming and hide-mode weights.
