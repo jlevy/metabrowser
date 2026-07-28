@@ -22,6 +22,7 @@ NAME           SOURCE   KINDS       VIEWS  HOOKS
 -------------  -------  ----------  -----  ------
 agent-log      builtin  agent-log   3      charts
 binary         builtin  -           0      -
+folder         builtin  -           2      -
 markdown       builtin  markdown    2      -
 structured     builtin  structured  2      parsed
 text           builtin  -           1      -
@@ -64,6 +65,21 @@ $ metab --plugins --json
       "kinds": [],
       "views": [],
       "view_count": 0,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "folder",
+      "display_name": "Folder",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/folder",
+      "kinds": [],
+      "views": [
+        "treemap",
+        "readme"
+      ],
+      "view_count": 2,
       "data_hooks": [],
       "disabled_data_hooks": []
     },
@@ -224,7 +240,7 @@ $ metab --plugin markdown --json
 
 ```console
 $ metab --doctor
-metab --doctor: 6 plugin(s) OK
+metab --doctor: 7 plugin(s) OK
 ? 0
 ```
 
@@ -234,7 +250,7 @@ metab --doctor: 6 plugin(s) OK
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 6,
+  "plugin_count": 7,
   "problems": []
 }
 ? 0
