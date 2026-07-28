@@ -1,6 +1,6 @@
 # Feature: Unified Filtering Across Navigation and Folder Views
 
-**Date:** 2026-07-20 (last updated 2026-07-20)
+**Date:** 2026-07-20 (last updated 2026-07-27)
 
 **Author:** Metabrowser maintainers
 
@@ -9,7 +9,7 @@
 ## Overview
 
 Metabrowser filters files in several unrelated ways today: the Recent tab is an age
-filter wearing a tab, the treemap has its own three-state gitignored control, the
+filter wearing a tab, the treemap exposes a compact gitignored visibility control, the
 planned search feature defines keyword, extension, and age predicates, and the tree dims
 gitignored rows unconditionally.
 Each surface invents its own controls.
@@ -102,6 +102,10 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    aggregates server-side; `/api/search` for the nav) and lands in Phase 2. Visibility’s
    `hidden` already has server support (`unignored_*` aggregates in the treemap) and
    applies to the nav as a client-side prune of gitignored subtrees.
+   The dense treemap toolbar presents this as one **Show gitignored** checkbox: off
+   writes `hidden`, and on writes `shown`. A `dimmed` value selected in the navigation
+   menu remains valid shared state and appears checked because ignored entries are still
+   present.
 6. **Filtering is a decoration layer over the tree, not a render fork.** The nav applies
    filter classes by walking rendered rows (every predicate input — mtime, name,
    gitignored, active — is already on the row), on filter changes and debounced after
@@ -169,7 +173,9 @@ dims cells or relayouts.
 ### Folder Views and the Treemap (full form)
 
 - The treemap toolbar separates **encodings** (Metric, Grouping, Color — view-local,
-  unchanged) from **filters** (shared state via `mb.filters`).
+  unchanged) from **filters** (shared state via `mb.filters`). Its single **Show
+  gitignored** checkbox maps to the shared visibility state without duplicating the
+  navigation menu’s three-state control.
 - Dim mode adds the muted cell class to non-matching cells (per-cell `ext` and `mtime`
   are already in the rollup payload; directory cells dim only when their newest mtime or
   dominant type rules them out entirely).

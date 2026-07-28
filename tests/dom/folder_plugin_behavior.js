@@ -338,10 +338,18 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   );
   check(
     "toggle groups present",
-    ["metric", "grouping", "color", "depth", "ignored"].every((k) =>
+    ["metric", "grouping", "color", "depth"].every((k) =>
       container.innerHTML.includes(`data-tm-key="${k}"`),
     ),
     "missing toggle group",
+  );
+  check(
+    "gitignored control is one checkbox",
+    container.innerHTML.includes('type="checkbox"') &&
+      container.innerHTML.includes("data-tm-include-ignored") &&
+      container.innerHTML.includes("Show gitignored") &&
+      !container.innerHTML.includes('data-tm-key="ignored"'),
+    container.innerHTML,
   );
 
   // Initial watchRollup fetch resolves through several microtasks; a
@@ -454,16 +462,29 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
       container.viewport.scene.innerHTML.includes("tm-age-"),
       "no age fill class after color toggle",
     );
-    // Hidden gitignored mode: the caption must quote the unignored
-    // figures and say the gitignored entries are hidden, matching the
-    // weights the layout switched to.
-    clickToggle("ignored", "hidden");
+    const clickIncludeIgnored = (checked) => {
+      const input = {
+        checked,
+        closest(selector) {
+          return selector === "[data-tm-include-ignored]" ? input : null;
+        },
+      };
+      toolbarClick({ target: input });
+    };
+    // Unchecking the single control switches to the unignored
+    // aggregates; checking it shows ignored entries at full strength.
+    clickIncludeIgnored(false);
     check(
       "hidden mode status disclosure",
       container.status.textContent.includes("gitignored hidden"),
       container.status.textContent,
     );
-    clickToggle("ignored", "dimmed");
+    clickIncludeIgnored(true);
+    check(
+      "include checkbox selects shown state",
+      mb.filters.get().ignored === "shown",
+      mb.filters.get().ignored,
+    );
   }
 
   // Folder activation magnifies that cell's recursive inner scene

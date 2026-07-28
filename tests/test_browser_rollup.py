@@ -279,6 +279,26 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
     assert _has_cut_marker(node)
 
 
+def test_rollup_budget_preserves_root_siblings_before_deeper_detail(tmp_path: Path) -> None:
+    for name, size in (("cache-a", 1_000), ("cache-b", 900)):
+        ignored_leaf = tmp_path / name / "deep"
+        ignored_leaf.mkdir(parents=True)
+        (ignored_leaf / "large.bin").write_bytes(b"x" * size)
+    visible_dir = tmp_path / "src"
+    visible_dir.mkdir()
+    (visible_dir / "keep.py").write_bytes(b"x" * 100)
+    index = _build_index(tmp_path, gitignore="cache-*/\n")
+
+    result = index.rollup("", depth=6, top=2, ext_top=12, max_nodes=3)
+
+    assert result is not None
+    node = result["node"]
+    validate_rollup_node(node)
+    root_paths = {child["path"] for child in node["children"]}
+    assert "src" in root_paths
+    assert root_paths & {"cache-a", "cache-b"}
+
+
 def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
     """Query-cost budget record: rollup over a synthetic index.
 

@@ -45,7 +45,7 @@ import asyncio
 import heapq
 import logging
 import time
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
@@ -296,12 +296,16 @@ class InventoryIndex:
         ``top`` bounds one directory, not the response: a balanced tree
         multiplies per-level, so *max_nodes* (default
         ``ROLLUP_MAX_NODES``) is the global emission budget. It is
-        spent largest-first while emitting; a directory reached with no
+        spent breadth-first so siblings at the current level are
+        represented before any one subtree receives deeper detail.
+        Each directory interleaves its largest all-content and
+        unignored-content children, preserving useful candidates for
+        either client visibility mode. A directory reached with no
         budget left keeps full-subtree totals and emits the
         ``children: None`` lazy sentinel (the client refetches on
         zoom), and children cut mid-list fold into the ``rest`` bucket.
-        The response can therefore never amplify past the budget no
-        matter the tree shape.
+        The response can therefore never amplify past the budget or
+        collapse visible siblings behind ignored or deeper content.
 
         The result carries ``node`` (the emitted tree) and
         ``ext_tallies`` for the requested root: the *ext_top*
@@ -318,7 +322,7 @@ class InventoryIndex:
 
         from metabrowser.settings import ROLLUP_MAX_NODES
 
-        node_budget = [max_nodes if max_nodes is not None else ROLLUP_MAX_NODES]
+        node_budget = max(1, max_nodes if max_nodes is not None else ROLLUP_MAX_NODES)
 
         children_by_parent: dict[str, list[FsEntry]] = {}
         for entry in self._entries.values():
@@ -364,12 +368,11 @@ class InventoryIndex:
                 "gitignored": parent_ignored or child.gitignored,
             }
 
-        def _emit_dir(entry: FsEntry, remaining: int, parent_ignored: bool) -> dict[str, Any]:
-            node_budget[0] -= 1  # this directory node
+        def _dir_node(entry: FsEntry, parent_ignored: bool) -> dict[str, Any]:
             agg = aggs[entry.path]
             ignored = parent_ignored or entry.gitignored
             dominant = agg.ext_bytes.most_common(1)
-            node: dict[str, Any] = {
+            return {
                 "name": entry.name,
                 "path": entry.path,
                 "type": "dir",
@@ -381,16 +384,59 @@ class InventoryIndex:
                 "mtime": agg.newest_mtime_ns / 1_000_000_000.0,
                 "gitignored": ignored,
                 "dominant_ext": dominant[0][0] if dominant else "",
+                "children": None,
             }
-            if remaining <= 0 or node_budget[0] <= 0:
-                node["children"] = None
-                return node
 
-            def _byte_weight(child: FsEntry) -> tuple[int, str]:
-                weight = aggs[child.path].size_all if child.type == "dir" else child.size
-                return (-weight, child.path)
+        def _byte_weight(child: FsEntry) -> tuple[int, str]:
+            weight = aggs[child.path].size_all if child.type == "dir" else child.size
+            return (-weight, child.path)
 
-            ordered = sorted(children_by_parent.get(entry.path, ()), key=_byte_weight)
+        def _unignored_byte_weight(child: FsEntry, parent_ignored: bool) -> tuple[int, str]:
+            if child.type == "dir":
+                weight = aggs[child.path].size_unignored
+            else:
+                weight = 0 if parent_ignored or child.gitignored else child.size
+            return (-weight, child.path)
+
+        def _ordered_children(entry: FsEntry, parent_ignored: bool) -> list[FsEntry]:
+            by_all = sorted(children_by_parent.get(entry.path, ()), key=_byte_weight)
+            if len(by_all) <= 1:
+                return by_all
+            by_unignored = sorted(
+                by_all,
+                key=lambda child: _unignored_byte_weight(child, parent_ignored),
+            )
+            if -_unignored_byte_weight(by_unignored[0], parent_ignored)[0] <= 0:
+                return by_all
+
+            selected: list[FsEntry] = []
+            selected_paths: set[str] = set()
+            for rank in range(len(by_all)):
+                for child in (by_all[rank], by_unignored[rank]):
+                    if child.path in selected_paths:
+                        continue
+                    selected.append(child)
+                    selected_paths.add(child.path)
+                    if len(selected) >= top:
+                        return selected + [
+                            candidate
+                            for candidate in by_all
+                            if candidate.path not in selected_paths
+                        ]
+            return selected
+
+        root_node = _dir_node(root_entry, inherited_ignored)
+        node_budget -= 1
+        pending: deque[tuple[FsEntry, dict[str, Any], int, bool]] = deque(
+            [(root_entry, root_node, depth, inherited_ignored)]
+        )
+        while pending:
+            entry, node, remaining, parent_ignored = pending.popleft()
+            if remaining <= 0 or node_budget <= 0:
+                continue
+
+            ignored = parent_ignored or entry.gitignored
+            ordered = _ordered_children(entry, ignored)
             emitted: list[dict[str, Any]] = []
             rest_dirs = 0
             rest_files = 0
@@ -398,12 +444,14 @@ class InventoryIndex:
             rest_files_unignored = 0
             rest_size_unignored = 0
             for child in ordered:
-                if len(emitted) < top and node_budget[0] > 0:
+                if len(emitted) < top and node_budget > 0:
                     if child.type == "dir":
-                        emitted.append(_emit_dir(child, remaining - 1, ignored))
+                        child_node = _dir_node(child, ignored)
+                        emitted.append(child_node)
+                        pending.append((child, child_node, remaining - 1, ignored))
                     else:
-                        node_budget[0] -= 1
                         emitted.append(_file_node(child, ignored))
+                    node_budget -= 1
                 elif child.type == "dir":
                     child_agg = aggs[child.path]
                     rest_dirs += 1
@@ -426,9 +474,6 @@ class InventoryIndex:
                     "unignored_files": rest_files_unignored,
                     "unignored_size": rest_size_unignored,
                 }
-            return node
-
-        root_node = _emit_dir(root_entry, depth, inherited_ignored)
 
         root_agg = aggs[path]
         tallies: list[list[Any]] = []

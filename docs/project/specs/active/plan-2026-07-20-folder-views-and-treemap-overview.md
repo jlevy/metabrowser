@@ -37,8 +37,8 @@ layout spike that confirms the stated performance budgets.
   - Color: file type (default) or age; every named cell also carries the tree column’s
     colored age label beside the name
   - Visible detail: one, two, three, or all useful recursive levels
-  - Gitignored entries: shown, dimmed (default), or excluded from the visualization and
-    its aggregates
+  - Gitignored entries: one **Show gitignored** checkbox; off excludes them from the
+    visualization and its aggregates, while on shows them
 - Support hover details, click-to-zoom on folders with navigation sync, click-to-open on
   files, a breadcrumb path, and an up control after zooming
 - Reuse the existing walker and `InventoryIndex` aggregates; compute treemap-specific
@@ -193,7 +193,11 @@ The mechanics this feature needs already exist for files and for aggregates:
   the route tests.
 - Bounds: `top` caps one directory and `ROLLUP_MAX_NODES` (1,200) caps the whole
   response — a balanced tree multiplies per level, so only the global budget bounds
-  payloads. Enforced by tests: an adversarial 40×40×40 tree (64k files) emits exactly the
+  payloads. Emission is breadth-first so siblings at the current level are represented
+  before deeper detail can consume the budget.
+  Each directory interleaves its largest all-content and unignored-content children,
+  preserving useful cells for either visibility mode without doubling the per-directory
+  bound. Enforced by tests: an adversarial 40×40×40 tree (64k files) emits exactly the
   cap (~160 KiB pre-gzip, asserted <400 KiB) with rest buckets and `children: null`
   sentinels marking every cut; query CPU is printed by the same tests (~250 ms at 65k
   entries for the full-index adversarial case, single-digit ms on ordinary
@@ -272,8 +276,8 @@ The mechanics this feature needs already exist for files and for aggregates:
     against a context whose `path` is `raw.readme_path`. The folder envelope advertises
     this view only when the path exists; the renderer retains a defensive empty state
     for direct SDK invocation.
-  - `treemap`: mounts a toolbar (metric, grouping, color, recursive detail, and the
-    three-state gitignored control), the cell viewport, and a compact legend; holds
+  - `treemap`: mounts a toolbar (metric, grouping, color, recursive detail, and a **Show
+    gitignored** checkbox), the cell viewport, and a compact legend; holds
     `{metric, grouping, color, depth}` persisted through `mb.prefs` under the
     `folder.treemap` preference key, while gitignored visibility uses the shared filter
     preference. It starts `mb.watchRollup(ctx.path, …)` and relayouts on data or toggle
@@ -299,8 +303,9 @@ The mechanics this feature needs already exist for files and for aggregates:
   - Color: `type` (default) applies the `ft-*` class (files) or `dominant_ext` class
     (directories); `age` maps `mb.ageBucket` to the new fill tokens; independent of the
     fill, `mb.ageLabelHtml` puts the header’s colored age chip beside each dir and file
-    name; the `dimmed` ignored state applies a muted opacity class, `hidden` relayouts
-    from the unignored aggregates.
+    name. The checkbox writes `shown` or `hidden`; a `dimmed` value selected through the
+    shared navigation filter still applies a muted opacity class.
+    `hidden` relayouts from the unignored aggregates.
   - Pending directories render skeleton cells (tally-pending pattern); a truncated index
     renders a persistent notice sourced from the envelope fields.
 - `styles.css` (plugin-owned): consumes host tokens plus the new age fill tokens; no
@@ -372,7 +377,7 @@ Independent of Phase 1; Phase 3 needs both.
 - [x] `treemap_layout.js`: squarify, `layoutTree`, culling, remainder synthesis,
   type-grouping mode, golden `vm` tests (`tests/test_folder_treemap_layout_js.py`)
 - [x] Treemap renderer in `index.js`: toolbar toggles with persistence, cell rendering
-  with age and type color modes, gitignored three-state, hover tooltip, click
+  with age and type color modes, **Show gitignored** checkbox, hover tooltip, click
   navigation, keyboard model, pending and truncated presentations, plugin styles, core
   fill tokens
 - [x] Live refresh: `watchRollup` wiring end to end (filesystem change to ancestor

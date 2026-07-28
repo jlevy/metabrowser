@@ -5,8 +5,8 @@
 //
 //   ("folder", "treemap") — squarified treemap of the subtree from
 //       /api/rollup via mb.watchRollup: joined toggle groups for
-//       metric / grouping / color plus a three-state gitignored
-//       control, hover tooltip, click-to-zoom (zoom is navigation:
+//       metric / grouping / color plus a gitignored visibility
+//       checkbox, hover tooltip, click-to-zoom (zoom is navigation:
 //       cells open through mb.openPath), keyboard support, pending
 //       and truncated presentations.
 //   ("folder", "readme")  — the folder's direct-child README rendered
@@ -30,7 +30,7 @@
    * its own port and therefore its own localStorage origin). */
   const PREF_KEY = "folder.treemap";
   const LEGACY_STORAGE_KEY = "metabrowser.folder.treemap";
-  /** View-local encodings only. The gitignored three-state moved to
+  /** View-local encodings only. Gitignored visibility moved to
    * the shared filter vocabulary (mb.filters), where the nav bar and
    * this toolbar edit the same value. */
   const DEFAULT_STATE = {
@@ -411,7 +411,6 @@
       grouping: "Grouping",
       color: "Color",
       depth: "Visible detail depth",
-      ignored: "Gitignored files",
     };
     return `<span class="tm-seg" role="group" aria-label="${labels[key] || key}">${buttons}</span>`;
   }
@@ -427,6 +426,10 @@
       ? '<button type="button" class="tm-zoom-out" data-tm-zoom-out ' +
         'aria-label="Zoom out to the parent folder">↑ Zoom out</button>'
       : "";
+    const showIgnored =
+      '<label class="tm-check"><input type="checkbox" data-tm-include-ignored' +
+      (ignoredValue === "hidden" ? "" : " checked") +
+      "> <span>Show gitignored</span></label>";
     return (
       '<div class="tm-toolbar">' +
       zoomOut +
@@ -464,15 +467,7 @@
         ],
         state.depth,
       ) +
-      segmentHtml(
-        "ignored",
-        [
-          ["shown", "Ignored: shown"],
-          ["dimmed", "Dimmed"],
-          ["hidden", "Hidden"],
-        ],
-        ignoredValue,
-      ) +
+      showIgnored +
       "</div>"
     );
   }
@@ -977,6 +972,16 @@
         startZoom("out", parentPath(ctx.path) || "/", null);
         return;
       }
+      const includeIgnored = /** @type {HTMLInputElement | null} */ (
+        /** @type {Element} */ (e.target).closest("[data-tm-include-ignored]")
+      );
+      if (includeIgnored) {
+        const value = includeIgnored.checked ? "shown" : "hidden";
+        if (filters.ignored !== value) {
+          mb.filters.set({ ignored: value });
+        }
+        return;
+      }
       const btn = /** @type {HTMLElement | null} */ (
         /** @type {Element} */ (e.target).closest("[data-tm-key]")
       );
@@ -986,14 +991,6 @@
       const key = btn.dataset.tmKey || "";
       const value = btn.dataset.tmValue || "";
       if (!key || !value) {
-        return;
-      }
-      if (key === "ignored") {
-        // Shared dimension: write through mb.filters; the subscription
-        // below re-syncs the toolbar and relayouts (nav stays in step).
-        if (filters.ignored !== value) {
-          mb.filters.set({ ignored: /** @type {"shown" | "dimmed" | "hidden"} */ (value) });
-        }
         return;
       }
       if (state[key] === value) {
@@ -1010,18 +1007,14 @@
       relayout();
     });
 
-    /** Reflect the shared visibility value on the toolbar's ignored
-     * segment (stub containers without querySelectorAll skip). */
+    /** Reflect shared visibility on the toolbar checkbox. */
     function syncIgnoredToolbar() {
-      if (typeof container.querySelectorAll !== "function") {
-        return;
+      const input = /** @type {HTMLInputElement | null} */ (
+        container.querySelector("[data-tm-include-ignored]")
+      );
+      if (input) {
+        input.checked = filters.ignored !== "hidden";
       }
-      container.querySelectorAll('[data-tm-key="ignored"]').forEach((btn) => {
-        btn.setAttribute(
-          "aria-pressed",
-          String(/** @type {HTMLElement} */ (btn).dataset.tmValue === filters.ignored),
-        );
-      });
     }
     const unsubscribeFilters = mb.filters.subscribe((next) => {
       filters = next;
