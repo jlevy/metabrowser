@@ -86,7 +86,6 @@
   /**
    * @typedef {{
    *   direction: "in" | "out",
-   *   sourcePath: string,
    *   targetPath: string,
    *   refineFromDepth: number,
    *   expiresAt: number
@@ -479,8 +478,9 @@
    * @param {Record<string, any>} filters
    * @param {number} nowSec
    * @param {number | null} refineFromDepth
+   * @param {string | null} cameraShellPath
    */
-  function cellHtml(cell, state, index, filters, nowSec, refineFromDepth) {
+  function cellHtml(cell, state, index, filters, nowSec, refineFromDepth, cameraShellPath) {
     const style =
       `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
       `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px` +
@@ -519,9 +519,14 @@
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
       : ` role="group" aria-label="${aria}"`;
     const pendingRefinement = refineFromDepth !== null && cell.depth >= refineFromDepth;
+    const cameraShell =
+      cameraShellPath !== null &&
+      cell.kind === "dir" &&
+      normalizedNavigationPath(cell.path) === normalizedNavigationPath(cameraShellPath);
     const classes =
       cellClasses(cell, state, filters, cellFilterDim(cell, filters, nowSec)) +
-      (pendingRefinement ? " tm-lod-refine" : "");
+      (pendingRefinement ? " tm-lod-refine" : "") +
+      (cameraShell ? " tm-camera-shell" : "");
     return (
       `<div class="${classes}"${outerAttrs}` +
       ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
@@ -636,11 +641,8 @@
     let cells = [];
     let disposed = false;
     let zooming = false;
-    let entrancePlayed = false;
     /** @type {number | null} */
     let exitTimer = null;
-    /** @type {number | null} */
-    let entranceTimer = null;
     /** @type {SceneTransition | null} */
     let ownedPendingTransition = null;
     /** @type {number[]} */
@@ -686,17 +688,10 @@
       }
     }
 
-    /**
-     * Complete a route handoff against the same recursive world. A
-     * zoom-out mounts the parent scene already focused on the prior
-     * child and lets the compositor expand to identity. A zoom-in is
-     * already at its exact destination after the outgoing transform,
-     * so only newly eligible LOD cells refine into place.
-     */
-    function playPendingEntrance() {
-      if (entrancePlayed || prefersReducedMotion()) {
-        return;
-      }
+    /** Consume a completed camera handoff after its destination has
+     * mounted. The camera motion finished on the previous route; only
+     * newly eligible zoom-in detail may refine here. */
+    function consumePendingTransition() {
       const transition = pendingSceneTransition;
       if (!transition) {
         return;
@@ -709,38 +704,21 @@
         return;
       }
       pendingSceneTransition = null;
-      entrancePlayed = true;
-      if (transition.direction === "out") {
-        const sourceCell = cells.find(
-          (cell) =>
-            cell.kind === "dir" &&
-            normalizedNavigationPath(cell.path) === normalizedNavigationPath(transition.sourcePath),
-        );
-        const rect = viewport.getBoundingClientRect();
-        if (sourceCell && scene.style && typeof scene.style.setProperty === "function") {
-          scene.style.setProperty(
-            "--tm-scene-start-transform",
-            cellFocusMatrix(sourceCell, { w: rect.width, h: rect.height }),
-          );
-          scene.classList.add("tm-scene-enter-out");
-        }
-      } else {
-        // Newly materialized cells already carry tm-lod-refine. The
-        // stable cells do not fade, preserving spatial continuity.
-      }
-      entranceTimer = window.setTimeout(() => {
-        entranceTimer = null;
-        scene.classList.remove("tm-scene-enter-out");
-        if (scene.style && typeof scene.style.removeProperty === "function") {
-          scene.style.removeProperty("--tm-scene-start-transform");
-        }
-      }, ZOOM_DURATION_MS);
     }
 
-    function relayout() {
-      if (disposed || !viewport) {
-        return;
-      }
+    /**
+     * Materialize one camera view from the retained recursive world.
+     * `detailPath` may extend below the settled LOD threshold so a
+     * destination corridor is already present while the whole scene
+     * scales; newly fetched detail still refines after navigation.
+     *
+     * @param {string} focusPath
+     * @param {string} detailPath
+     * @param {number | null} refineFromDepth
+     * @param {string | null} cameraShellPath
+     * @returns {boolean} whether a drawable scene was materialized
+     */
+    function renderScene(focusPath, detailPath, refineFromDepth, cameraShellPath) {
       // Caption first (its height feeds the reserve), then size, then
       // measure — so a wrapping caption shrinks the map instead of
       // pushing the pane into scroll.
@@ -752,7 +730,7 @@
         scene.innerHTML = envelope
           ? ""
           : '<div class="tm-loading"><div class="spinner"></div></div>';
-        return;
+        return false;
       }
       const visibleDepth =
         state.depth === "all"
@@ -766,24 +744,19 @@
           grouping: state.grouping,
           ignored: filters.ignored,
           extTallies: envelope ? envelope.ext_tallies : [],
-          focusPath: state.grouping === "folder" ? ctx.path : node.path,
+          focusPath: state.grouping === "folder" ? focusPath : node.path,
+          detailPath: state.grouping === "folder" ? detailPath : node.path,
           nestDepth: visibleDepth,
         },
       );
       const nowSec = Date.now() / 1000;
-      const refineFromDepth =
-        pendingSceneTransition &&
-        pendingSceneTransition.direction === "in" &&
-        normalizedNavigationPath(pendingSceneTransition.targetPath) ===
-          normalizedNavigationPath(ctx.path)
-          ? pendingSceneTransition.refineFromDepth
-          : null;
       const html = cells
-        .map((cell, i) => cellHtml(cell, state, i, filters, nowSec, refineFromDepth))
+        .map((cell, i) =>
+          cellHtml(cell, state, i, filters, nowSec, refineFromDepth, cameraShellPath),
+        )
         .join("");
       scene.innerHTML =
         html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
-      playPendingEntrance();
       // Roving tabindex over actionable cells only (dir/file); ext and
       // rest cells are descriptive groups outside the focus order.
       actionableIndexes = [];
@@ -799,16 +772,32 @@
       if (first) {
         first.setAttribute("tabindex", "0");
       }
+      return true;
+    }
+
+    function relayout() {
+      if (disposed || !viewport || zooming) {
+        return;
+      }
+      const refineFromDepth =
+        pendingSceneTransition &&
+        pendingSceneTransition.direction === "in" &&
+        normalizedNavigationPath(pendingSceneTransition.targetPath) ===
+          normalizedNavigationPath(ctx.path)
+          ? pendingSceneTransition.refineFromDepth
+          : null;
+      if (renderScene(ctx.path, ctx.path, refineFromDepth, null)) {
+        consumePendingTransition();
+      }
     }
 
     /**
-     * Play the old-root half of a spatial zoom, then hand the
-     * destination to the normal open-path pipeline.
+     * Animate the complete camera move over one retained scene, then
+     * hand the settled destination to the normal open-path pipeline.
      * @param {"in" | "out"} direction
      * @param {string} targetPath
-     * @param {Record<string, any> | null} originCell
      */
-    function startZoom(direction, targetPath, originCell) {
+    function startZoom(direction, targetPath) {
       if (disposed || zooming) {
         return;
       }
@@ -818,19 +807,37 @@
         mb.openPath(targetPath);
         return;
       }
+      const focusPath = direction === "in" ? ctx.path : targetPath;
+      const detailPath = direction === "in" ? targetPath : ctx.path;
+      const cameraShellPath = direction === "in" ? targetPath : ctx.path;
+      if (!renderScene(focusPath, detailPath, null, cameraShellPath)) {
+        pendingSceneTransition = null;
+        mb.openPath(targetPath);
+        return;
+      }
+      const cameraCell = cells.find(
+        (cell) =>
+          cell.kind === "dir" &&
+          normalizedNavigationPath(cell.path) ===
+            normalizedNavigationPath(direction === "in" ? targetPath : ctx.path),
+      );
+      if (!cameraCell || !scene.style || typeof scene.style.setProperty !== "function") {
+        pendingSceneTransition = null;
+        mb.openPath(targetPath);
+        return;
+      }
       zooming = true;
       const transition = {
         direction,
-        sourcePath: ctx.path,
         targetPath,
         refineFromDepth:
-          direction === "in" && originCell
+          direction === "in" && cameraCell
             ? Math.max(
                 0,
                 (state.depth === "all"
                   ? window.MetabrowserTreemapLayout.LAYOUT_DEFAULTS.nestDepth
                   : Number(state.depth)) -
-                  Number(originCell.depth || 0) -
+                  Number(cameraCell.depth || 0) -
                   1,
               )
             : 0,
@@ -838,21 +845,23 @@
       };
       pendingSceneTransition = transition;
       ownedPendingTransition = transition;
-      if (direction === "out") {
-        ownedPendingTransition = null;
-        mb.openPath(targetPath);
-        return;
-      }
       const rect = viewport.getBoundingClientRect();
-      if (originCell && scene.style && typeof scene.style.setProperty === "function") {
+      if (direction === "out") {
+        scene.style.setProperty(
+          "--tm-scene-start-transform",
+          cellFocusMatrix(cameraCell, { w: rect.width, h: rect.height }),
+        );
+        scene.classList.add("tm-scene-exit-out");
+      } else {
         scene.style.setProperty(
           "--tm-scene-end-transform",
-          cellFocusMatrix(originCell, { w: rect.width, h: rect.height }),
+          cellFocusMatrix(cameraCell, { w: rect.width, h: rect.height }),
         );
+        scene.classList.add("tm-scene-exit-in");
       }
-      scene.classList.add("tm-scene-exit-in");
       exitTimer = window.setTimeout(() => {
         exitTimer = null;
+        zooming = false;
         ownedPendingTransition = null;
         mb.openPath(targetPath);
       }, ZOOM_DURATION_MS);
@@ -896,7 +905,7 @@
     /** @param {Record<string, any>} cell */
     function activateCell(cell) {
       if (cell.kind === "dir" && cell.path !== ctx.path) {
-        startZoom("in", cell.path, cell);
+        startZoom("in", cell.path);
       } else if (cell.kind === "file") {
         mb.openPath(cell.path);
       }
@@ -958,7 +967,7 @@
         // At the served root there is no parent to open — let the
         // browser keep its own Backspace behavior (e.g. history back).
         if (ctx.path) {
-          startZoom("out", parentPath(ctx.path) || "/", null);
+          startZoom("out", parentPath(ctx.path) || "/");
           e.preventDefault();
         }
       }
@@ -969,7 +978,7 @@
         /** @type {Element} */ (e.target).closest("[data-tm-zoom-out]")
       );
       if (zoomOut) {
-        startZoom("out", parentPath(ctx.path) || "/", null);
+        startZoom("out", parentPath(ctx.path) || "/");
         return;
       }
       const includeIgnored = /** @type {HTMLInputElement | null} */ (
@@ -1098,10 +1107,6 @@
         if (pendingSceneTransition === ownedPendingTransition) {
           pendingSceneTransition = null;
         }
-      }
-      if (entranceTimer !== null) {
-        window.clearTimeout(entranceTimer);
-        entranceTimer = null;
       }
       watch.dispose();
       unsubscribeFilters();

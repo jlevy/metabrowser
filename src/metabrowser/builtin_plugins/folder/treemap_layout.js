@@ -423,6 +423,7 @@
     /** @type {Map<string, {node: Record<string, any>, rect: Rect, children: WorldCell[]}>} */
     const directories = new Map();
     const requestedFocus = normalizePath(opts.focusPath);
+    const requestedDetail = normalizePath(opts.detailPath || opts.focusPath);
 
     /**
      * Assign stable recursive world rectangles. Only the scene root
@@ -523,9 +524,9 @@
         .sort((a, b) => {
           const aPath = normalizePath(a.node?.path);
           const bPath = normalizePath(b.node?.path);
-          const aFocus = requestedFocus === aPath || requestedFocus.startsWith(`${aPath}/`);
-          const bFocus = requestedFocus === bPath || requestedFocus.startsWith(`${bPath}/`);
-          return Number(bFocus) - Number(aFocus);
+          const aDetail = requestedDetail === aPath || requestedDetail.startsWith(`${aPath}/`);
+          const bDetail = requestedDetail === bPath || requestedDetail.startsWith(`${bPath}/`);
+          return Number(bDetail) - Number(aDetail);
         });
       for (const record of nestable) {
         if (
@@ -602,11 +603,13 @@
         }
         cells.push(cell);
         entry.record.cell.projectedCell = cell;
+        const recordPath = normalizePath(entry.record.node?.path);
+        const onDetailCorridor =
+          requestedDetail === recordPath || requestedDetail.startsWith(`${recordPath}/`);
         if (
           entry.record.children.length > 0 &&
           visibleDepth + 1 < opts.nestDepth &&
-          entry.rect.w >= opts.nestMinW &&
-          entry.rect.h >= opts.nestMinH
+          ((entry.rect.w >= opts.nestMinW && entry.rect.h >= opts.nestMinH) || onDetailCorridor)
         ) {
           next.push(entry.record);
         }

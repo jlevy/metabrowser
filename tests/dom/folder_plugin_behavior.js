@@ -511,6 +511,11 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
         String(container.viewport.scene.style["--tm-scene-end-transform"]).startsWith("matrix("),
       "missing recursive scene transform",
     );
+    check(
+      "zoom-in cross-fades the selected folder shell",
+      container.viewport.scene.innerHTML.includes("tm-camera-shell"),
+      "selected folder shell was not marked",
+    );
     const finishExit = pendingTimers.shift();
     if (finishExit) {
       finishExit();
@@ -531,8 +536,9 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   const resizeAfter = (windowListeners.resize || []).length;
   check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
 
-  // The destination renders a visible structural way back out and
-  // consumes the matching entrance transition.
+  // Zoom-out renders the retained parent scene under the current
+  // child camera, then completes the inverse camera move before the
+  // route changes. The destination never reconstructs half a motion.
   {
     const cZoom = makeElement();
     cZoom.viewport = makeElement();
@@ -558,7 +564,27 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
       click({ target: zoomOutButton });
     }
     check(
-      "zoom-out navigates immediately so the parent scene can expand",
+      "zoom-out waits for the retained scene transition",
+      openedPaths.length === beforeOpen && pendingTimers.length === 1,
+      `${openedPaths.length - beforeOpen} opens / ${pendingTimers.length} timers`,
+    );
+    check(
+      "zoom-out transforms one retained parent scene from the current folder camera",
+      cZoom.viewport.scene.classList.contains("tm-scene-exit-out") &&
+        String(cZoom.viewport.scene.style["--tm-scene-start-transform"]).startsWith("matrix("),
+      "missing inverse retained-scene transform",
+    );
+    check(
+      "zoom-out restores the current folder shell during the inverse move",
+      cZoom.viewport.scene.innerHTML.includes("tm-camera-shell"),
+      "current folder shell was not marked",
+    );
+    const finishExit = pendingTimers.shift();
+    if (finishExit) {
+      finishExit();
+    }
+    check(
+      "zoom-out opens the parent after the camera settles",
       openedPaths.length === beforeOpen + 1 && openedPaths.at(-1) === "/",
       `${openedPaths.length - beforeOpen} opens / ${pendingTimers.length} timers`,
     );
@@ -571,15 +597,11 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
     zoomView.render(cParent, { path: "", kind: "folder", raw: { readme_path: "" } });
     await new Promise((resolve) => setImmediate(resolve));
     check(
-      "parent scene expands out from the previous root cell",
-      cParent.viewport.scene.classList.contains("tm-scene-enter-out") &&
-        String(cParent.viewport.scene.style["--tm-scene-start-transform"]).startsWith("matrix("),
-      "missing inverse recursive scene transform",
+      "parent destination mounts already settled",
+      !cParent.viewport.scene.classList.contains("tm-scene-enter-out") &&
+        !cParent.viewport.scene.classList.contains("tm-scene-exit-out"),
+      "destination replayed a completed camera transition",
     );
-    const finishEnter = pendingTimers.shift();
-    if (finishEnter) {
-      finishEnter();
-    }
     zoomView.dispose();
   }
 

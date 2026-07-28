@@ -130,7 +130,7 @@
 }
 
 .tm-scene.tm-scene-exit-in,
-.tm-scene.tm-scene-enter-out {
+.tm-scene.tm-scene-exit-out {
   pointer-events: none;
   will-change: transform;
 }
@@ -139,12 +139,20 @@
   animation: tm-scene-exit-in var(--viz-layout-transition) both;
 }
 
-.tm-scene.tm-scene-enter-out {
-  animation: tm-scene-enter-out var(--viz-layout-transition) both;
+.tm-scene.tm-scene-exit-out {
+  animation: tm-scene-exit-out var(--viz-layout-transition) both;
 }
 
 .tm-lod-refine {
   animation: tm-lod-refine var(--viz-layout-transition) both;
+}
+
+.tm-scene.tm-scene-exit-in .tm-camera-shell {
+  animation: tm-camera-shell-exit var(--viz-layout-transition) both;
+}
+
+.tm-scene.tm-scene-exit-out .tm-camera-shell {
+  animation: tm-camera-shell-enter var(--viz-layout-transition) both;
 }
 
 @keyframes tm-scene-exit-in {
@@ -156,7 +164,7 @@
   }
 }
 
-@keyframes tm-scene-enter-out {
+@keyframes tm-scene-exit-out {
   from {
     transform: var(--tm-scene-start-transform);
   }
@@ -166,6 +174,24 @@
 }
 
 @keyframes tm-lod-refine {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tm-camera-shell-exit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes tm-camera-shell-enter {
   from {
     opacity: 0;
   }
@@ -378,7 +404,9 @@
     transition: none;
   }
   .tm-scene.tm-scene-exit-in,
-  .tm-scene.tm-scene-enter-out,
+  .tm-scene.tm-scene-exit-out,
+  .tm-scene.tm-scene-exit-in .tm-camera-shell,
+  .tm-scene.tm-scene-exit-out .tm-camera-shell,
   .tm-lod-refine {
     animation: none;
   }

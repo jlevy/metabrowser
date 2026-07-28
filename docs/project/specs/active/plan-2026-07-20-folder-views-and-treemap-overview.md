@@ -284,9 +284,14 @@ The mechanics this feature needs already exist for files and for aggregates:
     changes (toggle changes never refetch — both aggregate variants and `dominant_ext`
     are already in the payload); `dispose` tears down the watch handle.
   - Cells and zoom: directory cells use a zoom-in cursor and accessible zoom language,
-    transform the retained `.tm-scene` so the chosen child rectangle exactly fills the
-    viewport, then navigate via `mb.openPath` (decision 7). A visible Zoom out button
-    mounts the parent scene focused on the previous root and expands it to identity.
+    materialize the selected camera corridor in the retained `.tm-scene`, and transform
+    that complete scene so the chosen child rectangle exactly fills the viewport.
+    Navigation through `mb.openPath` happens only after the camera settles (decision 7).
+    The visible Zoom out button renders the retained parent scene under the current
+    child camera and completes the inverse transform before navigation, so neither
+    direction reconstructs half of a transition on a new route.
+    The selected directory shell cross-fades during either camera move, avoiding a
+    magnified label or border at the route boundary while its child cells remain stable.
     Deeper cells that become eligible after the handoff refine in without fading stable
     cells. File cells open without a spatial zoom.
     Reduced-motion mode skips both transition delays.
@@ -396,8 +401,9 @@ Independent of Phase 1; Phase 3 needs both.
   navigation, an explicit Zoom out control, clearer one-level nested previews, and
   reduced-motion behavior (`mb-xojs`)
 - [x] Recursive scene and camera refinement: stable arbitrary-depth world geometry,
-  viewport-clipped breadth-first detail, exact compositor camera handoff, progressive
-  post-zoom detail, and persisted depth control (`mb-2k6a`)
+  viewport-clipped breadth-first detail, whole-scene camera transitions completed before
+  route handoff, destination-corridor pre-rendering, progressive post-zoom detail, and
+  persisted depth control (`mb-2k6a`, `mb-d34m`)
 
 ## Testing Strategy
 
@@ -407,8 +413,9 @@ Independent of Phase 1; Phase 3 needs both.
   aspect-ratio quality, culling, remainder cells), and SDK debounce behavior
 - DOM tests for the toggle/select split, hash round-tripping, breadcrumb navigation, and
   treemap toggle state
-- Renderer behavior tests for zoom-in and zoom-out destinations, exact scene-transform
-  classes, reduced-motion timing, persisted depth, and bounded recursive markup
+- Renderer behavior tests for symmetric pre-navigation zoom-in and zoom-out transitions,
+  exact scene-transform classes, reduced-motion timing, persisted depth, and bounded
+  recursive markup
 - One end-to-end test from filesystem mutation through `fs.change` to a treemap refresh
 - Budget measurements recorded in test output on public synthetic fixtures: rollup CPU
   and payload, layout time, render-to-paint on 800 cells

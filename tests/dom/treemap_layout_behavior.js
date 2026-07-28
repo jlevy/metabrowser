@@ -214,6 +214,23 @@ function fileNode(name, pathStr, size, extras) {
     focused.some((cell) => cell.path === "sub/nested/deeper/leaf.py" && cell.depth === 2),
     JSON.stringify(focused.map((cell) => [cell.path, cell.depth])),
   );
+  const transitionDetail = layout.layoutTree(
+    root,
+    { w: 400, h: 300 },
+    {
+      metric: "size",
+      focusPath: "",
+      detailPath: "sub/nested/deeper",
+      nestDepth: 4,
+      nestMinW: 1000,
+      nestMinH: 1000,
+    },
+  );
+  check(
+    "transition detail pre-renders the camera corridor below settled LOD thresholds",
+    transitionDetail.some((cell) => cell.path === "sub/nested/deeper/leaf.py" && cell.depth === 3),
+    JSON.stringify(transitionDetail.map((cell) => [cell.path, cell.depth])),
+  );
   const budgetFocusRoot = dirNode("root", "", {
     children: [
       dirNode("huge", "huge", {
