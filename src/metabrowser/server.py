@@ -22,7 +22,7 @@ below so external callers don't break.
 
 Usage::
 
-    uv --config-file uv.toml run --frozen metab serve ROOT_DIR [--port PORT]
+    uv --config-file uv.toml run --frozen metab ROOT_DIR [--port PORT]
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from __future__ import annotations
 # discovery so both entry points use the same dotenv, path, and readiness
 # bootstrap.
 if __name__ == "__main__":
-    from metabrowser.cli.serve import main as _cli_main
+    from metabrowser.cli.main import main as _cli_main
 
     _cli_main()
     raise SystemExit

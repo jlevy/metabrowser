@@ -2,6 +2,30 @@
 
 All notable changes to Metabrowser are documented here.
 
+## Unreleased
+
+Flat single-command CLI:
+
+- Serving is the default operation: `metab .` serves the current directory the way
+  `open .` opens a folder on macOS. The `serve`, `walk`, `plugins`, and `remote`
+  subcommands are removed and replaced by mode flags on one command: `--walk`,
+  `--remote HOST`, `--plugins`, `--plugin NAME`, and `--doctor`.
+- Exactly one mode applies per invocation.
+  Options explicitly passed outside their mode are rejected as usage errors, and
+  `--help` groups options by mode.
+- Breaking change with no compatibility aliases: scripts that invoked a subcommand
+  spelling must drop `serve` or switch to the matching mode flag.
+  `metab --remote` starts the remote side with the flat syntax, so both hosts need a
+  Metabrowser at or above this version.
+- Golden console-output tests now pin the CLI surface (help, every mode, and the
+  usage-error matrix) under `tests/golden/`, run with tryscript
+  (github.com/jlevy/tryscript) via `make test` and regenerated with
+  `make golden-update`.
+- The agent skill, README, and installation guide pin `uvx metabrowser@0.2.0`, the first
+  release with the flat CLI. The publish workflow refuses a release whose tag does not
+  match the documented pins and smoke-tests the skill’s pinned invocation (`--help` and
+  `--doctor`) from PyPI after publishing, so the pin and the CLI grammar cannot diverge.
+
 ## 0.1.1
 
 Hardening, offline support, and UI refinement:
@@ -28,6 +52,9 @@ Hardening, offline support, and UI refinement:
 - Documentation: project design records reorganized under a dedicated records tree with
   maintained architecture documents and dated plans, plus a research brief on the
   planned diff viewer architecture.
+- Licensing: Metabrowser is licensed under AGPL-3.0-or-later, aligned with its required
+  KPress runtime. Vendored browser components remain under their own licenses listed in
+  `NOTICE.md`.
 
 ## 0.1.0
 
@@ -43,7 +70,8 @@ Initial standalone release:
   and KPress export with bounded input, output, and text windows.
 - Background inventory indexing, live filesystem updates, and recent-file navigation.
 - SSH and optional GCP remote tunnels.
-- MIT licensing, PyPI packaging, locked uv environments, and isolated wheel checks.
+- AGPL-3.0-or-later licensing, PyPI packaging, locked uv environments, and isolated
+  wheel checks.
 - Review hardening for bounded compressed reads, safe rendered labels, byte-accurate
   event streaming, renderer disposal, explicitly repository-configured development
   commands, and release builds without mutable dependency caches.

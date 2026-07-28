@@ -16,25 +16,26 @@ use command help as the source of truth for arguments and options.
 Use the pinned zero-install runner by default:
 
 ```shell
-uvx metabrowser@0.1.1
+uvx metabrowser@0.2.0
 ```
 
 If the user has already installed Metabrowser globally, use `metab` instead.
 Do not install it persistently only to complete a task that `uvx` can handle.
 
-Run `<invocation> --help` before the first operation when the required command is not
-already clear. Run `<invocation> <command> --help` for the selected command rather than
-guessing flags.
+Run `<invocation> --help` before the first operation when the required flags are not
+already clear. Serving is the default operation; every other operation is a mode flag on
+the same single command.
 
 ## Route the Task
 
-- Browse a local directory or file: pass its path directly or inspect `serve --help`
-- Start a headless server: inspect `serve --help` and use its no-open option
-- Browse a remote directory through SSH: inspect `remote --help`
-- Produce a text, JSON, YAML, or streaming inventory: inspect `walk --help`
-- Inspect or validate plugins: inspect `plugins --help`; use `plugins list --json` for
-  structured discovery, `plugins show <name> --json` for one resolved plugin, and
-  `plugins doctor --json` for machine-readable validation
+- Browse a local directory or file: pass its path directly (`<invocation> <path>`)
+- Start a headless server: add `--no-open`
+- Browse a remote directory through SSH: use `--remote <host> --path <dir>`
+- Produce a text, JSON, YAML, or streaming inventory: use `<path> --walk` with
+  `--format` and `--stream` as needed
+- Inspect or validate plugins: use `--plugins --json` for structured discovery,
+  `--plugin <name> --json` for one resolved plugin, and `--doctor --json` for
+  machine-readable validation
 
 ## Operate Safely
 
@@ -46,13 +47,13 @@ guessing flags.
   `--plugins-dir` only for a directory the user trusts
 - Keep Python entry-point plugins in the same uvx or uv tool environment as Metabrowser;
   use uv’s `--with` only for an explicitly trusted, version-pinned plugin distribution
-- Prefer `walk --format json` when the task needs machine-readable inventory rather than
-  an interactive browser
-- Parse plugin command JSON from standard output; human-readable diagnostics use
-  standard error
+- Prefer `--walk --format json` when the task needs machine-readable inventory rather
+  than an interactive browser
+- Parse plugin-mode JSON from standard output; human-readable diagnostics use standard
+  error
 - In a headless environment, avoid opening a browser and report the local URL and
   whether the server is still running
-- Preserve nonzero exits from all plugin commands; discovery errors mean the registry is
+- Preserve nonzero exits from all plugin modes; discovery errors mean the registry is
   partial even when some plugins were returned
 
 ## Report the Result

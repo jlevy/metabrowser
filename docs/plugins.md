@@ -30,19 +30,19 @@ that same isolated environment with uv’s `--with` option.
 Inspect discovery without starting the server:
 
 ```shell
-metab plugins list
-metab plugins list --json
-metab plugins show markdown
-metab plugins show markdown --json
-metab plugins doctor
-metab plugins doctor --json
-metab plugins doctor --plugins-dir ./examples
+metab --plugins
+metab --plugins --json
+metab --plugin markdown
+metab --plugin markdown --json
+metab --doctor
+metab --doctor --json
+metab --doctor --plugins-dir ./examples
 ```
 
-`doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
+`--doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
 operator-directory JavaScript-only boundaries, and high-priority kind conflicts.
 It exits nonzero when any problem is found.
-All three commands support `--json` for machine-readable output.
+All three modes support `--json` for machine-readable output.
 Discovery errors preserve any plugins that loaded successfully but make the command exit
 nonzero, so scripts cannot mistake a partial registry for a complete one.
 Human-readable data goes to standard output, while human-readable errors go to standard
@@ -99,7 +99,7 @@ default = true
 Run it explicitly:
 
 ```shell
-metab serve ./examples --plugins-dir ./examples
+metab ./examples --plugins-dir ./examples
 ```
 
 Plugin discovery happens at startup, so restart the server after changing a manifest or
@@ -385,7 +385,7 @@ missing package data.
 
 Before publishing a plugin:
 
-1. Run `metab plugins doctor` in a clean environment.
+1. Run `metab --doctor` in a clean environment.
 2. Confirm every manifest view has a matching `registerView` call.
 3. Exercise default and lazy-mounted tabs.
 4. Verify `dispose` stops listeners, streams, timers, and chart instances.

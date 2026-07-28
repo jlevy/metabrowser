@@ -23,6 +23,11 @@ REPOSITORY_ONLY_PARTS = {
     "node_modules",
 }
 REPOSITORY_ONLY_NAMES = {".copier-answers.yml", "AGENTS.md", "CLAUDE.md", "skills-lock.json"}
+EXPECTED_LICENSE_METADATA = {
+    "License-Expression: AGPL-3.0-or-later",
+    "License-File: LICENSE",
+    "License-File: NOTICE.md",
+}
 
 
 def _single_wheel() -> Path:
@@ -51,6 +56,13 @@ def _check_text_member(name: str, payload: bytes) -> None:
         raise RuntimeError(f"artifact hygiene failed: {findings[:10]}")
 
 
+def _check_project_metadata(payload: bytes) -> None:
+    metadata_lines = set(payload.decode("utf-8").splitlines())
+    missing = sorted(EXPECTED_LICENSE_METADATA - metadata_lines)
+    if missing:
+        raise RuntimeError(f"wheel metadata is missing license declarations: {missing}")
+
+
 def _inspect_wheel(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
@@ -64,6 +76,8 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/vendor/highlight.min.js",
             "metabrowser/static/vendor/chart.umd.min.js",
             "metabrowser/builtin_plugins/markdown/manifest.toml",
+            "dist-info/licenses/LICENSE",
+            "dist-info/licenses/NOTICE.md",
         }
         for suffix in required_suffixes:
             if not any(name.endswith(suffix) for name in names):
@@ -72,6 +86,10 @@ def _inspect_wheel(wheel: Path) -> None:
         leaked = [name for name in names if forbidden_parts.intersection(Path(name).parts)]
         if leaked:
             raise RuntimeError(f"wheel contains repository-only files: {leaked[:10]}")
+        metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
+        if len(metadata_names) != 1:
+            raise RuntimeError(f"wheel must contain one METADATA file, found {metadata_names}")
+        _check_project_metadata(archive.read(metadata_names[0]))
         for name in names:
             _check_text_member(name, archive.read(name))
 
@@ -82,6 +100,7 @@ def _inspect_sdist(sdist: Path) -> None:
         names = {member.name for member in members}
         required_suffixes = {
             "LICENSE",
+            "NOTICE.md",
             "README.md",
             "pyproject.toml",
             "skills/metabrowser/SKILL.md",
@@ -183,8 +202,7 @@ def _smoke_install(wheel: Path) -> None:
         "--with",
         str(wheel),
         "metab",
-        "plugins",
-        "doctor",
+        "--doctor",
     ]
     subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
 

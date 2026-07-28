@@ -29,7 +29,7 @@ uvx metabrowser@latest ./path/to/artifacts
 Pin the release for a reproducible local, CI, or agent run:
 
 ```shell
-uvx metabrowser@0.1.1 ./path/to/artifacts
+uvx metabrowser@0.2.0 ./path/to/artifacts
 ```
 
 For a persistent global tool installation:
@@ -46,7 +46,7 @@ The `metabrowser` compatibility command matches the package name and enables the
 Upgrade deliberately to a reviewed release by naming its exact version:
 
 ```shell
-uv tool install --upgrade metabrowser==0.1.1
+uv tool install --upgrade metabrowser==0.2.0
 ```
 
 Metabrowser installs `kpress==0.2.2` as a required dependency.
@@ -74,7 +74,7 @@ The repository publishes a portable Metabrowser skill for coding agents:
 npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
-The skill invokes the pinned `uvx metabrowser@0.1.1 ...` runner, so it does not require
+The skill invokes the pinned `uvx metabrowser@0.2.0 ...` runner, so it does not require
 a persistent Metabrowser installation.
 It routes agents to `--help` for current command details and documents the plugin trust
 boundary.

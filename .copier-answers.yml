@@ -6,7 +6,7 @@ package_author_name: Joshua Levy
 package_description: Local web UI for browsing files, logs, and structured artifacts
     with extensible renderers.
 package_github_org: jlevy
-package_license: MIT
+package_license: AGPL-3.0-or-later
 package_module: metabrowser
 package_name: metabrowser
 publish_to_pypi: true

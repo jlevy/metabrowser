@@ -10,9 +10,9 @@ def wrap_with_stdin_watchdog(inner_cmd: str) -> str:
 
     Problem: ``gcloud compute ssh`` (and non-TTY ssh generally) does not reliably
     deliver SIGHUP to remote processes when the local SSH channel closes. Result:
-    every ``metab remote`` that's Ctrl-C'd leaves an orphan ``metab serve``
-    on the remote host; subsequent sessions then tunnel to the *oldest* orphan
-    because the default port is taken by it.
+    every ``metab --remote`` that's Ctrl-C'd leaves an orphan ``metab``
+    server on the remote host; subsequent sessions then tunnel to the
+    *oldest* orphan because the default port is taken by it.
 
     Fix: on the remote, run ``inner_cmd`` in the background and block on ``cat``
     reading from stdin. The SSH channel *is* stdin; when the channel closes,

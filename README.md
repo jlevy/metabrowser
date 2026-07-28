@@ -94,12 +94,11 @@ metab .
 The `metabrowser` compatibility command matches the package name, which is why the short
 `uvx metabrowser@latest ...` form works.
 
-The CLI documents every command and option:
+The CLI is one flat command: serving is the default operation, and every other operation
+is a mode flag documented in one place:
 
 ```shell
 metab --help
-metab serve --help
-metab plugins --help
 ```
 
 See [installation](docs/installation.md) for uv setup and upgrade instructions.
@@ -139,7 +138,8 @@ the tree and recent-file views while the server runs.
 
 ## Common Commands
 
-The short form starts the local server, opens the browser, and serves the selected root:
+`metab ROOT` starts the local server, opens the browser, and serves the selected root,
+the way `open` opens a folder on macOS. Mode flags select every other operation:
 
 ```shell
 # Browse a directory or open one file directly.
@@ -150,13 +150,13 @@ metab ./path/to/artifacts/logs/session.jsonl
 metab ./path/to/artifacts --path logs/session.jsonl
 
 # Start without opening a browser window.
-metab serve ./path/to/artifacts --no-open
+metab ./path/to/artifacts --no-open
 
 # Browse a directory on a remote host through an SSH tunnel.
-metab remote example-host --path /srv/artifacts
+metab --remote example-host --path /srv/artifacts
 
 # Print a machine-readable inventory without starting the web UI.
-metab walk ./path/to/artifacts --format json
+metab ./path/to/artifacts --walk --format json
 ```
 
 The server binds to `127.0.0.1:8411` by default and walks a bounded port range if that
@@ -177,10 +177,10 @@ A plugin can add:
 Inspect the complete registry and validate every discovered plugin from the CLI:
 
 ```shell
-metab plugins list
-metab plugins list --json
-metab plugins show markdown
-metab plugins doctor
+metab --plugins
+metab --plugins --json
+metab --plugin markdown
+metab --doctor
 ```
 
 Metabrowser loads plugins only from trusted sources:
@@ -195,7 +195,7 @@ Metabrowser. Operator-directory plugins are useful for local JavaScript-only ext
 For example, load an operator-reviewed plugin directory with:
 
 ```shell
-metab serve ./path/to/artifacts --plugins-dir ./trusted-plugins
+metab ./path/to/artifacts --plugins-dir ./trusted-plugins
 ```
 
 The served data tree is never an implicit plugin source.
@@ -212,8 +212,8 @@ npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
 The skill requires no persistent Metabrowser installation.
-It calls the pinned `uvx metabrowser@0.1.1 ...` runner and uses `--help` on the CLI and
-its subcommands as the source of truth.
+It calls the pinned `uvx metabrowser@0.2.0 ...` runner and uses `--help` on the CLI as
+the source of truth.
 A globally installed `metab` remains available as the faster local command.
 
 ## Develop
@@ -251,7 +251,8 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 ## License
 
-Metabrowser is available under the [MIT License](LICENSE).
+AGPL-3.0-or-later; see [`LICENSE`](LICENSE). Vendored components and their licenses are
+listed in [`NOTICE.md`](NOTICE.md).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

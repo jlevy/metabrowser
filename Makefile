@@ -82,6 +82,17 @@ lint-check:
 
 test:
 	$(UV_RUN) pytest
+	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
+
+# Regenerate the CLI console goldens after an intended surface change.
+# tryscript rewrites changed blocks with literal output, golden_fixup.py
+# restores the elision patterns, and the serve goldens (uvicorn mocked,
+# pytest-only) are rewritten in place. Review the diff before committing.
+golden-update:
+	npx --no-install tryscript run --update 'tests/golden/*.tryscript.md' || true
+	$(UV_RUN) python devtools/golden_fixup.py
+	npx --no-install tryscript run 'tests/golden/*.tryscript.md'
+	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_cli_golden.py
 
 audit:
 	npm audit --audit-level=moderate

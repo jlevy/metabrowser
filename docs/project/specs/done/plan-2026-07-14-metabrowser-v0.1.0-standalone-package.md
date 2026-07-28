@@ -8,8 +8,8 @@
 
 ## Overview
 
-Publish Metabrowser as an MIT-licensed Python package with a self-contained source,
-test, documentation, and release workflow.
+Publish Metabrowser as a Python package licensed under AGPL-3.0-or-later, with a
+self-contained source, test, documentation, and release workflow.
 The package provides a local browser for files and structured artifacts, supports
 trusted extensions through its plugin API, and uses KPress as its Markdown renderer.
 
@@ -107,8 +107,8 @@ Connect trusted publishing without a package token.
 - [x] Add bounded zlib artifact support with logical-extension handling, streaming
   previews, rendering and export integration, malformed-stream errors, and
   decompression-bomb limits
-- [x] Apply the simple-modern-uv structure, committed uv lockfile, MIT license, and
-  package metadata
+- [x] Apply the simple-modern-uv structure, committed uv lockfile, AGPL-3.0-or-later
+  license, and package metadata
 - [x] Publish `metab` as the primary console script while retaining `metabrowser` for
   existing callers and the `uvx metabrowser` package-name shorthand; report the
   installed tag-derived package version through `--version` on both commands
@@ -244,8 +244,9 @@ The complete local `make -j4 verify` gate passes on the release commit:
 - The public `v0.1.0` tag and GitHub release resolve to commit
   `e4df7ac7247bc5b2ae7ffbd13d0375c77ca272bf`; the trusted-publishing workflow completed
   successfully from that commit
-- PyPI serves a non-yanked MIT-licensed wheel and source distribution for Python 3.12
-  and newer, with the expected `kpress==0.2.2` dependency
+- PyPI serves a non-yanked wheel and source distribution licensed under
+  AGPL-3.0-or-later for Python 3.12 and newer, with the expected `kpress==0.2.2`
+  dependency
 - Fresh `uvx` and global-tool installs report version `0.1.0`; both console commands,
   all six built-in plugins, installed extension discovery, KPress rendering, and plugin
   diagnostics pass against the published wheel
@@ -266,7 +267,7 @@ Python 3.12 through 3.14 jobs, and the tag-triggered publication gate.
 
 - Package and import name: `metabrowser`
 - Primary CLI and compatibility alias: `metab` and `metabrowser`
-- License: MIT
+- License: AGPL-3.0-or-later
 - First release: `v0.1.0`
 - Supported Python: 3.12 through 3.14
 - Markdown renderer: exact `kpress==0.2.2`

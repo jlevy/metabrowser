@@ -74,7 +74,7 @@ the test.
 A plugin should cover:
 
 1. manifest parsing and classifier matches, including near misses;
-2. registry diagnostics through `metab plugins doctor`;
+2. registry diagnostics through `metab --doctor`;
 3. default-view mount and lazy-view mount;
 4. data-hook success, validation errors, and unsafe paths;
 5. disposal of requests, streams, listeners, timers, and charts;
@@ -90,7 +90,7 @@ an unrelated workspace package happens to be installed.
 Before a release, serve the public-safe manual corpus and check the real browser:
 
 ```shell
-uv --config-file uv.toml run --frozen metab serve ./tests/manual-fixtures --no-open
+uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
 
 The corpus contains Markdown with frontmatter, structured JSON, JSONL events, source
