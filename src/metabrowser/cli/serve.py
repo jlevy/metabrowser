@@ -14,6 +14,7 @@ import os
 import threading
 import webbrowser
 from pathlib import Path
+from types import FrameType
 from urllib.parse import quote
 
 import typer
@@ -67,6 +68,23 @@ def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
     if record.exc_info is not None and isinstance(record.exc_info[1], asyncio.CancelledError):
         return False
     return "timeout graceful shutdown exceeded" not in record.getMessage()
+
+
+class _QuietForceExitServer(uvicorn.Server):
+    """Uvicorn server that silences teardown logging once exit is forced.
+
+    A second Ctrl-C forces exit before the ASGI lifespan finishes shutting
+    down; the interpreter then cancels the pending lifespan task and the
+    cancellation is reported as a pre-formatted traceback string with no
+    ``exc_info``, which :func:`_shutdown_noise_filter` cannot match without
+    fragile text parsing. After the operator forces exit, no teardown record
+    is actionable, so drop them all at the logger level instead.
+    """
+
+    def handle_exit(self, sig: int, frame: FrameType | None) -> None:
+        super().handle_exit(sig, frame)
+        if self.force_exit:
+            logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
 
 
 def run_serve(
@@ -165,12 +183,14 @@ def run_serve(
     uvicorn_logger = logging.getLogger("uvicorn.error")
     uvicorn_logger.addFilter(_shutdown_noise_filter)
     try:
-        uvicorn.run(
-            server.app,
-            host=host,
-            port=actual_port,
-            log_level="warning",
-            timeout_graceful_shutdown=0,
-        )
+        _QuietForceExitServer(
+            uvicorn.Config(
+                server.app,
+                host=host,
+                port=actual_port,
+                log_level="warning",
+                timeout_graceful_shutdown=0,
+            )
+        ).run()
     finally:
         uvicorn_logger.removeFilter(_shutdown_noise_filter)
