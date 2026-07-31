@@ -49,7 +49,7 @@ Two exact first-party releases are exempt from the ordinary cool-off for this re
 The exceptions are package-scoped in configuration and do not weaken the global gate.
 Changing either version requires a new review and an updated rationale.
 
-The copied agent-skill instructions name exact `get-tbd@0.4.0` bootstrap commands.
+The copied agent-skill instructions name exact `get-tbd@0.4.2` bootstrap commands.
 Those commands are operator-invoked documentation for installing this repository’s issue
 tracker; no build, hook, CI, test, or publishing path executes them.
 The skill files own that reviewed version and must be updated deliberately.

@@ -3,5 +3,5 @@ forks:
     kind: shortcut
     path: docs/tbd/shortcuts/setup-github-cli.md
     source: internal:shortcuts/standard/setup-github-cli.md
-    base_hash: sha256:7f3c74852071a65bda622ac7a90b28603ed306287bd903e1c35debe3409f9c9f
-    tbd_version: 0.4.0
+    base_hash: sha256:90eed74240596b884ab5e7188f9f11a27b118ed77baceeb6cbcedc23ce4be71e
+    tbd_version: 0.4.2

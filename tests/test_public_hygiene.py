@@ -166,7 +166,7 @@ def test_claude_hook_commands_anchor_to_project_root() -> None:
 def test_agent_tbd_skills_use_repository_version_pin() -> None:
     for relative in (".agents/skills/tbd/SKILL.md", ".claude/skills/tbd/SKILL.md"):
         text = (ROOT / relative).read_text(encoding="utf-8")
-        assert "get-tbd@0.4.0" in text
+        assert "get-tbd@0.4.2" in text
         assert "@latest" not in text
 
 
