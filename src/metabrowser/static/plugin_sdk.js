@@ -370,13 +370,48 @@
     );
   }
 
-  // KPress ships standalone-page runtime scripts. theme.js is still skipped in
-  // the embedded host — it writes data-kpress-resolved-theme onto <html> from
-  // the viewer's system preference, fighting metabrowser's own theme toggle
-  // (applyThemeMode owns those attributes). toc.js is NOT skipped: metabrowser
-  // marks its preview pane as the kpress document viewport, so toc.js drives the
-  // sidebar/drawer, scroll-spy, and toggle against the pane (see kpressInitToc).
+  // KPress ships standalone-page runtime scripts. theme.js's <script> tag is
+  // skipped in the embedded host — it stamps theme attributes onto <html> from
+  // KPress's own resolution (kpress.theme storage, else the viewer's OS
+  // preference), fighting metabrowser's own theme toggle (applyThemeMode owns
+  // the attribute). Skipping the tag is necessary but NOT sufficient:
+  // settings-widget.js statically imports theme.js, so the module still
+  // executes and registers its `theme` behavior, which the KPress runtime
+  // binds immediately after document-ready. _neutralizeKpressThemeBehavior
+  // (called at the end of loadKpressAssets) completes the embedder contract:
+  // no-op override the behavior, then re-assert the app's resolved theme.
+  // toc.js is NOT skipped: metabrowser marks its preview pane as the kpress
+  // document viewport, so toc.js drives the sidebar/drawer, scroll-spy, and
+  // toggle against the pane (see kpressInitToc).
   const _SKIP_EMBEDDED_KPRESS_JS = ["theme.js"];
+
+  // KPress >= 0.3.0 embedder theming contract: the host stamps
+  // data-kpress-resolved-theme on one scope and does not run KPress's
+  // resolver. Because theme.js executes via the settings-widget import graph
+  // regardless of the script-tag skip above, its bound behavior has already
+  // stamped <html> by the time assets finish loading; replace it with a no-op
+  // (override disposes the built-in's OS-preference listener) and re-assert
+  // the app-resolved theme from [data-theme], which applyThemeMode owns. The
+  // mode attribute KPress wrote is removed: nothing in KPress >= 0.3.0 CSS
+  // reads it, and metabrowser never writes it.
+  function _neutralizeKpressThemeBehavior() {
+    try {
+      global.kpress?.behaviors?.override?.("theme", () => {});
+    } catch (_err) {
+      /* theme behavior absent — nothing was bound */
+    }
+    const de = global.document?.documentElement;
+    if (!de || typeof de.getAttribute !== "function" || typeof de.setAttribute !== "function") {
+      return;
+    }
+    if (typeof de.removeAttribute === "function") {
+      de.removeAttribute("data-kpress-theme");
+    }
+    const resolved = de.getAttribute("data-theme");
+    if (resolved === "light" || resolved === "dark") {
+      de.setAttribute("data-kpress-resolved-theme", resolved);
+    }
+  }
 
   function _isSkippedKpressScript(asset, url) {
     return _SKIP_EMBEDDED_KPRESS_JS.some(
@@ -484,6 +519,7 @@
       }
       await _loadScript(url, asset.loading);
     }
+    _neutralizeKpressThemeBehavior();
   }
 
   // Wire KPress's TOC for a freshly mounted document and return its disposer.

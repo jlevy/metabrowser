@@ -278,14 +278,18 @@ def test_dynamic_render_404s_on_missing_file(served_root: Path) -> None:
         ("dark", "dark"),
     ],
 )
-def test_dynamic_render_propagates_theme_mode_and_resolved_theme(
+def test_dynamic_render_is_theme_agnostic(
     served_root: Path, theme_mode: str, resolved_theme: str
 ) -> None:
     """The SPA passes ``theme_mode`` (user preference) and ``resolved_theme``
-    (the host's resolution of `system`) as query params. Both must land as
-    data-* attributes on the rendered article so the kpress CSS theme
-    selectors can target them. A regression that drops either attribute
-    would silently fall back to system colors in dark mode, etc."""
+    (the host's resolution of `system`) as query params; the endpoint must
+    keep accepting them (they select ``theme.js`` in the declared assets for
+    ``system`` mode). But KPress >= 0.3.0 fragments are theme-agnostic: no
+    theme or palette attribute may be baked into the rendered article — the
+    host stamps ``data-kpress-resolved-theme`` on ``:root`` at display time
+    (see ``applyThemeMode`` in app.js), which keeps one render cacheable and
+    correct across theme toggles. A regression that re-bakes an attribute
+    would resurrect the stale-theme flake this contract removed."""
 
     payload = _render(
         {
@@ -296,8 +300,9 @@ def test_dynamic_render_propagates_theme_mode_and_resolved_theme(
         }
     )
     html = payload["html"]
-    assert f'data-kpress-theme="{theme_mode}"' in html
-    assert f'data-kpress-resolved-theme="{resolved_theme}"' in html
+    assert "data-kpress-theme=" not in html
+    assert "data-kpress-resolved-theme=" not in html
+    assert "data-kpress-palette=" not in html
 
 
 _MATH_AND_IMAGE_MARKDOWN = """\

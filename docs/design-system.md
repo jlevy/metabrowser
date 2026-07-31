@@ -72,31 +72,44 @@ document rescales as one unit:
 - `--document-small-font-size` (0.85×): secondary document text — TOC entries, captions,
   footnotes.
 
-Embedded KPress documents map all KPress size tokens onto these document sizes plus
-`--label-font-size` (so the TOC’s CONTENTS title matches app tabs and labels) through
-the KPress bridge rule on `.metabrowser-kpress-host .kpress`. When adding a size, extend
-the ramp and its documentation; do not create a one-off.
+Embedded KPress documents derive every size from `--document-body-font-size` through
+KPress’s base knob, with the app’s deliberate divergences (the collapsed small tier,
+0.9× mono, and `--label-font-size` for the TOC’s CONTENTS title so it matches app tabs
+and labels) expressed through KPress’s public ramp tokens in the KPress bridge rule on
+`.metabrowser-kpress-host .kpress`. When adding a size, extend the ramp and its
+documentation; do not create a one-off.
 
 ### The px/rem Unit Boundary
 
 The app pins all sizes in px and deliberately does not scale with the browser’s
 default-font-size preference.
-KPress sizes in rem and deliberately does.
-Any KPress size that reaches the screen in rem therefore renders at a browser-dependent
-ratio to the px-pinned prose: correct on a 16px-default browser, wrong on any other.
+KPress standalone pages size in rem and deliberately do.
+KPress (0.3.0 and later, [jlevy/kpress#37](https://github.com/jlevy/kpress/issues/37))
+closes that seam with one public knob: every KPress font size derives from
+`--kpress-font-size-base`, which reads the `--kpress-host-font-size-base` hook.
+The app sets that hook once on `:root` to `--document-body-font-size`, so the whole
+document — headings, code, bullets, widget labels, and overlays KPress portals to
+`document.body` — is px-pinned as one unit.
+Set the hook, never redeclare `--kpress-font-size-base` itself: the hook path keeps
+KPress’s print re-rooting working and reaches the portaled overlays.
 
 Invariant: inside `.metabrowser-kpress-host`, no rendered font size may depend on rem.
-The KPress bridge remaps every KPress size token onto the type scale, and restates
-KPress’s rem literals (headings, list bullets, widget labels) in em so they derive from
-the document body size.
-When upgrading KPress, re-audit its CSS for new rem font sizes and extend the bridge.
+KPress enforces the same invariant upstream with a hygiene lint, so upgrades no longer
+need a rem re-audit.
 Verify by rendering a document at two different browser root font sizes and confirming
 computed sizes are identical.
+Known residual, by upstream policy: layout lengths (`--kpress-measure`, the container
+query bands) stay root-relative, so the wide-pane heading step-up threshold and the line
+length in characters still track the browser preference.
 
-The bridge is a temporary adapter: once KPress sizes internally from a single
-`--kpress-font-size-base` knob
-([jlevy/kpress#37](https://github.com/jlevy/kpress/issues/37)), it collapses to setting
-that one variable.
+Theming follows the same declarative contract
+([jlevy/kpress#38](https://github.com/jlevy/kpress/issues/38)): the app stamps
+`data-kpress-resolved-theme` on `:root` (see `applyThemeMode`), fragments bake no theme
+attributes, and the document palette follows the app palette through direct
+`--kpress-doc-*` overrides in the bridge.
+KPress’s own theme resolver is neutralized after asset load (see
+`_neutralizeKpressThemeBehavior` in `plugin_sdk.js`): skipping `theme.js`’s script tag
+is not sufficient because the settings widget imports it as a module.
 
 Keep these roles distinct:
 

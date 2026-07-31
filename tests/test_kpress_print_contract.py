@@ -92,10 +92,12 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
     assert '[data-active-view="true"][data-printable="true"]' in css
     assert '.preview-pane[data-printable="false"]::before' in css
     assert "--kpress-print-page-margin" in css
-    # Host bridge token: metabrowser sets --kpress-host-* on :root; KPress
-    # consumes them as var(--kpress-host-*, default) (see kpress-visual-polish
-    # §5.1). The old name was --kpress-doc-bg.
-    assert "--kpress-host-bg" in css
+    # Document palette bridge: KPress >= 0.3.0 retired the --kpress-host-*
+    # color hooks; the host overrides the resolved --kpress-doc-* tokens
+    # directly at element scope (see the KPress bridge in styles.css), so the
+    # embedded document follows the app palette in both themes.
+    assert "--kpress-host-bg" not in css
+    assert "--kpress-doc-bg: var(--bg);" in css
     assert ".metabrowser-source-truncation-warning" in css
 
 
@@ -123,11 +125,18 @@ def test_embedded_markdown_toggle_labels_match_tabs() -> None:
 
 
 def test_embedded_markdown_body_uses_host_reading_size() -> None:
+    """KPress >= 0.3.0 sizing seam: the host sets the one base knob via the
+    --kpress-host-font-size-base hook on :root (reaches body-portaled
+    overlays and keeps KPress's print re-rooting), and expresses deliberate
+    ratio divergences through the public ramp tokens — never by redeclaring
+    --kpress-font-size-base or --kpress-font-size-normal directly."""
     css = _read_styles_css()
     assert "--document-body-font-size: 17px;" in css
+    assert "--kpress-host-font-size-base: var(--document-body-font-size);" in css
+    assert "--kpress-font-size-normal" not in css
     rule_start = css.index(".metabrowser-kpress-host .kpress {")
-    rule_block = css[rule_start : rule_start + 200]
-    assert "--kpress-font-size-normal: var(--document-body-font-size);" in rule_block
+    rule_block = css[rule_start : rule_start + 400]
+    assert "--kpress-font-size-mono: var(--document-mono-font-size);" in rule_block
 
 
 def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:

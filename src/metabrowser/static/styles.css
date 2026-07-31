@@ -145,21 +145,22 @@
   --font-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
 
   /* KPress host bridge tokens. Metabrowser owns shell tokens; KPress owns
-     document rendering. KPress style-tokens.css declares each --kpress-doc-*
-     as var(--kpress-host-*, <default>), so setting --kpress-host-* on :root
-     lets the host's palette flow into the embedded document scope.
-     In the default "clean" font set only COLOR tokens are bridged: the
-     document keeps KPress's vendored faces (PT Serif prose / Source Sans UI),
-     so the host font tokens are left unset and fall back to KPress's vendored
-     stacks. `[data-app-font="system"]` (below) additionally bridges the font
-     tokens to the platform stacks; `data-prose-font="sans"` bridges just
-     --kpress-host-font-prose to --prose-sans-font (also below). */
+     document rendering. KPress (>= 0.3.0) reads --kpress-host-font-size-base
+     as the one sizing knob its whole type ramp derives from; setting it on
+     :root (not redeclaring --kpress-font-size-base at higher specificity)
+     keeps KPress's print re-rooting working and reaches overlays that portal
+     to document.body. Colors are no longer host-hook bridged: the retired
+     --kpress-host-{bg,text,muted,border,link} hooks became direct
+     --kpress-doc-* overrides (see the KPress bridge rule near
+     .metabrowser-kpress-host below).
+     In the default "clean" font set only the size and print tokens are set
+     here: the document keeps KPress's vendored faces (PT Serif prose /
+     Source Sans UI), so the host font tokens are left unset and fall back to
+     KPress's vendored stacks. `[data-app-font="system"]` (below) additionally
+     bridges the font tokens to the platform stacks; `data-prose-font="sans"`
+     bridges just --kpress-host-font-prose to --prose-sans-font (also below). */
   --kpress-measure: 48rem;
-  --kpress-host-bg: var(--bg);
-  --kpress-host-text: var(--text);
-  --kpress-host-muted: var(--muted);
-  --kpress-host-border: var(--border);
-  --kpress-host-link: var(--link);
+  --kpress-host-font-size-base: var(--document-body-font-size);
   --kpress-print-page-margin: 0.65in;
   --kpress-print-font-size: 11pt;
   /* Sans face for the "sans" reading mode. Points at the interface sans
@@ -1953,32 +1954,25 @@ html[data-prose-font="sans"] {
 /* ── KPress bridge: the px/rem unit boundary ──────────────────────
    The app pins every size in px (see ── Type scale ──): it deliberately
    does NOT scale with the browser's default-font-size preference.
-   KPress sizes in rem: it deliberately DOES. Any KPress size that
-   reaches the screen in rem therefore renders at a browser-dependent
-   ratio to our px-pinned prose — correct on a 16px-default browser,
-   visibly wrong (headings smaller than body, shrunken bullets) on any
-   other. The bridge closes that seam completely: every KPress size
-   token is remapped onto the app type scale, and the rem LITERALS in
-   KPress rules (headings, bullets, widget labels — which no token
-   reaches) are overridden below in em so they derive from the px
-   document size. INVARIANT: inside .metabrowser-kpress-host, no
-   rendered font size may depend on rem. When upgrading KPress, re-audit
-   with `grep -n 'rem' .../kpress/format/static/css/*.css | grep
-   font-size` and extend the bridge for any new site.
+   KPress (>= 0.3.0) derives every font size from one public knob,
+   --kpress-font-size-base, set once via --kpress-host-font-size-base on
+   :root (see the host bridge tokens block). That closes the px/rem seam
+   for the whole document — headings, bullets, widget labels, and
+   body-portaled tooltips included — with no per-rule restatements.
+   INVARIANT: inside .metabrowser-kpress-host, no rendered font size may
+   depend on rem; KPress enforces the same invariant upstream with a
+   hygiene lint, so upgrades no longer need a rem re-audit. Layout
+   lengths (--kpress-measure, container-query bands) remain rem by
+   upstream policy, so the ≥64rem heading step-up threshold still tracks
+   the browser root preference.
 
-   TEMPORARY SHAPE — tracked upstream at jlevy/kpress#37: once KPress
-   sizes its internals relative to a single --kpress-font-size-base
-   knob, this whole bridge (token remap + em restatements below)
-   collapses to setting that one variable to
-   var(--document-body-font-size).
-
-   Token remap — instead of scaling KPress's seven-step ramp, collapse
-   it onto the app scale: prose, one mono size, one small size, and the
-   shared small-caps label size for the CONTENTS title so it matches the
-   app's tabs and section labels. */
+   The overrides below are DELIBERATE design divergences from KPress's
+   derived ratios, expressed through its sanctioned public ramp tokens —
+   not workarounds: the app collapses KPress's small tier onto one
+   document-small size, sizes code at 0.9× prose (mono x-height reads
+   equal; KPress's own ratio is 0.82), and pins the CONTENTS title to
+   the app's shared label size so it matches tabs and section labels. */
 .metabrowser-kpress-host .kpress {
-  --kpress-font-size-normal: var(--document-body-font-size);
-  --kpress-font-size-large: calc(var(--document-body-font-size) * 1.2);
   --kpress-font-size-small: var(--document-small-font-size);
   --kpress-font-size-smaller: var(--document-small-font-size);
   --kpress-font-size-tiny: var(--document-small-font-size);
@@ -1986,49 +1980,23 @@ html[data-prose-font="sans"] {
   --kpress-font-size-mono-small: var(--document-mono-font-size);
   --kpress-font-size-mono-tiny: var(--document-mono-font-size);
   --kpress-caps-label-size: var(--label-font-size);
-  /* Bullet glyph: upstream 0.8rem. As em it resolves against the li's
-     font size, keeping the 0.8 ratio to the text it marks. */
-  --kpress-bullet-size: 0.8em;
 }
 
-/* Headings: KPress hard-codes these in rem (not tokens), so restate its
-   exact ratios in em relative to the inherited document body size.
-   Upstream: h1 1.7rem, h2 1.32rem, h3 1.15rem × caps multiplier,
-   h4 1.12rem, h5/h6 1rem — against a 1rem body. */
-.metabrowser-kpress-host .kpress-prose h1 {
-  font-size: 1.7em;
-}
-.metabrowser-kpress-host .kpress-prose h2 {
-  font-size: 1.32em;
-}
-.metabrowser-kpress-host .kpress-prose h3 {
-  font-size: calc(1.15em * var(--kpress-caps-heading-size-multiplier, 1));
-}
-.metabrowser-kpress-host .kpress-prose h4 {
-  font-size: 1.12em;
-}
-.metabrowser-kpress-host .kpress-prose h5,
-.metabrowser-kpress-host .kpress-prose h6 {
-  font-size: 1em;
-}
-
-/* Bullet position: upstream offsets are rem (top 0.25rem, left
-   -0.85rem, designed against a 1rem li). Here em resolves against the
-   ::before's own font size (0.8 × li), so divide the upstream values
-   by 0.8 to keep the same geometry relative to the text. */
-.metabrowser-kpress-host .kpress-prose ul > li::before,
-.metabrowser-kpress-host .kpress .concepts ul > li::before {
-  font-size: var(--kpress-bullet-size);
-  top: 0.3125em;
-  left: -1.0625em;
-}
-
-/* Widget section labels (Key claims / Summary / Concepts headers):
-   upstream 1.2rem × caps multiplier — same restatement in em. */
-.metabrowser-kpress-host .kpress .key-claims::before,
-.metabrowser-kpress-host .kpress .summary::before,
-.metabrowser-kpress-host .kpress .concepts::before {
-  font-size: calc(1.2em * var(--kpress-caps-heading-size-multiplier, 1));
+/* Document palette: KPress >= 0.3.0 retired the --kpress-host-* color
+   hooks; hosts override the resolved --kpress-doc-* tokens directly.
+   Element scope (0,2,0) outranks KPress's ancestor-keyed theme blocks
+   (0,1,0), and the app's own vars flip with [data-theme], so the
+   embedded document follows the app palette in both themes. The
+   :root-scoped forms cover overlays KPress portals to document.body
+   (tooltips, footnote previews), which sit outside the host wrapper. */
+.metabrowser-kpress-host .kpress,
+:root .kpress-page-main,
+:root .kpress-tooltip {
+  --kpress-doc-bg: var(--bg);
+  --kpress-doc-text: var(--text);
+  --kpress-doc-muted: var(--muted);
+  --kpress-doc-border: var(--border);
+  --kpress-doc-link: var(--link);
 }
 
 /* MetaBrowser's content wrapper already supplies the outer document gutter,
