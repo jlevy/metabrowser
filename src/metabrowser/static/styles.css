@@ -171,14 +171,50 @@
      bridged into the embedded scope. */
   --prose-sans-font: var(--app-sans-clean);
 
-  /* Font sizes are px (not rem/em) by deliberate choice: the app does
-     not scale with the browser's default font-size preference, and any
-     change to that policy should be a coordinated migration of every
-     token below — never a one-off rem at a single use site. Use these
-     tokens at use sites; do not inline pixel literals in rules. */
+  /* ── Type scale ─────────────────────────────────────────────────
+     The ENTIRE app uses this ramp; never inline a font-size literal at
+     a use site. Sizes are px (not rem/em) by deliberate choice: the app
+     does not scale with the browser's default font-size preference, and
+     any change to that policy should be a coordinated migration of the
+     ramp — never a one-off rem at a single use site.
+
+     Chrome (interface) sizes:
+       --body-font-size      14px  primary chrome text (default, inputs,
+                                   empty states, stat values)
+       --nav-font-size       13px  dense navigation rows + path
+                                   breadcrumbs (tree items, header path)
+       --ui-small-font-size  12px  secondary chrome (metadata, chips,
+                                   tooltips, notes, filters, summaries)
+       --label-font-size     =ui-small  small-caps section labels (tabs,
+                                   panel/table headers, stat labels, and
+                                   the embedded-document CONTENTS title
+                                   via the KPress bridge below) — same
+                                   size as ui-small; the caps treatment
+                                   is the distinction
+       --mono-block-font-size =ui-small  mono blocks in chrome contexts
+                                   (source views, logs, raw JSON)
+       --micro-font-size     10px  deliberately-minimized marks (brand
+                                   line, code inside truncation notes)
+     One exception: .compression-badge draws a 7px glyph — iconography,
+     not text, and not part of the ramp.
+
+     Document (rendered prose) sizes — mono and small are derived from
+     the document body size so the document rescales as one unit:
+       --document-body-font-size   17px  prose
+       --document-mono-font-size   0.9×  code (mono x-height is larger,
+                                   so a few percent smaller reads equal)
+       --document-small-font-size  0.85× secondary document text (TOC
+                                   entries, captions, footnotes)
+     The KPress bridge (see .metabrowser-kpress-host .kpress) maps every
+     KPress size token onto these three plus --label-font-size. */
   --body-font-size: 14px;
+  --nav-font-size: 13px;
+  --ui-small-font-size: 12px;
+  --micro-font-size: 10px;
   --document-body-font-size: 17px;
-  --mono-block-font-size: 12px;
+  --document-mono-font-size: calc(var(--document-body-font-size) * 0.9);
+  --document-small-font-size: calc(var(--document-body-font-size) * 0.85);
+  --mono-block-font-size: var(--ui-small-font-size);
 
   --tree-pane-width: 300px;
 
@@ -191,8 +227,11 @@
   --weight-medium: 500;
   --weight-bold: 700;
 
-  /* Small-caps label style (shared by table headers, stat labels, section labels) */
-  --label-font-size: 11px;
+  /* Small-caps label style (shared by tabs, table headers, stat labels,
+     section labels, and the embedded-document TOC title). Same size as
+     --ui-small-font-size on purpose: labels differ by caps treatment,
+     not by yet another size. */
+  --label-font-size: var(--ui-small-font-size);
   --label-font-weight: var(--weight-bold);
   --label-letter-spacing: 0.05em;
   --label-text-transform: uppercase;
@@ -254,7 +293,7 @@
   --pane-header-padding-y: 8px;
   --file-header-padding-y: var(--pane-header-padding-y);
   --file-tab-padding-x: 12px;
-  --file-tab-padding-y: 5px;
+  --file-tab-padding-y: 4px;
   --file-tab-align-adjust: 3px;
   --file-tab-padding-top: calc(var(--file-tab-padding-y) + var(--file-tab-align-adjust));
   --file-tab-padding-bottom: var(--file-tab-padding-y);
@@ -474,7 +513,7 @@
   --viz-chip-type-text: hsl(221 13% 28%);
 
   /* Typography — shared header size for graph cards and frame headers. */
-  --viz-header-font-size: 11px;
+  --viz-header-font-size: var(--label-font-size);
 
   /* Hover design system — every hoverable viz surface (toolbar button,
      legend item, frame header, node card, toggle) shares the same ease
@@ -826,7 +865,7 @@ body {
   flex-direction: column;
   align-items: flex-start;
   gap: 0;
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -849,7 +888,7 @@ body {
    small uppercase muted line so the SPA name is present without
    competing with the path for attention. */
 .header-brand {
-  font-size: 10px;
+  font-size: var(--micro-font-size);
   color: var(--muted);
   padding: 0 4px;
   margin-left: -4px;
@@ -863,7 +902,7 @@ body {
   text-transform: none;
   color: var(--header-text);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--nav-font-size);
   padding: 2px 0;
   border-radius: var(--radius-chrome);
 }
@@ -964,7 +1003,7 @@ body {
   border-radius: var(--radius-chrome);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-normal);
   letter-spacing: 0;
   text-transform: none;
@@ -1053,7 +1092,7 @@ body {
   width: 100%;
   padding: 4px 8px;
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-medium);
   color: var(--text);
   background: var(--bg);
@@ -1104,7 +1143,7 @@ html.theme-anim .menu {
 }
 .tree-summary-count,
 .tree-summary-size {
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
 }
 
 /* Walker-truncation banner: shown only when /api/tree returns
@@ -1115,13 +1154,13 @@ html.theme-anim .menu {
   padding: 8px 12px;
   margin: 0 0 4px;
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   background: var(--sidebar-bg);
   border-bottom: 1px solid var(--border);
 }
 .tree-truncation-note code {
   font-family: var(--font-mono, monospace);
-  font-size: 10px;
+  font-size: var(--micro-font-size);
   padding: 1px 4px;
   background: var(--hover-bg);
   border-radius: var(--radius-document);
@@ -1189,7 +1228,7 @@ html.theme-anim .menu {
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   line-height: 1.2;
 }
 .index-progress-spinner {
@@ -1313,7 +1352,7 @@ html[data-prose-font="sans"] {
   justify-content: center;
   height: 100%;
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--body-font-size);
 }
 
 /* ── Tree items ──────────────────────────────────────────────── */
@@ -1327,7 +1366,7 @@ html[data-prose-font="sans"] {
   user-select: var(--toggle-user-select);
   color: var(--muted-slate);
   font-style: italic;
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
 }
 .tree-page-more:hover {
   background: var(--hover-bg);
@@ -1345,7 +1384,7 @@ html[data-prose-font="sans"] {
   cursor: pointer;
   user-select: var(--toggle-user-select);
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--nav-font-size);
   transition: background var(--transition-fast);
 }
 .tree-item:hover {
@@ -1401,9 +1440,9 @@ html[data-prose-font="sans"] {
   white-space: nowrap;
 }
 .tree-item-age-inline {
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   color: var(--muted);
-  /* Medium weight (not the 400 default) so 11px age labels stay legible;
+  /* Medium weight (not the 400 default) so small age labels stay legible;
      warm-tier age classes below bump to --file-age-weight-recent. */
   font-weight: var(--file-age-weight);
   flex-shrink: 0;
@@ -1415,7 +1454,7 @@ html[data-prose-font="sans"] {
 /* Positioning + size only — color / weight / tabular-nums come from
    the shared .size / .size-large rule (the sole source of truth). */
 .tree-item-size {
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   flex-shrink: 0;
   margin-left: auto;
   text-align: right;
@@ -1639,7 +1678,7 @@ html[data-prose-font="sans"] {
 }
 .recent-chip {
   font: inherit;
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-medium);
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1665,14 +1704,14 @@ html[data-prose-font="sans"] {
 .recent-empty {
   padding: 24px 12px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   text-align: center;
 }
 .recent-truncated-note {
   padding: 8px 12px;
   margin: 4px 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   background: var(--sidebar-bg);
   border-bottom: 1px solid var(--border);
 }
@@ -1691,7 +1730,7 @@ html[data-prose-font="sans"] {
 }
 .file-header-path {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--nav-font-size);
   font-weight: var(--weight-bold);
   color: var(--text);
   flex: 1 1 180px;
@@ -1743,11 +1782,11 @@ html[data-prose-font="sans"] {
 /* Color / weight come from .size / .size-large — see the shared
    size-chip convention above. */
 .file-header-size {
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   flex-shrink: 0;
 }
 .file-header-preview {
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   color: var(--muted);
   white-space: nowrap;
   flex-shrink: 0;
@@ -1759,7 +1798,7 @@ html[data-prose-font="sans"] {
   border-radius: var(--radius-chrome);
   padding: 3px 8px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -1802,7 +1841,7 @@ html[data-prose-font="sans"] {
   gap: 4px;
   padding: 2px 8px;
   border-radius: var(--radius-chrome);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
   flex-shrink: 0;
 }
@@ -1911,8 +1950,85 @@ html[data-prose-font="sans"] {
   color: var(--text);
 }
 
+/* ── KPress bridge: the px/rem unit boundary ──────────────────────
+   The app pins every size in px (see ── Type scale ──): it deliberately
+   does NOT scale with the browser's default-font-size preference.
+   KPress sizes in rem: it deliberately DOES. Any KPress size that
+   reaches the screen in rem therefore renders at a browser-dependent
+   ratio to our px-pinned prose — correct on a 16px-default browser,
+   visibly wrong (headings smaller than body, shrunken bullets) on any
+   other. The bridge closes that seam completely: every KPress size
+   token is remapped onto the app type scale, and the rem LITERALS in
+   KPress rules (headings, bullets, widget labels — which no token
+   reaches) are overridden below in em so they derive from the px
+   document size. INVARIANT: inside .metabrowser-kpress-host, no
+   rendered font size may depend on rem. When upgrading KPress, re-audit
+   with `grep -n 'rem' .../kpress/format/static/css/*.css | grep
+   font-size` and extend the bridge for any new site.
+
+   TEMPORARY SHAPE — tracked upstream at jlevy/kpress#37: once KPress
+   sizes its internals relative to a single --kpress-font-size-base
+   knob, this whole bridge (token remap + em restatements below)
+   collapses to setting that one variable to
+   var(--document-body-font-size).
+
+   Token remap — instead of scaling KPress's seven-step ramp, collapse
+   it onto the app scale: prose, one mono size, one small size, and the
+   shared small-caps label size for the CONTENTS title so it matches the
+   app's tabs and section labels. */
 .metabrowser-kpress-host .kpress {
   --kpress-font-size-normal: var(--document-body-font-size);
+  --kpress-font-size-large: calc(var(--document-body-font-size) * 1.2);
+  --kpress-font-size-small: var(--document-small-font-size);
+  --kpress-font-size-smaller: var(--document-small-font-size);
+  --kpress-font-size-tiny: var(--document-small-font-size);
+  --kpress-font-size-mono: var(--document-mono-font-size);
+  --kpress-font-size-mono-small: var(--document-mono-font-size);
+  --kpress-font-size-mono-tiny: var(--document-mono-font-size);
+  --kpress-caps-label-size: var(--label-font-size);
+  /* Bullet glyph: upstream 0.8rem. As em it resolves against the li's
+     font size, keeping the 0.8 ratio to the text it marks. */
+  --kpress-bullet-size: 0.8em;
+}
+
+/* Headings: KPress hard-codes these in rem (not tokens), so restate its
+   exact ratios in em relative to the inherited document body size.
+   Upstream: h1 1.7rem, h2 1.32rem, h3 1.15rem × caps multiplier,
+   h4 1.12rem, h5/h6 1rem — against a 1rem body. */
+.metabrowser-kpress-host .kpress-prose h1 {
+  font-size: 1.7em;
+}
+.metabrowser-kpress-host .kpress-prose h2 {
+  font-size: 1.32em;
+}
+.metabrowser-kpress-host .kpress-prose h3 {
+  font-size: calc(1.15em * var(--kpress-caps-heading-size-multiplier, 1));
+}
+.metabrowser-kpress-host .kpress-prose h4 {
+  font-size: 1.12em;
+}
+.metabrowser-kpress-host .kpress-prose h5,
+.metabrowser-kpress-host .kpress-prose h6 {
+  font-size: 1em;
+}
+
+/* Bullet position: upstream offsets are rem (top 0.25rem, left
+   -0.85rem, designed against a 1rem li). Here em resolves against the
+   ::before's own font size (0.8 × li), so divide the upstream values
+   by 0.8 to keep the same geometry relative to the text. */
+.metabrowser-kpress-host .kpress-prose ul > li::before,
+.metabrowser-kpress-host .kpress .concepts ul > li::before {
+  font-size: var(--kpress-bullet-size);
+  top: 0.3125em;
+  left: -1.0625em;
+}
+
+/* Widget section labels (Key claims / Summary / Concepts headers):
+   upstream 1.2rem × caps multiplier — same restatement in em. */
+.metabrowser-kpress-host .kpress .key-claims::before,
+.metabrowser-kpress-host .kpress .summary::before,
+.metabrowser-kpress-host .kpress .concepts::before {
+  font-size: calc(1.2em * var(--kpress-caps-heading-size-multiplier, 1));
 }
 
 /* MetaBrowser's content wrapper already supplies the outer document gutter,
@@ -1930,6 +2046,48 @@ html[data-prose-font="sans"] {
    Keep its general list-item margins out of KPress navigation chrome. */
 .metabrowser-kpress-host .kpress-toc li {
   margin-block: 0;
+}
+
+/* KPress's TOC pulls each entry's first line back by 1em (text-indent:
+   -1em against ~1.3rem of link padding), which lands the text ~5px from
+   the active-marker bar — it reads as flush against the highlight box.
+   Drop the hanging indent so wrapped lines align under the first, and
+   re-set the per-level insets from a moderate 0.75rem base (KPress's
+   full 1.3rem reads as too deep once the indent is gone), keeping the
+   upstream 0.7rem step per level. The CONTENTS title gets the same base
+   inset so it stays aligned with the level-1 entry text. */
+.metabrowser-kpress-host .kpress-toc a {
+  text-indent: 0;
+}
+.metabrowser-kpress-host .kpress-toc-title,
+.metabrowser-kpress-host .kpress-toc-level-1 > a {
+  padding-left: 0.75rem;
+}
+/* The CONTENTS title joins the app's single label tier (size arrives
+   via the bridged --kpress-caps-label-size): same weight, color, and
+   tracking as tabs, DIAGNOSTICS, FRONTMATTER, and table headers,
+   instead of KPress's medium-weight, tighter-tracked caps. */
+.metabrowser-kpress-host .kpress-toc-title {
+  color: var(--label-color);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
+  font-variant-caps: normal;
+}
+.metabrowser-kpress-host .kpress-toc-level-2 > a {
+  padding-left: 1.45rem;
+}
+.metabrowser-kpress-host .kpress-toc-level-3 > a {
+  padding-left: 2.15rem;
+}
+.metabrowser-kpress-host .kpress-toc-level-4 > a {
+  padding-left: 2.85rem;
+}
+.metabrowser-kpress-host .kpress-toc-level-5 > a {
+  padding-left: 3.55rem;
+}
+.metabrowser-kpress-host .kpress-toc-level-6 > a {
+  padding-left: 4.25rem;
 }
 
 /* Disclosure controls use the same label system as unselected tabs. */
@@ -1963,7 +2121,7 @@ html[data-prose-font="sans"] {
   background: var(--status-info-bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   line-height: 1.45;
 }
 .metabrowser-kpress-error-detail {
@@ -1971,7 +2129,7 @@ html[data-prose-font="sans"] {
   white-space: pre-wrap;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
 }
 /* Image preview — scale to fit the pane without ever forcing a
    horizontal scrollbar; height is intrinsic so aspect ratio is
@@ -2007,7 +2165,7 @@ html[data-prose-font="sans"] {
   color: var(--muted);
 }
 .log-stat-value {
-  font-size: 14px;
+  font-size: var(--body-font-size);
   font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
 }
@@ -2045,7 +2203,7 @@ html[data-prose-font="sans"] {
   transform: rotate(90deg);
 }
 .log-event-kind {
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
   padding: 1px 6px;
   border-radius: var(--radius-chrome);
@@ -2098,7 +2256,7 @@ html[data-prose-font="sans"] {
 }
 .filter-btn {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
   padding: 4px 10px;
   border: 1px solid var(--border);
@@ -2165,7 +2323,7 @@ html[data-prose-font="sans"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   min-width: 0;
 }
 .summary-label {
@@ -2179,7 +2337,7 @@ html[data-prose-font="sans"] {
 }
 .summary-omitted {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   flex-shrink: 0;
 }
 .log-event-raw {
@@ -2320,6 +2478,14 @@ pre.code-block code.hljs {
   background: none;
   padding: 0;
 }
+/* The markdown plugin's container carries md-body (for prose-styling
+   compatibility) alongside metabrowser-kpress-host, so the .md-body code
+   rule above would clamp KPress-rendered code to the 12px chrome mono
+   token inside a 17px document. Inside an embedded KPress document,
+   code sizing belongs to the KPress ramp. */
+.metabrowser-kpress-host .kpress code {
+  font-size: var(--kpress-font-size-mono);
+}
 .md-body blockquote {
   border-left: 3px solid var(--border);
   margin: 0.5em 0;
@@ -2398,12 +2564,11 @@ pre.code-block code.hljs {
   font-weight: var(--label-font-weight);
   text-transform: var(--label-text-transform);
   letter-spacing: var(--label-letter-spacing);
-  /* Panel headers use full-strength --text rather than the default
-     muted --label-color, matching the active .tab-btn style: same
-     small-caps typography, same darker hue. Keeps the "thead /
-     section header" tier visually distinct from secondary in-content
-     labels (stat captions, chart titles) which stay muted. */
-  color: var(--text);
+  /* One label tier: every resting section label (tabs, DIAGNOSTICS,
+     FRONTMATTER, table headers, the TOC CONTENTS title) shares the
+     muted --label-color and --label-font-weight; full-strength --text
+     is reserved for interactive states (tab hover/active). */
+  color: var(--label-color);
   white-space: nowrap;
   /* Default header alignment is centered. Explicit per-column alignment
      from markdown (`:---:`, `---:`) wins via inline style/attr. The
@@ -2454,7 +2619,7 @@ pre.code-block code.hljs {
   text-transform: var(--label-text-transform);
   letter-spacing: var(--label-letter-spacing);
   /* Matches .data-table th — see the note there. */
-  color: var(--text);
+  color: var(--label-color);
   cursor: pointer;
   user-select: var(--toggle-user-select);
   border-bottom: var(--panel-border);
@@ -2496,7 +2661,7 @@ pre.code-block code.hljs {
   padding: 6px 10px;
   border-radius: var(--radius-chrome);
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   line-height: 1.4;
   max-width: 360px;
   pointer-events: none;
@@ -2519,7 +2684,7 @@ pre.code-block code.hljs {
 .tip-detail {
   color: var(--viz-text-muted);
   font-weight: var(--weight-normal);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
 }
 .tip-loading {
   color: var(--muted);
@@ -2552,7 +2717,7 @@ pre.code-block code.hljs {
   border-radius: var(--radius-circle);
   animation: spin 0.8s linear infinite;
 }
-/* Tree-sized spinner — fits the 13px ``.tree-item`` font without
+/* Tree-sized spinner — fits the ``--nav-font-size`` ``.tree-item`` font without
    dominating the row. Used in ``.tree-lazy-placeholder`` while a
    subtree is being fetched. */
 .spinner-sm {
@@ -2575,7 +2740,7 @@ pre.code-block code.hljs {
   align-items: center;
   padding: 2px 12px 2px 28px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   font-style: italic;
 }
 .tree-lazy-error {
@@ -2663,7 +2828,7 @@ pre.code-block code.hljs {
   height: 140px;
 }
 .chart-title {
-  font-size: 11px;
+  font-size: var(--label-font-size);
   color: var(--muted-slate);
   font-weight: var(--weight-bold);
   margin: 12px 0 2px 4px;
@@ -2675,7 +2840,7 @@ pre.code-block code.hljs {
 /* ── Tally tree ─────────────────────────────────────────────── */
 
 .tally-tree {
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   line-height: 1.8;
   padding: 8px 12px;
   font-family: var(--font-mono);
@@ -2711,7 +2876,7 @@ pre.code-block code.hljs {
   display: none;
 }
 .tally-metadata {
-  font-size: 11px;
+  font-size: var(--ui-small-font-size);
   color: var(--muted-slate);
   margin-bottom: 8px;
   padding: 4px 0;

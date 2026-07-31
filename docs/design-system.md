@@ -41,6 +41,63 @@ domain tokens, rather than in core `styles.css`.
 The shell uses a compact UI face for navigation and controls, a monospaced face for code
 and structured values, and KPress typography for rendered Markdown.
 
+### Type Scale
+
+Every font size in the app comes from the type-scale tokens defined in
+`static/styles.css` (see the `── Type scale ──` block in `:root`). Never inline a
+font-size literal at a use site.
+
+Chrome (interface) sizes:
+
+- `--body-font-size` (14px): primary chrome text — body default, inputs, empty states,
+  stat values.
+- `--nav-font-size` (13px): dense navigation rows and path breadcrumbs — tree items,
+  header path, file-header path.
+- `--ui-small-font-size` (12px): secondary chrome — metadata, chips, tooltips, notes,
+  filters, summaries.
+- `--label-font-size` (= ui-small): small-caps section labels — tabs, panel and table
+  headers, stat labels.
+  Labels differ by caps treatment, not by another size.
+- `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
+  views, logs, raw JSON.
+- `--micro-font-size` (10px): deliberately minimized marks — the brand line, code inside
+  truncation notes.
+
+Document (rendered prose) sizes, where mono and small derive from the body size so a
+document rescales as one unit:
+
+- `--document-body-font-size` (17px): prose.
+- `--document-mono-font-size` (0.9×): code — smaller than prose by design; mono x-height
+  is larger, so this still reads close to the prose size.
+- `--document-small-font-size` (0.85×): secondary document text — TOC entries, captions,
+  footnotes.
+
+Embedded KPress documents map all KPress size tokens onto these document sizes plus
+`--label-font-size` (so the TOC’s CONTENTS title matches app tabs and labels) through
+the KPress bridge rule on `.metabrowser-kpress-host .kpress`. When adding a size, extend
+the ramp and its documentation; do not create a one-off.
+
+### The px/rem Unit Boundary
+
+The app pins all sizes in px and deliberately does not scale with the browser’s
+default-font-size preference.
+KPress sizes in rem and deliberately does.
+Any KPress size that reaches the screen in rem therefore renders at a browser-dependent
+ratio to the px-pinned prose: correct on a 16px-default browser, wrong on any other.
+
+Invariant: inside `.metabrowser-kpress-host`, no rendered font size may depend on rem.
+The KPress bridge remaps every KPress size token onto the type scale, and restates
+KPress’s rem literals (headings, list bullets, widget labels) in em so they derive from
+the document body size.
+When upgrading KPress, re-audit its CSS for new rem font sizes and extend the bridge.
+Verify by rendering a document at two different browser root font sizes and confirming
+computed sizes are identical.
+
+The bridge is a temporary adapter: once KPress sizes internally from a single
+`--kpress-font-size-base` knob
+([jlevy/kpress#37](https://github.com/jlevy/kpress/issues/37)), it collapses to setting
+that one variable.
+
 Keep these roles distinct:
 
 - labels and metadata use normal weight and muted text;
