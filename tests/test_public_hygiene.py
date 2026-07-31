@@ -170,6 +170,22 @@ def test_agent_tbd_skills_use_repository_version_pin() -> None:
         assert "@latest" not in text
 
 
+def test_tbd_hook_fallbacks_carry_cool_off_exemption() -> None:
+    # get-tbd is an audited first-party exception (SUPPLY-CHAIN-SECURITY.md); the
+    # pinned npx fallbacks must override .npmrc min-release-age or they fail for
+    # 14 days after every tbd release.
+    for relative in (
+        ".claude/scripts/tbd-session.sh",
+        ".claude/hooks/tbd-closing-reminder.sh",
+        ".codex/tbd-session.sh",
+        ".codex/tbd-closing-reminder.sh",
+    ):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        npx_lines = [line for line in text.splitlines() if "npx" in line and "get-tbd" in line]
+        assert npx_lines, f"{relative} lost its pinned npx fallback"
+        assert all("--min-release-age=0" in line for line in npx_lines), relative
+
+
 def test_gh_setup_skips_unsupported_platform_without_failing(tmp_path: Path) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()

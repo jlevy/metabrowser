@@ -16,7 +16,7 @@ if [[ "$command" == git\ push* ]] || [[ "$command" == *"&& git push"* ]] || [[ "
     if command -v tbd &> /dev/null; then
       tbd closing
     elif command -v npx &> /dev/null; then
-      npx --yes get-tbd@0.4.2 closing
+      npx --yes --min-release-age=0 get-tbd@0.4.2 closing
     fi
   fi
 fi

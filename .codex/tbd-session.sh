@@ -17,11 +17,13 @@ if command -v tbd &> /dev/null; then
 fi
 
 # Pinned zero-install fallback. Never use an unpinned runner here.
+# get-tbd is an audited first-party exception to the .npmrc 14-day cool-off
+# (SUPPLY-CHAIN-SECURITY.md), so override min-release-age for this exact pin only.
 if command -v npx &> /dev/null; then
-    npx --yes get-tbd@0.4.2 prime "$@"
+    npx --yes --min-release-age=0 get-tbd@0.4.2 prime "$@"
     exit $?
 fi
 
 echo "[tbd] tbd CLI not found and npx is unavailable."
-echo "[tbd] Install it with: npm install -g get-tbd@0.4.2"
+echo "[tbd] Install it with: npm install -g --min-release-age=0 get-tbd@0.4.2"
 exit 1
