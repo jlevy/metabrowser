@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31
 
-**Status:** Phase 1 spike contract
+**Status:** Phase 1 implemented and validated
 
 ## Summary
 
@@ -110,9 +110,9 @@ Future changes belong below as dated before-and-after examples.
 The public synthetic profile in `tests/dom/file_fuzzy_match_profile.js` measures the
 pure scorer without DOM work or result sorting.
 On an arm64 development machine running macOS 26.5.2 and Node 24.18.0, the median of
-five Recent-sized runs over 2,000 paths was 18.44 ms, or 9.22 microseconds per
-candidate. The median of three heavily expanded runs over 50,000 paths was 456.93 ms, or
-9.14 microseconds per candidate.
+five Recent-sized runs over 2,000 paths was 19.46 ms, or 9.73 microseconds per
+candidate. The median of three heavily expanded runs over 50,000 paths was 484.20 ms, or
+9.68 microseconds per candidate.
 
 The larger scan is inappropriate as one synchronous browser task.
 Phase 1 should keep a small synchronous fast path and yield between bounded chunks for
@@ -132,9 +132,9 @@ On the same arm64 development machine and Node 24.18.0, one validation run produ
 
 | Fixture | Candidates | First result | Queued-input delay | Yields | Results passed to UI |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Shallow | 50 | 0.67 ms | Not applicable | 0 | 50 |
-| Recent-sized | 2,000 | 28.88 ms | 2.78 ms | 7 | 100 |
-| Heavily expanded | 50,000 | 783.10 ms | 12.59 ms | 199 | 100 |
+| Shallow | 50 | 0.81 ms | Not applicable | 0 | 50 |
+| Recent-sized | 2,000 | 30.43 ms | 3.16 ms | 7 | 100 |
+| Heavily expanded | 50,000 | 794.77 ms | 12.55 ms | 199 | 100 |
 
 The queued timer ran before both large searches completed, showing that the
 250-candidate chunks return control to the browser.
@@ -171,7 +171,7 @@ intended disambiguation behavior.
 The 50,000-file completion time is visible enough that progressive result publication or
 a Worker may become worthwhile for unusually large observed catalogs.
 Current evidence does not justify either boundary: input delay remained below one frame
-on this machine, normal Recent-sized searches completed in about 29 ms, and Phase 1
+on this machine, normal Recent-sized searches completed in about 30 ms, and Phase 1
 catalogs are partial.
 Reconsider a Worker if representative target hardware exceeds the input-delay budget or
 if later complete catalogs make 50,000-candidate scans routine.

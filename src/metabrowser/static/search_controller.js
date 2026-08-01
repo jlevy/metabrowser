@@ -2,6 +2,20 @@
 
 (() => {
   const LOCAL_FILE_PROVIDER_ID = "local-known-files";
+  const PROVIDER_ACTIVATION_FALLBACK = "fallback";
+  const PROVIDER_ACTIVATION_IMMEDIATE = "immediate";
+  /** Default bounds for local result retention and cooperative scanning. */
+  const LOCAL_SEARCH_DEFAULTS = Object.freeze({
+    chunkSize: 250,
+    maxResults: 100,
+    syncThreshold: 500,
+  });
+  /** Providers with no explicit priority sort after focused built-in providers. */
+  const DEFAULT_PROVIDER_PRIORITY = 100;
+  /** Built-in local navigation results lead later fallback providers. */
+  const LOCAL_FILE_PROVIDER_PRIORITY = 10;
+  /** Keep a small overflow before pruning so insertion does not sort every match. */
+  const RETAINED_RESULT_MULTIPLIER = 2;
 
   /**
    * @typedef {object} MetabrowserKnownFile
@@ -83,12 +97,15 @@
 
   /**
    * @typedef {object} MetabrowserSearchProvider
+   * @property {"fallback" | "immediate"} [activation]
    * @property {string} id
    * @property {number} [priority]
    * @property {(request: MetabrowserSearchRequest, context: MetabrowserSearchContext,
    *   signal: AbortSignal) => MetabrowserSearchBatch | Promise<MetabrowserSearchBatch>} search
    * @property {(request: MetabrowserSearchRequest) => boolean} [supports]
    */
+
+  /** @typedef {Readonly<{includeFallback?: boolean}>} MetabrowserSearchOptions */
 
   /**
    * @typedef {object} MetabrowserSearchState
@@ -178,9 +195,12 @@
       throw new TypeError("Local file search requires a catalog and matcher");
     }
     const { catalog, matcher } = options;
-    const maxResults = positiveInteger(options.maxResults, 100);
-    const syncThreshold = positiveInteger(options.syncThreshold, 500);
-    const chunkSize = positiveInteger(options.chunkSize, 250);
+    const maxResults = positiveInteger(options.maxResults, LOCAL_SEARCH_DEFAULTS.maxResults);
+    const syncThreshold = positiveInteger(
+      options.syncThreshold,
+      LOCAL_SEARCH_DEFAULTS.syncThreshold,
+    );
+    const chunkSize = positiveInteger(options.chunkSize, LOCAL_SEARCH_DEFAULTS.chunkSize);
     const yieldControl = options.yieldControl || defaultYieldControl;
 
     /** @param {MetabrowserSearchRequest} request */
@@ -216,7 +236,7 @@
             }
             matchCount += 1;
             retained.push({ file, match });
-            if (retained.length >= maxResults * 2) {
+            if (retained.length >= maxResults * RETAINED_RESULT_MULTIPLIER) {
               retained.sort((left, right) => matcher.compareMatches(left.match, right.match));
               retained = retained.slice(0, maxResults);
             }
@@ -261,7 +281,13 @@
       });
     }
 
-    return Object.freeze({ id: LOCAL_FILE_PROVIDER_ID, priority: 10, search, supports });
+    return Object.freeze({
+      activation: PROVIDER_ACTIVATION_IMMEDIATE,
+      id: LOCAL_FILE_PROVIDER_ID,
+      priority: LOCAL_FILE_PROVIDER_PRIORITY,
+      search,
+      supports,
+    });
   }
 
   /** @param {MetabrowserSearchFileResult} result @param {string} providerId */
@@ -281,7 +307,11 @@
 
   /**
    * @param {Map<string, MetabrowserSearchBatch>} batches
-   * @param {Map<string, {provider: MetabrowserSearchProvider, priority: number}>} registrations
+   * @param {Map<string, {
+   *   activation: "fallback" | "immediate",
+   *   provider: MetabrowserSearchProvider,
+   *   priority: number,
+   * }>} registrations
    * @param {number} maxResults
    */
   function composeResults(batches, registrations, maxResults) {
@@ -331,8 +361,12 @@
 
   /** @param {{maxResults?: number}} [options] */
   function createController(options = {}) {
-    const maxResults = positiveInteger(options.maxResults, 100);
-    /** @type {Map<string, {provider: MetabrowserSearchProvider, priority: number}>} */
+    const maxResults = positiveInteger(options.maxResults, LOCAL_SEARCH_DEFAULTS.maxResults);
+    /** @type {Map<string, {
+     *   activation: "fallback" | "immediate",
+     *   provider: MetabrowserSearchProvider,
+     *   priority: number,
+     * }>} */
     const registrations = new Map();
     /** @type {Set<(state: MetabrowserSearchState) => void>} */
     const listeners = new Set();
@@ -372,11 +406,22 @@
       if (registrations.has(provider.id)) {
         throw new Error(`Search provider already registered: ${provider.id}`);
       }
+      if (
+        provider.activation !== undefined &&
+        provider.activation !== PROVIDER_ACTIVATION_IMMEDIATE &&
+        provider.activation !== PROVIDER_ACTIVATION_FALLBACK
+      ) {
+        throw new TypeError(`Unknown search provider activation: ${provider.activation}`);
+      }
       registrations.set(provider.id, {
+        activation:
+          provider.activation === PROVIDER_ACTIVATION_FALLBACK
+            ? PROVIDER_ACTIVATION_FALLBACK
+            : PROVIDER_ACTIVATION_IMMEDIATE,
         priority:
           typeof provider.priority === "number" && Number.isFinite(provider.priority)
             ? provider.priority
-            : 100,
+            : DEFAULT_PROVIDER_PRIORITY,
         provider,
       });
       return () => {
@@ -397,9 +442,10 @@
 
     /**
      * @param {MetabrowserSearchRequest} rawRequest
+     * @param {MetabrowserSearchOptions} [searchOptions]
      * @returns {Promise<MetabrowserSearchState | null>}
      */
-    async function search(rawRequest) {
+    async function search(rawRequest, searchOptions = {}) {
       if (disposed) {
         throw new Error("Search controller is disposed");
       }
@@ -413,22 +459,29 @@
         query: rawRequest.query,
         target: rawRequest.target,
       });
-      const selected = Array.from(registrations.values())
+      const supported = Array.from(registrations.values())
         .filter(({ provider }) => !provider.supports || provider.supports(request))
         .sort(
           (left, right) =>
             left.priority - right.priority || codeUnitCompare(left.provider.id, right.provider.id),
         );
+      const immediate = supported.filter(
+        ({ activation }) => activation === PROVIDER_ACTIVATION_IMMEDIATE,
+      );
+      const fallback = supported.filter(
+        ({ activation }) => activation === PROVIDER_ACTIVATION_FALLBACK,
+      );
+      /** @type {typeof supported} */
+      const started = [];
       /** @type {Map<string, MetabrowserSearchBatch>} */
       const batches = new Map();
       /** @type {Map<string, string>} */
       const errors = new Map();
-      let pending = selected.length;
 
       /** @param {"searching" | "complete"} phase */
       function publishComposition(phase) {
         const composition = composeResults(batches, registrations, maxResults);
-        const batchMetadata = selected.flatMap(({ provider }) => {
+        const batchMetadata = started.flatMap(({ provider }) => {
           const batch = batches.get(provider.id);
           return batch
             ? [
@@ -444,7 +497,7 @@
               ]
             : [];
         });
-        const orderedErrors = selected.flatMap(({ provider }) => {
+        const orderedErrors = started.flatMap(({ provider }) => {
           const error = errors.get(provider.id);
           return error ? [error] : [];
         });
@@ -457,7 +510,7 @@
             complete:
               phase === "complete" &&
               orderedErrors.length === 0 &&
-              batchMetadata.length === selected.length &&
+              batchMetadata.length === started.length &&
               batchMetadata.every((batch) => batch.complete),
             errors: Object.freeze(orderedErrors),
             phase,
@@ -472,51 +525,76 @@
         );
       }
 
-      publishComposition(selected.length === 0 ? "complete" : "searching");
-      if (selected.length === 0) {
+      /** @param {typeof supported} providers */
+      async function runProviders(providers) {
+        if (providers.length === 0) {
+          return;
+        }
+        started.push(...providers);
+        publishComposition("searching");
+        await Promise.all(
+          providers.map(async ({ provider }) => {
+            try {
+              const batch = await provider.search(
+                request,
+                Object.freeze({ requestId }),
+                controller.signal,
+              );
+              if (controller.signal.aborted || active?.requestId !== requestId) {
+                return;
+              }
+              batches.set(
+                provider.id,
+                Object.freeze({
+                  ...batch,
+                  complete: batch.complete === true,
+                  providerId: provider.id,
+                  results: Array.isArray(batch.results) ? batch.results : [],
+                  truncated: batch.truncated === true,
+                }),
+              );
+            } catch (error) {
+              if (controller.signal.aborted || active?.requestId !== requestId) {
+                return;
+              }
+              const detail = error instanceof Error ? error.message : String(error);
+              errors.set(provider.id, `${provider.id}: ${detail}`);
+            } finally {
+              if (!controller.signal.aborted && active?.requestId === requestId) {
+                publishComposition("searching");
+              }
+            }
+          }),
+        );
+      }
+
+      if (supported.length === 0) {
+        publishComposition("complete");
         active = null;
         return currentState;
       }
 
-      await Promise.all(
-        selected.map(async ({ provider }) => {
-          try {
-            const batch = await provider.search(
-              request,
-              Object.freeze({ requestId }),
-              controller.signal,
-            );
-            if (controller.signal.aborted || active?.requestId !== requestId) {
-              return;
-            }
-            batches.set(
-              provider.id,
-              Object.freeze({
-                ...batch,
-                complete: batch.complete === true,
-                providerId: provider.id,
-                results: Array.isArray(batch.results) ? batch.results : [],
-                truncated: batch.truncated === true,
-              }),
-            );
-          } catch (error) {
-            if (controller.signal.aborted || active?.requestId !== requestId) {
-              return;
-            }
-            const detail = error instanceof Error ? error.message : String(error);
-            errors.set(provider.id, `${provider.id}: ${detail}`);
-          } finally {
-            if (!controller.signal.aborted && active?.requestId === requestId) {
-              pending -= 1;
-              publishComposition(pending === 0 ? "complete" : "searching");
-            }
-          }
-        }),
-      );
+      await runProviders(immediate);
 
       if (controller.signal.aborted || active?.requestId !== requestId) {
         return null;
       }
+      const immediateComposition = composeResults(batches, registrations, maxResults);
+      const immediateCoverageIncomplete =
+        immediate.length === 0 ||
+        errors.size > 0 ||
+        immediate.some(({ provider }) => batches.get(provider.id)?.complete !== true);
+      const shouldRunFallback =
+        searchOptions.includeFallback === true ||
+        (immediateComposition.results.length === 0 && immediateCoverageIncomplete);
+      if (shouldRunFallback) {
+        await runProviders(fallback);
+      }
+
+      if (controller.signal.aborted || active?.requestId !== requestId) {
+        return null;
+      }
+      publishComposition("complete");
       active = null;
       return currentState;
     }

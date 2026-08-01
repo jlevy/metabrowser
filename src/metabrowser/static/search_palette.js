@@ -1,6 +1,8 @@
 // Accessible, keyboard-first surface for browser-local file navigation.
 
 (() => {
+  /** Default DOM cap for the transient result list. */
+  const DEFAULT_MAX_ROWS = 100;
   let paletteSerial = 0;
 
   /**
@@ -57,15 +59,6 @@
     );
   }
 
-  /** @param {string} value */
-  function stableIdToken(value) {
-    let hash = 5381;
-    for (let index = 0; index < value.length; index += 1) {
-      hash = (hash * 33) ^ value.charCodeAt(index);
-    }
-    return (hash >>> 0).toString(36);
-  }
-
   /**
    * Append text and matching marks without interpreting result strings as markup.
    * @param {Document} hostDocument
@@ -120,7 +113,7 @@
     const maxRows =
       typeof options.maxRows === "number" && Number.isFinite(options.maxRows) && options.maxRows > 0
         ? Math.floor(options.maxRows)
-        : 100;
+        : DEFAULT_MAX_ROWS;
     paletteSerial += 1;
     const idPrefix = `metabrowser-quick-file-${paletteSerial}`;
 
@@ -208,9 +201,9 @@
       status.textContent = `${searchState.statusMessage || "No known file matches."}${limitMessage}`;
     }
 
-    /** @param {PaletteResult} result */
-    function optionId(result) {
-      return `${idPrefix}-option-${stableIdToken(result.id)}`;
+    /** @param {number} index */
+    function optionId(index) {
+      return `${idPrefix}-option-${index}`;
     }
 
     /** @param {boolean} scroll */
@@ -227,7 +220,7 @@
       const activeResult = results[activeIndex];
       if (activeResult) {
         selectedResultId = activeResult.id;
-        input.setAttribute("aria-activedescendant", optionId(activeResult));
+        input.setAttribute("aria-activedescendant", optionId(activeIndex));
       } else {
         selectedResultId = null;
         input.removeAttribute("aria-activedescendant");
@@ -250,7 +243,7 @@
         const result = results[index];
         const option = hostDocument.createElement("div");
         option.className = "search-palette-option";
-        option.id = optionId(result);
+        option.id = optionId(index);
         option.setAttribute("role", "option");
         option.setAttribute("aria-label", result.path);
         option.setAttribute("aria-selected", "false");
@@ -383,7 +376,16 @@
       }
       if (outcome.status === "not-found") {
         actionStatus = outcome.message || "That file is no longer available.";
-        await options.onNotFound?.(result.path);
+        try {
+          await options.onNotFound?.(result.path);
+        } catch (error) {
+          actionStatus =
+            error instanceof Error
+              ? error.message
+              : "Could not remove the stale result. Try again.";
+          renderStatus();
+          return;
+        }
         if (disposed || actionId !== actionSerial || overlay.hidden) {
           return;
         }
@@ -468,6 +470,11 @@
 
     /** @param {KeyboardEvent} event */
     function handleInputKeydown(event) {
+      if (event.key === "Tab") {
+        event.preventDefault();
+        input.focus();
+        return;
+      }
       if (event.isComposing) {
         return;
       }
@@ -492,6 +499,14 @@
       }
     }
 
+    /** @param {Event} event */
+    function handleInput(event) {
+      if (/** @type {{isComposing?: boolean}} */ (event).isComposing) {
+        return;
+      }
+      runSearch();
+    }
+
     /** @param {PointerEvent} event */
     function handleOverlayPointerdown(event) {
       if (event.target === overlay) {
@@ -501,7 +516,7 @@
 
     const unsubscribe = options.controller.subscribe(consumeState);
     hostDocument.addEventListener("keydown", handleGlobalKeydown);
-    input.addEventListener("input", () => runSearch());
+    input.addEventListener("input", handleInput);
     input.addEventListener("keydown", handleInputKeydown);
     overlay.addEventListener("pointerdown", handleOverlayPointerdown);
 
@@ -513,6 +528,7 @@
       disposed = true;
       unsubscribe();
       hostDocument.removeEventListener("keydown", handleGlobalKeydown);
+      input.removeEventListener("input", handleInput);
       input.removeEventListener("keydown", handleInputKeydown);
       overlay.removeEventListener("pointerdown", handleOverlayPointerdown);
       overlay.remove();

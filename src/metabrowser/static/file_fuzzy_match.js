@@ -2,6 +2,15 @@
 
 (() => {
   const BOUNDARY_SEPARATOR = /[/\-_.\s]/u;
+  /** Ordered eligibility classes; lower values are better. */
+  const MATCH_CLASS = Object.freeze({
+    basenameContiguous: 2,
+    basenameExact: 0,
+    basenamePrefix: 1,
+    basenameSubsequence: 3,
+    fullPathSubsequence: 5,
+    pathSegment: 4,
+  });
 
   /** @param {string} value */
   function isLowercaseLetter(value) {
@@ -297,24 +306,25 @@
     let matchedValue = basename;
     let matchedView = basenameView;
     let pathOffset = basenameOffset;
-    let matchClass = 3;
+    /** @type {number} */
+    let matchClass = MATCH_CLASS.basenameSubsequence;
     /** @type {Alignment | null} */
     let alignment = null;
 
     if (!queryIsPathAware) {
       if (equalUnits(basenameView.units, queryUnits)) {
         alignment = bestContiguous(queryUnits, basenameView);
-        matchClass = 0;
+        matchClass = MATCH_CLASS.basenameExact;
       } else if (startsWithUnits(basenameView.units, queryUnits)) {
         alignment = bestContiguous(queryUnits, basenameView);
-        matchClass = 1;
+        matchClass = MATCH_CLASS.basenamePrefix;
       } else {
         alignment = bestContiguous(queryUnits, basenameView);
         if (alignment) {
-          matchClass = 2;
+          matchClass = MATCH_CLASS.basenameContiguous;
         } else {
           alignment = bestSubsequence(queryUnits, basenameView, false);
-          matchClass = 3;
+          matchClass = MATCH_CLASS.basenameSubsequence;
         }
       }
     }
@@ -327,7 +337,9 @@
       if (!alignment) {
         return null;
       }
-      matchClass = alignment.skippedSlash ? 5 : 4;
+      matchClass = alignment.skippedSlash
+        ? MATCH_CLASS.fullPathSubsequence
+        : MATCH_CLASS.pathSegment;
     }
 
     if (!alignment) {
