@@ -232,18 +232,69 @@ A later provider may report complete server results without changing this local 
 ### Client Fuzzy Matching
 
 `static/file_fuzzy_match.js` is a pure strict module with deterministic tests and no new
-dependency. It matches query characters in order and scores candidates with:
+dependency. A candidate is eligible when every query character can be matched in order
+against its basename or served-root-relative path.
+Queries without `/` compare the basename first and may fall back to the full path;
+queries containing `/` compare path segments directly.
 
-- a strong basename match bonus
-- contiguous-character and exact-prefix bonuses
-- path-segment, word-boundary, camel-case, dash, underscore, and dot-boundary bonuses
+The scorer returns a named ranking vector instead of hiding behavior in one unexplained
+number:
+
+```text
+FuzzyRank
+  match_class
+  boundary_hits
+  contiguous_chars
+  run_count
+  gap_chars
+  start_offset
+  candidate_length
+  directory_depth
+  normalized_path
+  original_path
+```
+
+Results use a deterministic comparison chain in this order:
+
+1. `match_class`: exact basename, basename prefix, contiguous basename, basename
+   subsequence, path-segment match, then full-path subsequence
+2. More query characters on camel-case, dash, underscore, dot, or path-segment
+   boundaries
+3. More contiguous matched characters
+4. Fewer matched runs and fewer skipped characters between runs
+5. Earlier first match and fewer unmatched candidate characters
+6. Shallower directory depth
+7. Normalized path using deterministic code-unit ordering, then original path, as the
+   total-order tie-breaker
+
+This ordering makes exact and basename-local matches categorically better than matches
+found only in a parent directory.
+It also keeps tuning reviewable: changing the priority of a named component is distinct
+from changing how that component is calculated.
+The implementation may encode the vector as numbers for efficiency, but must expose the
+named components to tests and diagnostic fixtures.
+
+The initial ranking policy includes:
+
+- exact basename and basename-prefix priority
+- path-segment, word-boundary, camel-case, dash, underscore, and dot boundaries
+- contiguous-character preference
 - gap, candidate-length, and directory-depth penalties
-- a stable case-insensitive path tie-breaker
+- case-insensitive matching with an original-path final tie-breaker
 
 Queries containing `/` remain path-aware.
 For example, `srcapp` can match `src/metabrowser/static/app.js`, while `app` gives more
 weight to the basename than to a parent directory named `app`. The result includes
 character ranges so the palette can highlight why a candidate matched.
+
+`tests/fixtures/file_fuzzy_ranking.json` is the review surface for ranking behavior.
+Each scenario records a query, candidate paths, expected order, a short rationale, and
+tags such as `exact`, `basename-vs-parent`, `boundary`, `gaps`, `path`, `case`,
+`punctuation`, `unicode`, or `tie`. The fixture must cover both obvious winners and
+close calls where a maintainer may want to revise the policy.
+Every ranking change updates the fixture and the spike report at
+`docs/project/research/research-2026-07-31-fuzzy-file-ranking.md` with the affected
+before-and-after examples.
 
 The provider evaluates every locally known file but retains only a bounded top result
 set. Small catalogs use a synchronous fast path.
@@ -381,12 +432,14 @@ results hierarchical.
 
 ### Phase 1: Client-Only Quick File Finder
 
+- [ ] Write the fuzzy-ranking spike report and scenario fixture, including the named
+  comparison vector, expected ordering, rationale, and a tuning-change checklist
 - [ ] Add the DOM-independent search controller, request identity, cancellation, batch
   metadata, provider registration, and flat file-result composition
 - [ ] Add the strict `known_file_catalog.js` module and feed it from initial tree, lazy
   tree, Recent, event, and successful-navigation observations
-- [ ] Add the pure fuzzy matcher with basename weighting, path-aware scoring, match
-  ranges, stable ties, and shared golden fixtures
+- [ ] Add the pure fuzzy matcher with the documented comparison vector, path-aware
+  scoring, match ranges, stable ties, and shared golden fixtures
 - [ ] Add a local provider that searches all catalog candidates, retains a bounded top
   set, yields during large scans, and cancels obsolete queries
 - [ ] Add `search_palette.js`, the `/` shortcut, accessible dialog and listbox behavior,
@@ -472,7 +525,8 @@ results hierarchical.
 
 Phase 1 is a client-only enhancement over paths the browser has already received.
 It adds no server route, startup fetch, dependency, or complete-inventory transfer.
-Phase 2 makes filename coverage complete when necessary.
+It adds no public SDK method, persisted preference, or wire-format compatibility
+requirement. Phase 2 makes filename coverage complete when necessary.
 Phase 3 adds content search as an explicit mode after its engine and resource budgets
 are measured.
 
