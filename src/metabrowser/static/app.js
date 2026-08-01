@@ -731,6 +731,19 @@ if (typeof window !== "undefined") {
   };
 }
 
+// The application shell owns the catalog and search composition. Search modules
+// receive snapshots and navigation callbacks through their public constructors;
+// they never reach into app.js state directly.
+/**
+ * @typedef {object} QuickFileOpenOutcome
+ * @property {HTMLElement | null} [focusTarget]
+ * @property {string} [message]
+ * @property {"opened" | "not-found" | "error" | "cancelled"} status
+ */
+var knownFileCatalog = null;
+var quickFileSearchController = null;
+var quickFilePalette = null;
+
 // ── Tree ────────────────────────────────────────────────────────
 
 async function loadTree() {
@@ -749,6 +762,7 @@ async function loadTree() {
       () => resp.json(),
       responsePerfMeta(resp, ""),
     );
+    knownFileCatalog?.observeInitialTree(data.tree);
     var pathEl = queryHtml(".header-path");
     if (pathEl) {
       pathEl.innerHTML = pathHtml(data.root);
@@ -1147,6 +1161,7 @@ async function loadSubtree(path, childrenEl, options) {
       throw new Error("Malformed tree response");
     }
     var tree = data.tree;
+    knownFileCatalog?.observeLazyTree(tree);
     if (tree.length === 0 && data.tally_cache_status === "scanning") {
       childrenEl.innerHTML = treeLazyLoadingHtml("Folder still loading...");
       startIndexProgressPolling();
@@ -1892,6 +1907,7 @@ function fetchRecent(windowKey) {
       }
       recentBaseEntries = new Map();
       var flat = data?.entries_flat || [];
+      knownFileCatalog?.observeRecent(flat);
       for (var i = 0; i < flat.length; i++) {
         var f = flat[i];
         if (f?.path) {
@@ -2414,6 +2430,7 @@ var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
+/** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, skipHistory) {
   return _perf.measureAsync(
     "selectFile",
@@ -2426,7 +2443,7 @@ async function selectFile(path, skipHistory) {
       // whether the path is a file or a folder — see commitRoute.
       const preview = document.getElementById("preview-pane");
       if (!preview) {
-        return;
+        return { message: "The preview destination is unavailable.", status: "error" };
       }
 
       // Three-way cache state:
@@ -2450,7 +2467,7 @@ async function selectFile(path, skipHistory) {
         commitRoute(path, cached.kind === "folder", skipHistory);
         renderFile(cached);
         maybeOpenLiveStream(path, cached);
-        return;
+        return openedFileOutcome(path, cached, preview);
       }
 
       if (loadingIndicatorTimer) {
@@ -2497,8 +2514,9 @@ async function selectFile(path, skipHistory) {
             commitRoute(path, cached.kind === "folder", skipHistory);
             renderFile(cached);
             maybeOpenLiveStream(path, cached);
+            return openedFileOutcome(path, cached, preview);
           }
-          return;
+          return { status: "cancelled" };
         }
         if (!resp.ok) {
           const text = await _perf.measureAsync(
@@ -2506,7 +2524,9 @@ async function selectFile(path, skipHistory) {
             () => resp.text(),
             responsePerfMeta(resp, path),
           );
-          throw new Error(text || `HTTP ${resp.status}`);
+          throw Object.assign(new Error(text || `HTTP ${resp.status}`), {
+            notFound: resp.status === 404,
+          });
         }
         const data = await _perf.measureAsync(
           "apiFile:json",
@@ -2532,11 +2552,15 @@ async function selectFile(path, skipHistory) {
           commitRoute(path, data.kind === "folder", skipHistory);
           renderFile(data);
           maybeOpenLiveStream(path, data);
+          return openedFileOutcome(path, data, preview);
         }
+        return { status: "cancelled" };
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
+        var caught = /** @type {{name?: string, notFound?: boolean}} */ (err);
+        if (caught?.name === "AbortError") {
+          return { status: "cancelled" };
         }
+        var notFound = caught?.notFound === true;
         if (currentPath === path) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
@@ -2561,11 +2585,29 @@ async function selectFile(path, skipHistory) {
             commitRoute(lastWrittenRoute.path, lastWrittenRoute.isDir, true);
           }
           setSelectedPath(currentPath ?? "");
+        } else {
+          return { status: "cancelled" };
         }
+        return notFound
+          ? { message: `File no longer available: ${path}`, status: "not-found" }
+          : { message: `Could not open ${path}: ${errorMessage(err)}`, status: "error" };
       }
     },
     { path: path, skip_history: !!skipHistory },
   );
+}
+
+/**
+ * @param {string} path
+ * @param {{kind?: string, logical_ext?: string}} data
+ * @param {HTMLElement} preview
+ * @returns {QuickFileOpenOutcome}
+ */
+function openedFileOutcome(path, data, preview) {
+  if (path && data.kind !== "folder") {
+    knownFileCatalog?.observeNavigation(path, data.logical_ext || null);
+  }
+  return { focusTarget: preview, status: "opened" };
 }
 
 // ── File rendering ──────────────────────────────────────────────
@@ -3315,7 +3357,7 @@ function applyTreeFilters() {
     row.classList.toggle("tree-item-filter-hidden", hideRow);
     if (isDir) {
       var kids = row.nextElementSibling;
-      if (kids && kids.classList.contains("tree-children")) {
+      if (kids?.classList.contains("tree-children")) {
         kids.classList.toggle("tree-item-filter-hidden", hideRow);
       }
     }
@@ -3376,11 +3418,11 @@ function filterBarHtml(s, fs) {
     '<button type="button" class="filter-chip" data-filter-chip="recent" aria-pressed="' +
     String(!!s.ageWindow) +
     '" title="Only recently modified entries">Recent' +
-    (s.ageWindow ? " · " + s.ageWindow : "") +
+    (s.ageWindow ? ` · ${s.ageWindow}` : "") +
     "</button>" +
     '<div class="filter-menu-wrap" id="filter-menu-wrap" aria-expanded="false">' +
     '<button type="button" class="filter-chip filter-menu-btn" aria-haspopup="true" aria-label="Filter options">Filters' +
-    (count > 0 ? '<span class="filter-badge">' + count + "</span>" : "") +
+    (count > 0 ? `<span class="filter-badge">${count}</span>` : "") +
     "</button>" +
     '<div class="menu filter-menu" role="menu" aria-label="Filters">' +
     filterMenuHtml(s, fs) +
@@ -3707,6 +3749,7 @@ function fileStoreApplySnapshot(scope, entries) {
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
+  knownFileCatalog?.observeEventSnapshot(entries);
   fileStore = new Map();
   for (var i = 0; i < entries.length; i++) {
     fileStore.set(entries[i].path, entries[i]);
@@ -3717,6 +3760,7 @@ function fileStoreApplySnapshot(scope, entries) {
 }
 
 function fileStoreApplyChange(ops) {
+  knownFileCatalog?.applyEventChange(ops);
   for (var i = 0; i < ops.length; i++) {
     var op = ops[i];
     if (op.op === "upsert") {
@@ -4333,6 +4377,7 @@ function _createInventoryEventSource() {
     _resetEsCircuitBreaker();
     // Server restart or root swap — drop everything; reconnect
     // will deliver a fresh snapshot.
+    knownFileCatalog?.clear();
     fileStore = new Map();
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
@@ -4487,6 +4532,7 @@ async function revealInTree(path) {
   return true;
 }
 
+/** @returns {Promise<QuickFileOpenOutcome>} */
 async function navigateToPath(path, skipHistory) {
   // selectFile owns the route write (commitRoute) once the response
   // identifies file vs folder. skipHistory is set by history-driven
@@ -4496,15 +4542,55 @@ async function navigateToPath(path, skipHistory) {
   if (path === "" || path === "/") {
     // The served root has no tree row; select it directly (folder view).
     setSelectedPath(null);
-    selectFile("", skipHistory);
-    return;
+    return selectFile("", skipHistory);
   }
   var normalized = path.replace(/\/+$/, "");
   // Reveal is best-effort: a row past the pagination cap (or a folder
   // route) may not resolve to a DOM node, but the preview should still
   // open — selectFile handles files and folders alike.
   await revealInTree(normalized);
-  selectFile(normalized, skipHistory);
+  return selectFile(normalized, skipHistory);
+}
+
+// Compose the application-lifetime quick-file modules at the shell boundary.
+function initQuickFileFinder() {
+  if (quickFilePalette) {
+    return;
+  }
+  if (
+    !window.MetabrowserKnownFileCatalog ||
+    !window.MetabrowserFileFuzzyMatch ||
+    !window.MetabrowserSearch ||
+    !window.MetabrowserSearchPalette
+  ) {
+    console.warn("Quick File dependencies are unavailable");
+    return;
+  }
+
+  knownFileCatalog = window.MetabrowserKnownFileCatalog.create();
+  quickFileSearchController = window.MetabrowserSearch.createController({ maxResults: 100 });
+  var localProvider = window.MetabrowserSearch.createLocalFileProvider({
+    catalog: knownFileCatalog,
+    matcher: window.MetabrowserFileFuzzyMatch,
+    maxResults: 100,
+  });
+  quickFileSearchController.registerProvider(localProvider);
+  quickFilePalette = window.MetabrowserSearchPalette.create({
+    controller: quickFileSearchController,
+    getCatalogSnapshot: () => knownFileCatalog.snapshot(),
+    getFileIcon: getFileIcon,
+    onNotFound: (path) => {
+      knownFileCatalog.removePath(path);
+    },
+    openFile: (path) => {
+      // Search hits can outlive deep inventory changes that are outside the
+      // shallow event stream. Force the existing ETag path to confirm the file
+      // still exists before treating palette navigation as successful.
+      fileNeedsRevalidate.add(path);
+      boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
+      return navigateToPath(path);
+    },
+  });
 }
 
 // One handler serves both history traversal (popstate) and manual hash
@@ -4594,6 +4680,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavTabs();
   initFilterBar();
   initNavScrollShadow();
+  initQuickFileFinder();
   // Fire the URL-pinned file fetch in parallel with the tree walk: the
   // two requests don't depend on each other, so a deep-link's preview
   // can render as soon as /api/file lands instead of waiting for the
