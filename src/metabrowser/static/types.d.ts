@@ -305,6 +305,52 @@ type MetabrowserTreeExpansion = {
   visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
 };
 
+type MetabrowserKnownFileCatalogWireEntry = {
+  children?: Array<MetabrowserKnownFileCatalogWireEntry> | null;
+  logical_ext?: string;
+  name?: string;
+  path: string;
+  type: string;
+};
+
+type MetabrowserKnownFile = Readonly<{
+  basename: string;
+  logicalExtension: string | null;
+  path: string;
+  source: string;
+}>;
+
+type MetabrowserKnownFileCatalogSnapshot = Readonly<{
+  complete: false;
+  files: ReadonlyArray<MetabrowserKnownFile>;
+  observedCount: number;
+  revision: number;
+  sourceSummary: Readonly<Record<string, number>>;
+}>;
+
+type MetabrowserKnownFileCatalogApi = Readonly<{
+  applyEventChange(
+    ops: Array<{
+      entry?: MetabrowserKnownFileCatalogWireEntry;
+      op: string;
+      path?: string;
+    }>,
+  ): void;
+  clear(): void;
+  observeEventSnapshot(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
+  observeInitialTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
+  observeLazyTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
+  observeNavigation(path: string, logicalExtension: string | null): void;
+  observeRecent(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
+  observeTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>, source: string): void;
+  removePath(path: string): void;
+  snapshot(): MetabrowserKnownFileCatalogSnapshot;
+}>;
+
+type MetabrowserKnownFileCatalogRuntime = Readonly<{
+  create(): MetabrowserKnownFileCatalogApi;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -333,6 +379,7 @@ declare global {
     };
     MetabrowserFilterState?: MetabrowserFilterStateApi;
     MetabrowserIcons?: Record<string, string>;
+    MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
