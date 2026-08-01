@@ -3,13 +3,15 @@ type: is
 id: is-01kyxnj244yq340p373jsvnvs3
 title: Audit and fix light/dark syntax palette contrast
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 labels: []
 dependencies: []
 created_at: 2026-08-01T03:23:22.115Z
-updated_at: 2026-08-01T03:39:38.356Z
+updated_at: 2026-08-01T03:43:52.687Z
+closed_at: 2026-08-01T03:43:52.682Z
+close_reason: "Shared light/dark syntax palette implemented, contrast regressions covered, make verify and PR #19 CI green."
 ---
 
 ## Notes
