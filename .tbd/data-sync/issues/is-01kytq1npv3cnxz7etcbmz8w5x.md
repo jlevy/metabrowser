@@ -3,13 +3,17 @@ type: is
 id: is-01kytq1npv3cnxz7etcbmz8w5x
 title: Adopt KPress --kpress-font-size-base once upstream lands (collapse KPress bridge)
 kind: chore
-status: open
+status: closed
 priority: 2
-version: 2
+version: 5
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01kyxcbtp4r61yqbptzc2fsky1
 created_at: 2026-07-30T23:51:38.970Z
-updated_at: 2026-07-31T01:51:45.625Z
+updated_at: 2026-08-01T01:07:19.633Z
+closed_at: 2026-08-01T01:07:19.632Z
+close_reason: "Implemented and verified KPress 0.3.0 upgrade: root base-size hook, single resolved-theme input, authoritative manifest loading, upstream numeric table typing, full make verify, live browser QA, and green PR #19 CI."
 ---
 FONTS — finish after the next kpress release (fixes jlevy/kpress#37).
 

@@ -3,13 +3,17 @@ type: is
 id: is-01kytxc58ynqfvf4xe14pjye9c
 title: Adopt KPress single-theme-input contract once upstream lands (jlevy/kpress#38)
 kind: chore
-status: open
+status: closed
 priority: 2
-version: 2
+version: 5
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01kyxcbtp4r61yqbptzc2fsky1
 created_at: 2026-07-31T01:42:14.045Z
-updated_at: 2026-07-31T01:51:45.818Z
+updated_at: 2026-08-01T01:07:19.645Z
+closed_at: 2026-08-01T01:07:19.645Z
+close_reason: "Implemented and verified KPress 0.3.0 upgrade: root base-size hook, single resolved-theme input, authoritative manifest loading, upstream numeric table typing, full make verify, live browser QA, and green PR #19 CI."
 ---
 THEME — finish after the next kpress release (fixes jlevy/kpress#38).
 
