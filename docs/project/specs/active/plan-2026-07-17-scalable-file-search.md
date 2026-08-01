@@ -434,13 +434,13 @@ results hierarchical.
 
 - [x] Write the fuzzy-ranking spike report and scenario fixture, including the named
   comparison vector, expected ordering, rationale, and a tuning-change checklist
-- [ ] Add the DOM-independent search controller, request identity, cancellation, batch
+- [x] Add the DOM-independent search controller, request identity, cancellation, batch
   metadata, provider registration, and flat file-result composition
 - [ ] Add the strict `known_file_catalog.js` module and feed it from initial tree, lazy
   tree, Recent, event, and successful-navigation observations
-- [ ] Add the pure fuzzy matcher with the documented comparison vector, path-aware
+- [x] Add the pure fuzzy matcher with the documented comparison vector, path-aware
   scoring, match ranges, stable ties, and shared golden fixtures
-- [ ] Add a local provider that searches all catalog candidates, retains a bounded top
+- [x] Add a local provider that searches all catalog candidates, retains a bounded top
   set, yields during large scans, and cancels obsolete queries
 - [ ] Add `search_palette.js`, the `/` shortcut, accessible dialog and listbox behavior,
   focus restoration, pointer interaction, and a visible candidate-completeness status
