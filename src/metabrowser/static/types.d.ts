@@ -376,6 +376,91 @@ type MetabrowserFileFuzzyMatchRuntime = Readonly<{
   rankPaths(query: string, paths: string[], limit?: number): ReadonlyArray<MetabrowserFuzzyMatch>;
 }>;
 
+type MetabrowserSearchRequest = Readonly<{
+  match: "fuzzy";
+  query: string;
+  target: "file";
+}>;
+
+type MetabrowserSearchFileResult = Readonly<{
+  description: string;
+  id: string;
+  kind: "file";
+  label: string;
+  logicalExtension?: string | null;
+  matchRanges: ReadonlyArray<Readonly<{ start: number; end: number }>>;
+  path: string;
+  providerId: string;
+  rank?: MetabrowserFuzzyRank;
+  score: number;
+}>;
+
+type MetabrowserSearchBatch = Readonly<{
+  candidateCount?: number;
+  complete: boolean;
+  providerId: string;
+  results: ReadonlyArray<MetabrowserSearchFileResult>;
+  revision?: number;
+  statusMessage?: string;
+  truncated: boolean;
+}>;
+
+type MetabrowserSearchContext = Readonly<{ requestId: number }>;
+
+type MetabrowserSearchProvider = Readonly<{
+  id: string;
+  priority?: number;
+  search(
+    request: MetabrowserSearchRequest,
+    context: MetabrowserSearchContext,
+    signal: AbortSignal,
+  ): MetabrowserSearchBatch | Promise<MetabrowserSearchBatch>;
+  supports?(request: MetabrowserSearchRequest): boolean;
+}>;
+
+type MetabrowserSearchState = Readonly<{
+  batches: ReadonlyArray<
+    Readonly<{
+      candidateCount?: number;
+      complete: boolean;
+      providerId: string;
+      resultCount: number;
+      revision?: number;
+      statusMessage?: string;
+      truncated: boolean;
+    }>
+  >;
+  complete: boolean;
+  errors: ReadonlyArray<string>;
+  phase: "idle" | "searching" | "complete";
+  request: MetabrowserSearchRequest | null;
+  requestId: number;
+  results: ReadonlyArray<MetabrowserSearchFileResult>;
+  statusMessage: string;
+  truncated: boolean;
+}>;
+
+type MetabrowserSearchController = Readonly<{
+  cancel(): void;
+  dispose(): void;
+  registerProvider(provider: MetabrowserSearchProvider): () => void;
+  search(request: MetabrowserSearchRequest): Promise<MetabrowserSearchState | null>;
+  state(): MetabrowserSearchState;
+  subscribe(listener: (state: MetabrowserSearchState) => void): () => void;
+}>;
+
+type MetabrowserSearchRuntime = Readonly<{
+  createController(options?: { maxResults?: number }): MetabrowserSearchController;
+  createLocalFileProvider(options: {
+    catalog: MetabrowserKnownFileCatalogApi;
+    chunkSize?: number;
+    matcher: MetabrowserFileFuzzyMatchRuntime;
+    maxResults?: number;
+    syncThreshold?: number;
+    yieldControl?: (signal: AbortSignal) => Promise<void>;
+  }): MetabrowserSearchProvider;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -406,6 +491,7 @@ declare global {
     MetabrowserFilterState?: MetabrowserFilterStateApi;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
+    MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
