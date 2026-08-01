@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -18,12 +19,13 @@ from typing import Protocol
 from unittest.mock import patch
 
 import pytest
+import uvicorn
 from click import unstyle
 from typer.testing import CliRunner
 
 from metabrowser import __version__
 from metabrowser.cli.main import _app, main
-from metabrowser.cli.serve import _shutdown_noise_filter
+from metabrowser.cli.serve import _QuietForceExitServer, _shutdown_noise_filter
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
 
@@ -311,6 +313,29 @@ def test_shutdown_noise_filter_drops_expected_cancellation_only() -> None:
     assert _shutdown_noise_filter(unexpected)
 
 
+def test_force_exit_silences_uvicorn_error_logger() -> None:
+    """A first Ctrl-C shuts down gracefully with logging intact; a second
+    (force exit) abandons the lifespan, whose cancellation uvicorn reports
+    as a pre-formatted error record, so the logger goes quiet instead."""
+
+    async def dummy_app(scope: object, receive: object, send: object) -> None: ...
+
+    # Construct first: ``uvicorn.Config`` reconfigures logging levels.
+    server = _QuietForceExitServer(uvicorn.Config(app=dummy_app))
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    original_level = uvicorn_logger.level
+    try:
+        server.handle_exit(signal.SIGINT, None)
+        assert server.should_exit and not server.force_exit
+        assert uvicorn_logger.level == original_level
+
+        server.handle_exit(signal.SIGINT, None)
+        assert server.force_exit
+        assert uvicorn_logger.level == logging.CRITICAL
+    finally:
+        uvicorn_logger.setLevel(original_level)
+
+
 def test_cli_bare_path_routes_to_serve() -> None:
     """A bare path positional serves: a nonexistent directory fails on the
     directory check, not on argument routing."""
@@ -328,32 +353,50 @@ def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(home))
 
     with (
-        patch("uvicorn.run") as run_server,
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
         patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
     ):
         result = runner.invoke(_app, ["~/artifacts", "--no-open"])
 
     assert result.exit_code == 0, result.exception
-    run_server.assert_called_once()
-    assert run_server.call_args.kwargs["timeout_graceful_shutdown"] == 0
+    server_cls.assert_called_once()
+    config = server_cls.call_args.args[0]
+    assert config.timeout_graceful_shutdown == 0
+    server_cls.return_value.run.assert_called_once_with()
     assert _shutdown_noise_filter not in logging.getLogger("uvicorn.error").filters
     assert f"Serving {root.resolve()}" in result.output
 
 
-def test_serve_removes_shutdown_filter_when_uvicorn_fails(tmp_path: Path) -> None:
+@pytest.mark.parametrize("failure", [None, RuntimeError("server stopped")])
+def test_serve_restores_uvicorn_logging_state(tmp_path: Path, failure: RuntimeError | None) -> None:
     root = tmp_path / "artifacts"
     root.mkdir()
     uvicorn_logger = logging.getLogger("uvicorn.error")
+    previous_level = uvicorn_logger.level
     uvicorn_logger.removeFilter(_shutdown_noise_filter)
 
-    with (
-        patch("uvicorn.run", side_effect=RuntimeError("server stopped")),
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
-    ):
-        result = runner.invoke(_app, [str(root), "--no-open"])
+    def force_exit() -> None:
+        uvicorn_logger.setLevel(logging.CRITICAL)
+        if failure is not None:
+            raise failure
 
-    assert isinstance(result.exception, RuntimeError)
-    assert _shutdown_noise_filter not in uvicorn_logger.filters
+    try:
+        uvicorn_logger.setLevel(logging.INFO)
+        with (
+            patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        ):
+            server_cls.return_value.run.side_effect = force_exit
+            result = runner.invoke(_app, [str(root), "--no-open"])
+
+        if failure is None:
+            assert result.exit_code == 0, result.exception
+        else:
+            assert result.exception is failure
+        assert uvicorn_logger.level == logging.INFO
+        assert _shutdown_noise_filter not in uvicorn_logger.filters
+    finally:
+        uvicorn_logger.setLevel(previous_level)
 
 
 def test_serve_loads_dotenv_before_expanding_home_relative_root(
@@ -369,13 +412,13 @@ def test_serve_loads_dotenv_before_expanding_home_relative_root(
     monkeypatch.delenv("HOME", raising=False)
 
     with (
-        patch("uvicorn.run") as run_server,
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
         patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
     ):
         result = runner.invoke(_app, ["~/artifacts", "--no-open"])
 
     assert result.exit_code == 0, result.exception
-    run_server.assert_called_once()
+    server_cls.assert_called_once()
     assert f"Serving {root.resolve()}" in result.output
 
 
@@ -388,7 +431,7 @@ def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:
 
     for path in ("../outside.txt", "outside-link"):
         with (
-            patch("uvicorn.run") as run_server,
+            patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
             patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
         ):
             result = runner.invoke(
@@ -398,7 +441,7 @@ def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:
 
         assert isinstance(result.exception, CLIError)
         assert "outside the served root" in str(result.exception)
-        run_server.assert_not_called()
+        server_cls.assert_not_called()
 
 
 def test_serve_rejects_file_root_with_path_as_usage_error(tmp_path: Path) -> None:
@@ -427,12 +470,12 @@ def test_serve_wildcard_bind_uses_loopback_url_and_keeps_host_validation(
     """
     from metabrowser import server
 
-    with patch("uvicorn.run") as mock_run:
+    with patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls:
         result = runner.invoke(_app, [str(tmp_path), "--no-open", "--host", "0.0.0.0"])
     assert result.exit_code == 0, _plain_output(result)
     assert "http://127.0.0.1:" in _plain_output(result)
     assert "http://0.0.0.0" not in _plain_output(result)
-    assert mock_run.call_args.kwargs["host"] == "0.0.0.0"
+    assert server_cls.call_args.args[0].host == "0.0.0.0"
     assert not server._EXTRA_ALLOWED_HOSTS & {"0.0.0.0", "::", "[::]"}
 
 
@@ -441,7 +484,7 @@ def test_serve_concrete_bind_host_is_permitted_by_middleware(tmp_path: Path) -> 
     from metabrowser import server
 
     try:
-        with patch("uvicorn.run"):
+        with patch("metabrowser.cli.serve._QuietForceExitServer"):
             result = runner.invoke(_app, [str(tmp_path), "--no-open", "--host", "127.0.0.1"])
         assert result.exit_code == 0, _plain_output(result)
         assert "127.0.0.1" in server._EXTRA_ALLOWED_HOSTS
