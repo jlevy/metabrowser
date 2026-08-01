@@ -109,6 +109,15 @@ the bridge maps the public `--kpress-doc-*` color tokens on both the fragment an
 body-portaled tooltips to Metabrowser’s semantic surface, text, border, muted, and link
 tokens.
 
+### Embedded Document Navigation
+
+Metabrowser requests KPress’s normalized TOC collapse depth `1`, which keeps the
+top-level section spine visible and lets scroll-follow open the active deeper branch.
+At KPress’s wide document band, the docked TOC is a borderless rail with a hidden but
+scrollable scrollbar.
+The narrow overlay drawer keeps its border and visible scrollbar so it remains distinct
+from the document it covers.
+
 Keep these roles distinct:
 
 - labels and metadata use normal weight and muted text;

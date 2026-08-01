@@ -148,6 +148,21 @@ def test_dynamic_render_includes_doc_chrome_without_fragment_theme_state(
     assert "data-kpress-palette=" not in html
 
 
+def test_dynamic_render_collapses_deep_toc_entries_by_default(served_root: Path) -> None:
+    source = served_root / "docs" / "long.md"
+    source.write_text(
+        (
+            "# Long document\n\n## First section\n\n### Detail\n\n"
+            "## Second section\n\n## Third section\n\nBody.\n"
+        ),
+        encoding="utf-8",
+    )
+
+    html = _render({"path": "docs/long.md", "view": "rendered"})["html"]
+    assert 'data-kpress-toc-collapse-depth="1"' in html
+    assert "data-kpress-toc-expand-all" in html
+
+
 def test_dynamic_render_sanitizes_untrusted_worktree_markup(served_root: Path) -> None:
     source = served_root / "docs" / "unsafe.md"
     source.write_text(

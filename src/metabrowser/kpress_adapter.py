@@ -8,6 +8,9 @@ from typing import Any, cast
 from kpress import runtime as _kpress_runtime
 from kpress.models import KPressAsset, KPressExportRequest
 
+# Keep the top-level section spine visible while scroll-follow opens the active branch.
+_TOC_COLLAPSE_DEPTH = 1
+
 
 class KPressRenderError(RuntimeError):
     """Raised when KPress is present but cannot render the requested input."""
@@ -93,6 +96,7 @@ def render_kpress_view(
         # metabrowser shows the file path in its own file-header, so suppress
         # KPress's rendered <h1> doc header rather than hiding it with host CSS.
         show_doc_header=False,
+        toc_collapse_depth=_TOC_COLLAPSE_DEPTH,
     )
     try:
         return runtime.render_view(request)

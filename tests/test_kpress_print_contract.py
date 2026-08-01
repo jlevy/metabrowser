@@ -150,3 +150,14 @@ def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:
     rule_start = css.index(".metabrowser-kpress-host .kpress-toc li {")
     rule_block = css[rule_start : rule_start + 140]
     assert "margin-block: 0;" in rule_block
+
+
+def test_embedded_kpress_wide_toc_uses_borderless_rail() -> None:
+    css = _read_styles_css()
+    band_start = css.index("@container kpress-doc (min-width: 75rem) {")
+    band_block = css[band_start : band_start + 500]
+    assert ".metabrowser-kpress-host .kpress-toc {" in band_block
+    assert "border: none;" in band_block
+    assert "scrollbar-width: none;" in band_block
+    assert ".metabrowser-kpress-host .kpress-toc::-webkit-scrollbar {" in band_block
+    assert "display: none;" in band_block

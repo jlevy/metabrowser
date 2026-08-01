@@ -1988,6 +1988,19 @@ html[data-prose-font="sans"] {
   margin-block: 0;
 }
 
+/* The docked TOC is a quiet navigation rail beside the document, not another
+   panel. Keep it scrollable without box chrome; KPress's narrow overlay drawer
+   stays bordered and retains its scrollbar for definition. */
+@container kpress-doc (min-width: 75rem) {
+  .metabrowser-kpress-host .kpress-toc {
+    border: none;
+    scrollbar-width: none;
+  }
+  .metabrowser-kpress-host .kpress-toc::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* KPress's TOC pulls each entry's first line back by 1em (text-indent:
    -1em against ~1.3rem of link padding), which lands the text ~5px from
    the active-marker bar — it reads as flush against the highlight box.
