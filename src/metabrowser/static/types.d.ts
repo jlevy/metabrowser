@@ -461,6 +461,32 @@ type MetabrowserSearchRuntime = Readonly<{
   }): MetabrowserSearchProvider;
 }>;
 
+type MetabrowserOpenFileOutcome = Readonly<{
+  focusTarget?: HTMLElement | null;
+  message?: string;
+  status: "opened" | "not-found" | "error" | "cancelled";
+}>;
+
+type MetabrowserSearchPaletteApi = Readonly<{
+  close(): void;
+  dispose(): void;
+  element: HTMLElement;
+  isOpen(): boolean;
+  open(): void;
+}>;
+
+type MetabrowserSearchPaletteRuntime = Readonly<{
+  create(options: {
+    controller: MetabrowserSearchController;
+    document?: Document;
+    getCatalogSnapshot(): { complete: boolean; observedCount: number };
+    getFileIcon?(path: string): { cls?: string; svg?: string };
+    maxRows?: number;
+    onNotFound?(path: string): void | Promise<void>;
+    openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
+  }): MetabrowserSearchPaletteApi;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -492,6 +518,7 @@ declare global {
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
+    MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;

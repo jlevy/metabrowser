@@ -257,12 +257,13 @@
   /* Z-index scale — the named stacking layers. Use these tokens at use
      sites rather than ad-hoc integers so the relative order of panes,
      floating overlays (menus, dropdowns), and tooltips is defined in one
-     place. --z-overlay covers any summoned floating surface (the header
-     theme menu today; a future right-click context menu next); it sits
-     above the panes but below tooltips, the topmost hint layer. */
+     place. --z-overlay covers anchored menus, --z-modal covers blocking
+     dialogs such as Quick File, and both sit below tooltips, the topmost
+     hint layer. */
   --z-pane: 1;
   --z-resize-handle: 2;
   --z-overlay: 100;
+  --z-modal: 200;
   --z-tooltip: 1000;
 
   /* Transitions */
@@ -326,6 +327,7 @@
      --highlight-bar to transparent to drop the left bar. */
   --highlight-bg: color-mix(in srgb, var(--link) 10%, transparent);
   --highlight-bar: var(--link);
+  --modal-scrim: color-mix(in srgb, var(--text) 28%, transparent);
 
   /* Code block backgrounds */
   --code-bg: hsl(210 29% 97%);
@@ -2950,6 +2952,135 @@ pre.code-block code.hljs {
 .custom-tooltip.visible {
   opacity: 1;
 }
+
+/* ── Quick-file palette ─────────────────────────────────────────
+   A body-level modal surface so tree and preview replacement cannot
+   discard its state. Search work and selection state stay in the
+   injected controller; this block owns only the bounded result DOM. */
+.search-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(48px, 10vh) 16px 16px;
+  background: var(--modal-scrim);
+}
+.search-palette-overlay[hidden] {
+  display: none;
+}
+.search-palette-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  overflow: hidden;
+  color: var(--text);
+  background: var(--viz-surface-raised);
+  border: 1px solid var(--viz-border-strong);
+  border-radius: var(--radius-chrome);
+  box-shadow: var(--shadow-lg);
+}
+.search-palette-title {
+  padding: 8px 12px 4px;
+  color: var(--label-color);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
+}
+.search-palette-input {
+  width: auto;
+  margin: 4px 12px 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+}
+.search-palette-input:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+.search-palette-results {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.search-palette-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 12px 5px 10px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+}
+.search-palette-option:hover,
+.search-palette-option.active,
+.search-palette-option[aria-selected="true"] {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+.search-palette-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--ft-color, var(--muted));
+}
+.search-palette-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.search-palette-option-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.search-palette-label,
+.search-palette-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-palette-label {
+  font-size: var(--nav-font-size);
+  font-weight: var(--weight-medium);
+}
+.search-palette-description {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--ui-small-font-size);
+}
+.search-palette-option mark {
+  color: inherit;
+  background: var(--highlight-bg);
+  font-weight: var(--weight-bold);
+}
+.search-palette-status,
+.search-palette-hint {
+  padding: 5px 12px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.search-palette-status {
+  min-height: 28px;
+}
+.search-palette-hint {
+  padding-top: 0;
+  font-family: var(--font-mono);
+  text-align: right;
+  user-select: var(--toggle-user-select);
+}
 /* File-tree tooltip rows use the compact file/folder summary shape.
    Use viz-panel-* classes for anything
    "identity-like" so the drawer and the tooltip stay consistent. */
@@ -3309,6 +3440,7 @@ pre.code-block code.hljs {
   .file-header-print,
   .settings-toggle,
   .custom-tooltip,
+  .search-palette-overlay,
   .index-progress,
   .loading,
   .spinner {
