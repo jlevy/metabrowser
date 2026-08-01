@@ -109,7 +109,8 @@ def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch)
     assert seen["kind"] == "markdown"
     assert seen["view"] == "rendered"
     assert seen["frontmatter"] == {"title": "Test"}
-    assert seen["theme_mode"] == "system"
+    assert "theme_mode" not in seen
+    assert "resolved_theme" not in seen
 
 
 def test_kpress_render_route_uses_logical_size_for_gzip(tmp_path: Path, monkeypatch) -> None:

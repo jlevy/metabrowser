@@ -37,19 +37,28 @@ Confirm:
 
 ## Audited First-Party Exceptions
 
-Two exact first-party releases are exempt from the ordinary cool-off for this release:
+Three exact first-party releases are exempt from the ordinary cool-off for this release:
 
-- `kpress==0.2.2`, required for the first Metabrowser release and reviewed as a
-  compatible first-party maintenance update with no added dependencies;
+- `kpress==0.3.0`, required for Metabrowser’s declarative embedding contract and
+  reviewed against `0.2.2` as a first-party release.
+  It adds no runtime dependency, makes fragment assets host-safe, removes per-request
+  fragment theme state, derives typography from one host base-size hook, and includes
+  the intervening `0.2.3` and `0.2.4` navigation, identifier, table, and presentation
+  changes;
 - `flowmark-rs==0.3.2`, used to format and verify Markdown.
   This first-party release was reviewed against `0.3.1`; its formatting output is
   unchanged, while its skill, publishing, and Markdown-parser configuration are more
   reliable.
+- `get-tbd==0.4.2`, this repository’s first-party issue tracker.
+  The tbd session hooks fall back to `npx --yes get-tbd@0.4.2` when the CLI is not
+  installed, and npm’s `min-release-age` has no per-package exclusion, so those exact
+  pinned invocations pass `--min-release-age=0` to stay usable inside the cool-off
+  window.
 
 The exceptions are package-scoped in configuration and do not weaken the global gate.
-Changing either version requires a new review and an updated rationale.
+Changing any of these versions requires a new review and an updated rationale.
 
-The copied agent-skill instructions name exact `get-tbd@0.4.0` bootstrap commands.
+The copied agent-skill instructions name exact `get-tbd@0.4.2` bootstrap commands.
 Those commands are operator-invoked documentation for installing this repository’s issue
 tracker; no build, hook, CI, test, or publishing path executes them.
 The skill files own that reviewed version and must be updated deliberately.

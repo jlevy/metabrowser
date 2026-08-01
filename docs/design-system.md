@@ -41,6 +41,83 @@ domain tokens, rather than in core `styles.css`.
 The shell uses a compact UI face for navigation and controls, a monospaced face for code
 and structured values, and KPress typography for rendered Markdown.
 
+### Type Scale
+
+Every font size in the app comes from the type-scale tokens defined in
+`static/styles.css` (see the `── Type scale ──` block in `:root`). Never inline a
+font-size literal at a use site.
+
+Chrome (interface) sizes:
+
+- `--body-font-size` (14px): primary chrome text — body default, inputs, empty states,
+  stat values.
+- `--nav-font-size` (13px): dense navigation rows and path breadcrumbs — tree items,
+  header path, file-header path.
+- `--ui-small-font-size` (12px): secondary chrome — metadata, chips, tooltips, notes,
+  filters, summaries.
+- `--label-font-size` (= ui-small): small-caps section labels — tabs, panel and table
+  headers, stat labels.
+  Labels differ by caps treatment, not by another size.
+- `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
+  views, logs, raw JSON.
+- `--micro-font-size` (10px): deliberately minimized marks — the brand line, code inside
+  truncation notes.
+
+Document (rendered prose) sizes, where mono and small derive from the body size so a
+document rescales as one unit:
+
+- `--document-body-font-size` (15px): prose, one size step above the 14px app body.
+- `--document-mono-font-size` (0.9×): code — smaller than prose by design; mono x-height
+  is larger, so this still reads close to the prose size.
+- `--document-small-font-size` (0.85×): secondary document text — TOC entries, captions,
+  footnotes.
+
+Embedded KPress documents set `--kpress-host-font-size-base` to
+`--document-body-font-size` on `:root`. KPress derives its full ramp, headings, bullets,
+labels, and offsets from that base.
+The scoped bridge overrides only intentional design differences: mono uses
+`--document-mono-font-size`, secondary document tiers use `--document-small-font-size`,
+and the CONTENTS label uses `--label-font-size` so it matches app labels.
+When adding a size, extend the ramp and its documentation; do not create a one-off.
+
+### KPress Base-Size Boundary
+
+The app pins all sizes in px and deliberately does not scale with the browser’s
+default-font-size preference.
+Standalone KPress documents preserve browser-preference scaling through a `1rem` base,
+but its embedded type system consumes the host’s px value through
+`--kpress-host-font-size-base`. Within a container-query band, every rendered font size
+and bullet offset derives from KPress’s internal base variable, so changing the browser
+root size cannot distort the embedded document’s type ratios.
+The host hook lives on `:root` so body-portaled KPress overlays inherit the same scale,
+and KPress can still re-root its internal base to the print size on paper.
+KPress deliberately keeps layout lengths and container-query thresholds root-relative; a
+root-size change near a responsive breakpoint can select a different heading tier.
+Verify the type boundary at a pane width that stays in the same band and confirm
+computed sizes are identical at two browser root sizes.
+
+### Embedded Document Themes
+
+Metabrowser owns one theme input for the embedded document:
+`data-kpress-resolved-theme="light|dark"` on the root.
+KPress fragments carry no theme or palette attributes, so one cached render works in
+both modes and a toggle never has to chase rendered elements.
+The default fragment manifest omits KPress’s standalone theme resolver; the host loads
+the entry points the manifest declares without maintaining a second exclusion list.
+KPress’s symmetric theme selectors keep its palette and `color-scheme` aligned, while
+the bridge maps the public `--kpress-doc-*` color tokens on both the fragment and
+body-portaled tooltips to Metabrowser’s semantic surface, text, border, muted, and link
+tokens.
+
+### Embedded Document Navigation
+
+Metabrowser requests KPress’s normalized TOC collapse depth `1`, which keeps the
+top-level section spine visible and lets scroll-follow open the active deeper branch.
+At KPress’s wide document band, the docked TOC is a borderless rail with a hidden but
+scrollable scrollbar.
+The narrow overlay drawer keeps its border and visible scrollbar so it remains distinct
+from the document it covers.
+
 Keep these roles distinct:
 
 - labels and metadata use normal weight and muted text;
@@ -99,15 +176,26 @@ Tables should:
 - wrap or scroll long paths without widening the entire page;
 - expose an explicit empty state instead of rendering a blank panel.
 
+## Source and Syntax Colors
+
+Metabrowser owns the complete Highlight.js semantic palette in `static/styles.css`.
+Highlight.js supplies token classes but no theme stylesheet, so light and dark colors
+cannot diverge through stylesheet timing or selector specificity.
+Every syntax foreground must meet WCAG AA contrast against the app and code surfaces in
+both themes.
+
 ## Charts
 
 Chart specifications use CSS-variable sentinels for color.
 `static/charts.js` resolves those variables before passing concrete colors to Chart.js,
 because canvas cannot resolve CSS custom properties itself.
+When the resolved theme changes, active charts rebuild from their unmodified token
+specs; SDK-created charts re-resolve token-bearing data and options in place.
 
 Charts must include text labels and usable summaries.
 Color alone cannot distinguish series, thresholds, or success and failure.
-Destroy Chart.js instances when their view is disposed.
+Destroy SDK-created Chart.js instances when their view is disposed so their theme
+subscription is also released.
 
 ## Motion
 

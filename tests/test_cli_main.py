@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import signal
 import subprocess
 import sys
@@ -30,6 +31,9 @@ from metabrowser.server_utils import MAX_TCP_PORT
 
 runner = CliRunner()
 
+# Rich may interleave panel borders between words when wrapping narrow output.
+RICH_PANEL_GLYPH_RE = re.compile(r"[│╭╮╰╯─]")
+
 
 class _ResultWithOutput(Protocol):
     """Structural result type shared by Click and Typer test runners."""
@@ -41,13 +45,13 @@ class _ResultWithOutput(Protocol):
 
 
 def _plain_output(result: _ResultWithOutput) -> str:
-    """Strip ANSI escape codes from a CliRunner result for substring asserts.
+    """Strip terminal styling and panel borders for substring assertions.
 
     Rich-rendered Typer help on narrow terminals (e.g. GitHub Actions) inserts
-    color/style codes mid-word, which breaks literal substring searches like
-    ``"--path" in result.output``. ``click.unstyle`` removes them.
+    style codes and panel borders inside logical phrases. Removing both makes
+    substring assertions independent of color and terminal width.
     """
-    return unstyle(result.output)
+    return RICH_PANEL_GLYPH_RE.sub(" ", unstyle(result.output))
 
 
 # ── Top-level surface ──────────────────────────────────────────
@@ -363,21 +367,36 @@ def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:
     assert f"Serving {root.resolve()}" in result.output
 
 
-def test_serve_removes_shutdown_filter_when_uvicorn_fails(tmp_path: Path) -> None:
+@pytest.mark.parametrize("failure", [None, RuntimeError("server stopped")])
+def test_serve_restores_uvicorn_logging_state(tmp_path: Path, failure: RuntimeError | None) -> None:
     root = tmp_path / "artifacts"
     root.mkdir()
     uvicorn_logger = logging.getLogger("uvicorn.error")
+    previous_level = uvicorn_logger.level
     uvicorn_logger.removeFilter(_shutdown_noise_filter)
 
-    with (
-        patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
-    ):
-        server_cls.return_value.run.side_effect = RuntimeError("server stopped")
-        result = runner.invoke(_app, [str(root), "--no-open"])
+    def force_exit() -> None:
+        uvicorn_logger.setLevel(logging.CRITICAL)
+        if failure is not None:
+            raise failure
 
-    assert isinstance(result.exception, RuntimeError)
-    assert _shutdown_noise_filter not in uvicorn_logger.filters
+    try:
+        uvicorn_logger.setLevel(logging.INFO)
+        with (
+            patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        ):
+            server_cls.return_value.run.side_effect = force_exit
+            result = runner.invoke(_app, [str(root), "--no-open"])
+
+        if failure is None:
+            assert result.exit_code == 0, result.exception
+        else:
+            assert result.exception is failure
+        assert uvicorn_logger.level == logging.INFO
+        assert _shutdown_noise_filter not in uvicorn_logger.filters
+    finally:
+        uvicorn_logger.setLevel(previous_level)
 
 
 def test_serve_loads_dotenv_before_expanding_home_relative_root(
@@ -436,8 +455,7 @@ def test_serve_rejects_file_root_with_path_as_usage_error(tmp_path: Path) -> Non
 
     assert result.exit_code == 2
     output = " ".join(_plain_output(result).split())
-    assert "cannot" in output
-    assert "combine with --path" in output
+    assert "cannot combine with --path" in output
 
 
 def test_serve_wildcard_bind_uses_loopback_url_and_keeps_host_validation(

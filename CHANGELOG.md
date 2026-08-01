@@ -4,6 +4,22 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+KPress embedding update:
+
+- KPress is upgraded to `0.3.0` and its declarative fragment architecture.
+  Metabrowser owns one root theme attribute and one root type-size hook, fragments are
+  theme-agnostic, the KPress asset manifest is authoritative, and host-side heading,
+  bullet, theme-restamping, resolver-filtering, and numeric-table workarounds are
+  removed.
+- Embedded document prose is now 15px, down from 17px and one step above the 14px app
+  body. KPress derives headings from that base, while proportional host tokens keep code
+  and secondary text tied to it, so the document hierarchy stays stable when the browser
+  root size changes.
+- Theme changes now keep embedded KPress content, full-file syntax highlighting, and
+  plugin charts aligned with the Metabrowser chrome.
+  The host owns the complete Highlight.js palette with WCAG AA contrast checks in both
+  themes, and token-colored canvas charts repaint when the resolved palette changes.
+
 Flat single-command CLI:
 
 - Serving is the default operation: `metab .` serves the current directory the way

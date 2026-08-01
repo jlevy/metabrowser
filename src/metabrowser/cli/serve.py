@@ -15,6 +15,7 @@ import threading
 import webbrowser
 from pathlib import Path
 from types import FrameType
+from typing import override
 from urllib.parse import quote
 
 import typer
@@ -81,6 +82,7 @@ class _QuietForceExitServer(uvicorn.Server):
     is actionable, so drop them all at the logger level instead.
     """
 
+    @override
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
         super().handle_exit(sig, frame)
         if self.force_exit:
@@ -181,6 +183,7 @@ def run_serve(
     # Browser tabs hold open SSE streams, so cancel in-flight local requests rather
     # than waiting indefinitely for graceful shutdown after Ctrl-C.
     uvicorn_logger = logging.getLogger("uvicorn.error")
+    original_uvicorn_log_level = uvicorn_logger.level
     uvicorn_logger.addFilter(_shutdown_noise_filter)
     try:
         _QuietForceExitServer(
@@ -194,3 +197,4 @@ def run_serve(
         ).run()
     finally:
         uvicorn_logger.removeFilter(_shutdown_noise_filter)
+        uvicorn_logger.setLevel(original_uvicorn_log_level)
