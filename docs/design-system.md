@@ -66,7 +66,7 @@ Chrome (interface) sizes:
 Document (rendered prose) sizes, where mono and small derive from the body size so a
 document rescales as one unit:
 
-- `--document-body-font-size` (17px): prose.
+- `--document-body-font-size` (15px): prose, one size step above the 14px app body.
 - `--document-mono-font-size` (0.9×): code — smaller than prose by design; mono x-height
   is larger, so this still reads close to the prose size.
 - `--document-small-font-size` (0.85×): secondary document text — TOC entries, captions,

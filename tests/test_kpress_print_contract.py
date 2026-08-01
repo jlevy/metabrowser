@@ -129,7 +129,8 @@ def test_embedded_markdown_toggle_labels_match_tabs() -> None:
 
 def test_embedded_markdown_body_uses_host_reading_size() -> None:
     css = _read_styles_css()
-    assert "--document-body-font-size: 17px;" in css
+    assert "--body-font-size: 14px;" in css
+    assert "--document-body-font-size: 15px;" in css
     root_start = css.index(":root {")
     root_block = css[root_start : root_start + 9_000]
     assert "--kpress-host-font-size-base: var(--document-body-font-size);" in root_block

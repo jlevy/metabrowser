@@ -192,7 +192,7 @@
 
      Document (rendered prose) sizes — mono and small are derived from
      the document body size so the document rescales as one unit:
-       --document-body-font-size   17px  prose
+       --document-body-font-size         prose (one step above chrome body)
        --document-mono-font-size   0.9×  code (mono x-height is larger,
                                    so a few percent smaller reads equal)
        --document-small-font-size  0.85× secondary document text (TOC
@@ -204,7 +204,7 @@
   --nav-font-size: 13px;
   --ui-small-font-size: 12px;
   --micro-font-size: 10px;
-  --document-body-font-size: 17px;
+  --document-body-font-size: 15px;
   --document-mono-font-size: calc(var(--document-body-font-size) * 0.9);
   --document-small-font-size: calc(var(--document-body-font-size) * 0.85);
   --kpress-host-font-size-base: var(--document-body-font-size);
@@ -2420,8 +2420,8 @@ pre.code-block code.hljs {
 }
 /* The markdown plugin's container carries md-body (for prose-styling
    compatibility) alongside metabrowser-kpress-host, so the .md-body code
-   rule above would clamp KPress-rendered code to the 12px chrome mono
-   token inside a 17px document. Inside an embedded KPress document,
+   rule above would clamp KPress-rendered code to the chrome mono token.
+   Inside an embedded KPress document,
    code sizing belongs to the KPress ramp. */
 .metabrowser-kpress-host .kpress code {
   font-size: var(--kpress-font-size-mono);
