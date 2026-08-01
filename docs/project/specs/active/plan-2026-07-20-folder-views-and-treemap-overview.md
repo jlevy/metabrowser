@@ -443,7 +443,7 @@ work stays off the request path for unrelated views.
 - [Design system](../../../design-system.md)
 - [Plugin authoring](../../../plugins.md)
 - [Scanning state and recent directories](plan-2026-07-16-scanning-state-and-recent-directories.md)
-- [Scalable file search](plan-2026-07-17-scalable-file-search.md)
+- [Quick file finder and search providers](plan-2026-07-17-scalable-file-search.md)
 - [Web diff viewer research brief](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
   (research-brief format precedent)
 - Related beads: mb-7uta (SDK streaming), mb-t1wt (plugin event subscription;

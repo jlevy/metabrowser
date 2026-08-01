@@ -109,7 +109,7 @@ directories.
 ## References
 
 - [Core architecture](../../../architecture.md)
-- [Scalable file search](plan-2026-07-17-scalable-file-search.md)
+- [Quick file finder and search providers](plan-2026-07-17-scalable-file-search.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -11,8 +11,8 @@ Checked items below are supported today; unchecked items are planned work.
   rendering can evolve independently
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
 - [ ] Add
-  [scalable file search](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
-  and evaluate optional persistent indexing for very large roots
+  [quick file finding and search providers](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md),
+  then evaluate optional persistent indexing for very large roots
 - [ ] Add
   [folder views and the treemap overview](docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md)
   so directories join the multi-view framework with a treemap default view

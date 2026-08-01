@@ -9,9 +9,8 @@
 ## Overview
 
 Metabrowser filters files in several unrelated ways today: the Recent tab is an age
-filter wearing a tab, the treemap exposes a compact gitignored visibility control, the
-planned search feature defines keyword, extension, and age predicates, and the tree dims
-gitignored rows unconditionally.
+filter wearing a tab, the treemap exposes a compact gitignored visibility control, and
+the tree dims gitignored rows unconditionally.
 Each surface invents its own controls.
 
 This plan defines one filtering vocabulary — a small set of dimensions, two application
@@ -37,8 +36,8 @@ place, and eventually retires.
 - Keep one `FilterState` in the shell, exposed through the SDK, so the navigation bar,
   the treemap, and future plugin views bind to the same state with the same chip and
   menu components
-- Treat the search spec’s keyword predicate as the one typed dimension of the same
-  vocabulary, and reuse its endpoint as the hide-mode tree provider
+- Keep transient file-finder and full-text queries outside persisted filter state, while
+  giving hide mode its own tree-shaped server projection
 - Keep dim mode purely client-side from data already in the store (`mtime_ns`, `ext`,
   `gitignored`, `active` are all on every entry), so filtering never blocks the tree
 - Fold the Recent tab into the Recent preset without losing what makes it good: the
@@ -46,11 +45,11 @@ place, and eventually retires.
 
 ## Non-Goals
 
-- Content search (the search spec owns keyword-over-paths; content search is separate)
+- Quick file finding and full-text search, which are transient discovery commands owned
+  by the search-provider plan
 - A second crawl or required persistent index.
-  The scalable-search plan owns the inventory revision and bounded search endpoint
-  needed for complete hide mode; `/api/recent` already accepts extension and prefix
-  filters.
+  Complete hide mode queries the existing inventory through a bounded filter projection;
+  `/api/recent` already accepts extension and prefix filters.
 - Saved or user-named filter combinations (presets are fixed in the first version)
 - Removing the Recent tab before the parity checklist in Phase 3 passes
 - Filtering inside non-listing views (a README or document view ignores filters)
@@ -68,9 +67,9 @@ What exists, and what each piece contributes to the unified model:
   Its `hidden` state relayouts from the `unignored_*` aggregate variants that
   `InventoryIndex.rollup` computes per request: the pattern that generalizes to
   arbitrary filtered aggregates.
-- The scalable-search plan defines keyword, logical-extension, and recency predicates
-  combined with AND, served by a bounded `/api/search` that returns matches plus the
-  ancestors needed to draw a tree — exactly a hide-mode tree provider.
+- A complete hide-mode response must contain matching files plus the ancestors needed to
+  draw a tree. That hierarchy is a filter projection, not the flat ranked result used by
+  quick file finding or the path-and-location result used by full-text search.
 - The active tracker flips `FsEntry.active` through the same event plane the store
   already consumes, so a Current filter updates live for rows inside the connection’s
   current event scope without new transport.
@@ -93,9 +92,9 @@ verification gate and a live browser pass:
   filters while treating Current as navigation-only
 - the existing Recent tab remains separate and unchanged
 
-The scalable part is still missing.
-The browser does not have a keyword field, `/api/search`, complete hide-mode projection,
-filtered rollup aggregates, or a revision-only signal for deep changes.
+Complete hide mode is still missing.
+The browser does not have complete hide-mode projection, filtered rollup aggregates, or
+a revision-only signal for deep changes.
 Dim mode only evaluates mounted rows, so it cannot discover files in lazy, unmounted
 subtrees.
 
@@ -107,8 +106,8 @@ Two correctness seams need explicit coverage before Phase 2:
   artifacts.
 - the browser event stream uses the depth-two scope.
   Current state and ordinary `fs.change` events for deeper files do not reach a loaded
-  deep row or an active search unless the event contract gains a scoped-safe revision or
-  expanded-prefix mechanism.
+  deep row or an active filter projection unless the event contract gains a scoped-safe
+  revision or expanded-prefix mechanism.
 
 ## Design
 
@@ -135,9 +134,9 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    the `RECENT_WINDOWS` set (minus `all`).
 5. **v1 has no standalone mode switch: age and type apply as dim everywhere; visibility
    keeps its three-state.** The hide half needs completeness guarantees (filtered rollup
-   aggregates server-side; `/api/search` for the nav) and lands in Phase 2. Visibility’s
-   `hidden` already has server support (`unignored_*` aggregates in the treemap) and
-   applies to the nav as a client-side prune of gitignored subtrees.
+   aggregates server-side; `/api/filter/tree` for the nav) and lands in Phase 2.
+   Visibility’s `hidden` already has server support (`unignored_*` aggregates in the
+   treemap) and applies to the nav as a client-side prune of gitignored subtrees.
    The dense treemap toolbar presents this as one **Show gitignored** checkbox: off
    writes `hidden`, and on writes `shown`. A `dimmed` value selected in the navigation
    menu remains valid shared state and appears checked because ignored entries are still
@@ -149,13 +148,15 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    byte-identical to today.
 7. **The Recent chip filters the Files tree; the Recent tab is untouched until the Phase
    3 parity checklist passes.** Nothing existing changes shape in Phase 1.
+8. **Search queries are not filter dimensions.** The `/` quick file finder and later
+   full-text mode are transient discovery commands with ranked results and navigation
+   actions. They do not persist in `mb.prefs`, alter filter chips, or dim the tree.
 
 ### The Vocabulary
 
 Three orthogonal parts, fixed across surfaces:
 
-1. **Dimensions** (what qualifies): activity, age, type, visibility, plus the typed
-   keyword dimension from the search spec.
+1. **Dimensions** (what qualifies): activity, age, type, and visibility.
    Dimensions combine with AND; values within a dimension combine with OR.
 2. **Mode** (what happens to non-matching entries): `dim` keeps them in place with the
    muted treatment the tree already uses for gitignored rows; `hide` removes them and
@@ -189,9 +190,9 @@ treemap dims cells or relayouts.
 
 ### Navigation Pane (simplified form)
 
-- A compact filter bar above the tree, outside the replaceable tree container (the
-  search spec’s placement rule): `[Current] [Recent] [⏷ filter menu]`, with an active
-  count badge on the menu button and a clear affordance when any filter is set.
+- A compact filter bar above the tree, outside the replaceable tree container:
+  `[Current] [Recent] [⏷ filter menu]`, with an active count badge on the menu button
+  and a clear affordance when any filter is set.
 - The Phase 1 menu holds age window chips (reusing `RECENT_WINDOWS`), type-family
   multi-select, the visibility three-state, and Clear.
   A general dim/hide mode switch appears only after complete server-backed hide mode
@@ -199,9 +200,9 @@ treemap dims cells or relayouts.
 - Dim mode (default): non-matching rows get the muted treatment client-side; matching
   rows keep their age and size coloring.
   No server round trip.
-- Hide mode: the tree renders from `/api/search` with an empty keyword and the active
-  ext/age predicates (matches plus ancestors, incompleteness reported) — this phase
-  depends on the scalable-search plan’s endpoint and falls back to dim until it lands.
+- Hide mode: the tree renders from `/api/filter/tree` with the active extension, age,
+  activity, and visibility predicates (matches plus ancestors, incompleteness reported)
+  and falls back to dim until that projection lands.
 - The Phase 1 Recent chip applies its age predicate to the Files tree.
   The existing recency-clustered presentation remains in the Recent tab until the Phase
   3 parity gate; Current shows live Files rows with the existing activity indicators.
@@ -230,9 +231,11 @@ treemap dims cells or relayouts.
 - `/api/rollup`: planned optional `max_age_seconds` and repeated `ext` values; response
   nodes carry `filtered_files` / `filtered_size` (and a filtered extension-tally column)
   only when requested.
-- `/api/search`: planned by the scalable-search spec and not implemented yet.
-  Unified hide mode uses an empty keyword with exact logical-extension and age
-  predicates.
+- `/api/filter/tree`: planned bounded projection over the existing inventory.
+  It returns matching file leaves plus ancestors, exact applied predicates, inventory
+  status and revision, and separate inventory and result truncation metadata.
+  It is distinct from the flat `/api/search/files` and location-oriented
+  `/api/search/text` contracts.
 - `/api/recent`: no change; its existing `ext_filter` composes with the Recent preset.
 
 ## Implementation Plan
@@ -257,9 +260,9 @@ treemap dims cells or relayouts.
   rollups, search, and the browser type-family classifier
 - [ ] `rollup()` filtered aggregates plus `/api/rollup` params and wire validators;
   hide-mode relayout and refetch; budget re-measured with filters active
-- [ ] Add the scalable-search endpoint, public inventory revision, and scoped-safe
-  revision invalidation described by the search plan
-- [ ] Hide mode on the nav through `/api/search`; do not ship loaded-rows-only hide
+- [ ] Add `/api/filter/tree`, a public inventory revision, and scoped-safe revision
+  invalidation shared with server-backed search providers
+- [ ] Hide mode on the nav through `/api/filter/tree`; do not ship loaded-rows-only hide
   semantics because they cannot distinguish an unmounted match from no match
 - [ ] Add nav DOM coverage for chip/menu keyboard behavior, Clear, the active badge,
   live deep-row updates, and compressed logical-type filtering
@@ -303,14 +306,14 @@ for predictability; all four are one-line changes if review says otherwise:
 Still genuinely open (deferred, not blocking Phase 1):
 
 - Phase 2: whether type-family expansion remains browser-owned or moves to a shared
-  declarative table. The search API should stay generic and accept exact logical
+  declarative table. The filter projection should stay generic and accept exact logical
   extensions.
 - Phase 3: the clustered presentation’s exact styling under the Recent preset
 
 ## References
 
-- [Scalable file search](plan-2026-07-17-scalable-file-search.md) (keyword dimension and
-  the hide-mode tree provider)
+- [Quick file finder and search providers](plan-2026-07-17-scalable-file-search.md)
+  (transient discovery, provider contracts, and shared inventory revision)
 - [Folder views and the treemap overview](plan-2026-07-20-folder-views-and-treemap-overview.md)
   (the gitignored three-state and filtered-aggregate precedent)
 - [Scanning state and recent directories](plan-2026-07-16-scanning-state-and-recent-directories.md)
