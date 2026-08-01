@@ -432,7 +432,7 @@ results hierarchical.
 
 ### Phase 1: Client-Only Quick File Finder
 
-- [ ] Write the fuzzy-ranking spike report and scenario fixture, including the named
+- [x] Write the fuzzy-ranking spike report and scenario fixture, including the named
   comparison vector, expected ordering, rationale, and a tuning-change checklist
 - [ ] Add the DOM-independent search controller, request identity, cancellation, batch
   metadata, provider registration, and flat file-result composition
