@@ -4,8 +4,8 @@ The CLI's console surface is pinned by the tryscript goldens in
 ``tests/golden/*.tryscript.md`` (run through ``make test``, regenerated
 with ``make golden-update``). Serve mode cannot run as a tryscript
 subprocess without binding a port and blocking on uvicorn, so its two
-banner scenarios stay here, where ``uvicorn.run`` and the port search
-are mockable in-process.
+banner scenarios stay here, where the uvicorn server and the port
+search are mockable in-process.
 
 Regenerate after an intended change with:
 
@@ -109,7 +109,7 @@ def _make_walk_fixture(tmp_path: Path) -> Path:
 def test_golden_serve_banner(tmp_path: Path) -> None:
     root = _make_walk_fixture(tmp_path)
     with (
-        patch("uvicorn.run"),
+        patch("metabrowser.cli.serve._QuietForceExitServer"),
         patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
     ):
         result = runner.invoke(_app, [str(root), "--no-open"])
@@ -125,7 +125,7 @@ def test_golden_serve_banner(tmp_path: Path) -> None:
 def test_golden_serve_file_root_deep_link(tmp_path: Path) -> None:
     root = _make_walk_fixture(tmp_path)
     with (
-        patch("uvicorn.run"),
+        patch("metabrowser.cli.serve._QuietForceExitServer"),
         patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
     ):
         result = runner.invoke(_app, [str(root / "data.jsonl"), "--no-open"])

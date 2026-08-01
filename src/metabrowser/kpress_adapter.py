@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from kpress import runtime as _kpress_runtime
-from kpress.models import KPressAsset, KPressExportRequest, ThemeMode
+from kpress.models import KPressAsset, KPressExportRequest
+
+# Keep the top-level section spine visible while scroll-follow opens the active branch.
+_TOC_COLLAPSE_DEPTH = 1
 
 
 class KPressRenderError(RuntimeError):
@@ -70,16 +73,10 @@ def render_kpress_view(
     frontmatter: dict[str, Any] | None = None,
     frontmatter_error: str | None = None,
     profile: str | None = None,
-    theme_mode: str = "system",
-    resolved_theme: str = "light",
 ) -> dict[str, Any]:
     """Render a Metabrowser file through KPress."""
 
     runtime = _kpress_runtime
-    if theme_mode not in {"system", "light", "dark"}:
-        raise KPressInvalidRequestError(f"Unsupported KPress theme mode {theme_mode!r}")
-    if resolved_theme not in {"light", "dark"}:
-        raise KPressInvalidRequestError(f"Unsupported resolved KPress theme {resolved_theme!r}")
     # KPress defaults to font_mode="custom", which uses vendored PT Serif /
     # Source Sans reader faces. Host fonts apply only when font_mode="host".
     request = runtime.KPressRenderRequest(
@@ -93,13 +90,13 @@ def render_kpress_view(
         frontmatter=frontmatter or {},
         frontmatter_error=frontmatter_error,
         profile=profile,
-        theme_mode=cast("ThemeMode", theme_mode),
-        resolved_theme=cast('Literal["light", "dark"]', resolved_theme),
+        include_theme_resolver=False,
         host="metabrowser",
         asset_url_prefix="/kpress-static/",
         # metabrowser shows the file path in its own file-header, so suppress
         # KPress's rendered <h1> doc header rather than hiding it with host CSS.
         show_doc_header=False,
+        toc_collapse_depth=_TOC_COLLAPSE_DEPTH,
     )
     try:
         return runtime.render_view(request)

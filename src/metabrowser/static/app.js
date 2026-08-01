@@ -397,6 +397,7 @@ function writePrefCookie(name, value) {
   }
 }
 
+/** @returns {"dark" | "light" | "system"} */
 function normalizeThemeMode(mode) {
   return THEME_MODES.indexOf(mode) >= 0 ? mode : "system";
 }
@@ -409,6 +410,7 @@ function systemPrefersDark() {
   }
 }
 
+/** @returns {"dark" | "light"} */
 function resolveTheme(mode) {
   var normalized = normalizeThemeMode(mode);
   if (normalized === "dark") {
@@ -484,21 +486,15 @@ function markChooserSegments(selector, dataKey, value) {
 function applyThemeMode(mode, persist) {
   var normalized = normalizeThemeMode(mode);
   var resolved = resolveTheme(normalized);
+  var previousResolved = document.documentElement.getAttribute("data-theme");
   document.documentElement.setAttribute("data-theme-mode", normalized);
   document.documentElement.setAttribute("data-theme", resolved);
-  // metabrowser owns the theme for embedded KPress documents. KPress's CSS keys
-  // off `:root[data-kpress-resolved-theme]` and `.kpress[data-kpress-theme]`, so
-  // drive both off our toggle. Its own theme.js is intentionally not loaded in
-  // the embedded host (see loadKpressAssets in plugin_sdk.js) — otherwise it
-  // would write these from the viewer's system preference and override us.
-  document.documentElement.setAttribute("data-kpress-theme", normalized);
+  // Metabrowser is the single theme owner for embedded KPress fragments.
+  // KPress reads this resolved value from the root; fragments remain
+  // theme-agnostic and its automatic manifest omits the standalone resolver.
   document.documentElement.setAttribute("data-kpress-resolved-theme", resolved);
-  // Already-rendered docs baked their theme attributes at render time; re-sync
-  // them so a toggle after a render takes effect without a re-fetch.
-  var docs = document.querySelectorAll(".metabrowser-kpress-host .kpress");
-  for (var i = 0; i < docs.length; i++) {
-    docs[i].setAttribute("data-kpress-theme", normalized);
-    docs[i].setAttribute("data-kpress-resolved-theme", resolved);
+  if (previousResolved !== resolved) {
+    window.MetabrowserTheme.notifyChanged({ mode: normalized, resolved: resolved });
   }
   if (persist) {
     writePrefCookie(THEME_MODE_KEY, normalized);

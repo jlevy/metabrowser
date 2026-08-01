@@ -56,7 +56,20 @@ type MetabrowserChartRuntime = {
 };
 
 type MetabrowserChartInstance = {
+  data: Record<string, unknown>;
   destroy(): void;
+  options: Record<string, unknown>;
+  update(mode?: string): void;
+};
+
+type MetabrowserThemeChange = {
+  mode: "dark" | "light" | "system";
+  resolved: "dark" | "light";
+};
+
+type MetabrowserThemeRuntime = {
+  notifyChanged(detail: MetabrowserThemeChange): void;
+  subscribe(listener: (detail: MetabrowserThemeChange) => void): () => void;
 };
 
 type MetabrowserPluginData = {
@@ -201,6 +214,12 @@ type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
   ageLabelHtml(mtimeSeconds: number | null | undefined): string;
   builtins: MetabrowserBuiltins;
+  chart(
+    container: HTMLElement | HTMLCanvasElement,
+    type: string,
+    data: Record<string, unknown>,
+    options?: Record<string, unknown>,
+  ): MetabrowserChartInstance;
   escapeHtml(value: string): string;
   fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
   fileTypeClass(path: string): string;
@@ -314,6 +333,7 @@ declare global {
     };
     MetabrowserFilterState?: MetabrowserFilterStateApi;
     MetabrowserIcons?: Record<string, string>;
+    MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {

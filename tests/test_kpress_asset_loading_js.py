@@ -40,13 +40,13 @@ def test_kpress_browser_assets_honor_manifest_loading_modes() -> None:
         for node in payload["appended"]
         if node["tagName"] == "SCRIPT" and node["type"] != "importmap"
     ]
-    # theme.js is skipped (metabrowser owns the theme); toc.js is loaded via
-    # dynamic import (so the host drives initKpressToc per render) and is not
-    # appended as a script tag; dependency-only runtime.js is also not emitted.
-    # The remaining module and classic entry points preserve manifest order.
+    # The manifest is authoritative. toc.js is loaded via dynamic import (so
+    # the host drives initKpressToc per render) and dependency-only runtime.js
+    # is not emitted. Remaining entry points preserve manifest order.
     assert [script["src"] for script in scripts] == [
-        "/kpress-static/v0.2.2/js/code-copy.js",
-        "/kpress-static/v0.2.2/katex/katex.min.js",
+        "/kpress-static/v0.3.0/js/theme.js",
+        "/kpress-static/v0.3.0/js/code-copy.js",
+        "/kpress-static/v0.3.0/katex/katex.min.js",
     ]
-    assert [script["type"] for script in scripts] == ["module", "text/javascript"]
+    assert [script["type"] for script in scripts] == ["module", "module", "text/javascript"]
     assert all(script["async"] is False for script in scripts)

@@ -44,12 +44,6 @@ ENTRIES: tuple[VendorEntry, ...] = (
     VendorEntry("@highlightjs/cdn-assets", "highlight.min.js", "highlight.min.js", "LICENSE"),
     VendorEntry(
         "@highlightjs/cdn-assets",
-        "styles/github.min.css",
-        "highlight-github.min.css",
-        "LICENSE",
-    ),
-    VendorEntry(
-        "@highlightjs/cdn-assets",
         "languages/ini.min.js",
         "highlight-toml.min.js",
         "LICENSE",
