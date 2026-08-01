@@ -39,8 +39,12 @@ Confirm:
 
 Three exact first-party releases are exempt from the ordinary cool-off for this release:
 
-- `kpress==0.2.2`, required for the first Metabrowser release and reviewed as a
-  compatible first-party maintenance update with no added dependencies;
+- `kpress==0.3.0`, required for Metabrowser’s declarative embedding contract and
+  reviewed against `0.2.2` as a first-party release.
+  It adds no runtime dependency, makes fragment assets host-safe, removes per-request
+  fragment theme state, derives typography from one host base-size hook, and includes
+  the intervening `0.2.3` and `0.2.4` navigation, identifier, table, and presentation
+  changes;
 - `flowmark-rs==0.3.2`, used to format and verify Markdown.
   This first-party release was reviewed against `0.3.1`; its formatting output is
   unchanged, while its skill, publishing, and Markdown-parser configuration are more

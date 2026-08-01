@@ -730,6 +730,7 @@ async def index(_request: Request) -> HTMLResponse:
     initial_path = _initial_path_html()
     initial_file_path = _initial_file_path()
     styles_url = _static_asset_url("styles.css")
+    theme_state_url = _static_asset_url("theme_state.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
@@ -774,6 +775,7 @@ async def index(_request: Request) -> HTMLResponse:
     var de = document.documentElement;
     de.setAttribute("data-theme-mode", mode);
     de.setAttribute("data-theme", resolved);
+    de.setAttribute("data-kpress-resolved-theme", resolved);
     de.setAttribute("data-prose-font", cookie("metabrowser.proseFont") === "sans" ? "sans" : "serif");
     var fontSets = __FONT_VALUES__;
     var fontPref = cookie("metabrowser.interfaceFont");
@@ -886,13 +888,9 @@ async def index(_request: Request) -> HTMLResponse:
   {theme_bootstrap}
   <!-- All third-party assets are vendored into the wheel and served
        same-origin (see static/vendor/manifest.json), so the page loads
-       with no external origins and works offline. The highlight
-       stylesheet stays non-render-blocking: syntax CSS is enhancement,
-       not first-paint critical. -->
+       with no external origins and works offline. -->
   <link rel="stylesheet" href="{styles_url}">
   {plugin_styles}
-  <link rel="stylesheet" href="{_static_asset_url("vendor/highlight-github.min.css")}" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="{_static_asset_url("vendor/highlight-github.min.css")}"></noscript>
 </head>
 <body>
   <main class="container">
@@ -953,6 +951,7 @@ async def index(_request: Request) -> HTMLResponse:
        highlight-toml.min.js. -->
   {perf_block}
   {settings_block}
+  <script src="{theme_state_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
@@ -1508,8 +1507,6 @@ async def api_kpress_render(request: Request) -> JSONResponse:
     subpath = request.query_params.get("path", "")
     view = request.query_params.get("view", "document")
     profile = request.query_params.get("profile", "") or None
-    theme_mode = request.query_params.get("theme_mode", "system")
-    resolved_theme = request.query_params.get("resolved_theme", "light")
 
     target = _safe_path(subpath)
     if target is None or not target.is_file():
@@ -1620,8 +1617,6 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             frontmatter=frontmatter,
             frontmatter_error=frontmatter_error,
             profile=profile,
-            theme_mode=theme_mode,
-            resolved_theme=resolved_theme,
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -1647,9 +1642,9 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
 
 _KPRESS_EXPORT_MODES_SUPPORTED = {"page", "static-hosted", "hashed-static-hosted", "pdf"}
-# `single-file` is deferred by the KPress v0.2.2 contract. Reject explicitly so callers
+# `single-file` is deferred by the KPress v0.3.0 contract. Reject explicitly so callers
 # see a clear 400 with the reason rather than a half-supported artifact. The external
-# package is authoritative: https://github.com/jlevy/kpress/blob/v0.2.2/docs/kpress-design.md
+# package is authoritative: https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-design.md
 _KPRESS_EXPORT_MODES_DEFERRED = {"single-file"}
 _KPRESS_EXPORT_ASSET_MODES_SUPPORTED = {"linked", "hashed"}
 

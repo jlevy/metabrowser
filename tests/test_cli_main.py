@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +29,9 @@ from metabrowser.server_utils import MAX_TCP_PORT
 
 runner = CliRunner()
 
+# Rich may interleave panel borders between words when wrapping narrow output.
+RICH_PANEL_GLYPH_RE = re.compile(r"[│╭╮╰╯─]")
+
 
 class _ResultWithOutput(Protocol):
     """Structural result type shared by Click and Typer test runners."""
@@ -39,13 +43,13 @@ class _ResultWithOutput(Protocol):
 
 
 def _plain_output(result: _ResultWithOutput) -> str:
-    """Strip ANSI escape codes from a CliRunner result for substring asserts.
+    """Strip terminal styling and panel borders for substring assertions.
 
     Rich-rendered Typer help on narrow terminals (e.g. GitHub Actions) inserts
-    color/style codes mid-word, which breaks literal substring searches like
-    ``"--path" in result.output``. ``click.unstyle`` removes them.
+    style codes and panel borders inside logical phrases. Removing both makes
+    substring assertions independent of color and terminal width.
     """
-    return unstyle(result.output)
+    return RICH_PANEL_GLYPH_RE.sub(" ", unstyle(result.output))
 
 
 # ── Top-level surface ──────────────────────────────────────────
@@ -408,8 +412,7 @@ def test_serve_rejects_file_root_with_path_as_usage_error(tmp_path: Path) -> Non
 
     assert result.exit_code == 2
     output = " ".join(_plain_output(result).split())
-    assert "cannot" in output
-    assert "combine with --path" in output
+    assert "cannot combine with --path" in output
 
 
 def test_serve_wildcard_bind_uses_loopback_url_and_keeps_host_validation(
