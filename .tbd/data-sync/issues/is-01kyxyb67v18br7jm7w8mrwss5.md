@@ -3,9 +3,9 @@ type: is
 id: is-01kyxyb67v18br7jm7w8mrwss5
 title: "Spike: slash-key fuzzy quick file navigation"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels:
   - spike
@@ -23,7 +23,7 @@ child_order_hints:
   - is-01kyxz0fjsxaww2zkypg8wy78m
   - is-01kyxz0qkyygz3saxrxtzx3kqx
 created_at: 2026-08-01T05:56:54.138Z
-updated_at: 2026-08-01T06:08:40.061Z
+updated_at: 2026-08-01T06:20:45.234Z
 ---
 Deliver the complete client-only Phase 1 spike: pressing slash opens a keyboard-first file finder, typing fuzzy-matches every filename observed by the browser, and accepting a result navigates to that file without a search request. The epic includes a documented and fixture-driven ranking algorithm, bounded and cancellable local search, accessible palette behavior, navigation and stale-result recovery, performance evidence, live-browser validation, and final spike findings. It intentionally excludes complete server filename search and file-content search.
 
