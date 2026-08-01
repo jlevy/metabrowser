@@ -21,8 +21,8 @@
       "id": "exact-basename",
       "query": "app.js",
       "candidates": ["src/application.js", "src/app.js", "examples/app.jsx"],
-      "expected": ["src/app.js"],
-      "rationale": "An exact basename is eligible and outranks non-matches and longer prefixes.",
+      "expected": ["src/app.js", "examples/app.jsx", "src/application.js"],
+      "rationale": "An exact basename outranks a longer basename prefix and an ordered-subsequence match.",
       "tags": ["exact"]
     },
     {
@@ -93,16 +93,16 @@
       "id": "repeated-characters",
       "query": "rdr",
       "candidates": ["src/renderer.js", "src/reader.js", "src/render.js"],
-      "expected": ["src/reader.js", "src/renderer.js"],
-      "rationale": "Repeated query characters consume distinct candidate positions; the shorter equal-gap match wins.",
+      "expected": ["src/reader.js", "src/render.js", "src/renderer.js"],
+      "rationale": "Repeated query characters consume distinct candidate positions; shorter equal-gap matches win before stable path ties.",
       "tags": ["repeated", "length"]
     },
     {
       "id": "case-insensitive-prefix",
       "query": "readme",
       "candidates": ["docs/Readme.mdx", "README.md", "docs/read-me.md"],
-      "expected": ["README.md", "docs/Readme.mdx"],
-      "rationale": "Case does not affect eligibility; shorter basename prefixes rank first.",
+      "expected": ["README.md", "docs/Readme.mdx", "docs/read-me.md"],
+      "rationale": "Case does not affect eligibility; basename prefixes rank before a separator-assisted subsequence.",
       "tags": ["case", "prefix"]
     },
     {
