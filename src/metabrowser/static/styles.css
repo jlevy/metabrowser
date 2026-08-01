@@ -330,18 +330,27 @@
   /* Code block backgrounds */
   --code-bg: hsl(210 29% 97%);
 
-  /* Syntax-color tokens for the structured (JSON/YAML) tree view.
-     Light values have matching [data-theme="dark"] variants. Hues line up
-     with the existing palette
-     so colors don't drift between the structured tree and any other
-     code-coloring surface a future plugin might introduce. */
+  /* Syntax colors shared by Highlight.js source views and the structured
+     JSON/YAML tree. Every foreground meets WCAG AA against both --bg and
+     --code-bg; diff foregrounds are checked against their own surfaces.
+     The async vendor stylesheet supplies layout only: the host mappings in
+     the Highlight.js integration block below own every semantic color. */
+  --color-syntax-keyword: hsl(355 65% 44%);
+  --color-syntax-title: hsl(265 55% 46%);
   --color-syntax-string: hsl(140 50% 32%);
-  --color-syntax-number: hsl(28 75% 42%);
-  --color-syntax-bool: hsl(265 55% 50%);
-  --color-syntax-null: hsl(0 0% 55%);
+  --color-syntax-number: hsl(28 75% 38%);
+  --color-syntax-bool: var(--color-syntax-title);
+  --color-syntax-null: hsl(208 7% 42%);
   --color-syntax-key: hsl(208 60% 35%);
-  --color-syntax-punct: hsl(0 0% 45%);
-  --color-syntax-summary: hsl(0 0% 60%);
+  --color-syntax-built-in: var(--color-syntax-number);
+  --color-syntax-comment: var(--color-syntax-null);
+  --color-syntax-tag: var(--color-syntax-string);
+  --color-syntax-punct: var(--color-syntax-null);
+  --color-syntax-summary: var(--color-syntax-null);
+  --color-syntax-addition: hsl(140 50% 28%);
+  --color-syntax-addition-bg: hsl(140 60% 95%);
+  --color-syntax-deletion: hsl(355 65% 40%);
+  --color-syntax-deletion-bg: hsl(355 70% 95%);
 
   /* Row height for the structured plugin's virtualized list. Read at
      render time from --tree-row-height (parseFloat → px); changing
@@ -756,6 +765,23 @@
   --link: hsl(204 88% 66%);
   --muted: hsl(215 12% 68%);
   --code-bg: hsl(220 18% 14%);
+
+  --color-syntax-keyword: hsl(355 80% 72%);
+  --color-syntax-title: hsl(265 75% 78%);
+  --color-syntax-string: hsl(140 55% 68%);
+  --color-syntax-number: hsl(28 85% 70%);
+  --color-syntax-bool: var(--color-syntax-title);
+  --color-syntax-null: var(--muted);
+  --color-syntax-key: hsl(208 80% 72%);
+  --color-syntax-built-in: var(--color-syntax-number);
+  --color-syntax-comment: var(--color-syntax-null);
+  --color-syntax-tag: var(--color-syntax-string);
+  --color-syntax-punct: var(--color-syntax-null);
+  --color-syntax-summary: var(--color-syntax-null);
+  --color-syntax-addition: hsl(140 55% 75%);
+  --color-syntax-addition-bg: hsl(140 45% 16%);
+  --color-syntax-deletion: hsl(355 80% 82%);
+  --color-syntax-deletion-bg: hsl(355 55% 18%);
 
   --panel-header-bg: hsl(222 17% 18%);
   --scrollbar-thumb: hsl(220 10% 36%);
@@ -2335,10 +2361,89 @@ html[data-prose-font="sans"] {
 pre.code-block code.hljs {
   padding: 0;
 }
-/* Override highlight.js theme defaults to use our design tokens */
-.hljs {
+/* Highlight.js's light GitHub theme loads asynchronously after this sheet, so
+   each host-owned selector carries greater specificity than its vendor peer.
+   This keeps every language on the shared semantic palette in both themes. */
+html .hljs {
   background: var(--code-bg);
   color: var(--text);
+}
+html .hljs .hljs-doctag,
+html .hljs .hljs-keyword,
+html .hljs .hljs-meta .hljs-keyword,
+html .hljs .hljs-template-tag,
+html .hljs .hljs-template-variable,
+html .hljs .hljs-type,
+html .hljs .hljs-variable.language_ {
+  color: var(--color-syntax-keyword);
+}
+html .hljs .hljs-title,
+html .hljs .hljs-title.class_,
+html .hljs .hljs-title.class_.inherited__,
+html .hljs .hljs-title.function_ {
+  color: var(--color-syntax-title);
+}
+html .hljs .hljs-attr,
+html .hljs .hljs-attribute,
+html .hljs .hljs-meta,
+html .hljs .hljs-operator,
+html .hljs .hljs-selector-attr,
+html .hljs .hljs-selector-class,
+html .hljs .hljs-selector-id,
+html .hljs .hljs-variable {
+  color: var(--color-syntax-key);
+}
+html .hljs .hljs-literal {
+  color: var(--color-syntax-bool);
+}
+html .hljs .hljs-number {
+  color: var(--color-syntax-number);
+}
+html .hljs .hljs-meta .hljs-string,
+html .hljs .hljs-regexp,
+html .hljs .hljs-string {
+  color: var(--color-syntax-string);
+}
+html .hljs .hljs-built_in,
+html .hljs .hljs-symbol {
+  color: var(--color-syntax-built-in);
+}
+html .hljs .hljs-code,
+html .hljs .hljs-comment,
+html .hljs .hljs-formula {
+  color: var(--color-syntax-comment);
+}
+html .hljs .hljs-name,
+html .hljs .hljs-quote,
+html .hljs .hljs-selector-pseudo,
+html .hljs .hljs-selector-tag {
+  color: var(--color-syntax-tag);
+}
+html .hljs .hljs-subst,
+html .hljs .hljs-emphasis,
+html .hljs .hljs-strong {
+  color: var(--text);
+}
+html .hljs .hljs-section {
+  color: var(--color-syntax-key);
+  font-weight: var(--weight-bold);
+}
+html .hljs .hljs-bullet {
+  color: var(--color-syntax-number);
+}
+html .hljs .hljs-emphasis {
+  font-style: italic;
+}
+html .hljs .hljs-strong {
+  font-weight: var(--weight-bold);
+}
+html .hljs .hljs-addition {
+  color: var(--color-syntax-addition);
+  background-color: var(--color-syntax-addition-bg);
+}
+html .hljs .hljs-deletion {
+  color: var(--color-syntax-deletion);
+  background-color: var(--color-syntax-deletion-bg);
 }
 /* Full-file code views (source/raw tabs): the whole pane IS code, so
    render it flat on --bg, matching rendered prose and the structured
