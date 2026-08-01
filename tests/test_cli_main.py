@@ -409,7 +409,8 @@ def test_serve_rejects_file_root_with_path_as_usage_error(tmp_path: Path) -> Non
     assert result.exit_code == 2
     output = " ".join(_plain_output(result).split())
     assert "cannot" in output
-    assert "combine with --path" in output
+    assert "combine" in output
+    assert "with --path" in output
 
 
 def test_serve_wildcard_bind_uses_loopback_url_and_keeps_host_validation(
