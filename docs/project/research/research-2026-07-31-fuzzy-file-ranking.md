@@ -120,6 +120,62 @@ larger catalogs, checking cancellation between chunks.
 The evidence does not justify a Worker or secondary client index yet because chunking
 can preserve input responsiveness without another state-transfer boundary.
 
+## Search Runtime Validation
+
+The repeatable profile in `tests/dom/search_controller_profile.js` measures the complete
+local provider and controller path, including catalog snapshots, ranking, bounded
+retention, chunk yields, cancellation, and result composition.
+The provider publishes one completed batch, so `firstResultMs` is also completion
+latency in Phase 1.
+
+On the same arm64 development machine and Node 24.18.0, one validation run produced:
+
+| Fixture | Candidates | First result | Queued-input delay | Yields | Results passed to UI |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Shallow | 50 | 0.67 ms | Not applicable | 0 | 50 |
+| Recent-sized | 2,000 | 28.88 ms | 2.78 ms | 7 | 100 |
+| Heavily expanded | 50,000 | 783.10 ms | 12.59 ms | 199 | 100 |
+
+The queued timer ran before both large searches completed, showing that the
+250-candidate chunks return control to the browser.
+A superseded 5,000-candidate query was aborted and never published a completion.
+The provider made zero fetch calls.
+The palette DOM test independently verifies that it mounts no more than its configured
+result limit.
+
+A real-browser fixture contained 2,315 files from shallow, Recent-sized, and lazy deep
+sources. The initial catalog exposed 2,053 observed files.
+Recursive lazy loading raised that count to 2,314 while leaving the target beyond the
+tree’s 200-row mount cap; loading the remaining nested source raised the catalog to all
+2,315 fixture files.
+The unmounted target matched in 57 ms and opened through normal preview navigation.
+A broad query over the same catalog returned in 69 ms, while the input action returned
+in 15 ms and the palette mounted exactly 100 rows.
+A rapid broad-to-specific query published only the specific result.
+
+The same browser pass confirmed one palette instance, focus transfer to the preview,
+focus restoration on dismissal, editable slash handling, keyboard and pointer opening,
+duplicate-basename display, and stale-file recovery with the query preserved.
+The accessible tree exposed a labelled modal dialog, expanded combobox, listbox,
+selected option, and polite status region.
+Browser diagnostics contained no warnings or errors.
+The local modules define no search endpoint, and the headless provider test fails on any
+fetch call.
+
+No ranking policy changed during validation.
+Exact `index.js` duplicates placed `tests/index.js` before `src/components/index.js`
+because the earlier comparison components tied and the shorter candidate won.
+The path-aware query `src/index` selected only `src/components/index.js`, which is the
+intended disambiguation behavior.
+
+The 50,000-file completion time is visible enough that progressive result publication or
+a Worker may become worthwhile for unusually large observed catalogs.
+Current evidence does not justify either boundary: input delay remained below one frame
+on this machine, normal Recent-sized searches completed in about 29 ms, and Phase 1
+catalogs are partial.
+Reconsider a Worker if representative target hardware exceeds the input-delay budget or
+if later complete catalogs make 50,000-candidate scans routine.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

@@ -448,7 +448,7 @@ results hierarchical.
   headless contract test proving the local provider can run without palette DOM
 - [x] Inject the existing navigation action, return an open outcome, and handle stale
   not-found candidates without losing the active query
-- [ ] Add performance fixtures for result latency, input responsiveness, and DOM count
+- [x] Add performance fixtures for result latency, input responsiveness, and DOM count
   across shallow, Recent-sized, and heavily expanded client catalogs
 
 ### Phase 2: Complete Filename Search
