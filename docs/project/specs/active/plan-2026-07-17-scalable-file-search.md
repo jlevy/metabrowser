@@ -442,9 +442,9 @@ results hierarchical.
   scoring, match ranges, stable ties, and shared golden fixtures
 - [x] Add a local provider that searches all catalog candidates, retains a bounded top
   set, yields during large scans, and cancels obsolete queries
-- [ ] Add `search_palette.js`, the `/` shortcut, accessible dialog and listbox behavior,
+- [x] Add `search_palette.js`, the `/` shortcut, accessible dialog and listbox behavior,
   focus restoration, pointer interaction, and a visible candidate-completeness status
-- [ ] Keep palette rendering and selection state outside provider implementations; add a
+- [x] Keep palette rendering and selection state outside provider implementations; add a
   headless contract test proving the local provider can run without palette DOM
 - [ ] Inject the existing navigation action, return an open outcome, and handle stale
   not-found candidates without losing the active query

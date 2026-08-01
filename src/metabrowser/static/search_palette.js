@@ -1,0 +1,525 @@
+// Accessible, keyboard-first surface for browser-local file navigation.
+
+(() => {
+  let paletteSerial = 0;
+
+  /**
+   * @typedef {object} PaletteResult
+   * @property {string} description
+   * @property {string} id
+   * @property {"file"} kind
+   * @property {string} label
+   * @property {readonly Readonly<{start: number, end: number}>[]} matchRanges
+   * @property {string} path
+   */
+
+  /**
+   * @typedef {object} PaletteSearchState
+   * @property {"idle" | "searching" | "complete"} phase
+   * @property {Readonly<{query: string}> | null} request
+   * @property {readonly PaletteResult[]} results
+   * @property {string} statusMessage
+   * @property {boolean} truncated
+   */
+
+  /**
+   * @typedef {object} PaletteController
+   * @property {() => void} cancel
+   * @property {(request: {target: "file", match: "fuzzy", query: string}) =>
+   *   Promise<PaletteSearchState | null>} search
+   * @property {(listener: (state: PaletteSearchState) => void) => () => void} subscribe
+   */
+
+  /**
+   * @typedef {object} OpenOutcome
+   * @property {HTMLElement | null} [focusTarget]
+   * @property {string} [message]
+   * @property {"opened" | "not-found" | "error" | "cancelled"} status
+   */
+
+  /** @param {unknown} value @returns {value is HTMLElement} */
+  function focusable(value) {
+    return Boolean(value && typeof (/** @type {{focus?: unknown}} */ (value).focus) === "function");
+  }
+
+  /** @param {EventTarget | null} target */
+  function isEditableTarget(target) {
+    if (!target || typeof (/** @type {{tagName?: unknown}} */ (target).tagName) !== "string") {
+      return false;
+    }
+    const element = /** @type {HTMLElement} */ (target);
+    const tagName = element.tagName.toLowerCase();
+    return (
+      tagName === "input" ||
+      tagName === "textarea" ||
+      tagName === "select" ||
+      element.isContentEditable
+    );
+  }
+
+  /** @param {string} value */
+  function stableIdToken(value) {
+    let hash = 5381;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = (hash * 33) ^ value.charCodeAt(index);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  /**
+   * Append text and matching marks without interpreting result strings as markup.
+   * @param {Document} hostDocument
+   * @param {HTMLElement} container
+   * @param {string} text
+   * @param {readonly Readonly<{start: number, end: number}>[]} ranges
+   * @param {number} pathOffset
+   */
+  function appendHighlightedText(hostDocument, container, text, ranges, pathOffset) {
+    let cursor = 0;
+    for (const range of ranges) {
+      const start = Math.max(0, range.start - pathOffset);
+      const end = Math.min(text.length, range.end - pathOffset);
+      if (end <= 0 || start >= text.length || end <= start) {
+        continue;
+      }
+      const boundedStart = Math.max(cursor, start);
+      if (boundedStart > cursor) {
+        container.append(hostDocument.createTextNode(text.slice(cursor, boundedStart)));
+      }
+      if (end > boundedStart) {
+        const mark = hostDocument.createElement("mark");
+        mark.textContent = text.slice(boundedStart, end);
+        container.append(mark);
+        cursor = end;
+      }
+    }
+    if (cursor < text.length) {
+      container.append(hostDocument.createTextNode(text.slice(cursor)));
+    }
+  }
+
+  /**
+   * @param {{
+   *   controller: PaletteController,
+   *   document?: Document,
+   *   getCatalogSnapshot: () => {complete: boolean, observedCount: number},
+   *   getFileIcon?: (path: string) => {cls?: string, svg?: string},
+   *   maxRows?: number,
+   *   onNotFound?: (path: string) => void | Promise<void>,
+   *   openFile: (path: string) => OpenOutcome | Promise<OpenOutcome>,
+   * }} options
+   */
+  function create(options) {
+    if (!options?.controller || typeof options.openFile !== "function") {
+      throw new TypeError("Search palette requires a controller and open-file action");
+    }
+    const hostDocument = options.document || window.document;
+    if (!hostDocument?.body) {
+      throw new Error("Search palette requires a document body");
+    }
+    const maxRows =
+      typeof options.maxRows === "number" && Number.isFinite(options.maxRows) && options.maxRows > 0
+        ? Math.floor(options.maxRows)
+        : 100;
+    paletteSerial += 1;
+    const idPrefix = `metabrowser-quick-file-${paletteSerial}`;
+
+    const overlay = hostDocument.createElement("div");
+    overlay.className = "search-palette-overlay";
+    overlay.hidden = true;
+
+    const dialog = hostDocument.createElement("section");
+    dialog.className = "search-palette-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", `${idPrefix}-title`);
+
+    const title = hostDocument.createElement("h2");
+    title.className = "search-palette-title";
+    title.id = `${idPrefix}-title`;
+    title.textContent = "Quick File";
+
+    const input = hostDocument.createElement("input");
+    input.className = "search-palette-input";
+    input.id = `${idPrefix}-query`;
+    input.setAttribute("type", "text");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-label", "Find a known file");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", `${idPrefix}-results`);
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("spellcheck", "false");
+    input.setAttribute("placeholder", "Type a file name or path");
+
+    const listbox = hostDocument.createElement("div");
+    listbox.className = "search-palette-results";
+    listbox.id = `${idPrefix}-results`;
+    listbox.setAttribute("role", "listbox");
+    listbox.setAttribute("aria-label", "Known file matches");
+
+    const status = hostDocument.createElement("div");
+    status.className = "search-palette-status";
+    status.id = `${idPrefix}-status`;
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.setAttribute("aria-atomic", "true");
+
+    const hint = hostDocument.createElement("div");
+    hint.className = "search-palette-hint";
+    hint.textContent = "↑↓ choose · Enter open · Esc close";
+
+    dialog.append(title, input, listbox, status, hint);
+    overlay.append(dialog);
+    hostDocument.body.append(overlay);
+
+    /** @type {PaletteResult[]} */
+    let results = [];
+    /** @type {PaletteSearchState | null} */
+    let searchState = null;
+    /** @type {HTMLElement | null} */
+    let previousFocus = null;
+    /** @type {string | null} */
+    let selectedResultId = null;
+    let activeIndex = -1;
+    let actionStatus = "";
+    let opening = false;
+    let disposed = false;
+    let actionSerial = 0;
+
+    function renderStatus() {
+      const query = input.value.trim();
+      if (actionStatus) {
+        status.textContent = actionStatus;
+        return;
+      }
+      if (!query) {
+        const snapshot = options.getCatalogSnapshot();
+        const coverage = snapshot.complete ? "" : " Local coverage is incomplete.";
+        status.textContent = `Type a filename to search ${snapshot.observedCount} observed files.${coverage}`;
+        return;
+      }
+      if (!searchState || searchState.phase === "searching") {
+        const snapshot = options.getCatalogSnapshot();
+        status.textContent = `Searching ${snapshot.observedCount} observed files…`;
+        return;
+      }
+      const limitMessage = searchState.truncated ? " Results are limited." : "";
+      status.textContent = `${searchState.statusMessage || "No known file matches."}${limitMessage}`;
+    }
+
+    /** @param {PaletteResult} result */
+    function optionId(result) {
+      return `${idPrefix}-option-${stableIdToken(result.id)}`;
+    }
+
+    /** @param {boolean} scroll */
+    function syncActiveOption(scroll) {
+      const optionsNodes = listbox.querySelectorAll('[role="option"]');
+      optionsNodes.forEach((optionNode, index) => {
+        const active = index === activeIndex;
+        optionNode.setAttribute("aria-selected", String(active));
+        optionNode.classList.toggle("active", active);
+        if (active && scroll) {
+          optionNode.scrollIntoView({ block: "nearest" });
+        }
+      });
+      const activeResult = results[activeIndex];
+      if (activeResult) {
+        selectedResultId = activeResult.id;
+        input.setAttribute("aria-activedescendant", optionId(activeResult));
+      } else {
+        selectedResultId = null;
+        input.removeAttribute("aria-activedescendant");
+      }
+    }
+
+    /** @param {number} index @param {boolean} [scroll] */
+    function setActiveIndex(index, scroll = true) {
+      if (results.length === 0) {
+        activeIndex = -1;
+      } else {
+        activeIndex = Math.max(0, Math.min(results.length - 1, index));
+      }
+      syncActiveOption(scroll);
+    }
+
+    function renderResults() {
+      listbox.replaceChildren();
+      for (let index = 0; index < results.length; index += 1) {
+        const result = results[index];
+        const option = hostDocument.createElement("div");
+        option.className = "search-palette-option";
+        option.id = optionId(result);
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-label", result.path);
+        option.setAttribute("aria-selected", "false");
+
+        const icon = hostDocument.createElement("span");
+        icon.className = "search-palette-icon";
+        icon.setAttribute("aria-hidden", "true");
+        const iconData = options.getFileIcon?.(result.path);
+        if (iconData?.cls && /^ft-[a-z0-9-]+$/u.test(iconData.cls)) {
+          icon.classList.add(iconData.cls);
+        }
+        if (typeof iconData?.svg === "string") {
+          icon.innerHTML = iconData.svg;
+        }
+
+        const text = hostDocument.createElement("span");
+        text.className = "search-palette-option-text";
+        const label = hostDocument.createElement("span");
+        label.className = "search-palette-label";
+        const labelOffset = result.description ? result.description.length + 1 : 0;
+        appendHighlightedText(hostDocument, label, result.label, result.matchRanges, labelOffset);
+        text.append(label);
+        if (result.description) {
+          const description = hostDocument.createElement("span");
+          description.className = "search-palette-description";
+          appendHighlightedText(
+            hostDocument,
+            description,
+            result.description,
+            result.matchRanges,
+            0,
+          );
+          text.append(description);
+        }
+        option.append(icon, text);
+        option.addEventListener("pointermove", () => {
+          setActiveIndex(index, false);
+        });
+        option.addEventListener("click", () => {
+          void acceptIndex(index);
+        });
+        listbox.append(option);
+      }
+      syncActiveOption(false);
+    }
+
+    /** @param {PaletteSearchState} state */
+    function consumeState(state) {
+      if (overlay.hidden || state.request?.query !== input.value) {
+        return;
+      }
+      const previousSelection = selectedResultId;
+      searchState = state;
+      results = state.results.slice(0, maxRows);
+      activeIndex = previousSelection
+        ? results.findIndex((result) => result.id === previousSelection)
+        : results.length > 0
+          ? 0
+          : -1;
+      if (activeIndex < 0 && results.length > 0) {
+        activeIndex = 0;
+      }
+      renderResults();
+      renderStatus();
+    }
+
+    /** @param {boolean} [preserveActionStatus] */
+    function runSearch(preserveActionStatus = false) {
+      const query = input.value;
+      if (!preserveActionStatus) {
+        actionStatus = "";
+      }
+      if (!query.trim()) {
+        options.controller.cancel();
+        searchState = null;
+        results = [];
+        activeIndex = -1;
+        selectedResultId = null;
+        renderResults();
+        renderStatus();
+        return;
+      }
+      renderStatus();
+      options.controller
+        .search({ match: "fuzzy", query, target: "file" })
+        .then((state) => {
+          if (state) {
+            consumeState(state);
+          }
+        })
+        .catch((error) => {
+          if (!overlay.hidden && input.value === query) {
+            actionStatus = error instanceof Error ? error.message : "Search failed. Try again.";
+            renderStatus();
+          }
+        });
+    }
+
+    /** @param {number} index */
+    async function acceptIndex(index) {
+      const result = results[index];
+      if (!result || opening) {
+        return;
+      }
+      actionSerial += 1;
+      const actionId = actionSerial;
+      opening = true;
+      actionStatus = `Opening ${result.path}…`;
+      renderStatus();
+      /** @type {OpenOutcome} */
+      let outcome;
+      try {
+        outcome = await options.openFile(result.path);
+      } catch (error) {
+        outcome = {
+          message: error instanceof Error ? error.message : "Could not open file. Try again.",
+          status: "error",
+        };
+      }
+      if (disposed || actionId !== actionSerial || overlay.hidden) {
+        return;
+      }
+      opening = false;
+      if (outcome.status === "opened") {
+        close(false);
+        if (focusable(outcome.focusTarget)) {
+          outcome.focusTarget.focus();
+        }
+        return;
+      }
+      if (outcome.status === "not-found") {
+        actionStatus = outcome.message || "That file is no longer available.";
+        await options.onNotFound?.(result.path);
+        if (disposed || actionId !== actionSerial || overlay.hidden) {
+          return;
+        }
+        results = results.filter((candidate) => candidate.path !== result.path);
+        activeIndex = Math.min(index, results.length - 1);
+        selectedResultId = results[activeIndex]?.id || null;
+        renderResults();
+        runSearch(true);
+        renderStatus();
+        return;
+      }
+      if (outcome.status === "error") {
+        actionStatus = outcome.message || "Could not open file. Try again.";
+        renderStatus();
+        return;
+      }
+      actionStatus = "";
+      renderStatus();
+    }
+
+    function open() {
+      if (disposed) {
+        return;
+      }
+      if (!overlay.hidden) {
+        input.focus();
+        input.select();
+        return;
+      }
+      previousFocus = focusable(hostDocument.activeElement)
+        ? /** @type {HTMLElement} */ (hostDocument.activeElement)
+        : null;
+      overlay.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      input.value = "";
+      searchState = null;
+      results = [];
+      activeIndex = -1;
+      selectedResultId = null;
+      actionStatus = "";
+      renderResults();
+      renderStatus();
+      input.focus();
+      input.select();
+    }
+
+    /** @param {boolean} [restoreFocus] */
+    function close(restoreFocus = true) {
+      if (overlay.hidden) {
+        return;
+      }
+      options.controller.cancel();
+      actionSerial += 1;
+      opening = false;
+      overlay.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      const focusTarget = previousFocus;
+      previousFocus = null;
+      if (restoreFocus && focusable(focusTarget) && focusTarget.isConnected) {
+        focusTarget.focus();
+      }
+    }
+
+    /** @param {KeyboardEvent} event */
+    function handleGlobalKeydown(event) {
+      if (
+        event.key !== "/" ||
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.isComposing ||
+        isEditableTarget(event.target)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      open();
+    }
+
+    /** @param {KeyboardEvent} event */
+    function handleInputKeydown(event) {
+      if (event.isComposing) {
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex(activeIndex < 0 ? 0 : activeIndex + 1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex(activeIndex < 0 ? results.length - 1 : activeIndex - 1);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        setActiveIndex(0);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        setActiveIndex(results.length - 1);
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        void acceptIndex(activeIndex);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+    }
+
+    /** @param {PointerEvent} event */
+    function handleOverlayPointerdown(event) {
+      if (event.target === overlay) {
+        close();
+      }
+    }
+
+    const unsubscribe = options.controller.subscribe(consumeState);
+    hostDocument.addEventListener("keydown", handleGlobalKeydown);
+    input.addEventListener("input", () => runSearch());
+    input.addEventListener("keydown", handleInputKeydown);
+    overlay.addEventListener("pointerdown", handleOverlayPointerdown);
+
+    function dispose() {
+      if (disposed) {
+        return;
+      }
+      close(false);
+      disposed = true;
+      unsubscribe();
+      hostDocument.removeEventListener("keydown", handleGlobalKeydown);
+      input.removeEventListener("keydown", handleInputKeydown);
+      overlay.removeEventListener("pointerdown", handleOverlayPointerdown);
+      overlay.remove();
+    }
+
+    return Object.freeze({ close, dispose, element: overlay, isOpen: () => !overlay.hidden, open });
+  }
+
+  window.MetabrowserSearchPalette = Object.freeze({ create });
+})();
