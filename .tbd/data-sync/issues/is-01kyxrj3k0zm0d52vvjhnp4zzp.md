@@ -3,9 +3,9 @@ type: is
 id: is-01kyxrj3k0zm0d52vvjhnp4zzp
 title: "Address review: PR #19 — KPress 0.3.0 upgrade"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 labels: []
 dependencies: []
 child_order_hints:
@@ -16,7 +16,9 @@ child_order_hints:
   - is-01kyxrjmwxnyxnb3f59m7kf1jn
   - is-01kyxrjn4txakq9jwn5xhybs9d
 created_at: 2026-08-01T04:15:49.343Z
-updated_at: 2026-08-01T04:23:45.993Z
+updated_at: 2026-08-01T04:28:23.160Z
+closed_at: 2026-08-01T04:28:23.159Z
+close_reason: R1-R5 fixed, S2/S3 applied, S1 deferred to mb-1mrt, commit 16cb079 pushed, disposition map posted, and all PR checks are green.
 ---
 Address the senior engineering review posted at https://github.com/jlevy/metabrowser/pull/19#issuecomment-5149735316. Track R1-R5 plus accepted robustness suggestions, publish a per-finding disposition map, and return CI to green.
 
