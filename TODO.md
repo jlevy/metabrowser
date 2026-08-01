@@ -11,8 +11,8 @@ Checked items below are supported today; unchecked items are planned work.
   rendering can evolve independently
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
 - [ ] Add
-  [scalable file search](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
-  and evaluate optional persistent indexing for very large roots
+  [quick file finding and search providers](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md),
+  then evaluate optional persistent indexing for very large roots
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
 - [ ] Define a generic writer event-log backend for append-only generated artifacts
 - [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for

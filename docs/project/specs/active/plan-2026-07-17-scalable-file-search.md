@@ -1,245 +1,509 @@
-# Feature: Scalable File Search
+# Feature: Quick File Finder and Search Providers
 
 **Date:** 2026-07-17 (last updated 2026-07-31)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft; prerequisite browser infrastructure is partially implemented
+**Status:** Draft; client and server search boundaries resolved
 
 ## Overview
 
-Metabrowser should provide a keyboard-first file filter without delaying first paint or
-requiring the browser to materialize the complete served tree.
-Search queries the existing bounded inventory and reports when that inventory is
-incomplete.
+Metabrowser should open a keyboard-first file finder when the user presses `/`. The
+finder fuzzy-matches every file path the browser already knows and opens the selected
+file through the existing navigation path.
+This first phase is client-only: opening the finder or typing a query does not make a
+server request.
+
+The browser intentionally knows less than the server inventory.
+The initial event stream contains only the served root through depth two, lazy subtree
+responses are held outside `FileStore`, and the Recent panel maintains a separate
+bounded result set.
+A client-side finder must therefore say when its candidate catalog is
+partial. Later phases add a server filename provider for complete inventory search and a
+server-side full-text provider without changing the shared search runtime.
 
 ## Goals
 
-- Focus search with a documented keyboard shortcut that does not intercept typing in an
-  input, editor, or content-editable surface
-- Match served-root-relative file paths by case-insensitive keyword
-- Filter by logical extension and modification-age window
-- Combine keyword, extension, and recency predicates predictably
-- Preserve directory hierarchy and stable child order while showing the ancestors of
-  every match
-- Keep initial navigation lazy and independent of full-root search readiness
-- Report indexed counts, limits, and truncation with every result set
-- Reuse `InventoryIndex`, logical-extension handling, ignore rules, and live-event
-  invalidation instead of adding a second filesystem crawl
+- Open a quick file finder with `/` unless focus is in an input, editor, select, or
+  content-editable surface
+- Fuzzy-match file basenames and served-root-relative paths already observed by the
+  browser, with basename matches weighted above parent-path matches
+- Search every observed file admitted by the inventory, independent of Current, Recent,
+  type, and gitignored filter presentation
+- Navigate the result list with the keyboard and open the selected file with the
+  existing `navigateToPath` behavior
+- Keep one minimal client catalog of paths observed through the Files tree, lazy subtree
+  responses, Recent responses, and live inventory events
+- Report how many files are locally searchable and whether that catalog is complete
+- Define one DOM-independent search runtime and provider contract that can serve the
+  palette and a future persistent navigation-panel search box
+- Add complete server-side filename search only when the local catalog cannot answer the
+  query, without transferring the full inventory to the browser
+- Add explicit full-text search as a later server-backed mode with bounded work,
+  cancellation, and honest truncation
+- Keep startup, initial tree rendering, and direct-file preview independent of search
+  readiness
 
 ## Non-Goals
 
-- Searching inside file contents
-- Blocking startup on a complete index
-- Rendering every indexed entry in the DOM
-- Requiring a database, external search daemon, or native extension for the first
-  implementation
-- Hiding incomplete results when an inventory cap has been reached
+- Loading all 500,000 possible inventory entries into the browser at startup
+- Running full-text search automatically for every filename query that has no match
+- Persisting the finder query or folding it into shared filter preferences
+- Replacing the Files tree with search results
+- Requiring a database, external search daemon, native extension, or third-party fuzzy
+  matching dependency
+- Making client-local results appear complete when the browser has only observed part of
+  the inventory
 
-## Background
+## Current State
 
-Metabrowser already builds a bounded `InventoryIndex`, exposes lazy tree navigation, and
-reports live filesystem changes.
-Logical extensions are normalized at several file and tree response boundaries, but the
-inventory’s `FsEntry.ext` still records the physical compound tail, such as `.md.gz`.
-Search should compose the existing contracts after logical file identity is made
-consistent at the inventory boundary.
-A separate crawl or complete tree copy in the browser would duplicate state, increase
-startup work, and make truncation harder to report honestly.
+The current browser has the server and navigation prerequisites but no search UI.
 
-### Status Review: 2026-07-31
-
-The current browser has implemented several prerequisites since this plan was written.
-It has not implemented path search itself.
-
-| Capability | Current State | Planning Consequence |
+| Capability | Current State | Consequence |
 | --- | --- | --- |
-| Bounded inventory | Implemented: eager asynchronous scan, live updates, file and depth caps | Search can query in-memory metadata without a second crawl |
-| Lazy navigation | Implemented: bounded initial depth, lazy subtree requests, and paged DOM insertion | Search results can use the existing tree renderer without changing first paint |
-| Index status | Implemented: `/api/index/progress`, `/api/index/meta`, and visible tree truncation | Search should reuse the same status vocabulary and counters |
-| Server-side filters | Partial: `/api/recent` supports age, extension, prefix, limits, and result truncation | Predicate and response-shaping patterns exist, but keyword search and ancestor projection do not |
-| Shared filter state | Phase 1 implemented: Current, Recent, type, and gitignored controls decorate loaded Files rows and treemap cells | Keyword and hide mode should extend this vocabulary rather than add independent filter state |
-| Search API and UI | Not implemented | There is no `/api/search`, keyword input, focus shortcut, result tree, or search-specific empty state |
-| Search invalidation | Not implemented | Per-path write generations are internal, and the browser’s depth-two event scope omits deep changes |
-| Logical file type | Partial | Compressed files can be classified correctly when opened, but inventory extension filters and type-family filters are not consistently compression-transparent |
-| Persistent metadata | Not implemented and not yet justified | Keep it outside the first delivery and require measurements before adding it |
+| Server inventory | `InventoryIndex` asynchronously tracks up to 500,000 files at depth 20 and can snapshot `all-known` entries | A server provider can search filenames without another crawl |
+| Initial browser inventory | `/api/events?scope=root-depth-2` replaces `FileStore` with entries through depth two | `FileStore` is a partial candidate source, not a complete filename catalog |
+| Lazy navigation | `/api/tree` returns the initial tree and lazy subtree responses; direct children are mounted in pages of 200 | Files encountered through navigation are known to the browser even though they are not added to `FileStore` |
+| Recent files | `/api/recent` returns up to 2,000 files from the all-known inventory into `recentBaseEntries` | Recent files are another useful bounded candidate source |
+| Navigation | `navigateToPath` reveals a tree row when possible and calls `selectFile` even when the row is unmounted | Finder selection can reuse existing preview and route behavior |
+| Live updates | Scoped `fs.change` operations update shallow `FileStore` entries | Locally known deep entries can become stale because their changes are outside the event scope |
+| Search | No palette, fuzzy matcher, filename route, content route, or search result model exists | The first phase can establish clean module and provider boundaries |
 
-The Current and Recent chips are therefore useful client-side filters, not substitutes
-for this feature. They only decorate rows already rendered in the Files tree and cannot
-find a matching file in an unmounted deep subtree.
+The earlier design treated keyword search as a filtered tree and as a shared filter
+dimension.
+That couples three distinct tasks: jumping to one file, filtering a hierarchy,
+and finding text occurrences.
+This plan separates them:
 
-## Design
+- **Quick file** returns a ranked flat list and opens one path
+- **Filter projection** returns a hierarchy and belongs to the unified-filtering plan
+- **Full text** returns path and location matches and runs on the server
 
-### Approach
+## Editor Pattern Review
 
-Take a consistent snapshot from `InventoryIndex` and evaluate it in a focused search
-service, off the event-loop request path.
-Expose the result through one bounded endpoint.
-The browser renders matching files and their ancestors in a separate result panel so the
-normal Files tree, its expansion state, and its selection remain mounted.
+Established editors separate fast navigation from deeper retrieval while reusing a
+common quick-input vocabulary:
 
-Keyword, extension, and recency predicates combine with AND. Repeated extension values
-combine with OR. Extensions use Metabrowser’s logical extension, so transparent
-compression does not create separate `.gz` or `.zlib` facets.
+- VS Code’s [Quick Open](https://code.visualstudio.com/docs/editing/userinterface)
+  searches and opens a file by name, while
+  [Search across files](https://code.visualstudio.com/docs/editing/codebasics#_search-across-files)
+  has a persistent search surface with results grouped by file and location.
+  Its
+  [Command Palette modes](https://code.visualstudio.com/docs/editing/getting-started#_use-the-command-palette)
+  also use explicit prefixes to switch among files, commands, and symbols rather than
+  treating every query as the same operation.
+- VS Code’s
+  [quick-access implementation](https://github.com/microsoft/vscode/blob/main/src/vs/platform/quickinput/browser/pickerQuickAccess.ts)
+  combines immediate and delayed picks and cancels an obsolete provider request when the
+  input changes. Its
+  [Quick Open provider](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/search/browser/anythingQuickAccess.ts)
+  caps results, preserves active picks, and scores a label separately from its
+  description, while its
+  [search service](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/services/search/common/search.ts)
+  exposes distinct file-search and text-search queries.
+- IntelliJ IDEA’s
+  [Search Everywhere](https://www.jetbrains.com/help/idea/searching-everywhere.html)
+  uses one popup with explicit file, symbol, action, and text contexts.
+  It can show text results when other categories have few or no matches, but it also
+  provides a dedicated Find tool window for deeper result inspection.
 
-### Resolved Decisions
+The Metabrowser design follows the common separation: Quick File is optimized for
+low-latency navigation; content search is optimized for retrieval, progress, grouping,
+and locations. They share provider and cancellation machinery, not a
+lowest-common-denominator result list.
+Unlike an editor with a continuously maintained workspace index, Metabrowser must also
+show whether the browser’s observed path catalog is incomplete.
 
-- The first version uses case-insensitive substring matching and the Files tree’s stable
-  directory-first path order.
-  It does not add fuzzy matching or relevance tiers.
-- A result limit applies to matching file leaves.
-  Ancestor nodes are additional but remain bounded by the inventory depth cap times the
-  leaf limit.
-- Obsolete browser requests are aborted and their responses ignored.
-  Server work stays off the event loop and bounded; cooperative server cancellation is
-  added only if measurements show that aborted scans consume material work.
-- Persistent metadata is not part of the first implementation.
-  A secondary in-memory path index or persisted stat cache requires evidence from the
-  large-root benchmarks.
-- An empty keyword is valid so unified-filter hide mode can query extension and age
-  predicates without inventing a second endpoint.
+## Architecture
 
-### Components
+### Search Runtime and Surfaces
 
-- `InventoryIndex` exposes a consistent entry snapshot, public inventory revision,
-  completion state, indexed counts, and configured caps
-- A focused search service evaluates keyword, logical-extension, and recency predicates
-  and projects matching files plus ancestors without re-statting files
-- The search route validates bounded queries and returns matches, ancestors, inventory
-  state, and result-limit metadata
-- `FilterState` gains the transient keyword dimension; a search controller owns
-  debounce, request cancellation, response-revision checks, and the result panel
-- `/api/events` publishes a lightweight revision change across every connection scope;
-  an active search debounces a refresh when that revision advances
+`static/search_controller.js` owns provider registration, query lifecycle, cancellation,
+fallback policy, result deduplication, and batch metadata.
+It has no DOM dependency.
+The application shell injects inventory observations and navigation actions rather than
+letting search modules reach into private `app.js` globals.
 
-The search control remains outside the replaceable tree-content container so inventory
-updates cannot discard focus or the current query.
-Search results use a sibling panel rather than replacing the Files panel.
-Typing is debounced and cancels an obsolete request.
-An active query uses shared design tokens for its filtered-state and incomplete-result
-indicators.
+UI surfaces consume the controller:
 
-The browser must not open an `all-known` event stream to refresh search.
-That scope’s initial snapshot can contain the full inventory, violating the requirement
-that the browser not materialize the served tree.
-A revision-only event provides invalidation without transferring deep entry payloads.
+- `static/search_palette.js` is the Phase 1 transient, keyboard-first Quick File dialog
+- a future navigation-panel search box is a persistent surface that can show file
+  groups, content excerpts, progress, scope controls, and more results
+- later plugins may add entry points only through the documented SDK and provider
+  registration boundary
 
-### API Changes
-
-The first implementation adds a bounded endpoint with semantics equivalent to:
+The controller accepts synchronous and asynchronous providers through one
+promise-compatible contract:
 
 ```text
-GET /api/search?q=report&ext=.md&max_age_seconds=86400&limit=500
+SearchRequest
+  query
+  target: file | content
+  match: fuzzy | literal | regex | approximate
+  scope (optional)
+
+SearchProvider
+  id: stable provider identifier
+  supports(request) -> bool
+  search(request, context, signal) -> SearchBatch or Promise<SearchBatch>
+
+SearchBatch
+  provider_id
+  results[]
+  complete
+  truncated
+  revision (optional)
+  status_message (optional)
+
+FileResult
+  kind: file
+  id
+  path
+  label
+  description
+  score
+  match_ranges[]
+
+TextResult
+  kind: text
+  id
+  path
+  line
+  column
+  excerpt
+  match_ranges[]
 ```
 
-The response contains:
+`complete` describes the provider’s candidate universe, while `truncated` describes the
+returned result list.
+The controller never infers one from the other.
+It cancels the previous request when the query, mode, or scope changes and drops any
+late batch whose request identity is no longer active.
+For file results it merges batches by path, keeps the highest-scored duplicate, and uses
+provider priority plus stable path order for deterministic ties.
+Each surface preserves its selected result by identity when asynchronous results arrive
+so the highlight does not jump.
 
-- a filtered tree containing matching file entries and the ancestor directories needed
-  to display them
-- the monotonic inventory revision used for the query
-- normalized query values and the returned and total match counts
-- indexed file and directory counts, the configured file cap, and inventory completion
-  or truncation state
-- the result limit and an indication that additional matches were omitted
+The first entry point always sends `{target: file, match: fuzzy}`. The contract reserves
+literal and regex content search and an evidence-gated approximate-content provider
+without implying that the filename fuzzy scorer can search file contents.
+A future navigation-panel surface can select these capabilities explicitly and group
+`TextResult` values by path without changing the Phase 1 palette.
+An empty Phase 1 query shows an instruction and the observed file count rather than an
+arbitrary result ordering.
 
-Paths remain served-root-relative.
-The route only examines entries already admitted by the inventory, so query text is
-never resolved as a filesystem path.
-It applies the same visibility and ignore policy as `/api/tree` and must not trigger
-traversal or `stat()` calls on the request path.
+The initial implementation should keep the request and result unions no larger than the
+Phase 1 code needs, but its module boundary and tests must not bind providers to dialog
+elements.
 
-Named settings bound keyword length, extension count, age range, result count, and
-response nodes. The initial defaults should align with the existing 200-row tree page;
-the maximums remain provisional until the large-root measurements are recorded.
+### Known File Catalog
+
+`static/known_file_catalog.js` owns the minimal client-side search candidates.
+It stores only the fields required for discovery and navigation: path, basename, logical
+extension when available, and the source that last observed the entry.
+It does not duplicate file contents, directory aggregates, plugin views, or every
+`FsEntry` field.
+
+The application shell feeds the catalog through explicit adapters:
+
+- the initial `/api/tree` response
+- every lazy `/api/tree` subtree response, including rows beyond the first mounted page
+- every `/api/recent` flat response
+- `fs.snapshot` and `fs.change` file entries
+- successful direct navigation to a file that was not observed through another source
+
+Observation is idempotent by path.
+Directory nodes are traversed to discover file leaves but are not candidates.
+A root swap or `fs.resync_required` clears the catalog before new observations arrive.
+Scoped remove operations delete matching candidates, but the catalog remains explicitly
+partial and potentially stale for deep paths because the depth-two stream cannot report
+every deep removal.
+
+The catalog exposes an immutable snapshot and metadata:
+
+```text
+{ files, observed_count, complete, source_summary, revision }
+```
+
+Phase 1 always reports `complete=false` because observing all visible responses does not
+prove that every inventory path reached the browser.
+A later provider may report complete server results without changing this local fact.
+
+### Client Fuzzy Matching
+
+`static/file_fuzzy_match.js` is a pure strict module with deterministic tests and no new
+dependency. It matches query characters in order and scores candidates with:
+
+- a strong basename match bonus
+- contiguous-character and exact-prefix bonuses
+- path-segment, word-boundary, camel-case, dash, underscore, and dot-boundary bonuses
+- gap, candidate-length, and directory-depth penalties
+- a stable case-insensitive path tie-breaker
+
+Queries containing `/` remain path-aware.
+For example, `srcapp` can match `src/metabrowser/static/app.js`, while `app` gives more
+weight to the basename than to a parent directory named `app`. The result includes
+character ranges so the palette can highlight why a candidate matched.
+
+The provider evaluates every locally known file but retains only a bounded top result
+set. Small catalogs use a synchronous fast path.
+Larger catalogs evaluate in cancellable chunks and yield between chunks so one query
+cannot monopolize the browser event loop.
+Measurements, rather than candidate count alone, decide whether a Web Worker is needed.
+
+### Provider Selection and Fallback
+
+Provider orchestration follows these rules:
+
+1. The local file provider runs immediately for every non-empty filename query.
+2. Phase 1 stops there and labels zero results as “No known file matches,” including the
+   observed candidate count and incomplete-catalog state.
+3. After the server filename provider exists, the controller starts it automatically
+   only when the local result set is empty and the local catalog is incomplete.
+4. An explicit “Search all indexed files” action can start the server provider even when
+   local matches exist.
+5. Filename results never trigger full-text work automatically.
+   If filename providers return no result, the active surface may offer “Search contents
+   for …” as an explicit mode change.
+
+This policy makes the common local hit immediate, gives incomplete local search a
+complete fallback, and avoids changing query meaning or starting expensive content work
+without user intent.
+It is also compatible with a persistent nav search box: that surface can expose file and
+content modes continuously, while the palette stays specialized for navigation.
+
+### Keyboard and Accessibility Contract
+
+- `/` opens the finder with an empty query and prevents the browser’s quick-find action
+- the global handler ignores events already prevented, modifier chords, composition, and
+  editable targets; pressing `/` inside the finder inserts the character normally
+- `ArrowDown`, `ArrowUp`, `Home`, and `End` change the active result
+- `Enter` opens the active result
+- `Escape` closes the finder and restores the element focused before it opened
+- opening an already-open finder focuses and selects its query rather than creating a
+  second instance
+- the palette uses a labelled dialog, a combobox with `aria-expanded` and
+  `aria-controls`, a listbox, options, `aria-activedescendant`, and a polite status
+  region for provider progress and completeness
+- mouse selection and outside-click dismissal match the keyboard result path
+
+The palette is attached outside replaceable tree and preview containers.
+Inventory renders therefore cannot discard its focus or state.
+Result rows show the basename as the label and the parent path as secondary text, reuse
+the existing file icon vocabulary, and mount only the bounded result set.
+
+### Navigation and Failure Contract
+
+Opening a file delegates to an injected application action backed by `navigateToPath`.
+The action should return a success or failure result so the palette can distinguish a
+successful open from a stale catalog hit.
+On success, the palette closes and the action returns the preview or other destination
+that should receive focus.
+Cancellation, Escape, and outside-click dismissal instead restore the element focused
+before the palette opened.
+On a not-found response, the catalog removes that path, the palette stays open, and an
+inline status says that the file is no longer available.
+Other failures preserve the query and result list and expose a retryable error.
+
+### Server Filename Provider
+
+Phase 2 adds a flat filename endpoint rather than returning a filtered tree:
+
+```text
+GET /api/search/files?q=srapp&limit=100
+```
+
+The route takes a consistent `InventoryIndex` snapshot and performs the same fuzzy
+scoring in a focused service off the event-loop request path.
+The client and server implementations share golden query/candidate/score fixtures so
+their ordering stays equivalent without trying to execute one language’s code in the
+other runtime.
+
+The response contains flat file results, match ranges, the inventory revision and
+status, indexed counts and caps, and separate result-limit and inventory-truncation
+metadata. It never traverses the filesystem or calls `stat()` for a query.
+Query text remains data and is never resolved as a path.
+
+The browser must not open an `all-known` event stream or download a complete filename
+catalog to enable this provider.
+A lightweight revision event can invalidate active server results without sending deep
+entry payloads.
+
+### Full-Text Provider
+
+Phase 3 adds an explicit `text` mode and a separate endpoint:
+
+```text
+GET /api/search/text?q=needle&path=optional/subtree&limit=100
+```
+
+Full-text search has a different result and cost model from filename search.
+Results include a file path, line and column, a bounded excerpt, and highlighted ranges.
+The request contract must bound query length, subtree scope, files examined, bytes read,
+wall time, result count, excerpt size, and decompression.
+It applies the served-root containment and ignore policy and reads only file types the
+existing preview pipeline classifies as text-searchable.
+
+The implementation phase starts with a measured engine spike.
+Metabrowser cannot assume `rg` is installed, and adding a runtime search dependency
+requires supply-chain review.
+The spike compares a bounded internal scanner with an optional subprocess adapter and
+records cancellation, encoding, compressed-file, remote-root, and large-file behavior
+before the engine becomes a contract.
+
+Opening a text result requires a location-aware extension to the navigation action.
+The file opens through the normal preview route, then a renderer that supports locations
+reveals the match.
+Renderers that do not support locations still open the file and report
+that the exact line could not be focused.
+
+### Separation From Unified Filtering
+
+Quick file and full-text queries are transient discovery commands.
+They do not persist through `mb.prefs`, change the Current or Recent chips, dim the
+Files tree, or become a `FilterState` keyword dimension.
+
+Complete filter hide mode needs a tree-shaped projection with ancestor directories and
+filtered aggregates.
+The unified-filtering plan owns that contract through a distinct `/api/filter/tree`
+route. This keeps filename results flat, content results location-oriented, and filter
+results hierarchical.
 
 ## Implementation Plan
 
-### Phase 0: Align Existing Prerequisites
+### Phase 0: Existing Prerequisites
 
-- [x] Build the eager bounded inventory, index progress/meta envelopes, lazy tree, and
+- [x] Build the bounded asynchronous inventory, lazy tree, index status endpoints, and
   live event plane
-- [x] Add shared client filter state and the Current, Recent, type, and visibility
-  controls in dim mode
-- [ ] Store or derive one canonical logical extension on every inventory entry so
-  search, Recent, suffix tallies, treemap rollups, and browser type families agree for
-  plain, gzip, and zlib artifacts
+- [x] Provide `navigateToPath` and lazy reveal behavior that can open an unmounted path
 - [ ] Add a monotonic public inventory revision and a revision-only event that survives
   event-scope filtering without sending deep entry snapshots
 
-### Phase 1: Bounded Search Service and Route
+### Phase 1: Client-Only Quick File Finder
 
-- [ ] Define and test query and response models against a deterministic inventory
-- [ ] Add the pure predicate and ancestor-projection service over an inventory snapshot
-  without re-statting files
-- [ ] Add `/api/search` validation, off-event-loop execution, stable ordering, revision
-  checks, and separate inventory-truncation and result-limit metadata
-- [ ] Centralize the mapping from the browser’s `ft-*` type families to logical
-  extensions so hide mode can send exact, generic extension predicates
-- [ ] Measure query latency, snapshot allocation, payload size, and response-node count
-  at and beyond the configured inventory cap
+- [ ] Add the DOM-independent search controller, request identity, cancellation, batch
+  metadata, provider registration, and flat file-result composition
+- [ ] Add the strict `known_file_catalog.js` module and feed it from initial tree, lazy
+  tree, Recent, event, and successful-navigation observations
+- [ ] Add the pure fuzzy matcher with basename weighting, path-aware scoring, match
+  ranges, stable ties, and shared golden fixtures
+- [ ] Add a local provider that searches all catalog candidates, retains a bounded top
+  set, yields during large scans, and cancels obsolete queries
+- [ ] Add `search_palette.js`, the `/` shortcut, accessible dialog and listbox behavior,
+  focus restoration, pointer interaction, and a visible candidate-completeness status
+- [ ] Keep palette rendering and selection state outside provider implementations; add a
+  headless contract test proving the local provider can run without palette DOM
+- [ ] Inject the existing navigation action, return an open outcome, and handle stale
+  not-found candidates without losing the active query
+- [ ] Add performance fixtures for result latency, input responsiveness, and DOM count
+  across shallow, Recent-sized, and heavily expanded client catalogs
 
-### Phase 2: Browser Search and Unified Hide Mode
+### Phase 2: Complete Filename Search
 
-- [ ] Add the keyboard shortcut, search control, result-tree state, and accessible empty
-  and incomplete states
-- [ ] Preserve the mounted Files tree while search results are active, and restore it
-  without rebuilding or losing expansion and selection state
-- [ ] Abort obsolete requests, reject stale revisions, and refresh active results from
-  revision events without opening an `all-known` event snapshot
-- [ ] Exercise focus, keyboard handling, navigation, live refresh, and tree restoration
-  in DOM and real-browser tests
+- [ ] Define inventory snapshot and revision contracts for search services
+- [ ] Implement the Python fuzzy scorer against the shared golden fixtures
+- [ ] Add bounded `/api/search/files` validation and off-event-loop execution with flat
+  results and honest inventory and result truncation metadata
+- [ ] Add the server filename provider, automatic zero-local-result fallback, explicit
+  “Search all indexed files,” cancellation, response-revision checks, and path deduping
+- [ ] Refresh active server results from revision events without opening an `all-known`
+  event stream
+- [ ] Measure scan latency, snapshot allocation, payload size, and cancellation at and
+  beyond the configured inventory cap
 
-### Phase 3: Evidence-Gated Indexing Changes
+### Phase 3: Bounded Full-Text Search
 
-- [ ] Evaluate a secondary in-memory path index only if bounded scans miss the query
-  latency budget
-- [ ] Evaluate persisted stat metadata only if measured warm-start or capacity costs
-  justify its invalidation, versioning, and supply-chain complexity
+- [ ] Run and record the engine spike before selecting an internal scanner, optional
+  subprocess adapter, or other implementation
+- [ ] Define text-searchability, encoding, compressed-file, large-file, ignore, timeout,
+  byte, result, and excerpt policies
+- [ ] Add bounded `/api/search/text` execution, cancellation, progress, and truncation
+  metadata
+- [ ] Add the explicit text mode, the no-filename-match content-search action, a
+  persistent nav-panel search surface, grouped path/location results, and location-aware
+  navigation
+- [ ] Start with literal content matching; expose regex or approximate matching only
+  through provider capability metadata and after separate correctness and performance
+  evidence
+- [ ] Test supported and unsupported renderers, stale files, concurrent changes, remote
+  roots, and partial results
+
+### Phase 4: Evidence-Gated Indexing
+
+- [ ] Evaluate a secondary in-memory filename index only if bounded inventory scans miss
+  the server query-latency budget
+- [ ] Evaluate persisted filename or full-text metadata only if measured warm-start or
+  capacity costs justify invalidation, versioning, and supply-chain complexity
+- [ ] Evaluate a Web Worker only if chunked local search misses the input-responsiveness
+  budget
 
 ## Testing Strategy
 
-- Unit-test predicate composition, logical extensions, type-family expansion, limits,
-  ordering, ancestor projection, and inventory revision changes
-- Test the route against traversal attempts, malformed limits, truncated inventories,
-  stale revisions, aborted clients, and concurrent filesystem changes
-- Exercise focus, keyboard handling, tree restoration, accessibility, and live result
-  changes in a real browser
-- Record server work, payload size, and DOM insertion budgets against public synthetic
-  large-tree fixtures
+- Unit-test catalog ingestion, deduplication, source metadata, scoped removal, root
+  resync, and immutable snapshots
+- Golden-test fuzzy scoring for basename preference, boundaries, gaps, path queries,
+  case, punctuation, Unicode, equal scores, and no match in JavaScript and Python
+- DOM-test shortcut guards, focus restoration, composition, combobox/listbox semantics,
+  result navigation, selection stability during asynchronous updates, outside click, and
+  error recovery
+- Integration-test initial tree, lazy subtree, Recent, event, and direct-navigation
+  candidates flowing into one catalog
+- Route-test malformed and oversized queries, containment, ignore policy, aborts,
+  concurrent inventory changes, stale revisions, timeouts, and independent truncation
+  fields
+- Real-browser-test opening `/`, fuzzy selection of an unmounted file, a zero-local
+  fallback, full-text mode switching, and location reveal
+- Record server work, client input delay, payload size, and mounted result count against
+  public synthetic large-tree and large-text fixtures
+
+## Risks and Mitigations
+
+| Risk | Mitigation |
+| --- | --- |
+| Users mistake local results for the full root | Always show observed count and incomplete state; phrase zero results as “No known file matches” |
+| A deep known file is renamed or removed outside the event scope | Treat navigation as authoritative, remove stale not-found hits, and add revision-backed server search in Phase 2 |
+| Fuzzy scoring blocks typing as the observed catalog grows | Bound displayed results, cancel obsolete searches, scan in yielding chunks, and add a Worker only after measurement |
+| Server results reorder the highlighted local row | Preserve selection by result identity and use deterministic provider priority and tie-breaking |
+| Automatic full-text fallback surprises users or scans large roots | Offer an explicit content-search action rather than starting content work automatically |
+| One endpoint accumulates incompatible result shapes | Keep `/api/search/files`, `/api/search/text`, and `/api/filter/tree` separate behind one UI provider contract |
+| `/` interferes with document editing or browser behavior | Ignore editable, composing, modified, and already-handled events; cover every guard in DOM and real-browser tests |
 
 ## Rollout Plan
 
-Ship bounded in-memory inventory search first.
-Keep persistent metadata out of the initial contract and add it only after measurements
-identify a concrete warm-start or capacity problem.
-Search remains optional UI and does not delay the initial tree or direct-file preview.
+Phase 1 is a client-only enhancement over paths the browser has already received.
+It adds no server route, startup fetch, dependency, or complete-inventory transfer.
+Phase 2 makes filename coverage complete when necessary.
+Phase 3 adds content search as an explicit mode after its engine and resource budgets
+are measured.
 
 ## Open Questions
 
-- Which focus shortcut avoids browser-reserved keys while remaining discoverable on
-  macOS, Windows, and Linux?
-- Which measured default result limit and debounce interval satisfy both local and
-  remote roots? The starting candidates are the existing 200-row tree page and its
-  current filter-reapply debounce.
-- Should type-family expansion remain a browser-owned mapping or graduate to a shared
-  declarative file-type table used by both Python and JavaScript?
-- Do aborted maximum-inventory scans require cooperative server cancellation after
-  client cancellation and off-event-loop execution are measured?
-- What measurements would justify persisted metadata without making it a required
-  runtime dependency?
+- What local-result threshold should start the server provider after the initial
+  zero-result policy has real usage data?
+- Which query-latency and input-delay budgets should trigger a secondary filename index
+  or Web Worker?
+- Which full-text engine satisfies offline installation, cancellation, remote-root,
+  encoding, and supply-chain constraints?
+- Which core and plugin renderers should support exact line and column reveal in the
+  first full-text phase?
+- Should a future persistent full-text panel share query history with the transient
+  palette, or only reuse providers and result renderers?
 
-## Acceptance Criteria
+## Phase 1 Acceptance Criteria
 
-- Search never blocks the initial tree or direct-file preview
-- A query cannot access or reveal a path outside the served root
-- The browser shows ancestors for every returned match and preserves stable order
-- Compressed artifacts match their logical file type
-- Incomplete and limited results are visibly distinguishable from complete results
-- File creation, rename, and removal update an active query without a full page reload
-- Clearing search restores the already-mounted Files tree with its expansion and
-  selection state intact
-- Search refresh does not send an `all-known` inventory snapshot to the browser
-- Large-root tests prove bounded server work, payload size, and DOM insertion
+- `/` opens one finder and does not fire from editable, composing, modified, or
+  already-handled keyboard events
+- Typing fuzzy-matches every file observed from tree, lazy subtree, Recent, event, and
+  successful navigation sources without making a search request
+- Basename matches rank above equivalent parent-path matches and ordering is stable
+- Arrow keys, Home, End, Enter, Escape, pointer selection, focus restoration, and screen
+  reader semantics work as documented
+- Selecting a result opens it through existing navigation even when its tree row is not
+  mounted
+- A stale not-found result is removed without clearing the query
+- The finder reports observed candidate count and incomplete local coverage
+- Search work and mounted results remain bounded and do not delay initial tree or direct
+  file preview
 
 ## References
 
@@ -247,6 +511,9 @@ Search remains optional UI and does not delay the initial tree or direct-file pr
 - [Design system](../../../design-system.md)
 - [Scanning state and recent directories](plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Unified filtering](plan-2026-07-20-unified-filtering.md)
+- [VS Code Quick Access provider](https://github.com/microsoft/vscode/blob/main/src/vs/platform/quickinput/browser/pickerQuickAccess.ts)
+- [VS Code file and text search service](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/services/search/common/search.ts)
+- [IntelliJ IDEA Search Everywhere](https://www.jetbrains.com/help/idea/searching-everywhere.html)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
