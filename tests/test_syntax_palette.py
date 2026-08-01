@@ -45,7 +45,9 @@ HSL_RE = re.compile(
     r"hsl\(\s*(?P<hue>[\d.]+)\s+(?P<saturation>[\d.]+)%\s+(?P<lightness>[\d.]+)%\s*\)"
 )
 VAR_RE = re.compile(r"var\((?P<token>--[\w-]+)\)")
-HIGHLIGHT_CLASS_RE = re.compile(r"\.hljs(?:-[A-Za-z0-9_-]+)?")
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
+COLOR_DECLARATION_RE = re.compile(r"(?:^|;)\s*(?:background-)?color\s*:")
 
 
 def _css_block(css: str, selector: str) -> str:
@@ -64,6 +66,21 @@ def _css_block(css: str, selector: str) -> str:
 
 def _tokens(block: str) -> dict[str, str]:
     return dict(TOKEN_RE.findall(block))
+
+
+def _css_rules(css: str) -> tuple[tuple[str, str], ...]:
+    without_comments = CSS_COMMENT_RE.sub("", css)
+    return tuple(
+        (" ".join(selector.split()), match.group("body"))
+        for match in CSS_RULE_RE.finditer(without_comments)
+        for selector in match.group("selectors").split(",")
+    )
+
+
+def _host_highlight_selector(vendor_selector: str) -> str:
+    if vendor_selector == ".hljs":
+        return "html .hljs"
+    return f"html .hljs {vendor_selector}"
 
 
 def _parse_hsl(value: str) -> tuple[float, float, float]:
@@ -111,8 +128,8 @@ def _resolved_color(tokens: dict[str, str], token: str) -> str:
 
 def test_syntax_foregrounds_meet_contrast_in_both_themes() -> None:
     css = STYLES_CSS.read_text(encoding="utf-8")
-    light_tokens = _tokens(_css_block(css, ":root"))
-    dark_overrides = _tokens(_css_block(css, '[data-theme="dark"]'))
+    light_tokens = _tokens(_css_block(css, ":root {"))
+    dark_overrides = _tokens(_css_block(css, '[data-theme="dark"] {'))
 
     required_theme_tokens = (
         *SYNTAX_FOREGROUND_TOKENS,
@@ -147,15 +164,29 @@ def test_syntax_foregrounds_meet_contrast_in_both_themes() -> None:
             )
 
 
-def test_metabrowser_owns_every_highlight_theme_color() -> None:
+def test_metabrowser_outspecifies_every_highlight_theme_color() -> None:
     css = STYLES_CSS.read_text(encoding="utf-8")
     vendor_css = HIGHLIGHT_THEME_CSS.read_text(encoding="utf-8")
 
-    palette_start = css.index("html .hljs {")
-    palette_end = css.index("/* Full-file code views", palette_start)
-    palette = css[palette_start:palette_end]
-    vendor_classes = set(HIGHLIGHT_CLASS_RE.findall(vendor_css))
+    host_color_rules = {
+        selector: body
+        for selector, body in _css_rules(css)
+        if selector.startswith("html .hljs") and COLOR_DECLARATION_RE.search(body)
+    }
+    vendor_color_selectors = {
+        selector
+        for selector, body in _css_rules(vendor_css)
+        if ".hljs" in selector and COLOR_DECLARATION_RE.search(body)
+    }
 
-    assert "color: var(--text);" in palette
-    missing_classes = sorted(vendor_classes - set(HIGHLIGHT_CLASS_RE.findall(palette)))
-    assert not missing_classes, f"Highlight.js classes without host palette: {missing_classes}"
+    assert vendor_color_selectors
+    assert "html .hljs" in host_color_rules
+    assert "color: var(--text);" in host_color_rules["html .hljs"]
+    missing_host_selectors = {
+        selector: _host_highlight_selector(selector)
+        for selector in vendor_color_selectors
+        if _host_highlight_selector(selector) not in host_color_rules
+    }
+    assert not missing_host_selectors, (
+        f"Vendor color selectors without stronger host peers: {missing_host_selectors}"
+    )

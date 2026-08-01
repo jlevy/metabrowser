@@ -11,9 +11,10 @@ KPress embedding update:
   theme-agnostic, the KPress asset manifest is authoritative, and host-side heading,
   bullet, theme-restamping, resolver-filtering, and numeric-table workarounds are
   removed.
-- Embedded typography now stays fixed to the 17px document scale when the browser root
-  size changes, while deliberate mono, secondary-text, and label sizes continue to use
-  Metabrowser’s semantic type tokens.
+- Embedded document prose is now 15px, down from 17px and one step above the 14px app
+  body. KPress derives headings from that base, while proportional host tokens keep code
+  and secondary text tied to it, so the document hierarchy stays stable when the browser
+  root size changes.
 
 Flat single-command CLI:
 

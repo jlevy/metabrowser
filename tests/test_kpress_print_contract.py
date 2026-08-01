@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any, cast
 
+from kpress.runtime import get_static_asset
+
 from metabrowser import server as proc_browser
+
+KPRESS_DOC_MIN_WIDTH_QUERY_RE = re.compile(r"@container kpress-doc \(min-width: [\d.]+rem\) \{")
 
 
 def _read_app_js() -> str:
@@ -100,7 +105,8 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
     # --kpress-host-* color aliases must not survive the host migration.
     assert "--kpress-doc-bg: var(--bg);" in css
     assert "--kpress-host-bg" not in css
-    assert ".metabrowser-kpress-host .kpress,\n:root .kpress-tooltip {" in css
+    normalized_css = " ".join(css.split())
+    assert ".metabrowser-kpress-host .kpress, :root .kpress-tooltip {" in normalized_css
     assert ".metabrowser-source-truncation-warning" in css
 
 
@@ -154,7 +160,12 @@ def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:
 
 def test_embedded_kpress_wide_toc_uses_borderless_rail() -> None:
     css = _read_styles_css()
-    band_start = css.index("@container kpress-doc (min-width: 75rem) {")
+    band_match = KPRESS_DOC_MIN_WIDTH_QUERY_RE.search(css)
+    assert band_match is not None
+    kpress_css = get_static_asset("css/components.css").content.decode("utf-8")
+    assert band_match.group(0) in kpress_css
+
+    band_start = band_match.start()
     band_block = css[band_start : band_start + 500]
     assert ".metabrowser-kpress-host .kpress-toc {" in band_block
     assert "border: none;" in band_block
