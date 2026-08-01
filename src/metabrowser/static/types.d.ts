@@ -56,7 +56,20 @@ type MetabrowserChartRuntime = {
 };
 
 type MetabrowserChartInstance = {
+  data: Record<string, unknown>;
   destroy(): void;
+  options: Record<string, unknown>;
+  update(mode?: string): void;
+};
+
+type MetabrowserThemeChange = {
+  mode: "dark" | "light" | "system";
+  resolved: "dark" | "light";
+};
+
+type MetabrowserThemeRuntime = {
+  notifyChanged(detail: MetabrowserThemeChange): void;
+  subscribe(listener: (detail: MetabrowserThemeChange) => void): () => void;
 };
 
 type MetabrowserPluginData = {
@@ -103,6 +116,12 @@ type MetabrowserBuiltins = {
 
 type MetabrowserSdk = {
   builtins: MetabrowserBuiltins;
+  chart(
+    container: HTMLElement | HTMLCanvasElement,
+    type: string,
+    data: Record<string, unknown>,
+    options?: Record<string, unknown>,
+  ): MetabrowserChartInstance;
   escapeHtml(value: string): string;
   fetchKpressRender(
     ctx: MetabrowserRenderContext,
@@ -189,6 +208,7 @@ declare global {
       iconFor(path: string): unknown;
     };
     MetabrowserIcons?: Record<string, string>;
+    MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTooltip?: {
       hide(): void;

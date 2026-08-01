@@ -61,6 +61,8 @@ def test_index_bootstraps_theme_before_app_paint() -> None:
     assert "data-theme-mode" in html
     assert "data-theme" in html
     assert "data-kpress-resolved-theme" in html
+    assert html.index("/static/theme_state.js") < html.index("/static/plugin_sdk.js")
+    assert html.index("/static/theme_state.js") < html.index("/static/app.js")
     # Settings menu (gear) + the reading-font boot.
     assert 'id="settings-btn"' in html
     assert "metabrowser.proseFont" in html
@@ -75,6 +77,8 @@ def test_app_theme_control_contract() -> None:
     assert 'setAttribute("data-theme-mode", normalized)' in src
     assert 'setAttribute("data-theme", resolved)' in src
     assert 'setAttribute("data-kpress-resolved-theme", resolved)' in src
+    assert "previousResolved !== resolved" in src
+    assert "MetabrowserTheme.notifyChanged" in src
     assert 'setAttribute("data-kpress-theme", normalized)' not in src
     assert 'querySelectorAll(".metabrowser-kpress-host .kpress")' not in src
     assert 'matchMedia("(prefers-color-scheme: dark)")' in src

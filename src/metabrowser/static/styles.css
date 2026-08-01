@@ -2339,11 +2339,20 @@ html[data-prose-font="sans"] {
 
 /* ── Code blocks (highlight.js integration) ─────────────────── */
 
+/* Highlight.js supplies token classes but no stylesheet. These two layout
+   rules preserve its standard block and inline behavior; the semantic palette
+   below is host-owned so theme changes never compete with a vendor theme. */
+pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1em;
+}
+code.hljs {
+  padding: 3px 5px;
+}
 /* Padding + background live on <pre class="code-block"> (block-level)
    so source/raw views align horizontally with other content-body
-   views at var(--content-padding-x). Placing padding on the inner
-   <code class="hljs"> collides with the hljs theme's `pre code.hljs`
-   rule and produces a narrower, font-size-dependent left inset. */
+   views at var(--content-padding-x). */
 .code-block {
   margin: 0;
   overflow: auto;
@@ -2356,92 +2365,88 @@ html[data-prose-font="sans"] {
   font-size: var(--mono-block-font-size);
   line-height: 1.5;
 }
-/* Match the hljs theme's `pre code.hljs` specificity to neutralize
-   its 1em padding inside our .code-block wrapper. */
+/* Full-file source views use the wrapper's document-scale padding. */
 pre.code-block code.hljs {
   padding: 0;
 }
-/* Highlight.js's light GitHub theme loads asynchronously after this sheet, so
-   each host-owned selector carries greater specificity than its vendor peer.
-   This keeps every language on the shared semantic palette in both themes. */
-html .hljs {
+.hljs {
   background: var(--code-bg);
   color: var(--text);
 }
-html .hljs .hljs-doctag,
-html .hljs .hljs-keyword,
-html .hljs .hljs-meta .hljs-keyword,
-html .hljs .hljs-template-tag,
-html .hljs .hljs-template-variable,
-html .hljs .hljs-type,
-html .hljs .hljs-variable.language_ {
+.hljs .hljs-doctag,
+.hljs .hljs-keyword,
+.hljs .hljs-meta .hljs-keyword,
+.hljs .hljs-template-tag,
+.hljs .hljs-template-variable,
+.hljs .hljs-type,
+.hljs .hljs-variable.language_ {
   color: var(--color-syntax-keyword);
 }
-html .hljs .hljs-title,
-html .hljs .hljs-title.class_,
-html .hljs .hljs-title.class_.inherited__,
-html .hljs .hljs-title.function_ {
+.hljs .hljs-title,
+.hljs .hljs-title.class_,
+.hljs .hljs-title.class_.inherited__,
+.hljs .hljs-title.function_ {
   color: var(--color-syntax-title);
 }
-html .hljs .hljs-attr,
-html .hljs .hljs-attribute,
-html .hljs .hljs-meta,
-html .hljs .hljs-operator,
-html .hljs .hljs-selector-attr,
-html .hljs .hljs-selector-class,
-html .hljs .hljs-selector-id,
-html .hljs .hljs-variable {
+.hljs .hljs-attr,
+.hljs .hljs-attribute,
+.hljs .hljs-meta,
+.hljs .hljs-operator,
+.hljs .hljs-selector-attr,
+.hljs .hljs-selector-class,
+.hljs .hljs-selector-id,
+.hljs .hljs-variable {
   color: var(--color-syntax-key);
 }
-html .hljs .hljs-literal {
+.hljs .hljs-literal {
   color: var(--color-syntax-bool);
 }
-html .hljs .hljs-number {
+.hljs .hljs-number {
   color: var(--color-syntax-number);
 }
-html .hljs .hljs-meta .hljs-string,
-html .hljs .hljs-regexp,
-html .hljs .hljs-string {
+.hljs .hljs-meta .hljs-string,
+.hljs .hljs-regexp,
+.hljs .hljs-string {
   color: var(--color-syntax-string);
 }
-html .hljs .hljs-built_in,
-html .hljs .hljs-symbol {
+.hljs .hljs-built_in,
+.hljs .hljs-symbol {
   color: var(--color-syntax-built-in);
 }
-html .hljs .hljs-code,
-html .hljs .hljs-comment,
-html .hljs .hljs-formula {
+.hljs .hljs-code,
+.hljs .hljs-comment,
+.hljs .hljs-formula {
   color: var(--color-syntax-comment);
 }
-html .hljs .hljs-name,
-html .hljs .hljs-quote,
-html .hljs .hljs-selector-pseudo,
-html .hljs .hljs-selector-tag {
+.hljs .hljs-name,
+.hljs .hljs-quote,
+.hljs .hljs-selector-pseudo,
+.hljs .hljs-selector-tag {
   color: var(--color-syntax-tag);
 }
-html .hljs .hljs-subst,
-html .hljs .hljs-emphasis,
-html .hljs .hljs-strong {
+.hljs .hljs-subst,
+.hljs .hljs-emphasis,
+.hljs .hljs-strong {
   color: var(--text);
 }
-html .hljs .hljs-section {
+.hljs .hljs-section {
   color: var(--color-syntax-key);
   font-weight: var(--weight-bold);
 }
-html .hljs .hljs-bullet {
+.hljs .hljs-bullet {
   color: var(--color-syntax-number);
 }
-html .hljs .hljs-emphasis {
+.hljs .hljs-emphasis {
   font-style: italic;
 }
-html .hljs .hljs-strong {
+.hljs .hljs-strong {
   font-weight: var(--weight-bold);
 }
-html .hljs .hljs-addition {
+.hljs .hljs-addition {
   color: var(--color-syntax-addition);
   background-color: var(--color-syntax-addition-bg);
 }
-html .hljs .hljs-deletion {
+.hljs .hljs-deletion {
   color: var(--color-syntax-deletion);
   background-color: var(--color-syntax-deletion-bg);
 }

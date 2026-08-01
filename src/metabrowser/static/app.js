@@ -397,6 +397,7 @@ function writePrefCookie(name, value) {
   }
 }
 
+/** @returns {"dark" | "light" | "system"} */
 function normalizeThemeMode(mode) {
   return THEME_MODES.indexOf(mode) >= 0 ? mode : "system";
 }
@@ -409,6 +410,7 @@ function systemPrefersDark() {
   }
 }
 
+/** @returns {"dark" | "light"} */
 function resolveTheme(mode) {
   var normalized = normalizeThemeMode(mode);
   if (normalized === "dark") {
@@ -484,12 +486,16 @@ function markChooserSegments(selector, dataKey, value) {
 function applyThemeMode(mode, persist) {
   var normalized = normalizeThemeMode(mode);
   var resolved = resolveTheme(normalized);
+  var previousResolved = document.documentElement.getAttribute("data-theme");
   document.documentElement.setAttribute("data-theme-mode", normalized);
   document.documentElement.setAttribute("data-theme", resolved);
   // Metabrowser is the single theme owner for embedded KPress fragments.
   // KPress reads this resolved value from the root; fragments remain
   // theme-agnostic and its automatic manifest omits the standalone resolver.
   document.documentElement.setAttribute("data-kpress-resolved-theme", resolved);
+  if (previousResolved !== resolved) {
+    window.MetabrowserTheme.notifyChanged({ mode: normalized, resolved: resolved });
+  }
   if (persist) {
     writePrefCookie(THEME_MODE_KEY, normalized);
   }

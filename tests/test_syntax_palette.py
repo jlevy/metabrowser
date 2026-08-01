@@ -48,6 +48,43 @@ VAR_RE = re.compile(r"var\((?P<token>--[\w-]+)\)")
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
 COLOR_DECLARATION_RE = re.compile(r"(?:^|;)\s*(?:background-)?color\s*:")
+HIGHLIGHT_CLASS_RE = re.compile(r"\.(hljs(?:-[\w-]+)?)")
+EXPECTED_HIGHLIGHT_COLOR_CLASSES = {
+    "hljs-addition",
+    "hljs-attr",
+    "hljs-attribute",
+    "hljs-built_in",
+    "hljs-bullet",
+    "hljs-code",
+    "hljs-comment",
+    "hljs-deletion",
+    "hljs-doctag",
+    "hljs-emphasis",
+    "hljs-formula",
+    "hljs-keyword",
+    "hljs-literal",
+    "hljs-meta",
+    "hljs-name",
+    "hljs-number",
+    "hljs-operator",
+    "hljs-quote",
+    "hljs-regexp",
+    "hljs-section",
+    "hljs-selector-attr",
+    "hljs-selector-class",
+    "hljs-selector-id",
+    "hljs-selector-pseudo",
+    "hljs-selector-tag",
+    "hljs-string",
+    "hljs-strong",
+    "hljs-subst",
+    "hljs-symbol",
+    "hljs-template-tag",
+    "hljs-template-variable",
+    "hljs-title",
+    "hljs-type",
+    "hljs-variable",
+}
 
 
 def _css_block(css: str, selector: str) -> str:
@@ -75,12 +112,6 @@ def _css_rules(css: str) -> tuple[tuple[str, str], ...]:
         for match in CSS_RULE_RE.finditer(without_comments)
         for selector in match.group("selectors").split(",")
     )
-
-
-def _host_highlight_selector(vendor_selector: str) -> str:
-    if vendor_selector == ".hljs":
-        return "html .hljs"
-    return f"html .hljs {vendor_selector}"
 
 
 def _parse_hsl(value: str) -> tuple[float, float, float]:
@@ -164,29 +195,31 @@ def test_syntax_foregrounds_meet_contrast_in_both_themes() -> None:
             )
 
 
-def test_metabrowser_outspecifies_every_highlight_theme_color() -> None:
+def test_metabrowser_owns_highlight_layout_and_semantic_colors() -> None:
     css = STYLES_CSS.read_text(encoding="utf-8")
-    vendor_css = HIGHLIGHT_THEME_CSS.read_text(encoding="utf-8")
 
-    host_color_rules = {
-        selector: body
+    host_color_rules = tuple(
+        (selector, body)
         for selector, body in _css_rules(css)
-        if selector.startswith("html .hljs") and COLOR_DECLARATION_RE.search(body)
-    }
-    vendor_color_selectors = {
-        selector
-        for selector, body in _css_rules(vendor_css)
-        if ".hljs" in selector and COLOR_DECLARATION_RE.search(body)
-    }
-
-    assert vendor_color_selectors
-    assert "html .hljs" in host_color_rules
-    assert "color: var(--text);" in host_color_rules["html .hljs"]
-    missing_host_selectors = {
-        selector: _host_highlight_selector(selector)
-        for selector in vendor_color_selectors
-        if _host_highlight_selector(selector) not in host_color_rules
-    }
-    assert not missing_host_selectors, (
-        f"Vendor color selectors without stronger host peers: {missing_host_selectors}"
+        if (selector == ".hljs" or selector.startswith(".hljs "))
+        and COLOR_DECLARATION_RE.search(body)
     )
+    styled_classes = {
+        match.group(1)
+        for selector, _body in host_color_rules
+        for match in HIGHLIGHT_CLASS_RE.finditer(selector)
+        if match.group(1) != "hljs"
+    }
+    base_rule_bodies = [body for selector, body in host_color_rules if selector == ".hljs"]
+
+    assert not HIGHLIGHT_THEME_CSS.exists()
+    assert "html .hljs" not in css
+    assert any("color: var(--text);" in body for body in base_rule_bodies)
+    assert any("background: var(--code-bg);" in body for body in base_rule_bodies)
+    assert styled_classes >= EXPECTED_HIGHLIGHT_COLOR_CLASSES
+
+    layout_rules = dict(_css_rules(css))
+    assert "display: block;" in layout_rules["pre code.hljs"]
+    assert "overflow-x: auto;" in layout_rules["pre code.hljs"]
+    assert "padding: 1em;" in layout_rules["pre code.hljs"]
+    assert "padding: 3px 5px;" in layout_rules["code.hljs"]

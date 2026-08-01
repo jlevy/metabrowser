@@ -553,6 +553,52 @@
     return payload;
   }
 
+  function _resolveChartThemeValue(value) {
+    if (typeof value === "string") {
+      const match = value.match(/^var\(\s*(--[\w-]+)\s*\)$/);
+      if (!match || typeof global.getComputedStyle !== "function") {
+        return value;
+      }
+      const resolved = global
+        .getComputedStyle(global.document.documentElement)
+        .getPropertyValue(match[1])
+        .trim();
+      return resolved || value;
+    }
+    if (Array.isArray(value)) {
+      return value.map(_resolveChartThemeValue);
+    }
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Object.prototype.toString.call(value) !== "[object Object]"
+    ) {
+      return value;
+    }
+    var resolvedObject = {};
+    for (var key of Object.keys(value)) {
+      resolvedObject[key] = _resolveChartThemeValue(value[key]);
+    }
+    return resolvedObject;
+  }
+
+  function _hasChartThemeValue(value) {
+    if (typeof value === "string") {
+      return /^var\(\s*--[\w-]+\s*\)$/.test(value);
+    }
+    if (Array.isArray(value)) {
+      return value.some(_hasChartThemeValue);
+    }
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Object.prototype.toString.call(value) !== "[object Object]"
+    ) {
+      return false;
+    }
+    return Object.values(value).some(_hasChartThemeValue);
+  }
+
   function chart(container, type, data, options) {
     if (typeof global.Chart === "undefined") {
       throw new Error("metabrowser.chart: Chart.js is not loaded");
@@ -565,7 +611,36 @@
       canvas = global.document.createElement("canvas");
       container.appendChild(canvas);
     }
-    return new global.Chart(canvas, { type: type, data: data, options: options || {} });
+    var dataTemplate = data;
+    var optionsTemplate = options || {};
+    var followsTheme = _hasChartThemeValue(dataTemplate) || _hasChartThemeValue(optionsTemplate);
+    var instance = new global.Chart(canvas, {
+      type: type,
+      data: followsTheme ? _resolveChartThemeValue(dataTemplate) : dataTemplate,
+      options: followsTheme ? _resolveChartThemeValue(optionsTemplate) : optionsTemplate,
+    });
+    if (!followsTheme || !global.MetabrowserTheme) {
+      return instance;
+    }
+    var destroyed = false;
+    var unsubscribeTheme = global.MetabrowserTheme.subscribe(() => {
+      if (destroyed) {
+        return;
+      }
+      instance.data = _resolveChartThemeValue(dataTemplate);
+      instance.options = _resolveChartThemeValue(optionsTemplate);
+      instance.update("none");
+    });
+    var destroyChart = instance.destroy.bind(instance);
+    instance.destroy = () => {
+      if (destroyed) {
+        return;
+      }
+      destroyed = true;
+      unsubscribeTheme();
+      destroyChart();
+    };
+    return instance;
   }
 
   function formatSize(bytes) {

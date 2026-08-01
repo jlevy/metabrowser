@@ -730,6 +730,7 @@ async def index(_request: Request) -> HTMLResponse:
     initial_path = _initial_path_html()
     initial_file_path = _initial_file_path()
     styles_url = _static_asset_url("styles.css")
+    theme_state_url = _static_asset_url("theme_state.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
@@ -887,13 +888,9 @@ async def index(_request: Request) -> HTMLResponse:
   {theme_bootstrap}
   <!-- All third-party assets are vendored into the wheel and served
        same-origin (see static/vendor/manifest.json), so the page loads
-       with no external origins and works offline. The highlight
-       stylesheet stays non-render-blocking: syntax CSS is enhancement,
-       not first-paint critical. -->
+       with no external origins and works offline. -->
   <link rel="stylesheet" href="{styles_url}">
   {plugin_styles}
-  <link rel="stylesheet" href="{_static_asset_url("vendor/highlight-github.min.css")}" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="{_static_asset_url("vendor/highlight-github.min.css")}"></noscript>
 </head>
 <body>
   <main class="container">
@@ -954,6 +951,7 @@ async def index(_request: Request) -> HTMLResponse:
        highlight-toml.min.js. -->
   {perf_block}
   {settings_block}
+  <script src="{theme_state_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>

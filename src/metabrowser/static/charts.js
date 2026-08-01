@@ -12,12 +12,18 @@
     return String(value);
   };
   var chartInstances = [];
+  var activeChartRender = null;
 
-  function dispose() {
+  function destroyChartInstances() {
     for (var i = 0; i < chartInstances.length; i++) {
       chartInstances[i].destroy();
     }
     chartInstances = [];
+  }
+
+  function dispose() {
+    destroyChartInstances();
+    activeChartRender = null;
   }
 
   function cssVar(ref) {
@@ -189,8 +195,6 @@
     return _perf.measure(
       "renderChartSpecs",
       () => {
-        dispose();
-
         if (typeof Chart === "undefined") {
           container.innerHTML += '<div class="preview-empty">Chart.js not loaded</div>';
           return;
@@ -227,28 +231,20 @@
 
   function createChart(canvas, spec) {
     // Resolve any var(--foo) color sentinels emitted by Python to concrete
-    // colors — canvas doesn't resolve CSS vars on its own.
-    if (spec.series) {
-      for (var si = 0; si < spec.series.length; si++) {
-        if (spec.series[si].color) {
-          spec.series[si].color = cssVar(spec.series[si].color);
-        }
-      }
-    }
-    if (spec.thresholds) {
-      for (var ti = 0; ti < spec.thresholds.length; ti++) {
-        if (spec.thresholds[ti].color) {
-          spec.thresholds[ti].color = cssVar(spec.thresholds[ti].color);
-        }
-      }
-    }
-    if (spec.annotations) {
-      for (var ai = 0; ai < spec.annotations.length; ai++) {
-        if (spec.annotations[ai].color) {
-          spec.annotations[ai].color = cssVar(spec.annotations[ai].color);
-        }
-      }
-    }
+    // colors without mutating the source spec. Theme repainting rebuilds from
+    // these token-bearing specs after the root palette changes.
+    var series = (spec.series || []).map((item) => ({
+      ...item,
+      color: item.color ? cssVar(item.color) : item.color,
+    }));
+    var thresholds = (spec.thresholds || []).map((item) => ({
+      ...item,
+      color: item.color ? cssVar(item.color) : item.color,
+    }));
+    var annotations = (spec.annotations || []).map((item) => ({
+      ...item,
+      color: item.color ? cssVar(item.color) : item.color,
+    }));
 
     var datasets = [];
     // Build threshold color function for area charts.
@@ -257,8 +253,8 @@
     // yellow/30 lines → below yellow → yellow).  Above all thresholds uses
     // the highest threshold's color.
     var thresholdColorFn = null;
-    if (spec.type === "area" && spec.thresholds && spec.thresholds.length > 0) {
-      var ascTh = spec.thresholds.slice().sort((a, b) => a.value - b.value);
+    if (spec.type === "area" && thresholds.length > 0) {
+      var ascTh = thresholds.slice().sort((a, b) => a.value - b.value);
       thresholdColorFn = (y) => {
         for (var t = 0; t < ascTh.length; t++) {
           if (y < ascTh[t].value) {
@@ -269,8 +265,8 @@
       };
     }
 
-    for (var i = 0; i < spec.series.length; i++) {
-      var s = spec.series[i];
+    for (var i = 0; i < series.length; i++) {
+      var s = series[i];
       var ds = {
         label: s.label,
         data: s.data,
@@ -347,10 +343,10 @@
     }
 
     // Threshold lines
-    if (spec.thresholds && spec.thresholds.length > 0) {
+    if (thresholds.length > 0) {
       config.options.plugins.annotation = { annotations: {} };
-      for (var t = 0; t < spec.thresholds.length; t++) {
-        var th = spec.thresholds[t];
+      for (var t = 0; t < thresholds.length; t++) {
+        var th = thresholds[t];
         config.options.plugins.annotation.annotations[`th${t}`] = {
           type: "line",
           yMin: th.value,
@@ -371,12 +367,12 @@
     }
 
     // Vertical annotation lines (faint lines, label on hover)
-    if (spec.annotations && spec.annotations.length > 0) {
+    if (annotations.length > 0) {
       if (!config.options.plugins.annotation) {
         config.options.plugins.annotation = { annotations: {} };
       }
-      for (var a = 0; a < spec.annotations.length; a++) {
-        var ann = spec.annotations[a];
+      for (var a = 0; a < annotations.length; a++) {
+        var ann = annotations[a];
         var color = ann.color || cssVar("--chart-annotation-default");
         config.options.plugins.annotation.annotations[`ann${a}`] = {
           type: "line",
@@ -431,6 +427,9 @@
     return _perf.measure(
       "renderChartsPayload",
       () => {
+        destroyChartInstances();
+        activeChartRender =
+          chartData.charts && chartData.charts.length > 0 ? { container, chartData } : null;
         container.innerHTML = "";
         if (chartData.summary) {
           renderSummaryTree(container, chartData.summary.counts, chartData.summary.metadata);
@@ -448,6 +447,20 @@
       },
     );
   }
+
+  function repaintForTheme() {
+    if (!activeChartRender) {
+      return;
+    }
+    var render = activeChartRender;
+    if ("isConnected" in render.container && !render.container.isConnected) {
+      dispose();
+      return;
+    }
+    renderPayload(render.container, render.chartData);
+  }
+
+  global.MetabrowserTheme.subscribe(repaintForTheme);
 
   global.MetabrowserCharts = {
     dispose: dispose,

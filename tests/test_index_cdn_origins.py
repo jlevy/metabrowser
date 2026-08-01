@@ -10,7 +10,7 @@ These tests assert:
 1. The rendered index references no external ``src``/``href`` origins.
 2. The vendored files match ``static/vendor/manifest.json`` byte-for-byte
    and the manifest versions match the ``package.json`` pins.
-3. The highlight stylesheet stays non-render-blocking.
+3. Highlight.js layout and colors stay in the host stylesheet, with no vendor theme.
 4. The vendored TOML grammar is the official highlight.js ``ini`` grammar.
 5. Local core scripts load before the optional vendored libraries.
 """
@@ -26,6 +26,7 @@ from devtools.vendor_assets import check as vendor_check
 from metabrowser import server
 
 VENDOR_DIR = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "vendor"
+REPO_ROOT = VENDOR_DIR.parents[3]
 
 
 def _index_html() -> str:
@@ -61,11 +62,14 @@ def test_optional_libraries_are_served_from_local_vendor() -> None:
         assert (VENDOR_DIR / Path(name).name).is_file(), f"vendored file missing: {name}"
 
 
-def test_highlight_stylesheet_is_not_render_blocking() -> None:
-    """Syntax-highlight CSS is visual enhancement, not first-paint critical CSS."""
+def test_highlight_theme_stylesheet_is_not_shipped() -> None:
+    """The host palette must not compete with a separately loaded vendor theme."""
     html = _index_html()
-    assert "vendor/highlight-github.min.css" in html
-    assert 'media="print" onload="this.media=\'all\'"' in html
+    assert "highlight-github.min.css" not in html
+    assert not (VENDOR_DIR / "highlight-github.min.css").exists()
+    assert "styles/github.min.css" not in (REPO_ROOT / "devtools/vendor_assets.py").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_vendored_toml_is_the_official_hljs_ini_grammar() -> None:

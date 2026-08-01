@@ -176,15 +176,26 @@ Tables should:
 - wrap or scroll long paths without widening the entire page;
 - expose an explicit empty state instead of rendering a blank panel.
 
+## Source and Syntax Colors
+
+Metabrowser owns the complete Highlight.js semantic palette in `static/styles.css`.
+Highlight.js supplies token classes but no theme stylesheet, so light and dark colors
+cannot diverge through stylesheet timing or selector specificity.
+Every syntax foreground must meet WCAG AA contrast against the app and code surfaces in
+both themes.
+
 ## Charts
 
 Chart specifications use CSS-variable sentinels for color.
 `static/charts.js` resolves those variables before passing concrete colors to Chart.js,
 because canvas cannot resolve CSS custom properties itself.
+When the resolved theme changes, active charts rebuild from their unmodified token
+specs; SDK-created charts re-resolve token-bearing data and options in place.
 
 Charts must include text labels and usable summaries.
 Color alone cannot distinguish series, thresholds, or success and failure.
-Destroy Chart.js instances when their view is disposed.
+Destroy SDK-created Chart.js instances when their view is disposed so their theme
+subscription is also released.
 
 ## Motion
 

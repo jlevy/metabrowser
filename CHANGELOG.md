@@ -15,6 +15,10 @@ KPress embedding update:
   body. KPress derives headings from that base, while proportional host tokens keep code
   and secondary text tied to it, so the document hierarchy stays stable when the browser
   root size changes.
+- Theme changes now keep embedded KPress content, full-file syntax highlighting, and
+  plugin charts aligned with the Metabrowser chrome.
+  The host owns the complete Highlight.js palette with WCAG AA contrast checks in both
+  themes, and token-colored canvas charts repaint when the resolved palette changes.
 
 Flat single-command CLI:
 
