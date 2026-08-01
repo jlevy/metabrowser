@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+KPress embedding update:
+
+- KPress is upgraded to `0.3.0` and its declarative fragment architecture.
+  Metabrowser owns one root theme attribute and one root type-size hook, fragments are
+  theme-agnostic, the KPress asset manifest is authoritative, and host-side heading,
+  bullet, theme-restamping, resolver-filtering, and numeric-table workarounds are
+  removed.
+- Embedded typography now stays fixed to the 17px document scale when the browser root
+  size changes, while deliberate mono, secondary-text, and label sizes continue to use
+  Metabrowser’s semantic type tokens.
+
 Flat single-command CLI:
 
 - Serving is the default operation: `metab .` serves the current directory the way

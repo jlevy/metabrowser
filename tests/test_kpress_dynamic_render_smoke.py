@@ -9,9 +9,9 @@ every CSS/JS asset URL the response advertises is actually serveable from
 
 The point is to catch the kind of regression that would otherwise only
 surface during human browser testing: a dropped wrapper class, an asset
-that's listed in the response but missing from the package, a theme
-attribute that stopped being stamped on the html, sanitization breaking
-on common content, etc. The XSS-specific assertions live in
+that's listed in the response but missing from the package, theme state
+leaking into a host-owned fragment, sanitization breaking on common
+content, etc. The XSS-specific assertions live in
 test_runtime.py over in kpress; here we focus on the *integration*.
 """
 
@@ -136,13 +136,16 @@ def test_dynamic_render_emits_expected_envelope_shape(served_root: Path) -> None
     assert isinstance(payload["diagnostics"], list)
 
 
-def test_dynamic_render_includes_theme_and_doc_chrome(served_root: Path) -> None:
-    """The injected HTML must carry the kpress doc wrappers and the theme
-    bootstrap so the host's pre-paint theme handoff still works. These
-    classes/attrs are what the host CSS targets."""
+def test_dynamic_render_includes_doc_chrome_without_fragment_theme_state(
+    served_root: Path,
+) -> None:
+    """The host owns theme state, while KPress owns the document wrappers."""
 
     html = _render({"path": "docs/smoke.md", "view": "rendered"})["html"]
     assert 'class="kpress kpress-doc kpress-print-surface"' in html
+    assert "data-kpress-theme=" not in html
+    assert "data-kpress-resolved-theme=" not in html
+    assert "data-kpress-palette=" not in html
 
 
 def test_dynamic_render_sanitizes_untrusted_worktree_markup(served_root: Path) -> None:
@@ -269,35 +272,43 @@ def test_dynamic_render_404s_on_missing_file(served_root: Path) -> None:
     assert response.status_code == 404
 
 
-@pytest.mark.parametrize(
-    ("theme_mode", "resolved_theme"),
-    [
-        ("system", "light"),
-        ("system", "dark"),
-        ("light", "light"),
-        ("dark", "dark"),
-    ],
-)
-def test_dynamic_render_propagates_theme_mode_and_resolved_theme(
-    served_root: Path, theme_mode: str, resolved_theme: str
-) -> None:
-    """The SPA passes ``theme_mode`` (user preference) and ``resolved_theme``
-    (the host's resolution of `system`) as query params. Both must land as
-    data-* attributes on the rendered article so the kpress CSS theme
-    selectors can target them. A regression that drops either attribute
-    would silently fall back to system colors in dark mode, etc."""
+def test_dynamic_render_ignores_legacy_theme_query_state(served_root: Path) -> None:
+    """A stale caller cannot split fragment SSR or its asset cache by theme."""
 
     payload = _render(
         {
             "path": "docs/smoke.md",
             "view": "rendered",
-            "theme_mode": theme_mode,
-            "resolved_theme": resolved_theme,
+            "theme_mode": "dark",
+            "resolved_theme": "dark",
         }
     )
     html = payload["html"]
-    assert f'data-kpress-theme="{theme_mode}"' in html
-    assert f'data-kpress-resolved-theme="{resolved_theme}"' in html
+    assert "data-kpress-theme=" not in html
+    assert "data-kpress-resolved-theme=" not in html
+    assert "js/theme.js" not in {asset["id"] for asset in _manifest_assets(payload)}
+
+
+def test_dynamic_render_uses_kpress_column_scoped_numeric_typing(served_root: Path) -> None:
+    source = served_root / "docs" / "numbers.md"
+    source.write_text(
+        """# Numeric columns
+
+| Metric | Change | Mixed |
+| --- | --- | --- |
+| Revenue | −35% | 12 |
+| Margin | +45% | n/a |
+""",
+        encoding="utf-8",
+    )
+
+    html = _render({"path": "docs/numbers.md", "view": "rendered"})["html"]
+    change_column = re.findall(r'<(?:th|td)[^>]*data-col="Change"[^>]*>', html)
+    mixed_column = re.findall(r'<(?:th|td)[^>]*data-col="Mixed"[^>]*>', html)
+    assert len(change_column) == 3
+    assert all('data-kpress-numeric="true"' in cell for cell in change_column)
+    assert len(mixed_column) == 3
+    assert all("data-kpress-numeric" not in cell for cell in mixed_column)
 
 
 _MATH_AND_IMAGE_MARKDOWN = """\

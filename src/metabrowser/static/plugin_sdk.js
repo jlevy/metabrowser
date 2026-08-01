@@ -370,20 +370,6 @@
     );
   }
 
-  // KPress ships standalone-page runtime scripts. theme.js is still skipped in
-  // the embedded host — it writes data-kpress-resolved-theme onto <html> from
-  // the viewer's system preference, fighting metabrowser's own theme toggle
-  // (applyThemeMode owns those attributes). toc.js is NOT skipped: metabrowser
-  // marks its preview pane as the kpress document viewport, so toc.js drives the
-  // sidebar/drawer, scroll-spy, and toggle against the pane (see kpressInitToc).
-  const _SKIP_EMBEDDED_KPRESS_JS = ["theme.js"];
-
-  function _isSkippedKpressScript(asset, url) {
-    return _SKIP_EMBEDDED_KPRESS_JS.some(
-      (name) => asset?.id === `js/${name}` || url.endsWith(`/${name}`),
-    );
-  }
-
   // toc.js is loaded via dynamic import (not a <script> tag) so we can capture
   // its initKpressToc export and drive it per rendered document. Its load-time
   // self-init runs once against the page; per-render wiring + teardown is owned
@@ -475,9 +461,6 @@
       if (!url) {
         throw new Error(`KPress entry point ${asset.id || "<unknown>"} has no URL`);
       }
-      if (_isSkippedKpressScript(asset, url)) {
-        continue;
-      }
       if (_isTocScript(asset, url)) {
         await _loadKpressTocModule(url);
         continue;
@@ -520,12 +503,6 @@
     if (profile) {
       url.searchParams.set("profile", profile);
     }
-    const root = global.document?.documentElement;
-    const themeMode = options?.themeMode || root?.getAttribute?.("data-theme-mode") || "system";
-    const resolvedTheme = options?.resolvedTheme || root?.getAttribute?.("data-theme") || "light";
-    url.searchParams.set("theme_mode", themeMode);
-    url.searchParams.set("resolved_theme", resolvedTheme);
-
     const dedupKey = options?.dedupKey || path;
     const previous = _kpressInflight.get(dedupKey);
     if (previous) {

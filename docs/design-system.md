@@ -72,31 +72,38 @@ document rescales as one unit:
 - `--document-small-font-size` (0.85×): secondary document text — TOC entries, captions,
   footnotes.
 
-Embedded KPress documents map all KPress size tokens onto these document sizes plus
-`--label-font-size` (so the TOC’s CONTENTS title matches app tabs and labels) through
-the KPress bridge rule on `.metabrowser-kpress-host .kpress`. When adding a size, extend
-the ramp and its documentation; do not create a one-off.
+Embedded KPress documents set `--kpress-host-font-size-base` to
+`--document-body-font-size` on `:root`. KPress derives its full ramp, headings, bullets,
+labels, and offsets from that base.
+The scoped bridge overrides only intentional design differences: mono uses
+`--document-mono-font-size`, secondary document tiers use `--document-small-font-size`,
+and the CONTENTS label uses `--label-font-size` so it matches app labels.
+When adding a size, extend the ramp and its documentation; do not create a one-off.
 
-### The px/rem Unit Boundary
+### KPress Base-Size Boundary
 
 The app pins all sizes in px and deliberately does not scale with the browser’s
 default-font-size preference.
-KPress sizes in rem and deliberately does.
-Any KPress size that reaches the screen in rem therefore renders at a browser-dependent
-ratio to the px-pinned prose: correct on a 16px-default browser, wrong on any other.
+Standalone KPress documents preserve browser-preference scaling through a `1rem` base,
+but its embedded type system consumes the host’s px value through
+`--kpress-host-font-size-base`. Every rendered font size and bullet offset derives from
+KPress’s internal base variable, so changing the browser root size cannot distort the
+embedded document. The host hook lives on `:root` so body-portaled KPress overlays
+inherit the same scale, and KPress can still re-root its internal base to the print size
+on paper. Verify the boundary by rendering at two browser root sizes and confirming
+computed document sizes are identical.
 
-Invariant: inside `.metabrowser-kpress-host`, no rendered font size may depend on rem.
-The KPress bridge remaps every KPress size token onto the type scale, and restates
-KPress’s rem literals (headings, list bullets, widget labels) in em so they derive from
-the document body size.
-When upgrading KPress, re-audit its CSS for new rem font sizes and extend the bridge.
-Verify by rendering a document at two different browser root font sizes and confirming
-computed sizes are identical.
+### Embedded Document Themes
 
-The bridge is a temporary adapter: once KPress sizes internally from a single
-`--kpress-font-size-base` knob
-([jlevy/kpress#37](https://github.com/jlevy/kpress/issues/37)), it collapses to setting
-that one variable.
+Metabrowser owns one theme input for the embedded document:
+`data-kpress-resolved-theme="light|dark"` on the root.
+KPress fragments carry no theme or palette attributes, so one cached render works in
+both modes and a toggle never has to chase rendered elements.
+The default fragment manifest omits KPress’s standalone theme resolver; the host loads
+the entry points the manifest declares without maintaining a second exclusion list.
+KPress’s symmetric theme selectors keep its palette and `color-scheme` aligned, while
+the scoped bridge maps the public `--kpress-doc-*` color tokens to Metabrowser’s
+semantic surface, text, border, muted, and link tokens.
 
 Keep these roles distinct:
 

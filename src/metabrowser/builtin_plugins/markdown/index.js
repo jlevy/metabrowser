@@ -19,21 +19,6 @@
     return;
   }
 
-  // KPress 0.2.2 recognizes US-style ASCII-signed values. Extend that
-  // classification for typographic minus signs and common decimal/grouping
-  // conventions without changing the displayed cell text.
-  const NUMERIC_TABLE_CELL_PATTERN =
-    /^[+\-\u2212]?(?:(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?)|(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?)|(?:\d+(?:[.,]\d+)?)|(?:[.,]\d+))%?$/;
-
-  function markNumericTableCells(container) {
-    for (const cell of container.querySelectorAll(".kpress-table th, .kpress-table td")) {
-      const text = cell.textContent?.trim() || "";
-      if (NUMERIC_TABLE_CELL_PATTERN.test(text)) {
-        cell.setAttribute("data-kpress-numeric", "true");
-      }
-    }
-  }
-
   function renderSourceHtml(data) {
     const truncationWarning = mb.renderTextTruncationWarning(data);
     if (mb.isLargeTextPreview(data)) {
@@ -175,7 +160,6 @@
       const rendered = await mb.fetchKpressRender(ctx, "rendered", { profile: "document" });
       container.innerHTML = rendered.html;
       injectDiagnostics(container, rendered.diagnostics || []);
-      markNumericTableCells(container);
       activeTocDispose = mb.kpressInitToc(container);
     } catch (err) {
       container.innerHTML = renderKpressError(err);
