@@ -10,9 +10,11 @@ Checked items below are supported today; unchecked items are planned work.
 - [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
   rendering can evolve independently
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
-- [ ] Add
-  [quick file finding and search providers](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md),
-  then evaluate optional persistent indexing for very large roots
+- [x] Add the client-only
+  [Quick File finder](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
+  over paths already observed by the browser
+- [ ] Add complete server filename and bounded full-text providers, then evaluate
+  optional persistent indexing only if measured inventory scans require it
 - [ ] Add
   [folder views and the treemap overview](docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md)
   so directories join the multi-view framework with a treemap default view

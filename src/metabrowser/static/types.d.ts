@@ -408,6 +408,7 @@ type MetabrowserSearchBatch = Readonly<{
 type MetabrowserSearchContext = Readonly<{ requestId: number }>;
 
 type MetabrowserSearchProvider = Readonly<{
+  activation?: "fallback" | "immediate";
   id: string;
   priority?: number;
   search(
@@ -444,7 +445,10 @@ type MetabrowserSearchController = Readonly<{
   cancel(): void;
   dispose(): void;
   registerProvider(provider: MetabrowserSearchProvider): () => void;
-  search(request: MetabrowserSearchRequest): Promise<MetabrowserSearchState | null>;
+  search(
+    request: MetabrowserSearchRequest,
+    options?: { includeFallback?: boolean },
+  ): Promise<MetabrowserSearchState | null>;
   state(): MetabrowserSearchState;
   subscribe(listener: (state: MetabrowserSearchState) => void): () => void;
 }>;

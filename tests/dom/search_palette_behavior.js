@@ -468,6 +468,16 @@ async function main() {
   );
   check("result limit stays visible", status.textContent.includes("limited"), status.textContent);
 
+  const requestCountBeforeComposition = requests.length;
+  input.value = "composing";
+  input.dispatchEvent(fakeEvent("input", { isComposing: true, target: input }));
+  await settle();
+  check(
+    "intermediate composition input does not start search",
+    requests.length === requestCountBeforeComposition,
+  );
+  input.value = "app";
+
   input.dispatchEvent(fakeEvent("keydown", { key: "ArrowDown", target: input }));
   check(
     "ArrowDown changes the active option",
@@ -495,6 +505,12 @@ async function main() {
   check(
     "Home activates the first option",
     listbox.children[0].getAttribute("aria-selected") === "true",
+  );
+  const tabEvent = fakeEvent("keydown", { key: "Tab", target: input });
+  input.dispatchEvent(tabEvent);
+  check(
+    "Tab stays within the one-control modal",
+    tabEvent.defaultPrevented && document.activeElement === input,
   );
 
   input.dispatchEvent(fakeEvent("keydown", { key: "Enter", target: input }));
@@ -557,6 +573,11 @@ async function main() {
 
   palette.dispose();
   check("dispose removes palette DOM", !document.body.children.includes(overlay));
+  const requestCountAtDispose = requests.length;
+  input.value = "after-dispose";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check("dispose removes the input listener", requests.length === requestCountAtDispose);
   const focusCallsBefore = input.focusCalls;
   document.dispatchEvent(fakeEvent("keydown", { key: "/", target: initialFocus }));
   check("dispose removes the global shortcut", input.focusCalls === focusCallsBefore);

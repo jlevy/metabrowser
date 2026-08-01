@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft; client and server search boundaries resolved
+**Status:** Phase 1 implemented and validated; Phases 2 through 4 planned
 
 ## Overview
 
@@ -57,7 +57,8 @@ server-side full-text provider without changing the shared search runtime.
 
 ## Current State
 
-The current browser has the server and navigation prerequisites but no search UI.
+The browser now implements the client-only Quick File phase over the existing server and
+navigation prerequisites.
 
 | Capability | Current State | Consequence |
 | --- | --- | --- |
@@ -67,7 +68,8 @@ The current browser has the server and navigation prerequisites but no search UI
 | Recent files | `/api/recent` returns up to 2,000 files from the all-known inventory into `recentBaseEntries` | Recent files are another useful bounded candidate source |
 | Navigation | `navigateToPath` reveals a tree row when possible and calls `selectFile` even when the row is unmounted | Finder selection can reuse existing preview and route behavior |
 | Live updates | Scoped `fs.change` operations update shallow `FileStore` entries | Locally known deep entries can become stale because their changes are outside the event scope |
-| Search | No palette, fuzzy matcher, filename route, content route, or search result model exists | The first phase can establish clean module and provider boundaries |
+| Client search | A slash-key palette, known-file catalog, fuzzy matcher, and DOM-independent provider runtime search observed paths without a search request | Phase 1 provides fast navigation but honestly reports partial coverage |
+| Server search | No filename or content search route exists | Phases 2 and 3 can add bounded providers without changing the palette or local matcher |
 
 The earlier design treated keyword search as a filtered tree and as a shared filter
 dimension.
@@ -142,8 +144,12 @@ SearchRequest
   match: fuzzy | literal | regex | approximate
   scope (optional)
 
+SearchOptions
+  includeFallback (optional explicit complete-coverage request)
+
 SearchProvider
   id: stable provider identifier
+  activation: immediate | fallback
   supports(request) -> bool
   search(request, context, signal) -> SearchBatch or Promise<SearchBatch>
 
@@ -179,10 +185,21 @@ returned result list.
 The controller never infers one from the other.
 It cancels the previous request when the query, mode, or scope changes and drops any
 late batch whose request identity is no longer active.
+Activation defaults to `immediate`, and immediate providers run together.
+Fallback providers run only when the immediate composition is empty and incomplete, or
+when a surface explicitly requests complete coverage.
 For file results it merges batches by path, keeps the highest-scored duplicate, and uses
 provider priority plus stable path order for deterministic ties.
 Each surface preserves its selected result by identity when asynchronous results arrive
 so the highlight does not jump.
+
+Phase 1 has one filename provider, so its ordinal scores are meaningful within one
+batch. Before local and server filename batches can appear together, Phase 2 must either
+define one cross-runtime comparable rank or let an authoritative complete batch replace
+incomplete local results.
+It must likewise define when complete server coverage supersedes incomplete local
+coverage in aggregate status; provider-local ordinals and a conjunction of batch
+completeness are not sufficient for an explicit complete search.
 
 The first entry point always sends `{target: file, match: fuzzy}`. The contract reserves
 literal and regex content search and an evidence-gated approximate-content provider
@@ -435,7 +452,7 @@ results hierarchical.
 - [x] Write the fuzzy-ranking spike report and scenario fixture, including the named
   comparison vector, expected ordering, rationale, and a tuning-change checklist
 - [x] Add the DOM-independent search controller, request identity, cancellation, batch
-  metadata, provider registration, and flat file-result composition
+  metadata, immediate and fallback provider activation, and flat file-result composition
 - [x] Add the strict `known_file_catalog.js` module and feed it from initial tree, lazy
   tree, Recent, event, and successful-navigation observations
 - [x] Add the pure fuzzy matcher with the documented comparison vector, path-aware
@@ -459,8 +476,11 @@ results hierarchical.
   results and honest inventory and result truncation metadata
 - [ ] Add the server filename provider, automatic zero-local-result fallback, explicit
   “Search all indexed files,” cancellation, response-revision checks, and path deduping
-- [ ] Refresh active server results from revision events without opening an `all-known`
-  event stream
+- [ ] Define cross-provider filename ordering and coverage dominance so an authoritative
+  complete server batch cannot be misranked or reported incomplete because of the
+  earlier partial local batch
+- [ ] Refresh active local and server results from catalog and inventory revision events
+  without opening an `all-known` event stream
 - [ ] Measure scan latency, snapshot allocation, payload size, and cancellation at and
   beyond the configured inventory cap
 
@@ -529,6 +549,42 @@ It adds no public SDK method, persisted preference, or wire-format compatibility
 requirement. Phase 2 makes filename coverage complete when necessary.
 Phase 3 adds content search as an explicit mode after its engine and resource budgets
 are measured.
+
+## Phase 1 Spike Findings
+
+Phase 1 is ready for interactive testing as a client-only navigation spike:
+
+- `/` opens one modal Quick File surface; filename and path input uses the documented
+  ordered-subsequence rank vector and opens through normal preview navigation
+- the catalog includes files learned from initial and lazy trees, Recent responses,
+  inventory events, and successful direct navigation, regardless of mounted tree rows
+- search retains at most 100 results, cancels obsolete work, yields during large scans,
+  and makes no search request
+- the runtime keeps immediate and fallback providers separate, so a later server
+  filename provider can run after an empty incomplete local result or an explicit
+  complete-search action
+- keyboard, pointer, focus, modal semantics, stale results, duplicate basenames, lazy
+  unmounted paths, and replacement queries passed DOM and real-browser acceptance
+
+The [ranking report](../../research/research-2026-07-31-fuzzy-file-ranking.md) records
+the golden scenarios and measured shallow, 2,000-file, 50,000-file, and real-browser
+fixtures. The full repository gate passed with the spike enabled.
+
+The remaining limits are deliberate or evidence-gated:
+
+- local coverage remains partial until Phase 2 adds complete indexed filename search
+- a query uses one catalog snapshot; files observed while that query remains open appear
+  after the next input change or palette reopen rather than triggering an automatic
+  rerun
+- the local provider publishes one completed batch, so 50,000 observed files took about
+  0.8 seconds to complete on the measured machine even though chunking kept queued input
+  responsive
+- matching does not perform typo correction, transposition, accent folding, or Unicode
+  canonical normalization
+- provider scores are Phase 1 batch ordinals; Phase 2 must resolve comparable ranking
+  and aggregate completeness before exposing an explicit complete filename search
+- content search, grouped excerpts, location reveal, and a persistent navigation-panel
+  surface remain Phase 3 work
 
 ## Open Questions
 

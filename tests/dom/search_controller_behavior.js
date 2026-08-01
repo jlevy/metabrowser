@@ -225,6 +225,74 @@ async function main() {
   check("one truncated provider keeps composition truncated", composed.truncated === true);
   compositionController.dispose();
 
+  let fallbackCalls = 0;
+  const fallbackController = sandbox.MetabrowserSearch.createController();
+  let invalidActivationRejected = false;
+  try {
+    fallbackController.registerProvider({
+      activation: "typo",
+      id: "invalid-activation",
+      search: async () => ({ complete: true, results: [], truncated: false }),
+    });
+  } catch (error) {
+    invalidActivationRejected = error?.name === "TypeError";
+  }
+  check("unknown provider activation is rejected", invalidActivationRejected);
+  fallbackController.registerProvider({
+    id: "observed-files",
+    priority: 10,
+    search: async (request) => ({
+      complete: false,
+      providerId: "observed-files",
+      results: request.query === "hit" ? [fileResult("local-hit.md", 2)] : [],
+      truncated: false,
+    }),
+    supports: () => true,
+  });
+  fallbackController.registerProvider({
+    activation: "fallback",
+    id: "indexed-files",
+    priority: 20,
+    search: async () => {
+      fallbackCalls += 1;
+      return {
+        complete: true,
+        providerId: "indexed-files",
+        results: [fileResult("server-hit.md", 1)],
+        truncated: false,
+      };
+    },
+    supports: () => true,
+  });
+  const localHit = await fallbackController.search({
+    match: "fuzzy",
+    query: "hit",
+    target: "file",
+  });
+  equal(
+    "a local hit does not start the deferred provider",
+    localHit.results.map((result) => result.path),
+    ["local-hit.md"],
+  );
+  check("deferred provider remains idle after a local hit", fallbackCalls === 0);
+  const fallbackHit = await fallbackController.search({
+    match: "fuzzy",
+    query: "miss",
+    target: "file",
+  });
+  equal(
+    "an empty incomplete local batch starts the fallback provider",
+    fallbackHit.results.map((result) => result.path),
+    ["server-hit.md"],
+  );
+  check("fallback provider ran once", fallbackCalls === 1, String(fallbackCalls));
+  await fallbackController.search(
+    { match: "fuzzy", query: "hit", target: "file" },
+    { includeFallback: true },
+  );
+  check("an explicit complete search includes fallback providers", fallbackCalls === 2);
+  fallbackController.dispose();
+
   if (failures.length > 0) {
     process.stderr.write(`${failures.join("\n")}\n`);
     process.exit(1);

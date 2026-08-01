@@ -743,6 +743,7 @@ if (typeof window !== "undefined") {
 var knownFileCatalog = null;
 var quickFileSearchController = null;
 var quickFilePalette = null;
+var QUICK_FILE_RESULT_LIMIT = 100;
 
 // ── Tree ────────────────────────────────────────────────────────
 
@@ -1902,12 +1903,12 @@ function fetchRecent(windowKey) {
       { window: windowKey },
     )
     .then((data) => {
+      var flat = data?.entries_flat || [];
+      knownFileCatalog?.observeRecent(flat);
       if (windowKey !== currentRecentWindow) {
         return; // user clicked another chip
       }
       recentBaseEntries = new Map();
-      var flat = data?.entries_flat || [];
-      knownFileCatalog?.observeRecent(flat);
       for (var i = 0; i < flat.length; i++) {
         var f = flat[i];
         if (f?.path) {
@@ -4568,17 +4569,20 @@ function initQuickFileFinder() {
   }
 
   knownFileCatalog = window.MetabrowserKnownFileCatalog.create();
-  quickFileSearchController = window.MetabrowserSearch.createController({ maxResults: 100 });
+  quickFileSearchController = window.MetabrowserSearch.createController({
+    maxResults: QUICK_FILE_RESULT_LIMIT,
+  });
   var localProvider = window.MetabrowserSearch.createLocalFileProvider({
     catalog: knownFileCatalog,
     matcher: window.MetabrowserFileFuzzyMatch,
-    maxResults: 100,
+    maxResults: QUICK_FILE_RESULT_LIMIT,
   });
   quickFileSearchController.registerProvider(localProvider);
   quickFilePalette = window.MetabrowserSearchPalette.create({
     controller: quickFileSearchController,
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
+    maxRows: QUICK_FILE_RESULT_LIMIT,
     onNotFound: (path) => {
       knownFileCatalog.removePath(path);
     },
