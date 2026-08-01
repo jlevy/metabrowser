@@ -731,6 +731,19 @@ if (typeof window !== "undefined") {
   };
 }
 
+// The application shell owns the catalog and search composition. Search modules
+// receive snapshots and navigation callbacks through their public constructors;
+// they never reach into app.js state directly.
+/**
+ * @typedef {object} QuickFileOpenOutcome
+ * @property {HTMLElement | null} [focusTarget]
+ * @property {string} [message]
+ * @property {"opened" | "not-found" | "error" | "cancelled"} status
+ */
+var knownFileCatalog = null;
+var quickFileSearchController = null;
+var quickFilePalette = null;
+
 // ── Tree ────────────────────────────────────────────────────────
 
 async function loadTree() {
@@ -749,6 +762,7 @@ async function loadTree() {
       () => resp.json(),
       responsePerfMeta(resp, ""),
     );
+    knownFileCatalog?.observeInitialTree(data.tree);
     var pathEl = queryHtml(".header-path");
     if (pathEl) {
       pathEl.innerHTML = pathHtml(data.root);
@@ -1147,6 +1161,7 @@ async function loadSubtree(path, childrenEl, options) {
       throw new Error("Malformed tree response");
     }
     var tree = data.tree;
+    knownFileCatalog?.observeLazyTree(tree);
     if (tree.length === 0 && data.tally_cache_status === "scanning") {
       childrenEl.innerHTML = treeLazyLoadingHtml("Folder still loading...");
       startIndexProgressPolling();
@@ -1870,6 +1885,7 @@ function fetchRecent(windowKey) {
       }
       recentBaseEntries = new Map();
       var flat = data?.entries_flat || [];
+      knownFileCatalog?.observeRecent(flat);
       for (var i = 0; i < flat.length; i++) {
         var f = flat[i];
         if (f?.path) {
@@ -2392,6 +2408,7 @@ var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
+/** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, skipHash) {
   return _perf.measureAsync(
     "selectFile",
@@ -2406,7 +2423,7 @@ async function selectFile(path, skipHash) {
       }
       const preview = document.getElementById("preview-pane");
       if (!preview) {
-        return;
+        return { message: "The preview destination is unavailable.", status: "error" };
       }
 
       // Three-way cache state:
@@ -2419,7 +2436,7 @@ async function selectFile(path, skipHash) {
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
         renderFile(cached);
         maybeOpenLiveStream(path, cached);
-        return;
+        return openedFileOutcome(path, cached, preview);
       }
 
       if (loadingIndicatorTimer) {
@@ -2464,8 +2481,9 @@ async function selectFile(path, skipHash) {
             }
             renderFile(cached);
             maybeOpenLiveStream(path, cached);
+            return openedFileOutcome(path, cached, preview);
           }
-          return;
+          return { status: "cancelled" };
         }
         if (!resp.ok) {
           const text = await _perf.measureAsync(
@@ -2473,7 +2491,9 @@ async function selectFile(path, skipHash) {
             () => resp.text(),
             responsePerfMeta(resp, path),
           );
-          throw new Error(text || `HTTP ${resp.status}`);
+          throw Object.assign(new Error(text || `HTTP ${resp.status}`), {
+            notFound: resp.status === 404,
+          });
         }
         const data = await _perf.measureAsync(
           "apiFile:json",
@@ -2494,11 +2514,15 @@ async function selectFile(path, skipHash) {
           }
           renderFile(data);
           maybeOpenLiveStream(path, data);
+          return openedFileOutcome(path, data, preview);
         }
+        return { status: "cancelled" };
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
+        var caught = /** @type {{name?: string, notFound?: boolean}} */ (err);
+        if (caught?.name === "AbortError") {
+          return { status: "cancelled" };
         }
+        var notFound = caught?.notFound === true;
         if (currentPath === path) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
@@ -2506,11 +2530,29 @@ async function selectFile(path, skipHash) {
           }
           disposeActivePluginViews();
           preview.innerHTML = `<div class="preview-empty">Error: ${esc(errorMessage(err))}</div>`;
+        } else {
+          return { status: "cancelled" };
         }
+        return notFound
+          ? { message: `File no longer available: ${path}`, status: "not-found" }
+          : { message: `Could not open ${path}: ${errorMessage(err)}`, status: "error" };
       }
     },
     { path: path, skip_hash: !!skipHash },
   );
+}
+
+/**
+ * @param {string} path
+ * @param {{kind?: string, logical_ext?: string}} data
+ * @param {HTMLElement} preview
+ * @returns {QuickFileOpenOutcome}
+ */
+function openedFileOutcome(path, data, preview) {
+  if (path && data.kind !== "folder") {
+    knownFileCatalog?.observeNavigation(path, data.logical_ext || null);
+  }
+  return { focusTarget: preview, status: "opened" };
 }
 
 // ── File rendering ──────────────────────────────────────────────
@@ -3198,6 +3240,7 @@ function fileStoreApplySnapshot(scope, entries) {
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
+  knownFileCatalog?.observeEventSnapshot(entries);
   fileStore = new Map();
   for (var i = 0; i < entries.length; i++) {
     fileStore.set(entries[i].path, entries[i]);
@@ -3208,6 +3251,7 @@ function fileStoreApplySnapshot(scope, entries) {
 }
 
 function fileStoreApplyChange(ops) {
+  knownFileCatalog?.applyEventChange(ops);
   for (var i = 0; i < ops.length; i++) {
     var op = ops[i];
     if (op.op === "upsert") {
@@ -3803,6 +3847,7 @@ function _createInventoryEventSource() {
     _resetEsCircuitBreaker();
     // Server restart or root swap — drop everything; reconnect
     // will deliver a fresh snapshot.
+    knownFileCatalog?.clear();
     fileStore = new Map();
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
@@ -3930,19 +3975,67 @@ async function revealInTree(path) {
   return true;
 }
 
-async function navigateToPath(path) {
+// skipHash is set by hash-driven callers (hashchange, init) whose URL
+// already names the path; user-initiated callers (the quick-file
+// palette) leave it unset so selectFile writes the deep-link hash.
+/** @returns {Promise<QuickFileOpenOutcome>} */
+async function navigateToPath(path, skipHash) {
   if (!path) {
+    return { status: "cancelled" };
+  }
+  // Reveal is best-effort: a row past the pagination cap, or one inside
+  // a folder the tree has never expanded, does not resolve to a DOM
+  // node — but the preview must still open, because the palette
+  // navigates to paths that were never mounted.
+  await revealInTree(path);
+  return selectFile(path, skipHash);
+}
+
+// Compose the application-lifetime quick-file modules at the shell boundary.
+function initQuickFileFinder() {
+  if (quickFilePalette) {
     return;
   }
-  if (await revealInTree(path)) {
-    selectFile(path, true);
+  if (
+    !window.MetabrowserKnownFileCatalog ||
+    !window.MetabrowserFileFuzzyMatch ||
+    !window.MetabrowserSearch ||
+    !window.MetabrowserSearchPalette
+  ) {
+    console.warn("Quick File dependencies are unavailable");
+    return;
   }
+
+  knownFileCatalog = window.MetabrowserKnownFileCatalog.create();
+  quickFileSearchController = window.MetabrowserSearch.createController({ maxResults: 100 });
+  var localProvider = window.MetabrowserSearch.createLocalFileProvider({
+    catalog: knownFileCatalog,
+    matcher: window.MetabrowserFileFuzzyMatch,
+    maxResults: 100,
+  });
+  quickFileSearchController.registerProvider(localProvider);
+  quickFilePalette = window.MetabrowserSearchPalette.create({
+    controller: quickFileSearchController,
+    getCatalogSnapshot: () => knownFileCatalog.snapshot(),
+    getFileIcon: getFileIcon,
+    onNotFound: (path) => {
+      knownFileCatalog.removePath(path);
+    },
+    openFile: (path) => {
+      // Search hits can outlive deep inventory changes that are outside the
+      // shallow event stream. Force the existing ETag path to confirm the file
+      // still exists before treating palette navigation as successful.
+      fileNeedsRevalidate.add(path);
+      boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
+      return navigateToPath(path);
+    },
+  });
 }
 
 window.addEventListener("hashchange", () => {
   var path = parseHashRoute();
   if (path && path !== currentPath) {
-    navigateToPath(path);
+    navigateToPath(path, true);
   }
 });
 
@@ -3995,6 +4088,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSettingsControl();
   initNavTabs();
   initNavScrollShadow();
+  initQuickFileFinder();
   // Fire the URL-pinned file fetch in parallel with the tree walk: the
   // two requests don't depend on each other, so a deep-link's preview
   // can render as soon as /api/file lands instead of waiting for the
@@ -4013,7 +4107,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else {
     var readme = findRootReadme();
     if (readme) {
-      navigateToPath(readme);
+      // The landing README is not a user navigation — keep the URL
+      // clean, as it was before the palette shared this path.
+      navigateToPath(readme, true);
     }
   }
   // /api/events is the single source for tree decoration and

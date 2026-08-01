@@ -436,7 +436,7 @@ results hierarchical.
   comparison vector, expected ordering, rationale, and a tuning-change checklist
 - [x] Add the DOM-independent search controller, request identity, cancellation, batch
   metadata, provider registration, and flat file-result composition
-- [ ] Add the strict `known_file_catalog.js` module and feed it from initial tree, lazy
+- [x] Add the strict `known_file_catalog.js` module and feed it from initial tree, lazy
   tree, Recent, event, and successful-navigation observations
 - [x] Add the pure fuzzy matcher with the documented comparison vector, path-aware
   scoring, match ranges, stable ties, and shared golden fixtures
@@ -446,7 +446,7 @@ results hierarchical.
   focus restoration, pointer interaction, and a visible candidate-completeness status
 - [x] Keep palette rendering and selection state outside provider implementations; add a
   headless contract test proving the local provider can run without palette DOM
-- [ ] Inject the existing navigation action, return an open outcome, and handle stale
+- [x] Inject the existing navigation action, return an open outcome, and handle stale
   not-found candidates without losing the active query
 - [ ] Add performance fixtures for result latency, input responsiveness, and DOM count
   across shallow, Recent-sized, and heavily expanded client catalogs

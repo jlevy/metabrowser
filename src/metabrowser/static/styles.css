@@ -1368,6 +1368,10 @@ html[data-prose-font="sans"] {
      scrolls beneath it. */
   transform: translateZ(0);
 }
+.preview-pane:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
 .preview-empty {
   display: flex;
   align-items: center;
