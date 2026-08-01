@@ -1,22 +1,26 @@
 ---
 type: is
 id: is-01kxnx9waq2h69ey9kb0mcg5hq
-title: Build scalable file search over the live inventory
+title: Quick file finder and search providers
 kind: feature
 status: open
 priority: 2
-version: 5
+version: 10
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels:
   - search
   - scalability
 dependencies: []
 parent_id: is-01kxnx985gd2k5epmcswersqdk
+child_order_hints:
+  - is-01kyxyb67v18br7jm7w8mrwss5
+  - is-01kyxybpctnfvcbj8eh629hab0
+  - is-01kyxybvqnw3fmmzhs3hnqhtxr
 created_at: 2026-07-16T16:49:05.366Z
-updated_at: 2026-08-01T05:13:10.201Z
+updated_at: 2026-08-01T05:57:16.148Z
 ---
-Current prerequisites include the bounded eager inventory, lazy tree, index status endpoints, live filesystem events, and unified client filter state. Remaining delivery: canonical logical-extension identity for compressed artifacts; a public inventory revision and scope-safe revision event; a bounded off-event-loop search service and /api/search response with ancestors and honest inventory/result truncation; keyboard-first search UI that preserves the mounted Files tree; live refresh and large-root budgets. Persistent metadata remains evidence-gated, not part of the initial contract.
+Build a provider-based search surface in phases. Phase 1 opens a slash-key quick file finder and fuzzy-matches a minimal catalog of every file already observed by the browser, without a search request. Phase 2 adds complete server filename fallback over InventoryIndex. Phase 3 adds explicit bounded server full-text search with location-aware results. Quick file and content queries stay separate from persisted FilterState and from hierarchical hide-mode filtering.
 
 ## Notes
 
-2026-07-31 spec review reconciled this feature with the current browser and unified-filtering Phase 1. Stable path order, empty-keyword hide mode, revision-only invalidation, client abort/stale-response handling, and a separate search result panel are now resolved decisions. Open questions are shortcut choice, measured limits/debounce, type-family expansion ownership, cooperative server cancellation, and evidence for persistence.
+2026-07-31 architecture and editor-pattern review replaced the filtered-tree search model. A DOM-independent controller owns provider selection, cancellation, result metadata, and fallback; the slash palette and a future persistent nav search are separate consumers. Local results disclose partial coverage, complete filename search can follow a zero-result local query, and full text is an explicit retrieval mode. Flat filename, path-and-location content, and hierarchical filter results use separate endpoints.
