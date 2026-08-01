@@ -28,7 +28,10 @@ Every query character must match a distinct candidate character in order.
 For queries without `/`, the matcher tries the basename first and falls back to the full
 path only when the basename is ineligible.
 Queries containing `/` match the full relative path so the slash constrains segment
-order.
+order. When more than one alignment is possible, dynamic programming selects the
+alignment that is best under the named components below.
+For full-path matches, `path-segment` means the alignment does not skip an unmatched
+slash between its first and last characters.
 
 ## Named Rank Components
 
@@ -87,8 +90,35 @@ For every ranking change:
 5. Re-run Recent-sized and expanded-catalog measurements.
 6. Keep normalized and original path tie-breakers so the order remains total.
 
-No ranking changes were needed before the first implementation.
+## Implementation Review
+
+The first executable pass found two fixture omissions on 2026-07-31. These were coverage
+corrections, not ranking-policy changes:
+
+- `app.js` against `app.jsx` and `application.js` changed from omitted to lower-ranked
+  prefix and basename-subsequence matches because all six query characters occur in
+  order.
+- `rdr` against `render.js` changed from omitted to the middle result because its two
+  `r` characters are distinct and surround `d`.
+- `readme` against `read-me.md` changed from omitted to a lower-ranked
+  separator-assisted basename subsequence.
+
 Future changes belong below as dated before-and-after examples.
+
+## Scorer Throughput
+
+The public synthetic profile in `tests/dom/file_fuzzy_match_profile.js` measures the
+pure scorer without DOM work or result sorting.
+On an arm64 development machine running macOS 26.5.2 and Node 24.18.0, the median of
+five Recent-sized runs over 2,000 paths was 18.44 ms, or 9.22 microseconds per
+candidate. The median of three heavily expanded runs over 50,000 paths was 456.93 ms, or
+9.14 microseconds per candidate.
+
+The larger scan is inappropriate as one synchronous browser task.
+Phase 1 should keep a small synchronous fast path and yield between bounded chunks for
+larger catalogs, checking cancellation between chunks.
+The evidence does not justify a Worker or secondary client index yet because chunking
+can preserve input responsiveness without another state-transfer boundary.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -227,6 +227,31 @@ type MetabrowserKnownFileCatalogRuntime = Readonly<{
   create(): MetabrowserKnownFileCatalogApi;
 }>;
 
+type MetabrowserFuzzyRank = Readonly<{
+  matchClass: number;
+  boundaryHits: number;
+  contiguousChars: number;
+  runCount: number;
+  gapChars: number;
+  startOffset: number;
+  candidateLength: number;
+  directoryDepth: number;
+  normalizedPath: string;
+  originalPath: string;
+}>;
+
+type MetabrowserFuzzyMatch = Readonly<{
+  matchRanges: ReadonlyArray<Readonly<{ start: number; end: number }>>;
+  path: string;
+  rank: MetabrowserFuzzyRank;
+}>;
+
+type MetabrowserFileFuzzyMatchRuntime = Readonly<{
+  compareMatches(left: MetabrowserFuzzyMatch, right: MetabrowserFuzzyMatch): number;
+  matchPath(query: string, path: string): MetabrowserFuzzyMatch | null;
+  rankPaths(query: string, paths: string[], limit?: number): ReadonlyArray<MetabrowserFuzzyMatch>;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -253,6 +278,7 @@ declare global {
       classFor(path: string): string;
       iconFor(path: string): unknown;
     };
+    MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
