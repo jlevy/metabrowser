@@ -1,10 +1,10 @@
 # Feature: Unified Filtering Across Navigation and Folder Views
 
-**Date:** 2026-07-20 (last updated 2026-07-27)
+**Date:** 2026-07-20 (last updated 2026-07-31)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Phase 1 implemented; Phases 2 and 3 planned
 
 ## Overview
 
@@ -47,8 +47,10 @@ place, and eventually retires.
 ## Non-Goals
 
 - Content search (the search spec owns keyword-over-paths; content search is separate)
-- New crawls, index changes, or per-filter server endpoints (existing endpoints gain
-  parameters; `/api/recent` already accepts extension and prefix filters)
+- A second crawl or required persistent index.
+  The scalable-search plan owns the inventory revision and bounded search endpoint
+  needed for complete hide mode; `/api/recent` already accepts extension and prefix
+  filters.
 - Saved or user-named filter combinations (presets are fixed in the first version)
 - Removing the Recent tab before the parity checklist in Phase 3 passes
 - Filtering inside non-listing views (a README or document view ignores filters)
@@ -70,9 +72,43 @@ What exists, and what each piece contributes to the unified model:
   combined with AND, served by a bounded `/api/search` that returns matches plus the
   ancestors needed to draw a tree — exactly a hide-mode tree provider.
 - The active tracker flips `FsEntry.active` through the same event plane the store
-  already consumes, so a Current filter updates live without new transport.
-- Every store entry and tree row already carries `mtime_ns`, `ext`, `gitignored`, and
-  `active`, so dim mode needs no server support at all.
+  already consumes, so a Current filter updates live for rows inside the connection’s
+  current event scope without new transport.
+- Every inventory entry carries `mtime_ns`, `ext`, `gitignored`, and `active`, while
+  rendered tree rows carry the equivalent path, time, ignore, and activity state.
+  Dim mode needs no new server query for mounted rows.
+
+### Status Review: 2026-07-31
+
+Phase 1 is implemented in the current browser and was closed after the full repository
+verification gate and a live browser pass:
+
+- `filter_state.js` owns persisted Current, age, type-family, and gitignored state,
+  exposes shared predicates, and publishes changes through `mb.filters`
+- the Files pane has Current and Recent chips, an age/type/visibility menu, an active
+  count badge, and Clear
+- age, type, and Current predicates dim rendered Files rows; hidden gitignored state
+  prunes rendered subtrees; inventory changes reapply the decorations
+- the treemap shares visibility state, dims age/type non-matches, and reports active
+  filters while treating Current as navigation-only
+- the existing Recent tab remains separate and unchanged
+
+The scalable part is still missing.
+The browser does not have a keyword field, `/api/search`, complete hide-mode projection,
+filtered rollup aggregates, or a revision-only signal for deep changes.
+Dim mode only evaluates mounted rows, so it cannot discover files in lazy, unmounted
+subtrees.
+
+Two correctness seams need explicit coverage before Phase 2:
+
+- `FsEntry.ext` and rollup tallies currently use a physical compound suffix, while file
+  opening and tree projection use logical extensions.
+  Type filtering is therefore not consistently transparent for `.gz` and `.zlib`
+  artifacts.
+- the browser event stream uses the depth-two scope.
+  Current state and ordinary `fs.change` events for deeper files do not reach a loaded
+  deep row or an active search unless the event contract gains a scoped-safe revision or
+  expanded-prefix mechanism.
 
 ## Design
 
@@ -90,11 +126,11 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    localStorage is superseded).
    The nav bar always shows an active-filter badge and a Clear action so persisted
    filters are never invisible state.
-3. **The type menu unit is the `ft-*` family via `mb.fileTypeClass`** — the same
-   classifier that colors filenames everywhere, so the filter can never disagree with
-   the colors. `FilterState.types` also accepts exact logical extensions for future
-   surfaces; the v1 menu lists families only, and a family matches its subtypes (`md`
-   matches `md-runbook`).
+3. **The Phase 1 type-menu unit is the `ft-*` family via `mb.fileTypeClass`** — the same
+   classifier that colors filenames everywhere.
+   The v1 menu lists families only, and a family matches its subtypes (`md` matches
+   `md-runbook`). Phase 2 must expand those families through one declarative mapping
+   before sending exact logical extensions to a generic server endpoint.
 4. **The Recent preset defaults to the tab’s `24h` window**, adjustable in the menu from
    the `RECENT_WINDOWS` set (minus `all`).
 5. **v1 has no standalone mode switch: age and type apply as dim everywhere; visibility
@@ -131,13 +167,13 @@ Three orthogonal parts, fixed across surfaces:
    in the menu). Toggling a chip on or off writes through to the same state the menu
    edits.
 
-Presentation stays per-surface and orthogonal: the tree shows dimmed or pruned rows, the
-Recent preset keeps its recency-clustered list presentation on the nav, and the treemap
-dims cells or relayouts.
+Presentation stays per-surface and orthogonal: the Files tree shows dimmed or pruned
+rows, the separate Recent tab keeps its recency-clustered list until Phase 3, and the
+treemap dims cells or relayouts.
 
 ### FilterState (core shell)
 
-- New strict module `static/filter_state.js` exposing `window.MetabrowserFilterState`:
+- The strict `static/filter_state.js` module exposes `window.MetabrowserFilterState`:
   `get()`, `set(patch)`, `subscribe(listener)`, `clear()`, `activeCount()`, the shared
   predicate helpers (`rowMatches`, `typeMatches`, `windowSeconds`), and the preset
   definitions. State shape:
@@ -145,9 +181,9 @@ dims cells or relayouts.
   (no mode field in v1 — Resolved Decision 5).
 - Persisted through `mb.prefs` under one versioned key (`filters`); every change
   dispatches a `metabrowser:filter-change` CustomEvent (the `watchRollup` pattern).
-- SDK proxy `mb.filters` (get / set / subscribe) so plugin views never touch the global
-  directly. The treemap’s ignored control migrates from its private localStorage state to
-  this shared dimension.
+- The SDK proxy `mb.filters` (get / set / subscribe) keeps plugin views away from the
+  global directly. The treemap’s ignored control now uses this shared dimension instead
+  of its private localStorage state.
 - A shared chip-row and menu primitive (core styles, reused classes) renders the same
   controls at both densities, so the vocabulary looks identical everywhere.
 
@@ -156,17 +192,19 @@ dims cells or relayouts.
 - A compact filter bar above the tree, outside the replaceable tree container (the
   search spec’s placement rule): `[Current] [Recent] [⏷ filter menu]`, with an active
   count badge on the menu button and a clear affordance when any filter is set.
-- The menu holds the full set: age window chips (reusing `RECENT_WINDOWS`), type family
-  multi-select, the visibility three-state, the dim/hide mode switch, and Clear.
+- The Phase 1 menu holds age window chips (reusing `RECENT_WINDOWS`), type-family
+  multi-select, the visibility three-state, and Clear.
+  A general dim/hide mode switch appears only after complete server-backed hide mode
+  lands.
 - Dim mode (default): non-matching rows get the muted treatment client-side; matching
   rows keep their age and size coloring.
   No server round trip.
 - Hide mode: the tree renders from `/api/search` with an empty keyword and the active
   ext/age predicates (matches plus ancestors, incompleteness reported) — this phase
   depends on the scalable-search plan’s endpoint and falls back to dim until it lands.
-- Recent preset on the nav activates the existing recency-clustered presentation, scoped
-  by whatever other filters are active; Current shows live files with the existing
-  activity indicators.
+- The Phase 1 Recent chip applies its age predicate to the Files tree.
+  The existing recency-clustered presentation remains in the Recent tab until the Phase
+  3 parity gate; Current shows live Files rows with the existing activity indicators.
 - The Recent tab stays during the transition and retires in Phase 3; the nav header then
   has a single Files pane with the filter bar.
 
@@ -179,7 +217,7 @@ dims cells or relayouts.
 - Dim mode adds the muted cell class to non-matching cells (per-cell `ext` and `mtime`
   are already in the rollup payload; directory cells dim only when their newest mtime or
   dominant type rules them out entirely).
-- Hide mode extends `/api/rollup` with `age_max_s` and `types` parameters;
+- Hide mode extends `/api/rollup` with `max_age_seconds` and repeated `ext` parameters;
   `InventoryIndex.rollup` computes one additional filtered aggregate set per request in
   the same subtree pass (the generalization of the existing `unignored_*` dual
   accumulators). Nodes gain `filtered_files` / `filtered_size` when filters are
@@ -189,36 +227,42 @@ dims cells or relayouts.
 
 ### API Changes
 
-- `/api/rollup`: optional `age_max_s` (seconds) and `types` (comma-separated logical
-  extensions or family names); response nodes carry `filtered_files` / `filtered_size`
-  (and a filtered extension-tally column) only when requested.
-- `/api/search`: no contract change; used with an empty keyword for hide-mode trees.
+- `/api/rollup`: planned optional `max_age_seconds` and repeated `ext` values; response
+  nodes carry `filtered_files` / `filtered_size` (and a filtered extension-tally column)
+  only when requested.
+- `/api/search`: planned by the scalable-search spec and not implemented yet.
+  Unified hide mode uses an empty keyword with exact logical-extension and age
+  predicates.
 - `/api/recent`: no change; its existing `ext_filter` composes with the Recent preset.
 
 ## Implementation Plan
 
 ### Phase 1: FilterState and the Nav Filter Bar (dim mode)
 
-- [ ] `static/filter_state.js` with prefs persistence, change events, presets, shared
+- [x] `static/filter_state.js` with prefs persistence, change events, presets, shared
   predicates, and the SDK `mb.filters` proxy; vm tests
-- [ ] Nav filter bar with Current and Recent chips, the filter menu (age, type,
+- [x] Nav filter bar with Current and Recent chips, the filter menu (age, type,
   visibility, clear), and the active-filter badge; shared chip and menu styles
-- [ ] Decoration-layer filter application over rendered tree rows (dim for age, type,
+- [x] Decoration-layer filter application over rendered tree rows (dim for age, type,
   activity; subtree prune for hidden gitignored), reapplied on filter changes and
   debounced inventory patches; live-insert rows (`_buildRowHtml`) brought back to parity
   with `renderTreeNodes` (select-dir action + chevron hotspot)
-- [ ] Treemap binds visibility to the shared state (its toggle writes through) and dims
+- [x] Treemap binds visibility to the shared state (its toggle writes through) and dims
   cells for age and type; caption reports active filters and the nav-only activity
   dimension
 
-### Phase 2: Folder Views on Shared State
+### Phase 2: Complete Hide Mode
 
-- [ ] Migrate the treemap ignored control to `mb.filters`; bind dim mode for age and
-  type in cells
+- [ ] Normalize logical extension identity across inventory, Recent, suffix metadata,
+  rollups, search, and the browser type-family classifier
 - [ ] `rollup()` filtered aggregates plus `/api/rollup` params and wire validators;
   hide-mode relayout and refetch; budget re-measured with filters active
-- [ ] Hide mode on the nav via `/api/search` once that endpoint lands (falls back to dim
-  until then)
+- [ ] Add the scalable-search endpoint, public inventory revision, and scoped-safe
+  revision invalidation described by the search plan
+- [ ] Hide mode on the nav through `/api/search`; do not ship loaded-rows-only hide
+  semantics because they cannot distinguish an unmounted match from no match
+- [ ] Add nav DOM coverage for chip/menu keyboard behavior, Clear, the active badge,
+  live deep-row updates, and compressed logical-type filtering
 
 ### Phase 3: Retire the Recent Tab
 
@@ -229,9 +273,10 @@ dims cells or relayouts.
 
 ## Testing Strategy
 
-- vm tests for `FilterState` (persistence, events, preset semantics, subscribe/dispose)
-- DOM tests for chip toggling, menu keyboard access, dim application on tree rows and
-  treemap cells, and state sharing between the two surfaces
+- Existing vm tests cover `FilterState` persistence, events, preset semantics, shared
+  predicates, and treemap state sharing
+- Add DOM tests for nav chip toggling, menu keyboard access, Clear, active-badge state,
+  dim application on tree rows, and compressed logical-type behavior
 - Unit tests for filtered rollup aggregates (age and type variants, combined with
   gitignore exclusion) and the extended route validation
 - The Phase 3 parity checklist run against the live Recent tab before removal
@@ -251,14 +296,15 @@ for predictability; all four are one-line changes if review says otherwise:
 
 - Current = tracker-live only (no implicit age fallback) — Decision 1
 - Filters stay out of the hash; `mb.prefs` persistence with a visible badge — Decision 2
-- Type menu lists `ft-*` families; exact extensions stay a state-level capability —
+- Type menu lists `ft-*` families; Phase 2 must map them to exact logical extensions —
   Decision 3
 - Recent preset defaults to `24h` — Decision 4
 
-Still genuinely open (deferred, not blocking):
+Still genuinely open (deferred, not blocking Phase 1):
 
-- Phase 2: whether nav hide-mode should ship before `/api/search` lands, using pruned
-  loaded-rows-only semantics with an explicit incompleteness note
+- Phase 2: whether type-family expansion remains browser-owned or moves to a shared
+  declarative table. The search API should stay generic and accept exact logical
+  extensions.
 - Phase 3: the clustered presentation’s exact styling under the Recent preset
 
 ## References
