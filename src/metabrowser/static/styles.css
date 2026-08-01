@@ -1950,13 +1950,18 @@ html[data-prose-font="sans"] {
    and offset ratios; the browser root size cannot change their computed
    values. The overrides here are deliberate design divergences: code is
    0.9× prose, all secondary document text is 0.85×, and small-caps labels
-   match app chrome. Document colors use KPress's public direct-token seam. */
-.metabrowser-kpress-host .kpress {
+   match app chrome. Document colors use KPress's public direct-token seam
+   on both the fragment and tooltips KPress portals to document.body. */
+.metabrowser-kpress-host .kpress,
+:root .kpress-tooltip {
   --kpress-doc-bg: var(--bg);
   --kpress-doc-text: var(--text);
   --kpress-doc-muted: var(--muted);
   --kpress-doc-border: var(--border);
   --kpress-doc-link: var(--link);
+}
+
+.metabrowser-kpress-host .kpress {
   --kpress-font-size-small: var(--document-small-font-size);
   --kpress-font-size-smaller: var(--document-small-font-size);
   --kpress-font-size-tiny: var(--document-small-font-size);

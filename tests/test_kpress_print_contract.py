@@ -100,6 +100,7 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
     # --kpress-host-* color aliases must not survive the host migration.
     assert "--kpress-doc-bg: var(--bg);" in css
     assert "--kpress-host-bg" not in css
+    assert ".metabrowser-kpress-host .kpress,\n:root .kpress-tooltip {" in css
     assert ".metabrowser-source-truncation-warning" in css
 
 

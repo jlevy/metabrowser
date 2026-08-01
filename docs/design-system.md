@@ -86,12 +86,15 @@ The app pins all sizes in px and deliberately does not scale with the browser’
 default-font-size preference.
 Standalone KPress documents preserve browser-preference scaling through a `1rem` base,
 but its embedded type system consumes the host’s px value through
-`--kpress-host-font-size-base`. Every rendered font size and bullet offset derives from
-KPress’s internal base variable, so changing the browser root size cannot distort the
-embedded document. The host hook lives on `:root` so body-portaled KPress overlays
-inherit the same scale, and KPress can still re-root its internal base to the print size
-on paper. Verify the boundary by rendering at two browser root sizes and confirming
-computed document sizes are identical.
+`--kpress-host-font-size-base`. Within a container-query band, every rendered font size
+and bullet offset derives from KPress’s internal base variable, so changing the browser
+root size cannot distort the embedded document’s type ratios.
+The host hook lives on `:root` so body-portaled KPress overlays inherit the same scale,
+and KPress can still re-root its internal base to the print size on paper.
+KPress deliberately keeps layout lengths and container-query thresholds root-relative; a
+root-size change near a responsive breakpoint can select a different heading tier.
+Verify the type boundary at a pane width that stays in the same band and confirm
+computed sizes are identical at two browser root sizes.
 
 ### Embedded Document Themes
 
@@ -102,8 +105,9 @@ both modes and a toggle never has to chase rendered elements.
 The default fragment manifest omits KPress’s standalone theme resolver; the host loads
 the entry points the manifest declares without maintaining a second exclusion list.
 KPress’s symmetric theme selectors keep its palette and `color-scheme` aligned, while
-the scoped bridge maps the public `--kpress-doc-*` color tokens to Metabrowser’s
-semantic surface, text, border, muted, and link tokens.
+the bridge maps the public `--kpress-doc-*` color tokens on both the fragment and
+body-portaled tooltips to Metabrowser’s semantic surface, text, border, muted, and link
+tokens.
 
 Keep these roles distinct:
 
