@@ -211,10 +211,11 @@ Install it for supported coding agents with:
 npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
-The skill requires no persistent Metabrowser installation.
-It calls the pinned `uvx metabrowser@0.2.0 ...` runner and uses `--help` on the CLI as
-the source of truth.
-A globally installed `metab` remains available as the faster local command.
+The skill prefers a locally installed `metab` and otherwise falls back to the pinned
+`uvx metabrowser@0.2.0 ...` runner, so it requires no persistent Metabrowser
+installation. It uses `--help` on the CLI as the source of truth.
+See the [installation guide](docs/installation.md) for the pinned form to use in
+automation.
 
 ## Develop
 

@@ -5,6 +5,9 @@ description: >-
   structured data, images, and binary metadata with Metabrowser. Use when a user
   asks to explore artifacts, inspect live logs, open a local file browser,
   inventory a directory, or inspect and validate Metabrowser plugins.
+compatibility: >-
+  Requires either a local metab command or uv (for the pinned uvx runner, which
+  needs network access on first use).
 ---
 # Metabrowser
 
@@ -13,15 +16,23 @@ use command help as the source of truth for arguments and options.
 
 ## Choose the Invocation
 
-Use the pinned zero-install runner by default:
+Prefer the local command and fall back to the pinned zero-install runner:
 
 ```shell
-uvx metabrowser@0.2.0
+if command -v metab >/dev/null 2>&1; then
+  metab <args>
+else
+  uvx metabrowser@0.2.0 <args>
+fi
 ```
 
-If the user has already installed Metabrowser globally, use `metab` instead.
-Do not install it persistently only to complete a task that `uvx` can handle.
+The local command is faster and works offline, so use it whenever it exists.
+The fallback needs no persistent installation, so never install Metabrowser just to
+finish a task.
+Keep the exact `0.2.0` pin; an unpinned or `@latest` runner re-resolves on
+every call.
 
+`<invocation>` below means whichever of those two commands applies.
 Run `<invocation> --help` before the first operation when the required flags are not
 already clear. Serving is the default operation; every other operation is a mode flag on
 the same single command.

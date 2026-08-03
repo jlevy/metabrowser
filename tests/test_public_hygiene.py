@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -168,6 +169,41 @@ def test_agent_tbd_skills_use_repository_version_pin() -> None:
         text = (ROOT / relative).read_text(encoding="utf-8")
         assert "get-tbd@0.4.2" in text
         assert "@latest" not in text
+
+
+# The publish workflow already refuses a release tag that disagrees with these
+# pins, but that runs only at release time. Checking the same invariant here
+# catches drift on the pull request that introduces it.
+SKILL_PIN_DOCS = ("skills/metabrowser/SKILL.md", "README.md", "docs/installation.md")
+_SKILL_PIN = re.compile(r"metabrowser[@=]=?(\d+\.\d+\.\d+)")
+
+
+def test_agent_skill_pins_one_published_metabrowser_version() -> None:
+    skill = (ROOT / "skills/metabrowser/SKILL.md").read_text(encoding="utf-8")
+    pinned = _SKILL_PIN.search(skill)
+
+    assert pinned, "SKILL.md lost its concrete uvx metabrowser@X.Y.Z pin"
+    assert f"uvx metabrowser@{pinned.group(1)}" in skill
+    assert "metabrowser@latest" not in skill
+
+
+def test_documented_metabrowser_pins_agree_across_docs() -> None:
+    found = {
+        relative: sorted(set(_SKILL_PIN.findall((ROOT / relative).read_text(encoding="utf-8"))))
+        for relative in SKILL_PIN_DOCS
+    }
+
+    versions = {version for versions in found.values() for version in versions}
+    assert len(versions) == 1, f"documented pins disagree: {found}"
+
+
+def test_agent_skill_prefers_the_local_command_over_the_pinned_runner() -> None:
+    # The zero-install fallback must stay a fallback: an agent that already has
+    # metab should not pay a uvx resolve, per cli-agent-skill-patterns (L1).
+    skill = (ROOT / "skills/metabrowser/SKILL.md").read_text(encoding="utf-8")
+
+    assert "command -v metab" in skill
+    assert skill.index("command -v metab") < skill.index("uvx metabrowser@")
 
 
 def test_tbd_hook_fallbacks_carry_cool_off_exemption() -> None:

@@ -74,8 +74,25 @@ The repository publishes a portable Metabrowser skill for coding agents:
 npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
-The skill invokes the pinned `uvx metabrowser@0.2.0 ...` runner, so it does not require
-a persistent Metabrowser installation.
+That shorthand follows the installer’s own repository defaults, which is convenient for
+interactive use but not reproducible.
+Automation should pin both the installer and the source revision:
+
+```shell
+npx --yes skills@1.5.19 add \
+  https://github.com/jlevy/metabrowser/tree/v0.2.0/skills/metabrowser \
+  --skill metabrowser --yes
+```
+
+The two pins solve different problems: the installer pin fixes the code that runs, and
+the tag pin fixes the skill content that lands.
+Review both under [supply-chain policy](../SUPPLY-CHAIN-SECURITY.md) before changing
+them; the installer pin is subject to the same 14-day cool-off as any other npm
+dependency.
+
+Installing the skill does not install Metabrowser itself.
+The skill prefers a local `metab` and otherwise falls back to the pinned
+`uvx metabrowser@0.2.0 ...` runner, so it needs no persistent Metabrowser installation.
 It routes agents to `--help` for current command details and documents the plugin trust
 boundary.
 

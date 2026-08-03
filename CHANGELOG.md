@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Agent Skill:
+
+- The skill now prefers a locally installed `metab` and falls back to the pinned
+  `uvx metabrowser@0.2.0` runner, instead of reaching for the runner first.
+  The zero-install guarantee is unchanged; an agent that already has Metabrowser no
+  longer pays a `uvx` resolve.
+- The skill declares its `compatibility` requirement (a local `metab`, or uv with
+  network access on first use).
+- The installation guide documents a reproducible install form that pins both the
+  installer version and the source tag, alongside the existing interactive shorthand.
+- Tests assert the documented `metabrowser` pins agree across the skill, README, and
+  installation guide, so pin drift fails on the pull request instead of at release.
+
 ## 0.2.0
 
 Flat single-command CLI:
