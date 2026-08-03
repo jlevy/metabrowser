@@ -211,11 +211,11 @@ Install it for supported coding agents with:
 npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
-The skill prefers a locally installed `metab` and otherwise falls back to the pinned
-`uvx metabrowser@0.2.0 ...` runner, so it requires no persistent Metabrowser
-installation. It uses `--help` on the CLI as the source of truth.
-See the [installation guide](docs/installation.md) for the pinned form to use in
-automation.
+The skill prefers a locally installed `metab` and otherwise falls back to
+`uvx metabrowser@latest`, so it requires no persistent Metabrowser installation.
+It uses `--help` on the CLI as the source of truth.
+Release cool-off stays a uv configuration concern rather than a version frozen in the
+skill; see the [installation guide](docs/installation.md).
 
 ## Develop
 

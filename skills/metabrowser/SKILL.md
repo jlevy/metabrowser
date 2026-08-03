@@ -16,26 +16,33 @@ use command help as the source of truth for arguments and options.
 
 ## Choose the Invocation
 
-Prefer the local command and fall back to the pinned zero-install runner:
+Prefer the local command and fall back to the zero-install runner:
 
 ```shell
 if command -v metab >/dev/null 2>&1; then
   metab <args>
 else
-  uvx metabrowser@0.2.0 <args>
+  uvx metabrowser@latest <args>
 fi
 ```
 
 The local command is faster and works offline, so use it whenever it exists.
 The fallback needs no persistent installation, so never install Metabrowser just to
-finish a task.
-Keep the exact `0.2.0` pin; an unpinned or `@latest` runner re-resolves on
-every call.
+finish a task. Release cool-off is enforced by uv configuration rather than a version
+frozen here: set `exclude-newer` in the operator’s `uv.toml`, or `UV_EXCLUDE_NEWER` in
+the environment, to hold `@latest` back to releases that have aged past the review
+window.
 
 `<invocation>` below means whichever of those two commands applies.
 Run `<invocation> --help` before the first operation when the required flags are not
 already clear. Serving is the default operation; every other operation is a mode flag on
 the same single command.
+
+A cool-off decides which release `@latest` resolves to, so treat `--help` as
+authoritative rather than assuming this document matches the installed build.
+A release older than the flat CLI exposes `serve`, `walk`, `plugins`, and `remote`
+subcommands instead of mode flags; report that and use its own help if the environment
+resolves one.
 
 ## Route the Task
 

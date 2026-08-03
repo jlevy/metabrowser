@@ -171,36 +171,47 @@ def test_agent_tbd_skills_use_repository_version_pin() -> None:
         assert "@latest" not in text
 
 
-# The publish workflow already refuses a release tag that disagrees with these
-# pins, but that runs only at release time. Checking the same invariant here
-# catches drift on the pull request that introduces it.
-SKILL_PIN_DOCS = ("skills/metabrowser/SKILL.md", "README.md", "docs/installation.md")
-_SKILL_PIN = re.compile(r"metabrowser[@=]=?(\d+\.\d+\.\d+)")
+SKILL_PATH = "skills/metabrowser/SKILL.md"
+# Worked "pin the release" examples live in these docs; the release workflow
+# keeps them on the current version. The skill is deliberately absent.
+PINNED_EXAMPLE_DOCS = ("README.md", "docs/installation.md")
+_METABROWSER_PIN = re.compile(r"metabrowser[@=]=?(\d+\.\d+\.\d+)")
 
 
-def test_agent_skill_pins_one_published_metabrowser_version() -> None:
-    skill = (ROOT / "skills/metabrowser/SKILL.md").read_text(encoding="utf-8")
-    pinned = _SKILL_PIN.search(skill)
+def test_agent_skill_runner_tracks_the_latest_release() -> None:
+    # A version frozen in the skill goes stale on every release and cannot be
+    # updated in already-installed copies. The cool-off is enforced by uv
+    # configuration instead, so the runner deliberately stays unpinned.
+    skill = (ROOT / SKILL_PATH).read_text(encoding="utf-8")
 
-    assert pinned, "SKILL.md lost its concrete uvx metabrowser@X.Y.Z pin"
-    assert f"uvx metabrowser@{pinned.group(1)}" in skill
-    assert "metabrowser@latest" not in skill
+    assert "uvx metabrowser@latest" in skill
+    assert not _METABROWSER_PIN.search(skill), "SKILL.md froze a Metabrowser version"
 
 
-def test_documented_metabrowser_pins_agree_across_docs() -> None:
+def test_agent_skill_routes_to_uv_cool_off_configuration() -> None:
+    # Dropping the pin only stays safe while the skill names the mechanism that
+    # replaced it.
+    skill = (ROOT / SKILL_PATH).read_text(encoding="utf-8")
+
+    assert "exclude-newer" in skill or "UV_EXCLUDE_NEWER" in skill
+
+
+def test_documented_pin_examples_agree_across_docs() -> None:
     found = {
-        relative: sorted(set(_SKILL_PIN.findall((ROOT / relative).read_text(encoding="utf-8"))))
-        for relative in SKILL_PIN_DOCS
+        relative: sorted(
+            set(_METABROWSER_PIN.findall((ROOT / relative).read_text(encoding="utf-8")))
+        )
+        for relative in PINNED_EXAMPLE_DOCS
     }
 
     versions = {version for versions in found.values() for version in versions}
-    assert len(versions) == 1, f"documented pins disagree: {found}"
+    assert len(versions) <= 1, f"documented pin examples disagree: {found}"
 
 
-def test_agent_skill_prefers_the_local_command_over_the_pinned_runner() -> None:
+def test_agent_skill_prefers_the_local_command_over_the_runner() -> None:
     # The zero-install fallback must stay a fallback: an agent that already has
     # metab should not pay a uvx resolve, per cli-agent-skill-patterns (L1).
-    skill = (ROOT / "skills/metabrowser/SKILL.md").read_text(encoding="utf-8")
+    skill = (ROOT / SKILL_PATH).read_text(encoding="utf-8")
 
     assert "command -v metab" in skill
     assert skill.index("command -v metab") < skill.index("uvx metabrowser@")
