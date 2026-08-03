@@ -21,6 +21,8 @@ Agent Skill:
   operation, and that passing a file selects it inside its parent directory.
 - The release workflow no longer requires the skill to name the release version, and
   still keeps the worked pin examples in the README and installation guide current.
+- The README leads with the skill: its install command now sits directly under the
+  introduction instead of below the plugin documentation.
 
 ## 0.2.0
 
