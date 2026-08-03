@@ -12,6 +12,9 @@ Agent Skill:
   longer pays a `uvx` resolve.
 - The skill declares its `compatibility` requirement (a local `metab`, or uv with
   network access on first use).
+- The skill states that serving blocks until the server is stopped, so an agent
+  backgrounds it and reports the printed URL instead of hanging on the most common
+  operation, and that passing a file selects it inside its parent directory.
 - The installation guide documents a reproducible install form that pins both the
   installer version and the source tag, alongside the existing interactive shorthand.
 - Tests assert the documented `metabrowser` pins agree across the skill, README, and

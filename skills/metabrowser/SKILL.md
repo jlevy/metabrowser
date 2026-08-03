@@ -39,8 +39,12 @@ the same single command.
 
 ## Route the Task
 
-- Browse a local directory or file: pass its path directly (`<invocation> <path>`)
-- Start a headless server: add `--no-open`
+- Browse a local directory or file: pass its path directly (`<invocation> <path>`). A
+  file selects that file inside its parent directory, and the reported URL carries a
+  `#<relative-path>` fragment
+- Start a headless server: add `--no-open`. Serving blocks until the server is stopped,
+  so start it in the background and report the URL it prints instead of waiting for the
+  command to exit
 - Browse a remote directory through SSH: use `--remote <host> --path <dir>`
 - Produce a text, JSON, YAML, or streaming inventory: use `<path> --walk` with
   `--format` and `--stream` as needed
