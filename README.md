@@ -14,6 +14,24 @@ intended to be agent hackable.
 Its plugin architecture means you can ask an agent to add new web-based renderings or
 custom views for arbitrary file types or folders.
 
+## Use With Coding Agents
+
+Metabrowser ships a portable [Agent Skill](skills/metabrowser/SKILL.md) so a coding
+agent can browse directories, open Markdown documents, inspect logs, and validate
+plugins on your behalf.
+
+**Install the skill with one command:**
+
+```shell
+npx skills add jlevy/metabrowser --skill metabrowser
+```
+
+**Nothing else to install.** The skill prefers a locally installed `metab` and otherwise
+falls back to `uvx metabrowser@latest`, so it needs no persistent Metabrowser
+installation. It uses `--help` on the CLI as the source of truth.
+Release cool-off stays a uv configuration concern rather than a version frozen in the
+skill; see the [installation guide](docs/installation.md).
+
 ## Why Use a New Browser-Based File Manager?
 
 I’ve long been frustrated when I try to browse files in macOS Finder, VS Code, or other
@@ -201,20 +219,6 @@ metab ./path/to/artifacts --plugins-dir ./trusted-plugins
 The served data tree is never an implicit plugin source.
 See the [plugin authoring guide](docs/plugins.md) for the manifest schema, browser SDK,
 packaging, lifecycle rules, and security boundary.
-
-## Use With Coding Agents
-
-Metabrowser includes a portable [Agent Skill](skills/metabrowser/SKILL.md).
-Install it for supported coding agents with:
-
-```shell
-npx skills add jlevy/metabrowser --skill metabrowser
-```
-
-The skill requires no persistent Metabrowser installation.
-It calls the pinned `uvx metabrowser@0.2.0 ...` runner and uses `--help` on the CLI as
-the source of truth.
-A globally installed `metab` remains available as the faster local command.
 
 ## Develop
 

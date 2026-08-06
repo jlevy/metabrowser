@@ -4,6 +4,26 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Agent Skill:
+
+- The skill now prefers a locally installed `metab` and falls back to
+  `uvx metabrowser@latest`, instead of reaching for the runner first.
+  The zero-install guarantee is unchanged; an agent that already has Metabrowser no
+  longer pays a `uvx` resolve.
+- The skill no longer carries a version pin, so an installed copy does not go stale
+  between releases. Release cool-off is enforced by uv configuration instead
+  (`exclude-newer`, or `UV_EXCLUDE_NEWER`), which is read from the environment the agent
+  runs in rather than from this repository.
+- The skill declares its `compatibility` requirement (a local `metab`, or uv with
+  network access on first use).
+- The skill states that serving blocks until the server is stopped, so an agent
+  backgrounds it and reports the printed URL instead of hanging on the most common
+  operation, and that passing a file selects it inside its parent directory.
+- The release workflow no longer requires the skill to name the release version, and
+  still keeps the worked pin examples in the README and installation guide current.
+- The README leads with the skill: its install command now sits directly under the
+  introduction instead of below the plugin documentation.
+
 ## 0.2.0
 
 Flat single-command CLI:

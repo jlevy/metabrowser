@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -168,6 +169,52 @@ def test_agent_tbd_skills_use_repository_version_pin() -> None:
         text = (ROOT / relative).read_text(encoding="utf-8")
         assert "get-tbd@0.4.2" in text
         assert "@latest" not in text
+
+
+SKILL_PATH = "skills/metabrowser/SKILL.md"
+# Worked "pin the release" examples live in these docs; the release workflow
+# keeps them on the current version. The skill is deliberately absent.
+PINNED_EXAMPLE_DOCS = ("README.md", "docs/installation.md")
+_METABROWSER_PIN = re.compile(r"metabrowser[@=]=?(\d+\.\d+\.\d+)")
+
+
+def test_agent_skill_runner_tracks_the_latest_release() -> None:
+    # A version frozen in the skill goes stale on every release and cannot be
+    # updated in already-installed copies. The cool-off is enforced by uv
+    # configuration instead, so the runner deliberately stays unpinned.
+    skill = (ROOT / SKILL_PATH).read_text(encoding="utf-8")
+
+    assert "uvx metabrowser@latest" in skill
+    assert not _METABROWSER_PIN.search(skill), "SKILL.md froze a Metabrowser version"
+
+
+def test_agent_skill_routes_to_uv_cool_off_configuration() -> None:
+    # Dropping the pin only stays safe while the skill names the mechanism that
+    # replaced it.
+    skill = (ROOT / SKILL_PATH).read_text(encoding="utf-8")
+
+    assert "exclude-newer" in skill or "UV_EXCLUDE_NEWER" in skill
+
+
+def test_documented_pin_examples_agree_across_docs() -> None:
+    found = {
+        relative: sorted(
+            set(_METABROWSER_PIN.findall((ROOT / relative).read_text(encoding="utf-8")))
+        )
+        for relative in PINNED_EXAMPLE_DOCS
+    }
+
+    versions = {version for versions in found.values() for version in versions}
+    assert len(versions) <= 1, f"documented pin examples disagree: {found}"
+
+
+def test_agent_skill_prefers_the_local_command_over_the_runner() -> None:
+    # The zero-install fallback must stay a fallback: an agent that already has
+    # metab should not pay a uvx resolve, per cli-agent-skill-patterns (L1).
+    skill = (ROOT / SKILL_PATH).read_text(encoding="utf-8")
+
+    assert "command -v metab" in skill
+    assert skill.index("command -v metab") < skill.index("uvx metabrowser@")
 
 
 def test_tbd_hook_fallbacks_carry_cool_off_exemption() -> None:
