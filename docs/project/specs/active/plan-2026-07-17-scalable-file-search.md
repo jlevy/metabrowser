@@ -620,7 +620,6 @@ The remaining limits are deliberate or evidence-gated:
 - [Core architecture](../../../architecture.md)
 - [Design system](../../../design-system.md)
 - [Scanning state and recent directories](plan-2026-07-16-scanning-state-and-recent-directories.md)
-- [Unified filtering](plan-2026-07-20-unified-filtering.md)
 - [VS Code Quick Access provider](https://github.com/microsoft/vscode/blob/main/src/vs/platform/quickinput/browser/pickerQuickAccess.ts)
 - [VS Code file and text search service](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/services/search/common/search.ts)
 - [IntelliJ IDEA Search Everywhere](https://www.jetbrains.com/help/idea/searching-everywhere.html)
