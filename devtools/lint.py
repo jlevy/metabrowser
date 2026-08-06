@@ -20,6 +20,7 @@ DOC_PATHS = [
             ".pytest_cache",
             ".tbd",
             ".venv",
+            "attic",
             "dist",
             "node_modules",
         }
