@@ -365,7 +365,7 @@ def test_styles_css_promotes_tab_active_color_to_root() -> None:
 
 def test_styles_css_keeps_tab_padding_compact() -> None:
     css = _read_styles_css()
-    assert "--file-tab-padding-y: 5px;" in css
+    assert "--file-tab-padding-y: 4px;" in css
 
 
 def test_styles_css_defines_recent_controls_and_chip() -> None:

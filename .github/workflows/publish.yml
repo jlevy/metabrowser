@@ -61,6 +61,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
+          # Documented pins are worked examples ("pin the release for a
+          # reproducible run"), so they must name the current release. The agent
+          # skill deliberately carries no pin: it runs metabrowser@latest and
+          # defers the cool-off to the operator's uv configuration.
           version="${RELEASE_TAG#v}"
           status=0
           for doc in skills/metabrowser/SKILL.md README.md docs/installation.md; do
@@ -71,10 +75,6 @@ jobs:
               status=1
             fi
           done
-          if ! grep -q "uvx metabrowser@$version" skills/metabrowser/SKILL.md; then
-            printf 'SKILL.md does not pin uvx metabrowser@%s\n' "$version" >&2
-            status=1
-          fi
           exit "$status"
 
       - name: Publish to PyPI

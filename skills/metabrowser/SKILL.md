@@ -5,6 +5,9 @@ description: >-
   structured data, images, and binary metadata with Metabrowser. Use when a user
   asks to explore artifacts, inspect live logs, open a local file browser,
   inventory a directory, or inspect and validate Metabrowser plugins.
+compatibility: >-
+  Requires either a local metab command or uv (for the pinned uvx runner, which
+  needs network access on first use).
 ---
 # Metabrowser
 
@@ -13,23 +16,42 @@ use command help as the source of truth for arguments and options.
 
 ## Choose the Invocation
 
-Use the pinned zero-install runner by default:
+Prefer the local command and fall back to the zero-install runner:
 
 ```shell
-uvx metabrowser@0.2.0
+if command -v metab >/dev/null 2>&1; then
+  metab <args>
+else
+  uvx metabrowser@latest <args>
+fi
 ```
 
-If the user has already installed Metabrowser globally, use `metab` instead.
-Do not install it persistently only to complete a task that `uvx` can handle.
+The local command is faster and works offline, so use it whenever it exists.
+The fallback needs no persistent installation, so never install Metabrowser just to
+finish a task. Release cool-off is enforced by uv configuration rather than a version
+frozen here: set `exclude-newer` in the operator’s `uv.toml`, or `UV_EXCLUDE_NEWER` in
+the environment, to hold `@latest` back to releases that have aged past the review
+window.
 
+`<invocation>` below means whichever of those two commands applies.
 Run `<invocation> --help` before the first operation when the required flags are not
 already clear. Serving is the default operation; every other operation is a mode flag on
 the same single command.
 
+A cool-off decides which release `@latest` resolves to, so treat `--help` as
+authoritative rather than assuming this document matches the installed build.
+A release older than the flat CLI exposes `serve`, `walk`, `plugins`, and `remote`
+subcommands instead of mode flags; report that and use its own help if the environment
+resolves one.
+
 ## Route the Task
 
-- Browse a local directory or file: pass its path directly (`<invocation> <path>`)
-- Start a headless server: add `--no-open`
+- Browse a local directory or file: pass its path directly (`<invocation> <path>`). A
+  file selects that file inside its parent directory, and the reported URL carries a
+  `#<relative-path>` fragment
+- Start a headless server: add `--no-open`. Serving blocks until the server is stopped,
+  so start it in the background and report the URL it prints instead of waiting for the
+  command to exit
 - Browse a remote directory through SSH: use `--remote <host> --path <dir>`
 - Produce a text, JSON, YAML, or streaming inventory: use `<path> --walk` with
   `--format` and `--stream` as needed

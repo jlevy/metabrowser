@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any, cast
 
+from kpress.runtime import get_static_asset
+
 from metabrowser import server as proc_browser
+
+KPRESS_DOC_MIN_WIDTH_QUERY_RE = re.compile(r"@container kpress-doc \(min-width: [\d.]+rem\) \{")
 
 
 def _read_app_js() -> str:
@@ -55,6 +60,9 @@ def test_index_bootstraps_theme_before_app_paint() -> None:
     assert "metabrowser.themeMode" in html
     assert "data-theme-mode" in html
     assert "data-theme" in html
+    assert "data-kpress-resolved-theme" in html
+    assert html.index("/static/theme_state.js") < html.index("/static/plugin_sdk.js")
+    assert html.index("/static/theme_state.js") < html.index("/static/app.js")
     # Settings menu (gear) + the reading-font boot.
     assert 'id="settings-btn"' in html
     assert "metabrowser.proseFont" in html
@@ -68,6 +76,11 @@ def test_app_theme_control_contract() -> None:
     assert 'var THEME_MODES = ["system", "light", "dark"]' in src
     assert 'setAttribute("data-theme-mode", normalized)' in src
     assert 'setAttribute("data-theme", resolved)' in src
+    assert 'setAttribute("data-kpress-resolved-theme", resolved)' in src
+    assert "previousResolved !== resolved" in src
+    assert "MetabrowserTheme.notifyChanged" in src
+    assert 'setAttribute("data-kpress-theme", normalized)' not in src
+    assert 'querySelectorAll(".metabrowser-kpress-host .kpress")' not in src
     assert 'matchMedia("(prefers-color-scheme: dark)")' in src
     # Reading-font chooser.
     assert 'var PROSE_FONT_KEY = "metabrowser.proseFont"' in src
@@ -92,10 +105,12 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
     assert '[data-active-view="true"][data-printable="true"]' in css
     assert '.preview-pane[data-printable="false"]::before' in css
     assert "--kpress-print-page-margin" in css
-    # Host bridge token: metabrowser sets --kpress-host-* on :root; KPress
-    # consumes them as var(--kpress-host-*, default) (see kpress-visual-polish
-    # §5.1). The old name was --kpress-doc-bg.
-    assert "--kpress-host-bg" in css
+    # KPress 0.3 exposes document color tokens directly; the retired
+    # --kpress-host-* color aliases must not survive the host migration.
+    assert "--kpress-doc-bg: var(--bg);" in css
+    assert "--kpress-host-bg" not in css
+    normalized_css = " ".join(css.split())
+    assert ".metabrowser-kpress-host .kpress, :root .kpress-tooltip {" in normalized_css
     assert ".metabrowser-source-truncation-warning" in css
 
 
@@ -124,10 +139,20 @@ def test_embedded_markdown_toggle_labels_match_tabs() -> None:
 
 def test_embedded_markdown_body_uses_host_reading_size() -> None:
     css = _read_styles_css()
-    assert "--document-body-font-size: 17px;" in css
+    assert "--body-font-size: 14px;" in css
+    assert "--document-body-font-size: 15px;" in css
+    root_start = css.index(":root {")
+    root_block = css[root_start : root_start + 9_000]
+    assert "--kpress-host-font-size-base: var(--document-body-font-size);" in root_block
     rule_start = css.index(".metabrowser-kpress-host .kpress {")
-    rule_block = css[rule_start : rule_start + 200]
-    assert "--kpress-font-size-normal: var(--document-body-font-size);" in rule_block
+    rule_block = css[rule_start : rule_start + 1_000]
+    assert "--kpress-font-size-normal" not in rule_block
+    assert "--kpress-font-size-mono: var(--document-mono-font-size);" in rule_block
+    assert "--kpress-font-size-small: var(--document-small-font-size);" in rule_block
+    assert "--kpress-caps-label-size: var(--label-font-size);" in rule_block
+    assert "--kpress-bullet-size" not in rule_block
+    assert ".metabrowser-kpress-host .kpress-prose h1" not in css
+    assert "TEMPORARY SHAPE" not in css
 
 
 def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:
@@ -135,3 +160,19 @@ def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:
     rule_start = css.index(".metabrowser-kpress-host .kpress-toc li {")
     rule_block = css[rule_start : rule_start + 140]
     assert "margin-block: 0;" in rule_block
+
+
+def test_embedded_kpress_wide_toc_uses_borderless_rail() -> None:
+    css = _read_styles_css()
+    band_match = KPRESS_DOC_MIN_WIDTH_QUERY_RE.search(css)
+    assert band_match is not None
+    kpress_css = get_static_asset("css/components.css").content.decode("utf-8")
+    assert band_match.group(0) in kpress_css
+
+    band_start = band_match.start()
+    band_block = css[band_start : band_start + 500]
+    assert ".metabrowser-kpress-host .kpress-toc {" in band_block
+    assert "border: none;" in band_block
+    assert "scrollbar-width: none;" in band_block
+    assert ".metabrowser-kpress-host .kpress-toc::-webkit-scrollbar {" in band_block
+    assert "display: none;" in band_block

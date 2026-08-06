@@ -253,6 +253,12 @@ Useful helpers include:
 - `chart(container, type, data, options)`;
 - `perf.measure` and `perf.measureAsync`.
 
+Chart color fields may use host design-token references such as
+`var(--chart-series-info)`. The SDK resolves them for the current palette and updates
+the chart when the resolved theme changes.
+Retain the returned instance and call `destroy()` from the view’s `dispose` handler to
+release both Chart.js resources and the theme subscription.
+
 Avoid inline event-handler strings when possible.
 Build DOM elements, attach listeners, and keep cleanup handles in the renderer closure.
 

@@ -126,10 +126,16 @@ KPress is an exact runtime dependency because its Python and browser rendering c
 is part of the Metabrowser release surface.
 Changing the KPress version requires the same rendering, wheel, and public-hygiene
 validation as a source change.
-KPress 0.2.2 provides the versioned asset-manifest contract used by the browser host:
-Metabrowser serves the complete declared closure, emits browser tags only for entry
-points, honors stylesheet, module, and classic loading modes, and installs any import
-map before module entry points.
+KPress 0.3.0 provides the versioned asset-manifest and declarative fragment contracts
+used by the browser host.
+Metabrowser serves the complete declared closure, treats entry points as authoritative,
+honors stylesheet, module, and classic loading modes, and installs any import map before
+module entry points.
+KPress fragments carry no theme state and omit the standalone resolver by default;
+Metabrowser stamps one resolved theme on the root.
+The root-level `--kpress-host-font-size-base` hook anchors KPress’s derived type ramp to
+Metabrowser’s document scale, while scoped public size tokens express deliberate mono,
+secondary-text, and label divergences.
 
 ## Python
 
