@@ -114,6 +114,7 @@ exclude = [
     "/CLAUDE.md",
     "/skills-lock.json",
     "/.venv/",
+    "/attic/",
     "/dist/",
     "/node_modules/",
 ]
@@ -204,8 +205,11 @@ known-first-party = ["metabrowser"]
 [tool.codespell]
 ignore-words-list = "browseable,fo,ue,unparseable"
 # Vendored third-party browser bundles are minified upstream artifacts;
-# their identifiers are not prose to spell-check.
-skip = "*/static/vendor/*"
+# their identifiers are not prose to spell-check. attic/ holds read-only
+# third-party checkouts kept for research (gitignored, never shipped); this
+# guard covers a direct codespell run, since devtools/lint.py already asks
+# git for the doc set and git honors .gitignore.
+skip = "*/static/vendor/*,./attic/*"
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]
