@@ -147,7 +147,12 @@ def test_embedded_markdown_body_uses_host_reading_size() -> None:
     rule_start = css.index(".metabrowser-kpress-host .kpress {")
     rule_block = css[rule_start : rule_start + 1_000]
     assert "--kpress-font-size-normal" not in rule_block
-    assert "--kpress-font-size-mono: var(--document-mono-font-size);" in rule_block
+    # Mono is KPress's to own. Its ramp has three tiers (mono / mono-small /
+    # mono-tiny) that step down where the surrounding text is already reduced —
+    # table cells, captions, footnotes. Bridging them to one host value flattens
+    # those steps and once rendered inline code in a table LARGER than its cell.
+    # Anchoring --kpress-host-font-size-base is enough; the ratios follow.
+    assert "--kpress-font-size-mono" not in rule_block
     assert "--kpress-font-size-small: var(--document-small-font-size);" in rule_block
     assert "--kpress-caps-label-size: var(--label-font-size);" in rule_block
     assert "--kpress-bullet-size" not in rule_block
