@@ -29,7 +29,8 @@ MONO_DECLARATION_RE = re.compile(r"(?:^|;)\s*font(?:-family)?\s*:[^;]*--font-mon
 # regression: it is chrome, and chrome is sans.
 #
 # Rendered content — the user's own text, where character alignment carries meaning:
-#   code.hljs, .code-block code, .md-body code, .log-event-raw *
+#   code.hljs, .code-block code, .md-body:not(.metabrowser-kpress-host) code,
+#   .log-event-raw *
 # Named exceptions, each deliberate:
 #   .compression-badge          a 7px glyph, iconography rather than text
 #   .metabrowser-kpress-error-detail   a verbatim error payload
@@ -38,7 +39,7 @@ MONO_ALLOWED_SELECTORS = frozenset(
     {
         "code.hljs",
         ".code-block code",
-        ".md-body code",
+        ".md-body:not(.metabrowser-kpress-host) code",
         ".log-event-raw pre",
         ".log-event-raw code",
         ".compression-badge",

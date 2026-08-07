@@ -100,17 +100,25 @@ Document (rendered prose) sizes, where mono and small derive from the body size 
 document rescales as one unit:
 
 - `--document-body-font-size` (15px): prose, one size step above the 14px app body.
-- `--document-mono-font-size` (0.9×): code — smaller than prose by design; mono x-height
-  is larger, so this still reads close to the prose size.
 - `--document-small-font-size` (0.85×): secondary document text — TOC entries, captions,
   footnotes.
+
+Code inside a rendered document has no token here on purpose.
+KPress ships a three-tier mono ramp — `mono`, `mono-small`, `mono-tiny` — and steps it
+by context, because the smaller tiers apply where the surrounding text is already
+reduced (table cells, captions, footnotes).
+A single host value flattens those steps: mapping all three onto one 0.9× token once
+rendered inline code in a table at 13.5px inside a 12.75px cell, larger than the prose
+around it. Anchoring the base is enough; the ratios follow.
+Chrome-context monospace is a separate concern and uses `--mono-block-font-size`.
 
 Embedded KPress documents set `--kpress-host-font-size-base` to
 `--document-body-font-size` on `:root`. KPress derives its full ramp, headings, bullets,
 labels, and offsets from that base.
-The scoped bridge overrides only intentional design differences: mono uses
-`--document-mono-font-size`, secondary document tiers use `--document-small-font-size`,
-and the CONTENTS label uses `--label-font-size` so it matches app labels.
+The scoped bridge overrides only intentional design differences: secondary document
+tiers use `--document-small-font-size`, and the CONTENTS label uses `--label-font-size`
+so it matches app labels.
+The mono tiers are deliberately left to KPress.
 When adding a size, extend the ramp and its documentation; do not create a one-off.
 
 ### KPress Base-Size Boundary
@@ -162,6 +170,52 @@ Keep these roles distinct:
 
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
+
+## Icons and Icon Buttons
+
+Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
+inherits `currentColor`. An icon never carries its own color.
+
+### One Glyph Size
+
+Every icon in the chrome is drawn at `--icon-glyph`, whether it is a button, a file-type
+mark on a tree or palette row, or a menu row’s leading mark.
+Never inline a pixel size at a use site.
+Where an icon reserves a column in a row of text, the alignment box around it is 16px —
+one step wider than the glyph, so the mark sits optically centered.
+
+There is one deliberate exception, `.menu-seg svg` in the segmented theme and font
+choosers, where the glyph *is* the segment’s label rather than a mark beside text and so
+carries the weight of a word.
+It is documented at the rule.
+
+### Every Icon-Only Control Is the Same Control
+
+An icon-only button is one primitive, `.icon-btn`, documented in the
+`── Icon buttons ──` block of `static/styles.css`. It pairs `--icon-glyph` with
+`--icon-btn-size` for the hit target, so the settings gear, the print action, and the
+copy buttons are interchangeable wherever they appear.
+
+At rest an icon button is a bare muted glyph with no border and no fill.
+It raises a hover surface and a hairline border only while hovered, focused, or holding
+a menu open; hover, keyboard focus, and “my menu is open” are one visual state.
+
+Do not give an icon button a resting border or background.
+A permanent box around one icon makes it read as a heavier, more primary control than
+the unboxed icon beside it, and two icons of equal standing stop looking like the same
+kind of thing. The hover surface is what signals “this is clickable” — a static frame
+adds weight without adding information.
+
+The one sanctioned resting surface is `.icon-btn-overlay`, for a button that floats
+above content: a bare glyph over source text is unreadable, so it needs an opaque plate.
+
+### Reveal on Hover Keeps Keyboard Reach
+
+Buttons that appear only when their row or container is hovered use `.icon-btn-reveal`,
+which fades opacity and drops `pointer-events` rather than setting `visibility: hidden`.
+A hidden button leaves the tab order, so the control becomes mouse-only.
+Every reveal trigger restores `pointer-events` along with the opacity, and keyboard
+focus is itself a reveal trigger.
 
 ## File Types
 
