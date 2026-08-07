@@ -38,8 +38,42 @@ domain tokens, rather than in core `styles.css`.
 
 ## Typography
 
-The shell uses a compact UI face for navigation and controls, a monospaced face for code
-and structured values, and KPress typography for rendered Markdown.
+The shell uses a compact UI face for chrome, a monospaced face for rendered content, and
+KPress typography for rendered Markdown.
+
+### Faces: Chrome Is Sans, Content Is Mono
+
+The dividing line is what the text *is*, not how technical it looks.
+
+Chrome — everything the application itself says — uses `--font-sans`. That includes file
+paths, and it includes the parent path and every ancestor segment: a path is navigation,
+not code, so it reads in the same face as the navigation row it points at.
+Key names, shortcut hints, labels, metadata, chips, tooltips, counts, and status text
+are chrome too.
+
+Monospace is for the user’s own content, where column alignment carries meaning:
+highlighted source, code blocks, Markdown inline code, and raw log payloads.
+Numeric alignment on its own does not justify monospace — byte counts, durations, and
+timestamps stay sans and use `--tabular-numerals`.
+
+The authoritative rule, the current list of deliberate exceptions, and the reasoning for
+each live in the `── Typography roles ──` block of `static/styles.css`, next to the
+tokens they govern. `tests/test_chrome_typography.py` enforces that list, so a new
+monospaced use site fails the build until it is classified.
+
+### Keyboard Keys
+
+Every keyboard key rendered anywhere in the app uses the `.kbd` component: always all
+caps, bold, with one thin border.
+Never hand-set a key’s type or border at a use site, and never write a key as plain text
+inside a sentence.
+
+Write the key in its natural case in markup — the caps treatment is presentational, so
+the accessible name stays what the markup says.
+For a sequence, emit one `.kbd` per key so each keeps its own border.
+
+The component, its tokens, and its markup contract are documented in the
+`── Keyboard keys ──` blocks of `static/styles.css`.
 
 ### Type Scale
 
@@ -60,8 +94,7 @@ Chrome (interface) sizes:
   Labels differ by caps treatment, not by another size.
 - `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
   views, logs, raw JSON.
-- `--micro-font-size` (10px): deliberately minimized marks — the brand line, code inside
-  truncation notes.
+- `--micro-font-size` (10px): deliberately minimized marks — the brand line.
 
 Document (rendered prose) sizes, where mono and small derive from the body size so a
 document rescales as one unit:
@@ -121,9 +154,11 @@ from the document it covers.
 Keep these roles distinct:
 
 - labels and metadata use normal weight and muted text;
-- selected values and filenames use stronger contrast;
+- filenames are the identity of a row and carry bold weight at full contrast, while the
+  parent path beside them is context and stays regular weight and muted;
 - byte counts, durations, timestamps, and numeric table columns use tabular numerals;
-- code and paths use monospaced text without forcing prose into a code style.
+- code uses monospaced text without forcing prose into a code style, and paths stay in
+  the sans navigation face.
 
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.

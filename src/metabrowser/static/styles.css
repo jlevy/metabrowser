@@ -144,6 +144,62 @@
   --font-sans: var(--app-sans-clean);
   --font-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
 
+  /* ── Typography roles: which face, where ─────────────────────────
+     Chrome is sans. Content is mono. The line between them is what the
+     text IS, not how technical it looks.
+
+     Sans (--font-sans) — everything the app itself says:
+       file paths, including parent paths and ancestor segments, in the
+       tree, the header, the file header, and search results; key names
+       and shortcut hints; labels, metadata, chips, tooltips, notes,
+       counts, and status text.
+       A path is navigation, not code. It reads in the same face as the
+       Navigator row it points at, at --nav-font-size.
+
+     Mono (--font-mono) — the user's own content, where column
+     alignment carries meaning:
+       highlighted source, code blocks, Markdown inline code, and raw
+       log payloads.
+
+     Three deliberate exceptions, and no others:
+       .compression-badge          a 7px glyph — iconography, not text
+       .metabrowser-kpress-error-detail   a verbatim error payload
+       .log-event-header           structured log values (event type,
+                                   timestamps) rather than prose or paths
+     tests/test_chrome_typography.py enforces this list, so a new mono
+     use site fails the build until it is classified here.
+
+     Numeric alignment does NOT justify mono. Byte counts, durations,
+     and timestamps stay sans and use font-variant-numeric: tabular-nums
+     (see --tabular-numerals). */
+  --tabular-numerals: tabular-nums;
+
+  /* ── Keyboard keys ───────────────────────────────────────────────
+     One treatment for every key rendered anywhere in the app: caps,
+     bold, thin border. Use the .kbd component (see its section below);
+     never hand-set a key's type or border at a use site, and never
+     write a key as plain text inside a sentence.
+
+     Keys are always ALL CAPS — ENTER, ESC, T — including single
+     letters, so a key never reads as a word. Arrow glyphs (↑ ↓) have no
+     case and pass through unchanged.
+
+     The border is deliberately thin and low-contrast: a key is a quiet
+     inline mark inside hint text, not a button. Both themes inherit
+     automatically because these point at semantic tokens that the dark
+     block below redefines. */
+  --kbd-font-family: var(--font-sans);
+  --kbd-font-size: var(--ui-small-font-size);
+  --kbd-font-weight: var(--weight-bold);
+  --kbd-letter-spacing: 0.04em;
+  --kbd-text-transform: uppercase;
+  --kbd-border: 1px solid var(--border);
+  --kbd-radius: var(--radius-chrome);
+  --kbd-padding: 0 4px;
+  --kbd-min-width: 16px;
+  --kbd-color: var(--muted);
+  --kbd-bg: var(--hover-bg);
+
   /* KPress host bridge tokens. Metabrowser owns shell tokens; KPress owns
      document rendering. The default "clean" font set keeps KPress's vendored
      faces (PT Serif prose / Source Sans UI), so family hooks stay unset and
@@ -185,8 +241,8 @@
                                    is the distinction
        --mono-block-font-size =ui-small  mono blocks in chrome contexts
                                    (source views, logs, raw JSON)
-       --micro-font-size     10px  deliberately-minimized marks (brand
-                                   line, code inside truncation notes)
+       --micro-font-size     10px  deliberately-minimized marks (the
+                                   brand line)
      One exception: .compression-badge draws a 7px glyph — iconography,
      not text, and not part of the ramp.
 
@@ -1180,13 +1236,6 @@ html.theme-anim .menu {
   background: var(--sidebar-bg);
   border-bottom: 1px solid var(--border);
 }
-.tree-truncation-note code {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--micro-font-size);
-  padding: 1px 4px;
-  background: var(--hover-bg);
-  border-radius: var(--radius-document);
-}
 
 /* Path-rendering convention — pathHtml() in app.js wraps a path in
    .path with .path-dir (everything up to and including the final
@@ -1204,6 +1253,41 @@ html.theme-anim .menu {
 .header-path .path-dir {
   font-weight: inherit;
   color: inherit;
+}
+
+/* ── Keyboard keys — shared inline primitive ─────────────────────
+   The one way to render a keyboard key. Tokens live with the type
+   scale in :root (see "── Keyboard keys ──" there); this section only
+   assembles them.
+
+   Markup is a <kbd> element with class="kbd", one element per key:
+
+     Press <kbd class="kbd">T</kbd> to search
+
+   Write the key in its natural case in markup — the caps treatment is
+   presentational, so the accessible name a screen reader announces
+   stays whatever the markup says. Keys stand alone as marks; do not
+   nest one inside a <code> or restyle it per surface. For a sequence,
+   emit separate keys and let the surrounding text carry any joining
+   word, so each key keeps its own border. */
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--kbd-min-width);
+  padding: var(--kbd-padding);
+  border: var(--kbd-border);
+  border-radius: var(--kbd-radius);
+  background: var(--kbd-bg);
+  color: var(--kbd-color);
+  font-family: var(--kbd-font-family);
+  font-size: var(--kbd-font-size);
+  font-weight: var(--kbd-font-weight);
+  letter-spacing: var(--kbd-letter-spacing);
+  text-transform: var(--kbd-text-transform);
+  line-height: 1.5;
+  vertical-align: baseline;
 }
 
 /* ── Main layout ─────────────────────────────────────────────── */
@@ -2841,14 +2925,18 @@ pre.code-block code.hljs {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Filename and parent path carry the same weight hierarchy as the file
+   header above the preview: the name is the identity (bold, full
+   contrast), the path is context (regular, muted). */
 .search-palette-label {
+  color: var(--text);
   font-size: var(--nav-font-size);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-bold);
 }
 .search-palette-description {
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-normal);
 }
 .search-palette-option mark {
   color: inherit;
@@ -2864,11 +2952,24 @@ pre.code-block code.hljs {
 .search-palette-status {
   min-height: 28px;
 }
+/* Keys render through .kbd; the connecting words are ordinary chrome
+   text, so the row reads as a sentence rather than a legend. */
 .search-palette-hint {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
   padding-top: 0;
-  font-family: var(--font-mono);
   text-align: right;
   user-select: var(--toggle-user-select);
+}
+.search-palette-hint-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.search-palette-hint-group + .search-palette-hint-group {
+  margin-left: 6px;
 }
 /* File-tree tooltip rows use the compact file/folder summary shape.
    Use viz-panel-* classes for anything
@@ -3037,11 +3138,13 @@ pre.code-block code.hljs {
 
 /* ── Tally tree ─────────────────────────────────────────────── */
 
+/* A chrome tree, like the Navigator: sans labels. Counts keep column
+   alignment through tabular numerals rather than a monospaced face. */
 .tally-tree {
   font-size: var(--ui-small-font-size);
   line-height: 1.8;
   padding: 8px 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 .tally-node {
   cursor: pointer;
@@ -3066,6 +3169,7 @@ pre.code-block code.hljs {
   font-weight: var(--weight-bold);
   margin-left: 4px;
   color: var(--text);
+  font-variant-numeric: var(--tabular-numerals);
 }
 .tally-children {
   padding-left: 16px;
