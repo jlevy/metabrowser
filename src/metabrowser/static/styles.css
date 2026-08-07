@@ -2935,7 +2935,7 @@ pre.code-block code.hljs {
 }
 .search-palette-description {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   font-weight: var(--weight-normal);
 }
 .search-palette-option mark {

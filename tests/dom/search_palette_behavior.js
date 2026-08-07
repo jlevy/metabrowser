@@ -339,6 +339,10 @@ async function main() {
   const requests = [];
   let cancelCalls = 0;
   let requestId = 0;
+  // When set, the completed state is withheld until the test releases it, so
+  // assertions can inspect the palette while a search is still in flight.
+  let holdCompletion = false;
+  let releaseCompletion = null;
   const controller = {
     cancel() {
       cancelCalls += 1;
@@ -357,10 +361,31 @@ async function main() {
         statusMessage: "5 observed files are searchable. Local coverage is incomplete.",
         truncated: availableResults.length > 3,
       });
+      // The real controller publishes one empty "searching" composition before
+      // any provider has returned. Reproduce it, or the palette's handling of
+      // that state goes untested.
+      const pending = Object.freeze({
+        ...state,
+        complete: false,
+        phase: "searching",
+        results: [],
+        statusMessage: "",
+      });
       for (const subscriber of subscribers) {
-        subscriber(state);
+        subscriber(pending);
       }
-      return Promise.resolve(state);
+      const deliver = () => {
+        for (const subscriber of subscribers) {
+          subscriber(state);
+        }
+        return state;
+      };
+      if (holdCompletion) {
+        return new Promise((resolve) => {
+          releaseCompletion = () => resolve(deliver());
+        });
+      }
+      return Promise.resolve(deliver());
     },
     subscribe(listener) {
       subscribers.add(listener);
@@ -606,6 +631,59 @@ async function main() {
   check(
     "outside pointer dismissal restores focus",
     overlay.hidden && document.activeElement === initialFocus,
+  );
+
+  // Typing must not blank the list between keystrokes: the rows already on
+  // screen stay until the next search actually produces something.
+  palette.open();
+  input.value = "app";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  const rowsBeforeRetype = listbox.children.length;
+  const statusBeforeRetype = status.textContent;
+  check("rows are on screen before the next keystroke", rowsBeforeRetype > 0);
+
+  holdCompletion = true;
+  input.value = "appl";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check(
+    "pending search keeps the previous rows",
+    listbox.children.length === rowsBeforeRetype,
+    String(listbox.children.length),
+  );
+  check(
+    "a fast search does not flash a searching status",
+    status.textContent === statusBeforeRetype,
+    status.textContent,
+  );
+  releaseCompletion();
+  await settle();
+  holdCompletion = false;
+  check("completing the search renders its results", listbox.children.length > 0);
+
+  // A completed search with no matches still clears the list.
+  const heldResults = availableResults;
+  availableResults = [];
+  input.value = "no-such-file";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check("a completed empty search clears the rows", listbox.children.length === 0);
+  availableResults = heldResults;
+
+  availableResults = [searchResult("src/metabrowser/app.js", 5, [{ start: 4, end: 8 }])];
+  input.value = "meta";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  const describedRow = listbox.querySelector(".search-palette-description");
+  check(
+    "parent path ends with a separator",
+    describedRow ? describedRow.textContent.endsWith("/") : false,
+    describedRow ? describedRow.textContent : "no described row",
+  );
+  check(
+    "parent path keeps its highlight offsets",
+    describedRow ? describedRow.querySelectorAll("mark").length > 0 : false,
   );
 
   palette.open();

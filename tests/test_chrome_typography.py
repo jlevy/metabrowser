@@ -130,6 +130,18 @@ def test_keyboard_keys_render_caps_bold_and_bordered() -> None:
     assert "--kbd-font-weight: var(--weight-bold);" in css
 
 
+def test_palette_filename_and_parent_path_share_one_size() -> None:
+    """A result row reads as one line of navigation, not a heading over fine print."""
+    rules = dict(_rules(_read_styles()))
+    label = rules[".search-palette-label"]
+    description = rules[".search-palette-description"]
+    size = re.compile(r"font-size:\s*([^;]+);")
+    label_size = size.search(label)
+    description_size = size.search(description)
+    assert label_size and description_size
+    assert label_size.group(1).strip() == description_size.group(1).strip()
+
+
 def test_palette_hint_renders_keys_through_the_kbd_component() -> None:
     source = SEARCH_PALETTE_JS.read_text()
     assert '"kbd"' in source, "The palette hint should build kbd elements, not a plain string"

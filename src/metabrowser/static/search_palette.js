@@ -219,6 +219,33 @@
     let opening = false;
     let disposed = false;
     let actionSerial = 0;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let searchingStatusTimer = null;
+    let announceSearching = false;
+
+    // Below this threshold a search finishes before the eye registers it, so
+    // announcing it would only flash a line of text that is immediately
+    // replaced. Mirrors LOADING_INDICATOR_DELAY_MS in app.js.
+    const SEARCHING_STATUS_DELAY_MS = 120;
+
+    function scheduleSearchingStatus() {
+      if (searchingStatusTimer !== null) {
+        return;
+      }
+      searchingStatusTimer = setTimeout(() => {
+        searchingStatusTimer = null;
+        announceSearching = true;
+        renderStatus();
+      }, SEARCHING_STATUS_DELAY_MS);
+    }
+
+    function clearSearchingStatus() {
+      if (searchingStatusTimer !== null) {
+        clearTimeout(searchingStatusTimer);
+        searchingStatusTimer = null;
+      }
+      announceSearching = false;
+    }
 
     function renderStatus() {
       const query = input.value.trim();
@@ -233,6 +260,11 @@
         return;
       }
       if (!searchState || searchState.phase === "searching") {
+        // Leave the previous line in place until the search is slow enough to
+        // be worth reporting; scheduleSearchingStatus re-renders if it is.
+        if (!announceSearching) {
+          return;
+        }
         const snapshot = options.getCatalogSnapshot();
         status.textContent = `Searching ${snapshot.observedCount} observed files…`;
         return;
@@ -316,6 +348,12 @@
             result.matchRanges,
             0,
           );
+          // Trailing separator so the line reads as the enclosing directory
+          // rather than a path fragment. Appended after the highlighted text
+          // instead of joining the provider's string, because match ranges are
+          // offsets into the raw path and would all shift by one. Real text,
+          // not generated content, so the path stays selectable.
+          description.append(hostDocument.createTextNode("/"));
           text.append(description);
         }
         option.append(icon, text);
@@ -335,8 +373,20 @@
       if (overlay.hidden || state.request?.query !== input.value) {
         return;
       }
-      const previousSelection = selectedResultId;
       searchState = state;
+      // A search publishes "searching" once before any provider has returned,
+      // so that first composition is always empty. Rendering it would blank the
+      // list between keystrokes and refill it a few milliseconds later. Hold
+      // the rows already on screen instead — the same reason selectFile leaves
+      // the previous file in the preview during a fast fetch rather than
+      // flashing a spinner. A completed search with no matches still clears,
+      // because it is no longer pending.
+      if (state.phase === "searching" && state.results.length === 0 && results.length > 0) {
+        renderStatus();
+        return;
+      }
+      clearSearchingStatus();
+      const previousSelection = selectedResultId;
       results = state.results.slice(0, maxRows);
       activeIndex = previousSelection
         ? results.findIndex((result) => result.id === previousSelection)
@@ -358,6 +408,7 @@
       }
       if (!query.trim()) {
         options.controller.cancel();
+        clearSearchingStatus();
         searchState = null;
         results = [];
         activeIndex = -1;
@@ -366,6 +417,7 @@
         renderStatus();
         return;
       }
+      scheduleSearchingStatus();
       renderStatus();
       options.controller
         .search({ match: "fuzzy", query, target: "file" })
@@ -478,6 +530,7 @@
         return;
       }
       options.controller.cancel();
+      clearSearchingStatus();
       actionSerial += 1;
       opening = false;
       overlay.hidden = true;
