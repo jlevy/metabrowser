@@ -3,13 +3,15 @@ type: is
 id: is-01kzcv9gpcd9jwp9srvfxass6e
 title: Quick File list flickers on every keystroke
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-07T00:52:10.059Z
-updated_at: 2026-08-07T00:52:10.059Z
+updated_at: 2026-08-07T00:57:39.816Z
+closed_at: 2026-08-07T00:57:39.815Z
+close_reason: "Fixed in 2be5d58 on feat/quick-file-palette: palette holds rendered rows through the empty pending publish, searching status is delayed like app.js, parent path at nav size with a trailing separator. Regression covered by the DOM behavior test (verified it fails without the fix)."
 ---
 Typing in the palette blanks the result list for a frame before the new results paint.
 
