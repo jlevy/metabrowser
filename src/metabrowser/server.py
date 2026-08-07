@@ -91,6 +91,7 @@ from metabrowser.file_kinds import (
     classify_file_kind,
     register_file_kind_detector,
 )
+from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -739,6 +740,8 @@ async def index(_request: Request) -> HTMLResponse:
     file_fuzzy_match_url = _static_asset_url("file_fuzzy_match.js")
     search_controller_url = _static_asset_url("search_controller.js")
     search_palette_url = _static_asset_url("search_palette.js")
+    git_graph_url = _static_asset_url("git_graph.js")
+    git_panel_url = _static_asset_url("git_panel.js")
     app_url = _static_asset_url("app.js")
     perf_block = (
         f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
@@ -964,6 +967,10 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{file_fuzzy_match_url}"></script>
   <script src="{search_controller_url}"></script>
   <script src="{search_palette_url}"></script>
+  <!-- Git graph modules load before app.js: the shell's DOMContentLoaded
+       handler calls MetabrowserGitPanel.init(), which needs both present. -->
+  <script src="{git_graph_url}"></script>
+  <script src="{git_panel_url}"></script>
   <script src="{app_url}"></script>
   {plugin_scripts}
   {optional_assets_block}
@@ -2223,6 +2230,10 @@ routes = [
     Route("/raw", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
+    # Read-only git history, kept as its own collection in
+    # ``metabrowser.git.routes``: separate wire model, separate failure
+    # modes, separate resource bounds.
+    *GIT_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
 

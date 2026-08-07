@@ -368,6 +368,171 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
 }>;
 
 declare global {
+  /**
+   * Wire shapes for the `/api/git/` endpoints.
+   *
+   * These mirror the TypedDicts in `metabrowser/git/wire.py`, which is the
+   * authority: that module also carries the runtime validators the server
+   * tests run every emitted shape through. Keep the two in sync — a field
+   * added on one side and not the other is exactly the drift the
+   * validators exist to catch on the Python side and these types catch on
+   * this side.
+   */
+  type MetabrowserGitRef = {
+    /** Full refname, e.g. "refs/heads/main". Stable identity. */
+    id: string;
+    /** Short display name: "main", "<remote>/<branch>", "v1.0". */
+    name: string;
+    kind: "branch" | "remote" | "tag";
+    revision: string;
+    /** Present on the ref HEAD is currently on; never when detached. */
+    is_head?: boolean;
+    remote?: string;
+  };
+
+  type MetabrowserGitAuthor = {
+    name?: string;
+    email?: string;
+  };
+
+  type MetabrowserGitCommit = {
+    id: string;
+    short_id: string;
+    /** Ordered; `[0]` is the first parent. The swimlane layout runs on this. */
+    parent_ids: Array<string>;
+    author?: MetabrowserGitAuthor;
+    authored_at: number;
+    committed_at: number;
+    subject: string;
+    refs?: Array<MetabrowserGitRef>;
+  };
+
+  type MetabrowserGitHead = {
+    ref: string | null;
+    revision: string | null;
+    detached: boolean;
+    unborn: boolean;
+  };
+
+  type MetabrowserGitRepoInfo = {
+    is_repo: boolean;
+    root?: string | null;
+    head?: MetabrowserGitHead | null;
+    reason?: string;
+  };
+
+  type MetabrowserGitLogPage = {
+    is_repo: boolean;
+    commits?: Array<MetabrowserGitCommit>;
+    /** Opaque; null exactly when `has_more` is false. */
+    cursor?: string | null;
+    has_more?: boolean;
+  };
+
+  type MetabrowserGitFileChange = {
+    /** Served-root-relative unless `outside_root` is set. */
+    path: string;
+    old_path?: string;
+    status: "added" | "modified" | "deleted" | "renamed" | "copied" | "typechanged";
+    /** Null for binary files: git reports "-" rather than a line count. */
+    additions: number | null;
+    deletions: number | null;
+    binary?: boolean;
+    /** Inside the repository but outside the served root, so not navigable. */
+    outside_root?: boolean;
+    similarity?: number;
+  };
+
+  type MetabrowserGitCommitStats = {
+    files_changed: number;
+    additions: number;
+    deletions: number;
+  };
+
+  type MetabrowserGitCommitDetail = {
+    is_repo: boolean;
+    commit: MetabrowserGitCommit;
+    body: string;
+    stats: MetabrowserGitCommitStats;
+    files: Array<MetabrowserGitFileChange>;
+    files_truncated: boolean;
+  };
+
+  /** One lane in a row's graph gutter. */
+  type MetabrowserGitGraphLane = {
+    id: string;
+    color: string;
+  };
+
+  type MetabrowserGitGraphRow = {
+    commit: MetabrowserGitCommit;
+    inputSwimlanes: Array<MetabrowserGitGraphLane>;
+    outputSwimlanes: Array<MetabrowserGitGraphLane>;
+    kind: "HEAD" | "node" | "incoming-changes" | "outgoing-changes";
+  };
+
+  type MetabrowserGitSwimlaneResult = {
+    rows: Array<MetabrowserGitGraphRow>;
+    /** Lane state after the last row; feed back in for the next page. */
+    trailingSwimlanes: Array<MetabrowserGitGraphLane>;
+    /** Palette cursor after the last row; feed back in for the next page. */
+    colorIndex: number;
+  };
+
+  type MetabrowserGitGraphRuntime = {
+    CIRCLE_RADIUS: number;
+    CIRCLE_STROKE_WIDTH: number;
+    HEAD_LANE_COLOR: string;
+    LANE_COLORS: ReadonlyArray<string>;
+    SWIMLANE_CURVE_RADIUS: number;
+    SWIMLANE_HEIGHT: number;
+    SWIMLANE_WIDTH: number;
+    buildRefColors(headRefId: string | null): Map<string, string>;
+    commitLaneIndex(row: MetabrowserGitGraphRow): number;
+    computeSwimlanes(
+      commits: Array<MetabrowserGitCommit>,
+      options?: {
+        priorSwimlanes?: Array<MetabrowserGitGraphLane>;
+        colorIndex?: number;
+        headRevision?: string | null;
+        refColors?: Map<string, string>;
+      },
+    ): MetabrowserGitSwimlaneResult;
+    graphWidth(row: MetabrowserGitGraphRow): number;
+    renderCommitGraph(row: MetabrowserGitGraphRow): SVGSVGElement;
+  };
+
+  type MetabrowserGitPanelRuntime = {
+    init(): Promise<void>;
+    /** Test-only surface; not part of any supported contract. */
+    _internals: Record<string, unknown>;
+  };
+
+  /**
+   * A nav-panel entry in the shell's tab bar.
+   *
+   * `onFirstShow` runs once, the first time the panel is shown — lazy
+   * loading is the point, since a panel the user never opens should not
+   * cost a request.
+   */
+  type MetabrowserNavPanel = {
+    id: string;
+    label: string;
+    onFirstShow: (() => void) | null;
+  };
+
+  /**
+   * The internal seam between the shell and core modules that are not file
+   * renderers. Deliberately not `window.metabrowser`, which is the
+   * documented plugin SDK and carries a compatibility contract.
+   */
+  type MetabrowserShellRuntime = {
+    activateNavPanel(panelId: string): void;
+    registerNavPanel(panel: MetabrowserNavPanel): void;
+    removeNavPanel(panelId: string): void;
+    renderPreviewHtml(html: string): HTMLElement | null;
+  };
+
   var hljs: {
     highlightElement(element: Element): void;
   };
@@ -394,9 +559,12 @@ declare global {
       iconFor(path: string): unknown;
     };
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
+    MetabrowserGitGraph: MetabrowserGitGraphRuntime;
+    MetabrowserGitPanel?: MetabrowserGitPanelRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
+    MetabrowserShell?: MetabrowserShellRuntime;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
@@ -407,6 +575,9 @@ declare global {
     };
     METABROWSER_INITIAL_PATH?: string;
     METABROWSER_SETTINGS?: {
+      GIT_DETAIL_CACHE_SIZE?: number;
+      GIT_HOVER_DEBOUNCE_MS?: number;
+      GIT_LOG_LIMIT?: number;
       INDEX_PROGRESS_POLL_MS?: number;
       INDEX_PROGRESS_UPDATE_FILES?: number;
       RECENT_CLUSTER_PCT?: number;

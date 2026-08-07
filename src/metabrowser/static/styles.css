@@ -808,6 +808,25 @@
   --standalone-label-kind: hsl(0 0% 40%);
   --standalone-label-badge: hsl(0 0% 27%);
   --standalone-edge: hsl(0 0% 33%);
+
+  /* Commit-graph branch lanes. These five are VS Code's graph
+     foreground colors, chosen upstream to stay distinguishable under
+     the common forms of color vision deficiency — which is why they are
+     kept as a set rather than resampled from the app palette. The
+     renderer references them only as tokens (see git_graph.js). They
+     are identical in both themes: they are drawn as 1px strokes on
+     either background and already carry enough contrast on both. */
+  --git-lane-1: #ffb000;
+  --git-lane-2: #dc267f;
+  --git-lane-3: #994f00;
+  --git-lane-4: #40b0a6;
+  --git-lane-5: #b66dff;
+
+  /* Ref badges, and the lane color for the branch HEAD is on. */
+  --git-ref-local: var(--status-info);
+  --git-ref-remote: hsl(265 75% 58%);
+  --git-ref-tag: hsl(38 92% 40%);
+  --git-ref-bg: var(--viz-surface-sunken);
 }
 
 [data-theme="dark"] {
@@ -882,6 +901,15 @@
   --ft-config-border: hsl(220 10% 30%);
   --chart-grid: hsl(220 13% 24%);
   --chart-label-text: var(--viz-text-meta);
+
+  /* Lane colors are intentionally not overridden: the five graph
+     foregrounds are readable as thin strokes on both backgrounds, and
+     re-tuning them per theme would break the colorblind-safe spacing
+     they were chosen for. Badge colors do need lifting — the light
+     values are text on a dark surface here, not fills on a light one. */
+  --git-ref-remote: hsl(265 75% 74%);
+  --git-ref-tag: hsl(38 92% 62%);
+  --git-ref-bg: hsl(220 16% 22%);
 }
 
 * {
@@ -3387,4 +3415,277 @@ pre.code-block code.hljs {
   .kpress-print-surface {
     display: block;
   }
+}
+
+/* ── Git graph panel ──────────────────────────────────────────
+   Row proportions follow VS Code's Source Control Graph
+   (.history-item in src/vs/workbench/contrib/scm/browser/media/scm.css):
+   a fixed-width graph gutter exactly one row tall, then badges, subject,
+   and right-aligned author and age.
+
+   The 22px row height is not a style choice — it is SWIMLANE_HEIGHT in
+   git_graph.js, and each row's SVG is drawn to exactly that height.
+   Changing one without the other misaligns every lane against its row. */
+
+.git-graph-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-graph-row {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding-right: 12px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  font-size: var(--nav-font-size);
+  transition: background var(--transition-fast);
+}
+
+.git-graph-row:hover {
+  background: var(--hover-bg);
+}
+
+.git-graph-row.selected {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+
+.git-graph-row:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+/* Width is set per panel from the widest row loaded, so the subject
+   column stays put instead of stepping in and out as lanes open and
+   close. */
+.git-graph-gutter {
+  display: flex;
+  flex-shrink: 0;
+  height: 22px;
+}
+
+/* The hollow centre of the HEAD and merge markers should read as the row
+   background rather than as a filled dot. Following the row's own
+   background through hover and selection keeps it hollow instead of
+   leaving a pale disc on a highlighted row. */
+.git-graph-row .git-graph-svg > circle:not([style*="fill"]) {
+  fill: var(--sidebar-bg);
+}
+
+.git-graph-row:hover .git-graph-svg > circle:not([style*="fill"]) {
+  fill: var(--hover-bg);
+}
+
+.git-graph-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-grow: 1;
+  padding-left: 6px;
+}
+
+.git-graph-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-grow: 1;
+}
+
+.git-graph-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-graph-age {
+  flex-shrink: 0;
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.git-graph-more {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-graph-more-failed {
+  color: var(--status-error-strong);
+}
+
+.git-panel-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: var(--nav-font-size);
+}
+
+/* ── Ref badges ─────────────────────────────────────────────── */
+
+.git-ref {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 140px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--git-ref-bg);
+  color: var(--git-ref-local);
+  font-size: var(--micro-font-size);
+}
+
+.git-ref-remote {
+  color: var(--git-ref-remote);
+}
+
+.git-ref-tag {
+  color: var(--git-ref-tag);
+}
+
+.git-ref-head {
+  font-weight: var(--weight-bold);
+}
+
+/* ── Commit detail view ─────────────────────────────────────── */
+
+.git-commit-view {
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+
+.git-commit-subject {
+  margin: 0 0 8px;
+  font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+  line-height: 1.35;
+}
+
+.git-commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-commit-sha {
+  font-family: var(--font-mono);
+}
+
+.git-commit-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.git-commit-body {
+  margin: 16px 0;
+  padding: 12px;
+  border-radius: var(--radius-document);
+  background: var(--code-bg);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+}
+
+.git-commit-files {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.git-commit-files-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-commit-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: var(--radius-chrome);
+  cursor: pointer;
+  font-size: var(--ui-small-font-size);
+}
+
+.git-commit-file:hover {
+  background: var(--hover-bg);
+}
+
+/* Files outside the served root, and deleted files, are listed but not
+   navigable — the shell has nothing to open. Styling them inert stops
+   the pointer from promising a click that does nothing. */
+.git-commit-file-inert,
+.git-commit-file-note {
+  cursor: default;
+  color: var(--muted);
+}
+
+.git-commit-file-inert:hover,
+.git-commit-file-note:hover {
+  background: transparent;
+}
+
+.git-file-status {
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
+  color: var(--muted);
+  font-weight: var(--weight-bold);
+}
+
+.git-file-added .git-file-status {
+  color: var(--status-success);
+}
+
+.git-file-deleted .git-file-status {
+  color: var(--status-error-strong);
+}
+
+.git-file-path {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-stat-add,
+.git-stat-del,
+.git-stat-binary {
+  flex-shrink: 0;
+  font-size: var(--micro-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.git-stat-add {
+  color: var(--status-success);
+}
+
+.git-stat-del {
+  color: var(--status-error-strong);
+}
+
+.git-stat-binary {
+  color: var(--muted);
 }

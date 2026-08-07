@@ -1741,29 +1741,163 @@ function startIndexProgressPolling() {
   }, INDEX_PROGRESS_POLL_MS);
 }
 
-function initNavTabs() {
+// ── Nav panel registry ─────────────────────────────────────────
+//
+// The tab bar used to be two hardcoded buttons and a click handler that
+// knew Recent by name. It is a registry now for two reasons: a panel can
+// be conditional (Git appears only when the served root resolves to a
+// repository, which is not known until /api/git/repo answers), and a
+// panel's first-show hook belongs beside its declaration rather than in
+// an if-chain inside the handler.
+//
+// Files and Recent stay in the server-rendered HTML — they are
+// first-paint critical, and creating them in JS would flash an empty
+// nav. Panels registered later create their own button and container.
+// This is the seam a plugin-facing registerNavPanel would build on; no
+// such SDK surface is exposed yet.
+
+/**
+ * @typedef {object} NavPanel
+ * @property {string} id
+ * @property {string} label
+ * @property {(() => void) | null} onFirstShow Runs once, the first time
+ *   the panel is shown. Lazy loading is the whole point: Recent and Git
+ *   both cost a request that a user who never opens them should not pay.
+ */
+
+/** @type {NavPanel[]} */
+var navPanels = [];
+/** @type {Set<string>} */
+var navPanelsShown = new Set();
+
+function registerNavPanel(panel) {
+  if (navPanels.some((existing) => existing.id === panel.id)) {
+    return;
+  }
+  navPanels.push(panel);
+  ensureNavPanelElements(panel);
+}
+
+// Create the button and container for a panel that was not in the
+// server-rendered markup. Idempotent, so a re-registration after a root
+// change does not duplicate the tab.
+function ensureNavPanelElements(panel) {
+  const navBar = queryHtml(".nav-tab-bar");
+  const content = document.getElementById("tree-content");
+  if (!navBar || !content) {
+    return;
+  }
+  if (!navBar.querySelector(`.tab-btn[data-tab="${panel.id}"]`)) {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn";
+    btn.type = "button";
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", "false");
+    btn.dataset.tab = panel.id;
+    btn.textContent = panel.label;
+    btn.addEventListener("click", () => activateNavPanel(panel.id));
+    navBar.appendChild(btn);
+  }
+  if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
+    const container = document.createElement("div");
+    container.id = `tab-${panel.id}`;
+    container.dataset.tabContent = panel.id;
+    container.style.display = "none";
+    content.appendChild(container);
+  }
+}
+
+function removeNavPanel(panelId) {
+  navPanels = navPanels.filter((panel) => panel.id !== panelId);
+  navPanelsShown.delete(panelId);
+  const navBar = queryHtml(".nav-tab-bar");
+  const button = navBar?.querySelector(`.tab-btn[data-tab="${panelId}"]`);
+  const container = document.querySelector(`[data-tab-content="${panelId}"]`);
+  const wasActive = button?.classList.contains("active");
+  button?.remove();
+  container?.remove();
+  // Never leave the nav with no active tab: if the panel being removed
+  // was the visible one, fall back to Files.
+  if (wasActive) {
+    activateNavPanel("files");
+  }
+}
+
+function activateNavPanel(panelId) {
   const navBar = queryHtml(".nav-tab-bar");
   if (!navBar) {
     return;
   }
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      var tabId = btn.dataset.tab;
-      navBar.querySelectorAll(".tab-btn").forEach((b) => {
-        b.classList.remove("active");
-        b.setAttribute("aria-selected", "false");
-      });
-      btn.classList.add("active");
-      btn.setAttribute("aria-selected", "true");
-      queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
-        panel.style.display = panel.dataset.tabContent === tabId ? "" : "none";
-      });
-      if (tabId === "recent" && !recentEverLoaded) {
-        loadRecent(currentRecentWindow);
-      }
-    });
+    const selected = btn.dataset.tab === panelId;
+    btn.classList.toggle("active", selected);
+    btn.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+  queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
+    panel.style.display = panel.dataset.tabContent === panelId ? "" : "none";
+  });
+
+  if (navPanelsShown.has(panelId)) {
+    return;
+  }
+  navPanelsShown.add(panelId);
+  const panel = navPanels.find((candidate) => candidate.id === panelId);
+  panel?.onFirstShow?.();
+}
+
+function initNavTabs() {
+  const navBar = queryHtml(".nav-tab-bar");
+  if (!navBar) {
+    return;
+  }
+  // Files needs no first-show hook: the tree is already loading when the
+  // shell boots, and Files is the panel that starts visible.
+  registerNavPanel({ id: "files", label: "Files", onFirstShow: null });
+  registerNavPanel({
+    id: "recent",
+    label: "Recent",
+    onFirstShow: () => loadRecent(currentRecentWindow),
+  });
+  navPanelsShown.add("files");
+
+  queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
+    const panelId = btn.dataset.tab;
+    if (!panelId) {
+      return;
+    }
+    btn.addEventListener("click", () => activateNavPanel(panelId));
   });
 }
+
+// Replace the preview pane's contents with shell-owned HTML.
+//
+// Disposal is the reason this is a function rather than an innerHTML
+// assignment at each call site: replacing the pane detaches whatever
+// plugin views are mounted, and skipping their disposers leaks their
+// listeners and retained resources.
+function renderPreviewHtml(html) {
+  const preview = document.getElementById("preview-pane");
+  if (!preview) {
+    return null;
+  }
+  disposeActivePluginViews();
+  preview.innerHTML = html;
+  return preview;
+}
+
+// The seam between the shell and modules that are not file renderers.
+//
+// Deliberately narrow, and deliberately not `window.metabrowser`: that
+// object is the documented plugin SDK with a compatibility contract,
+// whereas this is an internal boundary that core modules loaded by the
+// shell may use. Exposing it at all is what lets git_panel.js stay out
+// of app.js instead of adding a thousand lines to it.
+window.MetabrowserShell = Object.freeze({
+  activateNavPanel,
+  registerNavPanel,
+  removeNavPanel,
+  renderPreviewHtml,
+});
 
 // Toggle the nav tab bar's drop shadow based on whether the
 // tree-content scroll position is at the top. At scrollTop=0 the
@@ -4093,6 +4227,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavTabs();
   initNavScrollShadow();
   initQuickFileFinder();
+  // Not awaited: whether the served root is a repository is irrelevant
+  // to first paint, and blocking the tree walk on a git call would make
+  // every non-repository directory pay for a feature it will not show.
+  window.MetabrowserGitPanel?.init();
   // Fire the URL-pinned file fetch in parallel with the tree walk: the
   // two requests don't depend on each other, so a deep-link's preview
   // can render as soon as /api/file lands instead of waiting for the

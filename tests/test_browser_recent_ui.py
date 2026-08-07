@@ -115,12 +115,27 @@ def test_dom_contract_tab_panels_are_direct_children_of_tree_content() -> None:
 
 
 def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
+    """Nav tabs are a registry, not a hardcoded click handler.
+
+    ``initNavTabs`` declares the server-rendered panels and binds each
+    tab button; ``activateNavPanel`` owns the visibility toggle. The
+    split is what lets a conditional panel (Git, which only exists in a
+    repository) register itself later without duplicating either half.
+    """
+
     js = _read_app_js()
     assert "function initNavTabs()" in js
-    fn_start = js.index("function initNavTabs()")
-    fn_block = js[fn_start : fn_start + 1500]
-    assert "nav-tab-bar" in fn_block
-    assert "data-tab-content" in fn_block
+    init_block = js[js.index("function initNavTabs()") :][:1500]
+    assert "nav-tab-bar" in init_block
+    # Files and Recent are declared here rather than being discovered
+    # from the DOM, so each carries its own lazy first-show hook.
+    assert 'registerNavPanel({ id: "files"' in init_block
+    assert 'id: "recent"' in init_block
+    assert "activateNavPanel(panelId)" in init_block
+
+    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1200]
+    assert "data-tab-content" in activate_block
+    assert "aria-selected" in activate_block
 
 
 def test_load_recent_fetches_api_recent_for_full_window_coverage() -> None:

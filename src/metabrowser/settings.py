@@ -138,6 +138,42 @@ INDEX_PROGRESS_UPDATE_FILES = 1_024
 TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 
 
+# ── Git graph panel ──────────────────────────────────────────
+
+# Every ``/api/git/`` handler spawns ``git`` on a request path, so each
+# invocation is bounded twice: by wall clock and by how much stdout we
+# are willing to buffer. A repository large enough to exceed either is
+# reported as a failure rather than being allowed to stall the loop or
+# grow the resident set without limit.
+GIT_SUBPROCESS_TIMEOUT_S = 15.0
+GIT_SUBPROCESS_MAX_BYTES = 32 * 1024 * 1024
+
+# Commits per ``/api/git/log`` page. The default is sized so the first
+# page fills a tall panel with room to scroll before the second request;
+# the max is the clamp applied to a caller-supplied ``limit``.
+GIT_LOG_DEFAULT_LIMIT = 250
+GIT_LOG_MAX_LIMIT = 1_000
+
+# Changed files returned by ``/api/git/commit/{revision}``. A commit that
+# touches more than this reports ``files_truncated`` rather than being
+# silently shortened.
+GIT_COMMIT_MAX_FILES = 1_000
+
+# Repository identity (root, HEAD, capability) is stable between commits
+# but must not go stale across a checkout. Short TTL, same shape as the
+# gitignore checker cache in ``tree.py``.
+GIT_REPO_INFO_TTL_S = 5.0
+
+# Client-side pacing for the hover card. The card is backed by the same
+# commit-detail request the detail view uses, so a slow drag across the
+# graph must not issue one request per row.
+GIT_HOVER_DEBOUNCE_MS = 300
+
+# Bounded client-side commit-detail cache, shared by the hover card and
+# the detail view so hovering then selecting a row is one request.
+GIT_DETAIL_CACHE_SIZE = 200
+
+
 # ── Client settings export ───────────────────────────────────
 
 
@@ -162,6 +198,9 @@ def client_settings_dict() -> dict[str, Any]:
         "INDEX_PROGRESS_UPDATE_FILES": INDEX_PROGRESS_UPDATE_FILES,
         "TREE_AUTO_EXPAND_FALLBACK_ROWS": TREE_AUTO_EXPAND_FALLBACK_ROWS,
         "SSE_HEARTBEAT_INTERVAL_S": SSE_HEARTBEAT_INTERVAL_S,
+        "GIT_LOG_LIMIT": GIT_LOG_DEFAULT_LIMIT,
+        "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
+        "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
     }
 
 
@@ -170,6 +209,14 @@ __all__ = [
     "ACTIVE_TRACKER_QUIET_POLLS",
     "DEFAULT_BROWSER_PORT",
     "DEFAULT_EXECUTOR_WORKERS",
+    "GIT_COMMIT_MAX_FILES",
+    "GIT_DETAIL_CACHE_SIZE",
+    "GIT_HOVER_DEBOUNCE_MS",
+    "GIT_LOG_DEFAULT_LIMIT",
+    "GIT_LOG_MAX_LIMIT",
+    "GIT_REPO_INFO_TTL_S",
+    "GIT_SUBPROCESS_MAX_BYTES",
+    "GIT_SUBPROCESS_TIMEOUT_S",
     "INVENTORY_FIRST_RENDER_DEPTH",
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_FILES",
