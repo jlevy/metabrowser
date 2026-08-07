@@ -3,14 +3,16 @@ type: is
 id: is-01kzcr8h2zz8xvdvspzn0aq7vk
 title: Add a keyboard-key (KBD) design-system component
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01kzcr7qzp4j0x9h694b8evywa
 created_at: 2026-08-06T23:59:11.966Z
-updated_at: 2026-08-06T23:59:11.966Z
+updated_at: 2026-08-07T00:10:01.939Z
+closed_at: 2026-08-07T00:10:01.939Z
+close_reason: "Implemented on feat/quick-file-palette (PR #22): chrome typography rule documented in styles.css with an enforced exception list, .kbd component added and applied, T bound alongside /, palette rows restyled to the file-header weight hierarchy. make verify green."
 ---
 One reusable component for every keyboard key rendered anywhere in the app.
 
