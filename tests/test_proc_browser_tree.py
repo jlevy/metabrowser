@@ -8,10 +8,12 @@ mocks so pathspec behavior is exercised end-to-end.
 from __future__ import annotations
 
 import inspect
+import os
 import subprocess
 from pathlib import Path
 
 from metabrowser import server as proc_browser
+from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.server import (
     DEFAULT_TREE_DEPTH,
     MAX_TREE_DEPTH,
@@ -296,11 +298,18 @@ def test_dir_tree_lazy_sentinel_flags_dir_of_only_empty_dirs(tmp_path: Path) -> 
 def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     # Cross-validate that our checker agrees with ``git check-ignore`` itself
     # on a concrete case. Skip gracefully if git isn't available.
-    if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
+    #
+    # The repo-pinning variables must be scrubbed: under the pre-push gate
+    # this suite runs inside a githook, where git has exported GIT_DIR
+    # pointing at the real repository — and GIT_DIR outranks cwd, so the
+    # bare `git init` below would re-initialize the served repository as
+    # bare instead of creating the fixture repo.
+    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
+    if subprocess.run(["git", "--version"], capture_output=True, env=env).returncode != 0:
         return
     repo = tmp_path / "repo"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=env)
     (repo / ".gitignore").write_text("*.log\ncache/\n")
     _touch(repo / "cache" / "a.bin")
     _touch(repo / "app.log")
@@ -309,7 +318,7 @@ def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     check, _ = build_gitignore_check(repo)
 
     def git_ignored(rel: str) -> bool:
-        r = subprocess.run(["git", "check-ignore", "--quiet", rel], cwd=repo)
+        r = subprocess.run(["git", "check-ignore", "--quiet", rel], cwd=repo, env=env)
         return r.returncode == 0
 
     assert check(repo / "cache", is_dir=True) == git_ignored("cache")
