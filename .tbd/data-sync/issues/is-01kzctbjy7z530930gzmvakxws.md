@@ -5,11 +5,11 @@ title: Gated rename and trash via POST /api/mutate with nav context-menu actions
 kind: feature
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
 labels: []
 dependencies: []
 created_at: 2026-08-07T00:35:49.318Z
-updated_at: 2026-08-07T00:36:02.778Z
+updated_at: 2026-08-07T00:52:49.985Z
 ---
-Phase 2 of the menu-primitives plan. Add the --allow-edits / METAB_ALLOW_EDITS startup gate (off by default), publish a CAPABILITIES block through client_settings_dict(), and show a persistent edit-mode badge. Add mutations.py (stat-derived revision tokens, name validation, containment re-resolution immediately before acting, conflict detection, structured outcomes) and POST /api/mutate with a tagged operation union carrying rename and trash; publish successful mutations through the existing inventory event path. Wire the rename and trash actions into the registry, rename driving inline_edit.js and trash driving a confirmation on the shared modal shell. Open decision before starting: trash implementation (served-root-local quarantine dir vs send2trash, subject to the 14-day cool-off).
+Phase 2 of the menu-primitives plan (see spec). --allow-edits / METAB_ALLOW_EDITS gate (off by default), CAPABILITIES block in client_settings_dict(), persistent edit-mode badge. mutations.py: regular files only; re-resolve + containment immediately before acting; name validation; no-overwrite; OPTIONAL expected_revision guard (stale_revision only when supplied — no token-issuance plumbing); structured outcomes incl io_error with causes preserved. Trash DECIDED: served-root-local quarantine .metabrowser-trash/<timestamp>-<serial>/<relative-path>, ignore-filtered from tree/inventory/catalog, UI says 'Metabrowser trash' never 'Trash'; send2trash rejected for now (cool-off). POST /api/mutate with rename/trash + cross-site hardening: reject non-application/json Content-Type and cross-site Sec-Fetch-Site (drive-by localhost POST). Publish via inventory event path; re-target preview on rename of open file; explicit removed state on trash of it. Add first text-button pair (.btn, .btn.destructive) for the confirm dialog. Bind F2/Delete on focused row to the same descriptors; hints via .menu-item-hint. Docs: capability, quarantine semantics, trusted-local warning.

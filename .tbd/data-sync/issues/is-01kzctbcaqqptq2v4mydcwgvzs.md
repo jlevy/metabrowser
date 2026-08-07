@@ -5,13 +5,13 @@ title: "Menu and overlay primitives: anchored placement, action menu, action reg
 kind: feature
 status: open
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzctbjy7z530930gzmvakxws
 created_at: 2026-08-07T00:35:42.550Z
-updated_at: 2026-08-07T00:36:02.580Z
+updated_at: 2026-08-07T00:52:49.754Z
 ---
-Phase 1 of the menu-primitives plan. Extract one anchored-overlay primitive (point and element anchors, flip-and-clamp, dismissal, focus save/restore, single-open arbitration, disposal) plus a modal variant; port search_palette.js and the tooltip's clamping onto it; add action_menu.js (roving focus, ARIA roles, text-node labels), action_registry.js (context resolution, capability-aware enablement), and inline_edit.js; wire the nav-tree contextmenu and keyboard openers with a placeholder action set; port the settings gear onto the shared overlay; add .menu-item.destructive and .menu-item-hint; Node DOM tests for each module; document the placement/content/command layers in docs/design-system.md. No user-visible mutation lands in this phase.
+Phase 1 of the menu-primitives plan (see spec). Extract one anchored-overlay primitive: point and element anchors, flip-and-clamp with max-height internal scroll, anchored dismissal contract (opening event immune; internal scroll never dismisses), focus save/restore with detached-element fallback, one shared document Escape router, single-open arbitration (one anchored + one modal, no stack), disposal; body-portal is required correctness (preview-pane transform creates a fixed-position containing block). Modal variant with minimal Tab wrap; port search_palette.js onto it AFTER the quick-file branch lands; move positionTooltip clamping onto the shared helper. action_menu.js: roving focus, focusable disabled rows with reasons (APG), no typeahead, invoke closes menu and restores focus BEFORE running the action. action_registry.js: path is durable identity, element re-resolved at run time, empty context opens no menu, actions own their error UX. inline_edit.js: stem-only preselect, Escape-marks-cancel-before-blur, re-mounts across innerHTML re-renders, closes with status if row vanished. Minimal roving-tabindex focus order for rendered tree rows. One contextmenu handler serves pointer+keyboard; right-click never changes selection or fetches preview. Register real rename/trash descriptors (disabled with reasons = the Phase 1 deliverable). Port settings gear; delete its scoped display CSS and private listeners. Node DOM tests per module; design-system doc section.
