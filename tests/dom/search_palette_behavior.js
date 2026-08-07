@@ -412,30 +412,74 @@ async function main() {
   );
   check("status is polite", status.getAttribute("aria-live") === "polite");
 
+  const hint = dialog.querySelector(".search-palette-hint");
+  const hintKeys = hint ? hint.querySelectorAll("kbd") : [];
+  check("hint renders every key through the kbd component", hintKeys.length === 4);
+  check(
+    "hint keys carry the design-system class",
+    Array.from(hintKeys).every((key) => key.className === "kbd"),
+  );
+  check(
+    "hint keys keep their natural accessible name",
+    Array.from(hintKeys)
+      .map((key) => key.textContent)
+      .join(" ") === "↑ ↓ Enter Esc",
+    Array.from(hintKeys)
+      .map((key) => key.textContent)
+      .join(" "),
+  );
+
   const editableTargets = ["input", "textarea", "select"].map((tag) => document.createElement(tag));
   const contentEditable = document.createElement("div");
   contentEditable.isContentEditable = true;
-  const guardedEvents = [
-    fakeEvent("keydown", { key: "/", defaultPrevented: true }),
-    fakeEvent("keydown", { key: "/", altKey: true }),
-    fakeEvent("keydown", { key: "/", ctrlKey: true }),
-    fakeEvent("keydown", { key: "/", metaKey: true }),
-    fakeEvent("keydown", { key: "/", shiftKey: true }),
-    fakeEvent("keydown", { key: "/", isComposing: true }),
-    ...editableTargets.map((target) => fakeEvent("keydown", { key: "/", target })),
-    fakeEvent("keydown", { key: "/", target: contentEditable }),
-  ];
+  const guardedEvents = ["/", "t"].flatMap((key) => [
+    fakeEvent("keydown", { key, defaultPrevented: true }),
+    fakeEvent("keydown", { key, altKey: true }),
+    fakeEvent("keydown", { key, ctrlKey: true }),
+    fakeEvent("keydown", { key, metaKey: true }),
+    fakeEvent("keydown", { key, shiftKey: true }),
+    fakeEvent("keydown", { key, isComposing: true }),
+    ...editableTargets.map((target) => fakeEvent("keydown", { key, target })),
+    fakeEvent("keydown", { key, target: contentEditable }),
+  ]);
   for (const event of guardedEvents) {
     document.dispatchEvent(event);
   }
-  check("slash guards leave the palette closed", overlay.hidden === true);
+  check("open-key guards leave the palette closed", overlay.hidden === true);
+
+  // `?` is shift+slash and `T` is shift+t; neither may open the palette.
+  for (const event of [
+    fakeEvent("keydown", { key: "?", target: initialFocus }),
+    fakeEvent("keydown", { key: "T", shiftKey: true, target: initialFocus }),
+  ]) {
+    document.dispatchEvent(event);
+  }
+  check("shifted open keys stay closed", overlay.hidden === true);
 
   const slash = fakeEvent("keydown", { key: "/", target: initialFocus });
   document.dispatchEvent(slash);
   check("plain slash opens and prevents browser find", !overlay.hidden && slash.defaultPrevented);
+  palette.close(false);
+  check("palette closed before testing the t alias", overlay.hidden === true);
+
+  const goToFile = fakeEvent("keydown", { key: "t", target: initialFocus });
+  document.dispatchEvent(goToFile);
+  check("t opens the palette like github go-to-file", !overlay.hidden && goToFile.defaultPrevented);
+
+  // Caps lock reports an uppercase key with no shift modifier.
+  palette.close(false);
+  const capsLocked = fakeEvent("keydown", { key: "T", target: initialFocus });
+  document.dispatchEvent(capsLocked);
+  check("caps-locked T still opens", !overlay.hidden && capsLocked.defaultPrevented);
+  palette.close(false);
+
+  // Every open above selected the query, so the remaining checks count from
+  // here rather than from zero.
+  const selectCallsBeforeReopen = input.selectCalls;
+  document.dispatchEvent(fakeEvent("keydown", { key: "/", target: initialFocus }));
   check(
     "open focuses and selects the query",
-    document.activeElement === input && input.selectCalls === 1,
+    document.activeElement === input && input.selectCalls === selectCallsBeforeReopen + 1,
   );
   check(
     "empty query reports observed incomplete coverage",
@@ -447,7 +491,7 @@ async function main() {
     "reopening reuses one palette",
     document.body.querySelectorAll(".search-palette-overlay").length === 1,
   );
-  check("reopening selects the query", input.selectCalls === 2);
+  check("reopening selects the query", input.selectCalls === selectCallsBeforeReopen + 2);
 
   input.value = "app";
   input.dispatchEvent(fakeEvent("input", { target: input }));

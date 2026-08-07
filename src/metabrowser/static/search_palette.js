@@ -5,6 +5,20 @@
   const DEFAULT_MAX_ROWS = 100;
   let paletteSerial = 0;
 
+  // Keys that open the palette from anywhere in the app. `/` is the
+  // browser-search convention; `t` matches github.com's go-to-file, so the
+  // reflex carries over from the site these files usually came from. Both are
+  // equal — neither is a modifier-prefixed alias of the other.
+  const OPEN_KEYS = Object.freeze(["/", "t"]);
+
+  // The hint row under the results. Keys render through the .kbd component;
+  // the labels are ordinary chrome text, so the row reads as a sentence.
+  const HINT_GROUPS = Object.freeze([
+    { keys: ["↑", "↓"], label: "choose" },
+    { keys: ["Enter"], label: "open" },
+    { keys: ["Esc"], label: "close" },
+  ]);
+
   /**
    * @typedef {object} PaletteResult
    * @property {string} description
@@ -42,6 +56,30 @@
   /** @param {unknown} value @returns {value is HTMLElement} */
   function focusable(value) {
     return Boolean(value && typeof (/** @type {{focus?: unknown}} */ (value).focus) === "function");
+  }
+
+  /**
+   * Build one "KEY KEY label" cluster for the hint row.
+   *
+   * Keys are written in natural case here; .kbd applies the caps treatment, so
+   * the accessible name stays "Enter" rather than shouting at a screen reader.
+   * @param {Document} hostDocument
+   * @param {readonly string[]} keys
+   * @param {string} label
+   */
+  function hintGroup(hostDocument, keys, label) {
+    const group = hostDocument.createElement("span");
+    group.className = "search-palette-hint-group";
+    for (const key of keys) {
+      const element = hostDocument.createElement("kbd");
+      element.className = "kbd";
+      element.textContent = key;
+      group.append(element);
+    }
+    const text = hostDocument.createElement("span");
+    text.textContent = label;
+    group.append(text);
+    return group;
   }
 
   /** @param {EventTarget | null} target */
@@ -160,7 +198,9 @@
 
     const hint = hostDocument.createElement("div");
     hint.className = "search-palette-hint";
-    hint.textContent = "↑↓ choose · Enter open · Esc close";
+    for (const group of HINT_GROUPS) {
+      hint.append(hintGroup(hostDocument, group.keys, group.label));
+    }
 
     dialog.append(title, input, listbox, status, hint);
     overlay.append(dialog);
@@ -452,8 +492,11 @@
 
     /** @param {KeyboardEvent} event */
     function handleGlobalKeydown(event) {
+      // Letter keys compare case-insensitively so a stuck caps lock still
+      // opens the palette; the shift guard below is what keeps `?` and `T`
+      // from triggering it, matching github.com.
       if (
-        event.key !== "/" ||
+        !OPEN_KEYS.includes(event.key.toLowerCase()) ||
         event.defaultPrevented ||
         event.altKey ||
         event.ctrlKey ||
