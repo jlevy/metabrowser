@@ -20,6 +20,7 @@ import subprocess
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -33,7 +34,12 @@ from metabrowser.git.log import (
     read_log_page,
     read_refs,
 )
-from metabrowser.git.process import GitCommandError, GitOutputTooLargeError, run_git
+from metabrowser.git.process import (
+    _REPO_PINNING_GIT_VARS,
+    GitCommandError,
+    GitOutputTooLargeError,
+    run_git,
+)
 from metabrowser.git.repo import repo_info
 from metabrowser.git.routes import api_git_commit, api_git_log, api_git_refs, api_git_repo
 from metabrowser.git.wire import (
@@ -57,19 +63,25 @@ pytestmark = pytest.mark.skipif(
 def _git(root: Path, *args: str) -> None:
     """Run a git command in *root*, failing the test on a non-zero exit.
 
-    Identity and hooks are pinned in the environment so the fixtures do
-    not depend on — or accidentally read — the developer's global git
-    configuration.
+    Identity and config are pinned so the fixtures do not depend on the
+    developer's global git configuration — and the repository-pinning
+    variables are scrubbed, because when this suite runs from inside a
+    githook (the pre-push gate), git has exported ``GIT_DIR`` pointing at
+    the *real* repository, and it takes precedence over ``-C``. With it
+    inherited, the fixture's ``git init`` re-initializes the served
+    repository as bare instead of creating the fixture repo.
     """
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "Fixture Author",
-        "GIT_AUTHOR_EMAIL": "author@example.invalid",
-        "GIT_COMMITTER_NAME": "Fixture Committer",
-        "GIT_COMMITTER_EMAIL": "committer@example.invalid",
-        "GIT_CONFIG_GLOBAL": str(root / ".gitconfig-absent"),
-        "GIT_CONFIG_SYSTEM": str(root / ".gitconfig-absent"),
-    }
+    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "Fixture Author",
+            "GIT_AUTHOR_EMAIL": "author@example.invalid",
+            "GIT_COMMITTER_NAME": "Fixture Committer",
+            "GIT_COMMITTER_EMAIL": "committer@example.invalid",
+            "GIT_CONFIG_GLOBAL": str(root / ".gitconfig-absent"),
+            "GIT_CONFIG_SYSTEM": str(root / ".gitconfig-absent"),
+        }
+    )
     subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, env=env)
 
 
@@ -562,6 +574,26 @@ def test_run_git_raises_on_a_non_zero_exit(repo: Path) -> None:
 def test_run_git_enforces_the_output_cap(repo: Path) -> None:
     with pytest.raises(GitOutputTooLargeError):
         asyncio.run(run_git(["log", "--format=%H%n%s"], cwd=repo, max_bytes=8))
+
+
+def test_run_git_ignores_a_hook_exported_git_dir(repo: Path, tmp_path: Path) -> None:
+    """A leaked ``GIT_DIR`` must not redirect commands away from ``cwd``.
+
+    Githooks run with ``GIT_DIR`` exported, and it outranks the working
+    directory. Without the scrub in ``_git_env`` this exact scenario
+    re-initialized the served repository as bare from inside the pre-push
+    gate: the fixture's ``git init`` landed on the hook's repository
+    instead of the fixture directory.
+    """
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    _git(decoy, "init", "-q", "-b", "main")
+
+    poisoned = {**os.environ, "GIT_DIR": str(decoy / ".git")}
+    with mock.patch.dict(os.environ, poisoned, clear=True):
+        out = asyncio.run(run_git(["rev-parse", "--show-toplevel"], cwd=repo))
+    # The answer must be the repo at cwd, not the decoy GIT_DIR names.
+    assert Path(out.decode().strip()).resolve() == repo.resolve()
 
 
 def test_run_git_returns_bytes_not_text(repo: Path) -> None:

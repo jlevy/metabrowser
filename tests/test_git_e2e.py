@@ -24,6 +24,7 @@ from starlette.testclient import TestClient
 
 from metabrowser import paths_safe
 from metabrowser.git import repo as git_repo
+from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.git.wire import (
     is_full_revision,
     validate_git_commit_detail,
@@ -39,15 +40,20 @@ pytestmark = pytest.mark.skipif(
 
 
 def _git(root: Path, *args: str) -> None:
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "Fixture Author",
-        "GIT_AUTHOR_EMAIL": "author@example.invalid",
-        "GIT_COMMITTER_NAME": "Fixture Committer",
-        "GIT_COMMITTER_EMAIL": "committer@example.invalid",
-        "GIT_CONFIG_GLOBAL": str(root / ".gitconfig-absent"),
-        "GIT_CONFIG_SYSTEM": str(root / ".gitconfig-absent"),
-    }
+    # Repository-pinning variables are scrubbed for the same reason as in
+    # test_git_api._git: under the pre-push gate, git's exported GIT_DIR
+    # outranks -C and redirects the fixture's init at the real repository.
+    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "Fixture Author",
+            "GIT_AUTHOR_EMAIL": "author@example.invalid",
+            "GIT_COMMITTER_NAME": "Fixture Committer",
+            "GIT_COMMITTER_EMAIL": "committer@example.invalid",
+            "GIT_CONFIG_GLOBAL": str(root / ".gitconfig-absent"),
+            "GIT_CONFIG_SYSTEM": str(root / ".gitconfig-absent"),
+        }
+    )
     subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, env=env)
 
 

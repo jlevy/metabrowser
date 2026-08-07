@@ -108,8 +108,31 @@ def git_executable() -> str | None:
     return shutil.which("git")
 
 
+# Environment variables that pin git to a specific repository, index, or
+# object store. Git exports several of these to hook processes (GIT_DIR
+# in particular), and they take precedence over ``cwd``. Inherited into
+# our children they would silently redirect every command at whatever
+# repository the parent hook was running in — observed concretely as a
+# fixture ``git init`` re-initializing the *served* repository as bare
+# from inside a pre-push hook. Every spawn scrubs them so the repository
+# is always the one resolved from ``cwd``.
+_REPO_PINNING_GIT_VARS: tuple[str, ...] = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_PREFIX",
+    "GIT_NAMESPACE",
+    "GIT_CEILING_DIRECTORIES",
+)
+
+
 def _git_env() -> dict[str, str]:
     """Environment for a git child process.
+
+    Strips the repository-pinning variables above, then:
 
     ``GIT_OPTIONAL_LOCKS=0`` is the environment form of
     ``--no-optional-locks`` and covers any git subprocess spawned in turn.
@@ -118,6 +141,8 @@ def _git_env() -> dict[str, str]:
     request on a prompt that has no terminal to appear on.
     """
     env = dict(os.environ)
+    for name in _REPO_PINNING_GIT_VARS:
+        env.pop(name, None)
     env["GIT_OPTIONAL_LOCKS"] = "0"
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_ASKPASS"] = ""
