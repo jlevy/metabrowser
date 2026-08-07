@@ -5,7 +5,7 @@ title: Post-v0.1 MetaBrowser core roadmap
 kind: epic
 status: open
 priority: 2
-version: 18
+version: 19
 spec_path: TODO.md
 labels:
   - roadmap
@@ -28,7 +28,8 @@ child_order_hints:
   - is-01kxnww2f3ggbt0grdkf7spdt4
   - is-01kxnww2qv3mt7v5j17059bwpc
   - is-01kxrygx61r5j6rakwqtq7dh74
+  - is-01kzcvm6cpe5b8sb9b9n3gb16g
 created_at: 2026-07-16T16:48:44.719Z
-updated_at: 2026-07-17T21:08:07.489Z
+updated_at: 2026-08-07T00:57:59.957Z
 ---
 Own the remaining generic MetaBrowser core work in the public repository after extraction: shell modularization, browser-grade contract coverage, scalable search and streaming, event-log backends, large-tree performance evidence, opt-in local file editing, scan-state visibility, and editor-capable plugin design. Consumer- or domain-specific plugins remain outside core.
