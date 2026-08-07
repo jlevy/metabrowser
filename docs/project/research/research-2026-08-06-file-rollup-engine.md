@@ -1,6 +1,6 @@
 # Research: High-Performance File Roll-Up Engine (Rust Library, CLI, and Python Embedding)
 
-**Date:** 2026-08-06 (last updated 2026-08-06)
+**Date:** 2026-08-06 (last updated 2026-08-07)
 
 **Author:** Metabrowser project, with Claude Code research assistance
 
@@ -42,11 +42,19 @@ The decision this research supports: whether to build this engine, what architec
 cache design it should use, and how it should be embedded in metabrowser without
 breaking the consumer-agnostic core and plugin boundary.
 
+This document reflects **two research passes**. The first compared metabrowser’s current
+pipeline against dust and flowmark-rs.
+The second broadened the survey to twelve tools across four languages and read their
+source directly, on the principle that proven production techniques beat invented ones.
+The second pass changed several conclusions: dust turns out **not** to be the
+performance bar to target, and the walk techniques that matter most are syscall-level
+ones dust does not use.
+
 ## Questions to Answer
 
 1. How does metabrowser compute file roll-ups today, and where are its measured limits?
-2. How do dust and similar tools (du, ncdu, dua, pdu, diskus, gdu) work internally, and
-   what contributes to their performance?
+2. How do dust and similar tools (du, ncdu, dua, pdu, diskus, gdu, dut) work internally,
+   and what contributes to their performance?
 3. How does flowmark-rs’s incremental cache achieve ~23 ms warm re-runs, and which parts
    of that design transfer to a file-metadata engine?
 4. What do the strongest prior systems for “instant answers over large trees”
@@ -60,16 +68,21 @@ breaking the consumer-agnostic core and plugin boundary.
    and pluggable — generalizing magic-style sniffing?
 8. What is the right way to embed the engine in Python (in-process bindings vs.
    subprocess), and how is it packaged for uv?
+9. **What specific, proven syscall-level and concurrency techniques do the fastest tools
+   use, in enough detail to reimplement?**
+10. **Which of these codebases can we legally borrow designs from, and under what
+    constraints?**
 
 ## Scope
 
 **Included:**
 
-- Source review of dust 1.2.4 and flowmark-rs 0.3.2 (checked out under `attic/`), and of
-  metabrowser’s walker/inventory/tree/watcher pipeline.
-- Background on the wider tool landscape from documentation and general knowledge:
-  du/ncdu/dua/pdu/diskus/gdu, Windows Everything, Watchman, git’s index caches,
-  ripgrep’s `ignore` crate, jwalk, libmagic, shared-mime-info, and GitHub Linguist.
+- Direct source review of twelve tools checked out under `attic/`: dust 1.2.4,
+  flowmark-rs 0.3.2, ncdu 1.15.1 (C), ncdu 2.x (Zig), dut, duc, bfs, fd, scc, tokei,
+  fsearch, gdu, dua-cli, erdtree.
+- Review of metabrowser’s walker/inventory/tree/watcher pipeline.
+- Background from documentation on systems not checked out: Windows Everything,
+  Watchman, git’s index caches, plocate, borg/restic metadata caches.
 - Architecture, data model, cache, and packaging design for a new Rust engine.
 
 **Excluded:**
@@ -157,512 +170,991 @@ tree of the largest items with percentage bars.
   comes from one `symlink_metadata` call per entry: apparent size or allocated blocks (×
   512), inode + device, and mtime/atime/ctime.
 - A post-pass (`clean_inodes`) deduplicates hardlinks via a `(inode, device)` hash set,
-  sorts children by inode (cheaper than by name), and sums sizes bottom-up into each
-  directory node.
-- Progress reporting uses relaxed atomics polled by a spinner thread; errors accumulate
-  in a mutex-guarded set; interrupted syscalls retry with a bounded cap.
-- Platform quirks are handled in one place: 512-byte block conventions, NTFS block-count
-  overcounting capped by blksize-derived bounds, Windows compressed/sparse sizes via a
-  separate crate.
+  sorts children by inode (cheaper than by name), and sums sizes bottom-up.
+- Platform quirks handled in one place: 512-byte block conventions, NTFS block-count
+  overcounting capped by blksize-derived bounds, Windows compressed/sparse sizes.
 
-**What contributes to its performance:**
-
-- **Parallelism saturates the syscall path.** The walk is metadata-only (`getdents` +
-  `statx` per entry, no content reads), and rayon keeps many directories in flight, so
-  it is bounded by kernel/filesystem latency, not CPU. This is the same lesson as
-  diskus, dua (jwalk), and pdu: parallel walkers gain large factors over serial `du` on
-  SSDs, especially with warm page cache.
-- **Small, flat data.** One `u64` size per node, no string re-allocation beyond the
-  path, inode-based sorting, release profile with `lto = true` and `codegen-units = 1`.
-- **Bounded extra work.** Filters (regex, mtime/atime/ctime windows, filesystem
-  allowlist) short-circuit when unused; a comment marks this as measurable.
-
-**Feature surface relevant here:** `--filecount` (count instead of bytes), `--filetime`
-(newest time instead of bytes), `--file-types` (whole-tree tally by extension),
-`--output-json`, min-size, depth limits, ignore lists, `--files0-from`, and
-mtime/atime/ctime filter expressions.
+**What contributes to its performance:** parallelism that saturates the syscall path,
+small flat per-node data, and short-circuited filters.
+Release profile uses `lto = true` and `codegen-units = 1`.
 
 **Shortcomings for our use case:**
 
 - **No cache of any kind.** Every invocation re-walks the entire tree.
-  Dust is a one-shot renderer; “instant on re-run” is out of scope for it.
-- **One number per node.** `size` is a single `u64` that is *reused* to mean bytes, or
-  file count, or newest filetime depending on mode — the modes are mutually exclusive.
-  There is no metric vector, so you cannot get sizes, counts, and newest mtimes in one
-  walk, let alone per-type tallies per directory.
+- **One number per node.** `size` is a single `u64` *reused* to mean bytes, or file
+  count, or newest filetime depending on mode — the modes are mutually exclusive.
+  You cannot get sizes, counts, and mtimes in one walk, let alone per-type tallies per
+  directory.
 - **Tallies are not hierarchical along dimensions.** `--file-types` aggregates the whole
   tree by extension; there is no per-directory type breakdown.
-- **Binary only.** The crate exposes no library API; consuming it means shelling out and
-  parsing output. JSON output exists but reflects the display tree (post
-  filtering/depth-trimming), not a full inventory.
-- **Metadata is discarded.** mtime/atime/ctime are read for filtering but not retained
-  in nodes or output.
-- **No gitignore awareness** (only explicit ignore lists), no file-kind recognition
-  beyond extension string, no watch mode.
+- **Binary only.** No library API; consuming it means shelling out.
+  Its JSON reflects the display tree (post filtering/depth-trimming), not a full
+  inventory.
+- **Metadata is discarded.** mtime/atime/ctime are read for filtering but not retained.
+- **No gitignore awareness**, no file-kind recognition, no watch mode.
 
-None of these are flaws in dust — they are scope.
-But they define exactly the gap a new engine would fill: retain the walk performance,
-replace the display-oriented single-metric tree with a cached, multi-metric, queryable
-inventory.
+The second research pass added an important correction: **dust is not the tool to
+benchmark against.** By its competitors’ published numbers it sits mid-pack, and the
+techniques that separate the leaders from dust are exactly the ones described below.
 
-### Flowmark-rs: The Incremental Cache Model
+### Dut: The Warm-Cache Champion, and the Roll-Up Technique to Steal
 
-Flowmark-rs (`attic/flowmark-rs`, v0.3.2) formats Markdown; its relevance here is its
-incremental cache and its packaging.
-Design notes live in `docs/cache.md` and the completed spec
-`docs/project/specs/done/plan-2026-02-27-incremental-cache-and-performance-roadmap.md`
-in that repo.
+`dut` (`attic/dut`, C, single 1,547-line `main.c`, **GPL**) was the most valuable find
+of the second pass. Its own benchmarks (whole-`/` scan, i5-10500h, warm cache) report:
 
-**How the cache works** (`src/incremental_cache.rs`):
+| Tool | Mean | vs. dut |
+| --- | --- | --- |
+| **dut** | **779.7 ms** | 1.0x |
+| pdu | 1.127 s | 1.45x |
+| dust | 2.206 s | 2.83x |
+| dua | 2.313 s | 2.97x |
+| gdu | 2.927 s | 3.75x |
+| du (coreutils) | 5.356 s | 6.87x |
 
-- The unit of caching is a **content hash set**: a `u64` hash of file bytes is either in
-  the “known formatted” set or not.
-  On a hit, formatting is skipped entirely.
-- Manifests are **project-scoped**: one TOML file per project root, at
-  `<user-cache-dir>/flowmark/incremental/<hash-of-canonical-root>.toml`.
-- The whole manifest is **invalidated by a formatter fingerprint**: a hash of binary
-  version + all formatting options + config file path and bytes.
-  Change anything that could change output, and the cache silently rebuilds.
-  Corrupt manifests are treated as empty, not errors.
-- Writes are **atomic** (temp file + rename), and the flush unions the read set with the
-  write set so warm entries survive runs that touch few files.
-- The CLI shares the cache across a rayon `par_iter` over files discovered by ripgrep’s
-  `ignore::WalkBuilder` (gitignore-aware parallel discovery).
+These are the author’s own numbers on one corpus, so treat the ranking as indicative
+rather than settled — but the techniques behind them are verifiable in the source, and
+they are the ones that matter.
 
-**Measured results** (from flowmark-rs `benchmarks/REPORT.md`, 928-file / 23 MB corpus):
-fresh run 0.71 s parallel; warm cached re-run **0.023 s**; the Python flowmark on the
-same corpus: ~48 s. Warm re-runs are ~30x faster than fresh, and the Rust/Python gap is
-60–130x. This is the UX bar: warm runs in tens of milliseconds.
+**Syscalls.** `dut` opens each directory with
+`open(name, O_RDONLY|O_DIRECTORY|O_CLOEXEC|O_NOFOLLOW)`, then loops on
+`syscall(SYS_getdents64, fd, scratch, scratch_size)` with a **1 MB per-thread scratch
+buffer reused across directories**. Metadata comes from
+`statx(fd, dent->d_name, AT_SYMLINK_NOFOLLOW|AT_NO_AUTOMOUNT, STATX_BASIC_STATS, &sbuf)`
+— relative to the directory fd, so the kernel never re-resolves the full path, with a
+narrow field mask and automount suppression.
 
-**What transfers, and what does not:**
+**Lock-free bottom-up roll-up — the single most adaptable technique in this survey.**
+Each node carries an atomic `unsearched_children` counter.
+When a node finishes, `finishNode` walks toward the root:
 
-- Transfers directly: user-cache-dir resolution order, project-root-scoped manifests,
-  fingerprint-based whole-cache invalidation (engine version + config), atomic
-  persistence, corrupt-cache-equals-empty, and cache lifecycle UX (`--show-cache`,
-  `--clear-cache`, `--no-cache`).
-- Does **not** transfer: the content-hash model itself.
-  Flowmark must read every file’s bytes anyway (it cannot know a file is formatted
-  without reading it), so hashing content is free.
-  A metadata engine’s entire goal is to *avoid* reading content; its cheap invalidation
-  signal is the stat fingerprint (size, `mtime_ns`, inode), with content hashing
-  reserved for the optional content-metric tier.
-  Metabrowser already uses exactly this fingerprint style in `MtimeCache`
-  (`strif.file_mtime_hash`), and git’s index has used stat fingerprints for decades.
-- Packaging: flowmark-rs publishes to PyPI via **maturin with `bindings = "bin"`** — the
-  wheel ships the native CLI binary as a Python entry point, no PyO3 involved.
-  That is one of two viable embedding models (see below).
+```c
+while (node != NULL && prev == 1) {
+    struct entry *parent = node->parent;
+    if (parent != NULL) {
+        atomic_fetch_add(&parent->size, node->size);
+        atomic_fetch_add(&parent->shared_size, node->shared_size);
+        prev = atomic_fetch_sub(&parent->unsearched_children, 1);
+    }
+    node = parent;
+}
+```
+
+Whichever thread decrements a parent’s counter from 1 to 0 is the one that continues
+upward; every other thread stops.
+Roll-ups therefore complete bottom-up **with no barriers, no joins, and no locks** — the
+traversal and the aggregation are the same pass.
+This is exactly the primitive a multi-metric hierarchical engine needs.
+
+**Batched work distribution.** Children are chained through an intrusive `next` pointer
+and pushed onto a lock-free stack with a **single** CAS loop for the whole batch, then
+it wakes `min(children, blocked_threads) - 1` workers by semaphore — enough to absorb
+the new work, never a thundering herd.
+Hot atomics are `alignas(64)` to avoid false sharing.
+
+**Allocate only what will be queried.** A source comment says it plainly: “Process each
+entry one at a time, only allocating a struct for dirs or large files.”
+Files that cannot make the top-N are rejected against the per-thread heap’s current
+minimum *before* any allocation happens.
+Directories always get records (the tree needs them); most files never do.
+
+**Field reuse across phases.** `unsearched_children` (traversal) unions with
+`num_children` (rendering); the hardlink table pointer unions with the children pointer.
+Memory that is dead in one phase is reused in the next.
+
+The one design choice not to copy: `dut` stores each entry’s **full path** in its
+flexible array member (parent path + `/` + name), which duplicates every ancestor path
+at every depth. ncdu and fsearch store only the name and reconstruct paths by walking
+parents. For millions of entries, the parent-pointer approach wins decisively.
+
+`dut` also loses on **cold** cache (pdu and gdu beat it), which its README attributes to
+depth-first traversal versus the breadth-first fan-out of the multithreaded frameworks —
+DFS has better locality when everything is already in page cache, BFS keeps more
+requests in flight when it is not.
+That trade-off is worth encoding as a tunable.
+
+### Ncdu 1 and 2: Streaming Architecture and the 25-Byte Record
+
+**ncdu 1.15.1** (`attic/ncdu`, C, MIT) is single-threaded — `readdir()` plus `lstat()` —
+but two things stand out.
+
+First, a genuinely good **source/sink separation** documented in `src/dir.h`: inputs
+(`dir_scan.c` live scan, `dir_import.c` JSON import) and outputs (`dir_mem.c` build
+in-memory tree, `dir_export.c` write JSON) meet at one streaming `item()` callback.
+That makes scan→memory, scan→export, import→memory, and import→export all free
+combinations. A new engine should adopt exactly this shape, so that the walker and the
+snapshot loader are interchangeable sources feeding interchangeable sinks.
+
+Second, a compact record: `struct dir` uses a **flexible array member** for the name
+(one allocation for struct + name, not two), intrusive `parent/next/prev/sub/hlnk`
+pointers instead of child vectors, a **circular linked list** for hardlink groups with a
+`khashl` open-addressing set keyed on `(dev, ino)`, and an **optional** `struct dir_ext`
+(mtime/uid/gid/mode) placed in the same allocation only when extended info was
+requested. Pay-for-what-you-use field layout, ten years before it was fashionable.
+
+It also `chdir()`s into each directory and stats with relative names — the poor-man’s
+version of dirfd-relative traversal — and buffers a whole directory’s names before
+recursing, so only one directory stream is open at a time regardless of depth.
+
+**ncdu 2.x** (`attic/ncdu2`, Zig, MIT) is the rewrite, and its author’s published
+numbers are the memory targets to beat:
+
+| Entry kind | ncdu 1.16 | ncdu 2.0 |
+| --- | --- | --- |
+| Regular file | 78 bytes | **25 bytes** |
+| Directory | 78 bytes | 56 bytes |
+| Hard link | 78 + 8 per dev+ino | 36 + 20 per ino×directory |
+
+A full root-filesystem scan dropped from 429 MB to 162 MB. At 25 bytes per file, 500k
+files is ~12 MB and 10M files is ~250 MB — the budget a new engine should hold itself
+to.
+
+Reading the current source shows exactly how those numbers are reached, and the
+techniques are all portable to Rust.
+Records are `extern struct` with `align(1)` on every field, so there is **no padding
+anywhere**. The base `Entry` is 24 bytes:
+
+```zig
+pub const Entry = extern struct {
+    pack: Packed align(1),          // 8 bytes
+    size: u64 align(1) = 0,         // 8 bytes
+    next: Ref = .{ .ptr = null },   // 8 bytes — next sibling
+
+    pub const Packed = packed struct(u64) {
+        etype: EType,               // i3
+        isext: bool,                // 1 bit
+        blocks: Blocks = 0,         // u60 — "Smaller than a u64 to make room for flags"
+    };
+```
+
+A `File` is just an `Entry` plus an inline zero-length name array, so 24 bytes + name +
+NUL — hence 25 bytes minimum.
+`Dir` measures 64 bytes in current source (the published 56 was 2.0-beta1) and `Link`
+60\. Three techniques do the work:
+
+- **Steal bits from a wide counter.** `blocks` is a `u60`, freeing 4 bits for the type
+  enum and the extension flag inside one `u64`.
+- **Intern device IDs.** `DevId` is a `u30` index into a small global device array
+  rather than a raw 64-bit `st_dev`, with the comment: “Those are typically 64bits, but
+  that’s quite a waste of space when a typical scan won’t cover many unique devices.”
+- **Put optional fields *before* the record.** The 19-byte `Ext` (mtime/uid/gid/mode,
+  each with its own presence bit) is allocated ahead of the `Entry` in the same block,
+  so the canonical pointer still points at `Entry` and `Ext` is reached by stepping
+  backward. One allocation holds `[Ext?][Type][name][NUL]`, and entries come from a
+  **per-thread arena that is never individually freed**.
+
+Two first-pass claims need correcting.
+**ncdu 2 is multithreaded now** — `src/scan.zig` runs a pool with per-thread directory
+stacks over a shared 16-slot LIFO queue (threads fully drain their own directory before
+consulting it, so contention stays low), with a candid comment that LIFO was chosen
+because it was easiest and “it’s impossible for me to predict how that ends up affecting
+performance.”
+And it deliberately uses **`fstatat`, not `statx`**, for compatibility with
+older kernels — a reminder that the newest syscall is not always the right default.
+
+Its hardlink fix for ncdu 1’s O(n²) behavior is a hash map keyed by `(dev, ino)` whose
+value is any member of a **circular doubly-linked list** of links sharing that inode,
+plus an “uncounted” set of inodes needing stat recomputation that **falls back to full
+iteration once it exceeds one eighth of the map** — bounded work either way.
+
+### The Best Snapshot Format Found: ncdu 2’s Binary Export
+
+`src/bin_export.zig` and `src/bin_reader.zig` deserve their own section, because this is
+a better fit for metabrowser than the bulk-read design the first pass proposed.
+
+The layout is a signature (`\xbfncduEX1`), then a series of **zstd-compressed data
+blocks**, then an **index block at the end** holding one 8-byte `(offset, length)` pair
+per block plus the root item’s reference.
+Records inside a block are **CBOR maps with small integer keys** (`type`, `name`,
+`asize`, `dsize`, `cumasize`, `items`, `sub`, `mtime`, …), so CBOR’s variable-length
+integer encoding acts as a varint for free.
+Block size adapts from 64 KiB up to 2 MiB as the export grows, to bound the index
+block’s size.
+
+Two details are the clever ones:
+
+- **References are `(block_num << 24) | offset`**, and when a reference points *into the
+  same block* it is written as a small negative delta instead of the full 64-bit value.
+  The comment is blunt about why: “Full references compress like shit and most of the
+  references point into the same block.”
+- **Opening is O(1).** `open()` reads only the index block at the tail; no data block is
+  touched until something asks for it.
+  Directory listings are then served by `pread` + decompress into an **8-slot LRU block
+  cache**, addressed by item reference.
+
+That is precisely metabrowser’s access pattern: open instantly, then materialize
+directories lazily as the user navigates.
+A single bulk read of the whole snapshot (the fsearch model) is simpler but forces the
+entire tree into memory before the first render.
+
+The format’s own known weakness is documented in a `TODO`: because items are written
+depth-first, a parent’s children end up scattered across many blocks, “which will
+significantly slow down reading that dir’s listing,” and the suggested fix is to buffer
+siblings at the directory level before flushing.
+A new engine should simply do that from the start — **write sibling groups
+contiguously** so one directory listing costs one block decompression.
+
+The whole design is wired together by a formal **source/sink separation** in
+`src/sink.zig` (a tagged union over memory, JSON, and binary sinks) that generalizes
+ncdu 1’s `item()` callback.
+One consequence is worth stealing: since JSON export cannot be written from multiple
+threads, ncdu scans into memory first and replays from there — a clean way to let a
+serial sink coexist with a parallel source.
+
+### Bfs and Fd: Syscall-Level Walk Techniques
+
+**bfs** (`attic/bfs`, C, tavianator) is the most syscall-sophisticated walker reviewed,
+and its CHANGELOG marks the wins: 3.0 “reads directories asynchronously and in
+parallel”; 3.1 “on Linux, bfs now uses io_uring for async I/O … bfs can now perform
+stat() calls in parallel.”
+
+- **Raw `getdents64`** with a 64 KiB buffer allocated inline in the directory struct,
+  cascading through `posix_getdents`/`getdents64`/raw syscall by platform.
+  After a fill, if buffer space remains it issues a *second* `getdents` immediately to
+  detect EOF without a later extra syscall.
+- **io_uring** for `IORING_OP_OPENAT`, `IORING_OP_CLOSE`, and `IORING_OP_STATX`
+  (getdents is explicitly still synchronous — a `TODO` in the source).
+  It probes per-opcode availability and falls back per-thread to a synchronous loop, and
+  it opts into `SUBMIT_ALL`, `SINGLE_ISSUER`, `DEFER_TASKRUN`, and `ATTACH_WQ` when the
+  kernel supports them.
+- **Stat avoidance in layers**: `d_type` straight from the dirent; a `bftw_must_stat()`
+  predicate; and an *optimizer cost model* that decides whether eager parallel stat
+  beats lazy on-demand stat for the given query.
+  `statx` uses a minimal field mask, and `AT_STATX_DONT_SYNC` when statting mount points
+  to avoid network round-trips.
+- **dirfd-relative everything**, with an **LRU cache of open directory fds** sized from
+  `RLIMIT_NOFILE`, pinning roots and actively-read directories, and opening relative to
+  the nearest open ancestor.
+- **Lock-free MPMC queue** using `fetch_add` rather than CAS, cache-line-sized batching,
+  exponential backoff then a pool of futex-style monitors.
+- **Thread cap of 8** for I/O workers, with the comment that there is “not much speedup
+  after 8 threads.”
+
+**fd** (`attic/fd`, Rust) is the contrast: it delegates everything to ripgrep’s `ignore`
+crate, adds no platform-specific syscall work, and fetches metadata lazily through a
+`OnceCell`. Its gitignore cost is O(1) per entry because `ignore` compiles all patterns
+into a single `RegexSet`/`globset` automaton — which is the answer to metabrowser’s
+Python-side gitignore hotspot.
+fd’s v9 CHANGELOG credits tavianator with 6–13x gains in `ignore` itself.
+
+The gap this opens up is stark.
+A naive rayon + `symlink_metadata` walker (dust, and by extension anything built the
+obvious way) misses: raw getdents with big buffers, io_uring batching, statx field
+masks, `d_type` stat-avoidance, dirfd-relative traversal, fd caching, and lock-free
+queue design. That is the difference between mid-pack and leading.
+
+### Three Ways to Persist an Index: Duc, Fsearch, and Gdu
+
+**duc** (`attic/duc`, C, LGPL) stores a KV record **per directory**, keyed by an ASCII
+hex `"dev/ino"` string, behind a four-function abstraction (`db_open/close/put/get`)
+with six interchangeable backends (Tkrzw, Tokyo, Kyoto, LMDB, SQLite, LevelDB). Each
+record holds a header (parent dev/ino, mtime) followed by child entries: 1-byte name
+length, raw name, then **SQLite-style varints** for apparent size, actual size, and
+recursive count, plus a type enum and — for subdirectories — the child’s dev/ino.
+About **22 bytes per child**.
+
+The design lesson is that each child entry stores **pre-computed recursive roll-ups**,
+so a query for any directory is a single KV get with no traversal.
+Navigating a path costs one get per level.
+The anti-lesson: duc has **no incremental logic whatsoever** — the stored directory
+mtime is written but never read for staleness decisions, and `duc index` always re-walks
+everything.
+
+**fsearch** (`attic/fsearch`, C, GPL) is the Linux answer to Everything, and its record
+layout is the most instructive:
+
+```c
+typedef struct FsearchDatabaseEntry {
+    FsearchDatabaseEntry *parent;           // 8 bytes
+    uint32_t attribute_flags;               // 4 bytes
+    uint16_t flags;                         // 2 bytes
+    alignas(int64_t) uint8_t attributes[];  // packed optional fields
+} FsearchDatabaseEntry;
+```
+
+Optional attributes (size, mtime, atime, ctime, num_files, num_folders, then the name)
+are packed contiguously in the flexible array, with offsets computed from the flags word
+— so a run that requests only size and mtime pays only for size and mtime (~33 bytes +
+name for a file). **Paths are never stored**: they are reconstructed by walking the
+parent chain, so a path like `srv/data/project/src/lib/utils.rs` costs six name strings
+across six entries with zero duplication.
+
+Its on-disk format is the best snapshot model found: a `"FSDB"` magic, major/minor
+version, and endianness byte; then metadata (index flags, sort flags, entry counts, and
+the byte sizes of the folder and file blocks); then the entry blocks with **front-coded
+names** — a 2-byte shared-prefix length plus a 2-byte suffix length plus the suffix,
+which compresses sorted sibling names like `main.c`/`main.h`/`main.o` down to one
+changed byte each — and a `uint32` parent index instead of a pointer.
+Loading is a **single bulk `fread` per block** with no random I/O, then a sequential
+parse that rebuilds parent pointers from indices.
+Saves go to a temp file and `rename()` atomically.
+Pre-sorted `uint32` permutation arrays (one per sort order) make switching sort order
+instant at 4 bytes per entry per order.
+
+Its watcher is also better than metabrowser’s: **fanotify preferred, inotify as
+fallback**, per-folder, with file-handle marks that survive renames, and a
+`MONITORED_FAILED` flag when neither works.
+
+**gdu** (`attic/gdu`, Go) is the only *du*-family tool with both multi-metric-per-pass
+and persistence. Its `File` struct carries `Mtime`, `Size` (apparent), `Usage`
+(allocated), `Mli` (multi-linked inode), and directories add `ItemCount` — all populated
+in one walk, with sorting available by five different fields.
+It offers three storage backends: BadgerDB (gob-encoded directories, lazily loaded on
+demand — the practical one), an ncdu-compatible JSON export, and SQLite.
+
+The SQLite result is an important **negative** finding.
+From gdu’s own README on a 90 GB / 400k-file corpus:
+
+| Tool | Cold cache | Warm cache |
+| --- | --- | --- |
+| diskus | 4.5 s | 271 ms |
+| gdu | 4.7 s | 466 ms |
+| dust | 6.2 s | 579 ms |
+| dua | 6.0 s | 591 ms |
+| du | 30.6 s | 645 ms |
+| ncdu | 33.2 s | 33.2 s |
+| **gdu + SQLite** | **45.4 s** | **8.2 s** |
+
+A general-purpose SQL store costs 10–17x. Whatever the engine persists to, it must not
+be a row-per-file relational database on the hot path.
+(These are gdu’s numbers on gdu’s corpus, and the corpus differs from dut’s, so the two
+benchmark tables above are not directly comparable to each other.)
+
+**dua-cli** (`attic/dua-cli`, Rust, MIT) corrects an assumption from the first pass: it
+does **not** use jwalk.
+It has a custom work-stealing walker on crossbeam `Injector`/`Stealer` deques with two
+job types — `ReadDir` and a `StatCompletion` that **batches 4 entries per stat chunk** —
+plus park/unpark idle detection and per-root completion counters.
+It carries size (as `u128`, immune to aggregation overflow), mtime, and entry count
+simultaneously. Critically, it is the only tool in the survey with a **deliberately
+designed library API**: `dua-core` (walk iterators, crossbeam as its only dependency)
+and `dua` (tree building and aggregation).
+If any existing crate is a candidate to build on rather than replace, `dua-core` is it.
+
+**erdtree** (`attic/erdtree`, Rust) is mostly a lesson in what to avoid: it walks
+everything via `ignore`’s `WalkParallel`, collects into a flat `HashMap` of branches,
+reassembles a tree afterward, and does all filtering post-traversal.
+Its metric is mode-switched like dust’s (`Word`/`Line`/`Byte`/`Block`, one per run).
+It does confirm that “walk everything, filter later” is workable, which matters for our
+tag-don’t-prune requirement.
+
+### Scc and Tokei: Content Metrics at Scale
+
+These are the state of the art for computing a per-file content metric across a huge
+tree — directly relevant to the future words/sentences/paragraphs tier.
+
+**scc** (Go) runs a three-stage channel pipeline: a parallel walker (8 workers) → a
+single classifier goroutine → a processing pool of `NumCPU * 4` workers → aggregation.
+Channel buffers are deliberately tiny (`NumCPU`) so back-pressure propagates.
+It disables GC at startup and re-enables it after 10,000 files.
+
+Its counting loop is a byte-level state machine whose key trick is a **byte-mask
+pre-filter**: each language has a `ProcessMask` that is the OR of the first bytes of all
+its comment/string/complexity tokens, so most bytes are skipped with a single AND and
+compare, branchlessly.
+
+```go
+func shouldProcess(currentByte, processBytesMask byte) bool {
+    return currentByte&processBytesMask == currentByte
+}
+```
+
+Tokens are matched through a 256-way branching trie — an O(k) pointer chase with no
+hashing. There is no SIMD in the hot loop.
+
+**tokei** (Rust) uses `ignore`’s parallel walker → crossbeam channel →
+`rayon::par_bridge`. Its counting is line-oriented over `grep_searcher::LineStep`
+(memchr-backed), with an **Aho-Corasick DFA prefilter** to locate the first
+“interesting” byte; everything before that point is classified by a *parallel* simple
+parse via `rayon::join`, and only the remainder goes through the full state machine.
+
+Both derive their language rules from a `languages.json` at **build time** — scc
+generates a Go map literal, tokei renders a Tera template into native Rust `match` arms
+— so there is no runtime rule parsing at all.
+Detection order in both: exact filename → extension → shebang → heuristic regex guarded
+by cheap literal pre-checks.
+
+And the finding that matters most: **neither caches anything across runs**, and
+**neither supports per-directory roll-up**. Both aggregate per-language, globally.
+The two features metabrowser most needs from a content-metric layer are unbuilt in the
+best-in-class tools.
 
 ### The Wider Landscape: Instant Answers Over Large Trees
 
-**Serial walkers (du, ncdu):** one thread, one stat at a time; fine for cold small
-trees, minutes for millions of entries.
-ncdu can export/import a scan as JSON — an ad-hoc snapshot, but with no invalidation
-story (re-import shows stale data).
-
-**Parallel walkers (dust, dua, pdu, gdu, diskus):** all converge on the same design —
-work-stealing thread pool over directories, stat-only traversal.
-diskus is the minimal proof: it computes just the total and is roughly an order of
-magnitude faster than serial `du` on SSDs.
-dua adds an interactive TUI and uses jwalk (parallel walkdir with ordered per-directory
-results). All of them rescan from zero every run.
-
-**Windows Everything:** the benchmark for “instant.”
-It does not walk at all: it reads the NTFS Master File Table directly to build its index
-in seconds, then consumes the NTFS USN change journal for real-time incremental updates.
-Lessons: (1) index once, then apply a change feed; (2) a persisted index makes queries
+**Windows Everything** does not walk at all: it reads the NTFS Master File Table
+directly, then consumes the USN change journal for real-time updates.
+Lessons: index once, then apply a change feed; a persisted index makes queries
 independent of tree size.
-Limitation: deeply filesystem-specific and Windows-only; nothing portable gives
-MFT-grade enumeration, and only some platforms have replayable journals.
+Not portable.
 
-**Watchman:** a persistent daemon that crawls once, subscribes to OS notifications
-(FSEvents/inotify), and serves queries with a **clockspec** — “give me everything
-changed since clock C.” This is the strongest portable architecture for freshness, and
-its `since`-query model is worth copying at the API level.
-Costs: a daemon dependency, socket protocol, and operational complexity — heavier than
-metabrowser wants to impose.
-(Metabrowser already has its own watcher; the engine should integrate with it, not ship
-a daemon.)
+**plocate** is the compression lesson: an inverted **trigram index** with
+Zstd-compressed posting lists, which turns a 27-million-file query from mlocate’s ~20 s
+linear scan into ~8 ms, in a database ~55–60% smaller (466 MB vs 1.1 GB). It also does
+nearly all I/O asynchronously with io_uring. If the engine ever grows name search, this
+is the shape.
 
-**Git’s status machinery:** the closest widely-deployed prior art for our cache tier:
+**Watchman** crawls once, subscribes to OS notifications, and serves queries with a
+**clockspec** — “everything changed since clock C.” The `since` model is worth copying
+at the API level even though the daemon is too heavy a dependency for a tool installed
+via uvx.
 
-- The index stores per-file stat fingerprints (size, mtimes, inode/dev) and treats a
-  matching fingerprint as “unchanged” without reading content (with “racily clean”
-  handling for same-second mtimes).
-- The **untracked cache** records per-directory mtimes and skips re-listing directories
-  whose mtime is unchanged — valid because directory mtime changes when entries are
-  added/removed/renamed.
-  (It cannot detect *content* changes of existing files; git covers those with the
-  per-file fingerprints.)
-- **fsmonitor** (Watchman hook or the builtin daemon) upgrades this to
-  notification-driven invalidation.
+**Git’s status machinery** is the closest widely-deployed prior art for the cache tier:
+per- file stat fingerprints in the index (with “racily clean” handling for same-second
+mtimes); the **untracked cache**, which skips re-listing directories whose mtime is
+unchanged; and **fsmonitor** to upgrade the whole thing to notification-driven
+invalidation.
 
-This three-tier structure — per-file stat fingerprints, per-directory listing cache,
-optional watcher acceleration — is precisely the shape a portable roll-up cache should
-take.
-
-**Walker building blocks in Rust:** ripgrep’s `ignore` crate provides a parallel,
-gitignore-aware walker (flowmark-rs and fd use it); `jwalk` provides parallel walks with
-ordered results; `rayon` underlies both.
-A new engine composes these rather than reinventing the pool.
+**Backup tools** are the best prior art for fingerprint *choice*, and they disagree with
+the obvious answer in an instructive way.
+Borg defaults to **ctime, size, and inode** — not mtime — precisely because mtime is
+user-settable and some applications roll it back after modifying a file, while ctime is
+kernel-controlled. Restic requires **both mtime and ctime** (plus inode) to match before
+presuming contents unchanged.
+Any engine that keys purely on mtime is trusting a value that userspace can forge.
 
 ### File-Type Recognition Landscape
 
 Four families of prior art:
 
-- **Extension maps:** `mimetypes` (Python), `mime_guess` (Rust), and metabrowser’s
-  extension sets. Fast, zero I/O, wrong for extensionless or misnamed files.
-- **Magic sniffing:** libmagic (the `file` command) evaluates a compiled database of
-  offset/type/value tests; XDG **shared-mime-info** is the cleaner modern form —
-  declarative XML rules combining globs (with weights) and magic byte tests (with
-  priorities), plus a `sub-class-of` type hierarchy.
-  Rust ports exist (`tree_magic_mini`), as do hardcoded-signature crates (`infer`).
-- **Language classification:** GitHub Linguist (and its Rust port hyperpolyglot) layers
-  strategies in cost order: filename → extension → shebang → editor modeline → content
-  heuristics (regexes) → Bayesian classifier, stopping at the first unambiguous answer.
+- **Extension maps:** `mimetypes` (Python), `mime_guess` (Rust), metabrowser’s extension
+  sets. Fast, zero I/O, wrong for extensionless or misnamed files.
+- **Magic sniffing:** libmagic evaluates a compiled database of offset/type/value tests;
+  XDG **shared-mime-info** is the cleaner modern form — declarative rules combining
+  weighted globs and prioritized magic tests, plus a `sub-class-of` type hierarchy.
+  Rust ports exist (`tree_magic_mini`), as do signature crates (`infer`).
+- **Language classification:** GitHub Linguist (and hyperpolyglot) layers strategies in
+  cost order: filename → extension → shebang → modeline → content heuristics → Bayesian
+  classifier, stopping at the first unambiguous answer.
+  scc and tokei both implement essentially this cascade, compiled at build time.
 - **Metabrowser’s own manifests:** the `[[kind]]` TOML rules already generalize this
-  locally — extensions, basenames, folder markers, globs, adapter sniffing, and bounded
-  frontmatter/JSON/YAML inspection, with priorities.
+  locally, with priorities and bounded content probes.
 
-The synthesis is clear and validates the direction metabrowser has already taken:
-**recognition should be a priority-ordered cascade of declarative rules, evaluated
-cheapest-first, with content tests bounded and optional.** The improvement a Rust engine
-offers is making that cascade data-driven end to end (rules compiled to automata — glob
-sets and Aho-Corasick magic matchers — instead of Python callables), so the same rule
-files can be evaluated at walk speed for millions of files, and plugins can keep
-contributing rules in the same TOML dialect they use today.
+The synthesis validates the direction metabrowser has taken: **recognition should be a
+priority-ordered cascade of declarative rules, evaluated cheapest-first, with content
+tests bounded and optional.** The improvement a Rust engine offers is compiling that
+cascade the way scc and tokei do — rules to automata at build time, no runtime rule
+parsing — so the same rule files evaluate at walk speed for millions of files.
 
-### What Actually Contributes to Performance (Synthesis)
+## Proven Techniques Worth Adapting
 
-Across all of these systems the cost model is consistent:
+The point of reading twelve codebases was to collect techniques that are already proven
+in production, rather than inventing them.
+Consolidated by layer, with attribution:
+
+**Walk layer**
+
+1. Raw `getdents64` into a large reused per-thread buffer — 64 KiB inline (bfs) or 1 MB
+   scratch (dut) — instead of libc `readdir`.
+2. Eagerly issue a second `getdents` into leftover buffer space to detect EOF without a
+   later syscall (bfs).
+3. `openat`-family, dirfd-relative traversal throughout, with
+   `O_DIRECTORY|O_NOFOLLOW| O_CLOEXEC` (dut, bfs; ncdu 2 migrated to this from `chdir`).
+4. `statx` with a narrow field mask, `AT_SYMLINK_NOFOLLOW`, `AT_NO_AUTOMOUNT`, and
+   `AT_STATX_DONT_SYNC` on network mounts (dut, bfs).
+5. Use `d_type` from the dirent to skip `stat` entirely when the type is all that is
+   needed (bfs); decide eager-vs-lazy stat from a cost model (bfs).
+6. LRU cache of open directory fds, sized from `RLIMIT_NOFILE`, pinning roots and
+   in-progress directories (bfs).
+7. Optional io_uring for `openat`/`close`/`statx` with per-opcode probing and per-thread
+   synchronous fallback (bfs).
+   Not for getdents — kernel support is still landing.
+8. Cap I/O worker threads around 8; measured returns flatten past that (bfs).
+9. Batch stat calls in small chunks per work item (dua-core: 4 per job).
+10. Push a whole batch of discovered children with a **single** CAS onto an intrusive
+    lock-free stack, then wake `min(children, blocked)` workers (dut).
+11. Cache-line-align hot atomics; prefer `fetch_add` over CAS loops; exponential backoff
+    before parking (dut, bfs).
+12. Make traversal order a tunable: DFS for warm-cache locality, BFS fan-out for
+    cold-cache queue depth (dut’s README, versus dust/pdu/gdu behavior).
+
+**Roll-up layer**
+
+13. **Atomic `unsearched_children` refcount for barrier-free bottom-up aggregation**
+    (dut) — the core primitive, generalized from two `u64`s to a metric vector.
+14. Per-thread top-K heaps merged at the end, with early rejection against the heap
+    minimum *before* allocating (dut).
+15. Store pre-computed recursive roll-ups in each directory record so queries never
+    traverse (duc).
+16. Carry multiple metrics in one pass rather than mode-switching (gdu; dua-core).
+17. Hardlink dedup by countdown-and-remove — decrement remaining link count, drop the
+    map entry when exhausted — rather than an ever-growing seen-set (dua-cli), or
+    circular linked lists per group (ncdu).
+
+**Memory layout**
+
+18. Parent-pointer tree with name-only storage; reconstruct paths on demand (fsearch,
+    ncdu). Explicitly *not* dut’s full-path-per-entry.
+19. Optional attributes packed contiguously behind a flags word, offsets computed from
+    the flags — pay only for requested fields (fsearch; ncdu’s `dir_ext`/`Ext`). ncdu 2
+    places the optional block *before* the record so the canonical pointer never moves.
+20. Single allocation for record + variable-length name (ncdu, dut, fsearch), from a
+    per-thread arena that is never individually freed (ncdu 2).
+21. **Steal bits from a wide counter** rather than adding a flags byte: ncdu 2 packs a
+    3-bit type, a presence bit, and a 60-bit block count into one `u64`.
+22. **Intern device IDs** into a small global table and store a narrow index, not a raw
+    64-bit `st_dev` (ncdu 2).
+23. Zero padding: fully packed, byte-aligned records, accepting slightly worse codegen
+    for materially better memory (ncdu 2’s explicit trade-off).
+24. Reuse fields across lifecycle phases via unions where the phases are disjoint (dut).
+25. Chunked arrays rather than one monolithic vector, to avoid realloc pressure during
+    live updates (fsearch).
+26. Target ncdu 2’s budget: ~25 bytes per regular file, ~56–64 per directory.
+
+**Persistence**
+
+27. Magic + version + endianness header (fsearch, ncdu 2). Pin any enum whose numeric
+    value reaches the file format, and say so in the code (ncdu 2’s `EType`).
+28. **Compressed blocks plus an index at the tail**, so opening costs one small read and
+    data blocks decompress on demand into a small LRU cache (ncdu 2). Prefer this over a
+    single bulk read of everything (fsearch) when the consumer navigates lazily.
+29. **Item references as `(block << k) | offset`, delta-encoded when intra-block** —
+    full references defeat the compressor and most references are local (ncdu 2).
+30. Adapt block size upward as the file grows, to bound index size (ncdu 2).
+31. Write sibling groups contiguously so one directory listing costs one block
+    decompression (ncdu 2’s documented `TODO`, worth doing from the start).
+32. Front-coded names against the previous sorted entry (fsearch).
+33. `u32` parent indices instead of pointers; rebuild pointers on load (fsearch, ncdu
+    2).
+34. Varint-encode sizes, counts, and inode numbers — CBOR’s integer encoding gives this
+    for free (duc, ncdu 2).
+35. Pre-sorted permutation arrays for instant sort-order switching, 4 bytes/entry/order
+    (fsearch).
+36. Atomic temp-file + `rename()` persistence; treat a corrupt snapshot as empty rather
+    than as an error (fsearch, flowmark-rs).
+37. Whole-cache fingerprint invalidation from version + config + rule-set hash
+    (flowmark-rs).
+38. Do **not** put a row-per-file relational store on the hot path (gdu’s SQLite
+    backend: 10–17x slower).
+39. When a sink is inherently serial but the source is parallel, stage through memory
+    and replay rather than serializing the source (ncdu 2’s JSON export).
+
+**Content metrics**
+
+40. Byte-mask pre-filter to skip uninteresting bytes branchlessly (scc).
+41. Aho-Corasick prefilter to find the first interesting byte, with a cheap parallel
+    pass over the boring prefix (tokei).
+42. Compile rule data to code at build time; no runtime rule parsing (scc, tokei).
+43. Reuse a per-worker read buffer, discarding it if it grows past a threshold (scc).
+44. Detection cascade ordered by cost, stopping at the first unambiguous answer
+    (linguist, scc, tokei).
+
+**Watching**
+
+45. Prefer fanotify with file-handle marks (survives renames), fall back to inotify, and
+    flag entries where neither worked (fsearch).
+46. Expose a `since(clock)` delta query rather than only a live event stream (Watchman).
+
+**Fingerprinting**
+
+47. Include ctime and inode, not just mtime and size — mtime is forgeable by userspace
+    (borg, restic).
+
+### Licensing Constraints on Adaptation
+
+This matters before any code is written, and the answer differs per tool:
+
+| Tool | License | How we may use it |
+| --- | --- | --- |
+| ncdu 1 / ncdu 2 | MIT | Permissive; code may be adapted with attribution |
+| dua-cli (`dua-core`) | MIT | Permissive; usable as a dependency or adapted |
+| bfs | Permissive (0BSD-style) | Adaptable with attribution |
+| gdu | Permissive (Apache/MIT-style) | Adaptable with attribution |
+| **dut** | **GPL** | **Ideas only — do not copy code** |
+| **fsearch** | **GPL** | **Ideas only — do not copy code** |
+| **duc** | **LGPL** | **Ideas only for a static Rust build** |
+
+The most valuable single technique (dut’s atomic-refcount roll-up) and the best snapshot
+format (fsearch’s front-coded binary layout) both come from GPL sources.
+Algorithms and file-format designs are not themselves copyrightable, so a clean
+reimplementation from the descriptions in this document is fine — but the implementation
+must be written from the described behavior, not transliterated from their source, and
+the design doc should say so explicitly.
+Verify each license before implementation; the table above is from the checked- out
+copies at the commits in `attic/`.
+
+## What Actually Contributes to Performance (Synthesis)
 
 1. **The floor of a cold scan is one directory read per directory plus one stat per
-   entry.** Nothing portable beats it (only MFT/journal tricks do).
-   So a cold scan is won by parallelism (saturate the kernel), syscall discipline (use
-   what `readdir` already returned; on Linux, `statx` with a narrow field mask), and
-   small data structures.
-   This is dust/diskus territory, and Rust reaches it; Python cannot — metabrowser’s 7k
-   files/s is respectable *for Python* and roughly 10–50x from what parallel Rust
-   achieves on the same hardware (flowmark measured 60–130x on CPU-bound work;
-   stat-bound work gains less from the language but greatly from the parallelism the GIL
-   prevents).
+   entry** — but the constant factor varies by 3–7x depending on *how* you make those
+   calls. Raw getdents with big buffers, dirfd-relative statx with narrow masks, and
+   io_uring batching are what separate dut and bfs from dust and du.
+   Language matters less than syscall discipline; metabrowser’s 7k files/s is a
+   Python-and-GIL ceiling, but the gap to the leaders is syscall technique as much as it
+   is language.
 2. **The floor of a warm re-scan is a stat sweep — unless you persist and revalidate.**
-   With a persisted snapshot, re-runs cost: load snapshot (one sequential read of a
-   compact file, milliseconds) + revalidation (parallel stat sweep, with the dir-mtime
-   shortcut skipping listing of unchanged directories) + re-derivation only for entries
-   whose fingerprint changed.
-   This is git’s model, and flowmark proves the UX (23 ms warm).
-3. **Content work must be opt-in, lazy, and cached by fingerprint.** Reading bytes is
-   orders of magnitude more expensive than statting.
-   Every system that touches content (linguist heuristics, libmagic, flowmark,
-   metabrowser’s bounded JSON/YAML probes) either bounds the read (first N KiB) or
-   caches by content identity.
-4. **A change feed converts re-scans into deltas.** Watcher events (or journals where
-   they exist) let a long-lived process keep the snapshot hot continuously — which is
-   exactly metabrowser’s server mode.
-   A CLI one-shot instead revalidates on start.
+   With a snapshot: load (one bulk read of a compact file, milliseconds) + revalidation
+   (parallel stat sweep with the dir-mtime shortcut skipping unchanged directories) +
+   re-derivation only for changed entries.
+   This is git’s model, and flowmark proves the UX at 23 ms warm.
+3. **Content work must be opt-in, lazy, and cached by fingerprint.** Every system that
+   touches content bounds the read or caches by identity.
+4. **A change feed converts re-scans into deltas** — which is exactly metabrowser’s
+   server mode.
+5. **Nobody in this space has combined these.** Of twelve tools reviewed, exactly one
+   (gdu) persists anything, exactly one (gdu) carries multiple metrics per pass, none
+   does per-directory type tallies, and none does mtime-based incremental revalidation.
+   The combination is genuinely unoccupied ground.
 
 ## Key Insights
 
-- **Dust and flowmark are complementary halves of the design.** Dust shows how to walk
-  at hardware speed but keeps nothing; flowmark shows how to persist “work already done”
-  and invalidate it safely but keys on content.
-  The new engine is “dust’s walk + flowmark’s cache discipline, keyed on stat
-  fingerprints, retaining a full multi-metric inventory instead of one display tree.”
-- **The single-`u64` node is the deepest limitation to fix.** Dust’s mutually exclusive
-  size/count/filetime modes all exist because a node holds one number.
-  Model per-file records → metric vectors, and per-directory roll-ups as **monoid-style
+- **The design splits cleanly across four exemplars.** dut supplies the parallel
+  aggregation primitive, ncdu 2 supplies the packed record layout and the seekable
+  snapshot format, fsearch supplies the flags-driven optional attributes and front-coded
+  names, and flowmark supplies the cache lifecycle and invalidation discipline.
+  dust — the original model for this work — supplies mostly a list of things not to do.
+- **The single-`u64` node is the deepest limitation to fix.** Dust’s and erdtree’s
+  mutually exclusive metric modes exist because a node holds one number.
+  Model per-file records as metric vectors and per-directory roll-ups as **monoid-style
   reducers** (sum, max, min, count, histogram, top-k, count-by-key), and every mode
-  becomes one walk, incremental updates become “recompute ancestors of dirty nodes,” and
-  extensibility becomes “register a reducer.”
+  becomes one walk, incremental updates become “re-merge the ancestors of dirty nodes,”
+  and extensibility becomes “register a reducer.”
+  gdu proves multi-metric-per-pass costs nothing; dut’s refcount provides the parallel
+  mechanism.
+- **Incremental revalidation is the unoccupied niche, and it is what metabrowser
+  actually needs.** duc writes a directory mtime it never reads.
+  gdu persists but never revalidates.
+  scc and tokei recompute everything every run.
+  The prior art for doing it properly is not in this tool category at all — it is in
+  git, borg, and restic.
 - **Serve-stale-then-revalidate is the honest way to be “instant.”** Everything,
-  Watchman, and git all answer from the index immediately and reconcile against the
-  filesystem asynchronously.
-  The engine should load the snapshot, answer, and stream revalidation deltas — the same
-  two-phase pattern metabrowser’s UI already has (first-paint depth-2, then deepen).
-- **Metabrowser’s plugin classification dialect is a good seed for the rules format.**
-  Its `[[kind]]` predicates are a practical superset of shared-mime-info globs and a
-  subset of linguist’s cascade.
-  Compiling (a subset of) that dialect in Rust keeps one rule language across engine and
-  plugins, preserving the plugin boundary.
-- **Python is the integration layer, not the hot path.** The scalable-file-search spec’s
-  instinct to defer native code until measured is sound — and the measurements now
-  exist: 70 s cold walks at the cap, ~1.5 s gitignore parsing, per-request full-index
-  scans for the recent view.
-  Those are the hot paths a native engine removes; everything above the inventory seam
-  (routes, projections, plugins, SSE) stays Python.
+  Watchman, and git all answer from the index immediately and reconcile asynchronously —
+  the same two-phase pattern metabrowser’s UI already has (first-paint depth-2, then
+  deepen).
+- **Persistence format choice is load-bearing, with a proven wrong answer and a proven
+  right one.** gdu’s SQLite backend is 10–17x slower than its in-memory path.
+  In the other direction, ncdu 2’s binary export is the strongest design found anywhere
+  in the survey: compressed blocks, a tail index, delta-encoded intra-block references,
+  and O(1) open with lazy per-directory decompression.
+  That last property matters more than decode throughput, because it matches how
+  metabrowser and its users actually navigate — open now, expand later.
+- **Metabrowser’s plugin classification dialect is a good seed for the rules format**,
+  and scc/tokei show how to make it fast: compile the rules to code at build time.
+- **Python is the integration layer, not the hot path.** The measurements now justify
+  what the search spec deferred: 70 s cold walks at the cap, ~1.5 s gitignore parsing,
+  per-request full-index scans for the recent view.
 
 ## Proposed Architecture
 
 One Cargo workspace, three surfaces over one core (mirroring flowmark’s feature-gated
-layout):
+layout, and ncdu’s source/sink separation):
 
 ```
 rollup-core   (lib: walker, snapshot store, revalidator, reducers, type rules)
-rollup-cli    (bin: human tree output à la dust + stable JSON/JSONL; testing, agents)
+rollup-cli    (bin: human tree output à la dust/dut + stable JSON/JSONL; testing, agents)
 rollup-py     (PyO3 cdylib: in-process API for metabrowser; abi3 wheels via maturin)
 ```
 
+Following ncdu’s `dir.h` design, **sources** (live walk, snapshot load) and **sinks**
+(in-memory index, snapshot write, JSON export, Python bridge) meet at one streaming
+record interface, so every combination is free.
+
 ### Data Model
 
-- **File record** (superset of dust’s `Node`, aligned with metabrowser’s `FsEntry`):
-  interned parent path + name, kind (file/dir/symlink), size, allocated blocks,
-  `mtime_ns` (+ ctime), inode/device, flags (hidden, gitignored, symlink), compound
-  extension, resolved file type id.
-- **Metrics as reducers.** A metric declares: id, version, input tier (stat-only vs.
+- **File record**, following fsearch: a parent index (`u32`), a flags word, and optional
+  attributes packed contiguously behind that flags word — size, allocated blocks, mtime,
+  ctime, inode/device, resolved type id, compound extension id — with the name last.
+  Names only; paths are reconstructed by walking parents.
+  Target ~25–32 bytes per file plus name, matching ncdu 2.
+- **Metrics as reducers.** A metric declares id, version, input tier (stat-only vs.
   content), and a commutative merge.
-  Built-in stat-tier metrics: total bytes, allocated bytes, file/dir counts,
-  newest/oldest mtime, mtime-recency histogram, size histogram, count-and-bytes by file
-  type, top-k largest, top-k most recent.
-  Content-tier metrics (later): line/word/sentence/paragraph counts per document type,
-  delegated to pluggable analyzers.
-- **Hierarchical roll-ups.** Every directory node stores the merged reducer state of its
-  children; queries read them directly ("tally by type under `src/` at depth 2", “newest
-  mtime under any node”) with no walking.
-  Incremental updates re-merge only the ancestor chain of changed entries — the same
-  shape as metabrowser’s `_update_ancestor_aggregates`, but over arbitrary registered
-  metrics.
+  Built-in stat-tier: total bytes, allocated bytes, file/dir counts, newest/oldest
+  mtime, mtime-recency histogram, size histogram, count-and-bytes by file type, top-k
+  largest, top-k most recent.
+  Content-tier (later): line/word/sentence/paragraph counts per document type.
+- **Hierarchical roll-ups** computed during the walk via dut’s atomic child-counter,
+  with the counter generalized so that the thread which zeroes a parent merges the full
+  reducer vector rather than two `u64`s. Every directory stores its merged state, so
+  queries read it directly (duc’s lesson) and incremental updates re-merge only the
+  dirty ancestor chain — the same shape as metabrowser’s `_update_ancestor_aggregates`,
+  over arbitrary metrics.
 
 ### Cache and Revalidation (Three Tiers, Git-Shaped)
 
-1. **Snapshot.** The full inventory + roll-up state persisted per root under the user
-   cache dir, keyed by hash of canonical root (flowmark’s layout), in a compact binary
-   format (e.g. postcard/bincode, optionally zstd) with a format version and an **engine
-   fingerprint** (engine version + config + rule-set hash) that invalidates wholesale on
-   mismatch — flowmark’s discipline exactly.
-   Atomic temp-file + rename writes; corrupt = empty.
-   Target: load in low milliseconds for 500k entries (tens of MB).
-2. **Revalidation.** On open: a parallel sweep comparing stat fingerprints (size,
-   `mtime_ns`, inode) against the snapshot.
-   Directories whose own mtime and entry list are unchanged skip re-listing (the
-   untracked-cache trick); files with unchanged fingerprints keep their derived data
-   (type verdicts, content metrics) with zero reads.
+1. **Snapshot.** Full inventory + roll-up state, persisted per root under the user cache
+   dir keyed by hash of the canonical root (flowmark’s layout), in **ncdu 2’s shape**:
+   magic + version header, zstd-compressed data blocks, an index block at the tail,
+   records as varint-keyed maps, item references as `(block << k) | offset`
+   delta-encoded when intra-block, and sibling groups written contiguously so one
+   directory listing costs one block decompression.
+   Opening reads only the index; blocks decompress on demand into a small LRU cache.
+   Borrow front-coded names and optional pre-sorted permutation arrays from fsearch.
+   An **engine fingerprint** (version + config + rule-set hash) invalidates wholesale on
+   mismatch. Atomic temp-file + rename; corrupt equals empty.
+2. **Revalidation.** On open, a parallel sweep comparing stat fingerprints — **size,
+   mtime, ctime, and inode**, per borg/restic, not mtime alone.
+   Directories whose own mtime is unchanged skip re-listing (git’s untracked-cache
+   trick); files with matching fingerprints keep their derived data (type verdicts,
+   content metrics) with zero reads.
    Only changed entries re-derive.
-   Results stream as deltas so callers can serve the stale snapshot instantly and
-   reconcile.
-3. **Watch mode.** In a long-lived process (the metabrowser server), a `notify`-based
-   watcher (or events fed in from the host’s existing watcher) marks dirty paths and the
-   engine incrementally restats and re-rolls just those subtrees, keeping the snapshot
-   perpetually warm and flushing it periodically.
-   A Watchman-style `since(clock)` query API exposes deltas to consumers.
+   Results stream as deltas so callers serve the stale snapshot instantly and reconcile.
+3. **Watch mode.** In a long-lived process, a watcher (fanotify-preferred where
+   available, per fsearch) marks dirty paths; the engine restats and re-rolls just those
+   subtrees and flushes periodically.
+   A Watchman-style `since(clock)` query exposes deltas.
 
-Content-derived data (type-sniff verdicts requiring reads, word counts, etc.)
-caches by `(stat fingerprint, analyzer id, analyzer version)` — flowmark’s
-fingerprint-invalidation idea applied per-analyzer instead of whole-cache.
+Content-derived data caches by `(stat fingerprint, analyzer id, analyzer version)` —
+flowmark’s fingerprint invalidation applied per-analyzer rather than whole-cache.
 
 ### File-Type Recognition Engine
 
-- Rules are data: a TOML dialect deliberately compatible with metabrowser’s `[[kind]]`
-  manifests — extension/basename/glob/folder-marker predicates plus bounded content
-  probes (magic bytes, shebang, frontmatter/JSON/YAML keys) — with priorities and a
-  category hierarchy (text/binary, media class, format family, à la shared-mime-info
-  `sub-class-of`).
-- Compiled once per run into fast matchers (extension hash maps, glob sets, Aho-Corasick
-  magic tables); evaluated cheapest-first with content probes only when cheap tiers are
-  ambiguous *and* the caller asked for content-level confidence.
-- Ships with a standard rule set (generalizing metabrowser’s built-ins and the common
-  libmagic/linguist cases); consumers and plugins layer additional rule files on top.
-  Python-side detectors that need arbitrary logic still run in Python, downstream of the
-  engine’s verdict — the engine’s verdict is a hint plus category, not a cage.
+- Rules as data, in a TOML dialect deliberately compatible with metabrowser’s `[[kind]]`
+  manifests, with priorities and a `sub-class-of`-style category hierarchy.
+- Compiled cheapest-first the way scc and tokei do it — extension hash maps, glob sets,
+  and Aho-Corasick magic tables, generated at build time rather than parsed at runtime —
+  with content probes only when cheap tiers are ambiguous and the caller asked for
+  content-level confidence.
+- Ships a standard rule set; consumers and plugins layer more on top.
+  Python-side detectors needing arbitrary logic still run in Python, downstream of the
+  engine’s verdict.
 
 ### Python Embedding and uv Packaging
 
-Three viable models, in increasing coupling:
+- **A. Binary wheel + subprocess** (flowmark-rs’s model, maturin `bindings = "bin"`):
+  simplest, total version isolation, JSON/JSONL over stdout.
+  Right for CLI and agent use; wrong as metabrowser’s primary path, which wants a
+  persistent in-process index.
+- **B. PyO3 cdylib** (maturin abi3 wheels): in-process module owning a thread pool and
+  watcher, releasing the GIL during native work, exposing `open(root, config) -> Index`,
+  `index.query(...)`, `index.since(clock)`, `index.refresh()`, `index.entries(...)`.
+  abi3 keeps the wheel matrix to one per OS/arch; uv builds and consumes maturin
+  projects natively. **Design the API around bulk operations** — return structured
+  results once, not per-item; a million small zero-copy calls lose to one large call.
+- **C. Both from one workspace** — the recommendation, mirroring how `walk.py`
+  reproduces `/api/tree` today.
 
-- **A. Binary wheel + subprocess (the flowmark-rs model, maturin `bindings = "bin"`).**
-  Simplest; total version-skew isolation; JSON/JSONL over stdout.
-  Costs process spawn (~ms) and serialization per call; no shared watch state.
-  Right for CLI-shaped and agent use, wrong as metabrowser’s primary path — the server
-  wants a persistent in-process index it can query per-request.
-- **B. PyO3 cdylib (maturin abi3 wheels).** In-process module; the engine owns a
-  background thread pool + watcher, releases the GIL during native work, and exposes:
-  `open(root, config) -> Index`, `index.query(...)` (tree/tallies/top-k/recent),
-  `index.since(clock)`, `index.refresh()`, `index.entries(...)` as dicts or typed
-  objects. abi3 keeps the wheel matrix small (one wheel per OS/arch covering all CPython
-  versions); uv consumes and builds maturin projects natively.
-- **C. Both from one workspace** — the recommendation.
-  The CLI and the Python module are thin frontends over `rollup-core`; the CLI doubles
-  as the agent surface and the debugging surface (dust-style tree + `--json`), mirroring
-  how metabrowser’s `walk.py` CLI reproduces `/api/tree` today.
-  Metabrowser depends on the wheel like any other locked dependency (subject to the
-  supply-chain cool-off policy; first-party crates/wheels can be pinned exactly as
-  flowmark-rs is today).
-
-Integration seam in metabrowser: the engine replaces the walker + inventory hot path
-(cold boot walk, aggregates, recent/tree queries, gitignore evaluation), emitting the
-same record stream `InventoryIndex` consumes today — or eventually backing it entirely —
-while the SSE bus, projections, plugin API, and classification-dependent views stay
-untouched. `watchfiles` events can be fed into the engine, or the engine’s own watcher
-can replace that path server-side.
+Integration seam: the engine replaces the walker + inventory hot path (cold boot walk,
+aggregates, recent/tree queries, gitignore evaluation), emitting the record stream
+`InventoryIndex` already consumes, while the SSE bus, projections, plugin API, and
+classification-dependent views stay untouched.
 
 ### Agent Skill Angle
 
-Because warm queries are milliseconds, agents can call the CLI freely: “tally this tree
-by type,” “top 20 largest,” “what changed in the last hour,” “full JSON inventory of
-this subtree.” A small skill (like `skills/metabrowser`) would document the CLI with
-`--help` as the source of truth.
-This gives agents instant tree insight without spawning a server, and gives the engine a
+Because warm queries are milliseconds, agents can call the CLI freely: tally a tree by
+type, top 20 largest, what changed in the last hour, full JSON inventory of a subtree.
+A small skill (like `skills/metabrowser`) would document the CLI with `--help` as source
+of truth, giving agents instant tree insight without a server and giving the engine a
 second consumer that keeps the CLI honest.
 
 ## Comparison Matrix
 
-| Criterion | du/ncdu | dust | dua/pdu/diskus | Everything | Watchman | git status | metabrowser today | Proposed engine |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Parallel walk | no | yes (rayon) | yes | n/a (MFT) | crawl once | partial | no (async, GIL) | yes (rayon/ignore) |
-| Persistent cache | no (ncdu: manual export) | no | no | yes | yes (daemon) | yes (index) | no | yes (snapshot) |
-| Incremental revalidation | no | no | no | journal | notifications | stat fingerprints + untracked cache | watcher (in-memory only) | fingerprints + dir-mtime + watcher |
-| Warm-run cost | full walk | full walk | full walk | ~0 | ~0 | stat sweep | 0 while running; full walk on restart | snapshot load + stat sweep (or ~0 in watch mode) |
-| Metrics per node | 1 | 1 (mode-switched) | 1 | metadata index | file list | status only | fixed 3 (files/bytes/newest) | extensible reducer vector |
-| Per-dir type tallies | no | no (global only) | no | query-side | query-side | no | no | yes |
-| File-type recognition | no | extension display | no | extension | no | no | pluggable, Python-speed | pluggable, compiled rules |
-| Library API | no | no | dua: partial | no | socket | libgit2 | Python-internal | Rust + Python + CLI |
-| Python embedding | — | subprocess only | — | — | client lib | pygit2 | native | PyO3 wheel (uv) |
-| Portable | yes | yes | yes | Windows/NTFS only | daemon required | yes | yes | yes |
+Grouped by what each tool proves.
+“Warm re-run” means a second run over an unchanged tree.
+
+| Tool | Lang | Parallel walk | Syscall level | Metrics/pass | Persists | Revalidates | Library API |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| du | C | no | readdir + lstat | 1 | no | no | no |
+| ncdu 1 | C | no | readdir + chdir-relative lstat | 1 | JSON export | no | no |
+| ncdu 2 | Zig | **yes** (LIFO queue) | openat + fstatat | 1 | JSON + **binary, seekable** | no | no |
+| dust | Rust | rayon `par_bridge` | `symlink_metadata` | 1 (mode-switched) | no | no | no |
+| dua-cli | Rust | **custom work-stealing** | batched stat (4/job) | 3 | no | no | **yes (2 crates)** |
+| pdu | Rust | rayon | std | 1 | no | no | partial |
+| diskus | Rust | rayon | std | 1 (total only) | no | no | no |
+| gdu | Go | goroutine fan-out | std | **5** | **Badger/SQLite/JSON** | no | informal |
+| erdtree | Rust | `ignore` WalkParallel | std | 1 (mode-switched) | no | no | no |
+| **dut** | C | custom lock-free pool | **getdents64 + dirfd statx** | 2 | no | no | no |
+| **bfs** | C | main + I/O workers | **getdents64 + io_uring + statx masks** | n/a (find) | no | no | no |
+| fd | Rust | `ignore` WalkParallel | std, lazy | n/a (find) | no | no | no |
+| duc | C | no | readdir + lstat | 3 (recursive) | **KV per directory** | no | yes (libduc) |
+| fsearch | C | no (walk) | readdir + fstatat | 2 | **binary index** | no (watcher only) | no |
+| scc / tokei | Go / Rust | pipeline / rayon | std | content | no | no | tokei: yes |
+| Everything | — | n/a (MFT) | MFT + USN journal | metadata | yes | journal | no |
+| Watchman | C++ | yes | notifications | file list | yes | notifications | socket |
+| git status | C | partial | stat fingerprints | status | yes (index) | **yes** | libgit2 |
+| metabrowser | Python | no (GIL) | `os.scandir` | 3 | no | watcher only | internal |
+| **Proposed** | Rust | custom, dut-style | getdents + statx + opt. io_uring | **extensible** | **binary snapshot** | **yes** | **Rust + Py + CLI** |
 
 ## Options Considered
 
-### Option A: Wrap Dust (or dua) as a Subprocess
+### Option A: Wrap an Existing Tool as a Subprocess
 
-**Description:** Shell out to dust `--output-json` (or dua) for size roll-ups.
+**Description:** Shell out to dust/gdu/dut `--json` for roll-ups.
 
-**Pros:**
+**Pros:** Zero engine code; battle-tested walkers.
 
-- Zero engine code to write; battle-tested walkers.
-
-**Cons:**
-
-- No cache: every call is a full rescan, so it solves the wrong problem.
-- Display-shaped JSON, single metric, no type tallies, no mtime retention, no library
-  API; would still need all the inventory/cache work built on top.
+**Cons:** No revalidation, so every call is a full rescan — it solves the wrong problem.
+Display-shaped JSON, one or two metrics, no type tallies, no library API. gdu is the
+only one with persistence and its stored backends are the slow path.
+Would still need all the inventory and cache work on top.
 
 ### Option B: Adopt Watchman
 
-**Description:** Run Watchman as a sidecar; query it for file lists and changes.
+**Description:** Run Watchman as a sidecar.
 
-**Pros:**
+**Pros:** Mature clockspec/subscription model, proven at scale.
 
-- Mature clockspec/subscription model; proven at scale.
-
-**Cons:**
-
-- Heavy operational dependency for a local-first tool metabrowser installs via uvx.
-- Provides file lists and changes, not roll-ups, tallies, type recognition, or content
-  metrics — the aggregation engine would still need building.
+**Cons:** Heavy operational dependency for a local-first tool installed via uvx;
+provides file lists and changes, not roll-ups, tallies, type recognition, or content
+metrics.
 
 ### Option C: Optimize the Python Path
 
-**Description:** Persist `InventoryIndex` (e.g. SQLite/pickle), add multiprocessing for
-the walk, keep everything in Python.
+**Description:** Persist `InventoryIndex`, add multiprocessing, stay in Python.
 
-**Pros:**
+**Pros:** No new toolchain; incremental delivery in the current codebase.
 
-- No new toolchain; incremental delivery inside the current codebase.
+**Cons:** The GIL caps stat-sweep parallelism and multiprocessing adds serialization
+overhead comparable to the work saved.
+None of the syscall-level techniques that produce the 3–7x gaps (getdents buffers,
+dirfd-relative statx, io_uring) are reachable from Python.
+Ceiling is maybe 2–3x, and none of it is reusable outside metabrowser.
 
-**Cons:**
+### Option D: Build on `dua-core`
 
-- The GIL caps stat-sweep parallelism; multiprocessing adds serialization overhead
-  comparable to the work saved.
-- Revalidation sweeps and rule matching remain Python-speed (the gitignore and
-  recent-view hotspots stay).
-  The ceiling is maybe 2–3x, not 10–50x, and none of it is reusable outside metabrowser
-  (no CLI/agent surface, no other consumers).
+**Description:** Take dua-cli’s MIT-licensed work-stealing walk crate as the traversal
+layer and build reducers, snapshot, and type rules on top.
 
-### Option D: Ground-Up Rust Engine (Recommended)
+**Pros:** Skips the hardest concurrency code with a proven, minimal-dependency
+implementation; MIT license is clean; batched stat jobs are already there.
 
-**Description:** The workspace described above: `rollup-core` + CLI + PyO3 wheel,
-snapshot cache with stat-fingerprint revalidation, reducer-based roll-ups, compiled
-declarative type rules.
+**Cons:** Its stat path is `std`-based, so the getdents/statx/io_uring wins need adding
+anyway; its record model would need replacing wholesale.
+Realistically this is a **phase-1 accelerator** — start here to get correct behavior
+fast, replace the syscall layer once benchmarks justify it.
 
-**Pros:**
+### Option E: Ground-Up Rust Engine (Recommended)
 
-- Removes every measured hot path at once: warm-start server boots, instant agent
-  queries, and materially lifting the 500k cap.
-- Reusable: library, CLI, skill, and Python embedding from one core; useful beyond
-  metabrowser.
-- Cache discipline and packaging have a working exemplar (flowmark-rs) to copy.
+**Description:** The workspace described above, assembling the proven techniques
+catalogued in this document.
 
-**Cons:**
+**Pros:** Removes every measured hot path at once; warm-start server boots and instant
+agent queries; materially lifts the 500k cap.
+Reusable as library, CLI, skill, and Python module.
+Every major subsystem has a working exemplar to copy rather than invent.
 
-- A new codebase and CI matrix (Rust toolchain, wheel builds) to own.
-- Rule-dialect compatibility with plugin manifests needs care to avoid drift.
-- A native wheel dependency raises the supply-chain review bar (mitigated by it being
-  first-party, like flowmark-rs).
+**Cons:** A new codebase and CI matrix (Rust toolchain, wheel builds) to own.
+Rule-dialect compatibility with plugin manifests needs care.
+A native wheel raises the supply-chain review bar (mitigated by being first-party, like
+flowmark-rs). Two of the best exemplars are GPL, so those parts must be clean
+reimplementations.
 
 ## Recommendations
 
-1. **Build Option D as a standalone repo** (working name: e.g. `rollup-rs`), starting
-   with `rollup-core` + CLI only: parallel gitignore-aware walk, stat-tier reducers
-   (bytes, counts, mtimes, per-type tallies, top-k), snapshot + revalidation cache,
-   dust-style tree output plus stable JSON. Benchmark against dust (cold) and against
-   the flowmark warm-run bar (tens of ms on ~1k-file corpora; target well under 1 s warm
-   for 500k entries).
-2. **Add the PyO3 surface second**, once the snapshot format survives a few iterations,
-   and integrate behind metabrowser’s walker/inventory seam as an optional accelerator
-   (the pure-Python path remains the fallback, preserving the no-native-requirement
-   stance of the search spec).
-3. **Define the type-rule dialect early** as a compatible superset of the plugin
-   `[[kind]]` predicates, so plugins never need two rule languages.
-4. **Design queries around `since(clock)` deltas** from day one; it is cheap now and
+1. **Build Option E as a standalone repo** (working name: e.g. `rollup-rs`), optionally
+   bootstrapping traversal from `dua-core` (Option D) to reach correct behavior sooner.
+   Phase 1 is `rollup-core` + CLI: parallel gitignore-*tagging* walk, stat-tier
+   reducers, snapshot + revalidation, dust/dut-style tree output plus stable JSON.
+2. **Benchmark against dut and gdu, not dust.** Targets: cold-scan within ~1.5x of dut
+   on the same corpus; warm re-run (snapshot + revalidation) well under 1 s for 500k
+   entries, against flowmark’s 23 ms bar at ~1k files.
+   Build the corpus generator first, mirroring flowmark’s
+   `benchmarks/generate_corpus.sh`, and always report cold and warm separately — every
+   benchmark in this document that omitted that distinction was misleading.
+3. **Adopt the memory and snapshot targets explicitly:** ~25–32 bytes per file record
+   and O(1) snapshot open with lazy per-directory decompression (both ncdu 2), and no
+   relational store on the hot path (gdu’s SQLite result).
+4. **Use size + mtime + ctime + inode as the fingerprint**, per borg and restic, not
+   mtime alone.
+5. **Define the type-rule dialect early** as a compatible superset of the plugin
+   `[[kind]]` predicates, compiled at build time, so plugins never need two rule
+   languages.
+6. **Design queries around `since(clock)` deltas** from day one; cheap now, and it
    unlocks watch-mode and SSE integration later.
-5. **Defer content-tier metrics** (words/sentences/paragraphs) until the stat tier is
-   solid — but reserve their place in the reducer registry and the per-analyzer
-   fingerprint cache now, since that shapes the snapshot format.
+7. **Defer content-tier metrics** until the stat tier is solid, but reserve their place
+   in the reducer registry and the per-analyzer fingerprint cache now, since that shapes
+   the snapshot format.
+8. **Record the GPL constraint in the implementation plan** so the dut- and
+   fsearch-derived designs are written from specification, not transliterated.
 
 ## Open Questions
 
-1. Snapshot format: postcard/bincode vs.
-   an mmap-friendly zero-copy layout (rkyv/flatbuffers)?
-   Zero-copy helps the “load 500k entries in ms” target but complicates evolution;
-   format-version invalidation makes evolution cheap either way.
-2. Should the engine own gitignore semantics (the `ignore` crate) or take ignore rules
-   as input from the host?
-   Metabrowser tracks `gitignored` as a flag on entries rather than excluding them — the
-   engine must support “walk everything, tag ignored” mode, which `ignore` does not do
-   natively (it prunes).
-   This may need a custom matcher pass.
-3. How much of classification belongs engine-side?
+Two questions from the first pass are now **resolved**:
+
+- ~~Can the `ignore` crate walk everything and tag ignored rather than pruning?~~
+  **Yes.** `ignore::gitignore::GitignoreBuilder`/`Gitignore` can be used standalone —
+  build the matcher from `.gitignore` files and call `matched_path_or_any_parents()` on
+  each path during a normal walk.
+  Pruning is a `WalkBuilder` behavior, not a matcher limitation.
+  erdtree confirms the walk-everything-filter-later pattern in practice.
+- ~~Which snapshot serialization format?~~ **A seekable, block-compressed binary format
+  modeled on ncdu 2’s**, not a single flat serde/rkyv blob.
+  Reading ncdu 2’s implementation changed this answer: what matters for metabrowser is
+  not raw deserialize throughput but that opening is O(1) and directory listings
+  materialize lazily, which a compressed-blocks
+  + tail-index + LRU design gives and a monolithic decode does not.
+    Zero-copy framing (rkyv-style) remains attractive *within* a block; that is now a
+    narrower, deferrable choice.
+    Format-version fingerprinting keeps evolution cheap either way.
+
+Still open:
+
+1. How much of classification belongs engine-side?
    Proposal: the engine yields type/category verdicts from compiled rules; adapter-level
-   sniffing (e.g. which agent wrote a JSONL) stays in Python plugins.
+   sniffing (which agent wrote a JSONL) stays in Python plugins.
    Validate against real plugin manifests.
-4. Hardlink/bind-mount dedup policy: dust’s `(inode, device)` set is global and
-   order-dependent; for stable roll-ups the engine needs a deterministic attribution
-   rule (e.g. count under the first path in sorted order, expose link count).
-5. Watcher ownership in metabrowser: feed `watchfiles` events into the engine, or let
-   the engine’s notify watcher replace that path?
-   (This affects the NFS/polling fallback logic metabrowser already tuned.)
-6. Where do bounded content probes cap out for type recognition (first 8 KiB?), and is
-   sniffing on-demand-only at first (so the walk stays stat-pure)?
+2. Hardlink attribution policy.
+   dust uses an order-dependent global seen-set; dua counts down remaining links; gdu
+   divides size among linked items; dut tracks shared-vs-unique in two columns.
+   For *stable, cacheable* roll-ups the engine needs a deterministic rule — dut’s
+   shared/unique split is the most informative, but it must survive incremental updates,
+   which none of these tools attempt.
+3. Watcher ownership in metabrowser: feed `watchfiles` events into the engine, or let
+   the engine’s own watcher replace that path?
+   fsearch’s fanotify-preferred design is better than inotify-only, but metabrowser has
+   already tuned NFS/FUSE polling fallbacks worth preserving.
+4. Where do bounded content probes cap out for type recognition (first 8 KiB?), and is
+   sniffing on-demand-only at first so the walk stays stat-pure?
+5. Is io_uring worth phase-1 complexity, or a phase-3 accelerator behind a feature flag?
+   bfs’s per-opcode probing plus synchronous fallback is the proven pattern, but it is a
+   large amount of machinery for a Linux-only win.
+6. Does the DFS/BFS traversal-order trade-off warrant a runtime switch, and can
+   warm/cold state be detected rather than configured?
+7. What is the revalidation cost curve in practice?
+   The whole design rests on “a parallel stat sweep of 500k unchanged files is fast
+   enough to feel instant,” and that number should be measured before the format is
+   frozen.
 
 ## Next Steps
 
-- Review this document; decide go/no-go on Option D and the standalone-repo question.
-- If go: draft a plan spec (`new-plan-spec`) for phase 1 (core + CLI + benchmarks), with
-  beads for the walker, reducers, snapshot store, revalidator, type-rule compiler, and a
-  benchmark harness (corpus generator mirroring flowmark’s
-  `benchmarks/generate_corpus.sh`).
-- Prototype the risk spikes first: snapshot load time at 500k entries for candidate
-  formats, and “walk everything, tag ignored” on top of the `ignore` crate.
+- Review this document; decide go/no-go on Option E, the standalone-repo question, and
+  whether to bootstrap from `dua-core`.
+- If go: draft a plan spec for phase 1 (core + CLI + benchmarks), with beads for the
+  walker, reducers, snapshot store, revalidator, type-rule compiler, and benchmark
+  harness.
+- Prototype the risk spikes first, in this order: (a) revalidation sweep cost at 500k
+  entries — the load-bearing assumption; (b) snapshot load time for candidate formats;
+  (c) the generalized atomic-refcount roll-up over a metric vector; (d)
+  walk-everything-tag- ignored on top of `ignore`’s matcher API.
 
 ## References
 
-- [dust](https://github.com/bootandy/dust) (source reviewed at v1.2.4, `attic/dust`)
-- [flowmark-rs](https://github.com/jlevy/flowmark-rs) (source reviewed at v0.3.2,
-  `attic/flowmark-rs`; see its `docs/cache.md` and incremental-cache spec)
-- [diskus](https://github.com/sharkdp/diskus), [dua](https://github.com/Byron/dua-cli),
-  [pdu](https://github.com/KSXGitHub/parallel-disk-usage),
-  [gdu](https://github.com/dundee/gdu), [ncdu](https://dev.yorhel.nl/ncdu)
-- [Everything: how it indexes NTFS](https://www.voidtools.com/faq/)
-- [Watchman](https://facebook.github.io/watchman/)
-- [git untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) and
-  [fsmonitor](https://git-scm.com/docs/git-fsmonitor--daemon)
-- [ripgrep `ignore` crate](https://docs.rs/ignore), [jwalk](https://docs.rs/jwalk)
-- [shared-mime-info spec](https://specifications.freedesktop.org/shared-mime-info-spec/latest/),
-  [GitHub Linguist](https://github.com/github-linguist/linguist),
-  [hyperpolyglot](https://github.com/monkslc/hyperpolyglot),
-  [infer](https://docs.rs/infer), [tree_magic_mini](https://docs.rs/tree_magic_mini)
-- [PyO3](https://pyo3.rs/), [maturin](https://www.maturin.rs/)
-- Metabrowser internals: `src/metabrowser/walker.py`, `inventory.py`, `tree.py`,
-  `watch_backends.py`, `file_kinds.py`, `plugin_loader/classify.py`, and
-  `docs/project/specs/active/plan-2026-07-17-scalable-file-search.md`
+Source reviewed under `attic/` (commit as checked out):
+
+- [dust](https://github.com/bootandy/dust) v1.2.4 ·
+  [flowmark-rs](https://github.com/jlevy/flowmark-rs) v0.3.2 (see its `docs/cache.md`)
+- [ncdu 1.15.1](https://github.com/rofl0r/ncdu) (C) ·
+  [ncdu 2.x](https://code.blicky.net/yorhel/ncdu) (Zig) ·
+  [Ncdu 2: Less hungry and more Ziggy](https://dev.yorhel.nl/doc/ncdu2)
+- [dut](https://codeberg.org/201984/dut) · [duc](https://github.com/zevv/duc) ·
+  [fsearch](https://github.com/cboxdoerfer/fsearch)
+- [bfs](https://github.com/tavianator/bfs) · [fd](https://github.com/sharkdp/fd)
+- [gdu](https://github.com/dundee/gdu) · [dua-cli](https://github.com/Byron/dua-cli) ·
+  [erdtree](https://github.com/solidiquis/erdtree)
+- [scc](https://github.com/boyter/scc) · [tokei](https://github.com/XAMPPRocky/tokei)
+
+Not checked out, consulted via documentation:
+
+- [diskus](https://github.com/sharkdp/diskus) ·
+  [pdu](https://github.com/KSXGitHub/parallel-disk-usage) ·
+  [ncdu upstream](https://dev.yorhel.nl/ncdu)
+- [Everything](https://www.voidtools.com/faq/) ·
+  [Watchman](https://facebook.github.io/watchman/) ·
+  [plocate](https://plocate.sesse.net/)
+- [git untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) ·
+  [git fsmonitor](https://git-scm.com/docs/git-fsmonitor--daemon) ·
+  [borg performance notes](https://borgbackup.readthedocs.io/) ·
+  [restic backup docs](https://restic.readthedocs.io/en/stable/040_backup.html)
+- [ripgrep `ignore` crate](https://docs.rs/ignore) · [jwalk](https://docs.rs/jwalk) ·
+  [rkyv](https://github.com/rkyv/rkyv) ·
+  [Rust serialization benchmarks](https://github.com/djkoloski/rust_serialization_benchmark)
+- [shared-mime-info](https://specifications.freedesktop.org/shared-mime-info-spec/latest/)
+  · [GitHub Linguist](https://github.com/github-linguist/linguist) ·
+  [hyperpolyglot](https://github.com/monkslc/hyperpolyglot) ·
+  [infer](https://docs.rs/infer) · [tree_magic_mini](https://docs.rs/tree_magic_mini)
+- [PyO3](https://pyo3.rs/) · [maturin](https://www.maturin.rs/) ·
+  [io_uring getdents discussion](https://lwn.net/Articles/843865/)
+
+Metabrowser internals: `src/metabrowser/walker.py`, `inventory.py`, `tree.py`,
+`watch_backends.py`, `file_kinds.py`, `plugin_loader/classify.py`, and
+`docs/project/specs/active/plan-2026-07-17-scalable-file-search.md`
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
