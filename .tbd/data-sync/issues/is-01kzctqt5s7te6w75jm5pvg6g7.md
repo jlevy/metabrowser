@@ -3,9 +3,9 @@ type: is
 id: is-01kzctqt5s7te6w75jm5pvg6g7
 title: Git graph nav panel and Git API
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies: []
@@ -23,6 +23,8 @@ child_order_hints:
   - is-01kzctsvynchf75k7sgg8jjw69
   - is-01kzctt14e1nb4k36bc6jy2qe1
 created_at: 2026-08-07T00:42:29.944Z
-updated_at: 2026-08-07T00:43:42.605Z
+updated_at: 2026-08-07T01:29:07.414Z
+closed_at: 2026-08-07T01:29:07.413Z
+close_reason: null
 ---
 Add a Git tab to the nav panel rendering a VS Code-style commit graph, backed by a new read-only /api/git/ endpoint collection. See spec for scope and non-goals.
