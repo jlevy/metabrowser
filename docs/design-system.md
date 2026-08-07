@@ -96,29 +96,26 @@ Chrome (interface) sizes:
   views, logs, raw JSON.
 - `--micro-font-size` (10px): deliberately minimized marks — the brand line.
 
-Document (rendered prose) sizes, where mono and small derive from the body size so a
-document rescales as one unit:
+Document (rendered prose) sizes are a single token:
 
 - `--document-body-font-size` (15px): prose, one size step above the 14px app body.
-- `--document-small-font-size` (0.85×): secondary document text — TOC entries, captions,
-  footnotes.
 
-Code inside a rendered document has no token here on purpose.
-KPress ships a three-tier mono ramp — `mono`, `mono-small`, `mono-tiny` — and steps it
-by context, because the smaller tiers apply where the surrounding text is already
-reduced (table cells, captions, footnotes).
-A single host value flattens those steps: mapping all three onto one 0.9× token once
-rendered inline code in a table at 13.5px inside a 12.75px cell, larger than the prose
-around it. Anchoring the base is enough; the ratios follow.
-Chrome-context monospace is a separate concern and uses `--mono-block-font-size`.
+Everything else inside a rendered document — secondary text, table cells, captions,
+footnotes, and code at every tier — belongs to KPress’s ramp, which it derives from this
+one value through `--kpress-host-font-size-base` on `:root`. Chrome-context monospace is
+a separate concern and uses `--mono-block-font-size`.
 
-Embedded KPress documents set `--kpress-host-font-size-base` to
-`--document-body-font-size` on `:root`. KPress derives its full ramp, headings, bullets,
-labels, and offsets from that base.
-The scoped bridge overrides only intentional design differences: secondary document
-tiers use `--document-small-font-size`, and the CONTENTS label uses `--label-font-size`
-so it matches app labels.
-The mono tiers are deliberately left to KPress.
+Do not add a host token that restates a ratio KPress already owns.
+KPress ships *graded families* — secondary text at `small`/`smaller`/`tiny` and code at
+`mono`/`mono-small`/`mono-tiny` — and steps each by context, because the smaller tiers
+land where the surrounding text is already reduced.
+A host token collapses the whole family onto one size, and the failures are not subtle:
+a flat 0.9× mono token once rendered inline code in a table at 13.5px inside a 12.75px
+cell, larger than the prose around it, while a flat 0.85× secondary token shrank table
+text to 12.75px against 15px prose — well under the 14.25px KPress intends.
+
+The bridge keeps one size override, and only because it is a real design difference: the
+CONTENTS label uses `--label-font-size` so it matches app labels.
 When adding a size, extend the ramp and its documentation; do not create a one-off.
 
 ### KPress Base-Size Boundary

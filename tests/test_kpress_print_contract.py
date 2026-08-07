@@ -146,14 +146,20 @@ def test_embedded_markdown_body_uses_host_reading_size() -> None:
     assert "--kpress-host-font-size-base: var(--document-body-font-size);" in root_block
     rule_start = css.index(".metabrowser-kpress-host .kpress {")
     rule_block = css[rule_start : rule_start + 1_000]
-    assert "--kpress-font-size-normal" not in rule_block
-    # Mono is KPress's to own. Its ramp has three tiers (mono / mono-small /
-    # mono-tiny) that step down where the surrounding text is already reduced —
-    # table cells, captions, footnotes. Bridging them to one host value flattens
-    # those steps and once rendered inline code in a table LARGER than its cell.
-    # Anchoring --kpress-host-font-size-base is enough; the ratios follow.
-    assert "--kpress-font-size-mono" not in rule_block
-    assert "--kpress-font-size-small: var(--document-small-font-size);" in rule_block
+    # The size ramp is KPress's to own; anchoring the base above is the whole
+    # bridge. KPress grades secondary text (small / smaller / tiny) and code
+    # (mono / mono-small / mono-tiny) by context, because the smaller tiers land
+    # where the surrounding text is already reduced — table cells, captions,
+    # footnotes. A host token collapses the family onto one size: a flat mono
+    # token once rendered inline code in a table LARGER than its own cell, and a
+    # flat secondary token shrank table text well under what KPress intends.
+    for family in (
+        "--kpress-font-size-normal",
+        "--kpress-font-size-mono",
+        "--kpress-font-size-small",
+    ):
+        assert family not in rule_block
+    # The one surviving size override is a real design difference, not a ratio.
     assert "--kpress-caps-label-size: var(--label-font-size);" in rule_block
     assert "--kpress-bullet-size" not in rule_block
     assert ".metabrowser-kpress-host .kpress-prose h1" not in css
