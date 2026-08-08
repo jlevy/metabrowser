@@ -634,7 +634,7 @@ Any engine that keys purely on mtime is trusting a value that userspace can forg
 The third pass read the source of the exact watch stack metabrowser runs today:
 `watchfiles` (Python, MIT) is a PyO3 wrapper over the Rust `notify` crate (CC0), so
 these two codebases define both what the current Python watcher gets and what
-`fdu-watch` could do better by using notify directly.
+`fdu::watch` could do better by using notify directly.
 
 **Backends and recursion.** notify ships six watchers — inotify (Linux), FSEvents
 (macOS), kqueue (BSDs), ReadDirectoryChangesW (Windows), a stat-based PollWatcher
@@ -684,7 +684,7 @@ cannot carry.
 
 **Batching, for contrast, is done well** and worth keeping: watchfiles polls a shared
 dedup set every 50 ms and yields once the set is stable for a step (or a 1.6 s debounce
-ceiling forces a flush) — a sound coalescing pattern fdu-watch should reuse, just
+ceiling forces a flush) — a sound coalescing pattern `fdu::watch` should reuse, just
 without first destroying the event information.
 
 The synthesis for a delta-producing watch layer, per platform:
@@ -701,7 +701,7 @@ The synthesis for a delta-producing watch layer, per platform:
 Every row lands in one of the three delta forms (`Upsert` with fresh stat, `Remove`,
 `InvalidateSubtree`), which is the strongest evidence the contract is right: the
 platforms’ failure modes are exactly the escalations the API models.
-It also settles a question the architecture had left open — **fdu-watch should wrap
+It also settles a question the architecture had left open — **`fdu::watch` should wrap
 notify directly**, not watchfiles, and not raw platform APIs: notify’s backend coverage
 and rescan signaling are proven, its losses all occur in the watchfiles layer above it,
 and its debouncer-full crate supplies the rename-stitching design (file-id cache) that
@@ -989,34 +989,53 @@ so the watch layer rides on a property the engine wants anyway.
 ```text
 producers                      contract                consumers
 ─────────                      ────────                ─────────
-fdu-scan  (walk, revalidate) ─┐               ┌─ index (in-memory rollups)
-fdu-watch (fs events)  ───────┼─→  Delta @clock ──┼─ journal / snapshot (disk cache)
+scan (walk, revalidate) ──────┐               ┌─ index (in-memory rollups)
+watch (fs events)  ───────────┼─→  Delta @clock ──┼─ journal / snapshot (disk cache)
 journal replay (on open)  ────────┘               ├─ since(clock) feed (Python, SSE)
                                                   └─ exports (JSON, CLI output)
 ```
 
-### Crate Split
+### Packaging: One Crate Plus Bindings
 
-One Cargo workspace (mirroring flowmark’s feature-gated layout).
-The watch layer is a separate crate precisely because the CLI’s one-shot calls never
-need it, while the metabrowser server always wants it:
+An earlier draft of this design proposed seven Rust crates plus a facade.
+That was over-engineered, and the survey itself says so: **every Rust tool reviewed
+ships as one or two crates.** flowmark-rs is a single crate with feature-gated binaries
+(`[[bin]] required-features = ["cli"]`); tokei, dust, and fd are single crates; dua-cli
+is two (a walk library plus the CLI). The wider ecosystem learned this lesson the hard
+way — tokio 0.1 shipped as many small crates and famously re-merged them into one
+feature-flagged crate in 0.2 because cross-crate versioning was a usability disaster.
+Rust-specific reasons to split a crate are concrete and short: proc macros (must be
+separate), a cdylib binding crate (should be separate), compile-time parallelism (only
+matters at rust-analyzer scale), and an *actual* external consumer of a subcomponent
+(ripgrep extracted `ignore`/`globset` because fd and tokei wanted them — after the
+consumers existed, not before).
+Only one of those applies here.
+
+So: **two crates.**
 
 ```
-fdu-types     records, reducer traits, Delta/Clock, type-rule schema (no I/O)
-fdu-index     the in-memory tree; apply(Delta) -> updated rollups + emitted feed
-fdu-scan      parallel walker + revalidator (dut/bfs techniques); emits Deltas
-fdu-watch     optional: notify-based watcher; raw events -> verified Deltas
-fdu-snapshot  seekable snapshot read/write + delta journal (ncdu 2-shaped)
-fdu           facade: open/refresh/watch/query wired together
-fdu-cli       bin: human tree output à la dust/dut + stable JSON/JSONL
-fdu-py        PyO3 cdylib: in-process API for metabrowser; abi3 wheels via maturin
+fdu     the library and CLI. Modules: types, index, scan, snapshot, watch.
+        Features: cli (default; gates clap and the [[bin]], flowmark-style),
+                  watch (gates the notify dependency).
+fdu-py  PyO3 cdylib for metabrowser; abi3 wheels via maturin. Depends on
+        fdu with default-features = false, features = ["watch"].
 ```
 
-`fdu-cli` depends on scan + snapshot + index but not watch.
-`fdu-py` includes watch behind a feature so metabrowser gets the full live pipeline
-in-process. The sub-library boundaries deliberately track what metabrowser implements in
-Python today — `walker.py` → fdu-scan, `inventory.py` → fdu-index, `watch_backends.py` →
-fdu-watch — so each can be adopted (or skipped) independently.
+`fdu-py` is the one genuinely compelled split: it must be `crate-type = ["cdylib"]`, it
+carries the pyo3 dependency and maturin build backend, and none of that belongs in the
+core library’s dependency tree — the standard shape for Rust-with-Python-bindings
+projects (watchfiles, polars, tantivy-py all do this).
+
+Library consumers take `default-features = false` and skip clap entirely;
+`cargo install fdu` gets the CLI via default features; the metabrowser server gets the
+full live pipeline through `fdu-py`. The conceptual layers still exist and still track
+what metabrowser implements in Python today — `walker.py` → `fdu::scan`, `inventory.py`
+→ `fdu::index`, `watch_backends.py` → `fdu::watch` — but as **module boundaries policed
+by the delta contract, not crate boundaries**. Modules are free; crates cost a version
+number, a publish, and a semver promise each.
+If an external consumer ever wants just the walker or just the snapshot format,
+extracting a module whose only interface is already the delta contract is mechanical —
+that is the ripgrep path: extract when the consumer exists.
 
 ### The Delta Contract
 
@@ -1056,7 +1075,7 @@ workaround, done by hand for one metric).
 Watch-driven churn is small and localized, so this stays cheap; the pathological case
 (removing the max in a million-entry directory) is bounded by one directory re-merge.
 
-### The Watch Layer (fdu-watch)
+### The Watch Layer (`fdu::watch`)
 
 The watch layer’s job is narrow: turn an unreliable platform event stream into the
 trustworthy delta stream defined above.
@@ -1088,8 +1107,8 @@ From the notify/watchfiles source review (see findings), its job means:
   stays warm continuously instead of only at shutdown snapshots.
 
 **Compatibility with metabrowser’s proven behavior.** Metabrowser’s watcher works well
-in daily use on macOS, and it is worth being precise about *why*, because fdu-watch must
-preserve those semantics rather than reinvent them.
+in daily use on macOS, and it is worth being precise about *why*, because `fdu::watch`
+must preserve those semantics rather than reinvent them.
 The Python layer already treats every event as a hint: file creates and modifies are
 answered with a fresh `FsEntry.for_stat()` (a re-stat, never trusting the event),
 created directories trigger `inventory.rewalk_subtree()` (a full re-list, which
@@ -1097,14 +1116,14 @@ incidentally papers over the watch-setup race), deletes cascade through the inve
 and rename ambiguity never surfaces because watchfiles resolves FSEvents’ unpaired
 renames by statting (exists → added, gone → deleted) before Python sees them.
 In other words, metabrowser converged empirically on exactly the verify-then-emit
-strategy this design formalizes — fdu-watch keeps the same event-to-action mapping,
+strategy this design formalizes — `fdu::watch` keeps the same event-to-action mapping,
 moves it from Python to Rust, and adds the two things the current stack cannot provide:
 overflow handling (the dropped `Flag::Rescan`) and deltas that carry verified metadata
 instead of bare paths.
 Metabrowser is young, so its watcher should be treated as evidence, not specification —
-but where fdu-watch’s behavior differs from what demonstrably works on macOS today, the
-difference should be deliberate and tested, and the migration path (below) lets the two
-run side by side until parity is shown.
+but where `fdu::watch`’s behavior differs from what demonstrably works on macOS today,
+the difference should be deliberate and tested, and the migration path (below) lets the
+two run side by side until parity is shown.
 
 Because both the index and the watcher live in Rust, an event that today crosses into
 Python, gets statted by Python, and mutates Python dicts never surfaces at all unless a
@@ -1178,7 +1197,7 @@ fingerprints rather than replacing them.
    content metrics) with zero reads.
    Only changed entries re-derive.
    Results stream as deltas so callers serve the stale snapshot instantly and reconcile.
-3. **Watch mode.** In a long-lived process, `fdu-watch` keeps the index and cache
+3. **Watch mode.** In a long-lived process, `fdu::watch` keeps the index and cache
    perpetually warm through the delta pipeline described above, and a Watchman-style
    `since(clock)` query exposes the same deltas to consumers.
 
@@ -1328,7 +1347,7 @@ reimplementations.
    optionally bootstrapping traversal from `dua-core` (Option D) to reach correct
    behavior sooner. Phase 1 is types + index + scan + snapshot + CLI: parallel
    gitignore-*tagging* walk, stat-tier reducers, snapshot + revalidation, dust/dut-style
-   tree output plus stable JSON. `fdu-watch` is a later phase — but the `Delta`/`apply`
+   tree output plus stable JSON. `fdu::watch` is a later phase — but the `Delta`/`apply`
    contract it needs is phase-1 work, since scan and revalidation already speak it.
    Keep watching decoupled from roll-up logic throughout: the index never learns about
    filesystem events, and the watch crate stays deletable.
@@ -1371,8 +1390,7 @@ known-present and known-absent names so the signals could be trusted:
 | Homebrew | formula API | free |
 
 So the crate, the PyPI distribution, the binary, and a future Homebrew formula can all
-be `fdu`, with sub-crates as `fdu-types`, `fdu-index`, `fdu-scan`, `fdu-watch`,
-`fdu-snapshot`, `fdu-cli`, and `fdu-py`.
+be `fdu`, with `fdu-py` as the one companion crate (see *Packaging*).
 
 Two prior uses of the name exist, neither blocking and both worth knowing: an npm
 package `fdu` ("inspect disk usage with flame graph," last published 2022) and a dormant
@@ -1418,7 +1436,7 @@ Still open:
    For *stable, cacheable* roll-ups the engine needs a deterministic rule — dut’s
    shared/unique split is the most informative, but it must survive incremental updates,
    which none of these tools attempt.
-3. Watcher ownership in metabrowser: the delta contract supports both — `fdu-watch`
+3. Watcher ownership in metabrowser: the delta contract supports both — `fdu::watch`
    replacing `watch_backends.py` outright (the clean end state: watchfiles wraps the
    same notify crate anyway, and events then never cross into Python), or metabrowser
    keeping its watcher and pushing paths through `ingest_events()` as unverified hints
