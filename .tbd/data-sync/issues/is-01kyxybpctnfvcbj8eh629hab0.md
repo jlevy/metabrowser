@@ -5,7 +5,7 @@ title: "P2: add complete server filename search provider"
 kind: task
 status: open
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels: []
 dependencies:
@@ -13,9 +13,11 @@ dependencies:
     target: is-01kyxybvqnw3fmmzhs3hnqhtxr
 parent_id: is-01kxnx9waq2h69ey9kb0mcg5hq
 created_at: 2026-08-01T05:57:10.681Z
-updated_at: 2026-08-01T08:22:55.151Z
+updated_at: 2026-08-08T01:11:34.374Z
 ---
-Add a bounded flat /api/search/files provider over a consistent InventoryIndex snapshot, a public inventory revision, Python and JavaScript fuzzy-score parity fixtures, result and inventory truncation metadata, cancellation, automatic fallback only after zero incomplete local results, and an explicit search-all action. Do not transfer the full inventory or reuse the hierarchical filter projection.
+DEFERRED — premise superseded by the mb-ci04 decision (2026-08-06): Quick File is client-complete over non-gitignored filenames via a minimal bulk feed (mb-hj78); no per-query server filename search on the default path, and 'do not transfer the full inventory' no longer governs (it was sized against unfiltered inventories that are ~98% gitignored junk).
+
+Retained as the fallback for roots whose NON-IGNORED file count makes client-complete unreasonable (multi-hundred-k monorepos, or past the 500k inventory cap). If built, the original scope stands: bounded flat /api/search/files over a consistent InventoryIndex snapshot, Python/JavaScript fuzzy-score parity fixtures, truncation metadata, cancellation. Blocked on evidence that such roots are a real use case.
 
 ## Notes
 
