@@ -37,9 +37,9 @@ provide:
 - **An optional watch layer**: sub-libraries that listen for filesystem changes and turn
   them into deltas that update the live in-memory roll-up structure and update or
   invalidate the on-disk cache — replacing work metabrowser currently does in Python.
-- **Three consumption surfaces from one core**: a Rust library, a CLI (for testing,
-  scripting, and agent use), and a Python embedding that metabrowser can call
-  in-process, packaged so `uv add` just works.
+- **Three consumption surfaces from one core**: a Rust library, a first-class CLI for
+  humans and agents, and a Python embedding that metabrowser can call in-process,
+  packaged so `uv add` just works.
 
 The organizing idea that emerged from the research: fdu is really **three clean
 artifacts and one contract**. An in-memory hierarchical index; a serialized snapshot of
@@ -61,6 +61,45 @@ target, and the walk techniques that matter most are syscall-level ones dust doe
 use. The third examined the watch layer: what filesystem-event backends can actually
 guarantee (by reading notify and watchfiles, the exact stack metabrowser uses today),
 and what that implies for a delta-driven design.
+
+## Goals
+
+These are the guiding principles for fdu.
+Every design decision below should be traceable to one of them, and the *Goal Coverage
+and Deviations* section at the end of the architecture audits the design against them.
+
+1. **Fast and flexible.** The fastest file walker available that also returns full,
+   detailed stats and reports — usage and every other kind of summed file information,
+   file-type tallies, gitignore awareness — implemented in efficient native Rust with a
+   caching layer, so trees of hundreds of thousands of files are easy.
+   Fully multi-core and concurrency-friendly on **both** paths: fresh (cold) runs
+   parallelize the walk, and warm (cached) runs parallelize revalidation — a cache hit
+   must never mean a serial code path.
+2. **Usable CLI.** A clean, flexible CLI for humans and for agents: colored, readable
+   output for humans; fully self-documented (`--help` as the source of truth) and
+   efficient, stable, machine-readable output for agents.
+3. **Flexible library.** Usable as a library by Rust applications of all kinds that need
+   file roll-ups, and from the Python ecosystem as a uv-installable package — a crate on
+   crates.io and a distribution on PyPI.
+4. **Delta-friendly in-memory structure.** An efficient in-memory representation whose
+   tallies update incrementally, so applications can consume live roll-ups *while* trees
+   are being walked or watched, not only after a run completes.
+5. **OS-native watch support.** Optional inotify/FSEvents/kqueue/Windows watching that
+   keeps the in-memory structure and the on-disk cache continuously fresh.
+
+Two further goals surfaced by the research and are proposed as peers of the five above
+(flagged here for explicit sign-off, since they shape the architecture):
+
+6. **Extensible metrics and pluggable file typing.** New roll-up dimensions (paragraph,
+   word, and sentence counts; code metrics) and new file-type recognition rules must be
+   registrations against stable interfaces — the reducer registry and the type-rule
+   dialect — never engine changes.
+7. **Trustworthy results.** Caching and watching may never silently lie.
+   Fingerprints must detect real change (size + mtime + ctime + inode); producers that
+   lose precision must escalate (`InvalidateSubtree`) rather than guess; a corrupt cache
+   is treated as empty, never as data.
+   Fast-but-wrong is a non-goal, and stale-while-revalidating must always be labeled as
+   such to consumers.
 
 ## Questions to Answer
 
@@ -1241,13 +1280,72 @@ aggregates, recent/tree queries, gitignore evaluation), emitting the record stre
 `InventoryIndex` already consumes, while the SSE bus, projections, plugin API, and
 classification-dependent views stay untouched.
 
-### Agent Skill Angle
+### The CLI: Humans and Agents
 
-Because warm queries are milliseconds, agents can call the CLI freely: tally a tree by
-type, top 20 largest, what changed in the last hour, full JSON inventory of a subtree.
-A small skill (like `skills/metabrowser`) would document the CLI with `--help` as source
-of truth, giving agents instant tree insight without a server and giving the engine a
-second consumer that keeps the CLI honest.
+The CLI is a first-class product surface (Goal 2), not a debugging shim.
+It serves two audiences from one binary:
+
+- **Humans** get colored, terminal-width-aware tree output with percentage bars in the
+  dust/dut style, sensible defaults (current directory, top-N by size, depth-limited),
+  and `NO_COLOR`/pipe detection so redirection degrades cleanly.
+- **Agents** get `--help` as the complete source of truth, stable JSON/JSONL output
+  whose schema is versioned with the tool, meaningful exit codes, and no interactive
+  surprises (no pager, no prompts).
+  Because warm queries are milliseconds, agents can call it freely: tally a tree by
+  type, top 20 largest, what changed in the last hour, full JSON inventory of a subtree.
+  A small skill (like `skills/metabrowser`) would document usage, giving agents instant
+  tree insight without a server — and giving the engine a second consumer that keeps the
+  CLI honest.
+
+### Goal Coverage and Deviations
+
+Where each goal is carried by the design, and — reviewed honestly — where the current
+proposal deviates or defers:
+
+| Goal | Covered by | Status |
+| --- | --- | --- |
+| 1 Fast and flexible | Proven-techniques catalogue (walk + roll-up layers); dut/bfs syscall techniques; parallel revalidation sweep (cache tier 2); gitignore tag-don’t-prune; benchmark gates vs dut/gdu | Covered, with staging caveat below |
+| 2 Usable CLI | *The CLI: Humans and Agents*; `cli` default feature | Covered (this revision — see deviations) |
+| 3 Flexible library | Two-crate packaging; `fdu` on crates.io, `fdu-py` on PyPI via maturin/uv | Covered, one trade-off below |
+| 4 Delta-friendly memory | The delta contract; incremental reducer classes; dut’s refcount roll-up | Covered |
+| 5 OS-native watch | `fdu::watch` over notify (inotify/FSEvents/kqueue/Windows), `watch` feature | Covered |
+| 6 Extensible metrics/typing | Reducer registry; type-rule dialect compiled at build time | Covered; content tier deliberately deferred |
+| 7 Trustworthy results | ctime+inode fingerprints; `InvalidateSubtree` escalation; corrupt-cache-equals-empty; clocked deltas | Covered |
+
+Known deviations and tensions, each tracked as a bead so they are decisions rather than
+accidents:
+
+- **The CLI was under-framed until this revision.** Earlier drafts described it as “for
+  testing, scripting, and agent use,” which contradicted Goal 2; the Overview and the
+  CLI section now treat it as a product surface (resolved in this document).
+  The residue to watch for in implementation: human-output polish (colors, bars, width
+  handling) must be scheduled as phase-1 work, not deferred as cosmetics (mb-4ru1).
+- **Bootstrapping from `dua-core` conflicts with Goal 1 if it lingers.** dua-core’s stat
+  path is std-based; the getdents64/statx layer is what makes fdu fastest.
+  The bootstrap is acceptable scaffolding only with an explicit exit criterion: Goal 1
+  is not met — and should not be claimed — until the syscall layer replaces it and the
+  benchmark gate against dut and gdu passes (mb-4638).
+- **“Fastest with full stats” must be benchmarked like-for-like.** The fastest walkers
+  in the survey (bfs, dut) discard most metadata; fdu retains a full inventory.
+  Benchmarks must therefore report both raw-walk and with-stats numbers, or the headline
+  claim would be comparing different jobs (mb-utlz, which also carries the revalidation
+  cost-curve spike).
+- **Goal 3 accepts one ergonomic trade-off for Goal 2.** With `cli` as a default feature
+  (flowmark’s pattern), `cargo install fdu` just works, but Rust library consumers must
+  write `default-features = false` to avoid pulling clap.
+  One documented line; accepted (no bead — resolved by policy).
+- **Goal 1’s concurrency corner is now resolved: single-writer, `RwLock` first.**
+  Queries-while-deltas-apply uses the boring proven shape — one writer applying deltas,
+  readers behind `parking_lot::RwLock` — because both sides are short: writes are
+  O(depth) applies, and reads are lookups of pre-computed roll-up state, not queries
+  that walk. The delta contract being the only mutation path means escalating later to
+  epoch/arc-swap snapshots is contained rather than a rewrite; escalation happens only
+  if phase-1 measurement shows read contention under watch churn (mb-iyx8). (The
+  cold-path walk needs no locks at all — dut’s atomic refcount roll-up builds the tree
+  before it is ever shared.)
+
+One item is deliberately **not** resolved here: proposed Goals 6 and 7 await maintainer
+sign-off (mb-rkyt; see *Open Questions*).
 
 ## Comparison Matrix
 
@@ -1345,12 +1443,15 @@ reimplementations.
 
 1. **Build Option E as a standalone repo** named **fdu** (see *Naming* below),
    optionally bootstrapping traversal from `dua-core` (Option D) to reach correct
-   behavior sooner. Phase 1 is types + index + scan + snapshot + CLI: parallel
-   gitignore-*tagging* walk, stat-tier reducers, snapshot + revalidation, dust/dut-style
-   tree output plus stable JSON. `fdu::watch` is a later phase — but the `Delta`/`apply`
-   contract it needs is phase-1 work, since scan and revalidation already speak it.
+   behavior sooner — scaffolding only, with the exit criterion from *Goal Coverage and
+   Deviations*: Goal 1 is not claimed until the getdents64/statx layer replaces it and
+   the dut/gdu benchmark gate passes.
+   Phase 1 is types + index + scan + snapshot + CLI: parallel gitignore-*tagging* walk,
+   stat-tier reducers, snapshot + revalidation, dust/dut-style human output plus stable
+   JSON. `fdu::watch` is a later phase — but the `Delta`/`apply` contract it needs is
+   phase-1 work, since scan and revalidation already speak it.
    Keep watching decoupled from roll-up logic throughout: the index never learns about
-   filesystem events, and the watch crate stays deletable.
+   filesystem events, and the watch module stays deletable.
 2. **Benchmark against dut and gdu, not dust.** Targets: cold-scan within ~1.5x of dut
    on the same corpus; warm re-run (snapshot + revalidation) well under 1 s for 500k
    entries, against flowmark’s 23 ms bar at ~1k files.
@@ -1462,6 +1563,11 @@ Still open:
    theory; measure it on a pathological case (repeated deletes of the current max in a
    100k-entry directory) before committing to which built-in metrics are
    watch-maintained versus revalidation-only.
+10. **Maintainer sign-off on proposed Goals 6 and 7** (mb-rkyt): the research proposes
+    extensible-metrics/pluggable-typing and trustworthy-results as peers of the five
+    stated goals. Both already shape the architecture (reducer registry, type-rule
+    dialect, fingerprint choice, escalation semantics), so a veto would ripple; an
+    explicit yes makes them binding.
 
 ## Next Steps
 
