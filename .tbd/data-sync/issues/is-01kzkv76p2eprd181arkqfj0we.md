@@ -3,9 +3,9 @@ type: is
 id: is-01kzkv76p2eprd181arkqfj0we
 title: "Address review: PR #22 — catalog authority, coverage semantics, activation paths"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 8
+version: 9
 labels: []
 dependencies: []
 child_order_hints:
@@ -17,7 +17,9 @@ child_order_hints:
   - is-01kzkv87kexpva6h87zvnnrtwm
   - is-01kzkv880e2w7qad3tmdrs794w
 created_at: 2026-08-09T18:05:35.297Z
-updated_at: 2026-08-09T18:06:09.421Z
+updated_at: 2026-08-09T18:21:04.559Z
+closed_at: 2026-08-09T18:21:04.558Z
+close_reason: All seven findings (R7-R13) fixed in 5f711b8.
 ---
 Senior engineering review of PR #22 at head 9b6baea, verdict changes-requested. Findings R7-R13 in https://github.com/jlevy/metabrowser/pull/22#issuecomment-5232913703
 
