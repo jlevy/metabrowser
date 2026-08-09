@@ -2127,6 +2127,29 @@ html[data-prose-font="sans"] {
   --kpress-doc-link: var(--link);
 }
 
+/* Corner radius is a host decision, unlike the size ramp KPress owns.
+   The app is square everywhere — --radius-chrome and --radius-document are
+   both 0 — but KPress ships 3px / 6px / 0.5rem, so an embedded document put
+   rounded code blocks, tables, and callouts inside square panes: the outer
+   boxes sharp, the inner boxes soft. Flattening these is safe in a way
+   flattening the type ramp was not — a radius is one visual constant, not a
+   set of ratios that step by context.
+
+   Only the box radii are bridged. Pills and circles keep their shape: those
+   are recognizable forms, not boxes with softened corners.
+
+   KPress declares these on `.kpress` itself (style-tokens.css lists
+   `:root, .kpress, .kpress-page-main, .kpress-tooltip`), so the override has
+   to land on the same element and win on specificity — two classes beats one.
+   Tooltips ride along for the same reason the color bridge above names them:
+   KPress portals them to document.body, outside the host. */
+.metabrowser-kpress-host .kpress,
+:root .kpress-tooltip {
+  --kpress-radius-sm: var(--radius-document);
+  --kpress-radius-md: var(--radius-document);
+  --kpress-radius-lg: var(--radius-document);
+}
+
 .metabrowser-kpress-host .kpress {
   --kpress-caps-label-size: var(--label-font-size);
 }
@@ -2924,14 +2947,20 @@ pre.code-block code.hljs {
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
 }
+/* The query is a band of the dialog, not a control floating inside it.
+   Every other row here — title, results, status, hint — runs edge to edge on
+   the same 12px gutter and separates with a full-width rule, so the input
+   does too: no side margins, no box of its own, one bottom border continuing
+   the stack. Its own frame plus the results' border read as two nested
+   containers where there is only one. */
 .search-palette-input {
   width: auto;
-  margin: 4px 12px 8px;
-  padding: 8px 10px;
+  margin: 0;
+  padding: 6px 12px 10px;
   color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
   font-family: var(--font-sans);
   font-size: var(--body-font-size);
 }
@@ -2939,11 +2968,13 @@ pre.code-block code.hljs {
   outline: 2px solid var(--link);
   outline-offset: 1px;
 }
+/* The input above supplies this list's top rule, so the list carries only its
+   bottom one. Owning both put two hairlines back to back whenever the list was
+   empty — a double line under an empty query. */
 .search-palette-results {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 .search-palette-option {
