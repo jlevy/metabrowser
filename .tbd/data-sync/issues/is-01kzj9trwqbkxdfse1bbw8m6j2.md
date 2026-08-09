@@ -3,13 +3,15 @@ type: is
 id: is-01kzj9trwqbkxdfse1bbw8m6j2
 title: Exclude gitignored files from crawl and Quick File navigation
 kind: task
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-09T03:42:27.734Z
-updated_at: 2026-08-09T03:42:27.734Z
+updated_at: 2026-08-09T17:43:02.370Z
+closed_at: 2026-08-09T17:43:02.369Z
+close_reason: "Shipped in 16678d3. inventory.catalog_files() returns only non-gitignored files and _derive_catalog_change() converts a gitignored upsert into a removal, so the exclusion holds for the bulk fetch and for live deltas. Verified on the running server: /api/catalog returns 273 files with zero entries under node_modules, .venv, or attic. mb-nri5 and mb-2h3i were duplicates of the same request."
 ---
 Crawl and allow navigation of all files, but never include gitignored ones. Global setting eventually; hardcoded for now is acceptable.
 

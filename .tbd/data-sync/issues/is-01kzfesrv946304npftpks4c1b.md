@@ -3,13 +3,15 @@ type: is
 id: is-01kzfesrv946304npftpks4c1b
 title: Exclude gitignored files from the Quick File catalog (hardcoded global)
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-08T01:11:34.504Z
-updated_at: 2026-08-08T01:11:34.504Z
+updated_at: 2026-08-09T17:43:02.383Z
+closed_at: 2026-08-09T17:43:02.383Z
+close_reason: "Shipped in 16678d3. inventory.catalog_files() returns only non-gitignored files and _derive_catalog_change() converts a gitignored upsert into a removal, so the exclusion holds for the bulk fetch and for live deltas. Verified on the running server: /api/catalog returns 273 files with zero entries under node_modules, .venv, or attic. mb-nri5 and mb-2h3i were duplicates of the same request."
 ---
 Search results must not include gitignored files — node_modules and the like pollute every query. Global setting, hardcoded on for now.
 
