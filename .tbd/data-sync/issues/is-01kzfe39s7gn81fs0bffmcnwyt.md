@@ -5,11 +5,11 @@ title: "Quick File catalog only sees ~1% of files: SSE scope is root-depth-2"
 kind: bug
 status: closed
 priority: 0
-version: 4
+version: 5
 labels: []
 dependencies: []
 created_at: 2026-08-08T00:59:18.182Z
-updated_at: 2026-08-09T04:27:33.406Z
+updated_at: 2026-08-09T18:03:27.814Z
 closed_at: 2026-08-09T04:27:33.405Z
 close_reason: "Implemented in 16678d3 on feat/quick-file-palette: GET /api/catalog (minimal non-gitignored {p,e}, gzip via middleware, ETag/304, off-loop encode) + catalog.change companions derived at the inventory emit choke point + capability.update on walker completion + client catalog bulk/delta paths with real completeness and memoized snapshot + strict-gate catalog_feed.js (connect-then-fetch, buffer/replay, sentinel/resync refetch). Spec reconciled; mb-3arq stays deferred as the beyond-cap fallback."
 ---
@@ -36,3 +36,7 @@ DERIVED DESIGN (supersedes the earlier mechanism in this bead):
 Scale check at the 100k design center: ~6-8 MB raw minimal JSON, 1-2 MB gzipped, one-time; catalog.change batches are bounded by the existing 256-op fs.change batching. 500k stays the inventory cap and the honest-truncation path.
 
 Reconcile docs/project/specs/active/plan-2026-07-17-scalable-file-search.md as part of the change (its Phase-2 constraint "the browser must not download a complete filename catalog" is superseded by mb-ci04; mb-3arq stays deferred as the beyond-cap fallback).
+
+## Notes
+
+Follow-up: the feed was hardened in 9b6baea after Bugbot review (PR #22) — requestRefetch invalidates in-flight fetches on resync/sentinel, and bulk apply can no longer downgrade completeness (see mb-3tz2 for the full disposition map).
