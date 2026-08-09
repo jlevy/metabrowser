@@ -198,6 +198,84 @@ async function main() {
     );
   }
 
+  // ── Resync invalidates an in-flight fetch (Bugbot R4) ─────────
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+    feed.start();
+    await tick();
+
+    // Root swap arrives while the first bulk fetch is still in
+    // flight. The old response must be discarded — it describes the
+    // previous root — and a fresh fetch must still happen.
+    feed.onResync();
+    pending[0].resolve(
+      jsonResponse({ complete: true, files: [{ p: "stale-root.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+    check(
+      "stale pre-resync response is never applied",
+      !catalog.calls.some(
+        (call) => call.kind === "bulk" && call.files.some((f) => f.p === "stale-root.txt"),
+      ),
+    );
+    check("resync during a fetch still queues a follow-up fetch", pending.length === 2);
+
+    pending[1].resolve(jsonResponse({ complete: true, files: [{ p: "new-root.txt", e: ".txt" }] }));
+    await tick();
+    await tick();
+    check(
+      "follow-up fetch applies the new root's catalog",
+      catalog.calls.some(
+        (call) => call.kind === "bulk" && call.files.some((f) => f.p === "new-root.txt"),
+      ),
+    );
+  }
+
+  // ── Sentinel during a fetch is not swallowed (Bugbot R5) ──────
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+    feed.start();
+    await tick();
+    pending[0].resolve(jsonResponse({ complete: true, files: [] }));
+    await tick();
+    await tick();
+
+    feed.onSentinelSnapshot();
+    await tick();
+    check("first sentinel refetches", pending.length === 2);
+
+    // A second reconnect lands while the refetch is still in
+    // flight: its response may predate the dropped deltas, so it
+    // must be discarded and another fetch queued once it settles.
+    feed.onSentinelSnapshot();
+    pending[1].resolve(jsonResponse({ complete: true, files: [{ p: "pre-drop.txt", e: ".txt" }] }));
+    await tick();
+    await tick();
+    check(
+      "response overtaken by a second sentinel is discarded",
+      !catalog.calls.some(
+        (call) => call.kind === "bulk" && call.files.some((f) => f.p === "pre-drop.txt"),
+      ),
+    );
+    check("sentinel during a fetch queues a follow-up", pending.length === 3);
+    pending[2].resolve(
+      jsonResponse({ complete: true, files: [{ p: "post-drop.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+    check(
+      "queued follow-up applies",
+      catalog.calls.some(
+        (call) => call.kind === "bulk" && call.files.some((f) => f.p === "post-drop.txt"),
+      ),
+    );
+  }
+
   // ── Completion flag and disposal ──────────────────────────────
   {
     const catalog = makeCatalog();

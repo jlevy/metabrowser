@@ -166,6 +166,21 @@ check(
 incompleteCatalog.clear();
 check("clear resets completeness", incompleteCatalog.snapshot().complete === false);
 
+// A bulk response built mid-walk can resolve after the one-shot
+// walk-completion event already marked the catalog complete; the
+// stale flag must not downgrade it (Bugbot R6).
+const racedCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+racedCatalog.markComplete();
+racedCatalog.applyBulkSnapshot([{ p: "late.txt", e: ".txt" }], false);
+check(
+  "stale incomplete bulk cannot downgrade completeness",
+  racedCatalog.snapshot().complete === true,
+);
+check(
+  "the downgrade-refused bulk still merges its files",
+  racedCatalog.snapshot().files.some((file) => file.path === "late.txt"),
+);
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

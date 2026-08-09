@@ -214,8 +214,15 @@
         }
         changed = put(file.p, file.e || null, "catalog-feed") || changed;
       }
-      if (bulkComplete !== catalogComplete) {
-        catalogComplete = bulkComplete;
+      // Completeness only ever rises here; `clear()` is the reset.
+      // A bulk response built mid-walk (`complete: false`) can
+      // resolve after the walk-completion event already marked the
+      // catalog complete, and that event fires once — accepting the
+      // stale flag would downgrade permanently. The cost is a
+      // transiently optimistic flag when a restarted server is
+      // still walking, where the data converges through live ops.
+      if (bulkComplete && !catalogComplete) {
+        catalogComplete = true;
         changed = true;
       }
       if (changed) {

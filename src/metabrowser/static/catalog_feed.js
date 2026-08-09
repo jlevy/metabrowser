@@ -46,6 +46,7 @@
     let retryHandle = null;
     let disposed = false;
     let started = false;
+    let refetchWanted = false;
 
     function clearRetry() {
       if (retryHandle !== null) {
@@ -104,6 +105,30 @@
         }, delayMs);
       } finally {
         fetching = false;
+        // A refetch requested while this fetch was in flight ran
+        // into the `fetching` guard; honor it now so no request is
+        // ever silently swallowed.
+        if (refetchWanted && !disposed) {
+          refetchWanted = false;
+          void runFetch();
+        }
+      }
+    }
+
+    /**
+     * Invalidate any in-flight fetch and ensure a fresh one runs.
+     * Bumping the serial makes an in-flight response stale at every
+     * checkpoint, so a payload built before the trigger (a stream
+     * reconnect or a root swap) can never apply afterward; the
+     * follow-up fetch is queued from the in-flight call's cleanup
+     * rather than dropped by its `fetching` guard.
+     */
+    function requestRefetch() {
+      fetchSerial += 1;
+      if (fetching) {
+        refetchWanted = true;
+      } else {
+        void runFetch();
       }
     }
 
@@ -150,7 +175,7 @@
       if (disposed || !fetchedOnce) {
         return;
       }
-      void runFetch();
+      requestRefetch();
     }
 
     /** Root swap: the catalog was cleared by the caller; rebuild it. */
@@ -160,7 +185,7 @@
       }
       pendingChanges = [];
       fetchedOnce = false;
-      void runFetch();
+      requestRefetch();
     }
 
     /**
