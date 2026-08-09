@@ -166,11 +166,45 @@ def test_embedded_markdown_body_uses_host_reading_size() -> None:
     assert "TEMPORARY SHAPE" not in css
 
 
-def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:
+def test_legacy_md_body_chrome_never_reaches_into_an_embedded_document() -> None:
+    """`.md-body` is chrome CSS; an embedded KPress document is not chrome.
+
+    The markdown view's container carries BOTH classes (``md-body`` is kept as a
+    convention for third-party plugins), so an unscoped ``.md-body`` rule also
+    matches inside the document. Ties go to KPress — its stylesheet loads after
+    ``styles.css`` — so a leak only bites where KPress has no competing
+    declaration, which is why the symptoms were scattered and easy to miss:
+    paragraphs capped 16px under the reading measure KPress had just computed,
+    list rhythm overridden, and a ``.kpress-toc li`` counter-rule existing only
+    to undo ``.md-body li``.
+
+    Scope every one of them. A divergence the embed genuinely wants is stated
+    directly against ``.metabrowser-kpress-host`` instead (see the blockquote
+    rule), so it is deliberate rather than inherited by class collision.
+    """
+
     css = _read_styles_css()
-    rule_start = css.index(".metabrowser-kpress-host .kpress-toc li {")
-    rule_block = css[rule_start : rule_start + 140]
-    assert "margin-block: 0;" in rule_block
+    unscoped = [
+        line
+        for line in css.splitlines()
+        if line.startswith(".md-body") and ":not(.metabrowser-kpress-host)" not in line
+    ]
+
+    assert unscoped == [], (
+        "these .md-body rules also match inside embedded KPress documents; "
+        f"scope them with :not(.metabrowser-kpress-host): {unscoped}"
+    )
+
+
+def test_embedded_kpress_blockquote_states_its_divergence_directly() -> None:
+    """KPress indents a blockquote but gives it no rule and no color."""
+
+    css = _read_styles_css()
+    rule_start = css.index(".metabrowser-kpress-host .kpress blockquote {")
+    rule_block = css[rule_start : rule_start + 200]
+
+    assert "border-left: 3px solid var(--border);" in rule_block
+    assert "color: var(--muted);" in rule_block
 
 
 def test_embedded_kpress_wide_toc_uses_borderless_rail() -> None:

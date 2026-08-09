@@ -2181,10 +2181,20 @@ html[data-prose-font="sans"] {
   margin-block-start: 0;
 }
 
-/* The Markdown view container retains .md-body for plugin compatibility.
-   Keep its general list-item margins out of KPress navigation chrome. */
-.metabrowser-kpress-host .kpress-toc li {
-  margin-block: 0;
+/* Blockquotes are the one place the embed deliberately adds to KPress rather
+   than deferring to it. KPress styles a blockquote with indentation alone
+   (`margin` + `padding-inline-start`, no rule and no color), which reads as an
+   ordinary indented paragraph in a dense file browser. This restores the
+   accent bar and muted text the rest of the app uses for quoted material.
+
+   It is stated here, scoped to the embed, rather than inherited from the
+   `.md-body` chrome rules below — those are scoped away from the KPress host
+   precisely so nothing reaches the document by accident. A divergence worth
+   keeping is worth naming. */
+.metabrowser-kpress-host .kpress blockquote {
+  border-left: 3px solid var(--border);
+  padding-inline-start: 1rem;
+  color: var(--muted);
 }
 
 /* The docked TOC is a quiet navigation rail beside the document, not another
@@ -2647,52 +2657,52 @@ pre.code-block code.hljs {
 
 /* ── Markdown rendering ──────────────────────────────────────── */
 
-.md-body {
+.md-body:not(.metabrowser-kpress-host) {
   line-height: 1.55;
   padding: var(--content-padding-y) var(--content-padding-x);
 }
-.md-body h1 {
+.md-body:not(.metabrowser-kpress-host) h1 {
   font-size: 1.5em;
   margin: 1em 0 0.5em;
   border-bottom: 1px solid var(--border);
   padding-bottom: 0.3em;
 }
-.md-body h2 {
+.md-body:not(.metabrowser-kpress-host) h2 {
   font-size: 1.3em;
   margin: 0.8em 0 0.4em;
 }
-.md-body h3 {
+.md-body:not(.metabrowser-kpress-host) h3 {
   font-size: 1.15em;
   margin: 0.6em 0 0.3em;
 }
-.md-body h4 {
+.md-body:not(.metabrowser-kpress-host) h4 {
   font-size: 1.05em;
   margin: 0.5em 0 0.3em;
 }
-.md-body p {
+.md-body:not(.metabrowser-kpress-host) p {
   margin: 0.5em 0;
 }
-.md-body ul,
-.md-body ol {
+.md-body:not(.metabrowser-kpress-host) ul,
+.md-body:not(.metabrowser-kpress-host) ol {
   margin: 0.5em 0;
   padding-left: 1.5em;
 }
-.md-body li {
+.md-body:not(.metabrowser-kpress-host) li {
   margin: 0.5em 0;
 }
 
 /* Cap prose-flow elements for readability; tables, code blocks, images,
    and hr stay full-width. No effect on narrow viewports. */
-.md-body h1,
-.md-body h2,
-.md-body h3,
-.md-body h4,
-.md-body h5,
-.md-body h6,
-.md-body p,
-.md-body ul,
-.md-body ol,
-.md-body blockquote {
+.md-body:not(.metabrowser-kpress-host) h1,
+.md-body:not(.metabrowser-kpress-host) h2,
+.md-body:not(.metabrowser-kpress-host) h3,
+.md-body:not(.metabrowser-kpress-host) h4,
+.md-body:not(.metabrowser-kpress-host) h5,
+.md-body:not(.metabrowser-kpress-host) h6,
+.md-body:not(.metabrowser-kpress-host) p,
+.md-body:not(.metabrowser-kpress-host) ul,
+.md-body:not(.metabrowser-kpress-host) ol,
+.md-body:not(.metabrowser-kpress-host) blockquote {
   max-width: 50em;
 }
 /* The markdown plugin's container carries md-body (for prose-styling
@@ -2723,34 +2733,34 @@ pre.code-block code.hljs {
   background: none;
   padding: 0;
 }
-.md-body blockquote {
+.md-body:not(.metabrowser-kpress-host) blockquote {
   border-left: 3px solid var(--border);
   margin: 0.5em 0;
   padding: 0.3em 1em;
   color: var(--muted);
 }
-.md-body a {
+.md-body:not(.metabrowser-kpress-host) a {
   color: var(--link);
 }
-.md-body hr {
+.md-body:not(.metabrowser-kpress-host) hr {
   border: none;
   border-top: 1px solid var(--border);
   margin: 1em 0;
 }
-.md-body del {
+.md-body:not(.metabrowser-kpress-host) del {
   text-decoration: line-through;
   color: var(--muted);
 }
-.md-body strong {
+.md-body:not(.metabrowser-kpress-host) strong {
   font-weight: var(--weight-bold);
 }
 
 /* Checkboxes */
-.md-body .checkbox {
+.md-body:not(.metabrowser-kpress-host) .checkbox {
   font-size: 1.1em;
   margin-right: 0.2em;
 }
-.md-body .checkbox.checked {
+.md-body:not(.metabrowser-kpress-host) .checkbox.checked {
   color: hsl(134 61% 41%);
 }
 
