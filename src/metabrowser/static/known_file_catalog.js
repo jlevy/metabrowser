@@ -20,7 +20,8 @@
 
   /**
    * @typedef {object} CatalogSnapshot
-   * @property {false} complete
+   * @property {boolean} complete true once a complete bulk feed has
+   *   been applied (or the walk finished after an incomplete one)
    * @property {readonly KnownFile[]} files
    * @property {number} observedCount
    * @property {number} revision
@@ -53,6 +54,9 @@
     /** @type {Map<string, Readonly<KnownFile>>} */
     const filesByPath = new Map();
     let revision = 0;
+    let catalogComplete = false;
+    /** @type {CatalogSnapshot | null} */
+    let memoizedSnapshot = null;
 
     /**
      * @param {string} path
@@ -194,6 +198,65 @@
     }
 
     /**
+     * Apply the one-shot `/api/catalog` bulk payload. Merges rather
+     * than replaces: gitignored files a user navigated to stay
+     * findable, and stale observed paths are pruned by remove ops or
+     * the palette's not-found flow rather than a destructive swap.
+     * @param {Array<{p: string, e: string}>} files
+     * @param {boolean} bulkComplete whether the index had finished
+     *   walking when the payload was built
+     */
+    function applyBulkSnapshot(files, bulkComplete) {
+      let changed = false;
+      for (const file of files) {
+        if (typeof file?.p !== "string") {
+          continue;
+        }
+        changed = put(file.p, file.e || null, "catalog-feed") || changed;
+      }
+      if (bulkComplete !== catalogComplete) {
+        catalogComplete = bulkComplete;
+        changed = true;
+      }
+      if (changed) {
+        revision += 1;
+      }
+    }
+
+    /**
+     * Apply one `catalog.change` event from the live stream.
+     * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[]}} payload
+     */
+    function applyCatalogChange(payload) {
+      let changed = false;
+      for (const upsert of payload?.upserts || []) {
+        if (typeof upsert?.p === "string") {
+          changed = put(upsert.p, upsert.e || null, "catalog-event") || changed;
+        }
+      }
+      for (const removed of payload?.removes || []) {
+        if (typeof removed === "string") {
+          changed = removeWithoutRevision(removed) || changed;
+        }
+      }
+      if (changed) {
+        revision += 1;
+      }
+    }
+
+    /**
+     * Flip completeness without new data: the walk finished after an
+     * incomplete bulk fetch, and live ops already converged the
+     * contents.
+     */
+    function markComplete() {
+      if (!catalogComplete) {
+        catalogComplete = true;
+        revision += 1;
+      }
+    }
+
+    /**
      * Remove a file or every known descendant of a directory path.
      * @param {string} path
      */
@@ -206,11 +269,20 @@
     /** Clear observations after a root swap or resynchronization boundary. */
     function clear() {
       filesByPath.clear();
+      catalogComplete = false;
       revision += 1;
     }
 
-    /** Return a stable, immutable view of the current partial catalog. */
+    /**
+     * Return a stable, immutable view of the current catalog.
+     * Memoized by revision: the palette re-reads the snapshot on
+     * every status render and the provider once per search, so the
+     * copy-and-sort must not repeat while nothing changed.
+     */
     function snapshot() {
+      if (memoizedSnapshot && memoizedSnapshot.revision === revision) {
+        return memoizedSnapshot;
+      }
       const files = Array.from(filesByPath.values()).sort((left, right) =>
         codeUnitCompare(left.path, right.path),
       );
@@ -219,18 +291,22 @@
       for (const file of files) {
         sourceSummary[file.source] = (sourceSummary[file.source] || 0) + 1;
       }
-      return Object.freeze({
-        complete: /** @type {const} */ (false),
+      memoizedSnapshot = Object.freeze({
+        complete: catalogComplete,
         files: Object.freeze(files),
         observedCount: files.length,
         revision,
         sourceSummary: Object.freeze(sourceSummary),
       });
+      return memoizedSnapshot;
     }
 
     return Object.freeze({
+      applyBulkSnapshot,
+      applyCatalogChange,
       applyEventChange,
       clear,
+      markComplete,
       observeEventSnapshot,
       observeInitialTree,
       observeLazyTree,

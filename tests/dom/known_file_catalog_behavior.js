@@ -117,6 +117,55 @@ equal("resync clearing removes every observation source", snapshot.files, []);
 equal("clearing resets source counts", snapshot.sourceSummary, {});
 check("cleared catalog remains incomplete", snapshot.complete === false);
 
+// ── Bulk feed and catalog.change ───────────────────────────────
+
+const memoBefore = catalog.snapshot();
+check("snapshot is memoized by revision", catalog.snapshot() === memoBefore);
+
+catalog.observeNavigation("visited/ignored.log", ".log");
+catalog.applyBulkSnapshot(
+  [
+    { p: "README.md", e: ".md" },
+    { p: "docs/deep/nested/leaf.txt", e: ".txt" },
+  ],
+  true,
+);
+snapshot = catalog.snapshot();
+check("bulk apply invalidates the memoized snapshot", snapshot !== memoBefore);
+check("complete bulk apply marks the catalog complete", snapshot.complete === true);
+check(
+  "bulk apply merges instead of replacing observed paths",
+  snapshot.files.some((file) => file.path === "visited/ignored.log"),
+);
+equal(
+  "bulk entries carry path and logical extension",
+  snapshot.files.find((file) => file.path === "docs/deep/nested/leaf.txt")?.logicalExtension,
+  ".txt",
+);
+equal("bulk entries record their source", snapshot.sourceSummary["catalog-feed"], 2);
+
+catalog.applyCatalogChange({
+  upserts: [{ p: "src/new_module.py", e: ".py" }],
+  removes: ["README.md"],
+});
+snapshot = catalog.snapshot();
+check(
+  "catalog.change upserts land",
+  snapshot.files.some((file) => file.path === "src/new_module.py"),
+);
+check("catalog.change removes land", !snapshot.files.some((file) => file.path === "README.md"));
+
+const incompleteCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+incompleteCatalog.applyBulkSnapshot([{ p: "a.txt", e: ".txt" }], false);
+check("incomplete bulk apply stays incomplete", incompleteCatalog.snapshot().complete === false);
+incompleteCatalog.markComplete();
+check(
+  "markComplete flips completeness without data",
+  incompleteCatalog.snapshot().complete === true,
+);
+incompleteCatalog.clear();
+check("clear resets completeness", incompleteCatalog.snapshot().complete === false);
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

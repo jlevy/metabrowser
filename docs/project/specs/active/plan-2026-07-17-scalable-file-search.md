@@ -1,10 +1,11 @@
 # Feature: Quick File Finder and Search Providers
 
-**Date:** 2026-07-17 (last updated 2026-07-31)
+**Date:** 2026-07-17 (last updated 2026-08-08)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Phase 1 implemented and validated; Phases 2 through 4 planned
+**Status:** Phase 1 implemented and validated; Phase 2 redefined as the client-complete
+catalog feed (decision `mb-ci04`); Phases 3 and 4 planned
 
 ## Overview
 
@@ -19,8 +20,9 @@ The initial event stream contains only the served root through depth two, lazy s
 responses are held outside `FileStore`, and the Recent panel maintains a separate
 bounded result set.
 A client-side finder must therefore say when its candidate catalog is
-partial. Later phases add a server filename provider for complete inventory search and a
-server-side full-text provider without changing the shared search runtime.
+partial. Phase 2 closes the gap from the other side: a minimal catalog feed makes the
+client complete over non-gitignored filenames (see “Catalog Feed”), and a later
+server-side full-text provider plugs into the same runtime without changing it.
 
 ## Goals
 
@@ -373,29 +375,57 @@ On a not-found response, the catalog removes that path, the palette stays open, 
 inline status says that the file is no longer available.
 Other failures preserve the query and result list and expose a retryable error.
 
-### Server Filename Provider
+### Catalog Feed: Client-Complete Filenames
 
-Phase 2 adds a flat filename endpoint rather than returning a filtered tree:
+Phase 2 makes the local catalog complete instead of adding a per-query server provider.
+This supersedes this document’s original constraint that the browser must not download a
+complete filename catalog — that constraint was sized against unfiltered inventories,
+and measurement showed ~98% of a typical inventory is gitignored (this repository: ~270
+non-gitignored files out of ~12,500 indexed).
+The decision record is bead `mb-ci04`; at the 100k-non-ignored design center the full
+catalog is 6–8 MB of minimal JSON, 1–2 MB gzipped, transferred once.
 
-```text
-GET /api/search/files?q=srapp&limit=100
-```
+The feed has two halves, split along what each transport is actually good at:
 
-The route takes a consistent `InventoryIndex` snapshot and performs the same fuzzy
-scoring in a focused service off the event-loop request path.
-The client and server implementations share golden query/candidate/score fixtures so
-their ordering stays equivalent without trying to execute one language’s code in the
-other runtime.
+**Bulk: `GET /api/catalog`.** A one-shot JSON response containing every non-gitignored
+file at `all-known` scope in a minimal shape —
+`{complete, truncated, revision, files: [{p, e}]}` where `p` is the served-root-relative
+path and `e` the logical extension.
+One-shot JSON is the right transport for bulk state because the gzip middleware
+compresses it automatically (SSE is never compressed — Starlette excludes
+`text/event-stream`), it can carry an ETag for cheap revalidation, and it can be encoded
+off the event loop instead of as one synchronous dump inside the stream handler.
+The full `FsEntry` wire shape is ~308 bytes across 16 fields, most of them
+tree-decoration data the catalog never reads; the minimal shape is ~60–80 bytes raw.
 
-The response contains flat file results, match ranges, the inventory revision and
-status, indexed counts and caps, and separate result-limit and inventory-truncation
-metadata. It never traverses the filesystem or calls `stat()` for a query.
-Query text remains data and is never resolved as a path.
+**Deltas: `catalog.change` on the existing event stream.** Every `fs.change` batch
+already flows through one inventory choke point; that point also derives a minimal
+`catalog.change` event — file upserts as `{p, e}` (an upsert whose entry is gitignored
+becomes a catalog *remove*, handling ignore-state flips), removes passed through, and
+directory-only batches emitting nothing.
+Event-scope filtering passes non-`fs.change` event types through unchanged on every
+scope, so the depth-two tree stream carries complete catalog deltas with no filter
+changes, no second `EventSource`, and no separate resync story.
 
-The browser must not open an `all-known` event stream or download a complete filename
-catalog to enable this provider.
-A lightweight revision event can invalidate active server results without sending deep
-entry payloads.
+**Convergence without a consistency token.** The client opens the event stream first,
+buffers `catalog.change` events, fetches `/api/catalog`, applies the bulk, then replays
+the buffer. Ops are idempotent by path, so overlap between the snapshot and buffered
+deltas converges. The catalog refetches only when delta continuity is lost: the sentinel
+`fs.snapshot` that follows an event-stream reconnect, and `fs.resync_required`. Walker
+completion needs no refetch — at `all-known`, live ops converge the data — but it does
+flip the completeness flag, so the walker emits the already-defined `capability.update`
+event when the walk finishes.
+
+The client keeps its observation seams (initial tree, lazy subtrees, recent,
+navigation): they provide coverage before the first fetch resolves and when
+`EventSource` is unavailable, where the one-shot fetch alone still delivers
+complete-as-of-fetch coverage.
+
+**Bounded server search stays the beyond-cap fallback.** The original
+`/api/search/files` design (consistent snapshot, Python scorer sharing the golden
+fixtures, honest truncation metadata) is retained in bead `mb-3arq`, deferred until a
+root whose *non-ignored* file count makes client-complete unreasonable is a demonstrated
+use case. The provider runtime already supports it through fallback activation.
 
 ### Full-Text Provider
 
@@ -468,21 +498,25 @@ results hierarchical.
 - [x] Add performance fixtures for result latency, input responsiveness, and DOM count
   across shallow, Recent-sized, and heavily expanded client catalogs
 
-### Phase 2: Complete Filename Search
+### Phase 2: Client-Complete Catalog Feed
 
-- [ ] Define inventory snapshot and revision contracts for search services
-- [ ] Implement the Python fuzzy scorer against the shared golden fixtures
-- [ ] Add bounded `/api/search/files` validation and off-event-loop execution with flat
-  results and honest inventory and result truncation metadata
-- [ ] Add the server filename provider, automatic zero-local-result fallback, explicit
-  “Search all indexed files,” cancellation, response-revision checks, and path deduping
-- [ ] Define cross-provider filename ordering and coverage dominance so an authoritative
-  complete server batch cannot be misranked or reported incomplete because of the
-  earlier partial local batch
-- [ ] Refresh active local and server results from catalog and inventory revision events
-  without opening an `all-known` event stream
-- [ ] Measure scan latency, snapshot allocation, payload size, and cancellation at and
-  beyond the configured inventory cap
+- [ ] Add the `catalog.change` derivation at the inventory emit choke point, with
+  ignore-flip removes and directory skipping
+- [ ] Emit `capability.update` on walker completion so completeness is push-based
+- [ ] Add `GET /api/catalog` with the minimal non-gitignored file shape, off-event-loop
+  encoding, an ETag with 304 support, and honest complete/truncated metadata
+- [ ] Give the known-file catalog a bulk-apply path, a `catalog.change` apply path, a
+  real completeness state, and a revision-memoized snapshot
+- [ ] Add the catalog feed module owning connect-then-fetch ordering, delta buffering
+  and replay, and sentinel/resync refetch triggers
+- [ ] Wire the feed into the event-stream handlers and update palette and provider
+  status wording for the complete case
+- [ ] Measure payload size, transfer time, and scan latency at the inventory cap
+
+### Phase 2 (deferred): Bounded Server Filename Search
+
+Deferred to bead `mb-3arq` as the beyond-cap fallback; see “Catalog Feed” above for the
+retained scope.
 
 ### Phase 3: Bounded Full-Text Search
 

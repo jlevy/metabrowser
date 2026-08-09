@@ -39,6 +39,7 @@ def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
     html = _render_index_html()
     asset_paths = (
         "/static/known_file_catalog.js",
+        "/static/catalog_feed.js",
         "/static/file_fuzzy_match.js",
         "/static/search_controller.js",
         "/static/search_palette.js",
@@ -121,6 +122,47 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     outcome_block = js[outcome_start : outcome_start + 700]
     assert "knownFileCatalog?.observeNavigation" in outcome_block
     assert 'data.kind !== "folder"' in outcome_block
+
+
+def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
+    """The complete-coverage feed rides the existing stream: deltas
+    via ``catalog.change``, refetch on the sentinel snapshot and on
+    resync, completeness via ``capability.update``, and the bulk
+    fetch starting only once the stream is subscribed (first open;
+    the no-EventSource degradation path starts it directly)."""
+
+    js = _read_app_js()
+
+    snapshot_start = js.index('addEventListener("fs.snapshot"')
+    snapshot_block = js[snapshot_start : js.index('addEventListener("fs.change"')]
+    assert "quickFileCatalogFeed?.onSentinelSnapshot()" in snapshot_block
+
+    change_start = js.index('addEventListener("catalog.change"')
+    change_block = js[change_start : change_start + 400]
+    assert "quickFileCatalogFeed?.onCatalogChange(data)" in change_block
+
+    capability_start = js.index('addEventListener("capability.update"')
+    capability_block = js[capability_start : capability_start + 400]
+    assert "quickFileCatalogFeed?.onIndexComplete()" in capability_block
+    assert "data.index.complete === true" in capability_block
+
+    resync_start = js.index('addEventListener("fs.resync_required"')
+    resync_block = js[resync_start : resync_start + 700]
+    assert "quickFileCatalogFeed?.onResync()" in resync_block
+    # The catalog clears before the feed refetches, not after.
+    assert resync_block.index("knownFileCatalog?.clear()") < resync_block.index("onResync")
+
+    onopen_start = js.index("inventoryEventSource.onopen")
+    onopen_block = js[onopen_start : onopen_start + 500]
+    assert "quickFileCatalogFeed?.start()" in onopen_block
+
+    degraded_start = js.index("function startInventoryEventStream()")
+    degraded_block = js[degraded_start : degraded_start + 600]
+    assert "quickFileCatalogFeed?.start()" in degraded_block
+
+    init_start = js.index("function initQuickFileFinder()")
+    init_block = js[init_start : init_start + 1200]
+    assert "window.MetabrowserCatalogFeed.create" in init_block
 
 
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:

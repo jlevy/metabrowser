@@ -256,7 +256,8 @@
       if (!query) {
         const snapshot = options.getCatalogSnapshot();
         const coverage = snapshot.complete ? "" : " Local coverage is incomplete.";
-        status.textContent = `Type a filename to search ${snapshot.observedCount} observed files.${coverage}`;
+        const noun = snapshot.complete ? "files" : "observed files";
+        status.textContent = `Type a filename to search ${snapshot.observedCount} ${noun}.${coverage}`;
         return;
       }
       if (!searchState || searchState.phase === "searching") {
@@ -266,7 +267,8 @@
           return;
         }
         const snapshot = options.getCatalogSnapshot();
-        status.textContent = `Searching ${snapshot.observedCount} observed files…`;
+        const noun = snapshot.complete ? "files" : "observed files";
+        status.textContent = `Searching ${snapshot.observedCount} ${noun}…`;
         return;
       }
       const limitMessage = searchState.truncated ? " Results are limited." : "";

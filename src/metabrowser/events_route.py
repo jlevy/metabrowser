@@ -633,6 +633,44 @@ async def api_index_progress(request: Request) -> Response:
     )
 
 
+def _catalog_etag(inventory: InventoryIndex) -> str:
+    return f'"{inventory.status()}-{inventory.catalog_revision()}"'
+
+
+async def api_catalog(request: Request) -> Response:
+    """One-shot Quick File catalog: every non-gitignored file at
+    ``all-known`` scope in the minimal ``{p, e}`` shape.
+
+    Bulk state rides a plain JSON response instead of the event
+    stream because the gzip middleware compresses it (SSE frames are
+    never compressed), the ETag makes refetch-after-reconnect a 304
+    when nothing changed, and encoding runs off the event loop
+    instead of as one synchronous dump inside the stream handler.
+    Live updates arrive as ``catalog.change`` events on the existing
+    stream; the pair converges without a shared transaction because
+    ops are idempotent by path.
+    """
+
+    inventory = get_inventory()
+    etag = _catalog_etag(inventory)
+    if request.headers.get("If-None-Match", "") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    status = inventory.status()
+    files = inventory.catalog_files()
+    envelope = {
+        "complete": status in ("done", "truncated"),
+        "truncated": status == "truncated",
+        "revision": inventory.catalog_revision(),
+        "files": [{"p": p, "e": e} for p, e in files],
+    }
+    body = await asyncio.to_thread(lambda: json.dumps(envelope, separators=(",", ":")).encode())
+    return Response(
+        body,
+        media_type="application/json",
+        headers={"ETag": etag, "Cache-Control": "no-cache"},
+    )
+
+
 async def api_index_meta(request: Request) -> Response:
     """JSON envelope. ETag is the inventory's status + indexed
     file count + walker generation, so a 304 is cheap when
@@ -712,6 +750,7 @@ def add_inventory_routes(app: Starlette) -> None:
     app.routes.extend(
         [
             Route("/api/events", api_events),
+            Route("/api/catalog", api_catalog),
             Route("/api/index/progress", api_index_progress),
             Route("/api/index/meta", api_index_meta),
             Route("/api/capabilities", api_capabilities),

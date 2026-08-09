@@ -197,14 +197,21 @@ type MetabrowserKnownFile = Readonly<{
 }>;
 
 type MetabrowserKnownFileCatalogSnapshot = Readonly<{
-  complete: false;
+  complete: boolean;
   files: ReadonlyArray<MetabrowserKnownFile>;
   observedCount: number;
   revision: number;
   sourceSummary: Readonly<Record<string, number>>;
 }>;
 
+type MetabrowserCatalogChangePayload = {
+  upserts?: Array<{ p: string; e: string }>;
+  removes?: string[];
+};
+
 type MetabrowserKnownFileCatalogApi = Readonly<{
+  applyBulkSnapshot(files: Array<{ p: string; e: string }>, bulkComplete: boolean): void;
+  applyCatalogChange(payload: MetabrowserCatalogChangePayload): void;
   applyEventChange(
     ops: Array<{
       entry?: MetabrowserKnownFileCatalogWireEntry;
@@ -213,6 +220,7 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
     }>,
   ): void;
   clear(): void;
+  markComplete(): void;
   observeEventSnapshot(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
   observeInitialTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
   observeLazyTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
@@ -225,6 +233,28 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
 
 type MetabrowserKnownFileCatalogRuntime = Readonly<{
   create(): MetabrowserKnownFileCatalogApi;
+}>;
+
+type MetabrowserCatalogFeedApi = Readonly<{
+  dispose(): void;
+  onCatalogChange(payload: MetabrowserCatalogChangePayload): void;
+  onIndexComplete(): void;
+  onResync(): void;
+  onSentinelSnapshot(): void;
+  start(): void;
+}>;
+
+type MetabrowserCatalogFeedRuntime = Readonly<{
+  create(options: {
+    catalog: Pick<
+      MetabrowserKnownFileCatalogApi,
+      "applyBulkSnapshot" | "applyCatalogChange" | "markComplete"
+    >;
+    endpoint?: string;
+    fetchImpl?: typeof fetch;
+    scheduleRetry?: (callback: () => void, delayMs: number) => number;
+    cancelRetry?: (handle: number) => void;
+  }): MetabrowserCatalogFeedApi;
 }>;
 
 type MetabrowserFuzzyRank = Readonly<{
@@ -393,6 +423,7 @@ declare global {
       classFor(path: string): string;
       iconFor(path: string): unknown;
     };
+    MetabrowserCatalogFeed: MetabrowserCatalogFeedRuntime;
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
