@@ -292,6 +292,28 @@ async function main() {
     await tick();
     check("disposed feed applies nothing", catalog.calls.length === 1);
   }
+
+  // A walk that stopped at the max-files cap reports complete AND truncated.
+  // Files past the cap were never indexed, so the catalog is not a complete
+  // view of the root and must not claim to be (senior review R10).
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+    feed.start();
+    await tick();
+    pending[0].resolve(
+      jsonResponse({ complete: true, truncated: true, files: [{ p: "capped.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+    check("truncated bulk applies its files", catalog.calls[0]?.kind === "bulk");
+    check(
+      "a truncated catalog is not reported complete",
+      catalog.calls[0]?.complete === false,
+      String(catalog.calls[0]?.complete),
+    );
+  }
 }
 
 main().then(() => {

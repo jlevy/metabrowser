@@ -210,7 +210,18 @@ type MetabrowserCatalogChangePayload = {
 };
 
 type MetabrowserKnownFileCatalogApi = Readonly<{
-  applyBulkSnapshot(files: Array<{ p: string; e: string }>, bulkComplete: boolean): void;
+  /**
+   * @param bulkComplete the catalog is a complete view of the root (a finished
+   *   walk that did not hit the max-files cap)
+   * @param authoritative the payload lists every file the index holds, so
+   *   feed-sourced paths it omits are stale and get retired. False for a
+   *   payload built mid-walk, which is only a prefix.
+   */
+  applyBulkSnapshot(
+    files: Array<{ p: string; e: string }>,
+    bulkComplete: boolean,
+    authoritative?: boolean,
+  ): void;
   applyCatalogChange(payload: MetabrowserCatalogChangePayload): void;
   applyEventChange(
     ops: Array<{

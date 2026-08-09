@@ -633,6 +633,25 @@ async def api_index_progress(request: Request) -> Response:
     )
 
 
+# Last encoded catalog body, keyed by its ETag. Holds at most one entry: the
+# revision moves on every indexed change, so older bodies are dead weight and
+# a full catalog is the largest payload the server produces.
+_CATALOG_BODY_CACHE: dict[str, bytes] = {}
+
+
+def _encode_catalog(files: list[tuple[str, str]], status: str, revision: int) -> bytes:
+    """Build the wire envelope and encode it. Runs in a worker thread, so it
+    must touch only the private ``files`` snapshot, never the live index."""
+
+    envelope = {
+        "complete": status in ("done", "truncated"),
+        "truncated": status == "truncated",
+        "revision": revision,
+        "files": [{"p": p, "e": e} for p, e in files],
+    }
+    return json.dumps(envelope, separators=(",", ":")).encode()
+
+
 def _catalog_etag(inventory: InventoryIndex) -> str:
     return f'"{inventory.status()}-{inventory.catalog_revision()}"'
 
@@ -655,15 +674,30 @@ async def api_catalog(request: Request) -> Response:
     etag = _catalog_etag(inventory)
     if request.headers.get("If-None-Match", "") == etag:
         return Response(status_code=304, headers={"ETag": etag})
+
+    cached = _CATALOG_BODY_CACHE.get(etag)
+    if cached is not None:
+        return Response(
+            cached,
+            media_type="application/json",
+            headers={"ETag": etag, "Cache-Control": "no-cache"},
+        )
+
     status = inventory.status()
+    revision = inventory.catalog_revision()
+    # One O(N) pass on the loop, and only one. catalog_files() returns a
+    # private list of tuples, so it is a consistent point-in-time snapshot
+    # that a worker may traverse without racing the live index — building the
+    # wire dicts here as well would have doubled the on-loop cost, which at
+    # the 100k design center and 500k cap stalls unrelated requests and the
+    # event stream.
     files = inventory.catalog_files()
-    envelope = {
-        "complete": status in ("done", "truncated"),
-        "truncated": status == "truncated",
-        "revision": inventory.catalog_revision(),
-        "files": [{"p": p, "e": e} for p, e in files],
-    }
-    body = await asyncio.to_thread(lambda: json.dumps(envelope, separators=(",", ":")).encode())
+    body = await asyncio.to_thread(_encode_catalog, files, status, revision)
+    # Reconnect storms and multiple tabs re-request the same revision; the
+    # ETag turns most of those into 304s, but a client without the ETag (a
+    # fresh tab) would otherwise pay the full encode again.
+    _CATALOG_BODY_CACHE.clear()
+    _CATALOG_BODY_CACHE[etag] = body
     return Response(
         body,
         media_type="application/json",

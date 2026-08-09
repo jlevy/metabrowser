@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+from metabrowser import events_route
 from metabrowser.events import (
     CapabilityUpdate,
     CatalogChange,
@@ -238,3 +239,46 @@ def test_walker_completion_emits_capability_update(tmp_path: Path) -> None:
     assert len(updates) == 1
     assert updates[0].index["complete"] is True
     assert updates[0].index["truncated"] is False
+
+
+def test_api_catalog_encodes_off_loop_and_reuses_one_body(tmp_path: Path) -> None:
+    """R12: only one O(N) pass may run on the event loop.
+
+    ``catalog_files()`` takes the consistent snapshot; building the wire dicts
+    and encoding both belong in the worker. A second request at the same
+    revision must not repeat that work at all.
+    """
+    _build_fixture(tmp_path)
+    calls: list[int] = []
+    real_encode = events_route._encode_catalog
+
+    def _counting_encode(files: list[tuple[str, str]], status: str, revision: int) -> bytes:
+        calls.append(len(files))
+        return real_encode(files, status, revision)
+
+    async def _run() -> tuple[Any, Any]:
+        await _drive_walker(tmp_path)
+        events_route._CATALOG_BODY_CACHE.clear()
+        events_route._encode_catalog = _counting_encode  # type: ignore[assignment]
+        try:
+            # No If-None-Match, so the ETag shortcut cannot serve either call.
+            first = await api_catalog(cast(Any, _FakeRequest()))
+            second = await api_catalog(cast(Any, _FakeRequest()))
+            return first, second
+        finally:
+            events_route._encode_catalog = real_encode  # type: ignore[assignment]
+
+    first, second = asyncio.run(_run())
+    assert first.body == second.body
+    assert first.headers["ETag"] == second.headers["ETag"]
+    assert len(calls) == 1, f"encoded {len(calls)} times for one revision"
+
+
+def test_catalog_wire_dicts_are_built_only_in_the_worker() -> None:
+    """The route body must not materialize the wire list before its await."""
+    source = Path(events_route.__file__).read_text()
+    route_start = source.index("async def api_catalog(")
+    route_body = source[route_start : source.index("async def api_index_meta(")]
+    assert '{"p": p, "e": e}' not in route_body
+    encode_start = source.index("def _encode_catalog(")
+    assert '{"p": p, "e": e}' in source[encode_start:route_start]

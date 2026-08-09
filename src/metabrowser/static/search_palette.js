@@ -222,6 +222,29 @@
     /** @type {ReturnType<typeof setTimeout> | null} */
     let searchingStatusTimer = null;
     let announceSearching = false;
+    // The query whose results are currently painted. Diverges from input.value
+    // only while rows are held through a pending search.
+    let renderedQuery = "";
+
+    /** Rendered rows describe the query in the box, so acting on them is safe. */
+    function rowsMatchQuery() {
+      return renderedQuery === input.value;
+    }
+
+    /**
+     * Mirror row activation into the accessibility tree.
+     *
+     * Deliberately no visual change: held rows are normally stale for a few
+     * milliseconds, and dimming them on every keystroke would reintroduce
+     * exactly the flicker holding them was meant to remove. Assistive tech
+     * still learns the rows are not actionable while they lag the query.
+     */
+    function syncRowActivation() {
+      const stale = !rowsMatchQuery();
+      for (const node of listbox.querySelectorAll('[role="option"]')) {
+        node.setAttribute("aria-disabled", String(stale));
+      }
+    }
 
     // Below this threshold a search finishes before the eye registers it, so
     // announcing it would only flash a line of text that is immediately
@@ -368,6 +391,7 @@
         listbox.append(option);
       }
       syncActiveOption(false);
+      syncRowActivation();
     }
 
     /** @param {PaletteSearchState} state */
@@ -390,6 +414,7 @@
       clearSearchingStatus();
       const previousSelection = selectedResultId;
       results = state.results.slice(0, maxRows);
+      renderedQuery = state.request?.query ?? "";
       activeIndex = previousSelection
         ? results.findIndex((result) => result.id === previousSelection)
         : results.length > 0
@@ -413,6 +438,7 @@
         clearSearchingStatus();
         searchState = null;
         results = [];
+        renderedQuery = query;
         activeIndex = -1;
         selectedResultId = null;
         renderResults();
@@ -420,6 +446,7 @@
         return;
       }
       scheduleSearchingStatus();
+      syncRowActivation();
       renderStatus();
       options.controller
         .search({ match: "fuzzy", query, target: "file" })
@@ -439,7 +466,12 @@
     /** @param {number} index */
     async function acceptIndex(index) {
       const result = results[index];
-      if (!result || opening) {
+      // Held rows stay painted so typing does not flicker, but they describe
+      // the query that produced them, not what is in the box now. Opening one
+      // would navigate to a file that matched the previous query — a fast
+      // typist entering B lands on a hit for A. Rows go live again the moment
+      // their own completion arrives.
+      if (!result || opening || !rowsMatchQuery()) {
         return;
       }
       actionSerial += 1;

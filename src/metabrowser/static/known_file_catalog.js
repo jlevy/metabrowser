@@ -4,6 +4,8 @@
   /**
    * @typedef {object} CatalogWireEntry
    * @property {CatalogWireEntry[] | null} [children]
+   * @property {boolean} [gitignored] present on tree and inventory payloads;
+   *   absent on the bulk feed, which already excludes ignored files
    * @property {string} [logical_ext]
    * @property {string} [name]
    * @property {string} path
@@ -27,6 +29,12 @@
    * @property {number} revision
    * @property {Readonly<Record<string, number>>} sourceSummary
    */
+
+  /** Provenance that may seat a gitignored path: the user opened it on purpose. */
+  const NAVIGATION_SOURCE = "navigation";
+
+  /** Provenance of paths the bulk feed owns and may therefore retire. */
+  const FEED_SOURCE = "catalog-feed";
 
   /**
    * Compare strings by UTF-16 code unit without locale-dependent collation.
@@ -97,6 +105,26 @@
     function putEntry(entry, source) {
       if (entry?.type !== "file" || typeof entry.path !== "string") {
         return false;
+      }
+      // The catalog advertises itself as complete AND non-gitignored, and the
+      // bulk feed honors that by excluding ignored files. Passive seams — the
+      // initial tree, lazy subtrees, inventory snapshots and deltas — carry
+      // ignored rows too, because the tree paints them dimmed rather than
+      // hiding them. Letting those in made Quick File offer files the feed had
+      // deliberately dropped (__pycache__/*.pyc against a complete catalog).
+      //
+      // Only explicit navigation may seat an ignored path: the user went there
+      // on purpose, so it stays findable. That is a provenance decision, not a
+      // property of the entry, so it is keyed on the source rather than the
+      // wire payload. An ignored path already seated passively is evicted.
+      if (entry.gitignored === true && source !== NAVIGATION_SOURCE) {
+        // A path navigation already seated keeps its place: the later passive
+        // sighting is the same ignored file the user chose to open, so it
+        // carries no new information and must not evict it.
+        if (filesByPath.get(entry.path)?.source === NAVIGATION_SOURCE) {
+          return false;
+        }
+        return removeWithoutRevision(entry.path);
       }
       const logicalExtension =
         typeof entry.logical_ext === "string" && entry.logical_ext ? entry.logical_ext : null;
@@ -192,7 +220,7 @@
 
     /** @param {string} path @param {string | null} logicalExtension */
     function observeNavigation(path, logicalExtension) {
-      if (put(path, logicalExtension, "navigation")) {
+      if (put(path, logicalExtension, NAVIGATION_SOURCE)) {
         revision += 1;
       }
     }
@@ -206,13 +234,40 @@
      * @param {boolean} bulkComplete whether the index had finished
      *   walking when the payload was built
      */
-    function applyBulkSnapshot(files, bulkComplete) {
+    function applyBulkSnapshot(files, bulkComplete, authoritative = false) {
       let changed = false;
+      /** @type {Set<string> | null} */
+      const membership = authoritative ? new Set() : null;
       for (const file of files) {
         if (typeof file?.p !== "string") {
           continue;
         }
-        changed = put(file.p, file.e || null, "catalog-feed") || changed;
+        membership?.add(file.p);
+        changed = put(file.p, file.e || null, FEED_SOURCE) || changed;
+      }
+      // A refetch happens precisely because deltas may have been dropped, so
+      // a merge alone cannot express what the payload says is GONE: a file
+      // deleted while the stream was down is absent from the refetch and, if
+      // we only merge, stays searchable forever.
+      //
+      // A finished walk lists every file the index holds, so its payload is
+      // authoritative membership and anything else the feed put here is
+      // stale. Paths seated by explicit navigation survive: they are the
+      // documented exception to feed membership (a gitignored file the user
+      // opened is not in the feed by design). Passive observations do not
+      // survive — a tree row the authoritative feed omits is a deleted file.
+      //
+      // Safe against the create-during-fetch race because the feed buffers
+      // deltas while a fetch is in flight and replays them after this
+      // returns, so a file created in the window is re-added immediately.
+      if (membership) {
+        for (const [path, file] of filesByPath) {
+          if (file.source === NAVIGATION_SOURCE || membership.has(path)) {
+            continue;
+          }
+          filesByPath.delete(path);
+          changed = true;
+        }
       }
       // Completeness only ever rises here; `clear()` is the reset.
       // A bulk response built mid-walk (`complete: false`) can

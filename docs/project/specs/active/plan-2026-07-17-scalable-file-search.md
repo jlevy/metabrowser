@@ -500,18 +500,33 @@ results hierarchical.
 
 ### Phase 2: Client-Complete Catalog Feed
 
-- [ ] Add the `catalog.change` derivation at the inventory emit choke point, with
+- [x] Add the `catalog.change` derivation at the inventory emit choke point, with
   ignore-flip removes and directory skipping
-- [ ] Emit `capability.update` on walker completion so completeness is push-based
-- [ ] Add `GET /api/catalog` with the minimal non-gitignored file shape, off-event-loop
+- [x] Emit `capability.update` on walker completion so completeness is push-based
+- [x] Add `GET /api/catalog` with the minimal non-gitignored file shape, off-event-loop
   encoding, an ETag with 304 support, and honest complete/truncated metadata
-- [ ] Give the known-file catalog a bulk-apply path, a `catalog.change` apply path, a
+- [x] Give the known-file catalog a bulk-apply path, a `catalog.change` apply path, a
   real completeness state, and a revision-memoized snapshot
-- [ ] Add the catalog feed module owning connect-then-fetch ordering, delta buffering
+- [x] Add the catalog feed module owning connect-then-fetch ordering, delta buffering
   and replay, and sentinel/resync refetch triggers
-- [ ] Wire the feed into the event-stream handlers and update palette and provider
+- [x] Wire the feed into the event-stream handlers and update palette and provider
   status wording for the complete case
 - [ ] Measure payload size, transfer time, and scan latency at the inventory cap
+
+The feed is authoritative about membership, not just contents.
+A payload from a finished walk lists every file the index holds, so applying it retires
+feed-sourced paths it no longer names; that is what lets a refetch express a deletion
+that happened while the stream was down.
+Paths seated by explicit navigation are the one exception, because a gitignored file the
+user opened is absent from the feed by design.
+
+Known limits:
+
+- A truncated walk is complete for the index and permanently incomplete for the root, so
+  the catalog reports incomplete coverage and the beyond-cap fallback stays deferred to
+  `mb-3arq`.
+- An open search does not re-run when coverage grows underneath it (`mb-lzvb`), and
+  catalog removals still scan every entry (`mb-r8yg`).
 
 ### Phase 2 (deferred): Bounded Server Filename Search
 

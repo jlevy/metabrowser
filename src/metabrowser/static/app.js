@@ -3862,7 +3862,11 @@ function _createInventoryEventSource() {
     _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
-      if (data.index && data.index.complete === true) {
+      // A truncated walk is "complete" in the sense that it stopped, but the
+      // files past the max-files cap were never indexed, so the catalog can
+      // never be a complete view of the root. Only an untruncated walk may
+      // promote the catalog to complete.
+      if (data.index && data.index.complete === true && data.index.truncated !== true) {
         quickFileCatalogFeed?.onIndexComplete();
       }
     } catch (_e) {
@@ -3985,7 +3989,7 @@ async function revealInTree(path) {
   var current = "";
   for (var i = 0; i < segments.length - 1; i++) {
     current = current ? `${current}/${segments[i]}` : segments[i];
-    var folder = queryHtml(`.tree-folder[data-path="${current}"]`);
+    var folder = queryHtml(`.tree-folder[data-path="${escapePathForSelector(current)}"]`);
     if (folder) {
       var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
@@ -4000,7 +4004,7 @@ async function revealInTree(path) {
       }
     }
   }
-  var target = document.querySelector(`.tree-file[data-path="${path}"]`);
+  var target = document.querySelector(`.tree-file[data-path="${escapePathForSelector(path)}"]`);
   if (!target) {
     return false;
   }

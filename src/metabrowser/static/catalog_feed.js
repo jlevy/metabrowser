@@ -15,7 +15,8 @@
 
   /**
    * @typedef {object} CatalogFeedTarget
-   * @property {(files: Array<{p: string, e: string}>, complete: boolean) => void} applyBulkSnapshot
+   * @property {(files: Array<{p: string, e: string}>, complete: boolean,
+   *   authoritative?: boolean) => void} applyBulkSnapshot
    * @property {(payload: {upserts?: Array<{p: string, e: string}>, removes?: string[]}) => void} applyCatalogChange
    * @property {() => void} markComplete
    */
@@ -79,8 +80,25 @@
           if (disposed || serial !== fetchSerial) {
             return;
           }
+          // The payload's two flags answer different questions, and a
+          // finished-but-capped walk answers them oppositely.
+          //
+          // Coverage: `complete` means the walk finished, `truncated` means it
+          // finished by hitting the max-files cap. Files past the cap were
+          // never indexed and can never be searched, so a truncated catalog is
+          // complete for the index and permanently incomplete for the root.
+          // Forwarding `complete` alone told the user "N files" while hiding
+          // everything beyond the cap.
+          //
+          // Authority: either way the walk stopped, so the payload lists every
+          // file the index holds. That makes it authoritative membership, and
+          // the catalog may retire feed-sourced paths it no longer names —
+          // which is how a refetch expresses a deletion that happened while
+          // the stream was down. A payload built mid-walk is only a prefix and
+          // must merge instead.
           catalog.applyBulkSnapshot(
             Array.isArray(payload.files) ? payload.files : [],
+            payload.complete === true && payload.truncated !== true,
             payload.complete === true,
           );
         }

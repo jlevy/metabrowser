@@ -657,10 +657,42 @@ async function main() {
     status.textContent === statusBeforeRetype,
     status.textContent,
   );
+
+  // Held rows describe the previous query. Opening one would navigate to a
+  // file that matched what the user typed a moment ago, not what is in the
+  // box now — so they are inert until their own completion arrives.
+  const openedBeforeStaleAccept = openedPaths.length;
+  const heldRow = listbox.children[0];
+  heldRow.dispatchEvent(fakeEvent("click", { target: heldRow }));
+  await settle();
+  input.dispatchEvent(fakeEvent("keydown", { key: "Enter", target: input }));
+  await settle();
+  check(
+    "held rows do not open a result for the previous query",
+    openedPaths.length === openedBeforeStaleAccept,
+    `opened ${openedPaths.length - openedBeforeStaleAccept} stale path(s)`,
+  );
+  check(
+    "held rows report as inert while they lag the query",
+    Array.from(listbox.querySelectorAll('[role="option"]')).every(
+      (node) => node.getAttribute("aria-disabled") === "true",
+    ),
+  );
+
   releaseCompletion();
   await settle();
   holdCompletion = false;
   check("completing the search renders its results", listbox.children.length > 0);
+  check(
+    "rows go live again once they match the query",
+    Array.from(listbox.querySelectorAll('[role="option"]')).every(
+      (node) => node.getAttribute("aria-disabled") === "false",
+    ),
+  );
+  const openedBeforeLiveAccept = openedPaths.length;
+  input.dispatchEvent(fakeEvent("keydown", { key: "Enter", target: input }));
+  await settle();
+  check("a live row still opens on Enter", openedPaths.length === openedBeforeLiveAccept + 1);
 
   // A completed search with no matches still clears the list.
   const heldResults = availableResults;

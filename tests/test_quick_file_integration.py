@@ -142,9 +142,12 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     assert "quickFileCatalogFeed?.onCatalogChange(data)" in change_block
 
     capability_start = js.index('addEventListener("capability.update"')
-    capability_block = js[capability_start : capability_start + 400]
+    capability_block = js[capability_start : capability_start + 900]
     assert "quickFileCatalogFeed?.onIndexComplete()" in capability_block
     assert "data.index.complete === true" in capability_block
+    # A capped walk is complete for the index but never for the root, so it
+    # must not promote the catalog to complete (senior review R10).
+    assert "data.index.truncated !== true" in capability_block
 
     resync_start = js.index('addEventListener("fs.resync_required"')
     resync_block = js[resync_start : resync_start + 700]
