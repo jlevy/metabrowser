@@ -144,6 +144,62 @@
   --font-sans: var(--app-sans-clean);
   --font-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
 
+  /* ── Typography roles: which face, where ─────────────────────────
+     Chrome is sans. Content is mono. The line between them is what the
+     text IS, not how technical it looks.
+
+     Sans (--font-sans) — everything the app itself says:
+       file paths, including parent paths and ancestor segments, in the
+       tree, the header, the file header, and search results; key names
+       and shortcut hints; labels, metadata, chips, tooltips, notes,
+       counts, and status text.
+       A path is navigation, not code. It reads in the same face as the
+       Navigator row it points at, at --nav-font-size.
+
+     Mono (--font-mono) — the user's own content, where column
+     alignment carries meaning:
+       highlighted source, code blocks, Markdown inline code, and raw
+       log payloads.
+
+     Three deliberate exceptions, and no others:
+       .compression-badge          a 7px glyph — iconography, not text
+       .metabrowser-kpress-error-detail   a verbatim error payload
+       .log-event-header           structured log values (event type,
+                                   timestamps) rather than prose or paths
+     tests/test_chrome_typography.py enforces this list, so a new mono
+     use site fails the build until it is classified here.
+
+     Numeric alignment does NOT justify mono. Byte counts, durations,
+     and timestamps stay sans and use font-variant-numeric: tabular-nums
+     (see --tabular-numerals). */
+  --tabular-numerals: tabular-nums;
+
+  /* ── Keyboard keys ───────────────────────────────────────────────
+     One treatment for every key rendered anywhere in the app: caps,
+     bold, thin border. Use the .kbd component (see its section below);
+     never hand-set a key's type or border at a use site, and never
+     write a key as plain text inside a sentence.
+
+     Keys are always ALL CAPS — ENTER, ESC, T — including single
+     letters, so a key never reads as a word. Arrow glyphs (↑ ↓) have no
+     case and pass through unchanged.
+
+     The border is deliberately thin and low-contrast: a key is a quiet
+     inline mark inside hint text, not a button. Both themes inherit
+     automatically because these point at semantic tokens that the dark
+     block below redefines. */
+  --kbd-font-family: var(--font-sans);
+  --kbd-font-size: var(--ui-small-font-size);
+  --kbd-font-weight: var(--weight-bold);
+  --kbd-letter-spacing: 0.04em;
+  --kbd-text-transform: uppercase;
+  --kbd-border: 1px solid var(--border);
+  --kbd-radius: var(--radius-chrome);
+  --kbd-padding: 0 4px;
+  --kbd-min-width: 16px;
+  --kbd-color: var(--muted);
+  --kbd-bg: var(--hover-bg);
+
   /* KPress host bridge tokens. Metabrowser owns shell tokens; KPress owns
      document rendering. The default "clean" font set keeps KPress's vendored
      faces (PT Serif prose / Source Sans UI), so family hooks stay unset and
@@ -185,28 +241,25 @@
                                    is the distinction
        --mono-block-font-size =ui-small  mono blocks in chrome contexts
                                    (source views, logs, raw JSON)
-       --micro-font-size     10px  deliberately-minimized marks (brand
-                                   line, code inside truncation notes)
+       --micro-font-size     10px  deliberately-minimized marks (the
+                                   brand line)
      One exception: .compression-badge draws a 7px glyph — iconography,
      not text, and not part of the ramp.
 
-     Document (rendered prose) sizes — mono and small are derived from
-     the document body size so the document rescales as one unit:
+     Document (rendered prose) sizes — ONE token, deliberately:
        --document-body-font-size         prose (one step above chrome body)
-       --document-mono-font-size   0.9×  code (mono x-height is larger,
-                                   so a few percent smaller reads equal)
-       --document-small-font-size  0.85× secondary document text (TOC
-                                   entries, captions, footnotes)
-     The KPress host base below anchors its derived ramp to document-body;
-     the scoped bridge maps intentional mono, secondary, and caps-label
-     divergences onto the remaining document and label tokens. */
+     Everything else inside a rendered document (secondary text, table
+     cells, captions, footnotes, code at every tier) is KPress's ramp,
+     derived from this one value through --kpress-host-font-size-base below.
+     Do not add a host token to restate a ratio KPress already owns: each
+     such token collapses a graded family onto one size, and the bridge rule
+     further down records what that cost. Chrome-context mono is a separate
+     concern and uses --mono-block-font-size above. */
   --body-font-size: 14px;
   --nav-font-size: 13px;
   --ui-small-font-size: 12px;
   --micro-font-size: 10px;
   --document-body-font-size: 15px;
-  --document-mono-font-size: calc(var(--document-body-font-size) * 0.9);
-  --document-small-font-size: calc(var(--document-body-font-size) * 0.85);
   --kpress-host-font-size-base: var(--document-body-font-size);
   --mono-block-font-size: var(--ui-small-font-size);
 
@@ -240,6 +293,19 @@
   --panel-header-bg: var(--sidebar-bg);
   --panel-cell-padding: 0.35rem 0.6rem;
 
+  /* Icons — one glyph size for every icon in the chrome, whether it is a
+     button (gear, printer, copy), a file-type mark in a row, or a menu
+     row's leading mark, so icons stay interchangeable wherever they
+     appear. --icon-btn-size is the hit target the interactive ones get;
+     see the `── Icon buttons ──` primitive below. The alignment boxes
+     that reserve a row's icon column (tree rows, palette rows, menu
+     rows) are 16px, one step wider than the glyph, so the glyph has
+     room to sit optically centered. The one deliberate exception is
+     `.menu-seg svg`, where the glyph is the whole label of a segmented
+     chooser rather than a mark beside text; it is sized in place. */
+  --icon-glyph: 14px;
+  --icon-btn-size: 24px;
+
   /* Border-radius tokens — split into "chrome" (interactive UI:
      buttons, badges, chips, bars, controls, tooltips, log rows)
      and "document" (content surfaces: cards, panels, code blocks,
@@ -257,12 +323,13 @@
   /* Z-index scale — the named stacking layers. Use these tokens at use
      sites rather than ad-hoc integers so the relative order of panes,
      floating overlays (menus, dropdowns), and tooltips is defined in one
-     place. --z-overlay covers any summoned floating surface (the header
-     theme menu today; a future right-click context menu next); it sits
-     above the panes but below tooltips, the topmost hint layer. */
+     place. --z-overlay covers anchored menus, --z-modal covers blocking
+     dialogs such as Quick File, and both sit below tooltips, the topmost
+     hint layer. */
   --z-pane: 1;
   --z-resize-handle: 2;
   --z-overlay: 100;
+  --z-modal: 200;
   --z-tooltip: 1000;
 
   /* Transitions */
@@ -326,9 +393,16 @@
      --highlight-bar to transparent to drop the left bar. */
   --highlight-bg: color-mix(in srgb, var(--link) 10%, transparent);
   --highlight-bar: var(--link);
+  --modal-scrim: color-mix(in srgb, var(--text) 28%, transparent);
 
   /* Code block backgrounds */
   --code-bg: hsl(210 29% 97%);
+  /* Inline code in a rendered document is a tint with the faintest possible
+     edge — enough to close the shape, not enough to read as a chip. Prose that
+     names many identifiers shows dozens of these in a paragraph, so this sits
+     well below --border: it should register as a soft boundary, never as a
+     row of outlined buttons. */
+  --inline-code-border: color-mix(in srgb, var(--border) 55%, transparent);
 
   /* Syntax colors shared by Highlight.js source views and the structured
      JSON/YAML tree. Every foreground meets WCAG AA against both --bg and
@@ -926,47 +1000,133 @@ body {
   padding: 2px 0;
   border-radius: var(--radius-chrome);
 }
-/* ── Settings toggle (gear → theme + reading-font choosers) ───────
-   A gear button pinned to the header's top-right opens a .menu holding
-   two segmented choosers (theme, reading font). Click-to-open-then-pick,
-   never click-to-cycle. Only the trigger and the menu's anchored
-   positioning live here; the menu surface comes from the .menu primitive
-   and the segments from the .menu-chooser primitive below. */
-.settings-toggle {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-}
-.settings-btn {
+/* ── Icon buttons — shared icon-only control primitive ───────────
+   Every icon-only control in the chrome reads the same: a
+   --icon-btn-size hit target holding the app-wide --icon-glyph mark,
+   drawn as a bare muted glyph that raises a hover surface and a
+   hairline border only while hovered, focused, or held open.
+
+   An icon button carries no resting border or fill. A permanent box
+   around one icon makes it read as a heavier, more primary control
+   than the unboxed icon beside it, so two icons of equal standing
+   stop looking like the same kind of thing. Reach for the hover
+   surface to signal "this is clickable", not for a static frame.
+
+   `.icon-btn` is the class for new markup. The named classes listed
+   with it are today's use sites, carried here because plugin markup
+   writes those class names directly; each keeps only its own
+   positioning or reveal behavior in its own block. An icon button
+   that floats above content takes `.icon-btn-overlay`, which is the
+   one sanctioned resting surface: a bare glyph over source text is
+   unreadable, so it needs an opaque plate of its own. */
+.icon-btn,
+.settings-btn,
+.file-header-icon,
+.file-header-copy,
+.content-copy-btn {
   display: inline-flex;
+  width: var(--icon-btn-size);
+  height: var(--icon-btn-size);
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
   padding: 4px;
   border: 1px solid transparent;
+  border-radius: var(--radius-chrome);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  border-radius: var(--radius-chrome);
+  flex-shrink: 0;
   transition:
     color var(--transition-fast),
     background var(--transition-fast),
     border-color var(--transition-fast);
 }
-.settings-btn:hover {
-  color: var(--text);
-  background: var(--hover-bg);
-  border-color: var(--border);
+/* Reveal-on-hover icon buttons: invisible until their row or container
+   is hovered. Fading opacity rather than toggling `display` keeps the
+   layout from shifting when the button appears, and `pointer-events`
+   (rather than `visibility`) hides the invisible button from the mouse
+   while leaving it in the tab order, so a keyboard user can still reach
+   it — see the focus rule below. Every reveal trigger must restore
+   `pointer-events` along with the opacity. */
+.icon-btn-reveal,
+.file-header-copy,
+.content-copy-btn {
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
-.settings-btn svg {
-  width: 14px;
-  height: 14px;
+/* Floating over content, where a transparent glyph would collide with
+   the text underneath. Declared above the hover rule so hovering still
+   swaps in the hover surface. */
+.icon-btn-overlay,
+.content-copy-btn {
+  background: var(--sidebar-bg);
 }
+.icon-btn svg,
+.settings-btn svg,
+.file-header-icon svg,
+.file-header-copy svg,
+.content-copy-btn svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+/* Hover, keyboard focus, and "my menu is open" are the same state:
+   the control has surfaced. */
+.icon-btn:hover,
+.settings-btn:hover,
+.file-header-icon:hover,
+.file-header-copy:hover,
+.content-copy-btn:hover,
+.icon-btn:focus-visible,
+.settings-btn:focus-visible,
+.file-header-icon:focus-visible,
+.file-header-copy:focus-visible,
+.content-copy-btn:focus-visible,
 .settings-toggle[aria-expanded="true"] .settings-btn {
   color: var(--text);
   background: var(--hover-bg);
   border-color: var(--border);
+}
+/* The hover surface alone is not a focus indicator — keyboard focus
+   also takes the app's standard ring. */
+.icon-btn:focus-visible,
+.settings-btn:focus-visible,
+.file-header-icon:focus-visible,
+.file-header-copy:focus-visible,
+.content-copy-btn:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+/* A reveal button that takes keyboard focus must actually appear. */
+.icon-btn-reveal:focus-visible,
+.file-header-copy:focus-visible,
+.content-copy-btn:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.icon-btn[hidden],
+.settings-btn[hidden],
+.file-header-icon[hidden],
+.file-header-copy[hidden],
+.content-copy-btn[hidden] {
+  display: none;
+}
+
+/* ── Settings toggle (gear → theme + reading-font choosers) ───────
+   A gear button pinned to the header's top-right opens a .menu holding
+   two segmented choosers (theme, reading font). Click-to-open-then-pick,
+   never click-to-cycle. The button itself is the .icon-btn primitive
+   above; only the trigger's placement and the menu's anchored
+   positioning live here, the menu surface comes from the .menu
+   primitive, and the segments from the .menu-chooser primitive below. */
+.settings-toggle {
+  position: absolute;
+  top: 6px;
+  right: 8px;
 }
 /* Anchored placement under the trigger; the .menu primitive supplies the
    surface styling. Scoped under .settings-toggle so this `display: none`
@@ -1042,16 +1202,20 @@ body {
   cursor: default;
   pointer-events: none;
 }
+/* 16px alignment box + --icon-glyph mark, same as a tree row and a
+   palette row, so a menu row's icon column lines up with theirs. */
 .menu-item-icon {
   display: flex;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   color: var(--muted);
 }
 .menu-item-icon svg {
-  width: 100%;
-  height: 100%;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
 }
 /* Selected radio row (e.g. the active theme): tint the icon to the link
    hue and bold the label so the current choice reads without a separate
@@ -1101,6 +1265,9 @@ body {
   background: var(--highlight-bg);
   color: var(--link);
 }
+/* The sanctioned exception to --icon-glyph: here the glyph is the whole
+   label of the segment (sun / moon / monitor), not a mark beside text,
+   so it carries the weight of a word and is sized a step up. */
 .menu-seg svg {
   width: 16px;
   height: 16px;
@@ -1178,13 +1345,6 @@ html.theme-anim .menu {
   background: var(--sidebar-bg);
   border-bottom: 1px solid var(--border);
 }
-.tree-truncation-note code {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--micro-font-size);
-  padding: 1px 4px;
-  background: var(--hover-bg);
-  border-radius: var(--radius-document);
-}
 
 /* Path-rendering convention — pathHtml() in app.js wraps a path in
    .path with .path-dir (everything up to and including the final
@@ -1202,6 +1362,41 @@ html.theme-anim .menu {
 .header-path .path-dir {
   font-weight: inherit;
   color: inherit;
+}
+
+/* ── Keyboard keys — shared inline primitive ─────────────────────
+   The one way to render a keyboard key. Tokens live with the type
+   scale in :root (see "── Keyboard keys ──" there); this section only
+   assembles them.
+
+   Markup is a <kbd> element with class="kbd", one element per key:
+
+     Press <kbd class="kbd">T</kbd> to search
+
+   Write the key in its natural case in markup — the caps treatment is
+   presentational, so the accessible name a screen reader announces
+   stays whatever the markup says. Keys stand alone as marks; do not
+   nest one inside a <code> or restyle it per surface. For a sequence,
+   emit separate keys and let the surrounding text carry any joining
+   word, so each key keeps its own border. */
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--kbd-min-width);
+  padding: var(--kbd-padding);
+  border: var(--kbd-border);
+  border-radius: var(--kbd-radius);
+  background: var(--kbd-bg);
+  color: var(--kbd-color);
+  font-family: var(--kbd-font-family);
+  font-size: var(--kbd-font-size);
+  font-weight: var(--kbd-font-weight);
+  letter-spacing: var(--kbd-letter-spacing);
+  text-transform: var(--kbd-text-transform);
+  line-height: 1.5;
+  vertical-align: baseline;
 }
 
 /* ── Main layout ─────────────────────────────────────────────── */
@@ -1366,6 +1561,10 @@ html[data-prose-font="sans"] {
      scrolls beneath it. */
   transform: translateZ(0);
 }
+.preview-pane:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
 .preview-empty {
   display: flex;
   align-items: center;
@@ -1425,8 +1624,8 @@ html[data-prose-font="sans"] {
   justify-content: center;
 }
 .tree-item-icon svg {
-  width: 14px;
-  height: 14px;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
 }
 /* Compression overlay — reuses the existing 16x16 envelope as the
    positioning anchor and tucks a small badge into the bottom-right.
@@ -1762,42 +1961,16 @@ html[data-prose-font="sans"] {
   align-items: center;
   gap: 6px;
 }
-.file-header-copy {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 2px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  border-radius: var(--radius-chrome);
-  flex-shrink: 0;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity var(--transition-fast),
-    color var(--transition-fast),
-    background var(--transition-fast);
-}
-.file-header-copy:hover {
-  color: var(--text);
-  background: var(--hover-bg);
-}
-.file-header-copy svg {
-  width: 14px;
-  height: 14px;
-}
+/* Geometry, hover, and reveal come from the .icon-btn primitive; only
+   the reveal trigger and the copied-confirmation tint live here. */
 .file-header:hover .file-header-copy {
   opacity: 1;
-  visibility: visible;
+  pointer-events: auto;
 }
 .file-header-copy.copied {
-  color: hsl(134 61% 41%);
+  color: var(--status-success);
   opacity: 1;
-  visibility: visible;
+  pointer-events: auto;
 }
 /* Color / weight come from .size / .size-large — see the shared
    size-chip convention above. */
@@ -1826,35 +1999,11 @@ html[data-prose-font="sans"] {
   border-color: var(--link);
   color: var(--link);
 }
-.file-header-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--muted);
-  border-radius: var(--radius-chrome);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition:
-    color var(--transition-fast),
-    background var(--transition-fast),
-    border-color var(--transition-fast);
-}
-.file-header-icon:hover {
-  color: var(--link);
-  border-color: var(--link);
-}
-.file-header-icon svg {
-  width: 15px;
-  height: 15px;
-}
-.file-header-icon[hidden] {
-  display: none;
-}
+/* .file-header-icon (the print action) has no block of its own: it is
+   entirely the .icon-btn primitive. It sits beside the copy icon and,
+   across the header, the settings gear, so it must not grow chrome
+   that those do not have. */
+
 .file-header-badge {
   display: inline-flex;
   align-items: center;
@@ -1912,45 +2061,23 @@ html[data-prose-font="sans"] {
 .content-copy-wrap {
   position: relative;
 }
+/* Geometry, hover, reveal, and the opaque overlay plate come from the
+   .icon-btn primitive; only the anchoring and the reveal trigger live
+   here. */
 .content-copy-btn {
   position: absolute;
   top: 8px;
   right: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 4px;
-  border: none;
-  background: var(--sidebar-bg);
-  color: var(--muted);
-  cursor: pointer;
-  border-radius: var(--radius-chrome);
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity var(--transition-fast),
-    color var(--transition-fast),
-    background var(--transition-fast);
   z-index: 2;
-}
-.content-copy-btn svg {
-  width: 16px;
-  height: 16px;
 }
 .content-copy-wrap:hover .content-copy-btn {
   opacity: 1;
-  visibility: visible;
-}
-.content-copy-btn:hover {
-  color: var(--text);
-  background: var(--hover-bg);
+  pointer-events: auto;
 }
 .content-copy-btn.copied {
-  color: hsl(134 61% 41%);
+  color: var(--status-success);
   opacity: 1;
-  visibility: visible;
+  pointer-events: auto;
 }
 
 /* ── Content area ────────────────────────────────────────────── */
@@ -1972,12 +2099,25 @@ html[data-prose-font="sans"] {
 
 /* ── KPress document bridge ───────────────────────────────────────
    --kpress-host-font-size-base on :root pins KPress's full derived type
-   ramp to the app's px-based document size. KPress owns heading, bullet,
-   and offset ratios; the browser root size cannot change their computed
-   values. The overrides here are deliberate design divergences: code is
-   0.9× prose, all secondary document text is 0.85×, and small-caps labels
-   match app chrome. Document colors use KPress's public direct-token seam
-   on both the fragment and tooltips KPress portals to document.body. */
+   ramp to the app's px-based document size. Anchoring that base is the WHOLE
+   bridge for sizing: KPress owns every ratio derived from it, and the browser
+   root size cannot change their computed values.
+
+   Nothing in the size ramp is overridden here any more, deliberately. KPress
+   ships two graded families — secondary text (small 0.95×, smaller 0.90×,
+   tiny 0.85×) and code (mono 0.82×, mono-small 0.75×, mono-tiny 0.70×) — and
+   steps each by context, because the smaller tiers land where the surrounding
+   text is already reduced. Collapsing a family onto one host value flattens
+   those steps, and the failures are not subtle: the mono family at a flat 0.9×
+   rendered inline code in a table at 13.5px inside a 12.75px cell — code
+   LARGER than the prose around it — while the secondary family at a flat 0.85×
+   shrank table text to 12.75px against 15px prose, well under the 14.25px
+   KPress intends. Add a token here only for a divergence that is genuinely
+   about design, not about restating a ratio KPress already owns.
+
+   The caps-label size stays: matching app chrome labels is a real divergence.
+   Document colors use KPress's public direct-token seam on both the fragment
+   and tooltips KPress portals to document.body. */
 .metabrowser-kpress-host .kpress,
 :root .kpress-tooltip {
   --kpress-doc-bg: var(--bg);
@@ -1987,14 +2127,47 @@ html[data-prose-font="sans"] {
   --kpress-doc-link: var(--link);
 }
 
+/* Corner radius is a host decision, unlike the size ramp KPress owns.
+   The app is square everywhere — --radius-chrome and --radius-document are
+   both 0 — but KPress ships 3px / 6px / 0.5rem, so an embedded document put
+   rounded code blocks, tables, and callouts inside square panes: the outer
+   boxes sharp, the inner boxes soft. Flattening these is safe in a way
+   flattening the type ramp was not — a radius is one visual constant, not a
+   set of ratios that step by context.
+
+   Only the box radii are bridged. Pills and circles keep their shape: those
+   are recognizable forms, not boxes with softened corners.
+
+   KPress declares these on `.kpress` itself (style-tokens.css lists
+   `:root, .kpress, .kpress-page-main, .kpress-tooltip`), so the override has
+   to land on the same element and win on specificity — two classes beats one.
+   Tooltips ride along for the same reason the color bridge above names them:
+   KPress portals them to document.body, outside the host. */
+.metabrowser-kpress-host .kpress,
+:root .kpress-tooltip {
+  --kpress-radius-sm: var(--radius-document);
+  --kpress-radius-md: var(--radius-document);
+  --kpress-radius-lg: var(--radius-document);
+}
+
 .metabrowser-kpress-host .kpress {
-  --kpress-font-size-small: var(--document-small-font-size);
-  --kpress-font-size-smaller: var(--document-small-font-size);
-  --kpress-font-size-tiny: var(--document-small-font-size);
-  --kpress-font-size-mono: var(--document-mono-font-size);
-  --kpress-font-size-mono-small: var(--document-mono-font-size);
-  --kpress-font-size-mono-tiny: var(--document-mono-font-size);
   --kpress-caps-label-size: var(--label-font-size);
+}
+
+/* Inline code is a tint with an edge, not a chip. KPress boxes every inline
+   <code> in a hairline border at its own contrast; in a document that names a
+   lot of identifiers — a spec with tables full of field names — that reads as a
+   paragraph of outlined buttons. Keep the border (it closes the shape against
+   the tint), but drop it to --inline-code-border so it registers as a soft
+   boundary rather than a frame. Block code (.kpress-code) keeps KPress's
+   full-contrast frame: that one IS a discrete object.
+   Overrides `.kpress code:not(pre code)` in KPress's document.css. */
+.metabrowser-kpress-host .kpress code:not(pre code) {
+  border-color: var(--inline-code-border);
+  /* Tighter than KPress's default: with a quieter edge the box no longer needs
+     to stand off the glyphs, and less padding keeps inline code on the prose
+     baseline rhythm when a line carries several of them. */
+  padding: 0.1em 0.25em;
 }
 
 /* MetaBrowser's content wrapper already supplies the outer document gutter,
@@ -2008,10 +2181,20 @@ html[data-prose-font="sans"] {
   margin-block-start: 0;
 }
 
-/* The Markdown view container retains .md-body for plugin compatibility.
-   Keep its general list-item margins out of KPress navigation chrome. */
-.metabrowser-kpress-host .kpress-toc li {
-  margin-block: 0;
+/* Blockquotes are the one place the embed deliberately adds to KPress rather
+   than deferring to it. KPress styles a blockquote with indentation alone
+   (`margin` + `padding-inline-start`, no rule and no color), which reads as an
+   ordinary indented paragraph in a dense file browser. This restores the
+   accent bar and muted text the rest of the app uses for quoted material.
+
+   It is stated here, scoped to the embed, rather than inherited from the
+   `.md-body` chrome rules below — those are scoped away from the KPress host
+   precisely so nothing reaches the document by accident. A divergence worth
+   keeping is worth naming. */
+.metabrowser-kpress-host .kpress blockquote {
+  border-left: 3px solid var(--border);
+  padding-inline-start: 1rem;
+  color: var(--muted);
 }
 
 /* The docked TOC is a quiet navigation rail beside the document, not another
@@ -2474,62 +2657,71 @@ pre.code-block code.hljs {
 
 /* ── Markdown rendering ──────────────────────────────────────── */
 
-.md-body {
+.md-body:not(.metabrowser-kpress-host) {
   line-height: 1.55;
   padding: var(--content-padding-y) var(--content-padding-x);
 }
-.md-body h1 {
+.md-body:not(.metabrowser-kpress-host) h1 {
   font-size: 1.5em;
   margin: 1em 0 0.5em;
   border-bottom: 1px solid var(--border);
   padding-bottom: 0.3em;
 }
-.md-body h2 {
+.md-body:not(.metabrowser-kpress-host) h2 {
   font-size: 1.3em;
   margin: 0.8em 0 0.4em;
 }
-.md-body h3 {
+.md-body:not(.metabrowser-kpress-host) h3 {
   font-size: 1.15em;
   margin: 0.6em 0 0.3em;
 }
-.md-body h4 {
+.md-body:not(.metabrowser-kpress-host) h4 {
   font-size: 1.05em;
   margin: 0.5em 0 0.3em;
 }
-.md-body p {
+.md-body:not(.metabrowser-kpress-host) p {
   margin: 0.5em 0;
 }
-.md-body ul,
-.md-body ol {
+.md-body:not(.metabrowser-kpress-host) ul,
+.md-body:not(.metabrowser-kpress-host) ol {
   margin: 0.5em 0;
   padding-left: 1.5em;
 }
-.md-body li {
+.md-body:not(.metabrowser-kpress-host) li {
   margin: 0.5em 0;
 }
 
 /* Cap prose-flow elements for readability; tables, code blocks, images,
    and hr stay full-width. No effect on narrow viewports. */
-.md-body h1,
-.md-body h2,
-.md-body h3,
-.md-body h4,
-.md-body h5,
-.md-body h6,
-.md-body p,
-.md-body ul,
-.md-body ol,
-.md-body blockquote {
+.md-body:not(.metabrowser-kpress-host) h1,
+.md-body:not(.metabrowser-kpress-host) h2,
+.md-body:not(.metabrowser-kpress-host) h3,
+.md-body:not(.metabrowser-kpress-host) h4,
+.md-body:not(.metabrowser-kpress-host) h5,
+.md-body:not(.metabrowser-kpress-host) h6,
+.md-body:not(.metabrowser-kpress-host) p,
+.md-body:not(.metabrowser-kpress-host) ul,
+.md-body:not(.metabrowser-kpress-host) ol,
+.md-body:not(.metabrowser-kpress-host) blockquote {
   max-width: 50em;
 }
-.md-body code {
+/* The markdown plugin's container carries md-body (for prose-styling
+   compatibility) alongside metabrowser-kpress-host, so these legacy chrome
+   rules would otherwise reach inside an embedded KPress document and clamp
+   its code to the chrome mono token. Excluding the KPress host here — rather
+   than restating a size in a counter-rule — is what keeps KPress's own
+   cascade intact: a counter-rule on `.kpress code` outranks KPress's
+   context rules (`.kpress-table code` and friends), which silently flattened
+   the mono ramp back to one size everywhere. Inside an embedded document,
+   code styling belongs to KPress. */
+.md-body:not(.metabrowser-kpress-host) code {
   font-family: var(--font-mono);
   font-size: var(--mono-block-font-size);
   background: var(--code-bg);
   padding: 2px 4px;
   border-radius: var(--radius-document);
 }
-.md-body pre {
+.md-body:not(.metabrowser-kpress-host) pre {
   background: var(--code-bg);
   padding: 12px;
   border-radius: var(--radius-document);
@@ -2537,46 +2729,38 @@ pre.code-block code.hljs {
   margin: 0.5em 0;
   --scrollbar-bg: var(--code-bg);
 }
-.md-body pre code {
+.md-body:not(.metabrowser-kpress-host) pre code {
   background: none;
   padding: 0;
 }
-/* The markdown plugin's container carries md-body (for prose-styling
-   compatibility) alongside metabrowser-kpress-host, so the .md-body code
-   rule above would clamp KPress-rendered code to the chrome mono token.
-   Inside an embedded KPress document,
-   code sizing belongs to the KPress ramp. */
-.metabrowser-kpress-host .kpress code {
-  font-size: var(--kpress-font-size-mono);
-}
-.md-body blockquote {
+.md-body:not(.metabrowser-kpress-host) blockquote {
   border-left: 3px solid var(--border);
   margin: 0.5em 0;
   padding: 0.3em 1em;
   color: var(--muted);
 }
-.md-body a {
+.md-body:not(.metabrowser-kpress-host) a {
   color: var(--link);
 }
-.md-body hr {
+.md-body:not(.metabrowser-kpress-host) hr {
   border: none;
   border-top: 1px solid var(--border);
   margin: 1em 0;
 }
-.md-body del {
+.md-body:not(.metabrowser-kpress-host) del {
   text-decoration: line-through;
   color: var(--muted);
 }
-.md-body strong {
+.md-body:not(.metabrowser-kpress-host) strong {
   font-weight: var(--weight-bold);
 }
 
 /* Checkboxes */
-.md-body .checkbox {
+.md-body:not(.metabrowser-kpress-host) .checkbox {
   font-size: 1.1em;
   margin-right: 0.2em;
 }
-.md-body .checkbox.checked {
+.md-body:not(.metabrowser-kpress-host) .checkbox.checked {
   color: hsl(134 61% 41%);
 }
 
@@ -2734,6 +2918,160 @@ pre.code-block code.hljs {
 }
 .custom-tooltip.visible {
   opacity: 1;
+}
+
+/* ── Quick-file palette ─────────────────────────────────────────
+   A body-level modal surface so tree and preview replacement cannot
+   discard its state. Search work and selection state stay in the
+   injected controller; this block owns only the bounded result DOM. */
+.search-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(48px, 10vh) 16px 16px;
+  background: var(--modal-scrim);
+}
+.search-palette-overlay[hidden] {
+  display: none;
+}
+.search-palette-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  overflow: hidden;
+  color: var(--text);
+  background: var(--viz-surface-raised);
+  border: 1px solid var(--viz-border-strong);
+  border-radius: var(--radius-chrome);
+  box-shadow: var(--shadow-lg);
+}
+.search-palette-title {
+  padding: 8px 12px 4px;
+  color: var(--label-color);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
+}
+/* The query is a band of the dialog, not a control floating inside it.
+   Every other row here — title, results, status, hint — runs edge to edge on
+   the same 12px gutter and separates with a full-width rule, so the input
+   does too: no side margins, no box of its own, one bottom border continuing
+   the stack. Its own frame plus the results' border read as two nested
+   containers where there is only one. */
+.search-palette-input {
+  width: auto;
+  margin: 0;
+  padding: 6px 12px 10px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+}
+.search-palette-input:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+/* The input above supplies this list's top rule, so the list carries only its
+   bottom one. Owning both put two hairlines back to back whenever the list was
+   empty — a double line under an empty query. */
+.search-palette-results {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--border);
+}
+.search-palette-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 12px 5px 10px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+}
+.search-palette-option:hover,
+.search-palette-option.active,
+.search-palette-option[aria-selected="true"] {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+.search-palette-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--ft-color, var(--muted));
+}
+.search-palette-icon svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+.search-palette-option-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.search-palette-label,
+.search-palette-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Filename and parent path carry the same weight hierarchy as the file
+   header above the preview: the name is the identity (bold, full
+   contrast), the path is context (regular, muted). */
+.search-palette-label {
+  color: var(--text);
+  font-size: var(--nav-font-size);
+  font-weight: var(--weight-bold);
+}
+.search-palette-description {
+  color: var(--muted);
+  font-size: var(--nav-font-size);
+  font-weight: var(--weight-normal);
+}
+.search-palette-option mark {
+  color: inherit;
+  background: var(--highlight-bg);
+  font-weight: var(--weight-bold);
+}
+.search-palette-status,
+.search-palette-hint {
+  padding: 5px 12px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.search-palette-status {
+  min-height: 28px;
+}
+/* Keys render through .kbd; the connecting words are ordinary chrome
+   text, so the row reads as a sentence rather than a legend. */
+.search-palette-hint {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding-top: 0;
+  text-align: right;
+  user-select: var(--toggle-user-select);
+}
+.search-palette-hint-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.search-palette-hint-group + .search-palette-hint-group {
+  margin-left: 6px;
 }
 /* File-tree tooltip rows use the compact file/folder summary shape.
    Use viz-panel-* classes for anything
@@ -2902,11 +3240,13 @@ pre.code-block code.hljs {
 
 /* ── Tally tree ─────────────────────────────────────────────── */
 
+/* A chrome tree, like the Navigator: sans labels. Counts keep column
+   alignment through tabular numerals rather than a monospaced face. */
 .tally-tree {
   font-size: var(--ui-small-font-size);
   line-height: 1.8;
   padding: 8px 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 .tally-node {
   cursor: pointer;
@@ -2931,6 +3271,7 @@ pre.code-block code.hljs {
   font-weight: var(--weight-bold);
   margin-left: 4px;
   color: var(--text);
+  font-variant-numeric: var(--tabular-numerals);
 }
 .tally-children {
   padding-left: 16px;
@@ -3082,6 +3423,7 @@ pre.code-block code.hljs {
   .file-header-print,
   .settings-toggle,
   .custom-tooltip,
+  .search-palette-overlay,
   .index-progress,
   .loading,
   .spinner {

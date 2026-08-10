@@ -123,6 +123,7 @@ route stack.
 
 ## Related Documentation
 
+- [Security policy and content trust model](../SECURITY.md)
 - [Plugin authoring](plugins.md)
 - [Design system](design-system.md)
 - [End-to-end testing](e2e-testing.md)

@@ -735,6 +735,11 @@ async def index(_request: Request) -> HTMLResponse:
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree_expansion.js")
+    known_file_catalog_url = _static_asset_url("known_file_catalog.js")
+    catalog_feed_url = _static_asset_url("catalog_feed.js")
+    file_fuzzy_match_url = _static_asset_url("file_fuzzy_match.js")
+    search_controller_url = _static_asset_url("search_controller.js")
+    search_palette_url = _static_asset_url("search_palette.js")
     app_url = _static_asset_url("app.js")
     perf_block = (
         f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
@@ -939,7 +944,7 @@ async def index(_request: Request) -> HTMLResponse:
       </div>
     </div>
     <div class="resize-handle" id="tree-resize"></div>
-    <div class="preview-pane" id="preview-pane" data-kpress-viewport>
+    <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
       <div class="preview-empty">Select a file to view</div>
     </div>
   </main>
@@ -956,6 +961,11 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>
+  <script src="{known_file_catalog_url}"></script>
+  <script src="{catalog_feed_url}"></script>
+  <script src="{file_fuzzy_match_url}"></script>
+  <script src="{search_controller_url}"></script>
+  <script src="{search_palette_url}"></script>
   <script src="{app_url}"></script>
   {plugin_scripts}
   {optional_assets_block}

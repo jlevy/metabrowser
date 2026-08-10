@@ -181,6 +181,233 @@ type MetabrowserTreeExpansion = {
   visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
 };
 
+type MetabrowserKnownFileCatalogWireEntry = {
+  children?: Array<MetabrowserKnownFileCatalogWireEntry> | null;
+  logical_ext?: string;
+  name?: string;
+  path: string;
+  type: string;
+};
+
+type MetabrowserKnownFile = Readonly<{
+  basename: string;
+  logicalExtension: string | null;
+  path: string;
+  source: string;
+}>;
+
+type MetabrowserKnownFileCatalogSnapshot = Readonly<{
+  complete: boolean;
+  files: ReadonlyArray<MetabrowserKnownFile>;
+  observedCount: number;
+  revision: number;
+  sourceSummary: Readonly<Record<string, number>>;
+}>;
+
+type MetabrowserCatalogChangePayload = {
+  upserts?: Array<{ p: string; e: string }>;
+  removes?: string[];
+};
+
+type MetabrowserKnownFileCatalogApi = Readonly<{
+  /**
+   * @param bulkComplete the catalog is a complete view of the root (a finished
+   *   walk that did not hit the max-files cap)
+   * @param authoritative the payload lists every file the index holds, so
+   *   feed-sourced paths it omits are stale and get retired. False for a
+   *   payload built mid-walk, which is only a prefix.
+   */
+  applyBulkSnapshot(
+    files: Array<{ p: string; e: string }>,
+    bulkComplete: boolean,
+    authoritative?: boolean,
+  ): void;
+  applyCatalogChange(payload: MetabrowserCatalogChangePayload): void;
+  applyEventChange(
+    ops: Array<{
+      entry?: MetabrowserKnownFileCatalogWireEntry;
+      op: string;
+      path?: string;
+    }>,
+  ): void;
+  clear(): void;
+  markComplete(): void;
+  observeEventSnapshot(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
+  observeInitialTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
+  observeLazyTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
+  observeNavigation(path: string, logicalExtension: string | null): void;
+  observeRecent(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
+  observeTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>, source: string): void;
+  removePath(path: string): void;
+  snapshot(): MetabrowserKnownFileCatalogSnapshot;
+}>;
+
+type MetabrowserKnownFileCatalogRuntime = Readonly<{
+  create(): MetabrowserKnownFileCatalogApi;
+}>;
+
+type MetabrowserCatalogFeedApi = Readonly<{
+  dispose(): void;
+  onCatalogChange(payload: MetabrowserCatalogChangePayload): void;
+  onIndexComplete(): void;
+  onResync(): void;
+  onSentinelSnapshot(): void;
+  start(): void;
+}>;
+
+type MetabrowserCatalogFeedRuntime = Readonly<{
+  create(options: {
+    catalog: Pick<
+      MetabrowserKnownFileCatalogApi,
+      "applyBulkSnapshot" | "applyCatalogChange" | "markComplete"
+    >;
+    endpoint?: string;
+    fetchImpl?: typeof fetch;
+    scheduleRetry?: (callback: () => void, delayMs: number) => number;
+    cancelRetry?: (handle: number) => void;
+  }): MetabrowserCatalogFeedApi;
+}>;
+
+type MetabrowserFuzzyRank = Readonly<{
+  matchClass: number;
+  boundaryHits: number;
+  contiguousChars: number;
+  runCount: number;
+  gapChars: number;
+  startOffset: number;
+  candidateLength: number;
+  directoryDepth: number;
+  normalizedPath: string;
+  originalPath: string;
+}>;
+
+type MetabrowserFuzzyMatch = Readonly<{
+  matchRanges: ReadonlyArray<Readonly<{ start: number; end: number }>>;
+  path: string;
+  rank: MetabrowserFuzzyRank;
+}>;
+
+type MetabrowserFileFuzzyMatchRuntime = Readonly<{
+  compareMatches(left: MetabrowserFuzzyMatch, right: MetabrowserFuzzyMatch): number;
+  matchPath(query: string, path: string): MetabrowserFuzzyMatch | null;
+  rankPaths(query: string, paths: string[], limit?: number): ReadonlyArray<MetabrowserFuzzyMatch>;
+}>;
+
+type MetabrowserSearchRequest = Readonly<{
+  match: "fuzzy";
+  query: string;
+  target: "file";
+}>;
+
+type MetabrowserSearchFileResult = Readonly<{
+  description: string;
+  id: string;
+  kind: "file";
+  label: string;
+  logicalExtension?: string | null;
+  matchRanges: ReadonlyArray<Readonly<{ start: number; end: number }>>;
+  path: string;
+  providerId: string;
+  rank?: MetabrowserFuzzyRank;
+  score: number;
+}>;
+
+type MetabrowserSearchBatch = Readonly<{
+  candidateCount?: number;
+  complete: boolean;
+  providerId: string;
+  results: ReadonlyArray<MetabrowserSearchFileResult>;
+  revision?: number;
+  statusMessage?: string;
+  truncated: boolean;
+}>;
+
+type MetabrowserSearchContext = Readonly<{ requestId: number }>;
+
+type MetabrowserSearchProvider = Readonly<{
+  activation?: "fallback" | "immediate";
+  id: string;
+  priority?: number;
+  search(
+    request: MetabrowserSearchRequest,
+    context: MetabrowserSearchContext,
+    signal: AbortSignal,
+  ): MetabrowserSearchBatch | Promise<MetabrowserSearchBatch>;
+  supports?(request: MetabrowserSearchRequest): boolean;
+}>;
+
+type MetabrowserSearchState = Readonly<{
+  batches: ReadonlyArray<
+    Readonly<{
+      candidateCount?: number;
+      complete: boolean;
+      providerId: string;
+      resultCount: number;
+      revision?: number;
+      statusMessage?: string;
+      truncated: boolean;
+    }>
+  >;
+  complete: boolean;
+  errors: ReadonlyArray<string>;
+  phase: "idle" | "searching" | "complete";
+  request: MetabrowserSearchRequest | null;
+  requestId: number;
+  results: ReadonlyArray<MetabrowserSearchFileResult>;
+  statusMessage: string;
+  truncated: boolean;
+}>;
+
+type MetabrowserSearchController = Readonly<{
+  cancel(): void;
+  dispose(): void;
+  registerProvider(provider: MetabrowserSearchProvider): () => void;
+  search(
+    request: MetabrowserSearchRequest,
+    options?: { includeFallback?: boolean },
+  ): Promise<MetabrowserSearchState | null>;
+  state(): MetabrowserSearchState;
+  subscribe(listener: (state: MetabrowserSearchState) => void): () => void;
+}>;
+
+type MetabrowserSearchRuntime = Readonly<{
+  createController(options?: { maxResults?: number }): MetabrowserSearchController;
+  createLocalFileProvider(options: {
+    catalog: MetabrowserKnownFileCatalogApi;
+    chunkSize?: number;
+    matcher: MetabrowserFileFuzzyMatchRuntime;
+    maxResults?: number;
+    syncThreshold?: number;
+    yieldControl?: (signal: AbortSignal) => Promise<void>;
+  }): MetabrowserSearchProvider;
+}>;
+
+type MetabrowserOpenFileOutcome = Readonly<{
+  focusTarget?: HTMLElement | null;
+  message?: string;
+  status: "opened" | "not-found" | "error" | "cancelled";
+}>;
+
+type MetabrowserSearchPaletteApi = Readonly<{
+  close(): void;
+  dispose(): void;
+  element: HTMLElement;
+  isOpen(): boolean;
+  open(): void;
+}>;
+
+type MetabrowserSearchPaletteRuntime = Readonly<{
+  create(options: {
+    controller: MetabrowserSearchController;
+    document?: Document;
+    getCatalogSnapshot(): { complete: boolean; observedCount: number };
+    getFileIcon?(path: string): { cls?: string; svg?: string };
+    maxRows?: number;
+    onNotFound?(path: string): void | Promise<void>;
+    openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
+  }): MetabrowserSearchPaletteApi;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -207,7 +434,12 @@ declare global {
       classFor(path: string): string;
       iconFor(path: string): unknown;
     };
+    MetabrowserCatalogFeed: MetabrowserCatalogFeedRuntime;
+    MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
+    MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
+    MetabrowserSearch: MetabrowserSearchRuntime;
+    MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTooltip?: {

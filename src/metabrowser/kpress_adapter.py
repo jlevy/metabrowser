@@ -97,6 +97,14 @@ def render_kpress_view(
         # KPress's rendered <h1> doc header rather than hiding it with host CSS.
         show_doc_header=False,
         toc_collapse_depth=_TOC_COLLAPSE_DEPTH,
+        # A browser shows one document after another, so the reading column has
+        # to land in the same place every time. KPress's wide band gives a
+        # document with a TOC a left-aligned sidebar grid and a document under
+        # `toc_min_headings` a centred, measure-capped column — different
+        # position AND a narrower measure. Reserving holds the rail open on the
+        # documents that earn no TOC, so only the rail's contents change between
+        # files, never the layout. See KPress's "Reserved TOC Rail".
+        toc_rail="reserved",
     )
     try:
         return runtime.render_view(request)

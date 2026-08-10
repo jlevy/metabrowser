@@ -256,6 +256,31 @@ class FsChange:
 
 
 @dataclass(slots=True, frozen=True)
+class CatalogUpsert:
+    """Minimal Quick File catalog entry: served-root-relative path
+    plus the logical compound-tail extension (``derive_ext``)."""
+
+    p: str
+    e: str
+
+
+@dataclass(slots=True, frozen=True)
+class CatalogChange:
+    """Minimal companion to ``fs.change`` for the client filename
+    catalog. Derived at the inventory emit choke point from the same
+    ops: non-gitignored file upserts shrink to ``{p, e}``; an upsert
+    whose entry is gitignored becomes a catalog *remove* so
+    ignore-state flips converge; directory ops are dropped. Rides
+    every stream scope unfiltered — the depth-scoped tree stream
+    still carries complete catalog deltas — and the whole batch is
+    a few percent of the ``FsChange`` wire weight."""
+
+    upserts: tuple[CatalogUpsert, ...]
+    removes: tuple[str, ...]
+    type: Literal["catalog.change"] = "catalog.change"
+
+
+@dataclass(slots=True, frozen=True)
 class FsResyncRequired:
     """Server-restart signal. Client drops state and re-subscribes
     at the same scope it was previously on. NOT emitted for
@@ -365,6 +390,7 @@ class ParserReset:
 StreamEvent = (
     FsSnapshot
     | FsChange
+    | CatalogChange
     | FsResyncRequired
     | CapabilityUpdate
     | ProjectionInvalidate

@@ -463,10 +463,12 @@ def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
         after_remove = inv.get("")
         assert after_remove is not None
         changes: list[FsChange] = []
-        for _ in range(2):
+        # Each fs.change is followed by its minimal catalog.change
+        # companion; this test cares about the fat events only.
+        while len(changes) < 2:
             event = await queue.get()
-            assert isinstance(event, FsChange)
-            changes.append(event)
+            if isinstance(event, FsChange):
+                changes.append(event)
         return after_insert, after_remove, changes
 
     after_insert, after_remove, changes = asyncio.run(_run())

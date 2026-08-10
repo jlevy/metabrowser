@@ -8,25 +8,52 @@ from rich import print as rprint
 
 # Update as needed.
 SRC_PATHS = ["src", "tests", "devtools"]
-DOC_PATHS = [
-    str(path)
-    for path in sorted(Path(".").rglob("*.md"))
-    if not any(
-        part
-        in {
-            ".agents",
-            ".claude",
-            ".git",
-            ".pytest_cache",
-            ".tbd",
-            ".venv",
-            "attic",
-            "dist",
-            "node_modules",
-        }
-        for part in path.parts
-    )
-]
+
+# Tracked agent scaffolding: real files in the repository, but not prose this
+# project authors or spell-checks. Everything else that should stay out of the
+# doc lint (build output, caches, .venv, node_modules, read-only third-party
+# checkouts under attic/) is already in .gitignore, and git enumerates the
+# doc set below, so those trees never have to be named twice.
+DOC_SKIP_PARTS = frozenset({".agents", ".claude", ".tbd"})
+
+# Only consulted when git cannot enumerate the tree; git applies .gitignore
+# itself, so these names are duplicated nowhere in the normal path.
+FALLBACK_SKIP_PARTS = DOC_SKIP_PARTS | {
+    ".git",
+    ".pytest_cache",
+    ".venv",
+    "attic",
+    "dist",
+    "node_modules",
+}
+
+
+def _repository_markdown() -> list[str]:
+    """Markdown git considers part of the repository, ignored trees excluded.
+
+    `--cached --others --exclude-standard` is tracked files plus untracked ones
+    git would offer to add, so a brand-new document is linted immediately while
+    an ignored tree is never walked at all. Outside a work tree (an unpacked
+    sdist, say) this falls back to a filesystem walk that has to name the
+    ignored directories itself.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "*.md"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        paths = sorted(Path(".").rglob("*.md"))
+        skip = FALLBACK_SKIP_PARTS
+    else:
+        paths = sorted({Path(name) for name in result.stdout.split("\0") if name})
+        skip = DOC_SKIP_PARTS
+    return [str(path) for path in paths if not skip.intersection(path.parts) and path.is_file()]
+
+
+DOC_PATHS = _repository_markdown()
 BIOME_PATHS = [
     "src/metabrowser/static",
     "src/metabrowser/builtin_plugins",

@@ -38,8 +38,42 @@ domain tokens, rather than in core `styles.css`.
 
 ## Typography
 
-The shell uses a compact UI face for navigation and controls, a monospaced face for code
-and structured values, and KPress typography for rendered Markdown.
+The shell uses a compact UI face for chrome, a monospaced face for rendered content, and
+KPress typography for rendered Markdown.
+
+### Faces: Chrome Is Sans, Content Is Mono
+
+The dividing line is what the text *is*, not how technical it looks.
+
+Chrome — everything the application itself says — uses `--font-sans`. That includes file
+paths, and it includes the parent path and every ancestor segment: a path is navigation,
+not code, so it reads in the same face as the navigation row it points at.
+Key names, shortcut hints, labels, metadata, chips, tooltips, counts, and status text
+are chrome too.
+
+Monospace is for the user’s own content, where column alignment carries meaning:
+highlighted source, code blocks, Markdown inline code, and raw log payloads.
+Numeric alignment on its own does not justify monospace — byte counts, durations, and
+timestamps stay sans and use `--tabular-numerals`.
+
+The authoritative rule, the current list of deliberate exceptions, and the reasoning for
+each live in the `── Typography roles ──` block of `static/styles.css`, next to the
+tokens they govern. `tests/test_chrome_typography.py` enforces that list, so a new
+monospaced use site fails the build until it is classified.
+
+### Keyboard Keys
+
+Every keyboard key rendered anywhere in the app uses the `.kbd` component: always all
+caps, bold, with one thin border.
+Never hand-set a key’s type or border at a use site, and never write a key as plain text
+inside a sentence.
+
+Write the key in its natural case in markup — the caps treatment is presentational, so
+the accessible name stays what the markup says.
+For a sequence, emit one `.kbd` per key so each keeps its own border.
+
+The component, its tokens, and its markup contract are documented in the
+`── Keyboard keys ──` blocks of `static/styles.css`.
 
 ### Type Scale
 
@@ -60,24 +94,28 @@ Chrome (interface) sizes:
   Labels differ by caps treatment, not by another size.
 - `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
   views, logs, raw JSON.
-- `--micro-font-size` (10px): deliberately minimized marks — the brand line, code inside
-  truncation notes.
+- `--micro-font-size` (10px): deliberately minimized marks — the brand line.
 
-Document (rendered prose) sizes, where mono and small derive from the body size so a
-document rescales as one unit:
+Document (rendered prose) sizes are a single token:
 
 - `--document-body-font-size` (15px): prose, one size step above the 14px app body.
-- `--document-mono-font-size` (0.9×): code — smaller than prose by design; mono x-height
-  is larger, so this still reads close to the prose size.
-- `--document-small-font-size` (0.85×): secondary document text — TOC entries, captions,
-  footnotes.
 
-Embedded KPress documents set `--kpress-host-font-size-base` to
-`--document-body-font-size` on `:root`. KPress derives its full ramp, headings, bullets,
-labels, and offsets from that base.
-The scoped bridge overrides only intentional design differences: mono uses
-`--document-mono-font-size`, secondary document tiers use `--document-small-font-size`,
-and the CONTENTS label uses `--label-font-size` so it matches app labels.
+Everything else inside a rendered document — secondary text, table cells, captions,
+footnotes, and code at every tier — belongs to KPress’s ramp, which it derives from this
+one value through `--kpress-host-font-size-base` on `:root`. Chrome-context monospace is
+a separate concern and uses `--mono-block-font-size`.
+
+Do not add a host token that restates a ratio KPress already owns.
+KPress ships *graded families* — secondary text at `small`/`smaller`/`tiny` and code at
+`mono`/`mono-small`/`mono-tiny` — and steps each by context, because the smaller tiers
+land where the surrounding text is already reduced.
+A host token collapses the whole family onto one size, and the failures are not subtle:
+a flat 0.9× mono token once rendered inline code in a table at 13.5px inside a 12.75px
+cell, larger than the prose around it, while a flat 0.85× secondary token shrank table
+text to 12.75px against 15px prose — well under the 14.25px KPress intends.
+
+The bridge keeps one size override, and only because it is a real design difference: the
+CONTENTS label uses `--label-font-size` so it matches app labels.
 When adding a size, extend the ramp and its documentation; do not create a one-off.
 
 ### KPress Base-Size Boundary
@@ -121,12 +159,60 @@ from the document it covers.
 Keep these roles distinct:
 
 - labels and metadata use normal weight and muted text;
-- selected values and filenames use stronger contrast;
+- filenames are the identity of a row and carry bold weight at full contrast, while the
+  parent path beside them is context and stays regular weight and muted;
 - byte counts, durations, timestamps, and numeric table columns use tabular numerals;
-- code and paths use monospaced text without forcing prose into a code style.
+- code uses monospaced text without forcing prose into a code style, and paths stay in
+  the sans navigation face.
 
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
+
+## Icons and Icon Buttons
+
+Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
+inherits `currentColor`. An icon never carries its own color.
+
+### One Glyph Size
+
+Every icon in the chrome is drawn at `--icon-glyph`, whether it is a button, a file-type
+mark on a tree or palette row, or a menu row’s leading mark.
+Never inline a pixel size at a use site.
+Where an icon reserves a column in a row of text, the alignment box around it is 16px —
+one step wider than the glyph, so the mark sits optically centered.
+
+There is one deliberate exception, `.menu-seg svg` in the segmented theme and font
+choosers, where the glyph *is* the segment’s label rather than a mark beside text and so
+carries the weight of a word.
+It is documented at the rule.
+
+### Every Icon-Only Control Is the Same Control
+
+An icon-only button is one primitive, `.icon-btn`, documented in the
+`── Icon buttons ──` block of `static/styles.css`. It pairs `--icon-glyph` with
+`--icon-btn-size` for the hit target, so the settings gear, the print action, and the
+copy buttons are interchangeable wherever they appear.
+
+At rest an icon button is a bare muted glyph with no border and no fill.
+It raises a hover surface and a hairline border only while hovered, focused, or holding
+a menu open; hover, keyboard focus, and “my menu is open” are one visual state.
+
+Do not give an icon button a resting border or background.
+A permanent box around one icon makes it read as a heavier, more primary control than
+the unboxed icon beside it, and two icons of equal standing stop looking like the same
+kind of thing. The hover surface is what signals “this is clickable” — a static frame
+adds weight without adding information.
+
+The one sanctioned resting surface is `.icon-btn-overlay`, for a button that floats
+above content: a bare glyph over source text is unreadable, so it needs an opaque plate.
+
+### Reveal on Hover Keeps Keyboard Reach
+
+Buttons that appear only when their row or container is hovered use `.icon-btn-reveal`,
+which fades opacity and drops `pointer-events` rather than setting `visibility: hidden`.
+A hidden button leaves the tab order, so the control becomes mouse-only.
+Every reveal trigger restores `pointer-events` along with the opacity, and keyboard
+focus is itself a reveal trigger.
 
 ## File Types
 
