@@ -1,15 +1,16 @@
 ---
 type: is
 id: is-01kzfe3r2xjtcrtm239extt3gv
-title: Quick File catalog removals are O(n) per op
+title: Batch catalog removals per change-op group
 kind: bug
 status: open
 priority: 2
-version: 3
+version: 5
+spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels: []
 dependencies: []
 created_at: 2026-08-08T00:59:32.828Z
-updated_at: 2026-08-10T01:31:24.759Z
+updated_at: 2026-08-10T01:52:48.398Z
 ---
 Half of this landed in 16678d3; re-scoped to what remains.
 

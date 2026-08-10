@@ -5,11 +5,12 @@ title: "Quick File: an open search does not re-run when the catalog grows"
 kind: bug
 status: open
 priority: 1
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels: []
 dependencies: []
 created_at: 2026-08-08T00:59:18.432Z
-updated_at: 2026-08-10T01:31:24.344Z
+updated_at: 2026-08-10T01:52:47.763Z
 ---
 Half of this landed in 16678d3; re-scoped to what remains.
 
