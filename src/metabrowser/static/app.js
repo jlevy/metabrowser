@@ -1866,7 +1866,7 @@ function initNavTabs() {
 // the bottom-most chrome above the scroll owner, so a shadow on the
 // tab bar would land on the filter bar instead of on the content.
 function initNavScrollShadow() {
-  const shadowTarget = document.getElementById("filter-bar") || queryHtml(".nav-tab-bar");
+  const shadowTarget = document.getElementById("nav-filter-bar") || queryHtml(".nav-tab-bar");
   const content = document.getElementById("tree-content");
   if (!shadowTarget || !content) {
     return;
@@ -2480,7 +2480,7 @@ function filesPanelUsesRecentSource() {
 }
 
 function renderNavFilterBar() {
-  var bar = document.getElementById("filter-bar");
+  var bar = document.getElementById("nav-filter-bar");
   if (!bar || !filterState || !filterControls) {
     return;
   }
@@ -2488,7 +2488,7 @@ function renderNavFilterBar() {
   var count = filterState.activeCount();
   var fc = filterControls;
   var main =
-    '<div class="filter-bar-main">' +
+    '<div class="nav-filter-bar-main">' +
     // Age and type ride the always-visible row: they are the two
     // dimensions people reach for, and as dropdowns they cost a
     // fraction of the width the segmented ramps did.
@@ -2512,7 +2512,7 @@ function renderNavFilterBar() {
       open: filterOpenMenu === "types",
       menuId: "filter-type-menu",
     }) +
-    '<span class="filter-bar-end">' +
+    '<span class="nav-filter-bar-end">' +
     fc.toggleHtml({
       key: "drawer",
       // The shared chevron glyph, rotated by CSS to point at the state
@@ -2561,7 +2561,7 @@ function renderNavFilterBar() {
 }
 
 function initFilterBar() {
-  var bar = document.getElementById("filter-bar");
+  var bar = document.getElementById("nav-filter-bar");
   if (!bar || !filterState || !filterControls) {
     return;
   }

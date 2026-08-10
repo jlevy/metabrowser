@@ -350,7 +350,16 @@
   --content-padding-x: 24px;
   --content-padding-y: 16px;
   --embedded-document-padding-top: 8px;
-  --pane-header-padding-x: 16px;
+  /* The navigation column has one left inset, and everything in it
+     lines up on that edge: the brand, the served path, the Files tab,
+     the filter chips, the tally row, and every tree row. 12px is the
+     tree row's own content inset (10px padding + the 2px selection
+     bar), so the chrome above aligns to the content rather than the
+     content having to move. Controls with internal padding cancel it
+     — see .header-brand's negative margin and .nav-tab-bar below — so
+     their *text* lands on the inset; bordered controls like chips
+     align their border instead, since that is their visual edge. */
+  --pane-header-padding-x: 12px;
   --pane-header-padding-y: 8px;
   --file-header-padding-y: var(--pane-header-padding-y);
   --file-tab-padding-x: 12px;
@@ -1898,13 +1907,16 @@ html[data-prose-font="sans"] {
    border-bottom from .tab-bar above is always present;
    the shadow is the additive cue. */
 .tab-bar.nav-tab-bar {
-  padding-left: var(--pane-header-padding-x);
+  /* Cancel the tab's own horizontal padding so the *label* sits on the
+     column inset, the same trick .header-brand uses. Left-padding the
+     bar instead would inset the label twice. */
+  padding-left: calc(var(--pane-header-padding-x) - var(--file-tab-padding-x));
   position: relative;
   z-index: 1;
   transition: box-shadow var(--transition-fast);
 }
 .tab-bar.nav-tab-bar.scrolled,
-.filter-bar.scrolled {
+.nav-filter-bar.scrolled {
   box-shadow: var(--shadow-md);
 }
 
@@ -2145,7 +2157,7 @@ html[data-prose-font="sans"] {
    replaceable #tab-files container so a tree reload never destroys
    it and so it never scrolls away. The always-visible row carries
    recency; everything else lives in the drawer one toggle down. */
-.filter-bar {
+.nav-filter-bar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -2163,14 +2175,14 @@ html[data-prose-font="sans"] {
    moment the badge widened it — the bar would reflow under the control
    you just clicked. Nowrap plus a shrinkable group means the recency
    segments wrap inside their own pill instead. */
-.filter-bar-main {
+.nav-filter-bar-main {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
   gap: 6px;
   width: 100%;
 }
-.filter-bar-main > .chip-group {
+.nav-filter-bar-main > .chip-group {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -2178,12 +2190,12 @@ html[data-prose-font="sans"] {
    recency segments plus the drawer toggle have to clear a 300px pane
    without the group wrapping. One pixel of horizontal padding each
    side buys that margin; the drawer's groups keep the roomier default. */
-.filter-bar-main > .chip-group > .chip {
+.nav-filter-bar-main > .chip-group > .chip {
   padding-inline: 7px;
 }
 /* Pushes the drawer toggle and Clear to the trailing edge, so the
    recency group always starts at the same x as the tree's first row. */
-.filter-bar-end {
+.nav-filter-bar-end {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -2771,7 +2783,11 @@ html[data-prose-font="sans"] {
   color: hsl(220 9% 46%);
 }
 
-/* ── Event filter bar ─────────────────────────────────────────── */
+/* ── Event filter bar ───────────────────────────────────────────
+   The agent-log plugin's event-kind buttons. Unrelated to the nav
+   filter bar above, which is why that one is `.nav-filter-bar`: the
+   two shared the `.filter-bar` name for a while and this rule's
+   margin silently leaked into the navigation column. */
 .filter-bar {
   display: flex;
   gap: 0;

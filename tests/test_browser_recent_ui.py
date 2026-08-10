@@ -93,7 +93,7 @@ def test_dom_contract_all_referenced_ids_exist_in_rendered_html() -> None:
         "index-progress",
         "tree-content",
         "tab-files",
-        "filter-bar",
+        "nav-filter-bar",
         "tree-pane",
         "tree-resize",
         "preview-pane",
@@ -121,8 +121,8 @@ def test_dom_contract_filter_bar_sits_outside_the_scrolling_tree() -> None:
     scroll owner, which would scroll the bar away)."""
 
     html = _render_index_html()
-    assert html.index('id="filter-bar"') < html.index('id="tree-content"')
-    assert html.index('class="tab-bar nav-tab-bar"') < html.index('id="filter-bar"')
+    assert html.index('id="nav-filter-bar"') < html.index('id="tree-content"')
+    assert html.index('class="tab-bar nav-tab-bar"') < html.index('id="nav-filter-bar"')
 
 
 # ── Client wiring ──────────────────────────────────────────────

@@ -410,6 +410,49 @@ def test_dom_content_loaded_initializes_the_filter_bar() -> None:
     assert "initFilterBar();" in handler_block
 
 
+def test_nav_filter_bar_does_not_share_the_plugin_filter_bar_name() -> None:
+    """The agent-log plugin already owned `.filter-bar`, and its
+    `margin: 8px 0 12px` leaked into the navigation column — 20px of
+    dead space above the tally that no nav rule asked for. Distinct
+    names are what keep the two apart."""
+
+    css = _read("styles.css")
+    assert ".nav-filter-bar {" in css
+    # The plugin's rule keeps the old name and its margin.
+    plugin_start = css.index("/* ── Event filter bar ")
+    plugin_block = css[plugin_start : plugin_start + 500]
+    assert ".filter-bar {" in plugin_block
+    assert "margin: 8px 0 12px 0;" in plugin_block
+
+    # The nav bar sets no margin of its own, so nothing can leak back.
+    nav_start = css.index(".nav-filter-bar {")
+    nav_block = css[nav_start : css.index("}", nav_start)]
+    assert "margin" not in nav_block
+
+    assert 'id="nav-filter-bar"' in _render_index_html()
+
+
+def test_the_navigation_column_shares_one_left_inset() -> None:
+    """Brand, path, tab label, filter chips, tally, and tree rows all
+    land on the same edge. A control with internal padding cancels it
+    so its text sits on the inset; the tree row reaches the same 12px
+    as padding plus its selection bar."""
+
+    css = _read("styles.css")
+    assert "--pane-header-padding-x: 12px;" in css
+
+    # The tab bar subtracts the tab's own padding rather than adding to it.
+    nav_tab_start = css.index(".tab-bar.nav-tab-bar {")
+    nav_tab_block = css[nav_tab_start : css.index("}", nav_tab_start)]
+    assert "calc(var(--pane-header-padding-x) - var(--file-tab-padding-x))" in nav_tab_block
+
+    # Tree row: 10px padding + 2px selection bar = the same 12px.
+    row_start = css.index(".tree-item {")
+    row_block = css[row_start : css.index("}", row_start)]
+    assert "padding: 2px 12px 2px 10px;" in row_block
+    assert "border-left: 2px solid transparent;" in row_block
+
+
 def test_scroll_shadow_rides_the_filter_bar() -> None:
     """The filter bar is the bottom-most chrome above the scroll
     owner, so a shadow on the tab bar would land on the bar instead
@@ -418,6 +461,6 @@ def test_scroll_shadow_rides_the_filter_bar() -> None:
     js = _read("app.js")
     fn_start = js.index("function initNavScrollShadow()")
     fn_block = js[fn_start : fn_start + 900]
-    assert 'document.getElementById("filter-bar")' in fn_block
+    assert 'document.getElementById("nav-filter-bar")' in fn_block
     css = _read("styles.css")
-    assert ".filter-bar.scrolled {" in css
+    assert ".nav-filter-bar.scrolled {" in css

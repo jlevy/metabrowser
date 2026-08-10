@@ -936,7 +936,7 @@ async def index(_request: Request) -> HTMLResponse:
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
            stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="filter-bar" id="filter-bar"></div>
+      <div class="nav-filter-bar" id="nav-filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
           <div class="loading"><div class="spinner"></div>Loading...</div>
