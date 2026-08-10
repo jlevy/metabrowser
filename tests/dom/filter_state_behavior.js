@@ -241,6 +241,18 @@ const HOUR = 3600;
   // Compound extensions match on the last segment, the same way the
   // tree's own extension column reads them.
   assertTrue("a compound name matches its tail", state.typeMatches("a.min.js", [".js"]));
+  // The menu tallies on the index's compound tail, so a compound pick
+  // must match on it too. Matching by last-suffix only made ".min.js"
+  // reduce to ".js" and pick up nothing it was counted for.
+  assertTrue(
+    "a compound pick matches via the logical extension",
+    state.typeMatches("a.min.js", [".min.js"], ".min.js"),
+  );
+  assertEqual(
+    "and does not match a plain sibling",
+    state.typeMatches("a.js", [".min.js"], ".js"),
+    false,
+  );
 }
 
 if (failures.length > 0) {

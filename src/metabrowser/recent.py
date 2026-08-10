@@ -182,6 +182,11 @@ def _file_entry_to_recent_dict(entry: FsEntry) -> dict[str, Any]:
         "type": "file",
         "size": entry.size,
         "mtime": entry.mtime_ns / 1_000_000_000.0 if entry.mtime_ns else 0.0,
+        # The compound-tail extension (".min.js", ".runbook.md"), which
+        # is the unit the nav's type filter and its tally both use. The
+        # tree payload carries it too; without it here, rows from this
+        # source could not be matched against a compound extension.
+        "logical_ext": entry.ext,
     }
     if entry.gitignored:
         out["gitignored"] = True

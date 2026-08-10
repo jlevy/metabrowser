@@ -821,6 +821,9 @@ async function loadTree() {
     // in the sticky header — visible on first paint, scrolls away with
     // the rest of the tree. Keeps the upper nav header clean.
     var summaryHtml = treeSummaryHtml(data.summary, summaryFiles, summarySize);
+    // Cached so the recency source, which paints over the whole panel,
+    // can keep the same tally row above its own filtered count.
+    _lastTreeSummaryHtml = summaryHtml;
     // Walker truncation banner. The InventoryIndex
     // walker stops at INVENTORY_MAX_FILES; finalized dirs still
     // emit accumulated totals so the UI is usable, but the user
@@ -917,6 +920,8 @@ function scheduleRootSummaryRefresh() {
 // clearing a recency filter can restore the full tree from memory
 // instead of refetching on every chip click.
 var _lastTreeRender = null;
+// The tally row alone, so the recency source can reuse it verbatim.
+var _lastTreeSummaryHtml = "";
 
 // Paint #tab-files from that cache. Returns false when nothing has
 // been fetched yet, so the caller can fall back to loadTree().
@@ -1949,7 +1954,12 @@ function fetchRecent(windowKey) {
     recentInflight = null;
   }
   var results = recentResultsHost();
-  if (results && recentBaseEntries.size === 0) {
+  // Always replace the panel, not just on a cold start. This source
+  // paints over the full tree, so leaving the previous contents up
+  // would show an unfiltered tree under a recency window that is
+  // already selected — and a warm `recentBaseEntries` from an earlier
+  // window is the wrong window's answer, not this one's.
+  if (results) {
     results.innerHTML = '<div class="recent-empty">Loading recent files…</div>';
   }
   var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
@@ -2039,6 +2049,10 @@ function renderRecentFromBase() {
       var tree = clusterRecentTreeJs(entries, nowSec, RECENT_CLUSTER_PCT);
       results.innerHTML = renderRecentList({
         tree: tree,
+        // What the panel is actually showing, which is the entry count
+        // after the live overlay — not the tree node count, since
+        // clustering folds directories into the same structure.
+        shown: entries.length,
         total_matching: recentTotalMatching,
         truncated: recentTruncated,
       });
@@ -2343,19 +2357,22 @@ function renderRecentList(data) {
   // the Recent tree builder leaves ``expanded`` unset on those
   // nodes so explicit cluster-collapse state still wins.
   var body = renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
-  // Truncation banner: when total_matching exceeds the cap (server
-  // tops out at ``RECENT_MAX_LIMIT = 2 000``), tell the user the
-  // window has more files than the response includes.
-  if (data.truncated && data.total_matching) {
-    body =
-      '<div class="recent-truncated-note">Showing ' +
-      RECENT_LIMIT +
-      " of " +
-      data.total_matching +
-      " files. Narrow the window to see fewer.</div>" +
-      body;
-  }
-  return body;
+  // Keep the tally row this source would otherwise paint over, and
+  // hang the filtered count off it as a second line. The totals are
+  // the constant the user is orienting against; what the filter did is
+  // the delta from them, so the two belong together rather than the
+  // filtered figure arriving alone as a banner.
+  var shown = data.shown || tree.length;
+  var filtered =
+    '<div class="tree-summary-filtered">' +
+    `Filtered to ${esc(shown.toLocaleString())} ${shown === 1 ? "file" : "files"}` +
+    // Only a capped response needs to say the filter matched more than
+    // it is showing; an uncapped one has nothing to disclose.
+    (data.truncated && data.total_matching
+      ? ` of ${esc(data.total_matching.toLocaleString())} matching`
+      : "") +
+    ".</div>";
+  return (_lastTreeSummaryHtml || "") + filtered + body;
 }
 
 // ── Navigation filter bar ───────────────────────────────────────
@@ -2839,6 +2856,10 @@ function applyTreeFilters() {
           mtime: parseTipNumber(row.dataset.tipMtime),
           size: isDir ? null : parseTipNumber(row.dataset.tipSize),
           path: path,
+          // The renderer stamps the index's compound-tail extension on
+          // every file row; matching on it keeps a compound pick
+          // (".min.js") agreeing with the tally that offered it.
+          ext: row.dataset.logicalExt || "",
           live: isDir ? hasLiveDescendant(path, livePaths) : livePaths.has(path),
           isDir: isDir,
         },
@@ -2911,7 +2932,10 @@ function _renderFilterNote(panel, unloadedFolders, state) {
   // (BROWSER_TRACKABLE_EXTS files under .logs/ or .state/), so on a
   // repository without them this state is permanent rather than
   // momentary. See metabrowser/active_tracker.py:_is_trackable.
-  var liveEmpty = state.recency === "live" && activeFiles.size === 0;
+  // Must ask the same question row visibility asked. Testing
+  // activeFiles here instead would claim nothing is being written
+  // while the persistence window is still showing rows.
+  var liveEmpty = state.recency === "live" && livePathsForFilter().size === 0;
   if ((unloadedFolders <= 0 && !liveEmpty) || !filterHasConstraints(state)) {
     if (existing) {
       existing.remove();
@@ -3906,6 +3930,10 @@ function fileStoreApplyChange(ops) {
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
       activeFiles.delete(op.path);
+      // Drop the persistence stamp too. A deleted file is not "recently
+      // live", and leaving it would keep its ancestor folders matching
+      // Live for up to FILTER_LIVE_PERSIST_MS after it is gone.
+      liveSeenAt.delete(op.path);
       // Remove rendered rows in every tab panel; also drops the
       // dir's `.tree-children` container so descendant rows go
       // with it. Server's bulk-remove op already lists each

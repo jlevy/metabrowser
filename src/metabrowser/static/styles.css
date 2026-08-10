@@ -2311,6 +2311,16 @@ html[data-prose-font="sans"] {
   font-size: var(--ui-small-font-size);
   text-align: center;
 }
+/* Second line under the tally: what the filter narrowed the tree to.
+   Muted, because the totals above are the constant a reader orients
+   against and this is the delta from them. */
+.tree-summary-filtered {
+  padding: 0 12px 6px;
+  margin-top: -2px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  border-bottom: 1px solid var(--border);
+}
 .recent-truncated-note {
   padding: 8px 12px;
   margin: 4px 0;

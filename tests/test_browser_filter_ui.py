@@ -316,9 +316,27 @@ def test_missing_data_never_excludes_a_row() -> None:
     size_block = js[size_start : size_start + 500]
     assert "return true; // pending size is unknown, not excluded" in size_block
 
-    type_start = js.index("function typeMatches(pathLike, types)")
-    type_block = js[type_start : type_start + 800]
+    type_start = js.index("function typeMatches(pathLike, types, logicalExt)")
+    type_block = js[type_start : type_start + 1200]
     assert "return false;" in type_block
+
+
+def test_compound_extensions_match_what_the_menu_counted() -> None:
+    """The tally keys on the index's compound tail (".min.js"), so
+    matching must too. Reducing to the last dotted suffix turned every
+    compound row into ".js" and made a compound pick match nothing it
+    was offered for."""
+
+    js = _read("filter_state.js")
+    start = js.index("function typeMatches(pathLike, types, logicalExt)")
+    block = js[start : start + 1200]
+    assert "logicalExt || extensionOf(pathLike)" in block
+
+    # The row carries it, and both tree sources supply it.
+    app = _read("app.js")
+    assert "ext: row.dataset.logicalExt" in app
+    recent = (proc_browser.STATIC_DIR.parent / "recent.py").read_text()
+    assert '"logical_ext": entry.ext,' in recent
 
 
 def test_filter_state_persists_through_prefs_and_emits_change() -> None:

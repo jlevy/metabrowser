@@ -213,17 +213,25 @@
   }
 
   /**
-   * Does a path carry one of the selected extensions? Extensions are
+   * Does a row carry one of the selected extensions? Extensions are
    * the literal ".md" / ".py" the tree shows, not an abstract family,
    * so what the menu offers is exactly what the folder contains.
+   *
+   * `logicalExt` is the compound tail the index derives (".min.js",
+   * ".runbook.md") and is what the menu's tally counts, so it must win
+   * when present: reducing to the last dotted suffix would turn every
+   * compound row into a plain ".js" and a compound pick would match
+   * nothing it was counted for.
+   *
    * @param {string} pathLike
    * @param {string[] | null} types
+   * @param {string} [logicalExt]
    */
-  function typeMatches(pathLike, types) {
+  function typeMatches(pathLike, types, logicalExt) {
     if (!types || types.length === 0) {
       return true;
     }
-    const ext = extensionOf(pathLike);
+    const ext = (logicalExt || extensionOf(pathLike)).toLowerCase();
     if (!ext) {
       // A file with no extension cannot match an extension filter.
       // Unlike a pending size this is complete information, so it is a
@@ -252,7 +260,7 @@
    * must not flicker as filtered. Directories are judged only on
    * recency, because a folder's type and size are aggregates that mean
    * something different from a file's.
-   * @param {{mtime?: number | null, size?: number | null, path?: string, live?: boolean, isDir?: boolean}} row
+   * @param {{mtime?: number | null, size?: number | null, path?: string, live?: boolean, isDir?: boolean, ext?: string}} row
    * @param {FilterSnapshot} s
    * @param {number} nowSec
    */
@@ -277,7 +285,7 @@
     if (row.isDir) {
       return true;
     }
-    if (s.types && typeof row.path === "string" && !typeMatches(row.path, s.types)) {
+    if (s.types && typeof row.path === "string" && !typeMatches(row.path, s.types, row.ext)) {
       return false;
     }
     if (!sizeMatches(row.size, s.size)) {
