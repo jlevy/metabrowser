@@ -39,23 +39,33 @@ Confirm:
 
 Three exact first-party releases are exempt from the ordinary cool-off for this release:
 
-- `kpress==0.3.1`, required for Metabrowser’s declarative embedding contract and
-  reviewed against `0.3.0` as a first-party release.
-  It is a single-feature patch: `RenderOptions.toc_rail` /
-  `KPressRenderRequest.toc_rail` / `format.toc_rail`, which lets an embedding host
-  reserve the wide-band table-of-contents rail so a document with too few headings keeps
-  the reading column’s position and measure instead of reverting to a centred one.
-  The option defaults to `auto`, so rendered output is byte-identical until a host opts
-  in; Metabrowser opts in from `kpress_adapter.py`, which let the equivalent host CSS be
-  deleted rather than maintained against KPress internals.
-  It adds no runtime dependency and changes no other public surface, and the locked
-  change is confined to the `kpress` entry — no transitive package or source moved.
-  The published wheel was checked against the release artifact digest recorded in
-  `uv.lock` (`sha256:fb2be693…`) and confirmed to contain the feature.
-  The `0.3.0` review it supersedes covered the declarative embedding contract: host-safe
-  fragment assets, no per-request fragment theme state, typography derived from one host
-  base-size hook, and the intervening `0.2.3` / `0.2.4` navigation, identifier, table,
-  and presentation changes;
+- `kpress==0.3.2`, required for Metabrowser’s declarative embedding contract and
+  reviewed against `0.3.1` as a first-party release.
+  It is a CSS-only maintenance patch fixing two rules that were evaluated against the
+  wrong box, so each was right in the configuration it was written for and wrong
+  elsewhere. The content card was gated on `@media (min-width: 768px)` while the rule
+  that undoes it is a container query, so a host pane narrower than the window — every
+  Metabrowser preview pane — drew the card border around the phone band’s gutter, a
+  hairline pressed against the text and through the disclosure chevrons; both blocks now
+  use `@container kpress-doc (min-width: 48rem)`. Table code was scoped to the narrow
+  band, where it looked correct only because that band also reduces table text, so every
+  wider pane rendered code a tier too heavy; the declaration is now a base table rule.
+  There is no API change: no name, CSS class, CSS variable, template variable, or data
+  attribute was added, removed, or renamed, no option changed its default, and no
+  runtime dependency moved.
+  The locked change is confined to the `kpress` entry — no transitive package or source
+  moved. The published wheel was downloaded and its SHA-256 confirmed byte-identical to
+  the digest recorded in `uv.lock` (`sha256:31eeb4ee…`), and that exact artifact was
+  unpacked and checked to contain both fixes: zero remaining `min-width: 768px` viewport
+  queries, three `@container kpress-doc (min-width: 48rem)` blocks, and the table-code
+  rule at nesting depth zero.
+  The `0.3.1` review it supersedes covered the opt-in reserved TOC rail
+  (`RenderOptions.toc_rail` / `KPressRenderRequest.toc_rail` / `format.toc_rail`, which
+  Metabrowser opts into from `kpress_adapter.py`) and that release’s development-only
+  dependency patches; the `0.3.0` review before it covered the declarative embedding
+  contract: host-safe fragment assets, no per-request fragment theme state, typography
+  derived from one host base-size hook, and the intervening `0.2.3` / `0.2.4`
+  navigation, identifier, table, and presentation changes;
 - `flowmark-rs==0.3.2`, used to format and verify Markdown.
   This first-party release was reviewed against `0.3.1`; its formatting output is
   unchanged, while its skill, publishing, and Markdown-parser configuration are more

@@ -2,6 +2,19 @@
 
 All notable changes to Metabrowser are documented here.
 
+## Unreleased
+
+Document rendering:
+
+- KPress is upgraded to `0.3.2`, a CSS-only patch whose main fix lands squarely on this
+  repository: the content card was gated on the browser window rather than on the pane
+  it is drawn in, so every preview pane narrower than 48rem inside a wider window drew
+  the card border around the narrow band’s gutter — a hairline pressed against the text
+  and running through the disclosure chevrons.
+  Panes in that range now read full-bleed, as narrow panes are meant to.
+- The same release stops rendering code inside a table a size tier too heavy at pane
+  widths above the narrow band.
+
 ## 0.3.0
 
 Quick File navigation:
