@@ -106,13 +106,59 @@ def test_single_select_group_is_one_tab_stop_with_arrow_keys() -> None:
     assert '.chip-group[data-select="one"]' in js
 
 
-def test_every_control_is_a_button_with_pressed_or_checked_state() -> None:
-    """One state mechanism, not two: no hidden checkbox inputs whose
-    state has to be read a different way."""
+def test_filter_values_are_carried_by_buttons() -> None:
+    """Anything that holds a filter *value* is a button with
+    aria-pressed or aria-checked, so state is read one way."""
 
     js = _read("filter_controls.js")
-    assert 'type="checkbox"' not in js
-    assert "input:checked" not in js
+    for fn in ("groupHtml", "menuGroupHtml"):
+        start = js.index(f"function {fn}(spec)")
+        block = js[start : js.index("\n  }", start)]
+        assert "<input" not in block, f"{fn} must not use inputs"
+
+
+def test_the_checkbox_exception_is_scoped_and_explained() -> None:
+    """One control breaks the button rule: a boolean whose polarity has
+    to be legible. "Show ignored" with a tick says which way it points;
+    a pressed pill reading "Gitignored" does not."""
+
+    js = _read("filter_controls.js")
+    start = js.index("function checkHtml(spec)")
+    block = js[start : start + 700]
+    assert '<input type="checkbox"' in block
+    assert "data-chip-check=" in block
+
+    # Only the gitignored visibility toggle uses it.
+    app = _read("app.js")
+    assert app.count("fc.checkHtml(") == 1
+    assert '"Show ignored"' in app
+
+
+def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:
+    """catalog_files() drops gitignored entries by design, so a menu
+    tallied from it undercounts every extension the tree still shows
+    while gitignored rows are visible."""
+
+    js = _read("app.js")
+    start = js.index("function filterTypeOptions()")
+    block = js[start : start + 1500]
+    assert "_extensionTally" in block
+    assert "knownFileCatalog" not in block
+    # Tracked and ignored stay apart so the count follows the setting.
+    assert "showIgnored ? row[1] + row[2] : row[1]" in block
+
+
+def test_dropdown_rows_are_arrow_key_traversable() -> None:
+    """A menu is a list, so it takes the vertical keys; the segmented
+    groups take the horizontal ones."""
+
+    js = _read("filter_controls.js")
+    start = js.index("function onKeyDown(event)")
+    block = js[start : start + 1200]
+    assert '.closest(".chip-menu-panel")' in block
+    assert '"ArrowDown"' in block
+    assert '"ArrowUp"' in block
+    assert ".chip-menu-item" in block
 
 
 def test_clear_is_only_rendered_when_something_is_set() -> None:

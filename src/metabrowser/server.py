@@ -1047,11 +1047,15 @@ async def api_tree(request: Request) -> JSONResponse:
             "tree": tree,
             "tally_cache_status": inventory_status(),
             "tally_cache_max_files": inventory.max_files(),
-            # Tracked-versus-ignored split for the nav header. Summing
-            # top-level children cannot produce this (see
-            # InventoryIndex.root_summary), and only the full-tree
-            # request needs it.
+            # Tracked-versus-ignored split for the nav header, plus the
+            # extension tally behind the nav's type filter. Neither can
+            # be derived client-side: summing top-level children
+            # miscounts nested ignored files (see
+            # InventoryIndex.root_summary), and the Quick File catalog
+            # drops gitignored entries (see extension_tally). Only the
+            # full-tree request needs either.
             "summary": inventory.root_summary() if inv_can_serve and not subpath else None,
+            "extensions": inventory.extension_tally() if inv_can_serve and not subpath else None,
         }
     )
 

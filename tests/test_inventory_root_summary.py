@@ -76,6 +76,52 @@ def test_root_summary_counts_ignored_nested_under_tracked_dirs(tmp_path: Path) -
     assert entry.total_files == 2
 
 
+def test_extension_tally_keeps_tracked_and_ignored_apart(tmp_path: Path) -> None:
+    """The nav's type menu cannot tally from the Quick File catalog,
+    which drops gitignored entries: with those rows visible in the
+    tree, every count would be short."""
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".gitignore").write_text("build/\n")
+    (tmp_path / "a.py").write_text("x")
+    (tmp_path / "b.py").write_text("x")
+    (tmp_path / "c.md").write_text("x")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build" / "vendor.py").write_text("x")
+    (tmp_path / "build" / "bundle.js").write_text("x")
+
+    index = _index_for(tmp_path)
+    try:
+        rows = {row[0]: (row[1], row[2]) for row in index.extension_tally()}
+        ordered = [row[0] for row in index.extension_tally()]
+    finally:
+        index.clear()
+
+    assert rows[".py"] == (2, 1)
+    assert rows[".md"] == (1, 0)
+    # An extension that exists only under an ignored path is still
+    # reported, so the menu can drop it when those rows are hidden
+    # rather than pretend it was never there.
+    assert rows[".js"] == (0, 1)
+    # Ranked by total frequency, then alphabetically for stability.
+    assert ordered[0] == ".py"
+    assert ordered[1:] == [".js", ".md"]
+
+
+def test_extension_tally_respects_its_limit(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    for i in range(12):
+        (tmp_path / f"f{i}.e{i}").write_text("x")
+
+    index = _index_for(tmp_path)
+    try:
+        rows = index.extension_tally(limit=5)
+    finally:
+        index.clear()
+
+    assert len(rows) == 5
+
+
 def test_root_summary_is_zero_for_an_empty_root(tmp_path: Path) -> None:
     index = _index_for(tmp_path)
     try:

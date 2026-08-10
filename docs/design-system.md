@@ -265,11 +265,19 @@ Because the stylesheet keys off those ARIA attributes, correct ARIA and correct
 appearance are the same thing here: a group with the wrong role renders wrong, not just
 inaccessibly.
 
-### One State Mechanism
+### One State Mechanism, With One Exception
 
-Every control is a `<button>` carrying `aria-pressed` or `aria-checked`. No hidden
-checkbox inputs, and no reading state two different ways depending on which control you
-picked.
+Anything carrying a filter *value* is a `<button>` with `aria-pressed` or
+`aria-checked`. No hidden checkbox inputs behind pill styling, and no reading state two
+different ways depending on which control you picked.
+
+The exception is a boolean whose *polarity* has to be legible, which takes a real
+labelled checkbox (`.filter-check`). A pressed pill reading “Gitignored” does not say
+whether pressed means those rows are shown or filtered away — the user has to click it
+to find out. “Show ignored” with a tick states its own direction, uses the control
+everyone already knows for that, and is visibly lighter than a pill sitting beside one.
+Reach for it when the label has to name the *on* state; reach for a chip when the label
+names a value.
 
 Keyboard behavior follows the kind: an exclusive group is one tab stop with arrow-key
 traversal and roving `tabindex`, while each chip in an additive group is its own tab

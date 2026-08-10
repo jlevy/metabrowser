@@ -829,6 +829,10 @@ async function loadTree() {
     if (data.tally_cache_status === "truncated") {
       truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
     }
+    if (Array.isArray(data.extensions)) {
+      _extensionTally = data.extensions;
+      renderNavFilterBar();
+    }
     _lastTreeRender = { tree: data.tree, chromeHtml: truncationHtml + summaryHtml };
     renderFilesFromTree();
   });
@@ -888,6 +892,10 @@ function scheduleRootSummaryRefresh() {
         var row = document.querySelector(".tree-summary-split");
         if (!row) {
           return;
+        }
+        if (Array.isArray(data.extensions)) {
+          _extensionTally = data.extensions;
+          renderNavFilterBar();
         }
         var html = treeSummaryHtml(data.summary, null, null);
         row.outerHTML = html;
@@ -2355,7 +2363,7 @@ function renderRecentList(data) {
 // its own.
 //
 // The drawer carries no section headings: an extension menu, a size
-// ramp, and a checkbox labelled "Gitignored" say what they are.
+// ramp, and a checkbox labelled "Show ignored" say what they are.
 //
 // See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
 
@@ -2404,37 +2412,38 @@ function filterHasConstraints(state) {
   );
 }
 
-// Extension tallies come from the known-file catalog — the same
-// complete index the quick-file palette searches — so the counts cover
-// the whole tree rather than the subset that happens to be expanded.
-// Sorted by frequency because the long tail of one-off extensions is
-// exactly what the cap is there to cut.
+// Extension tallies come from the server's index pass (/api/tree
+// `extensions`), not from the Quick File catalog: that catalog drops
+// gitignored entries by design, so a menu built from it undercounts
+// every extension the tree still shows while gitignored rows are
+// visible. Rows arrive as [ext, tracked, ignored] already ranked, so
+// the count shown can follow the gitignored setting instead of being
+// wrong half the time.
+/** @type {Array<[string, number, number]>} */
+var _extensionTally = [];
+
 function filterTypeOptions() {
-  const snapshot = knownFileCatalog?.snapshot();
-  if (!snapshot) {
-    return [];
-  }
-  /** @type {Map<string, number>} */
-  const tally = new Map();
-  for (const file of snapshot.files) {
-    const ext = (file.logicalExtension || getExt(file.basename || "")).toLowerCase();
-    if (!ext) {
-      continue;
-    }
-    tally.set(ext, (tally.get(ext) || 0) + 1);
-  }
-  const ranked = Array.from(tally.entries()).sort((a, b) =>
-    // Frequency first, then alphabetical so equal counts render in a
-    // stable order instead of shuffling between renders.
-    b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1],
-  );
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const ranked = _extensionTally
+    .map(
+      (row) => /** @type {[string, number]} */ ([row[0], showIgnored ? row[1] + row[2] : row[1]]),
+    )
+    // An extension that exists only under gitignored paths has nothing
+    // to offer once those rows are hidden.
+    .filter((row) => row[1] > 0)
+    // Re-rank on the count actually being shown. The server ranks by
+    // the total, so hiding gitignored rows would otherwise leave the
+    // menu ordered by numbers that are no longer on screen — .py with
+    // 157 tracked files sorting below .d.ts with one.
+    .sort((a, b) => (b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1]));
   const kept = ranked.slice(0, FILTER_TYPE_MENU_MAX);
   // A selected extension that fell outside the cap still has to appear,
   // or the user could not switch it off from the menu that set it.
   const selected = filterState ? filterState.get().types || [] : [];
   for (const ext of selected) {
     if (!kept.some((row) => row[0] === ext)) {
-      kept.push([ext, tally.get(ext) || 0]);
+      const known = ranked.find((row) => row[0] === ext);
+      kept.push([ext, known ? known[1] : 0]);
     }
   }
   return kept.map(([ext, count]) => {
@@ -2515,12 +2524,11 @@ function renderNavFilterBar() {
       open: filterTypeMenuOpen,
       menuId: FILTER_TYPE_MENU_ID,
     }) +
-    fc.toggleHtml({
+    fc.checkHtml({
       key: "showIgnored",
-      label: "Gitignored",
-      pressed: st.showIgnored,
-      title: "Show gitignored entries (dimmed)",
-      className: "chip-check",
+      label: "Show ignored",
+      checked: st.showIgnored,
+      title: "Show gitignored entries, dimmed",
     }) +
     "</div>" +
     fc.groupHtml({

@@ -106,10 +106,12 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    A selected multi-select chip takes `--hover-bg` with `--text` and medium weight.
    The distinction is inherited from an existing convention, not invented, and it reads
    before the first click.
-3. **Every control is a `<button aria-pressed>`.** The treemap branch’s `.tm-check`
-   wraps a real checkbox and keys off `:has(input:checked)`; that is a second way to
-   read state for no gain in a control that never posts a form.
-   One mechanism means one place to read state in tests.
+3. **Anything carrying a filter value is a `<button aria-pressed>`.** The treemap
+   branch’s `.tm-check` wraps a real checkbox behind pill styling and keys off
+   `:has(input:checked)`; that is a second way to read state for no gain.
+   The one exception is a boolean whose *polarity* has to be legible: gitignored
+   visibility is a labelled checkbox (“Show ignored”), because a pressed pill reading
+   “Gitignored” does not say whether pressed means shown or filtered away.
 4. **The drawer is inline, not a floating menu.** It expands in place below the filter
    bar and pushes the tree down.
    A 300px pane cannot host a comfortable floating panel, and an inline drawer keeps
@@ -140,19 +142,22 @@ Defaults chosen to unblock implementation; each is cheap to change during review
 9. **Type filtering is by literal extension, offered from what the tree contains.** The
    menu lists real extensions (`.md`, `.py`, `.ts`) rather than abstract `ft-*`
    families, ranked by frequency, capped at 30, each row carrying its tally.
-   Tallies come from the known-file catalog — the complete index the quick-file palette
-   already searches — so the counts cover the whole tree rather than the expanded
-   subset, and the menu can never offer a type with nothing behind it.
-   Each row carries the file-type *icon* the tree shows, tinted by its `ft-*` subtype;
-   the label stays plain text.
+   Tallies come from the server’s index pass (`InventoryIndex.extension_tally`, carried
+   on `/api/tree`), not from the Quick File catalog: that catalog drops gitignored
+   entries by design, so a menu built from it undercounts every extension the tree still
+   shows while gitignored rows are visible.
+   Tracked and ignored counts stay apart on the wire so the menu reports whichever total
+   matches the current **Show ignored** setting, and re-ranks on the count it is
+   actually showing. Each row carries the file-type *icon* the tree shows, tinted by its
+   `ft-*` subtype; the label stays plain text.
    Tinting eight row labels made the hue compete with the check mark rather than help
    anyone scan, and the icon is what identifies a type everywhere else in the app.
 10. **Size is a cumulative floor, not a band.**
     `Any / >100K / >1M / >10M / >100M / >1G`. “What is over 10M in here” is the question
     people ask; bands make you guess which one a file landed in.
 11. **The drawer carries no section headings.** An extension menu, a size ramp, and a
-    checkbox labelled “Gitignored” already say what they are, and four uppercase labels
-    cost more vertical space in a 300px pane than they were paying for.
+    checkbox labelled “Show ignored” already say what they are, and four uppercase
+    labels cost more vertical space in a 300px pane than they were paying for.
 12. **The tab bar survives with one tab.** The user-visible ask is a Files pane that
     never needs switching.
     Keeping `.tab-bar.nav-tab-bar` with a single Files tab preserves the pane header’s
@@ -259,7 +264,7 @@ Expanded, the drawer adds three unlabelled controls — each says what it is:
 ```
 ├─────────────────────────────────────────────┤
 │ ⟨All│Live│1h│1d│1w│1mo⟩             ② ⌃   │
-│ [Any type ⌄]  [✓ Gitignored]                │  dropdown + checkbox
+│ [Any type ⌄]  [✓] Show ignored                │  dropdown + checkbox
 │ ⟨Any│>100K│>1M│>10M│>100M│>1G⟩              │  single-select, a floor
 │                                   Clear all │
 ├─────────────────────────────────────────────┤
@@ -370,13 +375,14 @@ Checked items are implemented and covered by tests; `make verify` passes on the 
 
 Tracked as beads under epic `mb-pcih`:
 
-- [ ] `mb-r4tq` — extension tallies exclude gitignored files, because `catalog_files()`
-  filters them out; with **Gitignored** checked the tree shows rows the menu did not
-  count
-- [ ] `mb-5e20` — no keyboard-traversal test for the dropdown’s own rows
+- [x] `mb-r4tq` — extension tallies now come from `InventoryIndex.extension_tally`
+  rather than the gitignore-filtered Quick File catalog, with tracked and ignored counts
+  kept apart so the menu follows **Show ignored**
+- [x] `mb-5e20` — the dropdown gained arrow-key row traversal (the gap was the behavior,
+  not only its test) plus coverage
+- [x] `mb-9zrh` — `Live` stays as-is; see Open Questions for what it actually is
 - [ ] `mb-4k4d` — the folder-treemap branch rebases onto the core family and shared
-  state
-- [ ] `mb-9zrh` — decide whether `Live` earns a segment (see Open Questions)
+  state. Belongs to that branch, not this one.
 
 ## Testing Strategy
 
@@ -417,21 +423,27 @@ to `showIgnored`.
 
 ## Open Questions
 
-**Does `Live` earn its segment?** It is not a synonym for `1h`: the active tracker marks
-a file live when its size or mtime fingerprint changed within `stale_after_s` (30s),
-plus up to `ACTIVE_TRACKER_QUIET_POLLS × ACTIVE_TRACKER_INTERVAL_S` (30s) of hysteresis
-— so roughly “changed in the last half-minute”, two orders of magnitude narrower than
-`1h`. It is also the only recency value that updates live over SSE without a refetch,
-which is what makes it useful while watching an agent write logs.
+**`Live` stays, for now.** It is not a synonym for `1h`: the active tracker marks a file
+live when its size or mtime fingerprint changed within `stale_after_s` (30s), plus up to
+`ACTIVE_TRACKER_QUIET_POLLS × ACTIVE_TRACKER_INTERVAL_S` (30s) of hysteresis — so
+roughly “changed in the last half-minute”, two orders of magnitude narrower than `1h`.
+It is also the only recency value that updates over SSE without a refetch, which is what
+makes it useful while watching an agent write logs.
 
-Against it: on a quiet repository it is always empty, which reads as broken rather than
-as “nothing is happening”, and it is the same *kind* of thing as the windows beside it.
-The alternative is to relabel it `30s` and make the axis uniform, at the cost of losing
-the “this updates in real time” connotation.
+The case against it is real and unresolved rather than answered: on a quiet repository
+it is always empty, which reads as broken rather than as “nothing is happening”, and it
+is the same *kind* of thing as the windows beside it.
+Relabelling it `30s` would make the axis uniform at the cost of the “this updates in
+real time” connotation.
+Revisit with usage evidence.
 
-**Should the extension tallies include gitignored files?** `catalog_files()` excludes
-them, so with **Gitignored** checked the tree shows rows the menu never counted.
-Fixing it means either widening the catalog feed or tallying from a second source.
+**Does the type menu want tracked-only counts by default?** With **Show ignored** on —
+the default — the ranking is dominated by whatever a package manager put on disk (`.ts`
+at 2,181 against 157 `.py` in this repository).
+That is honest, because those rows really are in the tree, but it is rarely the list
+someone opened the menu to see.
+Unchecking **Show ignored** gives the useful ranking, so the question is whether the
+menu should quietly prefer it.
 
 ## References
 

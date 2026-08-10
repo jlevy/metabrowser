@@ -227,6 +227,33 @@
   }
 
   /**
+   * A labelled checkbox, for a boolean whose *polarity* has to be
+   * legible.
+   *
+   * This is the one deliberate break from the family's
+   * button-with-aria-pressed rule, and the reason is the label. A
+   * pressed pill reading "Gitignored" does not say whether pressed
+   * means those rows are shown or filtered away — the user has to
+   * click it to find out. "Show ignored" with a tick states its own
+   * polarity, and a checkbox is the control every user already knows
+   * for that. It is also visibly smaller than a pill, which matters
+   * where it sits beside one.
+   *
+   * @param {{key: string, label: string, checked?: boolean,
+   *          title?: string, className?: string}} spec
+   */
+  function checkHtml(spec) {
+    const title = spec.title ? ` title="${esc(spec.title)}"` : "";
+    const cls = spec.className ? ` ${esc(spec.className)}` : "";
+    return (
+      `<label class="filter-check${cls}"${title}>` +
+      `<input type="checkbox" data-chip-check="${esc(spec.key)}"` +
+      `${spec.checked === true ? " checked" : ""}>` +
+      `<span>${esc(spec.label)}</span></label>`
+    );
+  }
+
+  /**
    * @param {{label?: string, className?: string}} [spec]
    */
   function clearHtml(spec) {
@@ -326,15 +353,62 @@
       }
     }
 
+    /**
+     * Move focus within a list of elements and return the one landed
+     * on. Wraps, matching the ARIA patterns for both radiogroups and
+     * menus.
+     * @param {Element[]} items
+     * @param {Element | null} from
+     * @param {string} key
+     */
+    function moveFocus(items, from, key) {
+      if (items.length === 0) {
+        return null;
+      }
+      const at = from ? items.indexOf(from) : -1;
+      let next = at;
+      if (key === "Home") {
+        next = 0;
+      } else if (key === "End") {
+        next = items.length - 1;
+      } else if (at >= 0) {
+        const step = key === "ArrowRight" || key === "ArrowDown" ? 1 : -1;
+        next = (at + step + items.length) % items.length;
+      } else {
+        next = 0;
+      }
+      const el = /** @type {HTMLElement | undefined} */ (items[next]);
+      if (el) {
+        el.focus();
+      }
+      return el || null;
+    }
+
     /** @param {Event} event */
     function onKeyDown(event) {
       const ev = /** @type {KeyboardEvent} */ (event);
       const key = ev.key;
-      if (key !== "ArrowLeft" && key !== "ArrowRight" && key !== "Home" && key !== "End") {
-        return;
-      }
       const target = /** @type {Element | null} */ (ev.target);
       if (!target || typeof target.closest !== "function") {
+        return;
+      }
+      // Inside an open dropdown, Up/Down walk the rows. The menu is a
+      // list, so it takes the vertical keys; the horizontal ones below
+      // belong to the segmented groups.
+      const panel = target.closest(".chip-menu-panel");
+      if (panel) {
+        if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Home" && key !== "End") {
+          return;
+        }
+        ev.preventDefault();
+        moveFocus(
+          Array.prototype.slice.call(panel.querySelectorAll(".chip-menu-item")),
+          target.closest(".chip-menu-item"),
+          key,
+        );
+        return;
+      }
+      if (key !== "ArrowLeft" && key !== "ArrowRight" && key !== "Home" && key !== "End") {
         return;
       }
       const group = target.closest('.chip-group[data-select="one"]');
@@ -345,23 +419,13 @@
       if (chips.length === 0) {
         return;
       }
-      const at = chips.indexOf(target.closest(".chip[data-chip-key]"));
-      let next = at;
-      if (key === "Home") {
-        next = 0;
-      } else if (key === "End") {
-        next = chips.length - 1;
-      } else if (at >= 0) {
-        // Wrap, matching the ARIA radiogroup pattern.
-        const step = key === "ArrowRight" ? 1 : -1;
-        next = (at + step + chips.length) % chips.length;
-      }
-      const chip = /** @type {HTMLElement | undefined} */ (chips[next]);
+      ev.preventDefault();
+      // A radiogroup selects on arrow, unlike the menu above, where
+      // moving and choosing are separate acts.
+      const chip = moveFocus(chips, target.closest(".chip[data-chip-key]"), key);
       if (!chip) {
         return;
       }
-      ev.preventDefault();
-      chip.focus();
       if (opts.onChange) {
         opts.onChange(
           chip.getAttribute("data-chip-key") || "",
@@ -403,13 +467,29 @@
       }
     }
 
+    // Checkboxes report through `change`, not `click`: that is the
+    // event that fires for keyboard activation too.
+    /** @param {Event} event */
+    function onChange(event) {
+      const target = /** @type {HTMLInputElement | null} */ (event.target);
+      if (!target || typeof target.getAttribute !== "function") {
+        return;
+      }
+      const key = target.getAttribute("data-chip-check");
+      if (key && opts.onToggle) {
+        opts.onToggle(key, target.checked === true);
+      }
+    }
+
     root.addEventListener("click", onClick);
+    root.addEventListener("change", onChange);
     root.addEventListener("keydown", onKeyDown);
     const doc = root.ownerDocument;
     doc?.addEventListener("pointerdown", onDocumentPointerDown);
     doc?.addEventListener("keydown", onDocumentEscape);
     return () => {
       root.removeEventListener("click", onClick);
+      root.removeEventListener("change", onChange);
       root.removeEventListener("keydown", onKeyDown);
       doc?.removeEventListener("pointerdown", onDocumentPointerDown);
       doc?.removeEventListener("keydown", onDocumentEscape);
@@ -423,6 +503,7 @@
     groupHtml,
     menuGroupHtml,
     toggleHtml,
+    checkHtml,
     clearHtml,
     bind,
   };

@@ -2077,6 +2077,37 @@ html[data-prose-font="sans"] {
   font-variant-numeric: tabular-nums;
   font-size: var(--ui-small-font-size);
 }
+/* Labelled checkbox — the family's one deliberate break from
+   button-with-aria-pressed, for a boolean whose polarity has to be
+   legible. A pressed pill reading "Gitignored" does not say whether
+   pressed means shown or filtered away; "Show ignored" with a tick
+   does, and it is visibly lighter than a pill sitting beside it. */
+.filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--ui-small-font-size);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  white-space: nowrap;
+}
+.filter-check:hover {
+  color: var(--text);
+}
+.filter-check input {
+  margin: 0;
+  accent-color: var(--link);
+  cursor: pointer;
+}
+.filter-check:has(input:checked) {
+  color: var(--text);
+}
+.filter-check:has(input:focus-visible) {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
+}
 .chip-badge {
   display: inline-block;
   min-width: 14px;

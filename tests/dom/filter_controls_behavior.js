@@ -151,7 +151,8 @@ assertContains(
   '<span class="chip-badge">2</span><button',
 );
 
-// No hidden inputs: one state mechanism across the whole family.
+// Chips and groups are buttons, never hidden inputs — one state
+// mechanism for anything that carries a filter *value*.
 for (const [label, html] of [
   ["single-select", single],
   ["multi-select", multi],
@@ -159,6 +160,20 @@ for (const [label, html] of [
 ]) {
   assertMissing(`${label} uses buttons, not checkboxes`, html, "<input");
 }
+
+// The one deliberate exception: a boolean whose polarity has to be
+// legible. "Show ignored" with a tick says which way it points;
+// a pressed pill reading "Gitignored" does not.
+const check = fc.checkHtml({ key: "showIgnored", label: "Show ignored", checked: true });
+assertContains("a check is a real checkbox", check, '<input type="checkbox"');
+assertContains("it carries its key", check, 'data-chip-check="showIgnored"');
+assertContains("a checked box reports it", check, "checked>");
+assertContains("the label states the polarity", check, "<span>Show ignored</span>");
+assertMissing(
+  "an unchecked box has no checked attribute",
+  fc.checkHtml({ key: "showIgnored", label: "Show ignored" }),
+  "checked>",
+);
 
 // ── Multi-select dropdown ──────────────────────────────────────
 

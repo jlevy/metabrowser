@@ -286,6 +286,37 @@ class InventoryIndex:
             "ignored_size": ignored_size,
         }
 
+    def extension_tally(self, limit: int = 200) -> list[list[object]]:
+        """``[ext, tracked_files, ignored_files]`` rows, most frequent first.
+
+        The nav's extension filter cannot tally from the Quick File
+        catalog: ``catalog_files`` drops gitignored entries by design
+        (nobody wants to fuzzy-find into ``node_modules``), so a menu
+        built from it undercounts every extension the tree still shows
+        while gitignored rows are visible.
+
+        Tracked and ignored are kept apart rather than summed so the
+        menu can report whichever total matches the user's current
+        gitignored setting instead of one that is wrong half the time.
+
+        Bounded by ``limit`` on the way out; the tail of one-off
+        extensions is exactly what a filter menu does not need.
+        """
+
+        tally: dict[str, list[int]] = {}
+        for entry in self._entries.values():
+            if entry.type != "file" or not entry.ext:
+                continue
+            row = tally.get(entry.ext)
+            if row is None:
+                row = [0, 0]
+                tally[entry.ext] = row
+            row[1 if entry.gitignored else 0] += 1
+        # Frequency first, then alphabetical, so equal counts keep a
+        # stable order between requests instead of shuffling.
+        ranked = sorted(tally.items(), key=lambda kv: (-(kv[1][0] + kv[1][1]), kv[0]))
+        return [[ext, counts[0], counts[1]] for ext, counts in ranked[:limit]]
+
     # ── Writes ──────────────────────────────────────────────
 
     def invalidate(self, path: str) -> None:
