@@ -206,6 +206,15 @@
       }
       const response = await apiFetch("/api/git/log", params);
       if (!response.ok) {
+        if (!initial && response.status === 400) {
+          // A rejected opaque cursor means the append-only paging state is
+          // no longer usable. Drop the partial graph so the normal refresh
+          // state can restart at page one instead of retrying the same bad
+          // cursor every time the tab is shown.
+          const headRevision = state.headRevision;
+          state = emptyState();
+          state.headRevision = headRevision;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
       const page = await response.json();

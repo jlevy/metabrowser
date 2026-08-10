@@ -307,6 +307,13 @@ sandbox.fetch = async (url) => {
   for (const [prefix, payload] of responses) {
     if (url.startsWith(prefix)) {
       const value = typeof payload === "function" ? await payload(url) : payload;
+      if (value && typeof value === "object" && "httpStatus" in value) {
+        return {
+          ok: value.httpStatus >= 200 && value.httpStatus < 300,
+          status: value.httpStatus,
+          json: async () => value.body || {},
+        };
+      }
       return { ok: true, status: 200, json: async () => value };
     }
   }
@@ -721,6 +728,37 @@ async function run() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertEqual("show: reopening retries history", internals.stateForTests().rows.length, 1);
   assertTrue("show: successful retry clears failure", !internals.stateForTests().failed);
+
+  // A rejected cursor invalidates append-only lane continuity. Reset to
+  // the refresh state rather than retrying the same cursor on every show.
+  internals.setStateForTests({
+    ...internals.stateForTests(),
+    cursor: "bad-cursor",
+    failed: true,
+  });
+  responses.set("/api/git/log", { httpStatus: 400 });
+  registeredPanel.onShow();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const rejectedCursor = internals.stateForTests();
+  assertEqual("cursor: rejected cursor clears rows", rejectedCursor.rows.length, 0);
+  assertEqual("cursor: rejected cursor is discarded", rejectedCursor.cursor, null);
+  assertTrue("cursor: rejected cursor offers recovery", rejectedCursor.failed);
+  assertEqual(
+    "cursor: rejected cursor renders refresh",
+    document.getElementById("tab-git").querySelectorAll(".git-panel-refresh").length,
+    1,
+  );
+
+  responses.set("/api/git/log", {
+    is_repo: true,
+    commits: [commit(SHA_B, [], "cursor recovery succeeded")],
+    cursor: null,
+    has_more: false,
+  });
+  registeredPanel.onShow();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEqual("cursor: reopening restarts at page one", internals.stateForTests().rows.length, 1);
+  assertTrue("cursor: successful restart clears failure", !internals.stateForTests().failed);
 
   // ── Relative age ───────────────────────────────────────────
   {
