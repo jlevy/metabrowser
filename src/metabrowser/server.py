@@ -732,6 +732,8 @@ async def index(_request: Request) -> HTMLResponse:
     styles_url = _static_asset_url("styles.css")
     theme_state_url = _static_asset_url("theme_state.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
+    filter_state_url = _static_asset_url("filter_state.js")
+    filter_controls_url = _static_asset_url("filter_controls.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree_expansion.js")
@@ -930,13 +932,15 @@ async def index(_request: Request) -> HTMLResponse:
       </header>
       <div class="tab-bar nav-tab-bar" role="tablist">
         <button class="tab-btn active" role="tab" data-tab="files" aria-selected="true">Files</button>
-        <button class="tab-btn" role="tab" data-tab="recent" aria-selected="false">Recent</button>
       </div>
+      <!-- Filter bar lives outside #tab-files: a tree reload replaces
+           that container's contents wholesale, and the bar must also
+           stay put while .tree-content scrolls. app.js fills it. -->
+      <div class="filter-bar" id="filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
           <div class="loading"><div class="spinner"></div>Loading...</div>
         </div>
-        <div id="tab-recent" data-tab-content="recent" style="display:none;"></div>
       </div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
@@ -958,6 +962,8 @@ async def index(_request: Request) -> HTMLResponse:
   {settings_block}
   <script src="{theme_state_url}"></script>
   <script src="{plugin_sdk_url}"></script>
+  <script src="{filter_state_url}"></script>
+  <script src="{filter_controls_url}"></script>
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>

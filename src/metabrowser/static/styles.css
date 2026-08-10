@@ -1879,47 +1879,241 @@ html[data-prose-font="sans"] {
   z-index: 1;
   transition: box-shadow var(--transition-fast);
 }
-.tab-bar.nav-tab-bar.scrolled {
+.tab-bar.nav-tab-bar.scrolled,
+.filter-bar.scrolled {
   box-shadow: var(--shadow-md);
 }
 
-/* Recent panel — controls (window picker) + flat file list.
-   The list reuses .tree-item rows (same icons, ages, sizes) so
-   click-to-open and hover affordances match the Files panel
-   exactly. */
-.recent-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-.recent-chip {
+/* ── Filter controls ─────────────────────────────────────────────
+   The one chip family for every filtering surface. See
+   docs/design-system.md ("Filter Controls") for the contract and
+   static/filter_controls.js for the markup that produces it.
+
+   Three shapes built from one atom:
+     .chip                          the pill itself; state on
+                                    [aria-pressed] or [aria-checked]
+     .chip-group[data-select="one"] joined single-select — the
+                                    segments read as one object and
+                                    the active one fills with the
+                                    accent tint
+     .chip-group[data-select="many"] joined multi-select — same
+                                    joinery, neutral fill, because
+                                    these accumulate rather than
+                                    replace each other
+     .chip-toggle                   a standalone boolean chip
+
+   The accent-versus-neutral fill is the only cue that separates
+   single- from multi-select before a click, so it is load-bearing:
+   it matches .menu-seg[aria-checked], which already means "one of
+   these" elsewhere in the app. */
+.chip {
   font: inherit;
   font-size: var(--ui-small-font-size);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--border);
+  background: var(--viz-surface);
+  border: 1px solid var(--viz-border);
   border-radius: var(--radius-pill);
-  padding: 2px 8px;
+  padding: 2px 9px;
   cursor: pointer;
+  user-select: var(--toggle-user-select);
+  white-space: nowrap;
   transition:
     color var(--transition-fast),
     border-color var(--transition-fast),
     background var(--transition-fast);
 }
-.recent-chip:hover {
+.chip:hover {
   color: var(--text);
   background: var(--hover-bg);
 }
-.recent-chip.active {
-  color: var(--tab-active-color);
-  border-color: var(--tab-active-color);
+.chip:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
 }
+/* Joined group: one shared border and radius, segments losing their
+   own so the row reads as a single control. Wrapping is allowed —
+   the type row has more members than a 300px pane can hold — and the
+   dividers survive it because they ride the segment, not the edge. */
+.chip-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--viz-border);
+  border-radius: var(--radius-pill);
+  background: var(--viz-surface);
+  overflow: hidden;
+}
+.chip-group > .chip {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.chip-group > .chip + .chip {
+  border-left: 1px solid var(--viz-border-subtle);
+}
+/* Single-select: accent fill, the .menu-seg[aria-checked] treatment. */
+.chip-group[data-select="one"] > .chip[aria-checked="true"] {
+  background: var(--highlight-bg);
+  color: var(--link);
+  font-weight: var(--weight-medium);
+}
+/* Multi-select: neutral fill plus its own inset frame, so a row of
+   them reads as several independent switches rather than one
+   exclusive choice. The frame is doing real work — --hover-bg alone
+   is nearly invisible on the light theme's white surface, and a
+   pressed toggle has to be unmistakable when several siblings are
+   also pressed. It also keeps the accent reserved for "one of
+   these", per the fill convention above. */
+.chip-group[data-select="many"] > .chip[aria-pressed="true"],
+.chip-toggle[aria-pressed="true"] {
+  background: var(--hover-bg);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+  box-shadow: inset 0 0 0 1px var(--viz-border-strong);
+}
+/* Type chips carry their own file-type hue, which makes the row double
+   as a legend for the colors in the tree below it. The selected fill
+   stays the neutral multi-select one — the --ft-bg washes are tuned as
+   large area fills behind body text, not as small control plates, and
+   using them here would both break the fill convention above and read
+   as a different kind of control. The hue lives in the label. */
+.chip-ft {
+  color: var(--ft-color, var(--muted));
+}
+.chip-group[data-select="many"] > .chip-ft[aria-pressed="true"] {
+  color: var(--ft-color, var(--text));
+}
+.chip-badge {
+  display: inline-block;
+  min-width: 14px;
+  margin-left: 5px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--link);
+  color: var(--bg);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Rendered only when something is set: a permanently visible Clear on
+   a clean state is noise. */
+.chip-clear {
+  font: inherit;
+  font-size: var(--ui-small-font-size);
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.chip-clear:hover {
+  text-decoration: underline;
+}
+.chip-clear:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+/* ── Navigation filter bar ───────────────────────────────────────
+   Sits between the nav tab bar and the scrolling tree, outside the
+   replaceable #tab-files container so a tree reload never destroys
+   it and so it never scrolls away. The always-visible row carries
+   recency; everything else lives in the drawer one toggle down. */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px var(--pane-header-padding-x);
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  transition: box-shadow var(--transition-fast);
+}
+/* Deliberately nowrap. A wrapping flex line breaks before it shrinks,
+   so with wrap on, the drawer toggle would drop to its own row the
+   moment the badge widened it — the bar would reflow under the control
+   you just clicked. Nowrap plus a shrinkable group means the recency
+   segments wrap inside their own pill instead. */
+.filter-bar-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  width: 100%;
+}
+.filter-bar-main > .chip-group {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* The always-visible row is the densest place a chip appears: six
+   recency segments plus the drawer toggle have to clear a 300px pane
+   without the group wrapping. One pixel of horizontal padding each
+   side buys that margin; the drawer's groups keep the roomier default. */
+.filter-bar-main > .chip-group > .chip {
+  padding-inline: 7px;
+}
+/* Pushes the drawer toggle and Clear to the trailing edge, so the
+   recency group always starts at the same x as the tree's first row. */
+.filter-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.filter-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding-top: 2px;
+}
+.filter-drawer[hidden] {
+  display: none;
+}
+.filter-drawer-label {
+  margin: 4px 0 1px;
+  color: var(--muted);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+}
+.filter-drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+/* Honest incompleteness: hide mode prunes what it has loaded and says
+   so rather than implying the tree is now the whole answer. */
+.filter-note {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-style: italic;
+}
+
+/* Filter decorations over tree rows. Dim keeps context; hidden prunes.
+   Only .tree-item rows carry these — the .tree-children wrapper is
+   left alone because the expansion code owns its inline display, and
+   the wrapper has no box of its own (margin only), so a container
+   whose rows are all hidden collapses to nothing by itself. app.js
+   propagates a hidden folder's verdict down to its descendants so
+   there is never an orphaned visible row inside a pruned subtree. */
+.tree-item-filter-dim {
+  opacity: 0.45;
+}
+.tree-item-filter-hidden {
+  display: none;
+}
+/* The gitignored "shown" state lifts the tree's default fade. */
+.tree-item-gitignored.tree-item-ignored-shown {
+  opacity: 1;
+}
+
 .recent-empty {
   padding: 24px 12px;
   color: var(--muted);

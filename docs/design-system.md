@@ -214,6 +214,55 @@ A hidden button leaves the tab order, so the control becomes mouse-only.
 Every reveal trigger restores `pointer-events` along with the opacity, and keyboard
 focus is itself a reveal trigger.
 
+## Filter Controls
+
+Every filter in the app is built from one chip family, documented in the
+`── Filter controls ──` block of `static/styles.css` and rendered by
+`static/filter_controls.js`. A surface that needs a filter reaches for these rather than
+inventing a pill of its own; four near-identical pills is what this family replaced.
+
+`.chip` is the atom.
+`.chip-group` joins chips into one bordered pill with hairline dividers, so a set of
+related choices reads as a single object.
+`.chip-toggle` is a standalone boolean.
+`.chip-badge` carries a count, and `.chip-clear` is the quiet reset.
+
+### Selection Kind Is Visible Before the Click
+
+A group declares its kind in `data-select`, and the two kinds look different:
+
+| Kind | ARIA | Selected fill |
+| --- | --- | --- |
+| `data-select="one"` — exclusive | `role="radiogroup"`, `aria-checked` | `--highlight-bg` / `--link` |
+| `data-select="many"` — additive | `role="group"`, `aria-pressed` | `--hover-bg` / `--text` |
+
+The accent fill for exclusive choices is the same treatment `.menu-seg[aria-checked]`
+uses for the theme and font pickers, so “accent means one of these” already means that
+elsewhere in the app.
+A user should never have to click a group to learn whether picking a second value
+replaces the first or adds to it.
+
+Because the stylesheet keys off those ARIA attributes, correct ARIA and correct
+appearance are the same thing here: a group with the wrong role renders wrong, not just
+inaccessibly.
+
+### One State Mechanism
+
+Every control is a `<button>` carrying `aria-pressed` or `aria-checked`. No hidden
+checkbox inputs, and no reading state two different ways depending on which control you
+picked.
+
+Keyboard behavior follows the kind: an exclusive group is one tab stop with arrow-key
+traversal and roving `tabindex`, while each chip in an additive group is its own tab
+stop, because each is an independent control.
+
+### Filters Say What They Do Not Know
+
+A filter that prunes rows must not imply the result is complete when it is not.
+Where a surface can only judge what it has loaded, it renders a `.filter-note` saying
+so. Missing data is never treated as a non-match: a pending size, an absent mtime, or an
+unclassified path leaves a row in place rather than making it flicker as filtered.
+
 ## File Types
 
 File-type classes map each subtype to three custom properties:
