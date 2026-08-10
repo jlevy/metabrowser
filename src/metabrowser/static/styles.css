@@ -1332,6 +1332,30 @@ html.theme-anim .menu {
 .tree-summary-size {
   font-size: var(--ui-small-font-size);
 }
+.tree-summary-split {
+  flex-wrap: wrap;
+  gap: 4px 5px;
+}
+.tree-summary-tracked,
+.tree-summary-bytes {
+  font-size: var(--ui-small-font-size);
+}
+.tree-summary-tracked {
+  color: var(--text);
+}
+/* The ignored half is muted to the same degree the gitignored rows
+   below it are, so the header reads at a glance as "this much is
+   yours, that much is build output". */
+.tree-summary-ignored,
+.tree-summary-plus {
+  color: var(--muted);
+}
+.tree-summary-ignored {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ui-small-font-size);
+}
 
 /* Walker-truncation banner: shown only when /api/tree returns
    tally_cache_status="truncated" (the BFS stopped at
@@ -1982,6 +2006,68 @@ html[data-prose-font="sans"] {
 .chip-group[data-select="many"] > .chip-ft[aria-pressed="true"] {
   color: var(--ft-color, var(--text));
 }
+/* ── Multi-select dropdown ───────────────────────────────────────
+   A chip trigger over the shared .menu surface, with
+   role="menuitemcheckbox" rows. The app had a single-choice .menu and
+   a native .menu-select and neither can pick several things, so this
+   composes the existing menu rather than introducing a second look.
+   The trigger summarises like a select ("Any type", ".md", ".md +2")
+   so the closed control still answers "what is filtered?". */
+.chip-menu {
+  position: relative;
+  display: inline-flex;
+}
+.chip-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chip-menu[aria-expanded="true"] .chip-menu-trigger {
+  background: var(--hover-bg);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--viz-border-strong);
+}
+.chip-menu-caret {
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.chip-menu-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  /* The list is capped at 30 entries, which still overflows a short
+     pane; scroll inside the menu rather than off the page. */
+  max-height: 320px;
+  overflow-y: auto;
+}
+.chip-menu[aria-expanded="true"] .chip-menu-panel {
+  display: flex;
+}
+.chip-menu-item {
+  gap: 6px;
+}
+/* Fixed-width check column so the labels line up whether or not a row
+   is selected — a list that shifts sideways as you tick things is
+   hard to scan. */
+.chip-menu-check {
+  display: inline-flex;
+  justify-content: center;
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--link);
+}
+.chip-menu-item .menu-item-label {
+  flex: 1 1 auto;
+  color: var(--ft-color, inherit);
+}
+.chip-menu-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ui-small-font-size);
+}
 .chip-badge {
   display: inline-block;
   min-width: 14px;
@@ -2074,13 +2160,15 @@ html[data-prose-font="sans"] {
 .filter-drawer[hidden] {
   display: none;
 }
-.filter-drawer-label {
-  margin: 4px 0 1px;
-  color: var(--muted);
-  font-size: var(--label-font-size);
-  font-weight: var(--label-font-weight);
-  text-transform: var(--label-text-transform);
-  letter-spacing: var(--label-letter-spacing);
+/* No section headings in here: an extension menu, a size ramp, and a
+   checkbox labelled "Gitignored" already say what they are, and four
+   uppercase labels cost more vertical space in a 300px pane than they
+   were paying for. */
+.filter-drawer-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .filter-drawer-actions {
   display: flex;
@@ -2096,22 +2184,17 @@ html[data-prose-font="sans"] {
   font-style: italic;
 }
 
-/* Filter decorations over tree rows. Dim keeps context; hidden prunes.
-   Only .tree-item rows carry these — the .tree-children wrapper is
-   left alone because the expansion code owns its inline display, and
-   the wrapper has no box of its own (margin only), so a container
-   whose rows are all hidden collapses to nothing by itself. app.js
-   propagates a hidden folder's verdict down to its descendants so
-   there is never an orphaned visible row inside a pruned subtree. */
-.tree-item-filter-dim {
-  opacity: 0.45;
-}
+/* Filtering prunes; there is no dim/hide switch, because removing what
+   does not match is what a filter is for. Only .tree-item rows carry
+   this — the .tree-children wrapper is left alone because the
+   expansion code owns its inline display, and the wrapper has no box
+   of its own (margin only), so a container whose rows are all hidden
+   collapses to nothing by itself. app.js propagates a hidden folder's
+   verdict down to its descendants so there is never an orphaned
+   visible row inside a pruned subtree. Gitignored rows keep the tree's
+   existing dimmed treatment when shown; unchecking removes them. */
 .tree-item-filter-hidden {
   display: none;
-}
-/* The gitignored "shown" state lifts the tree's default fade. */
-.tree-item-gitignored.tree-item-ignored-shown {
-  opacity: 1;
 }
 
 .recent-empty {

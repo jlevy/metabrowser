@@ -135,19 +135,39 @@ def test_recency_is_one_dimension_including_live() -> None:
     assert "ageWindow" not in js
 
 
-def test_hide_is_the_default_treatment() -> None:
+def test_defaults_leave_the_tree_unfiltered() -> None:
+    """There is no dim/hide switch: filtering removes what does not
+    match. The only display choice left is gitignored visibility, and
+    it defaults to the tree's long-standing dimmed treatment."""
+
     js = _read("filter_state.js")
     start = js.index("const DEFAULTS = Object.freeze({")
     block = js[start : start + 600]
-    assert 'mode: "hide"' in block
     assert 'recency: "all"' in block
-    assert 'ignored: "dimmed"' in block
+    assert 'size: "all"' in block
+    assert "showIgnored: true" in block
+    assert "mode:" not in js
+    assert "tree-item-filter-dim" not in _read("app.js")
+
+
+def test_size_is_a_cumulative_floor() -> None:
+    """ "What is over 10M in here" is the question people ask; bands
+    make you guess which one a file landed in."""
+
+    js = _read("filter_state.js")
+    start = js.index("const SIZE_MIN_BYTES = {")
+    block = js[start : start + 400]
+    for step in ('"100k"', '"1m"', '"10m"', '"100m"', '"1g"'):
+        assert step in block, f"missing size step {step}"
+    match_start = js.index("function sizeMatches(bytes, bucket)")
+    assert "bytes >= floor" in js[match_start : match_start + 500]
 
 
 def test_missing_data_never_excludes_a_row() -> None:
-    """A pending size, an absent mtime, or an unclassified path is
-    incomplete information, not a non-match — rows must not flicker
-    as filtered while data is still arriving."""
+    """A pending size or an absent mtime is incomplete information,
+    not a non-match — rows must not flicker as filtered while data is
+    still arriving. A missing extension is different: that is complete
+    information, so it is a real non-match."""
 
     js = _read("filter_state.js")
     size_start = js.index("function sizeMatches(bytes, bucket)")
@@ -156,7 +176,7 @@ def test_missing_data_never_excludes_a_row() -> None:
 
     type_start = js.index("function typeMatches(pathLike, types)")
     type_block = js[type_start : type_start + 800]
-    assert "if (!cls) {" in type_block
+    assert "return false;" in type_block
 
 
 def test_filter_state_persists_through_prefs_and_emits_change() -> None:
@@ -186,7 +206,7 @@ def test_no_filters_leaves_the_rendered_dom_alone() -> None:
     fn_start = js.index("function applyTreeFilters()")
     fn_block = js[fn_start : fn_start + 1200]
     assert "if (!constrained) {" in fn_block
-    assert 'rows[c].classList.remove("tree-item-filter-hidden", "tree-item-filter-dim")' in fn_block
+    assert 'rows[c].classList.remove("tree-item-filter-hidden")' in fn_block
 
 
 def test_folders_with_no_loaded_children_are_kept_and_counted() -> None:

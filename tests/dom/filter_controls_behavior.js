@@ -131,6 +131,63 @@ for (const [label, html] of [
   assertMissing(`${label} uses buttons, not checkboxes`, html, "<input");
 }
 
+// ── Multi-select dropdown ──────────────────────────────────────
+
+const menuOptions = [
+  { value: ".py", label: ".py", count: 156, className: "chip-ft ft-code" },
+  { value: ".md", label: ".md", count: 33, className: "chip-ft ft-md" },
+];
+const menuClosed = fc.menuGroupHtml({
+  key: "types",
+  label: "File extension",
+  options: menuOptions,
+  value: null,
+  anyLabel: "Any type",
+  menuId: "m",
+});
+assertContains("closed menu reports its state", menuClosed, 'aria-expanded="false"');
+// The trigger has to answer "what is filtered?" without being opened.
+assertContains("no selection summarises as the any-label", menuClosed, ">Any type<");
+assertContains("the any row is checked when nothing is picked", menuClosed, "data-chip-any");
+assertContains("rows are checkbox menu items", menuClosed, 'role="menuitemcheckbox"');
+assertContains("rows carry their tally", menuClosed, '<span class="chip-menu-count">156</span>');
+assertContains("rows keep their file-type hue", menuClosed, "chip-ft ft-code");
+
+const menuOne = fc.menuGroupHtml({
+  key: "types",
+  label: "File extension",
+  options: menuOptions,
+  value: [".py"],
+  anyLabel: "Any type",
+  open: true,
+  menuId: "m",
+});
+assertContains("open menu reports its state", menuOne, 'aria-expanded="true"');
+assertContains("a single pick shows as itself", menuOne, ">.py<");
+assertContains(
+  "the picked row is checked",
+  menuOne,
+  'aria-checked="true" data-chip-key="types" data-chip-value=".py"',
+);
+// The any row goes unchecked once a real value is picked.
+assertContains(
+  "the any row clears",
+  menuOne,
+  'aria-checked="false" data-chip-key="types" data-chip-any',
+);
+
+const menuMany = fc.menuGroupHtml({
+  key: "types",
+  label: "File extension",
+  options: menuOptions,
+  value: [".py", ".md"],
+  anyLabel: "Any type",
+  menuId: "m",
+});
+// Several picks summarise as "first +n" rather than overflowing the
+// 300px pane with a comma list.
+assertContains("several picks summarise compactly", menuMany, ">.py +1<");
+
 // ── Escaping ───────────────────────────────────────────────────
 
 const hostile = fc.groupHtml({

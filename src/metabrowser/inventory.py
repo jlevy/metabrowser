@@ -252,6 +252,40 @@ class InventoryIndex:
             (e.path, e.ext) for e in self._entries.values() if e.type == "file" and not e.gitignored
         ]
 
+    def root_summary(self) -> dict[str, int]:
+        """Whole-index file counts and bytes, split by gitignore status.
+
+        The per-directory ``total_files`` / ``total_size`` aggregates
+        are gitignore-blind, and they have to stay that way: a folder's
+        size is its size. But the nav header wants to say how much of
+        the tree is tracked versus ignored, and summing top-level
+        children cannot answer that — ignored files nested under
+        tracked directories would be counted as tracked.
+
+        One pass over the entries is the honest way to get it. This runs
+        per ``/api/tree`` request (once per page load, not per
+        keystroke), so an O(entries) scan is affordable where a second
+        set of incremental accumulators would not be worth the
+        invalidation surface.
+        """
+
+        files = size = ignored_files = ignored_size = 0
+        for entry in self._entries.values():
+            if entry.type != "file":
+                continue
+            if entry.gitignored:
+                ignored_files += 1
+                ignored_size += entry.size or 0
+            else:
+                files += 1
+                size += entry.size or 0
+        return {
+            "files": files,
+            "size": size,
+            "ignored_files": ignored_files,
+            "ignored_size": ignored_size,
+        }
+
     # ── Writes ──────────────────────────────────────────────
 
     def invalidate(self, path: str) -> None:

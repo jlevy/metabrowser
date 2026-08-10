@@ -62,8 +62,8 @@ Every predicate this plan needs is on the row before any filter runs:
 
 - `data-tip-mtime` — modification time in seconds, on file and folder rows
 - `data-tip-size` — bytes on file rows, subtree bytes on folder rows
-- `data-logical-ext` plus `MetabrowserFileTypes.classFor` — the `ft-*` family that
-  already colors the filename
+- the filename’s extension, plus `MetabrowserFileTypes.classFor` for the `ft-*` hue that
+  colors it
 - `.tree-item-gitignored` — the class the tree sets today
 - `.activity-dot` — the live-file marker from the active tracker
 
@@ -115,33 +115,54 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    A 300px pane cannot host a comfortable floating panel, and an inline drawer keeps
    active filters and their controls in the same visual column.
    Floating menus stay for the header settings.
-5. **Hide is the default treatment; Dim is the escape hatch.** Setting a filter removes
-   what does not match, because that is what “filter” means to the person clicking it —
-   a type filter that leaves every file in place, faded, has not answered the question.
-   Dim stays one segment away for the case where the tree’s shape is the point.
-   Hide never claims completeness it does not have: pruning keeps folders whose contents
-   are not loaded and renders a footer note counting them.
-6. **Recency reads from `/api/recent` whenever it is set and the mode is Hide.** This is
-   the whole answer to the reach problem in Background, and with Hide as the default
-   (Decision 5) it is the normal path, not a corner: clicking a recency chip gives the
-   Recent tab’s exact behavior inside the Files pane.
-   The Files tree renders `/api/recent?window=`'s tree through the same
+5. **Filtering hides; there is no dim/hide switch.** Removing what does not match is
+   what filtering *is*, so offering “dim instead” was offering to not do the thing the
+   user asked for. Hiding never claims completeness it does not have: pruning keeps
+   folders whose contents are not loaded and renders a footer note counting them.
+   Gitignored entries keep the dimmed treatment the tree has always given them, which is
+   the one place dimming still earns its place.
+6. **Gitignored is one checkbox, not a three-state.** Shown-and-dimmed is the default
+   and the only visible state; unchecking removes those rows entirely.
+   The former `shown` value (visible and *un*-dimmed) bought nothing that the dimmed
+   default does not already give, and “Shown / Dimmed / Hidden” sitting next to a “Hide
+   / Dim” treatment group was two adjacent controls with near-identical vocabulary.
+7. **Recency reads from `/api/recent` whenever a window is set.** This is the whole
+   answer to the reach problem in Background, and it is the normal path rather than a
+   corner: clicking a recency chip gives the Recent tab’s exact behavior inside the
+   Files pane. The Files tree renders `/api/recent?window=`'s tree through the same
    `renderTreeNodes`, keeping the endpoint’s totals and truncation reporting.
-   Dim mode decorates loaded rows instead, with no round trip.
-   The Recent tab is then redundant in the strict sense, not the approximate one.
-7. **Filter state persists through `mb.prefs` and stays out of the URL hash.** Same
+   `live` stays on the tree source — the endpoint has no window for the active tracker’s
+   files.
+8. **Filter state persists through `mb.prefs` and stays out of the URL hash.** Same
    choice the treemap branch made, for the same reason: filters are a view preference,
    not an address. Persisted state is never invisible — the badge and Clear are always
    present when anything is set.
-8. **Type filtering uses the `ft-*` families through `MetabrowserFileTypes.classFor`.**
-   The same classifier that colors filenames, so a filter can never disagree with the
-   colors, and a family matches its subtypes (`md` matches `md-runbook`). Type chips
-   carry their own `--ft-color`, making the chip row a legend for the tree.
-9. **The tab bar survives with one tab.** The user-visible ask is a Files pane that
-   never needs switching.
-   Keeping `.tab-bar.nav-tab-bar` with a single Files tab preserves the pane header’s
-   shape and shadow behavior and leaves the seam for a future second pane, at the cost
-   of one vestigial-looking control.
+9. **Type filtering is by literal extension, offered from what the tree contains.** The
+   menu lists real extensions (`.md`, `.py`, `.ts`) rather than abstract `ft-*`
+   families, ranked by frequency, capped at 30, each row carrying its tally.
+   Tallies come from the known-file catalog — the complete index the quick-file palette
+   already searches — so the counts cover the whole tree rather than the expanded
+   subset, and the menu can never offer a type with nothing behind it.
+   Rows keep their `--ft-color`, so a menu row and the filenames it keeps read in the
+   same hue.
+10. **Size is a cumulative floor, not a band.**
+    `Any / >100K / >1M / >10M / >100M / >1G`. “What is over 10M in here” is the question
+    people ask; bands make you guess which one a file landed in.
+11. **The drawer carries no section headings.** An extension menu, a size ramp, and a
+    checkbox labelled “Gitignored” already say what they are, and four uppercase labels
+    cost more vertical space in a 300px pane than they were paying for.
+12. **The tab bar survives with one tab.** The user-visible ask is a Files pane that
+    never needs switching.
+    Keeping `.tab-bar.nav-tab-bar` with a single Files tab preserves the pane header’s
+    shape and shadow behavior and leaves the seam for a future second pane, at the cost
+    of one vestigial-looking control.
+13. **The nav tally splits tracked from ignored.**
+    `282 files (3.6 MB) + 12,300 ignored (186.2 MB)`, with the ignored half muted to
+    match how those rows read below.
+    A single combined figure hid that almost all of a repository’s bytes are build
+    output. The split cannot be derived by summing top-level children — ignored files
+    nested under tracked directories would count as tracked — so
+    `InventoryIndex.root_summary()` computes it in one pass and `/api/tree` carries it.
 
 ### The Control Family
 
@@ -183,27 +204,27 @@ with an `mb.filters` SDK proxy so plugin views never touch the global:
 
 ```js
 {
-  recency: "all" | "live" | "1h" | "24h" | "7d" | "30d",  // default "all"
-  types: string[] | null,                                  // ft-* families, null = any
-  size: "all" | "s" | "m" | "l",                          // default "all"
-  ignored: "shown" | "dimmed" | "hidden",                 // default "dimmed"
-  mode: "dim" | "hide",                                    // default "hide"
+  recency: "all" | "live" | "1h" | "24h" | "7d" | "30d",   // default "all"
+  types: string[] | null,                                  // extensions (".md"), null = any
+  size: "all" | "100k" | "1m" | "10m" | "100m" | "1g",     // default "all"; a floor
+  showIgnored: boolean,                                    // default true (visible, dimmed)
 }
 ```
 
 The module owns `get`, `set(patch)`, `clear`, `subscribe`, `activeCount`, and the shared
-predicates `rowMatches` and `typeMatches`, so the tree and any future surface can never
-disagree about what matches.
+predicates `rowMatches`, `typeMatches`, and `sizeMatches`, so the tree and any future
+surface can never disagree about what matches.
 Persistence rides `mb.prefs` under one versioned `filters` key; every change dispatches
 `metabrowser:filter-change` alongside the subscriber callbacks.
 
-Missing data never rules a row out.
-An unclassified path, an absent mtime, or a pending size is incomplete information, not
-a non-match — pending rows must not flicker as filtered.
+Missing data never rules a row out: an absent mtime or a pending size is incomplete
+information, not a non-match, and pending rows must not flicker as filtered.
+A missing *extension* is the deliberate exception — “this file has no extension” is
+complete information, so `Makefile` is a real non-match for a `.md` filter.
 
 This is the treemap branch’s `filter_state.js` with `current` and `ageWindow` folded
-into `recency` and `size` and `mode` added; that branch rebases onto this module rather
-than carrying its own.
+into `recency`, `size` added, and its `ignored` three-state reduced to a boolean; that
+branch rebases onto this module rather than carrying its own.
 
 ### The Navigation Filter Bar
 
@@ -228,26 +249,51 @@ picker, promoted. Values stay `1h`/`24h`/`7d`/`30d` to match `RECENT_WINDOWS` an
 endpoint; labels shorten to `1h`/`1d`/`1w`/`1mo` to fit the pane.
 `More` is a `.chip-toggle` carrying the active-filter `.chip-badge`.
 
-Expanded, the drawer adds labeled rows:
+Expanded, the drawer adds three unlabelled controls — each says what it is:
 
 ```
 ├─────────────────────────────────────────────┤
-│ ⟨All│Live│1h│1d│1w│1mo⟩        ⌃ More  ②   │
-│ TYPE                                        │
-│ ⟨md│code│data│config│text│other⟩            │  multi-select, ft-tinted
-│ SIZE                                        │
-│ ⟨Any│<10 KB│10 KB–1 MB│>1 MB⟩               │  single-select
-│ GITIGNORED                                  │
-│ ⟨Shown│Dimmed│Hidden⟩                       │  single-select
-│ NON-MATCHING                                │
-│ ⟨Dim│Hide⟩                                  │  single-select
+│ ⟨All│Live│1h│1d│1w│1mo⟩          Less  ②   │
+│ [Any type ⌄]  [✓ Gitignored]                │  dropdown + checkbox
+│ ⟨Any│>100K│>1M│>10M│>100M│>1G⟩              │  single-select, a floor
 │                                   Clear all │
 ├─────────────────────────────────────────────┤
+```
+
+The extension dropdown opens over the shared `.menu` surface, ranked by frequency and
+capped at 30, each row tallied and tinted with its file-type hue:
+
+```
+   ✓ Any type
+     .py      156
+     .js       43
+     .md       33
+     .toml     10
 ```
 
 Clear resets every dimension including the ones in the collapsed row, and the drawer’s
 open state is itself a preference, so a user who lives in type filters is not re-opening
 it every session.
+
+### The Nav Tally
+
+The header row above the tree splits tracked from ignored, with the ignored half muted
+to match how those rows read below it:
+
+```
+282 files (3.6 MB) + 12,300 ignored (186.2 MB)
+```
+
+`InventoryIndex.root_summary()` computes both halves in one pass over the index and
+`/api/tree` carries them on the full-tree request only.
+The per-directory `total_files` / `total_size` aggregates stay gitignore-blind — a
+folder’s size is its size — which is exactly why the split needs its own pass rather
+than a sum over top-level children.
+
+The walker’s root upsert can only refresh the blind aggregate, so the split row owns
+separate classes (`.tree-summary-tracked`, `.tree-summary-ignored`) and its own
+debounced refresh; otherwise the live patch would overwrite the tracked half with the
+combined total.
 
 ### Applying Filters
 
@@ -255,102 +301,127 @@ Filtering is a decoration layer over rendered rows, never a render fork.
 The no-filter DOM stays byte-identical to today, which is what keeps this change
 reviewable.
 
-- **Hide** (default) prunes non-matching file rows and folders with no loaded match,
-  then renders a footer note counting unloaded folders, so the pruned tree never implies
+- Non-matching file rows are pruned, along with folders that have no loaded match; a
+  footer note counts the folders that are not expanded, so the pruned tree never implies
   completeness it does not have.
-- **Recency under Hide** swaps the tree’s data source to `/api/recent?window=` per
-  Resolved Decision 6, rendered by `renderTreeNodes` with the existing truncation
-  banner. Type and size then apply as a prune over that result, so the endpoint stays a
-  recency query and the client owns the rest.
-- **Dim** adds a muted class to non-matching rows instead of pruning.
-  Folders dim only when nothing under them can match — an unloaded folder is unknown,
-  not excluded.
-- **Gitignored** keeps its three-state independent of `mode`: `shown` lifts the tree’s
-  default fade, `dimmed` is today’s behavior, `hidden` prunes those subtrees.
+- A **recency window** swaps the tree’s data source to `/api/recent?window=` per
+  Resolved Decision 7, rendered by `renderTreeNodes` with the existing truncation
+  banner. Type and size then prune over that result, so the endpoint stays a recency
+  query and the client owns the rest.
+- **Gitignored** rows keep the tree’s existing dimmed treatment when shown; unchecking
+  prunes those subtrees.
+- A hidden folder’s verdict propagates to its descendants, so a pruned subtree never
+  keeps an orphaned visible row under a parent that is gone.
 
 Reapplication is driven by `metabrowser:filter-change` and, debounced, by inventory
 patches; newly inserted live rows are classified on insert.
 
 ### Retiring the Recent Tab
 
-The tab, its panel, `renderRecentControls`, `setActiveRecentChip`, and the
-`recent`-specific tab-switching branches come out.
+The tab, its panel, `renderRecentControls`, and `setActiveRecentChip` come out.
 `/api/recent`, `recent.py`, `recentBaseEntries`, the live overlay, and the clustered
-presentation all stay — they become the Hide-mode data path for recency, not a separate
+presentation all stay — they become the data path for a recency window, not a separate
 place.
-
-Removal happens only after a parity checklist passes against the live tab: window
-switching, counts, truncation marks, live updates under an active filter, and keyboard
-access.
 
 ## Implementation Plan
 
-### Phase 1: The Control Family
+Checked items are implemented and covered by tests; `make verify` passes on the branch.
 
-- [ ] Core `styles.css` section for `.chip`, `.chip-group[data-select]`, `.chip-toggle`,
-  `.chip-badge`, `.chip-clear`, with light and dark token coverage and no color literals
-- [ ] A small render helper producing group markup with correct ARIA per variant, plus
-  the shared click and keyboard handling
-- [ ] `docs/design-system.md` gains a Filter Controls section stating the single-select
-  and multi-select fill convention and the one-mechanism rule
-- [ ] `.recent-chip` migrated to the new family and its rules deleted
+### Phase 1: The Control Family — done
 
-### Phase 2: Filter State and the Bar
+- [x] Core `styles.css` section for `.chip`, `.chip-group[data-select]`, `.chip-toggle`,
+  `.chip-menu`, `.chip-badge`, `.chip-clear`, with light and dark token coverage and no
+  color literals
+- [x] `static/filter_controls.js` producing group markup with correct ARIA per variant,
+  plus shared click, keyboard, and dropdown-dismissal handling
+- [x] `docs/design-system.md` gains a Filter Controls section stating the single-select
+  and multi-select fill convention, the one-mechanism rule, and the dropdown contract
+- [x] `.recent-chip` deleted
 
-- [ ] `static/filter_state.js` under the strict `tsconfig.json` gate, with prefs
+### Phase 2: Filter State and the Bar — done
+
+- [x] `static/filter_state.js` under the strict `tsconfig.json` gate, with prefs
   persistence, change events, `activeCount`, and the shared predicates
-- [ ] `mb.filters` SDK proxy with safe no-ops when the module is absent
-- [ ] The filter bar and drawer in the shell HTML, wired to the state, with the badge,
+- [x] `mb.prefs` and `mb.filters` SDK surfaces with safe no-ops when absent
+- [x] The filter bar and drawer in the shell HTML, wired to the state, with the badge,
   Clear, and persisted drawer state
+- [x] Extension dropdown built from known-file-catalog tallies, ranked and capped
 
-### Phase 3: Applying Filters to the Tree
+### Phase 3: Applying Filters to the Tree — done
 
-- [ ] Hide-mode pruning (the default) with folder retention and the unloaded-folders
-  footer note
-- [ ] Recency under Hide backed by `/api/recent`, reusing the truncation banner, with
-  type and size pruning over that result
-- [ ] Dim decoration for recency, type, and size over rendered rows, reapplied on filter
-  change and debounced after inventory patches
-- [ ] Gitignored three-state replacing the unconditional fade
+- [x] Pruning with folder retention and the unloaded-folders footer note
+- [x] A recency window backed by `/api/recent`, reusing the truncation banner, with type
+  and size pruning over that result
+- [x] Gitignored checkbox replacing the unconditional fade
+- [x] Reapplication on filter change and debounced after inventory patches
 
-### Phase 4: One Files Pane
+### Phase 4: One Files Pane — done
 
-- [ ] Parity checklist against the live Recent tab
-- [ ] Tab removal, single Files pane, docs updated
+- [x] Tab removal, single Files pane, docs updated
+- [x] `InventoryIndex.root_summary()` plus the `/api/tree` `summary` field and the split
+  nav tally
+
+### Phase 5: Follow-ups — open
+
+- [ ] Extension tallies exclude gitignored files, because `catalog_files()` filters them
+  out; with **Gitignored** checked the tree shows rows the menu did not count
+- [ ] Decide whether `Live` earns a segment (see Open Questions)
+- [ ] The folder-treemap branch rebases onto the core family and the shared state
 
 ## Testing Strategy
 
-- DOM tests for each control variant: single-select exclusivity, multi-select
-  independence, `aria-pressed` and `aria-checked` correctness, keyboard traversal, and
-  focus-visible reach
-- vm tests for `FilterState`: defaults, sanitization of malformed persisted values,
-  `activeCount`, event and subscriber delivery, and unsubscribe
-- Predicate tests asserting that missing mtime, size, or classification never excludes a
-  row
-- DOM tests for dim classification, hide pruning with folder retention, the unloaded
-  footer note, and the gitignored three-state
-- A test asserting the no-filter DOM is unchanged from today, which is the guard on
-  “decoration layer, not render fork”
-- The Phase 4 parity checklist run in a real browser session before the tab is removed
+Implemented:
+
+- vm tests (`tests/dom/filter_controls_behavior.js`) for each control variant:
+  single-select exclusivity, multi-select accumulation and empty-set normalization,
+  `aria-pressed` / `aria-checked` correctness, roving tabindex, dropdown summarisation
+  and row state, and HTML escaping
+- vm tests (`tests/dom/filter_state_behavior.js`) for `FilterState`: defaults,
+  sanitization of malformed persisted values, `activeCount`, event and subscriber
+  delivery, unsubscribe, snapshot isolation, the cumulative size floor, and extension
+  matching
+- Predicate tests asserting that a missing mtime or pending size never excludes a row,
+  and that a missing extension does
+- Structural tests (`tests/test_browser_filter_ui.py`) pinning the fill convention, the
+  ARIA-to-styling coupling, the token-only rule, and the no-filter DOM guard
+- Unit tests (`tests/test_inventory_root_summary.py`) for the tracked/ignored split,
+  including ignored files nested under tracked directories
+
+Still owed:
+
+- A live-browser pass over keyboard traversal of the dropdown (arrow keys inside the
+  menu itself, as opposed to the chip groups)
 
 ## Rollout Plan
 
-Phases 1 and 2 are additive: the control family and the bar land while the Recent tab
-keeps working, and an all-default filter state changes nothing.
-Phase 3 changes tree appearance only when a filter is set.
-Phase 4 is the only irreversible step and it waits on the parity checklist.
+Phases 1 and 2 are additive: an all-default filter state changes nothing about the
+rendered tree. Phase 3 changes appearance only when a filter is set.
+Phase 4 removes the Recent tab, which is the one irreversible step.
 
-The folder-treemap branch rebases after Phase 2 and drops its private `.tm-seg`,
+The folder-treemap branch rebases onto this and drops its private `.tm-seg`,
 `.tm-check`, `.filter-chip`, and `filter_state.js` in favor of the core family; its
 toolbar keeps its view-local encodings (Metric, Grouping, Color, Depth) and binds its
 gitignored control to the shared dimension.
+Its `current` + `ageWindow` pair collapses to `recency`, and its `ignored` three-state
+to `showIgnored`.
 
 ## Open Questions
 
-- Whether the drawer’s Dim / Hide control should be per-dimension rather than global,
-  once there is usage evidence that recency and type want different treatments
-- Whether the type families in the drawer should be fixed or reflect only the families
-  actually present under the current root
+**Does `Live` earn its segment?** It is not a synonym for `1h`: the active tracker marks
+a file live when its size or mtime fingerprint changed within `stale_after_s` (30s),
+plus up to `ACTIVE_TRACKER_QUIET_POLLS × ACTIVE_TRACKER_INTERVAL_S` (30s) of hysteresis
+— so roughly “changed in the last half-minute”, two orders of magnitude narrower than
+`1h`. It is also the only recency value that updates live over SSE without a refetch,
+which is what makes it useful while watching an agent write logs.
+
+Against it: on a quiet repository it is always empty, which reads as broken rather than
+as “nothing is happening”, and it is the same *kind* of thing as the windows beside it.
+The alternative is to relabel it `30s` and make the axis uniform, at the cost of losing
+the “this updates in real time” connotation.
+
+**Should the extension tallies include gitignored files?** `catalog_files()` excludes
+them, so with **Gitignored** checked the tree shows rows the menu never counted.
+Fixing it means either widening the catalog feed or tallying from a second source.
 
 ## References
 

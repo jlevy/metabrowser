@@ -629,8 +629,8 @@ def test_load_tree_renders_truncation_banner_when_status_truncated() -> None:
     fn_start = js.index("async function loadTree()")
     fn_block = js[fn_start : fn_start + 5000]
     assert 'data.tally_cache_status === "truncated"' in fn_block
-    assert "tree-truncation-note" in fn_block
-    assert "data.tally_cache_max_files" in fn_block
+    assert "treeTruncationNoteHtml(data.tally_cache_max_files)" in fn_block
+    assert "tree-truncation-note" in js
     assert "Bump <code>INVENTORY_MAX_FILES</code>" not in fn_block
     assert "function treeTruncationNoteHtml(maxFiles)" in js
     assert "capped at" in js

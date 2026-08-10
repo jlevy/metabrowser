@@ -6,16 +6,21 @@
 //   { recency: "all"|"live"|"1h"|"24h"|"7d"|"30d",
 //     types: string[]|null,   // ft-* families; null means any
 //     size: "all"|"s"|"m"|"l",
-//     ignored: "shown"|"dimmed"|"hidden",
-//     mode: "dim"|"hide" }
+//     showIgnored: boolean }  // gitignored entries visible (dimmed)
 //
 // Recency is one axis, not two: "live" (the active tracker's flag) is
 // the narrowest point on it, so it is a value here rather than a
-// separate boolean. Persistence rides mb.prefs (host-only cookies,
-// shared across per-root ports); every change notifies subscribers and
-// dispatches a `metabrowser:filter-change` CustomEvent. The predicate
-// helpers live here so no two surfaces can disagree about what
-// matches.
+// separate boolean.
+//
+// There is no dim/hide switch. A filter removes what does not match —
+// that is what filtering is — so the only display choice left is
+// whether gitignored entries are in the tree at all, and when they are
+// they keep the dimmed treatment the tree has always given them.
+//
+// Persistence rides mb.prefs (host-only cookies, shared across
+// per-root ports); every change notifies subscribers and dispatches a
+// `metabrowser:filter-change` CustomEvent. The predicate helpers live
+// here so no two surfaces can disagree about what matches.
 
 (() => {
   const PREF_KEY = "filters";
@@ -27,26 +32,32 @@
    * @type {Record<string, number>}
    */
   const RECENCY_SECONDS = { "1h": 3600, "24h": 86400, "7d": 604800, "30d": 2592000 };
-  const SIZE_VALUES = ["all", "s", "m", "l"];
-  /** Fixed byte thresholds — predictable labels that do not shift as you browse. */
-  const SIZE_SMALL_MAX = 10 * 1024;
-  const SIZE_MEDIUM_MAX = 1024 * 1024;
-  const IGNORED_VALUES = ["shown", "dimmed", "hidden"];
-  const MODE_VALUES = ["dim", "hide"];
-
+  /**
+   * Size is a cumulative floor, not a band: "bigger than this". Bands
+   * force you to guess which one a file lands in, while "what is over
+   * 10M in here" is the question people actually ask. Fixed
+   * thresholds, so the labels never shift as you browse.
+   * @type {Record<string, number>}
+   */
+  const SIZE_MIN_BYTES = {
+    "100k": 100 * 1024,
+    "1m": 1024 * 1024,
+    "10m": 10 * 1024 * 1024,
+    "100m": 100 * 1024 * 1024,
+    "1g": 1024 * 1024 * 1024,
+  };
+  const SIZE_VALUES = ["all", "100k", "1m", "10m", "100m", "1g"];
   const DEFAULTS = Object.freeze({
     recency: "all",
     /** @type {string[] | null} */
     types: null,
     size: "all",
-    ignored: "dimmed",
-    // Hide, not dim: setting a filter should remove what does not
-    // match, because that is what "filter" means to the person
-    // clicking it (see Resolved Decision 5 in the plan).
-    mode: "hide",
+    // Gitignored entries are present but dimmed, which is what the
+    // tree has always done; unchecking removes them entirely.
+    showIgnored: true,
   });
 
-  /** @typedef {{recency: string, types: string[] | null, size: string, ignored: string, mode: string}} FilterSnapshot */
+  /** @typedef {{recency: string, types: string[] | null, size: string, showIgnored: boolean}} FilterSnapshot */
 
   /** @type {FilterSnapshot | null} */
   let state = null;
@@ -74,8 +85,7 @@
       recency: DEFAULTS.recency,
       types: DEFAULTS.types,
       size: DEFAULTS.size,
-      ignored: DEFAULTS.ignored,
-      mode: DEFAULTS.mode,
+      showIgnored: DEFAULTS.showIgnored,
     };
     if (raw && typeof raw === "object") {
       const r = /** @type {Record<string, unknown>} */ (raw);
@@ -91,11 +101,8 @@
       if (typeof r.size === "string" && SIZE_VALUES.includes(r.size)) {
         out.size = r.size;
       }
-      if (typeof r.ignored === "string" && IGNORED_VALUES.includes(r.ignored)) {
-        out.ignored = r.ignored;
-      }
-      if (typeof r.mode === "string" && MODE_VALUES.includes(r.mode)) {
-        out.mode = r.mode;
+      if (typeof r.showIgnored === "boolean") {
+        out.showIgnored = r.showIgnored;
       }
     }
     return out;
@@ -116,8 +123,7 @@
       recency: s.recency,
       types: s.types ? s.types.slice() : null,
       size: s.size,
-      ignored: s.ignored,
-      mode: s.mode,
+      showIgnored: s.showIgnored,
     };
   }
 
@@ -176,10 +182,7 @@
     if (s.size !== DEFAULTS.size) {
       n += 1;
     }
-    if (s.ignored !== DEFAULTS.ignored) {
-      n += 1;
-    }
-    if (s.mode !== DEFAULTS.mode) {
+    if (s.showIgnored !== DEFAULTS.showIgnored) {
       n += 1;
     }
     return n;
@@ -191,10 +194,28 @@
   }
 
   /**
-   * Does a path match the selected type families? A family matches its
-   * subtypes (`ft-md` matches `ft-md-runbook`). Uses the shell's
-   * classifier so the filter can never disagree with the colors; with
-   * no classifier available nothing is ruled out.
+   * The extension a filter matches on, lowercased and including the
+   * dot (".md"). Mirrors app.js getExt; a file with no dot has no
+   * extension and reports "".
+   * @param {string} pathLike
+   */
+  function extensionOf(pathLike) {
+    if (typeof pathLike !== "string" || pathLike.length === 0) {
+      return "";
+    }
+    const name = pathLike.slice(pathLike.lastIndexOf("/") + 1);
+    const dot = name.lastIndexOf(".");
+    // A leading dot is a dotfile (".gitignore"), not an extension.
+    if (dot <= 0) {
+      return "";
+    }
+    return name.slice(dot).toLowerCase();
+  }
+
+  /**
+   * Does a path carry one of the selected extensions? Extensions are
+   * the literal ".md" / ".py" the tree shows, not an abstract family,
+   * so what the menu offers is exactly what the folder contains.
    * @param {string} pathLike
    * @param {string[] | null} types
    */
@@ -202,34 +223,26 @@
     if (!types || types.length === 0) {
       return true;
     }
-    const ft = /** @type {Record<string, any>} */ (window).MetabrowserFileTypes;
-    if (!ft || typeof ft.classFor !== "function") {
-      return true;
+    const ext = extensionOf(pathLike);
+    if (!ext) {
+      // A file with no extension cannot match an extension filter.
+      // Unlike a pending size this is complete information, so it is a
+      // real non-match rather than a row we must leave in place.
+      return false;
     }
-    const cls = String(ft.classFor(pathLike) || "");
-    if (!cls) {
-      // Unclassified is missing data, not a non-match — never rule a
-      // row out on information we do not have.
-      return true;
-    }
-    return types.some((family) => cls === family || cls.startsWith(`${family}-`));
+    return types.indexOf(ext) >= 0;
   }
 
   /** @param {number | null | undefined} bytes @param {string} bucket */
   function sizeMatches(bytes, bucket) {
-    if (bucket === "all") {
-      return true;
+    const floor = SIZE_MIN_BYTES[bucket];
+    if (!floor) {
+      return true; // "all", or a value from a newer version
     }
     if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
       return true; // pending size is unknown, not excluded
     }
-    if (bucket === "s") {
-      return bytes < SIZE_SMALL_MAX;
-    }
-    if (bucket === "m") {
-      return bytes >= SIZE_SMALL_MAX && bytes < SIZE_MEDIUM_MAX;
-    }
-    return bytes >= SIZE_MEDIUM_MAX;
+    return bytes >= floor;
   }
 
   /**
@@ -244,6 +257,8 @@
    * @param {number} nowSec
    */
   function rowMatches(row, s, nowSec) {
+    // Note: gitignored is handled by the caller, which knows the row's
+    // class; showIgnored is a visibility choice, not a predicate.
     if (s.recency === "live") {
       if (!row.isDir && row.live !== true) {
         return false;
@@ -270,8 +285,7 @@
     DEFAULTS,
     RECENCY_VALUES: RECENCY_VALUES.slice(),
     SIZE_VALUES: SIZE_VALUES.slice(),
-    SIZE_SMALL_MAX,
-    SIZE_MEDIUM_MAX,
+    SIZE_MIN_BYTES,
     get,
     set,
     clear,

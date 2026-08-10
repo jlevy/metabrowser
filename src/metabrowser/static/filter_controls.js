@@ -68,7 +68,7 @@
   }
 
   /**
-   * @typedef {{value: string, label: string, title?: string, className?: string}} ChipOption
+   * @typedef {{value: string, label: string, title?: string, className?: string, count?: number}} ChipOption
    * @typedef {{key: string, select?: string, label: string, options: ChipOption[],
    *            value: string | string[] | null, className?: string}} ChipGroupSpec
    */
@@ -130,6 +130,71 @@
   }
 
   /**
+   * A chip that opens a multi-select dropdown.
+   *
+   * There was no widget for this: the app had a floating `.menu` of
+   * single-choice `.menu-item` rows and a native `.menu-select`, and
+   * neither lets you pick several things. This composes the existing
+   * menu surface — same border, radius, shadow, and dismissal rules —
+   * with `menuitemcheckbox` rows, so it inherits the app's one menu
+   * look rather than introducing a second.
+   *
+   * The trigger summarises the selection the way a select does ("Any
+   * type", "md", "md +2") so the collapsed control still answers "what
+   * is filtered?" without being opened.
+   *
+   * @param {{key: string, label: string, options: ChipOption[],
+   *          value: string[] | null, anyLabel: string, open?: boolean,
+   *          menuId: string}} spec
+   */
+  function menuGroupHtml(spec) {
+    const selected = Array.isArray(spec.value) ? spec.value : [];
+    const chosen = (spec.options || []).filter((o) => selected.indexOf(o.value) >= 0);
+    let summary = spec.anyLabel;
+    if (chosen.length === 1) {
+      summary = chosen[0].label;
+    } else if (chosen.length > 1) {
+      summary = `${chosen[0].label} +${chosen.length - 1}`;
+    }
+    const rows = (spec.options || [])
+      .map((opt) => {
+        const on = selected.indexOf(opt.value) >= 0;
+        const extra = opt.className ? ` ${esc(opt.className)}` : "";
+        const count =
+          typeof opt.count === "number"
+            ? `<span class="chip-menu-count">${esc(opt.count.toLocaleString())}</span>`
+            : "";
+        return (
+          `<button type="button" class="menu-item chip-menu-item${extra}"` +
+          ` role="menuitemcheckbox" aria-checked="${on}"` +
+          ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
+          `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
+          `<span class="menu-item-label">${esc(opt.label)}</span>${count}</button>`
+        );
+      })
+      .join("");
+    // A row rather than a separate Clear: "Any type" is the default
+    // value of this dimension, so it belongs in the same list as the
+    // other values.
+    const anyRow =
+      `<button type="button" class="menu-item chip-menu-item"` +
+      ` role="menuitemcheckbox" aria-checked="${selected.length === 0}"` +
+      ` data-chip-key="${esc(spec.key)}" data-chip-any>` +
+      `<span class="chip-menu-check" aria-hidden="true">${selected.length === 0 ? "✓" : ""}</span>` +
+      `<span class="menu-item-label">${esc(spec.anyLabel)}</span></button>`;
+    return (
+      `<span class="chip-menu" data-chip-menu="${esc(spec.key)}"` +
+      ` aria-expanded="${spec.open === true}">` +
+      `<button type="button" class="chip chip-menu-trigger" data-chip-menu-toggle="${esc(spec.key)}"` +
+      ` aria-haspopup="true" aria-expanded="${spec.open === true}"` +
+      ` aria-controls="${esc(spec.menuId)}" aria-label="${esc(spec.label)}">` +
+      `${esc(summary)}<span class="chip-menu-caret" aria-hidden="true">⌄</span></button>` +
+      `<span class="menu chip-menu-panel" id="${esc(spec.menuId)}" role="menu"` +
+      ` aria-label="${esc(spec.label)}">${anyRow}${rows}</span></span>`
+    );
+  }
+
+  /**
    * @param {{label?: string, className?: string}} [spec]
    */
   function clearHtml(spec) {
@@ -150,10 +215,18 @@
    * @param {Element} root
    * @param {{onChange?: (key: string, value: string, select: string) => void,
    *          onToggle?: (key: string, pressed: boolean) => void,
+   *          onMenuToggle?: (key: string, open: boolean) => void,
+   *          onMenuPick?: (key: string, value: string | null) => void,
    *          onClear?: () => void}} handlers
    */
   function bind(root, handlers) {
     const opts = handlers || {};
+
+    /** Any open dropdown, so outside clicks and Escape can close it. */
+    function openMenuKey() {
+      const open = root.querySelector('.chip-menu[aria-expanded="true"]');
+      return open ? open.getAttribute("data-chip-menu") : null;
+    }
 
     /** @param {Event} event */
     function onClick(event) {
@@ -165,6 +238,34 @@
       if (clear && root.contains(clear)) {
         if (opts.onClear) {
           opts.onClear();
+        }
+        return;
+      }
+      // Dropdown trigger.
+      const menuToggle = target.closest("[data-chip-menu-toggle]");
+      if (menuToggle && root.contains(menuToggle)) {
+        const key = menuToggle.getAttribute("data-chip-menu-toggle") || "";
+        const wrap = menuToggle.closest(".chip-menu");
+        const isOpen = wrap?.getAttribute("aria-expanded") === "true";
+        if (opts.onMenuToggle) {
+          opts.onMenuToggle(key, !isOpen);
+        }
+        return;
+      }
+      // A row inside the dropdown. Checked before the generic .chip
+      // branch because menu rows are .menu-item, not .chip.
+      const menuItem = /** @type {HTMLElement | null} */ (
+        target.closest(".chip-menu-item[data-chip-key]")
+      );
+      if (menuItem && root.contains(menuItem)) {
+        const key = menuItem.getAttribute("data-chip-key") || "";
+        if (opts.onMenuPick) {
+          opts.onMenuPick(
+            key,
+            menuItem.hasAttribute("data-chip-any")
+              ? null
+              : menuItem.getAttribute("data-chip-value") || "",
+          );
         }
         return;
       }
@@ -235,11 +336,48 @@
       }
     }
 
+    // Outside interaction dismisses the dropdown. Bound on the
+    // document because the whole point is clicks the bar never sees;
+    // the disposer below detaches it with the rest.
+    /** @param {Event} event */
+    function onDocumentPointerDown(event) {
+      const openKey = openMenuKey();
+      if (openKey === null) {
+        return;
+      }
+      const target = /** @type {Node | null} */ (event.target);
+      if (target && root.contains(target)) {
+        return;
+      }
+      if (opts.onMenuToggle) {
+        opts.onMenuToggle(openKey, false);
+      }
+    }
+
+    // Escape has to work even when focus has left the bar, so it is
+    // bound on the document. Kept separate from onKeyDown so arrow
+    // traversal stays scoped to the bar and nothing fires twice.
+    /** @param {Event} event */
+    function onDocumentEscape(event) {
+      if (/** @type {KeyboardEvent} */ (event).key !== "Escape") {
+        return;
+      }
+      const openKey = openMenuKey();
+      if (openKey !== null && opts.onMenuToggle) {
+        opts.onMenuToggle(openKey, false);
+      }
+    }
+
     root.addEventListener("click", onClick);
     root.addEventListener("keydown", onKeyDown);
+    const doc = root.ownerDocument;
+    doc?.addEventListener("pointerdown", onDocumentPointerDown);
+    doc?.addEventListener("keydown", onDocumentEscape);
     return () => {
       root.removeEventListener("click", onClick);
       root.removeEventListener("keydown", onKeyDown);
+      doc?.removeEventListener("pointerdown", onDocumentPointerDown);
+      doc?.removeEventListener("keydown", onDocumentEscape);
     };
   }
 
@@ -248,6 +386,7 @@
     nextSelection,
     isSelected,
     groupHtml,
+    menuGroupHtml,
     toggleHtml,
     clearHtml,
     bind,

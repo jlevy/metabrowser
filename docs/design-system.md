@@ -225,7 +225,20 @@ inventing a pill of its own; four near-identical pills is what this family repla
 `.chip-group` joins chips into one bordered pill with hairline dividers, so a set of
 related choices reads as a single object.
 `.chip-toggle` is a standalone boolean.
+`.chip-menu` is a chip that opens a multi-select dropdown, for a dimension whose values
+come from the data and are too many to sit in a row.
 `.chip-badge` carries a count, and `.chip-clear` is the quiet reset.
+
+A `.chip-menu` composes the existing floating `.menu` surface with
+`role="menuitemcheckbox"` rows rather than introducing a second menu look — the app had
+a single-choice `.menu` and a native `.menu-select`, and neither can pick several
+things. Its trigger summarises the selection the way a select does (`Any type`, `.md`,
+`.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
+same rule as every other floating menu: Escape or outside interaction.
+
+Values that come from the data are ranked by frequency and capped, and each row carries
+its tally. A menu built from the tree can then never offer a value with nothing behind
+it, and the cap cuts the long tail rather than an arbitrary alphabetical slice.
 
 ### Selection Kind Is Visible Before the Click
 

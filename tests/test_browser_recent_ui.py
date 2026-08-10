@@ -287,15 +287,14 @@ def test_load_recent_locks_window_synchronously_before_fetching() -> None:
     assert assign_idx < fetch_idx
 
 
-def test_recency_source_needs_a_window_and_hide_mode() -> None:
-    """/api/recent is the source only when a window is set and the
-    treatment is hide. "live" stays on the tree source — the endpoint
-    has no window for the active tracker's files."""
+def test_recency_source_needs_a_window() -> None:
+    """/api/recent is the source whenever a window is set. "live"
+    stays on the tree source — the endpoint has no window for the
+    active tracker's files."""
 
     js = _read_app_js()
     fn_start = js.index("function filesPanelUsesRecentSource()")
     fn_block = js[fn_start : fn_start + 600]
-    assert 'st.mode === "hide"' in fn_block
     assert 'st.recency !== "all"' in fn_block
     assert 'st.recency !== "live"' in fn_block
 

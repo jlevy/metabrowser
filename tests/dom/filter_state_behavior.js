@@ -80,8 +80,7 @@ function makeSandbox(options) {
     recency: "all",
     types: null,
     size: "all",
-    ignored: "dimmed",
-    mode: "hide",
+    showIgnored: true,
   });
   assertEqual("a clean state counts as zero active filters", state.activeCount(), 0);
 }
@@ -95,14 +94,13 @@ function makeSandbox(options) {
 
 {
   const { state } = makeSandbox({
-    prefs: { filters: { recency: "24h", types: ["ft-md"], size: "l", mode: "dim" } },
+    prefs: { filters: { recency: "24h", types: [".md"], size: "1m", showIgnored: false } },
   });
   assertEqual("stored preferences are restored", state.get(), {
     recency: "24h",
-    types: ["ft-md"],
-    size: "l",
-    ignored: "dimmed",
-    mode: "dim",
+    types: [".md"],
+    size: "1m",
+    showIgnored: false,
   });
   assertEqual("each non-default dimension counts once", state.activeCount(), 4);
 }
@@ -110,14 +108,13 @@ function makeSandbox(options) {
 // A cookie written by a future version must degrade, never throw.
 {
   const { state } = makeSandbox({
-    prefs: { filters: { recency: "since-tuesday", size: 42, mode: "explode", types: "md" } },
+    prefs: { filters: { recency: "since-tuesday", size: 42, showIgnored: "yes", types: "md" } },
   });
   assertEqual("unknown values fall back to defaults", state.get(), {
     recency: "all",
     types: null,
     size: "all",
-    ignored: "dimmed",
-    mode: "hide",
+    showIgnored: true,
   });
 }
 
@@ -128,18 +125,20 @@ function makeSandbox(options) {
 }
 
 {
-  const { state } = makeSandbox({ prefs: { filters: { recency: "7d", types: ["ft-md"] } } });
+  const { state } = makeSandbox({
+    prefs: { filters: { recency: "7d", types: [".md"], showIgnored: false } },
+  });
   state.clear();
   assertEqual("clear resets every dimension", state.activeCount(), 0);
-  assertEqual("clear restores the default treatment", state.get().mode, "hide");
+  assertEqual("clear restores gitignored visibility", state.get().showIgnored, true);
 }
 
 // get() must not hand out a reference into internal state.
 {
-  const { state } = makeSandbox({ prefs: { filters: { types: ["ft-md"] } } });
+  const { state } = makeSandbox({ prefs: { filters: { types: [".md"] } } });
   const snapshot = state.get();
-  snapshot.types.push("ft-code");
-  assertEqual("snapshots are copies", state.get().types, ["ft-md"]);
+  snapshot.types.push(".py");
+  assertEqual("snapshots are copies", state.get().types, [".md"]);
 }
 
 // ── Change delivery ────────────────────────────────────────────
@@ -199,54 +198,40 @@ const HOUR = 3600;
   );
 }
 
+// Size is a floor, not a band: each step matches everything above it.
 {
   const { state } = makeSandbox();
   const s = state.get();
-  assertTrue("small bucket", state.sizeMatches(1024, "s"));
-  assertEqual("small bucket rejects a medium file", state.sizeMatches(50 * 1024, "s"), false);
-  assertTrue("medium bucket", state.sizeMatches(50 * 1024, "m"));
-  assertTrue("large bucket", state.sizeMatches(5 * 1024 * 1024, "l"));
-  assertEqual("large bucket rejects a small file", state.sizeMatches(10, "l"), false);
-  assertTrue("any bucket accepts everything", state.sizeMatches(null, "all"));
-  assertTrue("a pending size is not excluded", state.sizeMatches(null, "l"));
+  const MB = 1024 * 1024;
+  assertTrue("any accepts everything", state.sizeMatches(10, "all"));
+  assertTrue(">100K matches a 200K file", state.sizeMatches(200 * 1024, "100k"));
+  assertEqual(">100K rejects a 2K file", state.sizeMatches(2048, "100k"), false);
+  assertTrue(">1M matches a 5M file", state.sizeMatches(5 * MB, "1m"));
+  assertEqual(">10M rejects a 5M file", state.sizeMatches(5 * MB, "10m"), false);
+  assertTrue(">1G matches a 2G file", state.sizeMatches(2 * 1024 * MB, "1g"));
+  // A floor is cumulative, so a big file matches every step below it.
+  assertTrue("a 2G file also matches >100K", state.sizeMatches(2 * 1024 * MB, "100k"));
+  assertTrue("a pending size is not excluded", state.sizeMatches(null, "1g"));
   assertTrue("directories skip the size dimension", state.rowMatches({ isDir: true }, s, NOW));
 }
 
-{
-  const { state } = makeSandbox({
-    classifier: (p) => {
-      if (p.endsWith(".md")) {
-        return "ft-md";
-      }
-      if (p.endsWith(".runbook.md")) {
-        return "ft-md-runbook";
-      }
-      if (p.endsWith(".py")) {
-        return "ft-code";
-      }
-      return "";
-    },
-  });
-  assertTrue("a selected family matches", state.typeMatches("a.md", ["ft-md"]));
-  assertEqual("an unselected family does not", state.typeMatches("a.py", ["ft-md"]), false);
-  assertTrue("no selection means no constraint", state.typeMatches("a.py", null));
-  assertTrue(
-    "an unclassified path is missing data, not a non-match",
-    state.typeMatches("mystery", ["ft-md"]),
-  );
-}
-
-// A family matches its subtypes, so picking "md" cannot hide a runbook
-// whose filename is colored from the same family.
-{
-  const { state } = makeSandbox({ classifier: () => "ft-md-runbook" });
-  assertTrue("a family matches its subtypes", state.typeMatches("x.md", ["ft-md"]));
-}
-
-// With no classifier installed the filter must not rule anything out.
+// Types are literal extensions now, so the menu offers exactly what
+// the tree contains and no classifier can disagree with it.
 {
   const { state } = makeSandbox();
-  assertTrue("no classifier means no exclusions", state.typeMatches("a.py", ["ft-md"]));
+  assertTrue("a selected extension matches", state.typeMatches("a/b/c.md", [".md"]));
+  assertEqual("an unselected extension does not", state.typeMatches("a.py", [".md"]), false);
+  assertTrue("no selection means no constraint", state.typeMatches("a.py", null));
+  assertTrue("matching is case-insensitive", state.typeMatches("A.MD", [".md"]));
+  assertTrue("several extensions are ORed", state.typeMatches("a.py", [".md", ".py"]));
+  // Unlike a pending size, "this file has no extension" is complete
+  // information, so it is a real non-match.
+  assertEqual("an extensionless file cannot match", state.typeMatches("Makefile", [".md"]), false);
+  // A dotfile is a name, not an extension.
+  assertEqual("a dotfile has no extension", state.typeMatches(".gitignore", [".gitignore"]), false);
+  // Compound extensions match on the last segment, the same way the
+  // tree's own extension column reads them.
+  assertTrue("a compound name matches its tail", state.typeMatches("a.min.js", [".js"]));
 }
 
 if (failures.length > 0) {

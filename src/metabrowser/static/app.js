@@ -820,15 +820,7 @@ async function loadTree() {
     // Summary row sits at the top of the scrollable tree listing, not
     // in the sticky header — visible on first paint, scrolls away with
     // the rest of the tree. Keeps the upper nav header clean.
-    var summaryHtml =
-      '<div class="tree-summary">' +
-      '<span class="tree-summary-count">' +
-      countHtml(summaryFiles) +
-      "</span>" +
-      '<span class="tree-summary-size">' +
-      sizeHtml(summarySize) +
-      "</span>" +
-      "</div>";
+    var summaryHtml = treeSummaryHtml(data.summary, summaryFiles, summarySize);
     // Walker truncation banner. The InventoryIndex
     // walker stops at INVENTORY_MAX_FILES; finalized dirs still
     // emit accumulated totals so the UI is usable, but the user
@@ -840,6 +832,77 @@ async function loadTree() {
     _lastTreeRender = { tree: data.tree, chromeHtml: truncationHtml + summaryHtml };
     renderFilesFromTree();
   });
+}
+
+// Nav header tally. Tracked and ignored are counted separately —
+// "12,582 files, 189.8 MB" hides that almost all of it is node_modules
+// — and the ignored half is dimmed to match how those rows read in the
+// tree below. Falls back to the combined figure when the server has no
+// split to give (a subtree request, or an index still warming up).
+function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
+  if (!summary || typeof summary.files !== "number") {
+    return (
+      '<div class="tree-summary">' +
+      `<span class="tree-summary-count">${countHtml(fallbackFiles)}</span>` +
+      `<span class="tree-summary-size">${sizeHtml(fallbackSize)}</span>` +
+      "</div>"
+    );
+  }
+  // Deliberately NOT .tree-summary-count / .tree-summary-size: those
+  // are the live-update targets of updateRootAggregatePresentation,
+  // which patches in the gitignore-blind root aggregate and would
+  // overwrite the tracked half with the combined total. The split row
+  // owns its own classes and its own refresh path.
+  var tracked =
+    `<span class="tree-summary-tracked">${esc(formatCount(summary.files))}</span>` +
+    `<span class="tree-summary-bytes">(${esc(formatSize(summary.size))})</span>`;
+  var ignored = "";
+  if (summary.ignored_files > 0) {
+    ignored =
+      '<span class="tree-summary-ignored">' +
+      '<span class="tree-summary-plus">+</span>' +
+      `${esc(summary.ignored_files.toLocaleString())} ignored` +
+      `<span class="tree-summary-bytes">(${esc(formatSize(summary.ignored_size))})</span>` +
+      "</span>";
+  }
+  return `<div class="tree-summary tree-summary-split">${tracked}${ignored}</div>`;
+}
+
+// The walker's root upsert carries gitignore-blind totals, so it
+// cannot refresh the split. Refetch the summary instead — depth=0 so
+// the response is the tally and nothing else — debounced, because the
+// root aggregate is patched repeatedly while the walk converges.
+var _summaryRefreshHandle = null;
+function scheduleRootSummaryRefresh() {
+  if (_summaryRefreshHandle || !document.querySelector(".tree-summary-split")) {
+    return;
+  }
+  _summaryRefreshHandle = setTimeout(() => {
+    _summaryRefreshHandle = null;
+    fetch("/api/tree?depth=0")
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data) => {
+        if (!data?.summary || !_lastTreeRender) {
+          return;
+        }
+        var row = document.querySelector(".tree-summary-split");
+        if (!row) {
+          return;
+        }
+        var html = treeSummaryHtml(data.summary, null, null);
+        row.outerHTML = html;
+        // Keep the cache in step so a source swap re-renders the row
+        // with the figures now on screen.
+        _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
+          /<div class="tree-summary tree-summary-split">.*?<\/div>$/,
+          html,
+        );
+      })
+      .catch(() => {
+        // A failed refresh leaves the previous figures in place, which
+        // is better than blanking a number the user is reading.
+      });
+  }, RECENT_RECLUSTER_DEBOUNCE_MS * 5);
 }
 
 // Last /api/tree payload plus the chrome rendered above it. Cached so
@@ -2286,10 +2349,13 @@ function renderRecentList(data) {
 // ── Navigation filter bar ───────────────────────────────────────
 //
 // One always-visible row (recency) plus a drawer holding type, size,
-// gitignored visibility, and the dim/hide treatment. Controls come
-// from the shared chip family (static/filter_controls.js) and every
-// click writes through to the shared state (static/filter_state.js),
-// so the bar holds no state of its own.
+// and gitignored visibility. Controls come from the shared chip family
+// (static/filter_controls.js) and every click writes through to the
+// shared state (static/filter_state.js), so the bar holds no state of
+// its own.
+//
+// The drawer carries no section headings: an extension menu, a size
+// ramp, and a checkbox labelled "Gitignored" say what they are.
 //
 // See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
 
@@ -2308,58 +2374,95 @@ var FILTER_RECENCY_OPTIONS = [
   { value: "30d", label: "1mo", title: "Modified in the last month" },
 ];
 
-// Type families are ft-* classes from the same classifier that colors
-// filenames, so a selected chip and the rows it keeps always agree.
-var FILTER_TYPE_OPTIONS = [
-  { value: "ft-md", label: "md", className: "chip-ft ft-md" },
-  { value: "ft-code", label: "code", className: "chip-ft ft-code" },
-  { value: "ft-jsonl", label: "data", className: "chip-ft ft-jsonl" },
-  { value: "ft-csv", label: "csv", className: "chip-ft ft-csv" },
-  { value: "ft-yaml", label: "yaml", className: "chip-ft ft-yaml" },
-  { value: "ft-config", label: "config", className: "chip-ft ft-config" },
-  { value: "ft-text", label: "text", className: "chip-ft ft-text" },
-];
-
+// Size is a cumulative floor rather than a band: "what is over 10M in
+// here" is the question people ask, and a floor never makes you guess
+// which band a file landed in.
 var FILTER_SIZE_OPTIONS = [
   { value: "all", label: "Any" },
-  { value: "s", label: "<10 KB" },
-  { value: "m", label: "10 KB–1 MB" },
-  { value: "l", label: ">1 MB" },
+  { value: "100k", label: ">100K" },
+  { value: "1m", label: ">1M" },
+  { value: "10m", label: ">10M" },
+  { value: "100m", label: ">100M" },
+  { value: "1g", label: ">1G" },
 ];
 
-var FILTER_IGNORED_OPTIONS = [
-  { value: "shown", label: "Shown" },
-  { value: "dimmed", label: "Dimmed" },
-  { value: "hidden", label: "Hidden" },
-];
-
-var FILTER_MODE_OPTIONS = [
-  { value: "hide", label: "Hide" },
-  { value: "dim", label: "Dim" },
-];
+// The extension menu is built from what the folder actually contains,
+// not a fixed vocabulary, so it never offers a type with nothing
+// behind it and never omits one the tree is full of.
+var FILTER_TYPE_MENU_MAX = 30;
+var FILTER_TYPE_MENU_ID = "filter-type-menu";
 
 var FILTER_DRAWER_PREF = "filters.drawer";
 var filterDrawerOpen = false;
+var filterTypeMenuOpen = false;
 var filterBarUnbind = null;
 
 /** Is any dimension constraining what the tree shows? */
 function filterHasConstraints(state) {
   return (
-    state.recency !== "all" || !!state.types || state.size !== "all" || state.ignored === "hidden"
+    state.recency !== "all" || !!state.types || state.size !== "all" || state.showIgnored !== true
   );
 }
 
-// Recency in hide mode reads from /api/recent, which scans the whole
-// index rather than the loaded subtrees — the one thing the Recent tab
-// did that a DOM walk cannot. "live" stays on the tree source: the
-// active tracker's files are by definition inside the event scope, and
+// Extension tallies come from the known-file catalog — the same
+// complete index the quick-file palette searches — so the counts cover
+// the whole tree rather than the subset that happens to be expanded.
+// Sorted by frequency because the long tail of one-off extensions is
+// exactly what the cap is there to cut.
+function filterTypeOptions() {
+  const snapshot = knownFileCatalog?.snapshot();
+  if (!snapshot) {
+    return [];
+  }
+  /** @type {Map<string, number>} */
+  const tally = new Map();
+  for (const file of snapshot.files) {
+    const ext = (file.logicalExtension || getExt(file.basename || "")).toLowerCase();
+    if (!ext) {
+      continue;
+    }
+    tally.set(ext, (tally.get(ext) || 0) + 1);
+  }
+  const ranked = Array.from(tally.entries()).sort((a, b) =>
+    // Frequency first, then alphabetical so equal counts render in a
+    // stable order instead of shuffling between renders.
+    b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1],
+  );
+  const kept = ranked.slice(0, FILTER_TYPE_MENU_MAX);
+  // A selected extension that fell outside the cap still has to appear,
+  // or the user could not switch it off from the menu that set it.
+  const selected = filterState ? filterState.get().types || [] : [];
+  for (const ext of selected) {
+    if (!kept.some((row) => row[0] === ext)) {
+      kept.push([ext, tally.get(ext) || 0]);
+    }
+  }
+  return kept.map(([ext, count]) => ({
+    value: ext,
+    label: ext,
+    count: count,
+    className: fileTypeClassForExt(ext),
+  }));
+}
+
+// Reuse the classifier that colors filenames so a menu row and the
+// rows it keeps carry the same hue.
+function fileTypeClassForExt(ext) {
+  const cls = window.MetabrowserFileTypes?.classFor?.(`x${ext}`) || "";
+  return cls ? `chip-ft ${cls}` : "";
+}
+
+// A recency window reads from /api/recent, which scans the whole index
+// rather than the loaded subtrees — the one thing the Recent tab did
+// that a DOM walk cannot. "live" stays on the tree source: the active
+// tracker's files are by definition inside the event scope, and
 // /api/recent has no window for them.
 function filesPanelUsesRecentSource() {
   if (!filterState) {
     return false;
   }
   var st = filterState.get();
-  return st.mode === "hide" && st.recency !== "all" && st.recency !== "live";
+  return st.recency !== "all" && st.recency !== "live";
 }
 
 function renderNavFilterBar() {
@@ -2393,37 +2496,30 @@ function renderNavFilterBar() {
     '<div class="filter-drawer" id="filter-drawer"' +
     (filterDrawerOpen ? "" : " hidden") +
     ">" +
-    '<div class="filter-drawer-label">Type</div>' +
-    fc.groupHtml({
+    '<div class="filter-drawer-row">' +
+    fc.menuGroupHtml({
       key: "types",
-      select: "many",
-      label: "File type",
-      options: FILTER_TYPE_OPTIONS,
+      label: "File extension",
+      options: filterTypeOptions(),
       value: st.types,
+      anyLabel: "Any type",
+      open: filterTypeMenuOpen,
+      menuId: FILTER_TYPE_MENU_ID,
     }) +
-    '<div class="filter-drawer-label">Size</div>' +
+    fc.toggleHtml({
+      key: "showIgnored",
+      label: "Gitignored",
+      pressed: st.showIgnored,
+      title: "Show gitignored entries (dimmed)",
+      className: "chip-check",
+    }) +
+    "</div>" +
     fc.groupHtml({
       key: "size",
       select: "one",
-      label: "File size",
+      label: "Minimum file size",
       options: FILTER_SIZE_OPTIONS,
       value: st.size,
-    }) +
-    '<div class="filter-drawer-label">Gitignored</div>' +
-    fc.groupHtml({
-      key: "ignored",
-      select: "one",
-      label: "Gitignored entries",
-      options: FILTER_IGNORED_OPTIONS,
-      value: st.ignored,
-    }) +
-    '<div class="filter-drawer-label">Non-matching</div>' +
-    fc.groupHtml({
-      key: "mode",
-      select: "one",
-      label: "Treatment of non-matching entries",
-      options: FILTER_MODE_OPTIONS,
-      value: st.mode,
     }) +
     (count > 0
       ? `<div class="filter-drawer-actions">${fc.clearHtml({ label: "Clear all" })}</div>`
@@ -2455,16 +2551,45 @@ function initFilterBar() {
       }
     },
     onToggle: (key, pressed) => {
-      if (key !== "drawer") {
+      if (key === "drawer") {
+        filterDrawerOpen = pressed;
+        // Closing the drawer must close the menu with it, or the
+        // popup would hang over the tree with no owner in sight.
+        if (!pressed) {
+          filterTypeMenuOpen = false;
+        }
+        if (mb?.prefs) {
+          mb.prefs.set(FILTER_DRAWER_PREF, pressed);
+        }
+        renderNavFilterBar();
         return;
       }
-      filterDrawerOpen = pressed;
-      if (mb?.prefs) {
-        mb.prefs.set(FILTER_DRAWER_PREF, pressed);
+      if (key === "showIgnored") {
+        filterState.set({ showIgnored: pressed });
       }
-      renderNavFilterBar();
+    },
+    onMenuToggle: (key, open) => {
+      if (key === "types") {
+        filterTypeMenuOpen = open;
+        renderNavFilterBar();
+      }
+    },
+    onMenuPick: (key, value) => {
+      if (key !== "types") {
+        return;
+      }
+      // `null` is the "Any type" row: clear the dimension rather than
+      // toggling a value. The menu stays open either way, because
+      // picking several extensions is the point of it.
+      if (value === null) {
+        filterState.set({ types: null });
+      } else {
+        var current = filterState.get().types;
+        filterState.set({ types: filterControls.nextSelection("many", current, value) });
+      }
     },
     onClear: () => {
+      filterTypeMenuOpen = false;
       filterState.clear();
     },
   });
@@ -2531,8 +2656,7 @@ function applyTreeFilters() {
   var constrained = filterHasConstraints(st);
   if (!constrained) {
     for (var c = 0; c < rows.length; c++) {
-      rows[c].classList.remove("tree-item-filter-hidden", "tree-item-filter-dim");
-      rows[c].classList.toggle("tree-item-ignored-shown", st.ignored === "shown");
+      rows[c].classList.remove("tree-item-filter-hidden");
     }
     _renderFilterNote(panel, 0, st);
     return;
@@ -2545,7 +2669,7 @@ function applyTreeFilters() {
     var isDir = row.classList.contains("tree-folder");
     var gitignored = row.classList.contains("tree-item-gitignored");
     var ok;
-    if (st.ignored === "hidden" && gitignored) {
+    if (!st.showIgnored && gitignored) {
       ok = false;
     } else {
       ok = filterState.rowMatches(
@@ -2578,14 +2702,11 @@ function applyTreeFilters() {
   // Forward pass so a pruned folder is seen before its descendants:
   // its verdict propagates down, and a subtree never keeps an orphaned
   // visible row under a parent that is gone.
-  var hideMode = st.mode === "hide";
   var suppressed = new Set();
   for (var j = 0; j < rows.length; j++) {
     var el = rows[j];
     var matched = !suppressed.has(el.parentElement) && keep.get(el) === true;
-    el.classList.toggle("tree-item-filter-hidden", hideMode && !matched);
-    el.classList.toggle("tree-item-filter-dim", !hideMode && !matched);
-    el.classList.toggle("tree-item-ignored-shown", st.ignored === "shown");
+    el.classList.toggle("tree-item-filter-hidden", !matched);
     if (!matched) {
       var kidContainer = _childContainerFor(el);
       if (kidContainer) {
@@ -2593,10 +2714,10 @@ function applyTreeFilters() {
       }
     }
   }
-  _renderFilterNote(panel, hideMode ? unloadedFolders : 0, st);
+  _renderFilterNote(panel, unloadedFolders, st);
 }
 
-// Hide mode prunes what it has loaded, which is not the same as "this
+// Filtering prunes what it has loaded, which is not the same as "this
 // is everything that matches". Say so rather than letting a short tree
 // imply completeness.
 function _renderFilterNote(panel, unloadedFolders, state) {
@@ -3967,6 +4088,9 @@ function updateRootAggregatePresentation(entry) {
   var totalFiles = entry.total_files == null ? null : entry.total_files;
   var totalSize = entry.total_size == null ? null : entry.total_size;
   var newestMtime = entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0;
+  // When the split row is on screen these selectors find nothing by
+  // design (see treeSummaryHtml): the blind aggregate cannot express
+  // tracked-versus-ignored, so the split refreshes itself instead.
   var countEl = queryHtml(".tree-summary-count");
   var sizeEl = queryHtml(".tree-summary-size");
   if (countEl) {
@@ -3975,6 +4099,7 @@ function updateRootAggregatePresentation(entry) {
   if (sizeEl) {
     sizeEl.innerHTML = sizeHtml(totalSize);
   }
+  scheduleRootSummaryRefresh();
   var pathEl = queryHtml(".header-path");
   if (pathEl) {
     pathEl.dataset.tipFiles = nullableDataValue(totalFiles);
