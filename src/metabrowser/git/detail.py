@@ -102,10 +102,10 @@ def _show_args(revision: str) -> list[str]:
 def translate_repo_path(raw_path: str, context: RepoContext) -> tuple[str, bool]:
     """Map a repository-relative path to a served-root-relative one.
 
-    Returns ``(path, outside_root)``. Git reports paths relative to the
-    repository root; every path Metabrowser puts on the wire is relative
-    to the served root, and those differ whenever a subdirectory of a
-    checkout is being served.
+    Returns ``(path, outside_root)``. Repository discovery requires the
+    served root and git root to match, so production contexts always
+    produce ``outside_root=False``. The containment check remains here as
+    defense in depth at the wire boundary.
 
     A file inside the repository but outside the served root keeps its
     repository-relative path and is flagged. Both alternatives are worse:

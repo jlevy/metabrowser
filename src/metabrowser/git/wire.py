@@ -140,13 +140,13 @@ class GitRepoInfo(TypedDict):
     """
 
     is_repo: bool
-    # Repo root relative to the served root, or None when the repo root
-    # is above the served root (browsing a subdirectory of a checkout).
+    # Always "" for a positive response because the feature is enabled
+    # only when the served root is the repository root; None otherwise.
     root: str | None
     head: GitHead | None
     # Conditional: why is_repo is false, as a stable machine-readable
-    # token ("no_git", "not_a_repo", "git_failed"). Diagnostics only —
-    # the browser branches on is_repo.
+    # token ("no_git", "not_a_repo", "not_repo_root", "git_failed").
+    # Diagnostics only — the browser branches on is_repo.
     reason: NotRequired[str]
 
 

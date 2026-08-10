@@ -1,6 +1,6 @@
 # Feature: Git Graph Nav Panel and Git API
 
-**Date:** 2026-08-06 (last updated 2026-08-06)
+**Date:** 2026-08-06 (last updated 2026-08-09)
 
 **Author:** Metabrowser maintainers
 
@@ -440,6 +440,26 @@ The end-to-end test drives the real application lifespan and route stack against
 fixture repository, which is the pattern the existing integration tests use.
 
 `make verify` is the handoff gate.
+
+## Addendum: Repository-Root Scope (2026-08-09)
+
+The Git feature is enabled only when the served root resolves to the exact working-tree
+root reported by `git rev-parse --show-toplevel`. This rule supersedes the plan’s
+earlier support for serving a repository subdirectory and rendering outside-root files
+as inert rows.
+
+Git history and commit details describe the entire working tree.
+Enabling them for a served subdirectory would expose commits and file names outside the
+tree Metabrowser can navigate, while filtering those files would misrepresent each
+commit. `GET /api/git/repo` therefore returns `is_repo: false` with
+`reason: "not_repo_root"` for a served subdirectory, and every other Git endpoint
+returns the same negative envelope.
+The browser consequently does not register the Git tab.
+
+Linked worktrees remain supported because `--show-toplevel` reports the root of the
+current linked worktree, not the primary worktree.
+Tests cover a repository root, a linked-worktree root, a repository subdirectory, a
+plain directory, and the negative envelope across every Git endpoint.
 
 ## Attribution
 

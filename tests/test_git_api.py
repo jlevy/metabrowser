@@ -235,14 +235,30 @@ def test_repo_info_reports_no_repository_for_a_plain_directory(plain_dir: Path) 
     assert info.get("reason") == "not_a_repo"
 
 
-def test_repo_info_reports_root_none_when_serving_a_subdirectory(repo: Path) -> None:
+def test_repo_info_reports_no_repository_when_serving_a_subdirectory(repo: Path) -> None:
     with _served(repo / "sub"):
-        _context, info = asyncio.run(repo_info(repo / "sub"))
+        context, info = asyncio.run(repo_info(repo / "sub"))
     validate_git_repo_info(dict(info))
-    assert info["is_repo"] is True
-    # The repo root is above the served root, so it has no representation
-    # inside the served tree.
+    assert context is None
+    assert info["is_repo"] is False
     assert info["root"] is None
+    assert info.get("reason") == "not_repo_root"
+
+
+def test_repo_info_reports_a_repository_at_a_linked_worktree_root(
+    repo: Path, tmp_path: Path
+) -> None:
+    worktree = tmp_path / "linked-worktree"
+    _git(repo, "worktree", "add", "-q", "-b", "linked-worktree", str(worktree))
+
+    with _served(worktree):
+        context, info = asyncio.run(repo_info(worktree))
+
+    validate_git_repo_info(dict(info))
+    assert context is not None
+    assert context.git_root == worktree.resolve()
+    assert info["is_repo"] is True
+    assert info["root"] == ""
 
 
 def test_repo_info_reports_a_detached_head(repo: Path) -> None:
@@ -578,41 +594,44 @@ def test_commit_detail_reports_truncation_without_understating_stats(repo: Path)
 # ── Path translation ─────────────────────────────────────────
 
 
-def test_paths_are_served_root_relative_when_serving_a_subdirectory(repo: Path) -> None:
-    with _served(repo / "sub"):
-        context, _info = asyncio.run(repo_info(repo / "sub"))
-        assert context is not None
-        page = asyncio.run(read_log_page(repo / "sub", skip=0, limit=50))
-        inside = _by_subject(page["commits"], "add subdir")
-        detail = asyncio.run(read_commit_detail(context, inside["id"]))
-        assert detail is not None
-        payload: dict[str, Any] = dict(detail)
-        validate_git_commit_detail(payload)
+def test_detail_parser_translates_paths_for_a_defensive_subdirectory_context(repo: Path) -> None:
+    root_context, _info = asyncio.run(repo_info(repo))
+    assert root_context is not None
+    context = type(root_context)(
+        git_root=root_context.git_root,
+        served_root=repo / "sub",
+        head=root_context.head,
+    )
+    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    inside = _by_subject(page["commits"], "add subdir")
+    detail = asyncio.run(read_commit_detail(context, inside["id"]))
+    assert detail is not None
+    payload: dict[str, Any] = dict(detail)
+    validate_git_commit_detail(payload)
 
-        change = payload["files"][0]
-        # Git reported "sub/inner.txt"; the browser must receive a path it
-        # can hand straight to openPath.
-        assert change["path"] == "inner.txt"
-        assert "outside_root" not in change
+    change = payload["files"][0]
+    assert change["path"] == "inner.txt"
+    assert "outside_root" not in change
 
 
-def test_files_outside_the_served_root_are_flagged_not_hidden(repo: Path) -> None:
-    with _served(repo / "sub"):
-        context, _info = asyncio.run(repo_info(repo / "sub"))
-        assert context is not None
-        page = asyncio.run(read_log_page(repo / "sub", skip=0, limit=50))
-        outside = _by_subject(page["commits"], "main side commit")
-        detail = asyncio.run(read_commit_detail(context, outside["id"]))
-        assert detail is not None
-        payload: dict[str, Any] = dict(detail)
-        validate_git_commit_detail(payload)
+def test_detail_parser_flags_files_outside_a_defensive_subdirectory_context(repo: Path) -> None:
+    root_context, _info = asyncio.run(repo_info(repo))
+    assert root_context is not None
+    context = type(root_context)(
+        git_root=root_context.git_root,
+        served_root=repo / "sub",
+        head=root_context.head,
+    )
+    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    outside = _by_subject(page["commits"], "main side commit")
+    detail = asyncio.run(read_commit_detail(context, outside["id"]))
+    assert detail is not None
+    payload: dict[str, Any] = dict(detail)
+    validate_git_commit_detail(payload)
 
-        change = payload["files"][0]
-        # Present and honest about what the commit touched, but flagged so
-        # the browser renders it inert rather than linking somewhere the
-        # safe-path layer would refuse.
-        assert change["path"] == "side.txt"
-        assert change["outside_root"] is True
+    change = payload["files"][0]
+    assert change["path"] == "side.txt"
+    assert change["outside_root"] is True
 
 
 def test_translate_repo_path_keeps_the_repo_relative_path_when_outside(repo: Path) -> None:

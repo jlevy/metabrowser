@@ -10,6 +10,12 @@ a repository at all. Asking ``git rev-parse`` collapses "is there a
 repository" and "can we read it" into a single answer, which is exactly
 the question the Git tab needs settled before it renders.
 
+The served root must also be the repository's working-tree root. Git
+history spans the whole working tree, so exposing it while Metabrowser
+serves only a subdirectory would describe files outside the browser's
+navigation boundary. Linked worktrees qualify because git reports each
+worktree's own root from ``--show-toplevel``.
+
 The result is TTL-cached per served root. Identity is stable between
 commits but must not survive a checkout, so the TTL is short — the same
 shape as the gitignore checker cache in :mod:`metabrowser.tree`. An
@@ -40,28 +46,16 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RepoContext:
-    """A resolved repository, and where the served root sits inside it.
+    """A resolved repository whose root is the served root.
 
-    ``served_root`` is the directory git commands run in, which is always
-    the served root rather than the repository root: running in the
-    served root is what makes git's own pathspec and ownership checks
-    apply to the directory the user actually asked to browse.
+    Discovery guarantees ``git_root == served_root``. Keeping both names
+    makes their distinct roles clear to the log and path-translation
+    layers and preserves a defensive boundary in commit-detail parsing.
     """
 
     git_root: Path
     served_root: Path
     head: GitHead
-
-    @property
-    def served_root_inside_repo(self) -> bool:
-        """True when the served root is the repo root or below it.
-
-        False means the repository root is *above* the served root, which
-        happens whenever a subdirectory of a checkout is served. History
-        is still fully readable; it only changes which changed files are
-        navigable. See :func:`metabrowser.git.detail.translate_repo_path`.
-        """
-        return self.served_root == self.git_root or self.git_root in self.served_root.parents
 
 
 # Cache entries are (expires_at, context_or_none, info). ``context`` is
@@ -144,7 +138,13 @@ async def _discover(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]
     if not toplevel:
         return None, _negative("not_a_repo")
 
-    git_root = Path(toplevel)
+    git_root = Path(toplevel).resolve()
+    if git_root != served_root:
+        # History is repository-wide. A subdirectory root would let the
+        # Git view enumerate commits and files outside the tree the user
+        # can browse, so it is deliberately not a Git-capable root.
+        return None, _negative("not_repo_root")
+
     try:
         head = await _resolve_head(served_root)
     except GitError as exc:
@@ -154,25 +154,9 @@ async def _discover(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]
     context = RepoContext(git_root=git_root, served_root=served_root, head=head)
     return context, GitRepoInfo(
         is_repo=True,
-        root=_repo_root_relative_to_served(git_root, served_root),
+        root="",
         head=head,
     )
-
-
-def _repo_root_relative_to_served(git_root: Path, served_root: Path) -> str | None:
-    """The repo root as a served-root-relative path, or ``None`` if above it.
-
-    ``""`` means the served root *is* the repository root. ``None`` means
-    a subdirectory of a checkout is being served, so the repository root
-    has no representation inside the served tree — the browser uses this
-    to explain why some changed files are not navigable.
-    """
-    if git_root == served_root:
-        return ""
-    try:
-        return str(git_root.relative_to(served_root))
-    except ValueError:
-        return None
 
 
 async def repo_info(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]:
@@ -182,6 +166,7 @@ async def repo_info(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]
     ``info["is_repo"]`` is false; callers that need to run git branch on
     the context, and return ``info`` unchanged when it is absent.
     """
+    served_root = served_root.resolve()
     key = str(served_root)
     now = time.monotonic()
     cached = _REPO_CACHE.get(key)
