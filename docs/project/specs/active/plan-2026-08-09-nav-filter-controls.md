@@ -143,8 +143,10 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    Tallies come from the known-file catalog — the complete index the quick-file palette
    already searches — so the counts cover the whole tree rather than the expanded
    subset, and the menu can never offer a type with nothing behind it.
-   Rows keep their `--ft-color`, so a menu row and the filenames it keeps read in the
-   same hue.
+   Each row carries the file-type *icon* the tree shows, tinted by its `ft-*` subtype;
+   the label stays plain text.
+   Tinting eight row labels made the hue compete with the check mark rather than help
+   anyone scan, and the icon is what identifies a type everywhere else in the app.
 10. **Size is a cumulative floor, not a band.**
     `Any / >100K / >1M / >10M / >100M / >1G`. “What is over 10M in here” is the question
     people ask; bands make you guess which one a file landed in.
@@ -239,7 +241,7 @@ Always visible, one row in a 300px pane:
 ┌─────────────────────────────────────────────┐
 │ Files                                       │  .nav-tab-bar
 ├─────────────────────────────────────────────┤
-│ ⟨All│Live│1h│1d│1w│1mo⟩        ⌄ More  ②   │  .filter-bar
+│ ⟨All│Live│1h│1d│1w│1mo⟩             ② ⌄   │  .filter-bar
 ├─────────────────────────────────────────────┤
 │ ▸ src/                                      │  .tree-content
 ```
@@ -247,13 +249,16 @@ Always visible, one row in a 300px pane:
 The recency group is single-select and always present; it is the Recent tab’s window
 picker, promoted. Values stay `1h`/`24h`/`7d`/`30d` to match `RECENT_WINDOWS` and the
 endpoint; labels shorten to `1h`/`1d`/`1w`/`1mo` to fit the pane.
-`More` is a `.chip-toggle` carrying the active-filter `.chip-badge`.
+The drawer disclosure is an `.icon-btn` — the same control as the settings gear and the
+print button — carrying a rotating chevron, with the active-filter `.chip-badge` beside
+it. A glyph-only button has no accessible name, so it takes an `aria-label` describing
+the action and repeating the count the badge shows.
 
 Expanded, the drawer adds three unlabelled controls — each says what it is:
 
 ```
 ├─────────────────────────────────────────────┤
-│ ⟨All│Live│1h│1d│1w│1mo⟩          Less  ②   │
+│ ⟨All│Live│1h│1d│1w│1mo⟩             ② ⌃   │
 │ [Any type ⌄]  [✓ Gitignored]                │  dropdown + checkbox
 │ ⟨Any│>100K│>1M│>10M│>100M│>1G⟩              │  single-select, a floor
 │                                   Clear all │
@@ -261,14 +266,14 @@ Expanded, the drawer adds three unlabelled controls — each says what it is:
 ```
 
 The extension dropdown opens over the shared `.menu` surface, ranked by frequency and
-capped at 30, each row tallied and tinted with its file-type hue:
+capped at 30, each row carrying the tree’s own file-type icon and its tally:
 
 ```
-   ✓ Any type
-     .py      156
-     .js       43
-     .md       33
-     .toml     10
+   ✓   Any type
+     ≡ .py      156
+     ≡ .js       43
+     ▤ .md       33
+     ⋮ .toml     10
 ```
 
 Clear resets every dimension including the ones in the collapsed row, and the drawer’s
@@ -363,10 +368,15 @@ Checked items are implemented and covered by tests; `make verify` passes on the 
 
 ### Phase 5: Follow-ups — open
 
-- [ ] Extension tallies exclude gitignored files, because `catalog_files()` filters them
-  out; with **Gitignored** checked the tree shows rows the menu did not count
-- [ ] Decide whether `Live` earns a segment (see Open Questions)
-- [ ] The folder-treemap branch rebases onto the core family and the shared state
+Tracked as beads under epic `mb-pcih`:
+
+- [ ] `mb-r4tq` — extension tallies exclude gitignored files, because `catalog_files()`
+  filters them out; with **Gitignored** checked the tree shows rows the menu did not
+  count
+- [ ] `mb-5e20` — no keyboard-traversal test for the dropdown’s own rows
+- [ ] `mb-4k4d` — the folder-treemap branch rebases onto the core family and shared
+  state
+- [ ] `mb-9zrh` — decide whether `Live` earns a segment (see Open Questions)
 
 ## Testing Strategy
 

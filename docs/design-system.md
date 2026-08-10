@@ -240,6 +240,12 @@ Values that come from the data are ranked by frequency and capped, and each row 
 its tally. A menu built from the tree can then never offer a value with nothing behind
 it, and the cap cuts the long tail rather than an arbitrary alphabetical slice.
 
+Where a row stands for a file type, it carries that type’s icon and leaves the label
+plain.
+The icon is what identifies a type everywhere else in the app, and tinting a whole
+column of labels makes the hues compete with the selected-state mark instead of helping
+anyone scan the list.
+
 ### Selection Kind Is Visible Before the Click
 
 A group declares its kind in `data-select`, and the two kinds look different:
