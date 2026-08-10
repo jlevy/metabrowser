@@ -2,7 +2,73 @@
 
 All notable changes to Metabrowser are documented here.
 
-## Unreleased
+## 0.3.0
+
+Quick File navigation:
+
+- A new Quick File palette opens with `/` or `T` and jumps to any file by name or path
+  fragment, the way go-to-file works on GitHub.
+  Matching is fuzzy and deterministic, ranking whole-word, path-boundary, and camel-case
+  hits above scattered letters, and the ranking contract is pinned by a fixture set.
+- The palette searches every non-gitignored file under the root, not just the subtree
+  the browser happens to have expanded.
+  A one-shot `GET /api/catalog` endpoint serves a minimal gzipped payload with ETag
+  revalidation, and `catalog.change` events on the existing stream keep it live.
+- An open search converges as coverage grows: files that arrive after the query was
+  typed join the visible results instead of waiting for another keystroke.
+  The status line distinguishes complete coverage from a walk still in progress or
+  stopped at the file cap.
+- Results hold their previous contents until real ones replace them, so the list no
+  longer flickers empty on each keystroke, and a row stays inert until the results it
+  describes are the ones on screen.
+  A result reads as one line of navigation: the filename at full contrast, the parent
+  path beside it muted.
+- Catalog upkeep costs the same whether the palette is open or closed, and a batched
+  directory removal now costs an entry’s depth rather than the size of the removal
+  batch. Removing 2,000 directories from a 100,000-entry catalog went from 1441ms to
+  52ms, and stays flat as the batch grows.
+
+Document rendering:
+
+- KPress is upgraded to `0.3.1`, which adds the `toc_rail` option this repository’s host
+  CSS had been standing in for.
+  The host reimplementation is deleted, so the reading column holds one position whether
+  or not a document earns a table of contents.
+- KPress now owns the whole document size ramp.
+  The host had collapsed graded size families onto single values, which rendered inline
+  code inside a table larger than the cell around it; prose code is now 12.3px, table
+  cells 14.25px, and code in a table cell 12.3px.
+- Unscoped `.md-body` chrome rules no longer reach inside embedded documents.
+  Twenty-six of them had been capping the reading column at 50em, overriding KPress’s
+  list rhythm, and constraining blockquotes.
+  `.md-body` remains the documented convention for plugins that render their own
+  Markdown.
+- Embedded documents are square.
+  KPress’s own box radii are bridged to `--radius-document`, so code blocks, tables, and
+  callouts no longer sit rounded inside square panes; pills and circles keep their
+  shape.
+
+Design system:
+
+- Chrome icons draw at one `--icon-glyph` size inside a 16px alignment box, and
+  icon-only controls collapse into a single `.icon-btn` primitive that raises a surface
+  and hairline border only while hovered, focused, or holding a menu open.
+- Keyboard keys get one `.kbd` component, and a chrome typography rule puts navigation
+  text — file paths, parent paths, ancestor segments, and shortcut hints — in the same
+  sans face as the rows they point at, leaving mono for the user’s own content.
+  A contract test enforces the three named exceptions.
+
+Security documentation:
+
+- SECURITY.md now states the content trust model: application surfaces (the shell,
+  static assets, `/api`, and plugin assets) are first-party code, browsed content is
+  not, and browsed content never executes inside the application page.
+- Two boundaries are documented as **not yet enforced**, so the trusted-local guidance
+  stays operative until they are: `/raw` serves in-root files on the application origin
+  with no sandboxing, and `/api` routes take no proof that a request came from the
+  application’s own pages.
+  A tracked plan closes both with an opaque content origin, same-origin proof on `/api`,
+  and an `--untrusted` profile.
 
 Agent Skill:
 
@@ -23,6 +89,13 @@ Agent Skill:
   still keeps the worked pin examples in the README and installation guide current.
 - The README leads with the skill: its install command now sits directly under the
   introduction instead of below the plugin documentation.
+
+Contributor workflow:
+
+- Repository-wide checks ask git for the file set instead of walking the filesystem and
+  naming skipped trees by hand, so a newly ignored tree is excluded in one place.
+  Read-only third-party checkouts under `attic/` and agent worktrees checked out inside
+  the repository are excluded from doc lint, codespell, Biome, and the sdist.
 
 ## 0.2.0
 
