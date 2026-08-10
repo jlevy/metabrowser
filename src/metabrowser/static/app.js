@@ -1958,7 +1958,11 @@ function fetchRecent(windowKey) {
     "/api/recent?window=" +
     encodeURIComponent(windowKey) +
     "&limit=" +
-    encodeURIComponent(String(RECENT_LIMIT));
+    encodeURIComponent(String(RECENT_LIMIT)) +
+    // Asking for rows we are about to hide would spend the server's
+    // cap on them; the filter drops gitignored entries anyway when
+    // Show ignored is off.
+    (filterState && filterState.get().showIgnored === false ? "&include_ignored=0" : "");
   var fetchOpts = ctrl ? { signal: ctrl.signal } : undefined;
   _perf
     .measureAsync(
@@ -2698,6 +2702,7 @@ function initFilterBar() {
   // user change is compared against reality, not against null.
   _filterLastSource = filesPanelUsesRecentSource();
   _filterLastRecency = filterState.get().recency;
+  _filterLastShowIgnored = filterState.get().showIgnored;
   filterState.subscribe(onFilterStateChange);
 }
 
@@ -2706,14 +2711,20 @@ function initFilterBar() {
 // the rendered rows otherwise.
 var _filterLastSource = false;
 var _filterLastRecency = "all";
+var _filterLastShowIgnored = true;
 function onFilterStateChange(state) {
   renderNavFilterBar();
   var usesRecent = filesPanelUsesRecentSource();
   var sourceChanged = _filterLastSource !== usesRecent;
   var windowChanged = usesRecent && _filterLastRecency !== state.recency;
+  // Gitignored visibility is a server-side parameter on the recency
+  // source, not just a class on the rows: it decides what the response
+  // cap gets spent on, so changing it has to refetch.
+  var ignoredChanged = usesRecent && _filterLastShowIgnored !== state.showIgnored;
   _filterLastSource = usesRecent;
   _filterLastRecency = state.recency;
-  if (usesRecent && (sourceChanged || windowChanged)) {
+  _filterLastShowIgnored = state.showIgnored;
+  if (usesRecent && (sourceChanged || windowChanged || ignoredChanged)) {
     loadRecent(state.recency);
     return;
   }

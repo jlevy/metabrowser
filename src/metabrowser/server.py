@@ -1089,6 +1089,9 @@ async def api_recent(request: Request) -> JSONResponse:
         ext_raw = [s for s in single.split(",") if s] if single else []
     ext_filter = tuple(e if e.startswith(".") else "." + e for e in ext_raw)
     prefix_filter = request.query_params.get("prefix", "")
+    # Callers that hide gitignored entries pass include_ignored=0 so the
+    # cap is not spent on rows they will drop on arrival.
+    include_ignored = request.query_params.get("include_ignored", "1") not in ("0", "false")
 
     result = await asyncio.to_thread(
         collect_recent_entries,
@@ -1097,6 +1100,7 @@ async def api_recent(request: Request) -> JSONResponse:
         limit=limit,
         ext_filter=ext_filter,
         prefix_filter=prefix_filter,
+        include_ignored=include_ignored,
     )
     return JSONResponse(
         {

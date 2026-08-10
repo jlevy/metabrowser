@@ -453,6 +453,21 @@ def test_the_navigation_column_shares_one_left_inset() -> None:
     assert "border-left: 2px solid transparent;" in row_block
 
 
+def test_recency_fetch_carries_the_gitignored_setting() -> None:
+    """Gitignored visibility is a server-side parameter here, not just
+    a row class: it decides what the response cap is spent on. A day
+    window on a repository with node_modules returned 2,000 ignored
+    entries and none of the user's own files."""
+
+    js = _read("app.js")
+    assert "&include_ignored=0" in js
+    # Changing it has to refetch, not just re-decorate.
+    start = js.index("function onFilterStateChange(state)")
+    block = js[start : start + 1400]
+    assert "_filterLastShowIgnored !== state.showIgnored" in block
+    assert "ignoredChanged" in block
+
+
 def test_live_survives_the_gap_between_tracker_polls() -> None:
     """The tracker polls every 5s but the watcher emits an upsert per
     append, carrying a stale `active: false` in between. Mirroring
