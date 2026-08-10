@@ -155,15 +155,22 @@ Defaults chosen to unblock implementation; each is cheap to change during review
 10. **Size is a cumulative floor, not a band.**
     `Any / >100K / >1M / >10M / >100M / >1G`. “What is over 10M in here” is the question
     people ask; bands make you guess which one a file landed in.
-11. **The drawer carries no section headings.** An extension menu, a size ramp, and a
-    checkbox labelled “Show ignored” already say what they are, and four uppercase
-    labels cost more vertical space in a 300px pane than they were paying for.
-12. **The tab bar survives with one tab.** The user-visible ask is a Files pane that
+11. **The drawer carries no section headings.** Dropdowns that name their own dimension
+    (`Any age`, `Any type`, `Any size`) and a checkbox labelled “Show ignored” already
+    say what they are, and four uppercase labels cost more vertical space in a 300px
+    pane than they were paying for.
+12. **Every dimension is a dropdown, not a segmented group.** Six age windows and six
+    size steps as joined `.chip-group` ramps filled the pane and left nothing for
+    anything else. A dropdown costs a click to see the options but stays one trigger wide
+    however many there are, and it lets the labels be words (`Past week`) instead of
+    abbreviations. The groups stay in the control family — documented and tested — for
+    surfaces with fewer, shorter values; the nav is simply not one of them.
+13. **The tab bar survives with one tab.** The user-visible ask is a Files pane that
     never needs switching.
     Keeping `.tab-bar.nav-tab-bar` with a single Files tab preserves the pane header’s
     shape and shadow behavior and leaves the seam for a future second pane, at the cost
     of one vestigial-looking control.
-13. **The nav tally splits tracked from ignored.**
+14. **The nav tally splits tracked from ignored.**
     `282 files (3.6 MB) + 12,300 ignored (186.2 MB)`, with the ignored half muted to
     match how those rows read below.
     A single combined figure hid that almost all of a repository’s bytes are build
@@ -246,36 +253,42 @@ Always visible, one row in a 300px pane:
 ┌─────────────────────────────────────────────┐
 │ Files                                       │  .nav-tab-bar
 ├─────────────────────────────────────────────┤
-│ ⟨All│Live│1h│1d│1w│1mo⟩             ② ⌄   │  .filter-bar
+│ [Any age ⌄] [Any type ⌄]            ② ⌄   │  .filter-bar
 ├─────────────────────────────────────────────┤
 │ ▸ src/                                      │  .tree-content
 ```
 
-The recency group is single-select and always present; it is the Recent tab’s window
-picker, promoted. Values stay `1h`/`24h`/`7d`/`30d` to match `RECENT_WINDOWS` and the
-endpoint; labels shorten to `1h`/`1d`/`1w`/`1mo` to fit the pane.
+Age and type ride the always-visible row: they are the two dimensions people reach for,
+and as dropdowns they cost a fraction of the width the segmented ramps did — six age
+windows and six size steps as joined chip groups filled the pane and left nothing for
+anything else. Recency values stay `1h`/`24h`/`7d`/`30d` to match `RECENT_WINDOWS` and
+the endpoint, but their labels can now be words (`Past week`) rather than the
+abbreviations a segmented ramp needed.
+
 The drawer disclosure is an `.icon-btn` — the same control as the settings gear and the
 print button — carrying a rotating chevron, with the active-filter `.chip-badge` beside
 it. A glyph-only button has no accessible name, so it takes an `aria-label` describing
 the action and repeating the count the badge shows.
 
-Expanded, the drawer adds three unlabelled controls — each says what it is:
+Expanded, the drawer adds the two secondary controls:
 
 ```
 ├─────────────────────────────────────────────┤
-│ ⟨All│Live│1h│1d│1w│1mo⟩             ② ⌃   │
-│ [Any type ⌄]  [✓] Show ignored                │  dropdown + checkbox
-│ ⟨Any│>100K│>1M│>10M│>100M│>1G⟩              │  single-select, a floor
-│                                   Clear all │
+│ [Any age ⌄] [Any type ⌄]            ② ⌃   │
+│ [Any size ⌄]  [✓] Show ignored              │
+│                               Clear filters │
 ├─────────────────────────────────────────────┤
 ```
 
-The extension dropdown opens over the shared `.menu` surface, ranked by frequency and
-capped at 30, each row carrying the tree’s own file-type icon and its tally:
+Every dropdown opens over the shared `.menu` surface and leads with an any-row naming
+the dimension’s default, so clearing one dimension is a pick rather than a separate
+control. Age and size are single-select (`menuitemradio`, closes on pick); type is
+multi-select (`menuitemcheckbox`, stays open), ranked by frequency and capped at 30,
+each row carrying the tree’s own file-type icon and its tally:
 
 ```
    ✓   Any type
-     ≡ .py      156
+     ≡ .py      157
      ≡ .js       43
      ▤ .md       33
      ⋮ .toml     10

@@ -163,15 +163,31 @@
    * look rather than introducing a second.
    *
    * The trigger summarises the selection the way a select does ("Any
-   * type", "md", "md +2") so the collapsed control still answers "what
-   * is filtered?" without being opened.
+   * type", ".md", ".md +2") so the collapsed control still answers
+   * "what is filtered?" without being opened.
+   *
+   * `select` picks the kind, exactly as it does for a chip group:
+   * "many" (default) takes a list and `menuitemcheckbox` rows; "one"
+   * takes a scalar and `menuitemradio` rows, and `anyValue` names the
+   * scalar that means "no constraint" so the any-row can show as
+   * checked.
    *
    * @param {{key: string, label: string, options: ChipOption[],
-   *          value: string[] | null, anyLabel: string, open?: boolean,
+   *          value: string[] | string | null, anyLabel: string,
+   *          anyValue?: string, select?: string, open?: boolean,
    *          menuId: string}} spec
    */
   function menuGroupHtml(spec) {
-    const selected = Array.isArray(spec.value) ? spec.value : [];
+    const many = spec.select !== "one";
+    // Single-select carries a scalar, multi-select a list; normalizing
+    // to a list here keeps the row loop identical for both.
+    const selected = many
+      ? Array.isArray(spec.value)
+        ? spec.value
+        : []
+      : spec.value === null || spec.value === undefined || spec.value === spec.anyValue
+        ? []
+        : [String(spec.value)];
     const chosen = (spec.options || []).filter((o) => selected.indexOf(o.value) >= 0);
     let summary = spec.anyLabel;
     if (chosen.length === 1) {
@@ -179,6 +195,10 @@
     } else if (chosen.length > 1) {
       summary = `${chosen[0].label} +${chosen.length - 1}`;
     }
+    // A radio menu names one choice; a checkbox menu names several.
+    // Getting this wrong is the same failure the chip groups guard
+    // against — the control would not say which kind it is.
+    const rowRole = many ? "menuitemcheckbox" : "menuitemradio";
     const rows = (spec.options || [])
       .map((opt) => {
         const on = selected.indexOf(opt.value) >= 0;
@@ -198,7 +218,7 @@
           : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}"` +
-          ` role="menuitemcheckbox" aria-checked="${on}"` +
+          ` role="${rowRole}" aria-checked="${on}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
           `${icon}<span class="menu-item-label">${esc(opt.label)}</span>${count}</button>`
@@ -210,7 +230,7 @@
     // other values.
     const anyRow =
       `<button type="button" class="menu-item chip-menu-item"` +
-      ` role="menuitemcheckbox" aria-checked="${selected.length === 0}"` +
+      ` role="${rowRole}" aria-checked="${selected.length === 0}"` +
       ` data-chip-key="${esc(spec.key)}" data-chip-any>` +
       `<span class="chip-menu-check" aria-hidden="true">${selected.length === 0 ? "✓" : ""}</span>` +
       `<span class="menu-item-label">${esc(spec.anyLabel)}</span></button>`;

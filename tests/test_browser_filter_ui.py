@@ -161,6 +161,63 @@ def test_dropdown_rows_are_arrow_key_traversable() -> None:
     assert ".chip-menu-item" in block
 
 
+def test_all_three_dimensions_are_dropdowns() -> None:
+    """Age, type, and size are dropdowns rather than segmented ramps:
+    six joined segments each is a lot of pill for a 300px pane."""
+
+    js = _read("app.js")
+    fn_start = js.index("function renderNavFilterBar()")
+    fn_block = js[fn_start : fn_start + 3500]
+    assert fn_block.count("fc.menuGroupHtml(") == 3
+    # Age and size pick one; type picks several.
+    assert fn_block.count('select: "one"') == 2
+    for label in ('"Any age"', '"Any type"', '"Any size"'):
+        assert label in fn_block, f"missing any-label {label}"
+
+
+def test_age_and_type_ride_the_always_visible_row() -> None:
+    """Size and gitignored visibility sit behind the disclosure; the
+    two dimensions people reach for do not."""
+
+    js = _read("app.js")
+    fn_start = js.index("function renderNavFilterBar()")
+    fn_block = js[fn_start : fn_start + 3500]
+    drawer_at = fn_block.index('class="filter-drawer"')
+    assert fn_block.index('"Any age"') < drawer_at
+    assert fn_block.index('"Any type"') < drawer_at
+    assert fn_block.index('"Any size"') > drawer_at
+    assert fn_block.index('"Show ignored"') > drawer_at
+
+
+def test_option_lists_omit_the_any_value() -> None:
+    """The menu's any-row *is* that value; listing it twice would
+    offer the same choice under two names."""
+
+    js = _read("app.js")
+    for const in ("FILTER_RECENCY_OPTIONS", "FILTER_SIZE_OPTIONS"):
+        start = js.index(f"var {const} = [")
+        block = js[start : js.index("];", start)]
+        assert 'value: "all"' not in block, f"{const} must not list the any value"
+
+
+def test_single_select_dropdowns_close_on_pick() -> None:
+    """The choice is made; a menu left hanging over the tree has
+    nothing more to offer. Multi-select stays open by design."""
+
+    js = _read("app.js")
+    start = js.index("onMenuPick: (key, value) =>")
+    block = js[start : start + 1200]
+    assert 'if (key === "recency" || key === "size")' in block
+    assert "filterOpenMenu = null;" in block
+
+
+def test_only_one_dropdown_is_open_at_a_time() -> None:
+    js = _read("app.js")
+    start = js.index("onMenuToggle: (key, open) =>")
+    block = js[start : start + 300]
+    assert "filterOpenMenu = open ? key : null;" in block
+
+
 def test_clear_is_only_rendered_when_something_is_set() -> None:
     js = _read("app.js")
     fn_start = js.index("function renderNavFilterBar()")

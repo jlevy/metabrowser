@@ -237,6 +237,50 @@ const menuMany = fc.menuGroupHtml({
 // 300px pane with a comma list.
 assertContains("several picks summarise compactly", menuMany, ">.py +1<");
 
+// Single-select dropdown: a scalar value and radio rows. Getting the
+// role wrong is the same failure the chip groups guard against — the
+// control would not say which kind it is.
+const menuOne1 = fc.menuGroupHtml({
+  key: "recency",
+  select: "one",
+  label: "Modified within",
+  options: [
+    { value: "live", label: "Live" },
+    { value: "7d", label: "Past week" },
+  ],
+  value: "7d",
+  anyLabel: "Any age",
+  anyValue: "all",
+  menuId: "r",
+});
+assertContains("single-select rows are radios", menuOne1, 'role="menuitemradio"');
+assertMissing("single-select rows are not checkboxes", menuOne1, "menuitemcheckbox");
+assertContains("the trigger names the choice", menuOne1, ">Past week<");
+assertContains(
+  "the chosen row is checked",
+  menuOne1,
+  'aria-checked="true" data-chip-key="recency" data-chip-value="7d"',
+);
+
+// The any-row is checked when the scalar sits at its default, so the
+// menu never shows a dimension as constrained when it is not.
+const menuOneAny = fc.menuGroupHtml({
+  key: "recency",
+  select: "one",
+  label: "Modified within",
+  options: [{ value: "live", label: "Live" }],
+  value: "all",
+  anyLabel: "Any age",
+  anyValue: "all",
+  menuId: "r",
+});
+assertContains("the default reads as the any-label", menuOneAny, ">Any age<");
+assertContains(
+  "the any row is checked at the default",
+  menuOneAny,
+  'aria-checked="true" data-chip-key="recency" data-chip-any',
+);
+
 // ── Escaping ───────────────────────────────────────────────────
 
 const hostile = fc.groupHtml({

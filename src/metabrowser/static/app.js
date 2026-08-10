@@ -2373,20 +2373,22 @@ var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || nu
 // Recency is one axis from "everything" to "being written right now".
 // Values match RECENT_WINDOWS and the /api/recent contract; labels are
 // shortened because the whole group has to fit a 300px pane.
+// No "all" entry: the menu's any-row is that value, and listing it
+// twice would offer the same choice under two names. Labels can be
+// words rather than the abbreviations the segmented ramp needed,
+// because a dropdown row is not fighting five siblings for width.
 var FILTER_RECENCY_OPTIONS = [
-  { value: "all", label: "All", title: "Any modification time" },
   { value: "live", label: "Live", title: "Files being written right now" },
-  { value: "1h", label: "1h", title: "Modified in the last hour" },
-  { value: "24h", label: "1d", title: "Modified in the last day" },
-  { value: "7d", label: "1w", title: "Modified in the last week" },
-  { value: "30d", label: "1mo", title: "Modified in the last month" },
+  { value: "1h", label: "Past hour" },
+  { value: "24h", label: "Past day" },
+  { value: "7d", label: "Past week" },
+  { value: "30d", label: "Past month" },
 ];
 
 // Size is a cumulative floor rather than a band: "what is over 10M in
 // here" is the question people ask, and a floor never makes you guess
 // which band a file landed in.
 var FILTER_SIZE_OPTIONS = [
-  { value: "all", label: "Any" },
   { value: "100k", label: ">100K" },
   { value: "1m", label: ">1M" },
   { value: "10m", label: ">10M" },
@@ -2398,11 +2400,13 @@ var FILTER_SIZE_OPTIONS = [
 // not a fixed vocabulary, so it never offers a type with nothing
 // behind it and never omits one the tree is full of.
 var FILTER_TYPE_MENU_MAX = 30;
-var FILTER_TYPE_MENU_ID = "filter-type-menu";
 
 var FILTER_DRAWER_PREF = "filters.drawer";
 var filterDrawerOpen = false;
-var filterTypeMenuOpen = false;
+// At most one dropdown is open at a time — opening a second while the
+// first is still down would leave two panels overlapping a 300px pane.
+/** @type {string | null} */
+var filterOpenMenu = null;
 var filterBarUnbind = null;
 
 /** Is any dimension constraining what the tree shows? */
@@ -2485,12 +2489,28 @@ function renderNavFilterBar() {
   var fc = filterControls;
   var main =
     '<div class="filter-bar-main">' +
-    fc.groupHtml({
+    // Age and type ride the always-visible row: they are the two
+    // dimensions people reach for, and as dropdowns they cost a
+    // fraction of the width the segmented ramps did.
+    fc.menuGroupHtml({
       key: "recency",
       select: "one",
       label: "Modified within",
       options: FILTER_RECENCY_OPTIONS,
       value: st.recency,
+      anyLabel: "Any age",
+      anyValue: "all",
+      open: filterOpenMenu === "recency",
+      menuId: "filter-recency-menu",
+    }) +
+    fc.menuGroupHtml({
+      key: "types",
+      label: "File extension",
+      options: filterTypeOptions(),
+      value: st.types,
+      anyLabel: "Any type",
+      open: filterOpenMenu === "types",
+      menuId: "filter-type-menu",
     }) +
     '<span class="filter-bar-end">' +
     fc.toggleHtml({
@@ -2516,13 +2536,15 @@ function renderNavFilterBar() {
     ">" +
     '<div class="filter-drawer-row">' +
     fc.menuGroupHtml({
-      key: "types",
-      label: "File extension",
-      options: filterTypeOptions(),
-      value: st.types,
-      anyLabel: "Any type",
-      open: filterTypeMenuOpen,
-      menuId: FILTER_TYPE_MENU_ID,
+      key: "size",
+      select: "one",
+      label: "Minimum file size",
+      options: FILTER_SIZE_OPTIONS,
+      value: st.size,
+      anyLabel: "Any size",
+      anyValue: "all",
+      open: filterOpenMenu === "size",
+      menuId: "filter-size-menu",
     }) +
     fc.checkHtml({
       key: "showIgnored",
@@ -2531,15 +2553,8 @@ function renderNavFilterBar() {
       title: "Show gitignored entries, dimmed",
     }) +
     "</div>" +
-    fc.groupHtml({
-      key: "size",
-      select: "one",
-      label: "Minimum file size",
-      options: FILTER_SIZE_OPTIONS,
-      value: st.size,
-    }) +
     (count > 0
-      ? `<div class="filter-drawer-actions">${fc.clearHtml({ label: "Clear all" })}</div>`
+      ? `<div class="filter-drawer-actions">${fc.clearHtml({ label: "Clear filters" })}</div>`
       : "") +
     "</div>";
   bar.innerHTML = main + drawer;
@@ -2570,10 +2585,10 @@ function initFilterBar() {
     onToggle: (key, pressed) => {
       if (key === "drawer") {
         filterDrawerOpen = pressed;
-        // Closing the drawer must close the menu with it, or the
-        // popup would hang over the tree with no owner in sight.
-        if (!pressed) {
-          filterTypeMenuOpen = false;
+        // Closing the drawer must close a menu inside it, or the popup
+        // would hang over the tree with no owner in sight.
+        if (!pressed && filterOpenMenu === "size") {
+          filterOpenMenu = null;
         }
         if (mb?.prefs) {
           mb.prefs.set(FILTER_DRAWER_PREF, pressed);
@@ -2586,27 +2601,33 @@ function initFilterBar() {
       }
     },
     onMenuToggle: (key, open) => {
+      filterOpenMenu = open ? key : null;
+      renderNavFilterBar();
+    },
+    onMenuPick: (key, value) => {
+      // The any-row clears the dimension back to its default rather
+      // than toggling a value.
       if (key === "types") {
-        filterTypeMenuOpen = open;
+        if (value === null) {
+          filterState.set({ types: null });
+        } else {
+          var current = filterState.get().types;
+          filterState.set({ types: filterControls.nextSelection("many", current, value) });
+        }
+        // Multi-select stays open — picking several extensions is the
+        // whole point of it.
+        return;
+      }
+      if (key === "recency" || key === "size") {
+        filterState.set({ [key]: value === null ? "all" : value });
+        // Single-select closes on pick: the choice is made, and a menu
+        // left hanging over the tree has nothing more to offer.
+        filterOpenMenu = null;
         renderNavFilterBar();
       }
     },
-    onMenuPick: (key, value) => {
-      if (key !== "types") {
-        return;
-      }
-      // `null` is the "Any type" row: clear the dimension rather than
-      // toggling a value. The menu stays open either way, because
-      // picking several extensions is the point of it.
-      if (value === null) {
-        filterState.set({ types: null });
-      } else {
-        var current = filterState.get().types;
-        filterState.set({ types: filterControls.nextSelection("many", current, value) });
-      }
-    },
     onClear: () => {
-      filterTypeMenuOpen = false;
+      filterOpenMenu = null;
       filterState.clear();
     },
   });

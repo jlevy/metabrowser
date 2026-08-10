@@ -225,16 +225,35 @@ inventing a pill of its own; four near-identical pills is what this family repla
 `.chip-group` joins chips into one bordered pill with hairline dividers, so a set of
 related choices reads as a single object.
 `.chip-toggle` is a standalone boolean.
-`.chip-menu` is a chip that opens a multi-select dropdown, for a dimension whose values
-come from the data and are too many to sit in a row.
+`.chip-menu` is a chip that opens a dropdown, single- or multi-select.
 `.chip-badge` carries a count, and `.chip-clear` is the quiet reset.
 
-A `.chip-menu` composes the existing floating `.menu` surface with
-`role="menuitemcheckbox"` rows rather than introducing a second menu look — the app had
-a single-choice `.menu` and a native `.menu-select`, and neither can pick several
-things. Its trigger summarises the selection the way a select does (`Any type`, `.md`,
+A `.chip-menu` composes the existing floating `.menu` surface rather than introducing a
+second menu look — the app had a single-choice `.menu` and a native `.menu-select`, and
+neither can pick several things.
+Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
 `.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
 same rule as every other floating menu: Escape or outside interaction.
+
+A dropdown declares its kind the same way a group does, and for the same reason: `one`
+gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemcheckbox`
+rows and stays open, because picking several is the point of it.
+Only one dropdown is open at a time.
+The list always leads with an any-row naming the dimension’s default (`Any type`), so
+clearing one dimension is a pick rather than a separate control — and the option list
+must not repeat that value under another name.
+
+### Groups Or Dropdowns
+
+Both exist because they fail differently as the value list grows.
+A joined `.chip-group` shows every option at once, which is the right trade for two or
+three short values; past that it eats the pane.
+A `.chip-menu` costs a click to see the options but stays one trigger wide however many
+there are, and it is the only choice when the values come from the data.
+
+The nav filter bar uses dropdowns throughout: six age windows and six size steps as
+segmented ramps left no room for anything else in a 300px pane.
+The groups stay part of the family for surfaces with fewer, shorter values.
 
 Values that come from the data are ranked by frequency and capped, and each row carries
 its tally. A menu built from the tree can then never offer a value with nothing behind
