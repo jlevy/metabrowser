@@ -266,10 +266,11 @@
         });
       });
       const incompleteSuffix = snapshot.complete ? "" : " Local coverage is incomplete.";
+      const filesNoun = snapshot.complete ? "files" : "observed files";
       const statusMessage =
         results.length === 0
-          ? `No known file matches among ${snapshot.observedCount} observed files.${incompleteSuffix}`
-          : `${snapshot.observedCount} observed files are searchable.${incompleteSuffix}`;
+          ? `No known file matches among ${snapshot.observedCount} ${filesNoun}.${incompleteSuffix}`
+          : `${snapshot.observedCount} ${filesNoun} are searchable.${incompleteSuffix}`;
       return Object.freeze({
         candidateCount: snapshot.observedCount,
         complete: snapshot.complete,

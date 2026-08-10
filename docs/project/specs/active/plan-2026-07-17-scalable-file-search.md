@@ -1,10 +1,11 @@
 # Feature: Quick File Finder and Search Providers
 
-**Date:** 2026-07-17 (last updated 2026-07-31)
+**Date:** 2026-07-17 (last updated 2026-08-08)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Phase 1 implemented and validated; Phases 2 through 4 planned
+**Status:** Phase 1 implemented and validated; Phase 2 redefined as the client-complete
+catalog feed (decision `mb-ci04`); Phases 3 and 4 planned
 
 ## Overview
 
@@ -19,8 +20,9 @@ The initial event stream contains only the served root through depth two, lazy s
 responses are held outside `FileStore`, and the Recent panel maintains a separate
 bounded result set.
 A client-side finder must therefore say when its candidate catalog is
-partial. Later phases add a server filename provider for complete inventory search and a
-server-side full-text provider without changing the shared search runtime.
+partial. Phase 2 closes the gap from the other side: a minimal catalog feed makes the
+client complete over non-gitignored filenames (see “Catalog Feed”), and a later
+server-side full-text provider plugs into the same runtime without changing it.
 
 ## Goals
 
@@ -373,29 +375,57 @@ On a not-found response, the catalog removes that path, the palette stays open, 
 inline status says that the file is no longer available.
 Other failures preserve the query and result list and expose a retryable error.
 
-### Server Filename Provider
+### Catalog Feed: Client-Complete Filenames
 
-Phase 2 adds a flat filename endpoint rather than returning a filtered tree:
+Phase 2 makes the local catalog complete instead of adding a per-query server provider.
+This supersedes this document’s original constraint that the browser must not download a
+complete filename catalog — that constraint was sized against unfiltered inventories,
+and measurement showed ~98% of a typical inventory is gitignored (this repository: ~270
+non-gitignored files out of ~12,500 indexed).
+The decision record is bead `mb-ci04`; at the 100k-non-ignored design center the full
+catalog is 6–8 MB of minimal JSON, 1–2 MB gzipped, transferred once.
 
-```text
-GET /api/search/files?q=srapp&limit=100
-```
+The feed has two halves, split along what each transport is actually good at:
 
-The route takes a consistent `InventoryIndex` snapshot and performs the same fuzzy
-scoring in a focused service off the event-loop request path.
-The client and server implementations share golden query/candidate/score fixtures so
-their ordering stays equivalent without trying to execute one language’s code in the
-other runtime.
+**Bulk: `GET /api/catalog`.** A one-shot JSON response containing every non-gitignored
+file at `all-known` scope in a minimal shape —
+`{complete, truncated, revision, files: [{p, e}]}` where `p` is the served-root-relative
+path and `e` the logical extension.
+One-shot JSON is the right transport for bulk state because the gzip middleware
+compresses it automatically (SSE is never compressed — Starlette excludes
+`text/event-stream`), it can carry an ETag for cheap revalidation, and it can be encoded
+off the event loop instead of as one synchronous dump inside the stream handler.
+The full `FsEntry` wire shape is ~308 bytes across 16 fields, most of them
+tree-decoration data the catalog never reads; the minimal shape is ~60–80 bytes raw.
 
-The response contains flat file results, match ranges, the inventory revision and
-status, indexed counts and caps, and separate result-limit and inventory-truncation
-metadata. It never traverses the filesystem or calls `stat()` for a query.
-Query text remains data and is never resolved as a path.
+**Deltas: `catalog.change` on the existing event stream.** Every `fs.change` batch
+already flows through one inventory choke point; that point also derives a minimal
+`catalog.change` event — file upserts as `{p, e}` (an upsert whose entry is gitignored
+becomes a catalog *remove*, handling ignore-state flips), removes passed through, and
+directory-only batches emitting nothing.
+Event-scope filtering passes non-`fs.change` event types through unchanged on every
+scope, so the depth-two tree stream carries complete catalog deltas with no filter
+changes, no second `EventSource`, and no separate resync story.
 
-The browser must not open an `all-known` event stream or download a complete filename
-catalog to enable this provider.
-A lightweight revision event can invalidate active server results without sending deep
-entry payloads.
+**Convergence without a consistency token.** The client opens the event stream first,
+buffers `catalog.change` events, fetches `/api/catalog`, applies the bulk, then replays
+the buffer. Ops are idempotent by path, so overlap between the snapshot and buffered
+deltas converges. The catalog refetches only when delta continuity is lost: the sentinel
+`fs.snapshot` that follows an event-stream reconnect, and `fs.resync_required`. Walker
+completion needs no refetch — at `all-known`, live ops converge the data — but it does
+flip the completeness flag, so the walker emits the already-defined `capability.update`
+event when the walk finishes.
+
+The client keeps its observation seams (initial tree, lazy subtrees, recent,
+navigation): they provide coverage before the first fetch resolves and when
+`EventSource` is unavailable, where the one-shot fetch alone still delivers
+complete-as-of-fetch coverage.
+
+**Bounded server search stays the beyond-cap fallback.** The original
+`/api/search/files` design (consistent snapshot, Python scorer sharing the golden
+fixtures, honest truncation metadata) is retained in bead `mb-3arq`, deferred until a
+root whose *non-ignored* file count makes client-complete unreasonable is a demonstrated
+use case. The provider runtime already supports it through fallback activation.
 
 ### Full-Text Provider
 
@@ -468,21 +498,108 @@ results hierarchical.
 - [x] Add performance fixtures for result latency, input responsiveness, and DOM count
   across shallow, Recent-sized, and heavily expanded client catalogs
 
-### Phase 2: Complete Filename Search
+### Phase 2: Client-Complete Catalog Feed
 
-- [ ] Define inventory snapshot and revision contracts for search services
-- [ ] Implement the Python fuzzy scorer against the shared golden fixtures
-- [ ] Add bounded `/api/search/files` validation and off-event-loop execution with flat
-  results and honest inventory and result truncation metadata
-- [ ] Add the server filename provider, automatic zero-local-result fallback, explicit
-  “Search all indexed files,” cancellation, response-revision checks, and path deduping
-- [ ] Define cross-provider filename ordering and coverage dominance so an authoritative
-  complete server batch cannot be misranked or reported incomplete because of the
-  earlier partial local batch
-- [ ] Refresh active local and server results from catalog and inventory revision events
-  without opening an `all-known` event stream
-- [ ] Measure scan latency, snapshot allocation, payload size, and cancellation at and
-  beyond the configured inventory cap
+- [x] Add the `catalog.change` derivation at the inventory emit choke point, with
+  ignore-flip removes and directory skipping
+- [x] Emit `capability.update` on walker completion so completeness is push-based
+- [x] Add `GET /api/catalog` with the minimal non-gitignored file shape, off-event-loop
+  encoding, an ETag with 304 support, and honest complete/truncated metadata
+- [x] Give the known-file catalog a bulk-apply path, a `catalog.change` apply path, a
+  real completeness state, and a revision-memoized snapshot
+- [x] Add the catalog feed module owning connect-then-fetch ordering, delta buffering
+  and replay, and sentinel/resync refetch triggers
+- [x] Wire the feed into the event-stream handlers and update palette and provider
+  status wording for the complete case
+- [ ] Measure payload size, transfer time, and scan latency at the inventory cap
+
+The feed is authoritative about membership, not just contents.
+A payload from a finished walk lists every file the index holds, so applying it retires
+feed-sourced paths it no longer names; that is what lets a refetch express a deletion
+that happened while the stream was down.
+Paths seated by explicit navigation are the one exception, because a gitignored file the
+user opened is absent from the feed by design.
+
+Known limits:
+
+- A truncated walk is complete for the index and permanently incomplete for the root, so
+  the catalog reports incomplete coverage and the beyond-cap fallback stays deferred to
+  `mb-3arq`.
+
+### Phase 2.1: Convergence and Removal Cost
+
+Two consequences of a catalog that is now complete and live, rather than a shallow set
+that rarely moved.
+
+- [x] Give the catalog a change subscription and re-run the palette’s active query when
+  coverage moves underneath it (`mb-lzvb`)
+- [x] Make batched removal cost independent of the number of removed paths (`mb-r8yg`)
+
+**Convergence.** The palette subscribes to the search controller only, and the
+controller publishes only in response to a keystroke, so a query typed while the bulk
+feed is still arriving keeps its original results after coverage completes.
+The catalog gains the subscriber list `fileStore` already has in `app.js`, and the
+palette re-runs the active query, coalesced, when the revision moves.
+This is safe because the machinery it rides is already tested: superseded searches
+cancel, selection is preserved by result id, a re-run of an unchanged query repaints
+through the held-rows path without flicker, and the query text never changes so rows
+never go inert. The idle status line refreshes off the same signal.
+
+The notification carries **invalidation only** — no snapshot, not even the revision.
+That is load-bearing rather than stylistic.
+The palette installs its listener for the application lifetime, so anything the notifier
+computes runs on every delta, navigation, tree update, and resync, including while the
+palette is closed, and ahead of the coalescing window meant to absorb exactly that.
+Projecting a snapshot there sorts the whole catalog: measured at 500,000 files, one
+upsert cost 0.01 ms with no subscriber and 149 ms with an idle no-op subscriber.
+Passing nothing returns it to 0.01 ms and removes a correctness trap as well, because a
+payload computed once before any listener runs is stale for every listener after one
+that writes back. Consumers call `snapshot()` when they are ready to use it.
+
+**Removal cost.** `removeWithoutRevision()` scans every entry per removed path to catch
+directory-prefix removals.
+That was cheap against a depth-2 set and is not against a complete one: a branch switch
+or bulk delete is O(n·m) on the UI thread.
+
+Grouping consecutive removes into one sweep is only half the fix, and the smaller half.
+Testing each surviving entry against every removed prefix is still O(n·m); it merely
+saves repeated map traversal.
+The sweep instead asks the question from the candidate’s side — walk the entry’s
+ancestor directories and look each up in a set of removed paths — so cost per entry is
+its path depth rather than the size of the removal list.
+
+Measured over 100k entries, one batch, removing every listed directory:
+
+| Removes in the batch | Per-path scan | Ancestor lookup |
+| --- | --- | --- |
+| 100 | 95 ms | 32 ms |
+| 500 | 358 ms | 35 ms |
+| 2000 | 1441 ms | 52 ms |
+
+Semantics are unchanged: only consecutive removes are collapsed, so a remove followed by
+an upsert beneath it still keeps the child.
+The behavior tests pin that ordering, which is what batching could plausibly break; the
+speedup itself is a benchmark result rather than a CI assertion, because timing tests
+are flaky.
+
+Two alternatives were considered and are recorded so they are not rediscovered:
+
+- A **segment trie** (nested maps keyed by path segment) gives subtree deletion the
+  right asymptotics, but it only earns its complexity past the design center — where the
+  dominant cost is the provider scan itself, not removals, and the answer is the
+  server-side fallback rather than client data-structure work.
+  Deferred behind the measurement checkbox above.
+- A **deferred sweep** (mark removed prefixes, filter at snapshot time) looks free
+  because `snapshot()` already pays a sort per revision, but `remove(dir)` followed by
+  `upsert(child)` is only correct if every entry carries a sequence number.
+  That is epoch semantics arriving through a performance patch, and it trades a bounded
+  cost problem for an unbounded correctness one.
+  Rejected.
+
+### Phase 2 (deferred): Bounded Server Filename Search
+
+Deferred to bead `mb-3arq` as the beyond-cap fallback; see “Catalog Feed” above for the
+retained scope.
 
 ### Phase 3: Bounded Full-Text Search
 
@@ -570,19 +687,31 @@ The [ranking report](../../research/research-2026-07-31-fuzzy-file-ranking.md) r
 the golden scenarios and measured shallow, 2,000-file, 50,000-file, and real-browser
 fixtures. The full repository gate passed with the spike enabled.
 
-The remaining limits are deliberate or evidence-gated:
+Phase 1 shipped with the limits below.
+Phase 2 and 2.1 closed the first two; the rest still hold.
+They are listed apart so later work does not reopen questions that have already been
+answered.
 
-- local coverage remains partial until Phase 2 adds complete indexed filename search
-- a query uses one catalog snapshot; files observed while that query remains open appear
-  after the next input change or palette reopen rather than triggering an automatic
-  rerun
+Closed since:
+
+- local coverage was partial.
+  The Phase 2 catalog feed makes the candidate set the whole non-gitignored inventory —
+  complete once the walk finishes, and honestly incomplete when the walk stopped at the
+  max-files cap.
+- a query used one catalog snapshot, so files observed while it stayed open appeared
+  only after the next input change or a reopen.
+  Phase 2.1 re-runs the active query, coalesced, when coverage moves underneath it.
+
+Still open, deliberate or evidence-gated:
+
 - the local provider publishes one completed batch, so 50,000 observed files took about
   0.8 seconds to complete on the measured machine even though chunking kept queued input
   responsive
 - matching does not perform typo correction, transposition, accent folding, or Unicode
   canonical normalization
-- provider scores are Phase 1 batch ordinals; Phase 2 must resolve comparable ranking
-  and aggregate completeness before exposing an explicit complete filename search
+- provider scores are batch ordinals; the deferred server provider (`mb-3arq`) must
+  resolve comparable cross-runtime ranking before an explicit complete filename search
+  is exposed
 - content search, grouped excerpts, location reveal, and a persistent navigation-panel
   surface remain Phase 3 work
 

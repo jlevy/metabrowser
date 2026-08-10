@@ -29,7 +29,8 @@ MONO_DECLARATION_RE = re.compile(r"(?:^|;)\s*font(?:-family)?\s*:[^;]*--font-mon
 # regression: it is chrome, and chrome is sans.
 #
 # Rendered content — the user's own text, where character alignment carries meaning:
-#   code.hljs, .code-block code, .md-body code, .log-event-raw *
+#   code.hljs, .code-block code, .md-body:not(.metabrowser-kpress-host) code,
+#   .log-event-raw *
 # Named exceptions, each deliberate:
 #   .compression-badge          a 7px glyph, iconography rather than text
 #   .metabrowser-kpress-error-detail   a verbatim error payload
@@ -40,7 +41,7 @@ MONO_ALLOWED_SELECTORS = frozenset(
     {
         "code.hljs",
         ".code-block code",
-        ".md-body code",
+        ".md-body:not(.metabrowser-kpress-host) code",
         ".log-event-raw pre",
         ".log-event-raw code",
         ".compression-badge",
@@ -135,6 +136,18 @@ def test_keyboard_keys_render_caps_bold_and_bordered() -> None:
     # The treatment is defined by tokens, so the caps and bold values live with them.
     assert "--kbd-text-transform: uppercase;" in css
     assert "--kbd-font-weight: var(--weight-bold);" in css
+
+
+def test_palette_filename_and_parent_path_share_one_size() -> None:
+    """A result row reads as one line of navigation, not a heading over fine print."""
+    rules = dict(_rules(_read_styles()))
+    label = rules[".search-palette-label"]
+    description = rules[".search-palette-description"]
+    size = re.compile(r"font-size:\s*([^;]+);")
+    label_size = size.search(label)
+    description_size = size.search(description)
+    assert label_size and description_size
+    assert label_size.group(1).strip() == description_size.group(1).strip()
 
 
 def test_palette_hint_renders_keys_through_the_kbd_component() -> None:

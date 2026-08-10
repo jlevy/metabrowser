@@ -50,6 +50,9 @@ from pathlib import Path
 from typing import Literal
 
 from metabrowser.events import (
+    CapabilityUpdate,
+    CatalogChange,
+    CatalogUpsert,
     FsChange,
     FsChangeOp,
     FsEntry,
@@ -123,6 +126,11 @@ class InventoryIndex:
         self._first_render_depth = first_render_depth
         self._files_indexed = 0
         self._started_at_ns: int = 0
+        # Monotonic per process, bumped on every emitted
+        # ``catalog.change`` and on ``clear()``. Not reset on root
+        # swap so ``/api/catalog`` ETags never repeat within a
+        # process lifetime.
+        self._catalog_revision = 0
 
     # ── Lifecycle ───────────────────────────────────────────
 
@@ -168,6 +176,7 @@ class InventoryIndex:
         self._files_indexed = 0
         self._status = "idle"
         self._done_event.clear()
+        self._catalog_revision += 1
         self._emit(FsResyncRequired(reason="root_swap"))
 
     async def wait_until_done(self, timeout: float | None = None) -> None:
@@ -229,6 +238,19 @@ class InventoryIndex:
 
     def max_files(self) -> int:
         return self._max_files
+
+    def catalog_revision(self) -> int:
+        return self._catalog_revision
+
+    def catalog_files(self) -> list[tuple[str, str]]:
+        """``(path, logical_ext)`` for every non-gitignored file in
+        the index — the Quick File catalog universe. List-of-tuples
+        rather than wire dicts so the route owns serialization and
+        can run it off the event loop."""
+
+        return [
+            (e.path, e.ext) for e in self._entries.values() if e.type == "file" and not e.gitignored
+        ]
 
     # ── Writes ──────────────────────────────────────────────
 
@@ -547,6 +569,22 @@ class InventoryIndex:
                 LOG.exception("inventory repair of pending dir aggregates failed")
         self._status = "truncated" if is_truncated else "done"
         self._done_event.set()
+        # Push-based completion for stream clients: the Quick File
+        # catalog converges through live ops, so all it needs at
+        # walk end is the completeness flip — not a refetch.
+        self._emit(
+            CapabilityUpdate(
+                backends=(),
+                index={
+                    "complete": True,
+                    "truncated": is_truncated,
+                    "indexed_files": self._files_indexed,
+                    "max_files": self._max_files,
+                    "status": self._status,
+                },
+                events={},
+            )
+        )
         elapsed_ms = (time.monotonic_ns() - self._started_at_ns) // 1_000_000
         LOG.info(
             "inventory walker complete: status=%s files=%d entries=%d elapsed=%dms",
@@ -887,7 +925,13 @@ class InventoryIndex:
     def _emit(self, event: StreamEvent) -> None:
         """Push *event* to every subscriber. Slow consumers are
         dropped — full queue means we close that connection rather
-        than block the producer."""
+        than block the producer.
+
+        Every ``fs.change`` also emits a minimal ``catalog.change``
+        companion here, at the single choke point all producers
+        share, so the Quick File catalog receives complete deltas on
+        any stream scope (scope filtering only narrows ``fs.change``).
+        """
 
         dead: list[asyncio.Queue[StreamEvent]] = []
         for q in self._subscribers:
@@ -898,6 +942,40 @@ class InventoryIndex:
         for q in dead:
             self._subscribers.discard(q)
             LOG.warning("dropped slow subscriber; queue full at %d", q.maxsize)
+        if isinstance(event, FsChange):
+            companion = _derive_catalog_change(event)
+            if companion is not None:
+                self._catalog_revision += 1
+                self._emit(companion)
+
+
+def _derive_catalog_change(change: FsChange) -> CatalogChange | None:
+    """The minimal Quick File companion for one ``fs.change`` batch.
+
+    Non-gitignored file upserts shrink to ``{p, e}``; a gitignored
+    file upsert becomes a catalog remove so ignore-state flips
+    converge; directory upserts are dropped (the catalog holds files
+    only — the client removes a directory's descendants itself on a
+    remove op). Returns ``None`` when nothing catalog-relevant
+    remains so no empty event reaches the wire.
+    """
+
+    upserts: list[CatalogUpsert] = []
+    removes: list[str] = []
+    for op in change.ops:
+        if isinstance(op, FsRemove):
+            removes.append(op.path)
+            continue
+        entry = op.entry
+        if entry.type != "file":
+            continue
+        if entry.gitignored:
+            removes.append(entry.path)
+        else:
+            upserts.append(CatalogUpsert(p=entry.path, e=entry.ext))
+    if not upserts and not removes:
+        return None
+    return CatalogChange(upserts=tuple(upserts), removes=tuple(removes))
 
 
 # ── Process-wide singleton ──────────────────────────────────────

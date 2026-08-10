@@ -324,6 +324,13 @@ async function settle() {
   }
 }
 
+/** The catalog-refresh window is a real timer, so microtask flushing cannot
+ * advance past it. */
+async function waitMs(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  await settle();
+}
+
 async function main() {
   let availableResults = [
     searchResult("src/app.js", 5, [
@@ -339,6 +346,10 @@ async function main() {
   const requests = [];
   let cancelCalls = 0;
   let requestId = 0;
+  // When set, the completed state is withheld until the test releases it, so
+  // assertions can inspect the palette while a search is still in flight.
+  let holdCompletion = false;
+  let releaseCompletion = null;
   const controller = {
     cancel() {
       cancelCalls += 1;
@@ -357,15 +368,45 @@ async function main() {
         statusMessage: "5 observed files are searchable. Local coverage is incomplete.",
         truncated: availableResults.length > 3,
       });
+      // The real controller publishes one empty "searching" composition before
+      // any provider has returned. Reproduce it, or the palette's handling of
+      // that state goes untested.
+      const pending = Object.freeze({
+        ...state,
+        complete: false,
+        phase: "searching",
+        results: [],
+        statusMessage: "",
+      });
       for (const subscriber of subscribers) {
-        subscriber(state);
+        subscriber(pending);
       }
-      return Promise.resolve(state);
+      const deliver = () => {
+        for (const subscriber of subscribers) {
+          subscriber(state);
+        }
+        return state;
+      };
+      if (holdCompletion) {
+        return new Promise((resolve) => {
+          releaseCompletion = () => resolve(deliver());
+        });
+      }
+      return Promise.resolve(deliver());
     },
     subscribe(listener) {
       subscribers.add(listener);
       return () => subscribers.delete(listener);
     },
+  };
+
+  /** @type {Array<() => void>} */
+  const catalogListeners = [];
+  let catalogObservedCount = 5;
+  const emitCatalogChange = () => {
+    for (const listener of catalogListeners.slice()) {
+      listener();
+    }
   };
 
   const initialFocus = document.createElement("button");
@@ -378,7 +419,16 @@ async function main() {
   const palette = sandbox.MetabrowserSearchPalette.create({
     controller,
     document,
-    getCatalogSnapshot: () => ({ complete: false, observedCount: 5 }),
+    getCatalogSnapshot: () => ({ complete: false, observedCount: catalogObservedCount }),
+    subscribeCatalog: (listener) => {
+      catalogListeners.push(listener);
+      return () => {
+        const index = catalogListeners.indexOf(listener);
+        if (index >= 0) {
+          catalogListeners.splice(index, 1);
+        }
+      };
+    },
     getFileIcon: () => ({ cls: "ft-code", svg: "<svg></svg>" }),
     maxRows: 3,
     onNotFound(pathname) {
@@ -608,6 +658,91 @@ async function main() {
     overlay.hidden && document.activeElement === initialFocus,
   );
 
+  // Typing must not blank the list between keystrokes: the rows already on
+  // screen stay until the next search actually produces something.
+  palette.open();
+  input.value = "app";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  const rowsBeforeRetype = listbox.children.length;
+  const statusBeforeRetype = status.textContent;
+  check("rows are on screen before the next keystroke", rowsBeforeRetype > 0);
+
+  holdCompletion = true;
+  input.value = "appl";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check(
+    "pending search keeps the previous rows",
+    listbox.children.length === rowsBeforeRetype,
+    String(listbox.children.length),
+  );
+  check(
+    "a fast search does not flash a searching status",
+    status.textContent === statusBeforeRetype,
+    status.textContent,
+  );
+
+  // Held rows describe the previous query. Opening one would navigate to a
+  // file that matched what the user typed a moment ago, not what is in the
+  // box now — so they are inert until their own completion arrives.
+  const openedBeforeStaleAccept = openedPaths.length;
+  const heldRow = listbox.children[0];
+  heldRow.dispatchEvent(fakeEvent("click", { target: heldRow }));
+  await settle();
+  input.dispatchEvent(fakeEvent("keydown", { key: "Enter", target: input }));
+  await settle();
+  check(
+    "held rows do not open a result for the previous query",
+    openedPaths.length === openedBeforeStaleAccept,
+    `opened ${openedPaths.length - openedBeforeStaleAccept} stale path(s)`,
+  );
+  check(
+    "held rows report as inert while they lag the query",
+    Array.from(listbox.querySelectorAll('[role="option"]')).every(
+      (node) => node.getAttribute("aria-disabled") === "true",
+    ),
+  );
+
+  releaseCompletion();
+  await settle();
+  holdCompletion = false;
+  check("completing the search renders its results", listbox.children.length > 0);
+  check(
+    "rows go live again once they match the query",
+    Array.from(listbox.querySelectorAll('[role="option"]')).every(
+      (node) => node.getAttribute("aria-disabled") === "false",
+    ),
+  );
+  const openedBeforeLiveAccept = openedPaths.length;
+  input.dispatchEvent(fakeEvent("keydown", { key: "Enter", target: input }));
+  await settle();
+  check("a live row still opens on Enter", openedPaths.length === openedBeforeLiveAccept + 1);
+
+  // A completed search with no matches still clears the list.
+  const heldResults = availableResults;
+  availableResults = [];
+  input.value = "no-such-file";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check("a completed empty search clears the rows", listbox.children.length === 0);
+  availableResults = heldResults;
+
+  availableResults = [searchResult("src/metabrowser/app.js", 5, [{ start: 4, end: 8 }])];
+  input.value = "meta";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  const describedRow = listbox.querySelector(".search-palette-description");
+  check(
+    "parent path ends with a separator",
+    describedRow ? describedRow.textContent.endsWith("/") : false,
+    describedRow ? describedRow.textContent : "no described row",
+  );
+  check(
+    "parent path keeps its highlight offsets",
+    describedRow ? describedRow.querySelectorAll("mark").length > 0 : false,
+  );
+
   palette.open();
   availableResults = [searchResult("unsafe/<img src=x>.md", 1)];
   input.value = "img";
@@ -615,8 +750,112 @@ async function main() {
   await settle();
   check("result text cannot create markup", listbox.querySelectorAll("img").length === 0);
 
+  // Coverage grows while the palette is open: the bulk feed lands, then live
+  // deltas. A query typed against a thinner catalog must converge instead of
+  // keeping the results it happened to get first (mb-lzvb).
+  palette.open();
+  availableResults = [searchResult("src/early.js", 5, [{ start: 4, end: 7 }])];
+  input.value = "ear";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check("the pre-growth query renders what it found", listbox.children.length === 1);
+  const requestsBeforeGrowth = requests.length;
+
+  // The catalog gains a file that also matches the standing query.
+  availableResults = [
+    searchResult("src/early.js", 5, [{ start: 4, end: 7 }]),
+    searchResult("deep/nested/earlier.js", 4, [{ start: 12, end: 15 }]),
+  ];
+  emitCatalogChange();
+  await waitMs(220);
+  check(
+    "a catalog change re-runs the standing query",
+    requests.length === requestsBeforeGrowth + 1,
+    `${requests.length - requestsBeforeGrowth} re-runs`,
+  );
+  equal("the re-run reuses the query in the box", requests[requests.length - 1].query, "ear");
+  check(
+    "results converge on the grown catalog",
+    listbox.children.length === 2,
+    String(listbox.children.length),
+  );
+  check(
+    "converged rows stay live, not inert",
+    Array.from(listbox.querySelectorAll('[role="option"]')).every(
+      (node) => node.getAttribute("aria-disabled") === "false",
+    ),
+  );
+
+  // A burst of deltas coalesces: many notifications, one re-run.
+  const requestsBeforeBurst = requests.length;
+  for (let index = 0; index < 10; index += 1) {
+    emitCatalogChange();
+  }
+  await waitMs(220);
+  check(
+    "a burst of catalog changes coalesces into one re-run",
+    requests.length === requestsBeforeBurst + 1,
+    `${requests.length - requestsBeforeBurst} re-runs`,
+  );
+
+  // With an empty query there is no search to re-run, but the idle line quotes
+  // the observed count, which is exactly what a catalog change moves.
+  input.value = "";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check("the idle line reports the starting count", status.textContent.includes("5 observed"));
+  const requestsBeforeIdle = requests.length;
+  catalogObservedCount = 4242;
+  emitCatalogChange();
+  await waitMs(220);
+  check(
+    "an idle palette refreshes its status line",
+    status.textContent.includes("4242 observed"),
+    status.textContent,
+  );
+  check("an idle palette runs no search", requests.length === requestsBeforeIdle);
+  catalogObservedCount = 5;
+
+  // A closed palette has nothing to converge. Schedule a refresh first and
+  // close inside the window, so this exercises timer cleanup rather than the
+  // early-return guard a later event would hit anyway (senior review R4).
+  const requestsBeforeCloseRace = requests.length;
+  emitCatalogChange();
+  palette.close(false);
+  await waitMs(220);
+  check(
+    "closing cancels a refresh already scheduled",
+    requests.length === requestsBeforeCloseRace,
+    `${requests.length - requestsBeforeCloseRace} re-runs after close`,
+  );
+
+  const requestsAfterClose = requests.length;
+  emitCatalogChange();
+  await waitMs(220);
+  check("a closed palette does not re-run", requests.length === requestsAfterClose);
+
+  // Same race across dispose: a pending timer must not fire afterwards.
+  palette.open();
+  input.value = "ear";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  const requestsBeforeDisposeRace = requests.length;
+  emitCatalogChange();
   palette.dispose();
   check("dispose removes palette DOM", !document.body.children.includes(overlay));
+  // Observe the subscription itself: without this the check below still passes
+  // on a retained listener, because the callback exits early once disposed.
+  check(
+    "dispose unsubscribes from the catalog",
+    catalogListeners.length === 0,
+    `${catalogListeners.length} listener(s) retained`,
+  );
+  await waitMs(220);
+  check(
+    "disposing cancels a refresh already scheduled",
+    requests.length === requestsBeforeDisposeRace,
+    `${requests.length - requestsBeforeDisposeRace} re-runs after dispose`,
+  );
   const requestCountAtDispose = requests.length;
   input.value = "after-dispose";
   input.dispatchEvent(fakeEvent("input", { target: input }));

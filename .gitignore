@@ -189,5 +189,10 @@ cython_debug/
 .claude/settings.local.json
 .codex/settings.local.json
 
+# Agent git worktrees checked out inside the repository. Each is a second full
+# copy of the tree; without this the repository-wide checks (public hygiene,
+# doc lint) scan it and report every file twice.
+.claude/worktrees/
+
 # Read-only third-party source checkouts used for research.
 attic/

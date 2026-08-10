@@ -96,27 +96,45 @@
     );
   }
 
-  // Inject diagnostics beside KPress's metadata details when present.
-  function injectDiagnostics(container, diagnostics) {
+  function buildDiagnosticsNode(diagnostics) {
     const html = renderKpressDiagnosticsHtml(diagnostics);
     if (!html) {
-      return;
+      return null;
     }
     const tmp = document.createElement("div");
     tmp.innerHTML = html;
-    const node = tmp.firstElementChild;
+    return tmp.firstElementChild;
+  }
+
+  // KPress emits document preamble — the frontmatter disclosure and any
+  // frontmatter-error alert — as siblings ahead of `.kpress-doc-layout`, which
+  // strands them above the content card and pushes both the card and the TOC
+  // rail down the page. Collect that preamble, plus our diagnostics disclosure,
+  // into one block at the top of the prose column so it rides inside the card
+  // above the title at every width. The collected block is styled through
+  // `.metabrowser-doc-meta` in styles.css.
+  function hoistDocumentMeta(container, diagnostics) {
+    const node = buildDiagnosticsNode(diagnostics);
     const article = container.querySelector("article.kpress");
-    if (article) {
-      const metadata = article.querySelector(
-        ".kpress-frontmatter:not(.metabrowser-kpress-diagnostics)",
-      );
-      if (metadata) {
-        metadata.after(node);
-      } else {
-        article.prepend(node);
+    // `:scope >` keeps the walk below bounded to the article's own children.
+    const layout = article?.querySelector(":scope > .kpress-doc-layout");
+    const prose = layout?.querySelector(":scope > .kpress-prose");
+    if (!article || !prose) {
+      if (node) {
+        (article || container).prepend(node);
       }
-    } else {
-      container.prepend(node);
+      return;
+    }
+    const meta = document.createElement("div");
+    meta.className = "metabrowser-doc-meta";
+    while (article.firstElementChild && article.firstElementChild !== layout) {
+      meta.append(article.firstElementChild);
+    }
+    if (node) {
+      meta.append(node);
+    }
+    if (meta.childElementCount) {
+      prose.prepend(meta);
     }
   }
 
@@ -159,7 +177,7 @@
     try {
       const rendered = await mb.fetchKpressRender(ctx, "rendered", { profile: "document" });
       container.innerHTML = rendered.html;
-      injectDiagnostics(container, rendered.diagnostics || []);
+      hoistDocumentMeta(container, rendered.diagnostics || []);
       activeTocDispose = mb.kpressInitToc(container);
     } catch (err) {
       container.innerHTML = renderKpressError(err);

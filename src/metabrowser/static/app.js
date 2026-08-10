@@ -743,6 +743,7 @@ if (typeof window !== "undefined") {
 var knownFileCatalog = null;
 var quickFileSearchController = null;
 var quickFilePalette = null;
+var quickFileCatalogFeed = null;
 var QUICK_FILE_RESULT_LIMIT = 100;
 
 // ── Tree ────────────────────────────────────────────────────────
@@ -3964,6 +3965,10 @@ function _createInventoryEventSource() {
       var data = JSON.parse(e.data);
       fileStoreApplySnapshot(data.scope, data.entries || []);
       _scheduleRecentRecompute();
+      // A fresh snapshot after the first one means the connection
+      // was rebuilt and catalog deltas may have been dropped; the
+      // feed refetches the bulk catalog to restore continuity.
+      quickFileCatalogFeed?.onSentinelSnapshot();
     } catch (_e) {
       /* malformed frame; ignore */
     }
@@ -3978,6 +3983,30 @@ function _createInventoryEventSource() {
       /* ignore */
     }
   });
+  inventoryEventSource.addEventListener("catalog.change", (e) => {
+    _resetEsCircuitBreaker();
+    try {
+      var data = JSON.parse(e.data);
+      quickFileCatalogFeed?.onCatalogChange(data);
+    } catch (_e) {
+      /* ignore */
+    }
+  });
+  inventoryEventSource.addEventListener("capability.update", (e) => {
+    _resetEsCircuitBreaker();
+    try {
+      var data = JSON.parse(e.data);
+      // A truncated walk is "complete" in the sense that it stopped, but the
+      // files past the max-files cap were never indexed, so the catalog can
+      // never be a complete view of the root. Only an untruncated walk may
+      // promote the catalog to complete.
+      if (data.index && data.index.complete === true && data.index.truncated !== true) {
+        quickFileCatalogFeed?.onIndexComplete();
+      }
+    } catch (_e) {
+      /* ignore */
+    }
+  });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
     _resetEsCircuitBreaker();
     // Server restart or root swap — drop everything; reconnect
@@ -3986,9 +4015,14 @@ function _createInventoryEventSource() {
     fileStore = new Map();
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
+    quickFileCatalogFeed?.onResync();
   });
   inventoryEventSource.onopen = () => {
     _resetEsCircuitBreaker();
+    // First open only (start() is a no-op afterwards): the bulk
+    // catalog fetch begins once the stream is subscribed, so no op
+    // can fall between the payload build and the subscription.
+    quickFileCatalogFeed?.start();
   };
   inventoryEventSource.onerror = () => {
     _esConsecutiveErrors += 1;
@@ -4014,7 +4048,10 @@ function _createInventoryEventSource() {
 
 function startInventoryEventStream() {
   if (typeof EventSource === "undefined") {
-    return; // graceful degradation
+    // Graceful degradation: no live deltas, but the one-shot bulk
+    // fetch still gives the palette complete-as-of-fetch coverage.
+    quickFileCatalogFeed?.start();
+    return;
   }
   if (inventoryEventSource) {
     return;
@@ -4086,7 +4123,7 @@ async function revealInTree(path) {
   var current = "";
   for (var i = 0; i < segments.length - 1; i++) {
     current = current ? `${current}/${segments[i]}` : segments[i];
-    var folder = queryHtml(`.tree-folder[data-path="${current}"]`);
+    var folder = queryHtml(`.tree-folder[data-path="${escapePathForSelector(current)}"]`);
     if (folder) {
       var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
@@ -4101,7 +4138,7 @@ async function revealInTree(path) {
       }
     }
   }
-  var target = document.querySelector(`.tree-file[data-path="${path}"]`);
+  var target = document.querySelector(`.tree-file[data-path="${escapePathForSelector(path)}"]`);
   if (!target) {
     return false;
   }
@@ -4142,6 +4179,11 @@ function initQuickFileFinder() {
   }
 
   knownFileCatalog = window.MetabrowserKnownFileCatalog.create();
+  if (window.MetabrowserCatalogFeed) {
+    quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
+      catalog: knownFileCatalog,
+    });
+  }
   quickFileSearchController = window.MetabrowserSearch.createController({
     maxResults: QUICK_FILE_RESULT_LIMIT,
   });
@@ -4156,6 +4198,10 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    // Coverage grows while the palette is open — the bulk feed lands, then
+    // live deltas — so an open search re-runs instead of keeping the result
+    // set it happened to get first.
+    subscribeCatalog: (listener) => knownFileCatalog.subscribe(listener),
     onNotFound: (path) => {
       knownFileCatalog.removePath(path);
     },

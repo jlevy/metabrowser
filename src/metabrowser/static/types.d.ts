@@ -197,14 +197,32 @@ type MetabrowserKnownFile = Readonly<{
 }>;
 
 type MetabrowserKnownFileCatalogSnapshot = Readonly<{
-  complete: false;
+  complete: boolean;
   files: ReadonlyArray<MetabrowserKnownFile>;
   observedCount: number;
   revision: number;
   sourceSummary: Readonly<Record<string, number>>;
 }>;
 
+type MetabrowserCatalogChangePayload = {
+  upserts?: Array<{ p: string; e: string }>;
+  removes?: string[];
+};
+
 type MetabrowserKnownFileCatalogApi = Readonly<{
+  /**
+   * @param bulkComplete the catalog is a complete view of the root (a finished
+   *   walk that did not hit the max-files cap)
+   * @param authoritative the payload lists every file the index holds, so
+   *   feed-sourced paths it omits are stale and get retired. False for a
+   *   payload built mid-walk, which is only a prefix.
+   */
+  applyBulkSnapshot(
+    files: Array<{ p: string; e: string }>,
+    bulkComplete: boolean,
+    authoritative?: boolean,
+  ): void;
+  applyCatalogChange(payload: MetabrowserCatalogChangePayload): void;
   applyEventChange(
     ops: Array<{
       entry?: MetabrowserKnownFileCatalogWireEntry;
@@ -213,6 +231,7 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
     }>,
   ): void;
   clear(): void;
+  markComplete(): void;
   observeEventSnapshot(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
   observeInitialTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
   observeLazyTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
@@ -221,10 +240,42 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
   observeTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>, source: string): void;
   removePath(path: string): void;
   snapshot(): MetabrowserKnownFileCatalogSnapshot;
+  /**
+   * Observe every catalog mutation. Returns an unsubscribe function.
+   *
+   * Invalidation only: the listener is told the catalog moved, not what it
+   * moved to, because projecting a snapshot per mutation would sort the whole
+   * catalog on the hot path. Call `snapshot()` when the state is needed — that
+   * also makes the value current rather than whatever held at notify time. A
+   * listener that writes back does not re-enter.
+   */
+  subscribe(listener: () => void): () => void;
 }>;
 
 type MetabrowserKnownFileCatalogRuntime = Readonly<{
   create(): MetabrowserKnownFileCatalogApi;
+}>;
+
+type MetabrowserCatalogFeedApi = Readonly<{
+  dispose(): void;
+  onCatalogChange(payload: MetabrowserCatalogChangePayload): void;
+  onIndexComplete(): void;
+  onResync(): void;
+  onSentinelSnapshot(): void;
+  start(): void;
+}>;
+
+type MetabrowserCatalogFeedRuntime = Readonly<{
+  create(options: {
+    catalog: Pick<
+      MetabrowserKnownFileCatalogApi,
+      "applyBulkSnapshot" | "applyCatalogChange" | "markComplete"
+    >;
+    endpoint?: string;
+    fetchImpl?: typeof fetch;
+    scheduleRetry?: (callback: () => void, delayMs: number) => number;
+    cancelRetry?: (handle: number) => void;
+  }): MetabrowserCatalogFeedApi;
 }>;
 
 type MetabrowserFuzzyRank = Readonly<{
@@ -364,6 +415,11 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
+    /**
+     * Observe catalog growth so an open search converges instead of keeping
+     * the coverage it had when the query ran. Returns an unsubscribe function.
+     */
+    subscribeCatalog?(listener: () => void): () => void;
   }): MetabrowserSearchPaletteApi;
 }>;
 
@@ -558,6 +614,7 @@ declare global {
       classFor(path: string): string;
       iconFor(path: string): unknown;
     };
+    MetabrowserCatalogFeed: MetabrowserCatalogFeedRuntime;
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserGitGraph: MetabrowserGitGraphRuntime;
     MetabrowserGitPanel?: MetabrowserGitPanelRuntime;

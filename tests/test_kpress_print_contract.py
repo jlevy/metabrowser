@@ -146,20 +146,65 @@ def test_embedded_markdown_body_uses_host_reading_size() -> None:
     assert "--kpress-host-font-size-base: var(--document-body-font-size);" in root_block
     rule_start = css.index(".metabrowser-kpress-host .kpress {")
     rule_block = css[rule_start : rule_start + 1_000]
-    assert "--kpress-font-size-normal" not in rule_block
-    assert "--kpress-font-size-mono: var(--document-mono-font-size);" in rule_block
-    assert "--kpress-font-size-small: var(--document-small-font-size);" in rule_block
+    # The size ramp is KPress's to own; anchoring the base above is the whole
+    # bridge. KPress grades secondary text (small / smaller / tiny) and code
+    # (mono / mono-small / mono-tiny) by context, because the smaller tiers land
+    # where the surrounding text is already reduced — table cells, captions,
+    # footnotes. A host token collapses the family onto one size: a flat mono
+    # token once rendered inline code in a table LARGER than its own cell, and a
+    # flat secondary token shrank table text well under what KPress intends.
+    for family in (
+        "--kpress-font-size-normal",
+        "--kpress-font-size-mono",
+        "--kpress-font-size-small",
+    ):
+        assert family not in rule_block
+    # The one surviving size override is a real design difference, not a ratio.
     assert "--kpress-caps-label-size: var(--label-font-size);" in rule_block
     assert "--kpress-bullet-size" not in rule_block
     assert ".metabrowser-kpress-host .kpress-prose h1" not in css
     assert "TEMPORARY SHAPE" not in css
 
 
-def test_embedded_kpress_toc_resets_legacy_list_spacing() -> None:
+def test_legacy_md_body_chrome_never_reaches_into_an_embedded_document() -> None:
+    """`.md-body` is chrome CSS; an embedded KPress document is not chrome.
+
+    The markdown view's container carries BOTH classes (``md-body`` is kept as a
+    convention for third-party plugins), so an unscoped ``.md-body`` rule also
+    matches inside the document. Ties go to KPress — its stylesheet loads after
+    ``styles.css`` — so a leak only bites where KPress has no competing
+    declaration, which is why the symptoms were scattered and easy to miss:
+    paragraphs capped 16px under the reading measure KPress had just computed,
+    list rhythm overridden, and a ``.kpress-toc li`` counter-rule existing only
+    to undo ``.md-body li``.
+
+    Scope every one of them. A divergence the embed genuinely wants is stated
+    directly against ``.metabrowser-kpress-host`` instead (see the blockquote
+    rule), so it is deliberate rather than inherited by class collision.
+    """
+
     css = _read_styles_css()
-    rule_start = css.index(".metabrowser-kpress-host .kpress-toc li {")
-    rule_block = css[rule_start : rule_start + 140]
-    assert "margin-block: 0;" in rule_block
+    unscoped = [
+        line
+        for line in css.splitlines()
+        if line.startswith(".md-body") and ":not(.metabrowser-kpress-host)" not in line
+    ]
+
+    assert unscoped == [], (
+        "these .md-body rules also match inside embedded KPress documents; "
+        f"scope them with :not(.metabrowser-kpress-host): {unscoped}"
+    )
+
+
+def test_embedded_kpress_blockquote_states_its_divergence_directly() -> None:
+    """KPress indents a blockquote but gives it no rule and no color."""
+
+    css = _read_styles_css()
+    rule_start = css.index(".metabrowser-kpress-host .kpress blockquote {")
+    rule_block = css[rule_start : rule_start + 200]
+
+    assert "border-left: 3px solid var(--border);" in rule_block
+    assert "color: var(--muted);" in rule_block
 
 
 def test_embedded_kpress_wide_toc_uses_borderless_rail() -> None:

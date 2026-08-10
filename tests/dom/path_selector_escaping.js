@@ -81,6 +81,36 @@ if (strayEscapes && strayEscapes.length > 0) {
   failures.push(`data-path selectors bypass escapePathForSelector: ${strayEscapes.join(" | ")}`);
 }
 
+// Guard: every interpolated data-path *selector* routes through the helper.
+// The .replace check above only catches a hand-rolled escape; revealInTree
+// interpolated the raw path with no escaping at all and passed it, so match
+// the interpolation itself and require the helper by name. A pre-escaped
+// local (`${safe}`) counts when it was assigned from the helper.
+//
+// Matches the CSS attribute-selector form `[data-path="..."]` only. Writing
+// the attribute into markup (`<div data-path="${esc(p)}">`) is a different
+// context with a different escape: esc() is correct there and must not be
+// rewritten to the CSS escape.
+const escapedLocals = new Set(
+  Array.from(
+    appSource.matchAll(/(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*escapePathForSelector\(/g),
+    (match) => match[1],
+  ),
+);
+for (const match of appSource.matchAll(/\[data-path="\$\{([^}]*)\}/g)) {
+  const expression = match[1].trim();
+  if (expression.includes("escapePathForSelector(")) {
+    continue;
+  }
+  if (escapedLocals.has(expression)) {
+    continue;
+  }
+  failures.push(
+    `data-path selector interpolates an unescaped expression: \${${expression}} ` +
+      "— route it through escapePathForSelector()",
+  );
+}
+
 if (failures.length > 0) {
   console.error(JSON.stringify({ failures }, null, 2));
   process.exit(1);
