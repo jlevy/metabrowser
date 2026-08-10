@@ -338,7 +338,12 @@ equal(
 // ingestion seam (mb-lzvb).
 const subCatalog = sandbox.MetabrowserKnownFileCatalog.create();
 const seen = [];
-const unsubscribe = subCatalog.subscribe((snap) => seen.push(snap.revision));
+/** @type {unknown[]} */
+let lastArgs = null;
+const unsubscribe = subCatalog.subscribe((...args) => {
+  lastArgs = args;
+  seen.push(subCatalog.snapshot().revision);
+});
 subCatalog.applyBulkSnapshot([{ e: ".txt", p: "one.txt" }], true);
 check("a bulk apply notifies subscribers", seen.length === 1, String(seen.length));
 subCatalog.applyCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "two.txt" }] });
@@ -351,14 +356,20 @@ const quiet = seen.length;
 subCatalog.applyCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "two.txt" }] });
 check("an unchanged apply does not notify", seen.length === quiet, String(seen.length));
 
-// Subscribers see the state that caused the notification, not the one before.
+// Notification is invalidation only. Handing listeners a snapshot would sort
+// the whole catalog on every mutation, and the palette's listener lives for
+// the application lifetime, so that cost would land even with the palette
+// closed (senior review R1).
+check("notification carries no projection", lastArgs !== null && lastArgs.length === 0);
+
+// A listener that asks for state gets the state that caused the notification.
 let observedCount = -1;
-const unsubscribeCount = subCatalog.subscribe((snap) => {
-  observedCount = snap.observedCount;
+const unsubscribeCount = subCatalog.subscribe(() => {
+  observedCount = subCatalog.snapshot().observedCount;
 });
 subCatalog.applyCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "four.txt" }] });
 check(
-  "the snapshot handed to a subscriber includes the change",
+  "a listener reading snapshot() sees the change",
   observedCount === subCatalog.snapshot().observedCount,
   `${observedCount} vs ${subCatalog.snapshot().observedCount}`,
 );
@@ -383,6 +394,29 @@ check("re-entrant notification is suppressed", reentrantCalls === 1, String(reen
 check(
   "the nested write still landed",
   reentrant.snapshot().files.some((file) => file.path === "loop-1.txt"),
+);
+
+// A listener running after one that wrote back must not see pre-write state.
+// The eager-snapshot design could not honor this: the payload was computed
+// once, before any listener ran (senior review R2).
+const reentrantOrder = sandbox.MetabrowserKnownFileCatalog.create();
+let writerRan = false;
+let secondSawCount = -1;
+reentrantOrder.subscribe(() => {
+  if (writerRan) {
+    return;
+  }
+  writerRan = true;
+  reentrantOrder.observeNavigation("written-by-listener.txt", ".txt");
+});
+reentrantOrder.subscribe(() => {
+  secondSawCount = reentrantOrder.snapshot().observedCount;
+});
+reentrantOrder.observeNavigation("first.txt", ".txt");
+check(
+  "a later listener sees a re-entrant write, not stale state",
+  secondSawCount === reentrantOrder.snapshot().observedCount && secondSawCount === 2,
+  `${secondSawCount} vs ${reentrantOrder.snapshot().observedCount}`,
 );
 
 // A throwing subscriber must not break the ingestion path or its siblings.

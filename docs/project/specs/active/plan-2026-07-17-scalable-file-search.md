@@ -539,11 +539,22 @@ that rarely moved.
 controller publishes only in response to a keystroke, so a query typed while the bulk
 feed is still arriving keeps its original results after coverage completes.
 The catalog gains the subscriber list `fileStore` already has in `app.js`, and the
-palette re-runs the active query, debounced, when the revision moves.
+palette re-runs the active query, coalesced, when the revision moves.
 This is safe because the machinery it rides is already tested: superseded searches
 cancel, selection is preserved by result id, a re-run of an unchanged query repaints
 through the held-rows path without flicker, and the query text never changes so rows
 never go inert. The idle status line refreshes off the same signal.
+
+The notification carries **invalidation only** — no snapshot, not even the revision.
+That is load-bearing rather than stylistic.
+The palette installs its listener for the application lifetime, so anything the notifier
+computes runs on every delta, navigation, tree update, and resync, including while the
+palette is closed, and ahead of the coalescing window meant to absorb exactly that.
+Projecting a snapshot there sorts the whole catalog: measured at 500,000 files, one
+upsert cost 0.01 ms with no subscriber and 149 ms with an idle no-op subscriber.
+Passing nothing returns it to 0.01 ms and removes a correctness trap as well, because a
+payload computed once before any listener runs is stale for every listener after one
+that writes back. Consumers call `snapshot()` when they are ready to use it.
 
 **Removal cost.** `removeWithoutRevision()` scans every entry per removed path to catch
 directory-prefix removals.
@@ -676,19 +687,31 @@ The [ranking report](../../research/research-2026-07-31-fuzzy-file-ranking.md) r
 the golden scenarios and measured shallow, 2,000-file, 50,000-file, and real-browser
 fixtures. The full repository gate passed with the spike enabled.
 
-The remaining limits are deliberate or evidence-gated:
+Phase 1 shipped with the limits below.
+Phase 2 and 2.1 closed the first two; the rest still hold.
+They are listed apart so later work does not reopen questions that have already been
+answered.
 
-- local coverage remains partial until Phase 2 adds complete indexed filename search
-- a query uses one catalog snapshot; files observed while that query remains open appear
-  after the next input change or palette reopen rather than triggering an automatic
-  rerun
+Closed since:
+
+- local coverage was partial.
+  The Phase 2 catalog feed makes the candidate set the whole non-gitignored inventory —
+  complete once the walk finishes, and honestly incomplete when the walk stopped at the
+  max-files cap.
+- a query used one catalog snapshot, so files observed while it stayed open appeared
+  only after the next input change or a reopen.
+  Phase 2.1 re-runs the active query, coalesced, when coverage moves underneath it.
+
+Still open, deliberate or evidence-gated:
+
 - the local provider publishes one completed batch, so 50,000 observed files took about
   0.8 seconds to complete on the measured machine even though chunking kept queued input
   responsive
 - matching does not perform typo correction, transposition, accent folding, or Unicode
   canonical normalization
-- provider scores are Phase 1 batch ordinals; Phase 2 must resolve comparable ranking
-  and aggregate completeness before exposing an explicit complete filename search
+- provider scores are batch ordinals; the deferred server provider (`mb-3arq`) must
+  resolve comparable cross-runtime ranking before an explicit complete filename search
+  is exposed
 - content search, grouped excerpts, location reveal, and a persistent navigation-panel
   surface remain Phase 3 work
 

@@ -241,11 +241,15 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
   removePath(path: string): void;
   snapshot(): MetabrowserKnownFileCatalogSnapshot;
   /**
-   * Observe every catalog mutation. Returns an unsubscribe function. Listeners
-   * receive the snapshot that includes the change, and a listener that writes
-   * back does not re-enter.
+   * Observe every catalog mutation. Returns an unsubscribe function.
+   *
+   * Invalidation only: the listener is told the catalog moved, not what it
+   * moved to, because projecting a snapshot per mutation would sort the whole
+   * catalog on the hot path. Call `snapshot()` when the state is needed — that
+   * also makes the value current rather than whatever held at notify time. A
+   * listener that writes back does not re-enter.
    */
-  subscribe(listener: (snapshot: MetabrowserKnownFileCatalogSnapshot) => void): () => void;
+  subscribe(listener: () => void): () => void;
 }>;
 
 type MetabrowserKnownFileCatalogRuntime = Readonly<{

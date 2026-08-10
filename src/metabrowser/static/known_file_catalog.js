@@ -63,7 +63,7 @@
     const filesByPath = new Map();
     let revision = 0;
     let catalogComplete = false;
-    /** @type {Array<(snapshot: CatalogSnapshot) => void>} */
+    /** @type {Array<() => void>} */
     const subscribers = [];
     let notifyDepth = 0;
     /** @type {CatalogSnapshot | null} */
@@ -78,10 +78,19 @@
      * its original results forever — the search controller only republishes on
      * a keystroke.
      *
-     * Listeners run after the state is settled and receive the fresh snapshot.
+     * The notification is invalidation only: no snapshot, not even the
+     * revision. Building one here would sort the whole catalog on every
+     * mutation, and the palette installs its listener for the application
+     * lifetime, so that cost would land on every delta, navigation, tree
+     * update, and resync — including while the palette is closed, which is the
+     * common case, and ahead of the coalescing window meant to absorb exactly
+     * this. A listener that needs state calls snapshot() when it is ready to
+     * use it, which is also what makes the value it reads current rather than
+     * whatever was true when the notification was queued.
+     *
      * A listener that mutates the catalog would recurse, so re-entrant
-     * notification is suppressed: the outermost bump is the one that reports,
-     * and its snapshot already includes whatever the nested change did.
+     * notification is suppressed: the outermost bump is the only one that
+     * reports, and by the time listeners run the nested write has landed.
      */
     function bumpRevision() {
       revision += 1;
@@ -90,11 +99,10 @@
       }
       notifyDepth += 1;
       try {
-        const current = snapshot();
         // Iterate a copy: a listener may unsubscribe itself while running.
         for (const listener of subscribers.slice()) {
           try {
-            listener(current);
+            listener();
           } catch (_error) {
             // One bad subscriber must not stop the rest, nor the ingestion
             // path that triggered this.
@@ -107,7 +115,10 @@
 
     /**
      * Observe catalog changes. Returns an unsubscribe function.
-     * @param {(snapshot: CatalogSnapshot) => void} listener
+     *
+     * The listener takes no argument: it is told the catalog moved, not what
+     * it moved to. Call `snapshot()` when the new state is actually needed.
+     * @param {() => void} listener
      */
     function subscribe(listener) {
       if (typeof listener !== "function") {

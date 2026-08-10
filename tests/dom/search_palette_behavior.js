@@ -402,6 +402,7 @@ async function main() {
 
   /** @type {Array<() => void>} */
   const catalogListeners = [];
+  let catalogObservedCount = 5;
   const emitCatalogChange = () => {
     for (const listener of catalogListeners.slice()) {
       listener();
@@ -418,7 +419,7 @@ async function main() {
   const palette = sandbox.MetabrowserSearchPalette.create({
     controller,
     document,
-    getCatalogSnapshot: () => ({ complete: false, observedCount: 5 }),
+    getCatalogSnapshot: () => ({ complete: false, observedCount: catalogObservedCount }),
     subscribeCatalog: (listener) => {
       catalogListeners.push(listener);
       return () => {
@@ -797,19 +798,64 @@ async function main() {
     `${requests.length - requestsBeforeBurst} re-runs`,
   );
 
-  // A closed palette has nothing to converge.
+  // With an empty query there is no search to re-run, but the idle line quotes
+  // the observed count, which is exactly what a catalog change moves.
+  input.value = "";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check("the idle line reports the starting count", status.textContent.includes("5 observed"));
+  const requestsBeforeIdle = requests.length;
+  catalogObservedCount = 4242;
+  emitCatalogChange();
+  await waitMs(220);
+  check(
+    "an idle palette refreshes its status line",
+    status.textContent.includes("4242 observed"),
+    status.textContent,
+  );
+  check("an idle palette runs no search", requests.length === requestsBeforeIdle);
+  catalogObservedCount = 5;
+
+  // A closed palette has nothing to converge. Schedule a refresh first and
+  // close inside the window, so this exercises timer cleanup rather than the
+  // early-return guard a later event would hit anyway (senior review R4).
+  const requestsBeforeCloseRace = requests.length;
+  emitCatalogChange();
   palette.close(false);
+  await waitMs(220);
+  check(
+    "closing cancels a refresh already scheduled",
+    requests.length === requestsBeforeCloseRace,
+    `${requests.length - requestsBeforeCloseRace} re-runs after close`,
+  );
+
   const requestsAfterClose = requests.length;
   emitCatalogChange();
   await waitMs(220);
   check("a closed palette does not re-run", requests.length === requestsAfterClose);
 
+  // Same race across dispose: a pending timer must not fire afterwards.
+  palette.open();
+  input.value = "ear";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  const requestsBeforeDisposeRace = requests.length;
+  emitCatalogChange();
   palette.dispose();
   check("dispose removes palette DOM", !document.body.children.includes(overlay));
-  const requestsAfterDispose = requests.length;
-  emitCatalogChange();
+  // Observe the subscription itself: without this the check below still passes
+  // on a retained listener, because the callback exits early once disposed.
+  check(
+    "dispose unsubscribes from the catalog",
+    catalogListeners.length === 0,
+    `${catalogListeners.length} listener(s) retained`,
+  );
   await waitMs(220);
-  check("dispose unsubscribes from the catalog", requests.length === requestsAfterDispose);
+  check(
+    "disposing cancels a refresh already scheduled",
+    requests.length === requestsBeforeDisposeRace,
+    `${requests.length - requestsBeforeDisposeRace} re-runs after dispose`,
+  );
   const requestCountAtDispose = requests.length;
   input.value = "after-dispose";
   input.dispatchEvent(fakeEvent("input", { target: input }));
