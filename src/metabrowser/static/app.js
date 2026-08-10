@@ -2513,6 +2513,14 @@ function renderNavFilterBar() {
       menuId: "filter-type-menu",
     }) +
     '<span class="nav-filter-bar-end">' +
+    // Clear sits with the dropdowns it undoes, not inside the drawer:
+    // it can only appear when something is set, and having to open the
+    // drawer to undo a filter set from the row above is a step too
+    // many.
+    // "Clear", not "Clear filters": it shares a 267px row with two
+    // dropdowns whose labels grow with the value they hold, and the
+    // shorter word buys the headroom for a long one.
+    (count > 0 ? fc.clearHtml({ label: "Clear" }) : "") +
     fc.toggleHtml({
       key: "drawer",
       // The shared chevron glyph, rotated by CSS to point at the state
@@ -2531,8 +2539,15 @@ function renderNavFilterBar() {
     }) +
     "</span></div>";
   var drawer =
-    '<div class="filter-drawer" id="filter-drawer"' +
-    (filterDrawerOpen ? "" : " hidden") +
+    // `inert` rather than `hidden`: it keeps the closed drawer out of
+    // the tab order and the accessibility tree without the
+    // `display: none` that would make the open transition impossible.
+    // The single child is the grid track's content — see the
+    // .filter-drawer rules.
+    '<div class="filter-drawer" id="filter-drawer" data-open="' +
+    (filterDrawerOpen ? "true" : "false") +
+    '"' +
+    (filterDrawerOpen ? "" : " inert") +
     ">" +
     '<div class="filter-drawer-row">' +
     fc.menuGroupHtml({
@@ -2552,12 +2567,30 @@ function renderNavFilterBar() {
       checked: st.showIgnored,
       title: "Show gitignored entries, dimmed",
     }) +
-    "</div>" +
-    (count > 0
-      ? `<div class="filter-drawer-actions">${fc.clearHtml({ label: "Clear filters" })}</div>`
-      : "") +
-    "</div>";
+    "</div></div>";
   bar.innerHTML = main + drawer;
+}
+
+// Flip the drawer's open state on the existing nodes. Re-rendering
+// would replace the element, and a new element starts at its final
+// grid track with nothing to animate from.
+function applyDrawerOpenState() {
+  var drawer = document.getElementById("filter-drawer");
+  var toggle = queryHtml("[data-chip-key='drawer']");
+  if (drawer) {
+    drawer.dataset.open = filterDrawerOpen ? "true" : "false";
+    drawer.toggleAttribute("inert", !filterDrawerOpen);
+  }
+  if (toggle) {
+    var count = filterState ? filterState.activeCount() : 0;
+    toggle.setAttribute("aria-pressed", String(filterDrawerOpen));
+    toggle.setAttribute(
+      "aria-label",
+      (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
+        (count > 0 ? ` (${count} active)` : ""),
+    );
+    toggle.setAttribute("title", filterDrawerOpen ? "Fewer filters" : "More filters");
+  }
 }
 
 function initFilterBar() {
@@ -2587,13 +2620,21 @@ function initFilterBar() {
         filterDrawerOpen = pressed;
         // Closing the drawer must close a menu inside it, or the popup
         // would hang over the tree with no owner in sight.
-        if (!pressed && filterOpenMenu === "size") {
+        var hadMenu = filterOpenMenu === "size";
+        if (!pressed && hadMenu) {
           filterOpenMenu = null;
         }
         if (mb?.prefs) {
           mb.prefs.set(FILTER_DRAWER_PREF, pressed);
         }
-        renderNavFilterBar();
+        // Mutate in place rather than re-render: a freshly built
+        // element starts at its final grid track and would snap open.
+        // Only a menu closing alongside needs the full rebuild.
+        if (hadMenu && !pressed) {
+          renderNavFilterBar();
+        } else {
+          applyDrawerOpenState();
+        }
         return;
       }
       if (key === "showIgnored") {

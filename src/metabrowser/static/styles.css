@@ -1329,13 +1329,17 @@ html.theme-anim .menu {
    listing. Holds the served-root file count + total size. Rendered by
    loadTree() in app.js; the inner .size / .count chips inherit the
    shared sizeHtml() / countHtml() conventions. */
+/* Same vertical rhythm as the filter bar above it: both are one-line
+   bordered rows of chrome, so they get the same 6px and the column
+   reads as evenly spaced bands rather than one band and one gap.
+   .tree-content contributes no top padding, so this is the whole
+   distance between the bar's border and the tally text. */
 .tree-summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 12px 8px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
 }
 .tree-summary-count,
 .tree-summary-size {
@@ -1456,10 +1460,14 @@ html.theme-anim .menu {
   position: relative;
   z-index: var(--z-pane);
 }
+/* No top padding: whatever leads this pane — the tally row, or tree
+   rows directly when a recency window is showing /api/recent results —
+   owns its own spacing below the filter bar's border. Padding here
+   would stack on top of it. */
 .tree-content {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 0 0 8px;
   --scrollbar-bg: var(--sidebar-bg);
 }
 
@@ -2022,6 +2030,17 @@ html[data-prose-font="sans"] {
   align-items: center;
   gap: 4px;
 }
+/* A trigger holding a value carries the accent, so a set filter is
+   visible without reading the label. This is the same "one of these is
+   chosen" signal the selected single-select segment uses; at trigger
+   level it means "this dimension is constrained", which is the thing
+   worth seeing across the bar at a glance. */
+.chip-menu-trigger[data-active="true"] {
+  background: var(--highlight-bg);
+  border-color: var(--link);
+  color: var(--link);
+  font-weight: var(--weight-medium);
+}
 .chip-menu[aria-expanded="true"] .chip-menu-trigger {
   background: var(--hover-bg);
   color: var(--text);
@@ -2202,15 +2221,41 @@ html[data-prose-font="sans"] {
   margin-left: auto;
   flex: 0 0 auto;
 }
+/* The drawer opens on the shared motion token rather than snapping,
+   so the chevron's rotation and the reveal it announces run together.
+   A `display` toggle cannot be transitioned, so this animates a grid
+   track from 0fr to 1fr — that interpolates to the content's real
+   height without anyone having to hard-code it. The single child owns
+   the clipping while the track grows.
+   Closed state is `inert` rather than `hidden`: it keeps the drawer
+   out of the tab order and the accessibility tree the way `hidden`
+   did, without the `display: none` that would kill the transition. */
 .filter-drawer {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-rows: 0fr;
   width: 100%;
-  padding-top: 2px;
+  transition: grid-template-rows var(--transition-fast);
 }
-.filter-drawer[hidden] {
-  display: none;
+.filter-drawer[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+/* No padding here: the grid track collapses to zero height but padding
+   would survive it, leaving a sliver of drawer visible when closed.
+   The bar's own bottom padding provides the separation. */
+/* Grid-track mechanics only. Layout belongs to the child's own rule
+   (.filter-drawer-row) — setting a direction here would fight it, and
+   the two selectors have equal specificity, so whichever came last
+   would silently win. */
+.filter-drawer > * {
+  min-height: 0;
+  overflow: hidden;
+}
+/* An open dropdown inside the drawer must not be clipped by the track
+   that revealed it. A menu can only be open once the drawer is fully
+   open, so lifting the clip here can never expose mid-transition
+   overflow. */
+.filter-drawer:has(.chip-menu[aria-expanded="true"]) > * {
+  overflow: visible;
 }
 /* No section headings in here: an extension menu, a size ramp, and a
    checkbox labelled "Gitignored" already say what they are, and four
@@ -3770,6 +3815,12 @@ pre.code-block code.hljs {
   .tree-item-flash-in,
   .tree-item-flash-out {
     animation-duration: 1ms;
+  }
+  /* The drawer and its chevron still change state, just without the
+     travel. */
+  .filter-drawer,
+  .filter-drawer-toggle svg {
+    transition-duration: 1ms;
   }
 }
 

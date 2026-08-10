@@ -453,6 +453,73 @@ def test_the_navigation_column_shares_one_left_inset() -> None:
     assert "border-left: 2px solid transparent;" in row_block
 
 
+def test_clear_sits_with_the_dropdowns_it_undoes() -> None:
+    """Not in the drawer: it can only appear when something is set, and
+    opening the drawer to undo a filter set from the row above is a
+    step too many. Short label so it shares the row."""
+
+    js = _read("app.js")
+    fn_start = js.index("function renderNavFilterBar()")
+    fn_block = js[fn_start : fn_start + 3500]
+    clear_at = fn_block.index("fc.clearHtml(")
+    assert clear_at < fn_block.index('class="filter-drawer"')
+    assert '{ label: "Clear" }' in fn_block
+
+
+def test_a_constrained_dropdown_trigger_looks_set() -> None:
+    """A collapsed control must not require reading its label to know
+    whether it is filtering."""
+
+    js = _read("filter_controls.js")
+    assert 'data-active="${selected.length > 0}"' in js
+
+    css = _read("styles.css")
+    start = css.index('.chip-menu-trigger[data-active="true"]')
+    block = css[start : css.index("}", start)]
+    assert "var(--highlight-bg)" in block
+    assert "var(--link)" in block
+
+
+def test_the_drawer_animates_open_and_stays_out_of_reach_when_closed() -> None:
+    """A display toggle cannot transition, so the drawer animates a
+    grid track and uses `inert` for the closed state."""
+
+    css = _read("styles.css")
+    start = css.index(".filter-drawer {")
+    block = css[start : css.index("}", start)]
+    assert "grid-template-rows: 0fr;" in block
+    assert "transition: grid-template-rows var(--transition-fast);" in block
+    assert '.filter-drawer[data-open="true"]' in css
+    # Reduced motion still changes state, just without the travel.
+    reduced = css[css.index("@media (prefers-reduced-motion: reduce)") :]
+    assert ".filter-drawer," in reduced
+
+    js = _read("app.js")
+    assert '" inert"' in js
+    # The old `hidden` attribute would reintroduce display: none.
+    assert '" hidden"' not in js
+    # Re-rendering would replace the node and snap it open.
+    assert "function applyDrawerOpenState()" in js
+
+
+def test_the_nav_column_shares_one_vertical_rhythm() -> None:
+    """The tally row and the filter bar are both one-line bordered
+    bands of chrome, so they get the same padding; .tree-content adds
+    nothing on top of it."""
+
+    css = _read("styles.css")
+    bar_start = css.index(".nav-filter-bar {")
+    assert "padding: 6px var(--pane-header-padding-x);" in css[bar_start : bar_start + 400]
+
+    sum_start = css.index(".tree-summary {")
+    sum_block = css[sum_start : css.index("}", sum_start)]
+    assert "padding: 6px 12px;" in sum_block
+    assert "margin-bottom" not in sum_block
+
+    content_start = css.index(".tree-content {")
+    assert "padding: 0 0 8px;" in css[content_start : content_start + 300]
+
+
 def test_scroll_shadow_rides_the_filter_bar() -> None:
     """The filter bar is the bottom-most chrome above the scroll
     owner, so a shadow on the tab bar would land on the bar instead
