@@ -2437,19 +2437,20 @@ function filterTypeOptions() {
       kept.push([ext, tally.get(ext) || 0]);
     }
   }
-  return kept.map(([ext, count]) => ({
-    value: ext,
-    label: ext,
-    count: count,
-    className: fileTypeClassForExt(ext),
-  }));
-}
-
-// Reuse the classifier that colors filenames so a menu row and the
-// rows it keeps carry the same hue.
-function fileTypeClassForExt(ext) {
-  const cls = window.MetabrowserFileTypes?.classFor?.(`x${ext}`) || "";
-  return cls ? `chip-ft ${cls}` : "";
+  return kept.map(([ext, count]) => {
+    // Same icon the tree row shows for that type, resolved through the
+    // same matcher, so a menu row and the files it keeps are visibly
+    // the same thing. `getFileIcon` wants a filename, not an
+    // extension, so give it a synthetic one.
+    const fi = getFileIcon(`x${ext}`);
+    return {
+      value: ext,
+      label: ext,
+      count: count,
+      icon: fi.svg,
+      iconClass: fi.cls,
+    };
+  });
 }
 
 // A recency window reads from /api/recent, which scans the whole index
@@ -2485,7 +2486,10 @@ function renderNavFilterBar() {
     '<span class="filter-bar-end">' +
     fc.toggleHtml({
       key: "drawer",
-      caret: true,
+      // The shared chevron glyph, rotated by CSS to point at the state
+      // it will produce — the same icon the tree uses for expansion.
+      icon: ICONS.toggle || "",
+      className: "filter-drawer-toggle",
       pressed: filterDrawerOpen,
       badge: count,
       // A glyph-only control needs a name that says what happens, and

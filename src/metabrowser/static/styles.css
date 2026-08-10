@@ -1994,18 +1994,6 @@ html[data-prose-font="sans"] {
   font-weight: var(--weight-medium);
   box-shadow: inset 0 0 0 1px var(--viz-border-strong);
 }
-/* Type chips carry their own file-type hue, which makes the row double
-   as a legend for the colors in the tree below it. The selected fill
-   stays the neutral multi-select one — the --ft-bg washes are tuned as
-   large area fills behind body text, not as small control plates, and
-   using them here would both break the fill convention above and read
-   as a different kind of control. The hue lives in the label. */
-.chip-ft {
-  color: var(--ft-color, var(--muted));
-}
-.chip-group[data-select="many"] > .chip-ft[aria-pressed="true"] {
-  color: var(--ft-color, var(--text));
-}
 /* ── Multi-select dropdown ───────────────────────────────────────
    A chip trigger over the shared .menu surface, with
    role="menuitemcheckbox" rows. The app had a single-choice .menu and
@@ -2032,17 +2020,19 @@ html[data-prose-font="sans"] {
   line-height: 1;
   opacity: 0.7;
 }
-/* Disclosure chevron on a glyph-only toggle: rotates to point at the
-   state it will produce. The accessible name lives in aria-label,
-   because a rotated glyph says nothing to a screen reader. */
-.chip-caret {
-  display: inline-block;
-  font-size: 10px;
-  line-height: 1;
+/* Drawer disclosure. Geometry, hover surface, and focus ring come
+   entirely from the .icon-btn primitive — this is the same control as
+   the settings gear and the print button, so only the rotation lives
+   here. The shared chevron points right at rest; 90deg is "opens
+   downward", -90deg is "closes upward". The accessible name is on
+   aria-label, because a rotated glyph says nothing to a screen
+   reader. */
+.filter-drawer-toggle svg {
+  transform: rotate(90deg);
   transition: transform var(--transition-fast);
 }
-.chip-toggle[aria-pressed="true"] .chip-caret {
-  transform: rotate(180deg);
+.filter-drawer-toggle[aria-pressed="true"] svg {
+  transform: rotate(-90deg);
 }
 .chip-menu-panel {
   display: none;
@@ -2073,7 +2063,14 @@ html[data-prose-font="sans"] {
 }
 .chip-menu-item .menu-item-label {
   flex: 1 1 auto;
-  color: var(--ft-color, inherit);
+}
+/* Icon carries the type, the way it does on a tree row: the glyph
+   names the broad type and its ft-* class supplies the subtype hue.
+   The label stays plain — tinting eight rows of text would fight the
+   check mark for the eye and make the list harder to scan, not
+   easier. */
+.chip-menu-item .menu-item-icon {
+  color: var(--ft-color, var(--muted));
 }
 .chip-menu-count {
   color: var(--muted);

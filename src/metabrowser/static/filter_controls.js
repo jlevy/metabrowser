@@ -68,7 +68,8 @@
   }
 
   /**
-   * @typedef {{value: string, label: string, title?: string, className?: string, count?: number}} ChipOption
+   * @typedef {{value: string, label: string, title?: string, className?: string,
+   *            count?: number, icon?: string, iconClass?: string}} ChipOption
    * @typedef {{key: string, select?: string, label: string, options: ChipOption[],
    *            value: string | string[] | null, className?: string}} ChipGroupSpec
    */
@@ -114,15 +115,16 @@
    * chip when it is a positive number, and nothing otherwise, so a
    * clean filter state carries no visual weight.
    *
-   * `caret: true` makes it a disclosure control: the label is replaced
-   * by a chevron that rotates with the pressed state. A glyph-only
-   * control has no accessible name of its own, so `ariaLabel` becomes
-   * required reading rather than an optional extra — pass one that
-   * says what will happen, not what the icon looks like.
+   * Passing `icon` (a raw SVG string, supplied by the caller so this
+   * module carries no icon dependency) makes it an icon-only control
+   * on the app's `.icon-btn` primitive. Such a button has no
+   * accessible name of its own, so `ariaLabel` stops being optional:
+   * pass one that says what will happen, not what the glyph looks
+   * like.
    *
    * @param {{key: string, label?: string, pressed?: boolean, badge?: number,
    *          title?: string, className?: string, controls?: string,
-   *          caret?: boolean, ariaLabel?: string}} spec
+   *          icon?: string, ariaLabel?: string}} spec
    */
   function toggleHtml(spec) {
     const count = typeof spec.badge === "number" && spec.badge > 0 ? spec.badge : 0;
@@ -131,13 +133,22 @@
     const controls = spec.controls ? ` aria-controls="${esc(spec.controls)}"` : "";
     const ariaLabel = spec.ariaLabel ? ` aria-label="${esc(spec.ariaLabel)}"` : "";
     const cls = spec.className ? ` ${esc(spec.className)}` : "";
-    const body = spec.caret
-      ? '<span class="chip-caret" aria-hidden="true">⌄</span>'
-      : esc(spec.label || "");
+    if (spec.icon) {
+      // Icon-only controls are all the same control: this rides the
+      // app's .icon-btn primitive, so it matches the settings gear and
+      // the print button rather than being a pill with a glyph in it.
+      // The badge sits outside the button because .icon-btn is a fixed
+      // --icon-btn-size box built to hold exactly one glyph.
+      return (
+        `${badge}<button type="button" class="icon-btn${cls}"` +
+        ` data-chip-key="${esc(spec.key)}" aria-pressed="${spec.pressed === true}"` +
+        `${controls}${ariaLabel}${title}>${spec.icon}</button>`
+      );
+    }
     return (
       `<button type="button" class="chip chip-toggle${cls}"` +
       ` data-chip-key="${esc(spec.key)}" aria-pressed="${spec.pressed === true}"` +
-      `${controls}${ariaLabel}${title}>${body}${badge}</button>`
+      `${controls}${ariaLabel}${title}>${esc(spec.label || "")}${badge}</button>`
     );
   }
 
@@ -176,12 +187,21 @@
           typeof opt.count === "number"
             ? `<span class="chip-menu-count">${esc(opt.count.toLocaleString())}</span>`
             : "";
+        // The file-type icon, not a colored label: the icon is what
+        // identifies a type everywhere else in the app, and tinting
+        // the text of every row would make eight competing hues fight
+        // the check mark for the eye. `iconClass` still carries the
+        // ft-* subtype so the glyph takes the same hue it has in the
+        // tree.
+        const icon = opt.icon
+          ? `<span class="menu-item-icon ${esc(opt.iconClass || "")}">${opt.icon}</span>`
+          : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}"` +
           ` role="menuitemcheckbox" aria-checked="${on}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
-          `<span class="menu-item-label">${esc(opt.label)}</span>${count}</button>`
+          `${icon}<span class="menu-item-label">${esc(opt.label)}</span>${count}</button>`
         );
       })
       .join("");
@@ -281,7 +301,10 @@
         }
         return;
       }
-      const chip = /** @type {HTMLElement | null} */ (target.closest(".chip[data-chip-key]"));
+      // Not `.chip[data-chip-key]`: a standalone toggle may render as
+      // an .icon-btn instead of a pill, and both answer to the same
+      // handler.
+      const chip = /** @type {HTMLElement | null} */ (target.closest("[data-chip-key]"));
       if (!chip || !root.contains(chip)) {
         return;
       }

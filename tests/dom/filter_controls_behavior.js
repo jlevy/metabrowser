@@ -122,24 +122,34 @@ assertMissing(
   "chip-badge",
 );
 
-// Disclosure variant: a rotating chevron instead of a word. A glyph
-// says nothing to a screen reader, so the accessible name is not
-// optional here — it has to describe the action, not the icon.
-const caretToggle = fc.toggleHtml({
+// Icon variant: every icon-only control in the app is the same
+// control, so this renders on .icon-btn rather than as a pill with a
+// glyph in it. A glyph says nothing to a screen reader, so the
+// accessible name is not optional — it describes the action, not the
+// icon.
+const iconToggle = fc.toggleHtml({
   key: "drawer",
-  caret: true,
+  icon: "<svg></svg>",
+  className: "filter-drawer-toggle",
   pressed: true,
   badge: 2,
   ariaLabel: "Hide more filters (2 active)",
 });
-assertContains("the caret variant renders a chevron", caretToggle, 'class="chip-caret"');
-assertContains("the chevron is decorative", caretToggle, 'class="chip-caret" aria-hidden="true"');
+assertContains("the icon variant uses the icon-btn primitive", iconToggle, 'class="icon-btn');
+assertMissing("the icon variant is not a pill", iconToggle, "chip-toggle");
+assertContains("the icon variant carries its glyph", iconToggle, "<svg></svg>");
 assertContains(
-  "the caret variant names itself",
-  caretToggle,
+  "the icon variant names itself",
+  iconToggle,
   'aria-label="Hide more filters (2 active)"',
 );
-assertContains("the caret variant still badges", caretToggle, '<span class="chip-badge">2</span>');
+// The badge rides outside the button: .icon-btn is a fixed box built
+// to hold exactly one glyph.
+assertContains(
+  "the badge precedes the button",
+  iconToggle,
+  '<span class="chip-badge">2</span><button',
+);
 
 // No hidden inputs: one state mechanism across the whole family.
 for (const [label, html] of [
@@ -153,8 +163,8 @@ for (const [label, html] of [
 // ── Multi-select dropdown ──────────────────────────────────────
 
 const menuOptions = [
-  { value: ".py", label: ".py", count: 156, className: "chip-ft ft-code" },
-  { value: ".md", label: ".md", count: 33, className: "chip-ft ft-md" },
+  { value: ".py", label: ".py", count: 156, icon: "<svg id='py'></svg>", iconClass: "ft-code" },
+  { value: ".md", label: ".md", count: 33, icon: "<svg id='md'></svg>", iconClass: "ft-md" },
 ];
 const menuClosed = fc.menuGroupHtml({
   key: "types",
@@ -170,7 +180,12 @@ assertContains("no selection summarises as the any-label", menuClosed, ">Any typ
 assertContains("the any row is checked when nothing is picked", menuClosed, "data-chip-any");
 assertContains("rows are checkbox menu items", menuClosed, 'role="menuitemcheckbox"');
 assertContains("rows carry their tally", menuClosed, '<span class="chip-menu-count">156</span>');
-assertContains("rows keep their file-type hue", menuClosed, "chip-ft ft-code");
+// The icon identifies the type, the way it does on a tree row; the
+// ft-* class on it supplies the subtype hue. The label stays plain so
+// eight tinted rows do not fight the check mark for the eye.
+assertContains("rows carry the file-type icon", menuClosed, "<svg id='py'></svg>");
+assertContains("the icon carries the subtype hue", menuClosed, 'class="menu-item-icon ft-code"');
+assertMissing("row labels are not tinted", menuClosed, 'class="menu-item-label ft-');
 
 const menuOne = fc.menuGroupHtml({
   key: "types",

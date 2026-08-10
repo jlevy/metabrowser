@@ -122,21 +122,43 @@ def test_clear_is_only_rendered_when_something_is_set() -> None:
     assert "count > 0" in fn_block
 
 
-def test_drawer_toggle_is_a_chevron_that_names_itself() -> None:
-    """A glyph-only disclosure has no accessible name of its own, so
-    the aria-label has to describe the action and carry the count the
-    badge shows visually."""
+def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
+    """Every icon-only control in the app is the same control, so the
+    drawer disclosure rides .icon-btn like the settings gear and the
+    print button. A glyph has no accessible name of its own, so the
+    aria-label describes the action and carries the count the badge
+    shows visually."""
 
     js = _read("app.js")
     fn_start = js.index("function renderNavFilterBar()")
     fn_block = js[fn_start : fn_start + 3000]
-    assert "caret: true" in fn_block
+    assert "icon: ICONS.toggle" in fn_block
     assert '"Hide more filters" : "Show more filters"' in fn_block
     assert "active)" in fn_block
 
+    controls = _read("filter_controls.js")
+    assert 'class="icon-btn' in controls
+
     css = _read("styles.css")
-    assert '.chip-toggle[aria-pressed="true"] .chip-caret' in css
-    assert "rotate(180deg)" in css
+    # Only the rotation lives locally; geometry and hover come from the
+    # primitive, which is what keeps it the same control.
+    assert '.filter-drawer-toggle[aria-pressed="true"] svg' in css
+    assert ".filter-drawer-toggle {" not in css
+
+
+def test_menu_rows_use_type_icons_rather_than_tinted_labels() -> None:
+    """The icon identifies the type everywhere else in the app; eight
+    tinted row labels would compete with the check mark instead of
+    helping anyone scan the list."""
+
+    controls = _read("filter_controls.js")
+    assert 'class="menu-item-icon ' in controls
+
+    css = _read("styles.css")
+    assert ".chip-menu-item .menu-item-icon {" in css
+    # The dead per-chip tint rule is gone with the chip row it served.
+    assert ".chip-ft" not in css
+    assert "chip-ft" not in _read("app.js")
 
 
 # ── Filter state ───────────────────────────────────────────────
