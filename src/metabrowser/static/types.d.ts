@@ -240,6 +240,12 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
   observeTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>, source: string): void;
   removePath(path: string): void;
   snapshot(): MetabrowserKnownFileCatalogSnapshot;
+  /**
+   * Observe every catalog mutation. Returns an unsubscribe function. Listeners
+   * receive the snapshot that includes the change, and a listener that writes
+   * back does not re-enter.
+   */
+  subscribe(listener: (snapshot: MetabrowserKnownFileCatalogSnapshot) => void): () => void;
 }>;
 
 type MetabrowserKnownFileCatalogRuntime = Readonly<{
@@ -405,6 +411,11 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
+    /**
+     * Observe catalog growth so an open search converges instead of keeping
+     * the coverage it had when the query ran. Returns an unsubscribe function.
+     */
+    subscribeCatalog?(listener: () => void): () => void;
   }): MetabrowserSearchPaletteApi;
 }>;
 

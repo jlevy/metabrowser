@@ -324,6 +324,13 @@ async function settle() {
   }
 }
 
+/** The catalog-refresh window is a real timer, so microtask flushing cannot
+ * advance past it. */
+async function waitMs(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  await settle();
+}
+
 async function main() {
   let availableResults = [
     searchResult("src/app.js", 5, [
@@ -393,6 +400,14 @@ async function main() {
     },
   };
 
+  /** @type {Array<() => void>} */
+  const catalogListeners = [];
+  const emitCatalogChange = () => {
+    for (const listener of catalogListeners.slice()) {
+      listener();
+    }
+  };
+
   const initialFocus = document.createElement("button");
   document.body.append(initialFocus);
   initialFocus.focus();
@@ -404,6 +419,15 @@ async function main() {
     controller,
     document,
     getCatalogSnapshot: () => ({ complete: false, observedCount: 5 }),
+    subscribeCatalog: (listener) => {
+      catalogListeners.push(listener);
+      return () => {
+        const index = catalogListeners.indexOf(listener);
+        if (index >= 0) {
+          catalogListeners.splice(index, 1);
+        }
+      };
+    },
     getFileIcon: () => ({ cls: "ft-code", svg: "<svg></svg>" }),
     maxRows: 3,
     onNotFound(pathname) {
@@ -725,8 +749,67 @@ async function main() {
   await settle();
   check("result text cannot create markup", listbox.querySelectorAll("img").length === 0);
 
+  // Coverage grows while the palette is open: the bulk feed lands, then live
+  // deltas. A query typed against a thinner catalog must converge instead of
+  // keeping the results it happened to get first (mb-lzvb).
+  palette.open();
+  availableResults = [searchResult("src/early.js", 5, [{ start: 4, end: 7 }])];
+  input.value = "ear";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  check("the pre-growth query renders what it found", listbox.children.length === 1);
+  const requestsBeforeGrowth = requests.length;
+
+  // The catalog gains a file that also matches the standing query.
+  availableResults = [
+    searchResult("src/early.js", 5, [{ start: 4, end: 7 }]),
+    searchResult("deep/nested/earlier.js", 4, [{ start: 12, end: 15 }]),
+  ];
+  emitCatalogChange();
+  await waitMs(220);
+  check(
+    "a catalog change re-runs the standing query",
+    requests.length === requestsBeforeGrowth + 1,
+    `${requests.length - requestsBeforeGrowth} re-runs`,
+  );
+  equal("the re-run reuses the query in the box", requests[requests.length - 1].query, "ear");
+  check(
+    "results converge on the grown catalog",
+    listbox.children.length === 2,
+    String(listbox.children.length),
+  );
+  check(
+    "converged rows stay live, not inert",
+    Array.from(listbox.querySelectorAll('[role="option"]')).every(
+      (node) => node.getAttribute("aria-disabled") === "false",
+    ),
+  );
+
+  // A burst of deltas coalesces: many notifications, one re-run.
+  const requestsBeforeBurst = requests.length;
+  for (let index = 0; index < 10; index += 1) {
+    emitCatalogChange();
+  }
+  await waitMs(220);
+  check(
+    "a burst of catalog changes coalesces into one re-run",
+    requests.length === requestsBeforeBurst + 1,
+    `${requests.length - requestsBeforeBurst} re-runs`,
+  );
+
+  // A closed palette has nothing to converge.
+  palette.close(false);
+  const requestsAfterClose = requests.length;
+  emitCatalogChange();
+  await waitMs(220);
+  check("a closed palette does not re-run", requests.length === requestsAfterClose);
+
   palette.dispose();
   check("dispose removes palette DOM", !document.body.children.includes(overlay));
+  const requestsAfterDispose = requests.length;
+  emitCatalogChange();
+  await waitMs(220);
+  check("dispose unsubscribes from the catalog", requests.length === requestsAfterDispose);
   const requestCountAtDispose = requests.length;
   input.value = "after-dispose";
   input.dispatchEvent(fakeEvent("input", { target: input }));

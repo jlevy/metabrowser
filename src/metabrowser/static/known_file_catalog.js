@@ -63,8 +63,64 @@
     const filesByPath = new Map();
     let revision = 0;
     let catalogComplete = false;
+    /** @type {Array<(snapshot: CatalogSnapshot) => void>} */
+    const subscribers = [];
+    let notifyDepth = 0;
     /** @type {CatalogSnapshot | null} */
     let memoizedSnapshot = null;
+
+    /**
+     * Advance the revision and tell derived views the catalog moved.
+     *
+     * Every mutation routes through here, so a consumer subscribes once
+     * instead of hooking each ingestion seam. The palette needs this because a
+     * query typed while the bulk feed is still arriving would otherwise keep
+     * its original results forever — the search controller only republishes on
+     * a keystroke.
+     *
+     * Listeners run after the state is settled and receive the fresh snapshot.
+     * A listener that mutates the catalog would recurse, so re-entrant
+     * notification is suppressed: the outermost bump is the one that reports,
+     * and its snapshot already includes whatever the nested change did.
+     */
+    function bumpRevision() {
+      revision += 1;
+      if (notifyDepth > 0 || subscribers.length === 0) {
+        return;
+      }
+      notifyDepth += 1;
+      try {
+        const current = snapshot();
+        // Iterate a copy: a listener may unsubscribe itself while running.
+        for (const listener of subscribers.slice()) {
+          try {
+            listener(current);
+          } catch (_error) {
+            // One bad subscriber must not stop the rest, nor the ingestion
+            // path that triggered this.
+          }
+        }
+      } finally {
+        notifyDepth -= 1;
+      }
+    }
+
+    /**
+     * Observe catalog changes. Returns an unsubscribe function.
+     * @param {(snapshot: CatalogSnapshot) => void} listener
+     */
+    function subscribe(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("Catalog subscriber must be a function");
+      }
+      subscribers.push(listener);
+      return () => {
+        const index = subscribers.indexOf(listener);
+        if (index >= 0) {
+          subscribers.splice(index, 1);
+        }
+      };
+    }
 
     /**
      * @param {string} path
@@ -131,20 +187,72 @@
       return put(entry.path, logicalExtension, source);
     }
 
-    /** @param {string} path */
-    function removeWithoutRevision(path) {
-      if (!path) {
+    /**
+     * Remove several paths, and everything beneath them, in one pass.
+     *
+     * A removed path may name a directory, so each one has to be matched
+     * against every entry as a prefix. Doing that per path was cheap when the
+     * catalog held a depth-2 slice and is not now that it holds the whole
+     * non-gitignored tree: a branch switch or bulk delete arrives as one batch
+     * of many removes and cost O(entries x removes) on the UI thread, with an
+     * open search waiting on it. Sweeping a whole batch together makes it one
+     * pass per batch instead of one per path.
+     *
+     * Callers group only *consecutive* removes, so relative order with
+     * interleaved upserts is preserved — `remove("dir")` then
+     * `upsert("dir/child")` still keeps the child.
+     * @param {readonly string[]} paths
+     */
+    function removeManyWithoutRevision(paths) {
+      /** @type {Set<string>} */
+      const removed = new Set();
+      for (const path of paths) {
+        if (!path) {
+          continue;
+        }
+        removed.add(path.endsWith("/") ? path.slice(0, -1) : path);
+      }
+      if (removed.size === 0) {
         return false;
       }
-      const prefix = path.endsWith("/") ? path : `${path}/`;
       let changed = false;
       for (const candidatePath of filesByPath.keys()) {
-        if (candidatePath === path || candidatePath.startsWith(prefix)) {
+        if (isRemoved(candidatePath, removed)) {
           filesByPath.delete(candidatePath);
           changed = true;
         }
       }
       return changed;
+    }
+
+    /**
+     * Is this path removed, either named directly or as a descendant?
+     *
+     * Asks the question from the candidate's side — walk its ancestor
+     * directories and look each up — rather than testing the candidate
+     * against every removed prefix. That is what makes a batch sweep
+     * independent of how many paths were removed: cost per entry is its path
+     * depth and a few Set lookups, not the size of the removal list.
+     * @param {string} candidatePath
+     * @param {Set<string>} removed
+     */
+    function isRemoved(candidatePath, removed) {
+      if (removed.has(candidatePath)) {
+        return true;
+      }
+      let boundary = candidatePath.lastIndexOf("/");
+      while (boundary > 0) {
+        if (removed.has(candidatePath.slice(0, boundary))) {
+          return true;
+        }
+        boundary = candidatePath.lastIndexOf("/", boundary - 1);
+      }
+      return false;
+    }
+
+    /** @param {string} path */
+    function removeWithoutRevision(path) {
+      return removeManyWithoutRevision([path]);
     }
 
     /** @param {CatalogWireEntry[]} entries @param {string} source */
@@ -154,7 +262,7 @@
         changed = putEntry(entry, source) || changed;
       }
       if (changed) {
-        revision += 1;
+        bumpRevision();
       }
     }
 
@@ -179,7 +287,7 @@
         }
       }
       if (changed) {
-        revision += 1;
+        bumpRevision();
       }
     }
 
@@ -206,22 +314,35 @@
     /** @param {Array<{entry?: CatalogWireEntry, op: string, path?: string}>} ops */
     function applyEventChange(ops) {
       let changed = false;
+      /** @type {string[]} */
+      let pendingRemoves = [];
+      // Flush before any upsert so ordering inside the batch is unchanged:
+      // only a consecutive run of removes is ever collapsed into one sweep.
+      function flushRemoves() {
+        if (pendingRemoves.length === 0) {
+          return;
+        }
+        changed = removeManyWithoutRevision(pendingRemoves) || changed;
+        pendingRemoves = [];
+      }
       for (const op of ops) {
         if (op.op === "upsert" && op.entry) {
+          flushRemoves();
           changed = putEntry(op.entry, "event-change") || changed;
         } else if (op.op === "remove" && typeof op.path === "string") {
-          changed = removeWithoutRevision(op.path) || changed;
+          pendingRemoves.push(op.path);
         }
       }
+      flushRemoves();
       if (changed) {
-        revision += 1;
+        bumpRevision();
       }
     }
 
     /** @param {string} path @param {string | null} logicalExtension */
     function observeNavigation(path, logicalExtension) {
       if (put(path, logicalExtension, NAVIGATION_SOURCE)) {
-        revision += 1;
+        bumpRevision();
       }
     }
 
@@ -281,7 +402,7 @@
         changed = true;
       }
       if (changed) {
-        revision += 1;
+        bumpRevision();
       }
     }
 
@@ -296,13 +417,14 @@
           changed = put(upsert.p, upsert.e || null, "catalog-event") || changed;
         }
       }
-      for (const removed of payload?.removes || []) {
-        if (typeof removed === "string") {
-          changed = removeWithoutRevision(removed) || changed;
-        }
-      }
+      // Upserts and removes arrive as separate arrays here, so the whole
+      // remove list is one consecutive run and sweeps in a single pass.
+      const removes = (payload?.removes || []).filter(
+        /** @returns {value is string} */ (value) => typeof value === "string",
+      );
+      changed = removeManyWithoutRevision(removes) || changed;
       if (changed) {
-        revision += 1;
+        bumpRevision();
       }
     }
 
@@ -314,7 +436,7 @@
     function markComplete() {
       if (!catalogComplete) {
         catalogComplete = true;
-        revision += 1;
+        bumpRevision();
       }
     }
 
@@ -324,7 +446,7 @@
      */
     function removePath(path) {
       if (removeWithoutRevision(path)) {
-        revision += 1;
+        bumpRevision();
       }
     }
 
@@ -332,7 +454,7 @@
     function clear() {
       filesByPath.clear();
       catalogComplete = false;
-      revision += 1;
+      bumpRevision();
     }
 
     /**
@@ -377,6 +499,7 @@
       observeTree,
       removePath,
       snapshot,
+      subscribe,
     });
   }
 

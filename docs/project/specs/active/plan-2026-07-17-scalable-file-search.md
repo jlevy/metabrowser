@@ -525,8 +525,65 @@ Known limits:
 - A truncated walk is complete for the index and permanently incomplete for the root, so
   the catalog reports incomplete coverage and the beyond-cap fallback stays deferred to
   `mb-3arq`.
-- An open search does not re-run when coverage grows underneath it (`mb-lzvb`), and
-  catalog removals still scan every entry (`mb-r8yg`).
+
+### Phase 2.1: Convergence and Removal Cost
+
+Two consequences of a catalog that is now complete and live, rather than a shallow set
+that rarely moved.
+
+- [x] Give the catalog a change subscription and re-run the palette’s active query when
+  coverage moves underneath it (`mb-lzvb`)
+- [x] Make batched removal cost independent of the number of removed paths (`mb-r8yg`)
+
+**Convergence.** The palette subscribes to the search controller only, and the
+controller publishes only in response to a keystroke, so a query typed while the bulk
+feed is still arriving keeps its original results after coverage completes.
+The catalog gains the subscriber list `fileStore` already has in `app.js`, and the
+palette re-runs the active query, debounced, when the revision moves.
+This is safe because the machinery it rides is already tested: superseded searches
+cancel, selection is preserved by result id, a re-run of an unchanged query repaints
+through the held-rows path without flicker, and the query text never changes so rows
+never go inert. The idle status line refreshes off the same signal.
+
+**Removal cost.** `removeWithoutRevision()` scans every entry per removed path to catch
+directory-prefix removals.
+That was cheap against a depth-2 set and is not against a complete one: a branch switch
+or bulk delete is O(n·m) on the UI thread.
+
+Grouping consecutive removes into one sweep is only half the fix, and the smaller half.
+Testing each surviving entry against every removed prefix is still O(n·m); it merely
+saves repeated map traversal.
+The sweep instead asks the question from the candidate’s side — walk the entry’s
+ancestor directories and look each up in a set of removed paths — so cost per entry is
+its path depth rather than the size of the removal list.
+
+Measured over 100k entries, one batch, removing every listed directory:
+
+| Removes in the batch | Per-path scan | Ancestor lookup |
+| --- | --- | --- |
+| 100 | 95 ms | 32 ms |
+| 500 | 358 ms | 35 ms |
+| 2000 | 1441 ms | 52 ms |
+
+Semantics are unchanged: only consecutive removes are collapsed, so a remove followed by
+an upsert beneath it still keeps the child.
+The behavior tests pin that ordering, which is what batching could plausibly break; the
+speedup itself is a benchmark result rather than a CI assertion, because timing tests
+are flaky.
+
+Two alternatives were considered and are recorded so they are not rediscovered:
+
+- A **segment trie** (nested maps keyed by path segment) gives subtree deletion the
+  right asymptotics, but it only earns its complexity past the design center — where the
+  dominant cost is the provider scan itself, not removals, and the answer is the
+  server-side fallback rather than client data-structure work.
+  Deferred behind the measurement checkbox above.
+- A **deferred sweep** (mark removed prefixes, filter at snapshot time) looks free
+  because `snapshot()` already pays a sort per revision, but `remove(dir)` followed by
+  `upsert(child)` is only correct if every entry carries a sequence number.
+  That is epoch semantics arriving through a performance patch, and it trades a bounded
+  cost problem for an unbounded correctness one.
+  Rejected.
 
 ### Phase 2 (deferred): Bounded Server Filename Search
 

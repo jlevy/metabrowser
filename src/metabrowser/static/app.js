@@ -4064,6 +4064,10 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    // Coverage grows while the palette is open — the bulk feed lands, then
+    // live deltas — so an open search re-runs instead of keeping the result
+    // set it happened to get first.
+    subscribeCatalog: (listener) => knownFileCatalog.subscribe(listener),
     onNotFound: (path) => {
       knownFileCatalog.removePath(path);
     },

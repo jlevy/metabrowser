@@ -134,6 +134,7 @@
    *   controller: PaletteController,
    *   document?: Document,
    *   getCatalogSnapshot: () => {complete: boolean, observedCount: number},
+   *   subscribeCatalog?: (listener: () => void) => () => void,
    *   getFileIcon?: (path: string) => {cls?: string, svg?: string},
    *   maxRows?: number,
    *   onNotFound?: (path: string) => void | Promise<void>,
@@ -225,6 +226,55 @@
     // The query whose results are currently painted. Diverges from input.value
     // only while rows are held through a pending search.
     let renderedQuery = "";
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let catalogRefreshTimer = null;
+
+    // Coverage arrives in bursts — one bulk payload, then a stream of deltas
+    // while the walk finishes. Re-running per delta would thrash, so changes
+    // coalesce into at most one re-run per window. Leading-edge coalescing
+    // rather than a trailing debounce: on a large root the deltas may never
+    // pause, and a trailing timer would keep resetting and never fire.
+    const CATALOG_REFRESH_WINDOW_MS = 150;
+
+    /**
+     * The catalog moved underneath an open palette.
+     *
+     * A search reads one immutable snapshot, so results reflect coverage at
+     * the moment the query ran. Without this a query typed while the bulk feed
+     * was still arriving would keep its original, thinner result set even
+     * after the catalog completed, and the user would have to edit the query
+     * to see the rest.
+     *
+     * Re-running is safe rather than disruptive: the controller cancels the
+     * superseded search, consumeState re-selects by result id so the keyboard
+     * position survives, and because the query text is unchanged the rows
+     * never go inert — the held-rows path repaints them without a flicker.
+     */
+    function onCatalogChanged() {
+      if (disposed || overlay.hidden || opening || catalogRefreshTimer !== null) {
+        return;
+      }
+      catalogRefreshTimer = setTimeout(() => {
+        catalogRefreshTimer = null;
+        if (disposed || overlay.hidden || opening) {
+          return;
+        }
+        if (input.value.trim()) {
+          runSearch(true);
+        } else {
+          // No query to re-run, but the idle line quotes the observed count,
+          // which is exactly what just changed.
+          renderStatus();
+        }
+      }, CATALOG_REFRESH_WINDOW_MS);
+    }
+
+    function clearCatalogRefresh() {
+      if (catalogRefreshTimer !== null) {
+        clearTimeout(catalogRefreshTimer);
+        catalogRefreshTimer = null;
+      }
+    }
 
     /** Rendered rows describe the query in the box, so acting on them is safe. */
     function rowsMatchQuery() {
@@ -565,6 +615,7 @@
       }
       options.controller.cancel();
       clearSearchingStatus();
+      clearCatalogRefresh();
       actionSerial += 1;
       opening = false;
       overlay.hidden = true;
@@ -645,6 +696,7 @@
     }
 
     const unsubscribe = options.controller.subscribe(consumeState);
+    const unsubscribeCatalog = options.subscribeCatalog?.(onCatalogChanged) || (() => {});
     hostDocument.addEventListener("keydown", handleGlobalKeydown);
     input.addEventListener("input", handleInput);
     input.addEventListener("keydown", handleInputKeydown);
@@ -656,7 +708,9 @@
       }
       close(false);
       disposed = true;
+      clearCatalogRefresh();
       unsubscribe();
+      unsubscribeCatalog();
       hostDocument.removeEventListener("keydown", handleGlobalKeydown);
       input.removeEventListener("input", handleInput);
       input.removeEventListener("keydown", handleInputKeydown);
