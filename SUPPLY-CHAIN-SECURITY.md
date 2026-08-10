@@ -37,42 +37,28 @@ Confirm:
 
 ## Audited First-Party Exceptions
 
-Three exact first-party releases are exempt from the ordinary cool-off for this release:
+Three exact releases are exempt from the ordinary cool-off.
+All three are published from repositories under this project’s own control, which is the
+entire basis for the exemption: the cool-off exists to catch a compromised upstream
+publisher, and a first-party release has a known one.
 
-- `kpress==0.3.1`, required for Metabrowser’s declarative embedding contract and
-  reviewed against `0.3.0` as a first-party release.
-  It is a single-feature patch: `RenderOptions.toc_rail` /
-  `KPressRenderRequest.toc_rail` / `format.toc_rail`, which lets an embedding host
-  reserve the wide-band table-of-contents rail so a document with too few headings keeps
-  the reading column’s position and measure instead of reverting to a centred one.
-  The option defaults to `auto`, so rendered output is byte-identical until a host opts
-  in; Metabrowser opts in from `kpress_adapter.py`, which let the equivalent host CSS be
-  deleted rather than maintained against KPress internals.
-  It adds no runtime dependency and changes no other public surface, and the locked
-  change is confined to the `kpress` entry — no transitive package or source moved.
-  The published wheel was checked against the release artifact digest recorded in
-  `uv.lock` (`sha256:fb2be693…`) and confirmed to contain the feature.
-  The `0.3.0` review it supersedes covered the declarative embedding contract: host-safe
-  fragment assets, no per-request fragment theme state, typography derived from one host
-  base-size hook, and the intervening `0.2.3` / `0.2.4` navigation, identifier, table,
-  and presentation changes;
-- `flowmark-rs==0.3.2`, used to format and verify Markdown.
-  This first-party release was reviewed against `0.3.1`; its formatting output is
-  unchanged, while its skill, publishing, and Markdown-parser configuration are more
-  reliable.
-- `get-tbd==0.4.2`, this repository’s first-party issue tracker.
-  The tbd session hooks fall back to `npx --yes get-tbd@0.4.2` when the CLI is not
-  installed, and npm’s `min-release-age` has no per-package exclusion, so those exact
-  pinned invocations pass `--min-release-age=0` to stay usable inside the cool-off
-  window.
+Every exemption is reviewed against its predecessor, and each review confirms the same
+three things — the lock delta touches only that package, no runtime dependency was
+added, and the published artifact’s SHA-256 matches the digest recorded in `uv.lock`.
+
+| Package | Reviewed against | Notes |
+| --- | --- | --- |
+| `kpress==0.3.2` | `0.3.1` | CSS-only; no public surface changed |
+| `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
+| `get-tbd==0.4.2` | — | Issue tracker; not a build or runtime input |
+
+npm has no per-package cool-off exclusion, so the tbd session hooks pass
+`--min-release-age=0` on their exact pinned `npx --yes get-tbd@0.4.2` invocation.
+That version string also appears in the copied agent-skill instructions, where it is
+operator-invoked documentation — no build, hook, CI, test, or publishing path runs it.
 
 The exceptions are package-scoped in configuration and do not weaken the global gate.
-Changing any of these versions requires a new review and an updated rationale.
-
-The copied agent-skill instructions name exact `get-tbd@0.4.2` bootstrap commands.
-Those commands are operator-invoked documentation for installing this repository’s issue
-tracker; no build, hook, CI, test, or publishing path executes them.
-The skill files own that reviewed version and must be updated deliberately.
+Changing any of these versions requires a new review against the checks above.
 
 ## Verification
 
