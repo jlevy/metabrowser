@@ -75,6 +75,9 @@ read Markdown docs.
   visible while you browse.
   And the streaming architecture easily scales to 100,000 files or more in a folder.
 
+- **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every
+  non-gitignored file under the root, then jump straight to it by name or path fragment.
+
 - **A fast, framework-free frontend.** Metabrowser ships direct CSS and JavaScript with
   no browser framework.
   Rendering is quick even for large files and customization is straightforward.
