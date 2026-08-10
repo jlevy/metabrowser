@@ -4,11 +4,10 @@
 //   src/vs/workbench/contrib/scm/browser/scmHistory.ts
 //   Copyright (c) Microsoft Corporation. Licensed under the MIT License.
 //
-// The port is deliberately faithful. Geometry constants, path commands,
-// lane-assignment order, and circle variants match upstream so the graph
-// reads exactly like the one in the editor, and so a future upstream fix
-// can be diffed against this file rather than reverse-engineered. Three
-// changes were made, each noted at its site:
+// The port is deliberately faithful. Lane geometry, path commands, and
+// assignment order match upstream so a future layout fix can be diffed
+// against this file rather than reverse-engineered. Four changes were
+// made, each noted at its site:
 //
 //   1. Colors are design tokens (`var(--git-lane-N)`) instead of VS Code
 //      theme color identifiers, per the core styling rule.
@@ -20,6 +19,9 @@
 //      for this version), but the `kind` field and the renderer branch
 //      that draws them are kept intact, so adding them later is a data
 //      change rather than a renderer change.
+//   4. Every commit marker uses one smaller outer radius. HEAD and merge
+//      commits remain distinct through concentric shapes without taking
+//      more visual weight than an ordinary vertex.
 //
 // This module is pure: it fetches nothing, owns no DOM beyond the SVG
 // element it returns, and holds no state between calls. That is what
@@ -39,8 +41,11 @@
   const SWIMLANE_HEIGHT = 22;
   const SWIMLANE_WIDTH = 11;
   const SWIMLANE_CURVE_RADIUS = 5;
+  // Marker geometry deliberately diverges from upstream: topology is
+  // expressed by the lanes, while concentric shapes carry node state.
   const CIRCLE_RADIUS = 4;
   const CIRCLE_STROKE_WIDTH = 2;
+  const CIRCLE_CENTER_RADIUS = 1;
 
   const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -274,7 +279,7 @@
     const circle = document.createElementNS(SVG_NAMESPACE, "circle");
     circle.setAttribute("cx", `${SWIMLANE_WIDTH * (index + 1)}`);
     circle.setAttribute("cy", `${SWIMLANE_WIDTH}`);
-    circle.setAttribute("r", `${CIRCLE_RADIUS + 1}`);
+    circle.setAttribute("r", `${CIRCLE_RADIUS - CIRCLE_CENTER_RADIUS}`);
     circle.style.stroke = color;
     circle.style.strokeWidth = `${strokeWidth}px`;
     circle.style.strokeDasharray = "4,2";
@@ -464,13 +469,10 @@
    */
   function appendCommitNode(svg, row, circleIndex, circleColor) {
     if (row.kind === "HEAD") {
-      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS + 3, CIRCLE_STROKE_WIDTH, circleColor));
-      // Upstream passes CIRCLE_STROKE_WIDTH as the radius and
-      // CIRCLE_RADIUS as the stroke width here — the arguments read as
-      // transposed, but this is what produces the filled dot inside the
-      // HEAD ring, so the call is preserved exactly rather than
-      // "corrected" into a different shape.
-      svg.append(drawCircle(circleIndex, CIRCLE_STROKE_WIDTH, CIRCLE_RADIUS));
+      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
+      // The unfilled inner circle inherits the current row background,
+      // leaving a hollow HEAD ring through hover and selection states.
+      svg.append(drawCircle(circleIndex, CIRCLE_STROKE_WIDTH, CIRCLE_STROKE_WIDTH));
       return;
     }
 
@@ -478,20 +480,26 @@
     // version — but kept so adding them is a data change, not a
     // renderer change.
     if (row.kind === "incoming-changes" || row.kind === "outgoing-changes") {
-      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS + 3, CIRCLE_STROKE_WIDTH, circleColor));
-      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS + 1, CIRCLE_STROKE_WIDTH + 1));
-      svg.append(drawDashedCircle(circleIndex, CIRCLE_STROKE_WIDTH - 1, circleColor));
+      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
+      svg.append(
+        drawCircle(circleIndex, CIRCLE_RADIUS - CIRCLE_CENTER_RADIUS, CIRCLE_STROKE_WIDTH),
+      );
+      svg.append(
+        drawDashedCircle(circleIndex, CIRCLE_STROKE_WIDTH - CIRCLE_CENTER_RADIUS, circleColor),
+      );
       return;
     }
 
     if (row.commit.parent_ids.length > 1) {
-      // Merge: a ring around a smaller filled dot.
-      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS + 2, CIRCLE_STROKE_WIDTH, circleColor));
-      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS - 1, CIRCLE_STROKE_WIDTH, circleColor));
+      // Merge: a ring around a smaller filled dot, kept inside the same
+      // outer radius as every other vertex.
+      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
+      svg.append(drawCircle(circleIndex, CIRCLE_STROKE_WIDTH, CIRCLE_STROKE_WIDTH));
+      svg.append(drawCircle(circleIndex, CIRCLE_CENTER_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
       return;
     }
 
-    svg.append(drawCircle(circleIndex, CIRCLE_RADIUS + 1, CIRCLE_STROKE_WIDTH, circleColor));
+    svg.append(drawCircle(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
   }
 
   /**

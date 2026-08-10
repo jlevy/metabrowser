@@ -6,9 +6,10 @@
 // mid-page, a page boundary) are tedious to construct with git and
 // trivial to write here.
 //
-// Assertions are on lane assignment, not pixels. Pixel assertions would
-// fail on every geometry tweak while catching nothing; lane assignment
-// is what actually has to be right.
+// Assertions are on lane assignment rather than incidental pixels. The
+// one geometry contract pinned below is that every vertex has the same
+// outer radius; changing that would reintroduce visual weight that is
+// unrelated to the lane topology.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -257,15 +258,16 @@ function countTags(svg, tagName) {
   const { rows } = graph.computeSwimlanes(commits, { headRevision: "m" });
 
   const headSvg = graph.renderCommitGraph(rows[0]);
-  // HEAD is a ring plus a filled centre: two circles, not one.
+  // HEAD is a ring with a hollow centre: two circles, not one.
   assertEqual("render: HEAD draws two circles", countTags(headSvg, "circle"), 2);
   assertEqual("render: row is one row tall", headSvg.style.height, "22px");
   assertTrue("render: svg is class-tagged", headSvg.classNames.has("git-graph-svg"));
 
   const mergeRows = graph.computeSwimlanes(commits).rows;
   const mergeSvg = graph.renderCommitGraph(mergeRows[0]);
-  // Without the HEAD marker a merge is still two circles (ring + dot).
-  assertEqual("render: merge draws two circles", countTags(mergeSvg, "circle"), 2);
+  // A merge keeps its ring + dot distinction without growing beyond a
+  // plain vertex.
+  assertEqual("render: merge draws three circles", countTags(mergeSvg, "circle"), 3);
   // The merge fan-out is an arc; a merge drawn with only straight lines
   // would not read as a merge.
   const mergePaths = mergeSvg.children.filter((child) => child.tagName === "path");
@@ -276,6 +278,14 @@ function countTags(svg, tagName) {
 
   const plainSvg = graph.renderCommitGraph(mergeRows[1]);
   assertEqual("render: plain commit draws one circle", countTags(plainSvg, "circle"), 1);
+  const outerRadii = [headSvg, mergeSvg, plainSvg].map((svg) =>
+    svg.children.find((child) => child.tagName === "circle")?.getAttribute("r"),
+  );
+  assertEqual(
+    "render: every vertex uses the same outer radius",
+    outerRadii,
+    outerRadii.map(() => `${graph.CIRCLE_RADIUS}`),
+  );
 
   const rootSvg = graph.renderCommitGraph(mergeRows[3]);
   // A root commit has no parent, so nothing is drawn below its node.
