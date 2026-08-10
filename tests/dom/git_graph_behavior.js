@@ -76,7 +76,7 @@ function assertTrue(label, value) {
   }
 }
 
-// Commit ids are 40-hex on the wire; here they are short readable
+// Commit ids are full object ids on the wire; here they are short readable
 // labels, since the layout only ever compares them for equality.
 function commit(id, parents, refs) {
   const result = { id, parent_ids: parents };

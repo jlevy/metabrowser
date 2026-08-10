@@ -19,6 +19,7 @@
 (() => {
   const settings = (typeof window !== "undefined" && window.METABROWSER_SETTINGS) || {};
   const LOG_LIMIT = settings.GIT_LOG_LIMIT || 250;
+  const HISTORY_MAX_ROWS = settings.GIT_HISTORY_MAX_ROWS || 500;
   const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS || 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
 
@@ -40,6 +41,7 @@
    * @property {string | null} cursor Next-page cursor, null at the end.
    * @property {boolean} loading A page request is in flight.
    * @property {boolean} failed The last page request failed.
+   * @property {boolean} capped Older commits were omitted at the client row cap.
    * @property {string | null} headRevision
    * @property {string | null} selectedId
    * @property {number} gutterWidth
@@ -55,6 +57,7 @@
       cursor: null,
       loading: false,
       failed: false,
+      capped: false,
       headRevision: null,
       selectedId: null,
       gutterWidth: 0,
@@ -70,6 +73,7 @@
   /** @type {ReturnType<typeof setTimeout> | null} */
   let hoverTimer = null;
   let started = false;
+  let refreshing = false;
 
   function graphModule() {
     return window.MetabrowserGitGraph;
@@ -137,8 +141,8 @@
   // ── Data ───────────────────────────────────────────────────
 
   /**
-   * Fetch the repository gate. Any failure reads as "no repository": the
-   * panel's only recourse either way is not to render.
+   * Fetch the repository gate. A failed request returns null so init or
+   * the visible panel can retry without registering a broken surface.
    *
    * @returns {Promise<MetabrowserGitRepoInfo | null>}
    */
@@ -160,6 +164,7 @@
     try {
       const response = await apiFetch("/api/git/refs");
       if (!response.ok) {
+        refColors = graphModule().buildRefColors(null);
         return;
       }
       const payload = await response.json();
@@ -222,19 +227,30 @@
    * @param {string | null} cursor
    */
   function appendPage(commits, cursor) {
+    const remaining = Math.max(0, HISTORY_MAX_ROWS - state.rows.length);
+    const accepted = commits.slice(0, remaining);
+    const reachesCap = state.rows.length + accepted.length >= HISTORY_MAX_ROWS;
+    const omitted = commits.length > accepted.length || (reachesCap && cursor !== null);
+    if (accepted.length === 0) {
+      state.capped = state.capped || omitted;
+      state.cursor = null;
+      return;
+    }
+
     const graph = graphModule();
-    const result = graph.computeSwimlanes(commits, {
+    const result = graph.computeSwimlanes(accepted, {
       priorSwimlanes: state.trailingSwimlanes,
       colorIndex: state.colorIndex,
       headRevision: state.headRevision,
       refColors,
     });
 
-    state.commits = state.commits.concat(commits);
+    state.commits = state.commits.concat(accepted);
     state.rows = state.rows.concat(result.rows);
     state.trailingSwimlanes = result.trailingSwimlanes;
     state.colorIndex = result.colorIndex;
-    state.cursor = cursor;
+    state.capped = state.capped || omitted;
+    state.cursor = state.capped ? null : cursor;
     for (const row of result.rows) {
       state.gutterWidth = Math.max(state.gutterWidth, graph.graphWidth(row));
     }
@@ -284,6 +300,28 @@
     return document.getElementById("tab-git");
   }
 
+  /**
+   * @param {HTMLElement} panel
+   * @param {string} message
+   */
+  function renderRefreshState(panel, message) {
+    const empty = document.createElement("div");
+    empty.className = "git-panel-empty";
+    const label = document.createElement("div");
+    label.textContent = message;
+    empty.appendChild(label);
+
+    const refresh = document.createElement("button");
+    refresh.type = "button";
+    refresh.className = "git-panel-refresh";
+    refresh.textContent = "Refresh";
+    refresh.addEventListener("click", () => {
+      void refreshHistory();
+    });
+    empty.appendChild(refresh);
+    panel.replaceChildren(empty);
+  }
+
   function renderPanel() {
     const panel = panelElement();
     if (!panel) {
@@ -295,13 +333,13 @@
       return;
     }
     if (state.rows.length === 0 && state.failed) {
-      panel.innerHTML = '<div class="git-panel-empty">Could not read repository history.</div>';
+      renderRefreshState(panel, "Could not read repository history.");
       return;
     }
     if (state.rows.length === 0) {
       // A repository with no commits yet. Distinct from a failure, and
       // it should read that way.
-      panel.innerHTML = '<div class="git-panel-empty">No commits yet.</div>';
+      renderRefreshState(panel, "No commits yet.");
       return;
     }
 
@@ -320,6 +358,11 @@
       failed.className = "git-graph-more git-graph-more-failed";
       failed.textContent = "Could not load more history.";
       list.appendChild(failed);
+    } else if (state.capped) {
+      const capped = document.createElement("div");
+      capped.className = "git-graph-more";
+      capped.textContent = `Showing the newest ${HISTORY_MAX_ROWS} commits.`;
+      list.appendChild(capped);
     }
 
     panel.replaceChildren(list);
@@ -451,6 +494,11 @@
    * @returns {Promise<void>}
    */
   async function selectCommit(revision) {
+    const bridge = shell();
+    if (!bridge) {
+      return;
+    }
+    const previewClaim = bridge.claimPreview("git");
     state.selectedId = revision;
     for (const element of document.querySelectorAll(".git-graph-row")) {
       element.classList.toggle(
@@ -459,29 +507,40 @@
       );
     }
 
-    const preview = shell()?.renderPreviewHtml(
+    const preview = bridge.renderPreviewHtml(
       '<div class="loading"><div class="spinner"></div>Loading commit…</div>',
+      previewClaim,
     );
     if (!preview) {
       return;
     }
 
     const detail = await fetchCommitDetail(revision);
-    // A different commit was selected while this request was in flight.
-    if (state.selectedId !== revision) {
+    // A different commit or another preview owner won while this request
+    // was in flight.
+    if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
       return;
     }
     if (!detail) {
-      shell()?.renderPreviewHtml('<div class="preview-empty">Could not load this commit.</div>');
+      bridge.renderPreviewHtml(
+        '<div class="preview-empty">Could not load this commit.</div>',
+        previewClaim,
+      );
       return;
     }
-    renderCommitDetail(detail);
+    renderCommitDetail(detail, previewClaim);
   }
 
   /**
    * @param {MetabrowserGitCommitDetail} detail
+   * @param {number} [claim]
    */
-  function renderCommitDetail(detail) {
+  function renderCommitDetail(detail, claim) {
+    const bridge = shell();
+    if (!bridge) {
+      return;
+    }
+    const previewClaim = claim ?? bridge.claimPreview("git");
     const commit = detail.commit;
     const stats = detail.stats || {};
     const files = detail.files || [];
@@ -519,7 +578,7 @@
     }
     html += "</div></div>";
 
-    const preview = shell()?.renderPreviewHtml(html);
+    const preview = bridge.renderPreviewHtml(html, previewClaim);
     if (!preview) {
       return;
     }
@@ -549,9 +608,8 @@
     if (!navigable) {
       classes.push("git-commit-file-inert");
     }
-    const attrs = navigable
-      ? ` data-path="${escapeHtml(file.path)}" role="button" tabindex="0"`
-      : "";
+    const tag = navigable ? "button" : "div";
+    const attrs = navigable ? ` type="button" data-path="${escapeHtml(file.path)}"` : "";
 
     let counts = "";
     if (file.binary) {
@@ -568,10 +626,10 @@
     }
 
     return (
-      `<div class="${classes.join(" ")}"${attrs}>` +
+      `<${tag} class="${classes.join(" ")}"${attrs}>` +
       `<span class="git-file-status" title="${escapeHtml(file.status)}">` +
       `${escapeHtml(file.status.charAt(0).toUpperCase())}</span>` +
-      `<span class="git-file-path">${name}</span>${counts}</div>`
+      `<span class="git-file-path">${name}</span>${counts}</${tag}>`
     );
   }
 
@@ -594,10 +652,55 @@
 
   // ── Lifecycle ──────────────────────────────────────────────
 
+  /** @returns {Promise<void>} */
+  async function refreshHistory() {
+    if (state.loading || refreshing) {
+      return;
+    }
+
+    refreshing = true;
+    state = emptyState();
+    state.loading = true;
+    renderPanel();
+    try {
+      const info = await fetchRepoInfo();
+      if (!info) {
+        state.loading = false;
+        state.failed = true;
+        renderPanel();
+        return;
+      }
+      state.headRevision = info.head?.revision ?? null;
+
+      // Ref colors are an input to lane assignment, so they must settle
+      // before the first page is laid out.
+      await loadRefColors();
+      state.loading = false;
+      await loadNextPage(true);
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  /** @returns {Promise<void>} */
+  async function ensureHistory() {
+    if (state.loading) {
+      return;
+    }
+    if (state.rows.length === 0) {
+      await refreshHistory();
+      return;
+    }
+    if (state.failed && state.cursor) {
+      await loadNextPage(false);
+    }
+  }
+
   function teardown() {
     state = emptyState();
     detailCache.clear();
     refColors = new Map();
+    started = false;
     shell()?.removeNavPanel("git");
   }
 
@@ -619,6 +722,7 @@
 
     const info = await fetchRepoInfo();
     if (!info) {
+      started = false;
       return;
     }
     state.headRevision = info.head?.revision ?? null;
@@ -626,15 +730,9 @@
     bridge.registerNavPanel({
       id: "git",
       label: "Git",
-      onFirstShow: () => {
-        void (async () => {
-          // Ref colors first: the lane color for the current branch is
-          // an input to the layout, so loading the page before them
-          // would lay out the first page with the wrong colors and then
-          // have to redo it.
-          await loadRefColors();
-          await loadNextPage(true);
-        })();
+      onFirstShow: null,
+      onShow: () => {
+        void ensureHistory();
       },
     });
 
@@ -655,6 +753,7 @@
       renderFileRow,
       renderPanel,
       renderRefBadges,
+      selectCommit,
       setStateForTests: (/** @type {PanelState} */ next) => {
         state = next;
       },

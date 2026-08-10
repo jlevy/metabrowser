@@ -260,6 +260,7 @@ sandbox.CustomEvent = class CustomEvent {
 sandbox.HTMLElement = FakeElement;
 sandbox.METABROWSER_SETTINGS = {
   GIT_LOG_LIMIT: 2,
+  GIT_HISTORY_MAX_ROWS: 3,
   GIT_HOVER_DEBOUNCE_MS: 0,
   GIT_DETAIL_CACHE_SIZE: 3,
 };
@@ -273,14 +274,23 @@ sandbox.dispatchEvent = (event) => {
 
 // Shell bridge stub. The panel only uses these three.
 let previewHtml = "";
+let previewClaim = 0;
 const removedPanels = [];
 let registeredPanel = null;
 sandbox.MetabrowserShell = {
+  claimPreview: () => {
+    previewClaim += 1;
+    return previewClaim;
+  },
+  isPreviewClaimCurrent: (claim) => claim === previewClaim,
   registerNavPanel: (panel) => {
     registeredPanel = panel;
   },
   removeNavPanel: (id) => removedPanels.push(id),
-  renderPreviewHtml: (html) => {
+  renderPreviewHtml: (html, claim) => {
+    if (claim !== undefined && claim !== previewClaim) {
+      return null;
+    }
     previewHtml = html;
     const preview = new FakeElement("div", document);
     preview.innerHTML = html;
@@ -296,7 +306,8 @@ sandbox.fetch = async (url) => {
   fetchCount += 1;
   for (const [prefix, payload] of responses) {
     if (url.startsWith(prefix)) {
-      return { ok: true, status: 200, json: async () => payload };
+      const value = typeof payload === "function" ? await payload(url) : payload;
+      return { ok: true, status: 200, json: async () => value };
     }
   }
   return { ok: false, status: 404, json: async () => ({}) };
@@ -314,6 +325,7 @@ const internals = panel._internals;
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
 const SHA_C = "c".repeat(40);
+const SHA_D = "d".repeat(40);
 
 function commit(id, parents, subject, refs) {
   return {
@@ -369,7 +381,10 @@ async function run() {
       additions: 4,
       deletions: 2,
     });
+    assertContains("file row: native button", normal, "<button");
+    assertContains("file row: explicit button type", normal, 'type="button"');
     assertContains("file row: navigable carries data-path", normal, 'data-path="src/a.js"');
+    assertNotContains("file row: no synthetic button role", normal, 'role="button"');
     assertContains("file row: additions", normal, "+4");
     assertContains("file row: deletions", normal, "−2");
 
@@ -498,9 +513,35 @@ async function run() {
     assertTrue("paging: gutter width is set", afterSecond.gutterWidth > 0);
   }
 
+  // ── History retention is explicitly bounded ───────────────
+  {
+    internals.setStateForTests(internals.emptyState());
+    internals.appendPage(
+      [commit(SHA_A, [SHA_B], "one"), commit(SHA_B, [SHA_C], "two")],
+      "cursor-1",
+    );
+    internals.appendPage([commit(SHA_C, [SHA_D], "three"), commit(SHA_D, [], "four")], "cursor-2");
+    const bounded = internals.stateForTests();
+    assertEqual("bounded: row cap", bounded.rows.length, 3);
+    assertEqual("bounded: commit cap", bounded.commits.length, 3);
+    assertEqual("bounded: pagination stops", bounded.cursor, null);
+    assertTrue("bounded: truncation is explicit", bounded.capped);
+
+    const container =
+      document.getElementById("tab-git") ??
+      document.register("tab-git", document.createElement("div"));
+    internals.renderPanel();
+    assertEqual(
+      "bounded: only capped rows mount",
+      container.querySelectorAll(".git-graph-row").length,
+      3,
+    );
+    assertContains("bounded: cap is disclosed", container.textContent, "newest 3 commits");
+  }
+
   // ── Panel states ───────────────────────────────────────────
   {
-    const container = document.register("tab-git", document.createElement("div"));
+    const container = document.getElementById("tab-git");
 
     internals.setStateForTests({ ...internals.emptyState(), loading: true });
     internals.renderPanel();
@@ -516,6 +557,11 @@ async function run() {
     // like one.
     assertContains("panel: empty repository", container.innerHTML, "No commits yet");
     assertNotContains("panel: empty is not an error", container.innerHTML, "Could not");
+    assertEqual(
+      "panel: empty offers refresh",
+      container.querySelectorAll(".git-panel-refresh").length,
+      1,
+    );
   }
 
   // ── Rows render with graph, badges, and meta ───────────────
@@ -587,6 +633,32 @@ async function run() {
     rows[0].dispatch("click");
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertEqual("selection: cache avoids a refetch", fetchCount, cachedBefore);
+
+    // A shell navigation owns the preview after it happens. A late Git
+    // response must not replace the newer file/navigation surface.
+    let resolveDelayed;
+    responses.set(
+      `/api/git/commit/${SHA_D}`,
+      () =>
+        new Promise((resolve) => {
+          resolveDelayed = resolve;
+        }),
+    );
+    const delayedSelection = internals.selectCommit(SHA_D);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const fileClaim = sandbox.MetabrowserShell.claimPreview("file");
+    sandbox.MetabrowserShell.renderPreviewHtml("<div>file preview wins</div>", fileClaim);
+    resolveDelayed({
+      is_repo: true,
+      commit: commit(SHA_D, [], "delayed commit"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    await delayedSelection;
+    assertContains("selection: newer preview owner wins", previewHtml, "file preview wins");
+    assertNotContains("selection: delayed commit is discarded", previewHtml, "delayed commit");
   }
 
   // ── Changed files navigate through the shell ───────────────
@@ -618,10 +690,37 @@ async function run() {
   }
   responses.clear();
   registeredPanel = null;
-  // /api/git/repo answers is_repo:false, so nothing is registered.
+  // /api/git/repo answers is_repo:false, so nothing is registered, but
+  // a later init can retry after that transient/negative result.
   responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
   await panel.init();
   assertEqual("gate: no tab outside a repository", registeredPanel, null);
+
+  responses.set("/api/git/repo", {
+    is_repo: true,
+    root: "",
+    head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+  });
+  responses.set("/api/git/refs", { is_repo: true, refs: [] });
+  await panel.init();
+  assertTrue("gate: init retries and registers", registeredPanel !== null);
+
+  internals.setStateForTests(internals.emptyState());
+  responses.delete("/api/git/log");
+  registeredPanel.onShow();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertTrue("show: initial history failure is retained", internals.stateForTests().failed);
+
+  responses.set("/api/git/log", {
+    is_repo: true,
+    commits: [commit(SHA_A, [], "retry succeeded")],
+    cursor: null,
+    has_more: false,
+  });
+  registeredPanel.onShow();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEqual("show: reopening retries history", internals.stateForTests().rows.length, 1);
+  assertTrue("show: successful retry clears failure", !internals.stateForTests().failed);
 
   // ── Relative age ───────────────────────────────────────────
   {

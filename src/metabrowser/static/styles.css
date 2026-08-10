@@ -3677,6 +3677,21 @@ pre.code-block code.hljs {
   font-size: var(--nav-font-size);
 }
 
+.git-panel-refresh {
+  margin-top: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  background: transparent;
+  color: var(--link);
+  cursor: pointer;
+  font: inherit;
+}
+
+.git-panel-refresh:hover {
+  background: var(--hover-bg);
+}
+
 /* ── Ref badges ─────────────────────────────────────────────── */
 
 .git-ref {
@@ -3766,17 +3781,30 @@ pre.code-block code.hljs {
 }
 
 .git-commit-file {
+  appearance: none;
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   padding: 3px 4px;
+  border: 0;
   border-radius: var(--radius-chrome);
+  background: transparent;
+  color: inherit;
   cursor: pointer;
+  font-family: inherit;
   font-size: var(--ui-small-font-size);
+  text-align: left;
 }
 
 .git-commit-file:hover {
   background: var(--hover-bg);
+}
+
+.git-commit-file:focus-visible,
+.git-panel-refresh:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
 }
 
 /* Files outside the served root, and deleted files, are listed but not

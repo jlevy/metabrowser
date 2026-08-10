@@ -32,7 +32,7 @@ from __future__ import annotations
 import re
 
 from metabrowser.git.log import parse_decoration, parse_epoch
-from metabrowser.git.process import run_git
+from metabrowser.git.process import GitCommandError, run_git
 from metabrowser.git.repo import RepoContext
 from metabrowser.git.wire import (
     GitAuthor,
@@ -71,6 +71,12 @@ _STATUS_NAMES: dict[str, str] = {
 
 # Statuses that carry a second path. Git spends three tokens on these.
 _TWO_PATH_STATUSES = frozenset({"C", "R"})
+
+_UNKNOWN_REVISION_MARKERS: tuple[str, ...] = (
+    "bad object",
+    "not a valid object name",
+    "unknown revision or path not in the working tree",
+)
 
 
 def _show_args(revision: str) -> list[str]:
@@ -335,7 +341,12 @@ async def read_commit_detail(
     max_files: int = GIT_COMMIT_MAX_FILES,
 ) -> GitCommitDetail | None:
     """Read one commit's detail. ``None`` when the revision is unknown."""
-    raw = await run_git(_show_args(revision), cwd=context.served_root)
+    try:
+        raw = await run_git(_show_args(revision), cwd=context.served_root)
+    except GitCommandError as exc:
+        if any(marker in exc.stderr_summary.lower() for marker in _UNKNOWN_REVISION_MARKERS):
+            return None
+        raise
     return parse_commit_detail(raw, context, max_files=max_files)
 
 

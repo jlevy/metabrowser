@@ -258,9 +258,9 @@ def encode_cursor(skip: int) -> str:
 def decode_cursor(cursor: str) -> int | None:
     """Decode a page cursor to its skip offset, or ``None`` if malformed.
 
-    A malformed cursor is treated as absent by the route rather than as
-    an error: the worst case is that the browser re-reads the first page,
-    which is recoverable, whereas a 400 mid-scroll strands the panel.
+    The route rejects ``None`` as a bad request. Restarting at offset zero
+    would make the append-only client duplicate commits and corrupt lane
+    continuity.
     """
     try:
         padding = "=" * (-len(cursor) % 4)
@@ -296,7 +296,7 @@ async def read_log_page(served_root: Path, *, skip: int, limit: int) -> GitLogPa
     )
 
 
-async def read_refs(served_root: Path) -> list[GitRef]:
+async def read_refs(served_root: Path, *, head_ref: str | None = None) -> list[GitRef]:
     """List every branch, remote branch, and tag with its target commit.
 
     ``for-each-ref`` rather than ``branch``/``tag``: it emits full
@@ -304,6 +304,10 @@ async def read_refs(served_root: Path) -> list[GitRef]:
     on a ``refs/tags/*`` entry with ``^{}`` appended resolves an annotated
     tag through to the commit it tags — a badge must point at a commit in
     the graph, not at the tag object.
+
+    ``head_ref`` is the symbolic ref discovered with the repository
+    context. Passing it into this single ref walk avoids another process
+    while still marking the checked-out branch for client lane colors.
     """
     raw = await run_git(
         [
@@ -330,6 +334,8 @@ async def read_refs(served_root: Path) -> list[GitRef]:
             continue
         ref = _ref_from_full_name(full_name, revision)
         if ref is not None:
+            if full_name == head_ref:
+                ref["is_head"] = True
             refs.append(ref)
 
     refs.sort(key=_ref_sort_key)

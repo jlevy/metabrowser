@@ -13,9 +13,9 @@ Every route is read-only. Four shared rules hold across all of them:
   is not installed" are ordinary states of the world, not errors, and a
   4xx would put them in the browser's error path.
 * **Revisions are validated before they reach an argument vector.**
-  :func:`~metabrowser.git.wire.is_full_revision` accepts exactly 40 hex
-  characters, so a caller-supplied value can never be read as an option
-  or a revision expression.
+  :func:`~metabrowser.git.wire.is_full_revision` accepts only full SHA-1
+  or SHA-256 object ids, so a caller-supplied value can never be read as
+  an option or a revision expression.
 * **Numeric parameters are clamped, not rejected.** An out-of-range
   ``limit`` is a client bug that should still render a panel.
 * **Git failures become 5xx with a generic body.** Git's error text
@@ -92,7 +92,7 @@ async def api_git_refs(_request: Request) -> JSONResponse:
         return JSONResponse(_negative_payload(info))
 
     try:
-        refs = await read_refs(served_root)
+        refs = await read_refs(served_root, head_ref=context.head["ref"])
     except GitError as exc:
         log.warning("git refs failed: %s", exc)
         return _git_failure_response(exc)
@@ -110,9 +110,9 @@ async def api_git_log(request: Request) -> JSONResponse:
         non-numeric value falls back to the default rather than failing:
         the panel should render.
     ``cursor``
-        Opaque, from a previous page. A malformed cursor is treated as
-        absent — re-reading the first page is recoverable, whereas a 400
-        mid-scroll strands the panel with no way forward.
+        Opaque, from a previous page. A malformed cursor is rejected;
+        restarting from the first page would make the append-only client
+        duplicate rows and corrupt lane continuity.
     """
     served_root = _resolved_root_dir()
     context, info = await _resolve(served_root)
@@ -123,8 +123,7 @@ async def api_git_log(request: Request) -> JSONResponse:
     cursor = request.query_params.get("cursor", "")
     skip = decode_cursor(cursor) if cursor else 0
     if skip is None:
-        log.info("git log received a malformed cursor; restarting from the first page")
-        skip = 0
+        return JSONResponse({"error": "invalid cursor"}, status_code=400)
 
     # An unborn HEAD is a repository with no commits. `git log` exits
     # non-zero there, which would read as a failure; short-circuit to the
@@ -151,7 +150,10 @@ async def api_git_commit(request: Request) -> JSONResponse:
     if not isinstance(revision, str) or not is_full_revision(revision):
         # Deliberately not echoed back into the message: the value is
         # caller-controlled and this response is rendered in the browser.
-        return JSONResponse({"error": "revision must be a full 40-character sha"}, status_code=400)
+        return JSONResponse(
+            {"error": "revision must be a full 40- or 64-character object id"},
+            status_code=400,
+        )
 
     served_root = _resolved_root_dir()
     context, info = await _resolve(served_root)
@@ -161,14 +163,8 @@ async def api_git_commit(request: Request) -> JSONResponse:
     try:
         detail = await read_commit_detail(context, revision)
     except GitError as exc:
-        log.info("git commit detail failed for %s: %s", revision, exc)
-        # A non-zero exit here is overwhelmingly "no such object" — a
-        # commit that was rewritten or pruned between the log page and
-        # this request. 404 is the honest answer, and the panel can drop
-        # the row instead of showing an error banner.
-        if isinstance(exc, GitTimeoutError):
-            return _git_failure_response(exc)
-        return JSONResponse({"error": "unknown revision"}, status_code=404)
+        log.warning("git commit detail failed for %s: %s", revision, exc)
+        return _git_failure_response(exc)
 
     if detail is None:
         return JSONResponse({"error": "unknown revision"}, status_code=404)

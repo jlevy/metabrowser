@@ -154,6 +154,12 @@ GIT_SUBPROCESS_MAX_BYTES = 32 * 1024 * 1024
 GIT_LOG_DEFAULT_LIMIT = 250
 GIT_LOG_MAX_LIMIT = 1_000
 
+# Maximum commit rows retained and mounted by the browser. The API can
+# page arbitrarily deep, but a navigation panel must not grow its DOM or
+# client state with the lifetime of a repository. The panel discloses the
+# cap instead of presenting the bounded list as complete.
+GIT_HISTORY_MAX_ROWS = 500
+
 # Changed files returned by ``/api/git/commit/{revision}``. A commit that
 # touches more than this reports ``files_truncated`` rather than being
 # silently shortened.
@@ -161,7 +167,8 @@ GIT_COMMIT_MAX_FILES = 1_000
 
 # Repository identity (root, HEAD, capability) is stable between commits
 # but must not go stale across a checkout. Short TTL, same shape as the
-# gitignore checker cache in ``tree.py``.
+# gitignore checker cache in ``tree.py``. Unborn HEAD entries bypass the
+# cache so the first commit appears immediately.
 GIT_REPO_INFO_TTL_S = 5.0
 
 # Client-side pacing for the hover card. The card is backed by the same
@@ -199,6 +206,7 @@ def client_settings_dict() -> dict[str, Any]:
         "TREE_AUTO_EXPAND_FALLBACK_ROWS": TREE_AUTO_EXPAND_FALLBACK_ROWS,
         "SSE_HEARTBEAT_INTERVAL_S": SSE_HEARTBEAT_INTERVAL_S,
         "GIT_LOG_LIMIT": GIT_LOG_DEFAULT_LIMIT,
+        "GIT_HISTORY_MAX_ROWS": GIT_HISTORY_MAX_ROWS,
         "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
     }
@@ -212,6 +220,7 @@ __all__ = [
     "GIT_COMMIT_MAX_FILES",
     "GIT_DETAIL_CACHE_SIZE",
     "GIT_HOVER_DEBOUNCE_MS",
+    "GIT_HISTORY_MAX_ROWS",
     "GIT_LOG_DEFAULT_LIMIT",
     "GIT_LOG_MAX_LIMIT",
     "GIT_REPO_INFO_TTL_S",

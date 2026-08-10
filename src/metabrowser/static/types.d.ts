@@ -575,7 +575,10 @@ declare global {
     id: string;
     label: string;
     onFirstShow: (() => void) | null;
+    onShow?: (() => void) | null;
   };
+
+  type MetabrowserPreviewClaim = number;
 
   /**
    * The internal seam between the shell and core modules that are not file
@@ -584,9 +587,11 @@ declare global {
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
+    claimPreview(owner: string): MetabrowserPreviewClaim;
+    isPreviewClaimCurrent(claim: MetabrowserPreviewClaim): boolean;
     registerNavPanel(panel: MetabrowserNavPanel): void;
     removeNavPanel(panelId: string): void;
-    renderPreviewHtml(html: string): HTMLElement | null;
+    renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
   };
 
   var hljs: {
@@ -633,6 +638,7 @@ declare global {
     METABROWSER_INITIAL_PATH?: string;
     METABROWSER_SETTINGS?: {
       GIT_DETAIL_CACHE_SIZE?: number;
+      GIT_HISTORY_MAX_ROWS?: number;
       GIT_HOVER_DEBOUNCE_MS?: number;
       GIT_LOG_LIMIT?: number;
       INDEX_PROGRESS_POLL_MS?: number;

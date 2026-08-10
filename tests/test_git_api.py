@@ -283,6 +283,59 @@ def test_repo_info_is_cached_within_the_ttl(repo: Path) -> None:
     assert second_context is first_context
 
 
+def test_repo_info_refreshes_an_unborn_head_after_the_first_commit(tmp_path: Path) -> None:
+    root = tmp_path / "first-commit"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+
+    with _served(root):
+        _context, before = asyncio.run(repo_info(root))
+        assert before["head"] is not None
+        assert before["head"]["unborn"] is True
+
+        _write(root, "first.txt", "first\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-qm", "first commit")
+
+        # Do not clear the cache: this is the production transition that
+        # previously stayed unborn until the TTL elapsed.
+        _context, after = asyncio.run(repo_info(root))
+
+    assert after["head"] is not None
+    assert after["head"]["unborn"] is False
+    assert is_full_revision(after["head"]["revision"] or "")
+
+
+def test_repo_info_and_routes_support_sha256_object_ids(tmp_path: Path) -> None:
+    root = tmp_path / "sha256"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main", "--object-format=sha256")
+    _write(root, "sha256.txt", "sha256\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "sha256 commit")
+
+    with _served(root):
+        _context, info = asyncio.run(repo_info(root))
+        assert info["head"] is not None
+        revision = info["head"]["revision"] or ""
+        assert len(revision) == 64
+        assert is_full_revision(revision)
+
+        page = asyncio.run(read_log_page(root, skip=0, limit=10))
+        validate_git_log_page(dict(page))
+        assert page["commits"][0]["id"] == revision
+
+        response = asyncio.run(
+            api_git_commit(
+                _FakeRequest(  # pyright: ignore[reportArgumentType]
+                    path_params={"revision": revision}
+                )
+            )
+        )
+        assert response.status_code == 200
+        validate_git_commit_detail(_json(response))
+
+
 # ── Log pages ────────────────────────────────────────────────
 
 
@@ -385,13 +438,25 @@ def test_cursor_round_trips_and_rejects_junk() -> None:
 
 
 def test_refs_lists_branches_and_tags_with_commit_targets(repo: Path) -> None:
-    refs = asyncio.run(read_refs(repo))
+    context, _info = asyncio.run(repo_info(repo))
+    assert context is not None
+    refs = asyncio.run(read_refs(repo, head_ref=context.head["ref"]))
     for ref in refs:
         validate_git_ref(ref)
     by_kind = {(r["kind"], r["name"]) for r in refs}
     assert ("branch", "main") in by_kind
     assert ("branch", "feature") in by_kind
     assert ("tag", "v1.0") in by_kind
+    head_refs = [ref for ref in refs if ref.get("is_head")]
+    assert [(ref["kind"], ref["name"]) for ref in head_refs] == [("branch", "main")]
+
+
+def test_route_refs_marks_the_checked_out_branch(repo: Path) -> None:
+    response = asyncio.run(api_git_refs(_FakeRequest()))  # pyright: ignore[reportArgumentType]
+    assert response.status_code == 200
+    payload = _json(response)
+    head_refs = [ref for ref in payload["refs"] if ref.get("is_head")]
+    assert [(ref["kind"], ref["name"]) for ref in head_refs] == [("branch", "main")]
 
 
 def test_annotated_tags_resolve_to_the_commit_they_tag(repo: Path) -> None:
@@ -635,16 +700,12 @@ def test_route_log_clamps_an_out_of_range_limit(repo: Path) -> None:
         assert len(payload["commits"]) >= 1, raw_limit
 
 
-def test_route_log_treats_a_malformed_cursor_as_the_first_page(repo: Path) -> None:
+def test_route_log_rejects_a_malformed_cursor(repo: Path) -> None:
     response = asyncio.run(
         api_git_log(_FakeRequest({"cursor": "!!!not-a-cursor"}))  # pyright: ignore[reportArgumentType]
     )
-    # Restarting is recoverable; a 400 mid-scroll would strand the panel
-    # with no way forward.
-    assert response.status_code == 200
-    payload = _json(response)
-    validate_git_log_page(payload)
-    assert payload["commits"][0]["subject"] == "merge feature into main"
+    assert response.status_code == 400
+    assert _json(response) == {"error": "invalid cursor"}
 
 
 @pytest.mark.parametrize(
@@ -681,6 +742,42 @@ def test_route_commit_returns_404_for_an_unknown_object(repo: Path) -> None:
     assert response.status_code == 404
 
 
+def test_route_commit_preserves_operational_git_failures(repo: Path) -> None:
+    page = asyncio.run(read_log_page(repo, skip=0, limit=1))
+    revision = page["commits"][0]["id"]
+    with mock.patch(
+        "metabrowser.git.routes.read_commit_detail",
+        side_effect=GitOutputTooLargeError("bounded output exceeded"),
+    ):
+        response = asyncio.run(
+            api_git_commit(
+                _FakeRequest(  # pyright: ignore[reportArgumentType]
+                    path_params={"revision": revision}
+                )
+            )
+        )
+
+    assert response.status_code == 500
+    assert _json(response) == {"error": "git command failed"}
+
+
+def test_route_commit_does_not_hide_a_generic_command_failure(repo: Path) -> None:
+    page = asyncio.run(read_log_page(repo, skip=0, limit=1))
+    revision = page["commits"][0]["id"]
+    failure = GitCommandError(["show", revision], 128, "fatal: repository is corrupt")
+    with mock.patch("metabrowser.git.routes.read_commit_detail", side_effect=failure):
+        response = asyncio.run(
+            api_git_commit(
+                _FakeRequest(  # pyright: ignore[reportArgumentType]
+                    path_params={"revision": revision}
+                )
+            )
+        )
+
+    assert response.status_code == 500
+    assert _json(response) == {"error": "git command failed"}
+
+
 def test_route_commit_returns_detail_for_a_known_commit(repo: Path) -> None:
     page = asyncio.run(read_log_page(repo, skip=0, limit=1))
     revision = page["commits"][0]["id"]
@@ -707,6 +804,15 @@ def test_route_error_bodies_never_leak_local_paths(repo: Path, tmp_path: Path) -
 # ── Wire validators ──────────────────────────────────────────
 
 
+def test_full_revision_accepts_sha1_and_sha256_object_ids() -> None:
+    assert is_full_revision("a" * 40)
+    assert is_full_revision("b" * 64)
+    assert not is_full_revision("a" * 39)
+    assert not is_full_revision("a" * 41)
+    assert not is_full_revision("b" * 63)
+    assert not is_full_revision("B" * 64)
+
+
 def test_validator_rejects_an_abbreviated_commit_id() -> None:
     commit = {
         "id": "abc1234",
@@ -717,7 +823,7 @@ def test_validator_rejects_an_abbreviated_commit_id() -> None:
         "committed_at": 0.0,
         "subject": "s",
     }
-    with pytest.raises(AssertionError, match="full 40-hex"):
+    with pytest.raises(AssertionError, match="full object id"):
         validate_git_commit(commit)
 
 

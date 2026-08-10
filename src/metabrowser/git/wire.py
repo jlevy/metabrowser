@@ -20,8 +20,9 @@ Convention
   are gone. Keep them in sync with the class bodies.
 * Timestamps are epoch seconds as ``float``, matching ``mtime`` in the
   tree wire model, so the browser has one time convention to handle.
-* Revisions are full 40-character SHAs. ``short_id`` carries the
-  abbreviation git itself chose, which respects the repository's
+* Revisions are full object ids: 40 hexadecimal characters for SHA-1
+  repositories and 64 for SHA-256 repositories. ``short_id`` carries
+  the abbreviation git itself chose, which respects the repository's
   ``core.abbrev`` and grows as the repository does — recomputing it
   client-side by truncating would eventually collide.
 * Paths in :class:`GitFileChange` are served-root-relative, like every
@@ -44,7 +45,7 @@ import re
 from collections.abc import Mapping
 from typing import Any, Literal, NotRequired, TypedDict
 
-# A full git object name: exactly 40 lowercase hex characters.
+# A full Git object name: exactly 40 or 64 lowercase hex characters.
 #
 # Every revision that reaches an argument vector is matched against this
 # first. Abbreviations are rejected on purpose, even though git would
@@ -53,11 +54,11 @@ from typing import Any, Literal, NotRequired, TypedDict
 # (``HEAD~3``, ``main@{upstream}``), or a pathspec. The browser always has
 # the full id, because every commit it renders came from
 # :class:`GitLogPage`.
-_FULL_REVISION_RE = re.compile(r"\A[0-9a-f]{40}\Z")
+_FULL_REVISION_RE = re.compile(r"\A(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 
 
 def is_full_revision(value: str) -> bool:
-    """True iff *value* is a full 40-character lowercase hex object name.
+    """True iff *value* is a full SHA-1 or SHA-256 lowercase object id.
 
     The gate every route applies before a revision reaches
     :func:`metabrowser.git.process.run_git`.
@@ -253,7 +254,7 @@ def validate_git_ref(ref: Mapping[str, Any], *, _where: str = "") -> None:
     assert isinstance(ref["name"], str), f"ref.name not str at {_where!r}"
     assert ref["kind"] in _REF_KINDS, f"ref.kind {ref['kind']!r} not in {sorted(_REF_KINDS)}"
     assert is_full_revision(ref["revision"]), (
-        f"ref.revision not a full 40-hex sha at {_where!r}: {ref['revision']!r}"
+        f"ref.revision not a full object id at {_where!r}: {ref['revision']!r}"
     )
     if "is_head" in ref:
         assert isinstance(ref["is_head"], bool), f"ref.is_head not bool at {_where!r}"
@@ -271,7 +272,7 @@ def validate_git_commit(commit: Mapping[str, Any], *, _where: str = "") -> None:
     where = _where or commit.get("short_id", "?")
 
     assert is_full_revision(commit["id"]), (
-        f"commit.id not a full 40-hex sha at {where!r}: {commit['id']!r} — "
+        f"commit.id not a full object id at {where!r}: {commit['id']!r} — "
         f"the browser passes this straight back as a path parameter"
     )
     assert isinstance(commit["short_id"], str), f"commit.short_id not str at {where!r}"
@@ -280,7 +281,7 @@ def validate_git_commit(commit: Mapping[str, Any], *, _where: str = "") -> None:
     assert isinstance(parents, list), f"commit.parent_ids not list at {where!r}"
     for i, parent in enumerate(parents):
         assert is_full_revision(parent), (
-            f"commit.parent_ids[{i}] not a full 40-hex sha at {where!r}: {parent!r} — "
+            f"commit.parent_ids[{i}] not a full object id at {where!r}: {parent!r} — "
             f"the swimlane layout matches parents against commit ids by equality"
         )
 
@@ -410,7 +411,7 @@ def validate_git_repo_info(info: Mapping[str, Any]) -> None:
         assert revision is None, f"unborn head must have revision=None, got {revision!r}"
     else:
         assert revision is not None and is_full_revision(revision), (
-            f"head.revision not a full 40-hex sha: {revision!r}"
+            f"head.revision not a full object id: {revision!r}"
         )
 
     ref = head.get("ref")

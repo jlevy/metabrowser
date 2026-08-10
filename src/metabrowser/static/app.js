@@ -1764,12 +1764,40 @@ function startIndexProgressPolling() {
  * @property {(() => void) | null} onFirstShow Runs once, the first time
  *   the panel is shown. Lazy loading is the whole point: Recent and Git
  *   both cost a request that a user who never opens them should not pay.
+ * @property {(() => void) | null | undefined} [onShow] Runs every time
+ *   the panel is activated, including the first. Panels use this only
+ *   for cheap refresh/retry checks after their lazy initialization.
  */
 
 /** @type {NavPanel[]} */
 var navPanels = [];
 /** @type {Set<string>} */
 var navPanelsShown = new Set();
+var previewClaimGeneration = 0;
+
+/**
+ * Claim the shared preview pane for one navigation owner.
+ *
+ * Async preview producers keep the returned generation and check it
+ * before every write. A later file, commit, or nav action increments the
+ * generation, making all older writes harmless.
+ *
+ * @param {string} owner
+ * @returns {number}
+ */
+function claimPreview(owner) {
+  previewClaimGeneration += 1;
+  const preview = document.getElementById("preview-pane");
+  if (preview) {
+    preview.dataset.previewOwner = owner;
+  }
+  return previewClaimGeneration;
+}
+
+/** @param {number} claim */
+function isPreviewClaimCurrent(claim) {
+  return claim === previewClaimGeneration;
+}
 
 function registerNavPanel(panel) {
   if (navPanels.some((existing) => existing.id === panel.id)) {
@@ -1829,6 +1857,7 @@ function activateNavPanel(panelId) {
   if (!navBar) {
     return;
   }
+  claimPreview(`nav:${panelId}`);
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
     const selected = btn.dataset.tab === panelId;
     btn.classList.toggle("active", selected);
@@ -1838,12 +1867,12 @@ function activateNavPanel(panelId) {
     panel.style.display = panel.dataset.tabContent === panelId ? "" : "none";
   });
 
-  if (navPanelsShown.has(panelId)) {
-    return;
-  }
-  navPanelsShown.add(panelId);
   const panel = navPanels.find((candidate) => candidate.id === panelId);
-  panel?.onFirstShow?.();
+  if (!navPanelsShown.has(panelId)) {
+    navPanelsShown.add(panelId);
+    panel?.onFirstShow?.();
+  }
+  panel?.onShow?.();
 }
 
 function initNavTabs() {
@@ -1876,7 +1905,10 @@ function initNavTabs() {
 // assignment at each call site: replacing the pane detaches whatever
 // plugin views are mounted, and skipping their disposers leaks their
 // listeners and retained resources.
-function renderPreviewHtml(html) {
+function renderPreviewHtml(html, claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return null;
+  }
   const preview = document.getElementById("preview-pane");
   if (!preview) {
     return null;
@@ -1895,6 +1927,8 @@ function renderPreviewHtml(html) {
 // of app.js instead of adding a thousand lines to it.
 window.MetabrowserShell = Object.freeze({
   activateNavPanel,
+  claimPreview,
+  isPreviewClaimCurrent,
   registerNavPanel,
   removeNavPanel,
   renderPreviewHtml,
@@ -2482,6 +2516,8 @@ function cachePut(cache, key, value, maxSize, onEvict) {
 }
 
 var textChunkLoadInFlight = false;
+/** @type {number | null} */
+var filePreviewClaim = null;
 
 // Called by the generated file-header action.
 // biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
@@ -2496,6 +2532,7 @@ async function loadMoreCurrentText() {
 
   textChunkLoadInFlight = true;
   var path = currentPath;
+  var previewClaim = filePreviewClaim;
   var offset = cached.bytes_read || 0;
   try {
     var resp = await fetch(
@@ -2514,7 +2551,7 @@ async function loadMoreCurrentText() {
       () => resp.json(),
       responsePerfMeta(resp, path, { offset: offset }),
     );
-    if (currentPath !== path) {
+    if (currentPath !== path || previewClaim === null || !isPreviewClaimCurrent(previewClaim)) {
       return;
     }
     if (chunk.mtime_hash && cached.mtime_hash && chunk.mtime_hash !== cached.mtime_hash) {
@@ -2528,7 +2565,7 @@ async function loadMoreCurrentText() {
     cached.bytes_read = chunk.bytes_read || cached.bytes_read;
     cached.content_truncated = !!chunk.content_truncated;
     cached.highlight_disabled = true;
-    renderFile(cached);
+    renderFile(cached, previewClaim);
   } catch (e) {
     console.warn("Failed to load text chunk", e);
   } finally {
@@ -2546,6 +2583,8 @@ var selectFileAbortController = null;
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, skipHash) {
+  var previewClaim = claimPreview("file");
+  filePreviewClaim = previewClaim;
   return _perf.measureAsync(
     "selectFile",
     async () => {
@@ -2570,7 +2609,7 @@ async function selectFile(path, skipHash) {
       const cached = fileCache.get(path);
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
-        renderFile(cached);
+        renderFile(cached, previewClaim);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
       }
@@ -2580,7 +2619,7 @@ async function selectFile(path, skipHash) {
       }
       loadingIndicatorTimer = setTimeout(() => {
         loadingIndicatorTimer = null;
-        if (currentPath !== path) {
+        if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
           return;
         }
         disposeActivePluginViews();
@@ -2610,12 +2649,12 @@ async function selectFile(path, skipHash) {
           // Server confirmed the cached payload is still fresh — zero-byte
           // body, render from memory.
           fileNeedsRevalidate.delete(path);
-          if (currentPath === path) {
+          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
             if (loadingIndicatorTimer) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
-            renderFile(cached);
+            renderFile(cached, previewClaim);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
           }
@@ -2643,12 +2682,12 @@ async function selectFile(path, skipHash) {
           boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
         }
         fileNeedsRevalidate.delete(path);
-        if (currentPath === path) {
+        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
-          renderFile(data);
+          renderFile(data, previewClaim);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
         }
@@ -2659,7 +2698,7 @@ async function selectFile(path, skipHash) {
           return { status: "cancelled" };
         }
         var notFound = caught?.notFound === true;
-        if (currentPath === path) {
+        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
@@ -2898,7 +2937,11 @@ function mountPluginView(container, pluginView, ctx) {
   }
 }
 
-function renderFile(data) {
+function renderFile(data, claim) {
+  var renderClaim = claim ?? filePreviewClaim;
+  if (renderClaim === null || !isPreviewClaimCurrent(renderClaim)) {
+    return;
+  }
   return _perf.measure(
     `renderFile:${data.kind || data.type || "?"}`,
     () => {

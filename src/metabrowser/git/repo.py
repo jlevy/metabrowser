@@ -12,7 +12,9 @@ the question the Git tab needs settled before it renders.
 
 The result is TTL-cached per served root. Identity is stable between
 commits but must not survive a checkout, so the TTL is short — the same
-shape as the gitignore checker cache in :mod:`metabrowser.tree`.
+shape as the gitignore checker cache in :mod:`metabrowser.tree`. An
+unborn HEAD is the exception: it is rediscovered on every request so the
+repository's first commit becomes visible immediately.
 """
 
 from __future__ import annotations
@@ -184,7 +186,12 @@ async def repo_info(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]
     now = time.monotonic()
     cached = _REPO_CACHE.get(key)
     if cached is not None and cached[0] > now:
-        return cached[1], cached[2]
+        cached_context = cached[1]
+        # The first commit is the one identity transition that can happen
+        # without a checkout. Keeping an unborn entry until the TTL would
+        # make both /repo and /log lie after that commit was created.
+        if cached_context is None or not cached_context.head["unborn"]:
+            return cached_context, cached[2]
 
     context, info = await _discover(served_root)
     _REPO_CACHE[key] = (now + GIT_REPO_INFO_TTL_S, context, info)

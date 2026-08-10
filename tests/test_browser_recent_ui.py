@@ -138,6 +138,26 @@ def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
     assert "aria-selected" in activate_block
 
 
+def test_nav_panels_support_an_every_show_retry_hook() -> None:
+    js = _read_app_js()
+    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1800]
+    assert "panel?.onShow?.()" in activate_block
+    assert activate_block.index("panel?.onFirstShow?.()") < activate_block.index(
+        "panel?.onShow?.()"
+    )
+
+
+def test_preview_shell_uses_generation_claims_across_owners() -> None:
+    js = _read_app_js()
+    assert "function claimPreview(owner)" in js
+    assert "function isPreviewClaimCurrent(claim)" in js
+    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1800]
+    assert "claimPreview(`nav:${panelId}`)" in activate_block
+    shell_block = js[js.index("window.MetabrowserShell = Object.freeze") :][:600]
+    assert "claimPreview" in shell_block
+    assert "isPreviewClaimCurrent" in shell_block
+
+
 def test_load_recent_fetches_api_recent_for_full_window_coverage() -> None:
     """Recent is hybrid: chip change fetches
     ``/api/recent`` so the panel covers files outside the SSE
