@@ -436,19 +436,34 @@ to `showIgnored`.
 
 ## Open Questions
 
-**`Live` stays, for now.** It is not a synonym for `1h`: the active tracker marks a file
-live when its size or mtime fingerprint changed within `stale_after_s` (30s), plus up to
-`ACTIVE_TRACKER_QUIET_POLLS × ACTIVE_TRACKER_INTERVAL_S` (30s) of hysteresis — so
-roughly “changed in the last half-minute”, two orders of magnitude narrower than `1h`.
-It is also the only recency value that updates over SSE without a refetch, which is what
-makes it useful while watching an agent write logs.
+**`Live` is not a recency window, and probably does not belong on this axis.** An
+earlier draft of this plan called it “roughly a 30-second window”.
+That is wrong in the way that matters.
+`active_tracker._is_trackable` admits a file only when *all* of these hold:
 
-The case against it is real and unresolved rather than answered: on a quiet repository
-it is always empty, which reads as broken rather than as “nothing is happening”, and it
-is the same *kind* of thing as the windows beside it.
-Relabelling it `30s` would make the axis uniform at the cost of the “this updates in
-real time” connotation.
-Revisit with usage evidence.
+1. it sits under a `/.logs/` or `/.state/` path segment;
+2. its extension is in `BROWSER_TRACKABLE_EXTS` (`.jsonl`, `.yaml`, …);
+3. its size/mtime fingerprint changed within `stale_after_s` (30s), plus up to
+   `ACTIVE_TRACKER_QUIET_POLLS × ACTIVE_TRACKER_INTERVAL_S` (30s) of hysteresis.
+
+Only the third is a recency test.
+The first two mean `Live` answers “which run artifact is being appended to right now”,
+not “what changed recently” — so on a repository with no agent run logs it is
+*structurally* empty rather than momentarily empty.
+Verified in a browser: appending to an ordinary file for seven seconds never marks it
+live.
+
+That mismatch caused a real bug, since fixed.
+The predicate rejected only files, so under `Live` every folder fell through and every
+unloaded folder was kept as “unknown”: the tree showed 59 folders and no files, many
+stamped days old, which reads exactly like a broken filter.
+Folders are now judged on whether a live path lies beneath them — `activeFiles` carries
+the complete set, so unlike the other dimensions there is no unseen subtree to wave
+through — and the empty case says so in words.
+
+Still open: whether a control that is empty by construction on most repositories earns a
+slot beside `Past hour`. Moving it out of the age menu and naming it for what it tracks
+would be more honest than either keeping it there or deleting it.
 
 **Does the type menu want tracked-only counts by default?** With **Show ignored** on —
 the default — the ranking is dominated by whatever a package manager put on disk (`.ts`

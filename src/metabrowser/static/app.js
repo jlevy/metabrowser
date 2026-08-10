@@ -2718,6 +2718,23 @@ function onFilterStateChange(state) {
 // exception being recency, where the folder's own aggregate mtime
 // (newest descendant) is a definitive answer for the whole subtree.
 
+// Is any file under this folder being written right now? activeFiles
+// holds full paths, so a folder can be judged without its children
+// being rendered — the reason Live does not need the unloaded-folder
+// escape the other dimensions do.
+function hasLiveDescendant(dirPath) {
+  if (activeFiles.size === 0) {
+    return false;
+  }
+  var prefix = dirPath ? `${dirPath}/` : "";
+  for (const livePath of activeFiles.keys()) {
+    if (!prefix || livePath.startsWith(prefix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function _childContainerFor(row) {
   var next = row.nextElementSibling;
   return next?.classList.contains("tree-children") ? next : null;
@@ -2743,10 +2760,18 @@ function applyTreeFilters() {
   var nowSec = Date.now() / 1000;
   var keep = new Map();
   var unloadedFolders = 0;
+  // "Live" is the one dimension the client knows completely: activeFiles
+  // is the whole set of paths currently being written, straight off the
+  // event stream. Reading it beats testing for a rendered .activity-dot,
+  // which only exists on rows that happen to be painted, and it lets a
+  // folder be judged on whether a live path lies beneath it rather than
+  // being waved through as "not loaded, so unknown".
+  var liveMode = st.recency === "live";
   for (var i = rows.length - 1; i >= 0; i--) {
     var row = rows[i];
     var isDir = row.classList.contains("tree-folder");
     var gitignored = row.classList.contains("tree-item-gitignored");
+    var path = row.dataset.path || "";
     var ok;
     if (!st.showIgnored && gitignored) {
       ok = false;
@@ -2755,8 +2780,8 @@ function applyTreeFilters() {
         {
           mtime: parseTipNumber(row.dataset.tipMtime),
           size: isDir ? null : parseTipNumber(row.dataset.tipSize),
-          path: row.dataset.path || "",
-          live: !!row.querySelector(".activity-dot"),
+          path: path,
+          live: isDir ? hasLiveDescendant(path) : activeFiles.has(path),
           isDir: isDir,
         },
         st,
@@ -2770,9 +2795,11 @@ function applyTreeFilters() {
         : [];
       if (kids.length > 0) {
         ok = kids.some((kid) => keep.get(kid) === true);
-      } else {
+      } else if (!liveMode) {
         // Nothing loaded under it: the filter cannot speak for this
-        // subtree, so the folder stays and gets counted.
+        // subtree, so the folder stays and gets counted. Live is the
+        // exception — the set of live paths is known in full, so an
+        // unloaded folder is a definite answer, not an unknown one.
         unloadedFolders += 1;
       }
     }
@@ -2801,15 +2828,23 @@ function applyTreeFilters() {
 // imply completeness.
 function _renderFilterNote(panel, unloadedFolders, state) {
   var existing = panel.querySelector(".filter-note");
-  if (unloadedFolders <= 0 || !filterHasConstraints(state)) {
+  // "Live" with nothing being written is a real answer, but an empty
+  // tree looks like a broken filter. Say it in words — and name what
+  // is watched, because the tracker only follows run artifacts
+  // (BROWSER_TRACKABLE_EXTS files under .logs/ or .state/), so on a
+  // repository without them this state is permanent rather than
+  // momentary. See metabrowser/active_tracker.py:_is_trackable.
+  var liveEmpty = state.recency === "live" && activeFiles.size === 0;
+  if ((unloadedFolders <= 0 && !liveEmpty) || !filterHasConstraints(state)) {
     if (existing) {
       existing.remove();
     }
     return;
   }
-  var text =
-    `Filtered within loaded folders. ${unloadedFolders.toLocaleString()} ` +
-    `${unloadedFolders === 1 ? "folder is" : "folders are"} not expanded yet.`;
+  var text = liveEmpty
+    ? "No run logs are being written right now."
+    : `Filtered within loaded folders. ${unloadedFolders.toLocaleString()} ` +
+      `${unloadedFolders === 1 ? "folder is" : "folders are"} not expanded yet.`;
   if (existing) {
     existing.textContent = text;
     return;

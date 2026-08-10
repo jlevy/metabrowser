@@ -360,7 +360,7 @@ def test_folders_with_no_loaded_children_are_kept_and_counted() -> None:
     fn_block = js[fn_start : fn_start + 3000]
     assert "unloadedFolders += 1" in fn_block
     note_start = js.index("function _renderFilterNote(panel, unloadedFolders, state)")
-    note_block = js[note_start : note_start + 900]
+    note_block = js[note_start : note_start + 1600]
     assert "not expanded yet" in note_block
     assert 'note.setAttribute("role", "status")' in note_block
 

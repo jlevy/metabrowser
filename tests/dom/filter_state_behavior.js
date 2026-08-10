@@ -192,9 +192,18 @@ const HOUR = 3600;
   const s = Object.assign(state.get(), { recency: "live" });
   assertTrue("a live file matches", state.rowMatches({ live: true, path: "a.md" }, s, NOW));
   assertEqual("a static file does not", state.rowMatches({ path: "a.md" }, s, NOW), false);
+  // Folders are judged too: `live` means "has a descendant being
+  // written" for a directory. Waving them through left every collapsed
+  // folder in the tree while every file was pruned, which read as a
+  // filter showing days-old content rather than live writes.
   assertTrue(
-    "directories are not judged on activity",
+    "a folder containing a live file matches",
+    state.rowMatches({ isDir: true, live: true, path: "src" }, s, NOW),
+  );
+  assertEqual(
+    "a folder with nothing live under it does not",
     state.rowMatches({ isDir: true, path: "src" }, s, NOW),
+    false,
   );
 }
 

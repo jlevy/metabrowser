@@ -260,7 +260,12 @@
     // Note: gitignored is handled by the caller, which knows the row's
     // class; showIgnored is a visibility choice, not a predicate.
     if (s.recency === "live") {
-      if (!row.isDir && row.live !== true) {
+      // `live` means "being written" for a file and "has a descendant
+      // being written" for a folder. Both are complete answers — the
+      // caller knows the whole live set — so a folder is judged here
+      // rather than waved through the way the other dimensions must
+      // wave through a subtree they cannot see.
+      if (row.live !== true) {
         return false;
       }
     } else if (s.recency !== "all") {
