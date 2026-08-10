@@ -115,17 +115,19 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    A 300px pane cannot host a comfortable floating panel, and an inline drawer keeps
    active filters and their controls in the same visual column.
    Floating menus stay for the header settings.
-5. **Dim is the default treatment; Hide prunes only loaded rows and says so.** Dim keeps
-   the tree’s shape, which matters when a filter is loose.
-   Hide is what a type filter usually wants, so it is one segment away — but a hidden
-   tree cannot claim completeness over unexpanded subtrees, so it renders a footer note
-   counting the folders it has not loaded.
-6. **Recency in Hide mode reads from `/api/recent`.** This is the whole answer to the
-   reach problem in Background.
-   When recency is narrower than All and the mode is Hide, the Files tree renders
-   `/api/recent?window=`'s tree through the same `renderTreeNodes`, keeping the
-   endpoint’s totals and truncation reporting.
-   Dim mode decorates loaded rows as usual.
+5. **Hide is the default treatment; Dim is the escape hatch.** Setting a filter removes
+   what does not match, because that is what “filter” means to the person clicking it —
+   a type filter that leaves every file in place, faded, has not answered the question.
+   Dim stays one segment away for the case where the tree’s shape is the point.
+   Hide never claims completeness it does not have: pruning keeps folders whose contents
+   are not loaded and renders a footer note counting them.
+6. **Recency reads from `/api/recent` whenever it is set and the mode is Hide.** This is
+   the whole answer to the reach problem in Background, and with Hide as the default
+   (Decision 5) it is the normal path, not a corner: clicking a recency chip gives the
+   Recent tab’s exact behavior inside the Files pane.
+   The Files tree renders `/api/recent?window=`'s tree through the same
+   `renderTreeNodes`, keeping the endpoint’s totals and truncation reporting.
+   Dim mode decorates loaded rows instead, with no round trip.
    The Recent tab is then redundant in the strict sense, not the approximate one.
 7. **Filter state persists through `mb.prefs` and stays out of the URL hash.** Same
    choice the treemap branch made, for the same reason: filters are a view preference,
@@ -185,7 +187,7 @@ with an `mb.filters` SDK proxy so plugin views never touch the global:
   types: string[] | null,                                  // ft-* families, null = any
   size: "all" | "s" | "m" | "l",                          // default "all"
   ignored: "shown" | "dimmed" | "hidden",                 // default "dimmed"
-  mode: "dim" | "hide",                                    // default "dim"
+  mode: "dim" | "hide",                                    // default "hide"
 }
 ```
 
@@ -253,16 +255,18 @@ Filtering is a decoration layer over rendered rows, never a render fork.
 The no-filter DOM stays byte-identical to today, which is what keeps this change
 reviewable.
 
-- **Dim** adds a muted class to non-matching rows.
+- **Hide** (default) prunes non-matching file rows and folders with no loaded match,
+  then renders a footer note counting unloaded folders, so the pruned tree never implies
+  completeness it does not have.
+- **Recency under Hide** swaps the tree’s data source to `/api/recent?window=` per
+  Resolved Decision 6, rendered by `renderTreeNodes` with the existing truncation
+  banner. Type and size then apply as a prune over that result, so the endpoint stays a
+  recency query and the client owns the rest.
+- **Dim** adds a muted class to non-matching rows instead of pruning.
   Folders dim only when nothing under them can match — an unloaded folder is unknown,
   not excluded.
-- **Hide** prunes non-matching file rows and folders with no loaded match, then renders
-  a footer note counting unloaded folders, so the pruned tree never implies completeness
-  it does not have.
 - **Gitignored** keeps its three-state independent of `mode`: `shown` lifts the tree’s
   default fade, `dimmed` is today’s behavior, `hidden` prunes those subtrees.
-- **Recency + Hide** swaps the tree’s data source to `/api/recent?window=` per Resolved
-  Decision 6, rendered by `renderTreeNodes` with the existing truncation banner.
 
 Reapplication is driven by `metabrowser:filter-change` and, debounced, by inventory
 patches; newly inserted live rows are classified on insert.
@@ -301,14 +305,16 @@ access.
 
 ### Phase 3: Applying Filters to the Tree
 
+- [ ] Hide-mode pruning (the default) with folder retention and the unloaded-folders
+  footer note
+- [ ] Recency under Hide backed by `/api/recent`, reusing the truncation banner, with
+  type and size pruning over that result
 - [ ] Dim decoration for recency, type, and size over rendered rows, reapplied on filter
   change and debounced after inventory patches
-- [ ] Hide-mode pruning with folder retention and the unloaded-folders footer note
 - [ ] Gitignored three-state replacing the unconditional fade
 
 ### Phase 4: One Files Pane
 
-- [ ] Recency-in-Hide-mode backed by `/api/recent`, reusing the truncation banner
 - [ ] Parity checklist against the live Recent tab
 - [ ] Tab removal, single Files pane, docs updated
 
@@ -341,12 +347,10 @@ gitignored control to the shared dimension.
 
 ## Open Questions
 
-- Whether Hide should be the default for a type-only filter, where dimming is arguably
-  the wrong answer, at the cost of a mode that changes under you
-- Whether the size buckets should be fixed thresholds or derived from the current
-  folder’s distribution
-- Whether a one-tab tab bar is worth keeping (Resolved Decision 9) or the pane should
-  take a plain header until a second pane exists
+- Whether the drawer’s Dim / Hide control should be per-dimension rather than global,
+  once there is usage evidence that recency and type want different treatments
+- Whether the type families in the drawer should be fixed or reflect only the families
+  actually present under the current root
 
 ## References
 
