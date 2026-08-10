@@ -4,7 +4,9 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Implemented and validated in a real browser.
+Follow-ups tracked as beads under epic `mb-pcih`; the open ones are `mb-4k4d`,
+`mb-g675`, and `mb-katw`.
 
 ## Overview
 
@@ -177,6 +179,15 @@ Defaults chosen to unblock implementation; each is cheap to change during review
     output. The split cannot be derived by summing top-level children — ignored files
     nested under tracked directories would count as tracked — so
     `InventoryIndex.root_summary()` computes it in one pass and `/api/tree` carries it.
+15. **A capped response drops ignored files before tracked ones.** Newest-first alone is
+    not a ranking: a dependency install touches thousands of files at once, so a 2
+    000-row cap on a day window returned only `node_modules` and none of the user’s own
+    work. Tracked files claim the cap first, ignored ones fill the remainder, and the
+    selection is re-sorted by mtime so the result still reads newest-first.
+    `/api/recent` also takes `include_ignored`, because fetching rows the client is
+    about to hide spends the cap on nothing.
+    Generalize this to any future filtered endpoint: decide the priority order before
+    the cap, and report the shortfall.
 
 ### The Control Family
 
@@ -384,7 +395,26 @@ Checked items are implemented and covered by tests; `make verify` passes on the 
 - [x] `InventoryIndex.root_summary()` plus the `/api/tree` `summary` field and the split
   nav tally
 
-### Phase 5: Follow-ups — open
+### Phase 5: Review Fixes — done
+
+Everything below came out of driving the real UI rather than reading the code, which is
+worth noting: none of it was visible in a passing test suite.
+
+- [x] All three dimensions became dropdowns; the segmented `.chip-group` stays in the
+  family for surfaces with fewer, shorter values
+- [x] Nav column aligned on one 12px inset, and the nav bar renamed `.nav-filter-bar`
+  after the agent-log plugin’s `.filter-bar` margin leaked into it
+- [x] Clear moved onto the filter row; a dropdown holding a value now carries the accent
+- [x] The drawer animates a grid track instead of toggling `display`, and is `inert`
+  when closed
+- [x] `Live` judged folders, not just files — it had been showing 59 folders and no
+  files, many stamped days old
+- [x] `FILTER_LIVE_PERSIST_MS` (90s) holds `Live` steady across the gap between tracker
+  polls, which had made a file written once a second flicker in and out
+- [x] Recency truncation drops ignored files before tracked ones, and `/api/recent`
+  gained `include_ignored`
+
+### Phase 6: Follow-ups — open
 
 Tracked as beads under epic `mb-pcih`:
 
@@ -393,9 +423,13 @@ Tracked as beads under epic `mb-pcih`:
   kept apart so the menu follows **Show ignored**
 - [x] `mb-5e20` — the dropdown gained arrow-key row traversal (the gap was the behavior,
   not only its test) plus coverage
-- [x] `mb-9zrh` — `Live` stays as-is; see Open Questions for what it actually is
+- [x] `mb-9zrh` — superseded by `mb-g675`; what `Live` is turned out to be narrower than
+  that bead assumed
 - [ ] `mb-4k4d` — the folder-treemap branch rebases onto the core family and shared
   state. Belongs to that branch, not this one.
+- [ ] `mb-g675` — `Live` is not a recency window and may not belong on the age axis
+- [ ] `mb-katw` — optionally mirror extension and size upstream, for directories large
+  enough that a client-side answer is incomplete rather than merely slow
 
 ## Testing Strategy
 
@@ -476,6 +510,9 @@ menu should quietly prefer it.
 ## References
 
 - [Design system](../../../design-system.md)
+- [Architecture](../../../architecture.md), “Where Filtering Happens” — which tier owns
+  each dimension, what moving one upstream buys and costs, and the rule for capped
+  responses
 - [Scalable file search](plan-2026-07-17-scalable-file-search.md) (the keyword dimension
   of the same vocabulary)
 - [Scanning state and recent directories](plan-2026-07-16-scanning-state-and-recent-directories.md)
