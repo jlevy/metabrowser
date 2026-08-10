@@ -3,14 +3,16 @@ type: is
 id: is-01kzfe3a1108snwxx1dh7dtk52
 title: "Quick File: an open search does not re-run when the catalog grows"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels: []
 dependencies: []
 created_at: 2026-08-08T00:59:18.432Z
-updated_at: 2026-08-10T01:52:47.763Z
+updated_at: 2026-08-10T02:03:16.184Z
+closed_at: 2026-08-10T02:03:16.183Z
+close_reason: "Implemented on feat/quick-file-convergence (PR #26), commit 70b6f80. mb-lzvb: catalog subscribe() choke point + palette re-runs the active query, coalesced leading-edge; verified the test fails without the subscription. mb-r8yg: ancestor-lookup sweep makes removal cost independent of batch size — 1441ms to 52ms at 100k entries / 2000 removes, flat as the batch grows. make verify green, 783 tests."
 ---
 Half of this landed in 16678d3; re-scoped to what remains.
 

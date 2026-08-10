@@ -3,14 +3,16 @@ type: is
 id: is-01kzfe3r2xjtcrtm239extt3gv
 title: Batch catalog removals per change-op group
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels: []
 dependencies: []
 created_at: 2026-08-08T00:59:32.828Z
-updated_at: 2026-08-10T01:52:48.398Z
+updated_at: 2026-08-10T02:03:16.196Z
+closed_at: 2026-08-10T02:03:16.196Z
+close_reason: "Implemented on feat/quick-file-convergence (PR #26), commit 70b6f80. mb-lzvb: catalog subscribe() choke point + palette re-runs the active query, coalesced leading-edge; verified the test fails without the subscription. mb-r8yg: ancestor-lookup sweep makes removal cost independent of batch size — 1441ms to 52ms at 100k entries / 2000 removes, flat as the batch grows. make verify green, 783 tests."
 ---
 Half of this landed in 16678d3; re-scoped to what remains.
 
