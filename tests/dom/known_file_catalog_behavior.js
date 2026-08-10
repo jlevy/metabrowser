@@ -276,6 +276,165 @@ check(
   navExceptionCatalog.snapshot().files.some((file) => file.path === "__pycache__/opened.pyc"),
 );
 
+// Removals scan for directory-prefix descendants, so one pass per removed
+// path made a burst O(n*m) against a now-complete catalog. Batching a run of
+// removes into a single pass must not change what the ops mean: order is
+// preserved, so a remove followed by an upsert beneath it keeps the child
+// (mb-r8yg).
+const batchCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+batchCatalog.applyBulkSnapshot(
+  [
+    { e: ".txt", p: "a/one.txt" },
+    { e: ".txt", p: "a/two.txt" },
+    { e: ".txt", p: "b/three.txt" },
+    { e: ".txt", p: "keep/four.txt" },
+  ],
+  true,
+);
+batchCatalog.applyEventChange([
+  { op: "remove", path: "a" },
+  { op: "remove", path: "b" },
+]);
+equal(
+  "a batched run of removes deletes every subtree",
+  batchCatalog.snapshot().files.map((file) => file.path),
+  ["keep/four.txt"],
+);
+
+// Ordering within a batch survives batching: the child added after its
+// parent was removed stays, and the child added before is still swept.
+const orderedCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+orderedCatalog.applyBulkSnapshot([{ e: ".txt", p: "dir/before.txt" }], true);
+orderedCatalog.applyEventChange([
+  { op: "remove", path: "dir" },
+  { entry: { logical_ext: ".txt", path: "dir/after.txt", type: "file" }, op: "upsert" },
+]);
+equal(
+  "an upsert after a remove in the same batch survives it",
+  orderedCatalog.snapshot().files.map((file) => file.path),
+  ["dir/after.txt"],
+);
+
+// The same batching applies to the catalog.change wire path, where removes
+// arrive as their own array.
+const changeCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+changeCatalog.applyBulkSnapshot(
+  [
+    { e: ".txt", p: "x/one.txt" },
+    { e: ".txt", p: "y/two.txt" },
+    { e: ".txt", p: "z/three.txt" },
+  ],
+  true,
+);
+changeCatalog.applyCatalogChange({ removes: ["x", "y"], upserts: [] });
+equal(
+  "catalog.change removes batch too",
+  changeCatalog.snapshot().files.map((file) => file.path),
+  ["z/three.txt"],
+);
+
+// Derived views need to know when coverage moves; every mutation routes
+// through one bump so a consumer subscribes once instead of hooking each
+// ingestion seam (mb-lzvb).
+const subCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+const seen = [];
+/** @type {unknown[]} */
+let lastArgs = null;
+const unsubscribe = subCatalog.subscribe((...args) => {
+  lastArgs = args;
+  seen.push(subCatalog.snapshot().revision);
+});
+subCatalog.applyBulkSnapshot([{ e: ".txt", p: "one.txt" }], true);
+check("a bulk apply notifies subscribers", seen.length === 1, String(seen.length));
+subCatalog.applyCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "two.txt" }] });
+check("a catalog.change notifies subscribers", seen.length === 2, String(seen.length));
+subCatalog.observeNavigation("three.txt", ".txt");
+check("navigation notifies subscribers", seen.length === 3, String(seen.length));
+
+// A no-op ingestion must not wake derived views.
+const quiet = seen.length;
+subCatalog.applyCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "two.txt" }] });
+check("an unchanged apply does not notify", seen.length === quiet, String(seen.length));
+
+// Notification is invalidation only. Handing listeners a snapshot would sort
+// the whole catalog on every mutation, and the palette's listener lives for
+// the application lifetime, so that cost would land even with the palette
+// closed (senior review R1).
+check("notification carries no projection", lastArgs !== null && lastArgs.length === 0);
+
+// A listener that asks for state gets the state that caused the notification.
+let observedCount = -1;
+const unsubscribeCount = subCatalog.subscribe(() => {
+  observedCount = subCatalog.snapshot().observedCount;
+});
+subCatalog.applyCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "four.txt" }] });
+check(
+  "a listener reading snapshot() sees the change",
+  observedCount === subCatalog.snapshot().observedCount,
+  `${observedCount} vs ${subCatalog.snapshot().observedCount}`,
+);
+unsubscribeCount();
+
+unsubscribe();
+const afterUnsubscribe = seen.length;
+subCatalog.applyCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "five.txt" }] });
+check("unsubscribe stops delivery", seen.length === afterUnsubscribe);
+
+// A subscriber that writes back must not recurse forever.
+const reentrant = sandbox.MetabrowserKnownFileCatalog.create();
+let reentrantCalls = 0;
+reentrant.subscribe(() => {
+  reentrantCalls += 1;
+  if (reentrantCalls < 5) {
+    reentrant.observeNavigation(`loop-${reentrantCalls}.txt`, ".txt");
+  }
+});
+reentrant.observeNavigation("start.txt", ".txt");
+check("re-entrant notification is suppressed", reentrantCalls === 1, String(reentrantCalls));
+check(
+  "the nested write still landed",
+  reentrant.snapshot().files.some((file) => file.path === "loop-1.txt"),
+);
+
+// A listener running after one that wrote back must not see pre-write state.
+// The eager-snapshot design could not honor this: the payload was computed
+// once, before any listener ran (senior review R2).
+const reentrantOrder = sandbox.MetabrowserKnownFileCatalog.create();
+let writerRan = false;
+let secondSawCount = -1;
+reentrantOrder.subscribe(() => {
+  if (writerRan) {
+    return;
+  }
+  writerRan = true;
+  reentrantOrder.observeNavigation("written-by-listener.txt", ".txt");
+});
+reentrantOrder.subscribe(() => {
+  secondSawCount = reentrantOrder.snapshot().observedCount;
+});
+reentrantOrder.observeNavigation("first.txt", ".txt");
+check(
+  "a later listener sees a re-entrant write, not stale state",
+  secondSawCount === reentrantOrder.snapshot().observedCount && secondSawCount === 2,
+  `${secondSawCount} vs ${reentrantOrder.snapshot().observedCount}`,
+);
+
+// A throwing subscriber must not break the ingestion path or its siblings.
+const resilient = sandbox.MetabrowserKnownFileCatalog.create();
+let goodCalls = 0;
+resilient.subscribe(() => {
+  throw new Error("subscriber blew up");
+});
+resilient.subscribe(() => {
+  goodCalls += 1;
+});
+resilient.observeNavigation("safe.txt", ".txt");
+check("a throwing subscriber does not stop the others", goodCalls === 1);
+check(
+  "a throwing subscriber does not lose the write",
+  resilient.snapshot().files.some((file) => file.path === "safe.txt"),
+);
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

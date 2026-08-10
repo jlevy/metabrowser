@@ -2181,6 +2181,51 @@ html[data-prose-font="sans"] {
   margin-block-start: 0;
 }
 
+/* ── Document preamble ────────────────────────────────────────────
+   FRONTMATTER, DIAGNOSTICS, and the frontmatter-error alert are relocated
+   into the top of the prose column by the markdown plugin's
+   hoistDocumentMeta(). KPress renders them as siblings ahead of
+   `.kpress-doc-layout`, i.e. outside the content card: two bordered panels
+   stacked above the title, pushing the card and the TOC rail down together.
+
+   Inside the card they stop being panels. The disclosures drop their frame
+   and their inset so they read as plain toggles flush with the prose measure
+   — a label with content beneath it, not a titled box. The error alert keeps
+   its box: that one has to stay conspicuous. Spacing between them comes from
+   the flex gap, so each child's own vertical margin is cleared. */
+.metabrowser-kpress-host .metabrowser-doc-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metabrowser-kpress-host .metabrowser-doc-meta > * {
+  margin: 0;
+}
+.metabrowser-kpress-host .metabrowser-doc-meta > details {
+  border: 0;
+}
+/* Hang the disclosure chevron in the card's gutter so the label starts on the
+   prose edge, flush with the keys of the list it opens. The offset is the
+   marker itself: KPress draws it at 0.85em with a 0.4rem gap (document.css
+   `.kpress summary`), and it stays well inside the card's narrowest inline
+   padding (1.5rem below the 768px card breakpoint). */
+.metabrowser-kpress-host .metabrowser-doc-meta > details > summary {
+  margin-inline-start: calc(-0.85em - 0.4rem);
+  padding-inline: 0;
+}
+.metabrowser-kpress-host .metabrowser-doc-meta > details[open] > summary {
+  border-bottom: 0;
+}
+.metabrowser-kpress-host .metabrowser-doc-meta > details > :not(summary) {
+  padding: 0.25rem 0 0.5rem;
+}
+
+/* The title still needs air above it, but less than KPress's 2rem section
+   gap: the preamble is chrome the title leads, not a preceding section. */
+.metabrowser-kpress-host .kpress-prose > .metabrowser-doc-meta + h1 {
+  margin-block-start: 1rem;
+}
+
 /* Blockquotes are the one place the embed deliberately adds to KPress rather
    than deferring to it. KPress styles a blockquote with indentation alone
    (`margin` + `padding-inline-start`, no rule and no color), which reads as an
