@@ -2377,12 +2377,18 @@ var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || nu
 // twice would offer the same choice under two names. Labels can be
 // words rather than the abbreviations the segmented ramp needed,
 // because a dropdown row is not fighting five siblings for width.
+// Each row wears the freshness colour the tree gives files of that
+// age, so the menu doubles as the legend for the ramp below it. The
+// buckets line up with formatAge exactly: Live is the "<1 min" red
+// because a file being written now *is* that bucket, then each window
+// takes the colour of the bucket it tops out at — Past hour is the
+// "<1 hour" step, Past day the "<1 day" step, and so on.
 var FILTER_RECENCY_OPTIONS = [
-  { value: "live", label: "Live", title: "Files being written right now" },
-  { value: "1h", label: "Past hour" },
-  { value: "24h", label: "Past day" },
-  { value: "7d", label: "Past week" },
-  { value: "30d", label: "Past month" },
+  { value: "live", label: "Live", title: "Run logs being written right now", ageClass: "age-sec" },
+  { value: "1h", label: "Past hour", ageClass: "age-min" },
+  { value: "24h", label: "Past day", ageClass: "age-hr" },
+  { value: "7d", label: "Past week", ageClass: "age-day" },
+  { value: "30d", label: "Past month", ageClass: "age-wk" },
 ];
 
 // Size is a cumulative floor rather than a band: "what is over 10M in
@@ -2400,6 +2406,22 @@ var FILTER_SIZE_OPTIONS = [
 // not a fixed vocabulary, so it never offers a type with nothing
 // behind it and never omits one the tree is full of.
 var FILTER_TYPE_MENU_MAX = 30;
+
+// How long a file keeps counting as "live" for the filter after the
+// last time the tracker reported it active.
+//
+// This is not cosmetic. The activity tracker polls every
+// ACTIVE_TRACKER_INTERVAL_S (5s), but the file watcher emits an upsert
+// on *every* append, and those carry whatever `active` flag the entry
+// held at that moment — false between polls. Mirroring that flag
+// straight into the filter made a file being written once a second
+// appear and vanish several times a minute.
+//
+// 90s comfortably spans the poll interval plus the tracker's own
+// quiet-poll hysteresis, so a steadily-written file stays put, while a
+// genuinely finished one still drops out promptly enough to be
+// believed.
+const FILTER_LIVE_PERSIST_MS = 90_000;
 
 var FILTER_DRAWER_PREF = "filters.drawer";
 var filterDrawerOpen = false;
@@ -2718,16 +2740,40 @@ function onFilterStateChange(state) {
 // exception being recency, where the folder's own aggregate mtime
 // (newest descendant) is a definitive answer for the whole subtree.
 
-// Is any file under this folder being written right now? activeFiles
-// holds full paths, so a folder can be judged without its children
-// being rendered — the reason Live does not need the unloaded-folder
-// escape the other dimensions do.
-function hasLiveDescendant(dirPath) {
-  if (activeFiles.size === 0) {
+// Last time each path was reported active, so the filter can hold a
+// file steady across the gaps described at FILTER_LIVE_PERSIST_MS.
+/** @type {Map<string, number>} */
+const liveSeenAt = new Map();
+
+function noteLivePath(path) {
+  liveSeenAt.set(path, Date.now());
+}
+
+// Paths the *filter* treats as live: those active right now, plus
+// those seen active within the persistence window.
+function livePathsForFilter() {
+  var cutoff = Date.now() - FILTER_LIVE_PERSIST_MS;
+  var paths = new Set(activeFiles.keys());
+  for (const [path, seen] of liveSeenAt) {
+    if (seen < cutoff) {
+      liveSeenAt.delete(path); // bounded: entries expire as they age out
+    } else {
+      paths.add(path);
+    }
+  }
+  return paths;
+}
+
+// Is any file under this folder live? The live set holds full paths,
+// so a folder can be judged without its children being rendered — the
+// reason Live does not need the unloaded-folder escape the other
+// dimensions do.
+function hasLiveDescendant(dirPath, livePaths) {
+  if (livePaths.size === 0) {
     return false;
   }
   var prefix = dirPath ? `${dirPath}/` : "";
-  for (const livePath of activeFiles.keys()) {
+  for (const livePath of livePaths) {
     if (!prefix || livePath.startsWith(prefix)) {
       return true;
     }
@@ -2767,6 +2813,7 @@ function applyTreeFilters() {
   // folder be judged on whether a live path lies beneath it rather than
   // being waved through as "not loaded, so unknown".
   var liveMode = st.recency === "live";
+  var livePaths = liveMode ? livePathsForFilter() : new Set();
   for (var i = rows.length - 1; i >= 0; i--) {
     var row = rows[i];
     var isDir = row.classList.contains("tree-folder");
@@ -2781,7 +2828,7 @@ function applyTreeFilters() {
           mtime: parseTipNumber(row.dataset.tipMtime),
           size: isDir ? null : parseTipNumber(row.dataset.tipSize),
           path: path,
-          live: isDir ? hasLiveDescendant(path) : activeFiles.has(path),
+          live: isDir ? hasLiveDescendant(path, livePaths) : livePaths.has(path),
           isDir: isDir,
         },
         st,
@@ -2821,6 +2868,25 @@ function applyTreeFilters() {
     }
   }
   _renderFilterNote(panel, unloadedFolders, st);
+  // Once writing stops no further events arrive, so nothing would
+  // re-evaluate the persistence window and the row would sit there
+  // looking live forever. Wake up when the oldest sighting expires.
+  if (liveMode) {
+    scheduleLiveExpiryRecheck();
+  }
+}
+
+var _liveExpiryHandle = null;
+function scheduleLiveExpiryRecheck() {
+  if (_liveExpiryHandle || liveSeenAt.size === 0) {
+    return;
+  }
+  var oldest = Math.min(...liveSeenAt.values());
+  var due = Math.max(250, oldest + FILTER_LIVE_PERSIST_MS - Date.now() + 50);
+  _liveExpiryHandle = setTimeout(() => {
+    _liveExpiryHandle = null;
+    applyTreeFilters();
+  }, due);
 }
 
 // Filtering prunes what it has loaded, which is not the same as "this
@@ -3869,6 +3935,9 @@ function _mirrorActiveFromFsEntry(entry) {
   var wasActive = activeFiles.has(entry.path);
   if (entry.active) {
     activeFiles.set(entry.path, { pid_alive: pidLabel });
+    // Stamp every sighting, so the filter can ride out the gaps
+    // between tracker polls (see FILTER_LIVE_PERSIST_MS).
+    noteLivePath(entry.path);
     refreshActivityBadge(entry.path);
     // Inactive→active for the currently viewed file: switch the
     // header badge to "Live" and open the live stream if not

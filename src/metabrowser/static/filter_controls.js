@@ -69,7 +69,8 @@
 
   /**
    * @typedef {{value: string, label: string, title?: string, className?: string,
-   *            count?: number, icon?: string, iconClass?: string}} ChipOption
+   *            count?: number, icon?: string, iconClass?: string,
+   *            ageClass?: string}} ChipOption
    * @typedef {{key: string, select?: string, label: string, options: ChipOption[],
    *            value: string | string[] | null, className?: string}} ChipGroupSpec
    */
@@ -216,8 +217,12 @@
         const icon = opt.icon
           ? `<span class="menu-item-icon ${esc(opt.iconClass || "")}">${opt.icon}</span>`
           : "";
+        // `ageClass` tints the label from the shared freshness ramp
+        // (.age-sec … .age-wk), so a menu row and the rows it keeps
+        // read in the same colour.
+        const age = opt.ageClass ? ` ${esc(opt.ageClass)}` : "";
         return (
-          `<button type="button" class="menu-item chip-menu-item${extra}"` +
+          `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +
           ` role="${rowRole}" aria-checked="${on}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +

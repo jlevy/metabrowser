@@ -2108,6 +2108,17 @@ html[data-prose-font="sans"] {
   font-variant-numeric: tabular-nums;
   font-size: var(--ui-small-font-size);
 }
+/* Age rows wear the freshness ramp, so the menu is the legend for the
+   colours in the tree. The .age-* classes already colour the button;
+   this only pulls the hour row's red back a little, because Live and
+   Past hour are adjacent steps and sit next to each other here in a
+   way they never do in a file listing. Scoped to the menu on purpose:
+   the tree's ramp is contrast-audited against every surface it rides
+   (see the --file-age-* block), and this is a legibility tweak for one
+   control, not a change to what the colours mean. */
+.chip-menu-item.age-min {
+  color: color-mix(in srgb, var(--file-age-min) 72%, var(--muted));
+}
 /* Labelled checkbox — the family's one deliberate break from
    button-with-aria-pressed, for a boolean whose polarity has to be
    legible. A pressed pill reading "Gitignored" does not say whether

@@ -453,6 +453,46 @@ def test_the_navigation_column_shares_one_left_inset() -> None:
     assert "border-left: 2px solid transparent;" in row_block
 
 
+def test_live_survives_the_gap_between_tracker_polls() -> None:
+    """The tracker polls every 5s but the watcher emits an upsert per
+    append, carrying a stale `active: false` in between. Mirroring
+    that straight into the filter made a file being written once a
+    second flicker in and out of the tree."""
+
+    js = _read("app.js")
+    assert "const FILTER_LIVE_PERSIST_MS = 90_000;" in js
+    # The filter reads a persisted set, not activeFiles directly.
+    apply_start = js.index("function applyTreeFilters()")
+    apply_block = js[apply_start : apply_start + 3000]
+    assert "livePathsForFilter()" in apply_block
+    assert "activeFiles.has(" not in apply_block
+    # Writing stops, no more events arrive; something has to re-check.
+    assert "function scheduleLiveExpiryRecheck()" in js
+
+
+def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
+    """Live is the under-a-minute red because a file being written now
+    is that bucket; each window then takes the colour of the bucket it
+    tops out at."""
+
+    js = _read("app.js")
+    start = js.index("var FILTER_RECENCY_OPTIONS = [")
+    block = js[start : js.index("];", start)]
+    for value, age in (
+        ('"live"', "age-sec"),
+        ('"1h"', "age-min"),
+        ('"24h"', "age-hr"),
+        ('"7d"', "age-day"),
+        ('"30d"', "age-wk"),
+    ):
+        line = next(ln for ln in block.splitlines() if value in ln)
+        assert f'ageClass: "{age}"' in line, f"{value} should wear {age}"
+
+    # Scoped to the menu: the tree's ramp is contrast-audited.
+    css = _read("styles.css")
+    assert ".chip-menu-item.age-min {" in css
+
+
 def test_clear_sits_with_the_dropdowns_it_undoes() -> None:
     """Not in the drawer: it can only appear when something is set, and
     opening the drawer to undo a filter set from the row above is a

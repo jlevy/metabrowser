@@ -275,6 +275,24 @@ const menuOneAny = fc.menuGroupHtml({
   menuId: "r",
 });
 assertContains("the default reads as the any-label", menuOneAny, ">Any age<");
+
+// Age rows wear the tree's freshness ramp, so the menu is the legend
+// for the colours in the listing below it.
+const menuAged = fc.menuGroupHtml({
+  key: "recency",
+  select: "one",
+  label: "Modified within",
+  options: [
+    { value: "live", label: "Live", ageClass: "age-sec" },
+    { value: "1h", label: "Past hour", ageClass: "age-min" },
+  ],
+  value: "all",
+  anyLabel: "Any age",
+  anyValue: "all",
+  menuId: "r",
+});
+assertContains("live takes the under-a-minute colour", menuAged, "chip-menu-item age-sec");
+assertContains("the hour row takes the under-an-hour colour", menuAged, "chip-menu-item age-min");
 assertContains(
   "the any row is checked at the default",
   menuOneAny,
