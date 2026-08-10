@@ -2485,10 +2485,15 @@ function renderNavFilterBar() {
     '<span class="filter-bar-end">' +
     fc.toggleHtml({
       key: "drawer",
-      label: filterDrawerOpen ? "Less" : "More",
+      caret: true,
       pressed: filterDrawerOpen,
       badge: count,
-      title: "More filters",
+      // A glyph-only control needs a name that says what happens, and
+      // the badge is decorative once the count is spoken here.
+      ariaLabel:
+        (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
+        (count > 0 ? ` (${count} active)` : ""),
+      title: filterDrawerOpen ? "Fewer filters" : "More filters",
       controls: "filter-drawer",
     }) +
     "</span></div>";

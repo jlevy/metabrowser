@@ -113,14 +113,33 @@ assertMissing("multi-select does not use radio semantics", multi, 'role="radio"'
 // Every multi-select chip is independently reachable.
 assertMissing("multi-select chips are not roving", multi, "tabindex");
 
-const toggle = fc.toggleHtml({ key: "drawer", label: "More", pressed: false, badge: 3 });
+const toggle = fc.toggleHtml({ key: "showIgnored", label: "Gitignored", pressed: false, badge: 3 });
 assertContains("a toggle is a pressed button", toggle, 'aria-pressed="false"');
 assertContains("a toggle can carry a count", toggle, '<span class="chip-badge">3</span>');
 assertMissing(
   "a zero count renders nothing",
-  fc.toggleHtml({ key: "drawer", label: "More", badge: 0 }),
+  fc.toggleHtml({ key: "showIgnored", label: "Gitignored", badge: 0 }),
   "chip-badge",
 );
+
+// Disclosure variant: a rotating chevron instead of a word. A glyph
+// says nothing to a screen reader, so the accessible name is not
+// optional here — it has to describe the action, not the icon.
+const caretToggle = fc.toggleHtml({
+  key: "drawer",
+  caret: true,
+  pressed: true,
+  badge: 2,
+  ariaLabel: "Hide more filters (2 active)",
+});
+assertContains("the caret variant renders a chevron", caretToggle, 'class="chip-caret"');
+assertContains("the chevron is decorative", caretToggle, 'class="chip-caret" aria-hidden="true"');
+assertContains(
+  "the caret variant names itself",
+  caretToggle,
+  'aria-label="Hide more filters (2 active)"',
+);
+assertContains("the caret variant still badges", caretToggle, '<span class="chip-badge">2</span>');
 
 // No hidden inputs: one state mechanism across the whole family.
 for (const [label, html] of [

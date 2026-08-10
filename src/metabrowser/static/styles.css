@@ -2032,6 +2032,18 @@ html[data-prose-font="sans"] {
   line-height: 1;
   opacity: 0.7;
 }
+/* Disclosure chevron on a glyph-only toggle: rotates to point at the
+   state it will produce. The accessible name lives in aria-label,
+   because a rotated glyph says nothing to a screen reader. */
+.chip-caret {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  transition: transform var(--transition-fast);
+}
+.chip-toggle[aria-pressed="true"] .chip-caret {
+  transform: rotate(180deg);
+}
 .chip-menu-panel {
   display: none;
   position: absolute;

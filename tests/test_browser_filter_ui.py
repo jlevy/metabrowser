@@ -122,6 +122,23 @@ def test_clear_is_only_rendered_when_something_is_set() -> None:
     assert "count > 0" in fn_block
 
 
+def test_drawer_toggle_is_a_chevron_that_names_itself() -> None:
+    """A glyph-only disclosure has no accessible name of its own, so
+    the aria-label has to describe the action and carry the count the
+    badge shows visually."""
+
+    js = _read("app.js")
+    fn_start = js.index("function renderNavFilterBar()")
+    fn_block = js[fn_start : fn_start + 3000]
+    assert "caret: true" in fn_block
+    assert '"Hide more filters" : "Show more filters"' in fn_block
+    assert "active)" in fn_block
+
+    css = _read("styles.css")
+    assert '.chip-toggle[aria-pressed="true"] .chip-caret' in css
+    assert "rotate(180deg)" in css
+
+
 # ── Filter state ───────────────────────────────────────────────
 
 

@@ -113,19 +113,31 @@
    * A standalone boolean chip. `badge` renders a count pill inside the
    * chip when it is a positive number, and nothing otherwise, so a
    * clean filter state carries no visual weight.
-   * @param {{key: string, label: string, pressed?: boolean, badge?: number,
-   *          title?: string, className?: string, controls?: string}} spec
+   *
+   * `caret: true` makes it a disclosure control: the label is replaced
+   * by a chevron that rotates with the pressed state. A glyph-only
+   * control has no accessible name of its own, so `ariaLabel` becomes
+   * required reading rather than an optional extra — pass one that
+   * says what will happen, not what the icon looks like.
+   *
+   * @param {{key: string, label?: string, pressed?: boolean, badge?: number,
+   *          title?: string, className?: string, controls?: string,
+   *          caret?: boolean, ariaLabel?: string}} spec
    */
   function toggleHtml(spec) {
     const count = typeof spec.badge === "number" && spec.badge > 0 ? spec.badge : 0;
     const badge = count > 0 ? `<span class="chip-badge">${esc(count)}</span>` : "";
     const title = spec.title ? ` title="${esc(spec.title)}"` : "";
     const controls = spec.controls ? ` aria-controls="${esc(spec.controls)}"` : "";
+    const ariaLabel = spec.ariaLabel ? ` aria-label="${esc(spec.ariaLabel)}"` : "";
     const cls = spec.className ? ` ${esc(spec.className)}` : "";
+    const body = spec.caret
+      ? '<span class="chip-caret" aria-hidden="true">⌄</span>'
+      : esc(spec.label || "");
     return (
       `<button type="button" class="chip chip-toggle${cls}"` +
       ` data-chip-key="${esc(spec.key)}" aria-pressed="${spec.pressed === true}"` +
-      `${controls}${title}>${esc(spec.label)}${badge}</button>`
+      `${controls}${ariaLabel}${title}>${body}${badge}</button>`
     );
   }
 
