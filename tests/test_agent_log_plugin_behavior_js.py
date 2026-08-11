@@ -37,6 +37,12 @@ def test_agent_log_escapes_kinds_and_disposes_charts() -> None:
         "hasEscapedImage": True,
         "hasInlineKindHandler": False,
         "hasRawImage": False,
+        "singleKindFilterHidden": True,
+        "singleKnownKindVisible": True,
+        "unknownFilterHidden": True,
+        "unknownKindLabelHidden": True,
+        "unknownSummaryLabelHidden": True,
+        "unknownSummaryValueVisible": True,
         "usesSharedMultiSelect": True,
         "usesWrappedChipCluster": True,
     }

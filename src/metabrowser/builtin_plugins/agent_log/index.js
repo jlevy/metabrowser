@@ -41,6 +41,10 @@
     return String(kind || "unknown").replace(/[-_]+/g, " ");
   }
 
+  function isUnknownKind(kind) {
+    return !kind || String(kind).toLowerCase() === "unknown";
+  }
+
   function fmtDuration(s) {
     if (s < 60) {
       return `${s.toFixed(1)}s`;
@@ -63,6 +67,11 @@
     );
   }
 
+  function eventSummaryText(evt) {
+    const text = evt.summary || "";
+    return isUnknownKind(evt.kind) ? text.replace(/^\[unknown\]\s*/i, "") : text;
+  }
+
   function renderSummary(evt) {
     if (evt.summary_parts && evt.summary_parts.length > 0) {
       return evt.summary_parts
@@ -75,7 +84,7 @@
         })
         .join("");
     }
-    const text = evt.summary || "";
+    const text = eventSummaryText(evt);
     const m = text.match(/^(\[[^\]]+\])\s*(.*)/);
     if (m) {
       const rest = m[2];
@@ -106,6 +115,10 @@
     // registry keyed by event idx instead.
     _logEventRawCache.set(idx, evt.raw);
 
+    const kindHtml = isUnknownKind(kind)
+      ? ""
+      : `<span class="log-event-kind ${kindClass}">${mb.escapeHtml(label)}</span>`;
+
     return (
       '<div class="log-event" data-idx="' +
       idx +
@@ -114,13 +127,9 @@
       '">' +
       '<div class="log-event-header" onclick="toggleEvent(this)">' +
       mb.icons.chevron +
-      '<span class="log-event-kind ' +
-      kindClass +
-      '">' +
-      mb.escapeHtml(label) +
-      "</span>" +
+      kindHtml +
       '<span class="log-event-summary" title="' +
-      mb.escapeHtml(evt.summary || "") +
+      mb.escapeHtml(eventSummaryText(evt)) +
       '">' +
       renderSummary(evt) +
       "</span>" +
@@ -192,7 +201,10 @@
   function renderFilterBar(events) {
     const counts = {};
     for (let i = 0; i < events.length; i++) {
-      const k = events[i].kind;
+      const k = String(events[i].kind || "unknown");
+      if (isUnknownKind(k)) {
+        continue;
+      }
       counts[k] = (counts[k] || 0) + 1;
     }
     const kindOrder = ["thinking", "text", "tool_call", "tool_result", "system", "init", "result"];
@@ -202,7 +214,8 @@
         kinds.push(k);
       }
     });
-    if (kinds.length === 0) {
+    if (kinds.length <= 1) {
+      activeKindFilters = null;
       return "";
     }
 

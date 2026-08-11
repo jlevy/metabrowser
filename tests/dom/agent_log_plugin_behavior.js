@@ -119,6 +119,30 @@ const securityResult = {
   dynamicEventHidden: dynamicEvent.style.display === "none",
   dynamicLabelIsReadable: container.innerHTML.includes(">queue operation (1)</button>"),
 };
+
+logView.render(container, {
+  raw: {
+    events: [{ kind: "unknown", summary: "[unknown] visible value", raw: {} }],
+    summary: {},
+  },
+});
+const unknownKindResult = {
+  unknownKindLabelHidden: !container.innerHTML.includes("log-event-kind"),
+  unknownSummaryLabelHidden: !container.innerHTML.includes("[unknown]"),
+  unknownSummaryValueVisible: container.innerHTML.includes("visible value"),
+  unknownFilterHidden: !container.innerHTML.includes("agent-log-filter-bar"),
+};
+
+logView.render(container, {
+  raw: {
+    events: [{ kind: "text", summary: "[text] one event", raw: {} }],
+    summary: {},
+  },
+});
+const singleKindResult = {
+  singleKnownKindVisible: container.innerHTML.includes(">text</span>"),
+  singleKindFilterHidden: !container.innerHTML.includes("agent-log-filter-bar"),
+};
 let resolveChartFetch;
 sandbox.location = { origin: "http://127.0.0.1:8411" };
 sandbox.fetch = () =>
@@ -137,6 +161,8 @@ sandbox.fetch = () =>
       chartDisposeCalls,
       chartRenderCalls,
       ...securityResult,
+      ...unknownKindResult,
+      ...singleKindResult,
     }),
   );
 })().catch((error) => {
