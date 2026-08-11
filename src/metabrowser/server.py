@@ -732,6 +732,8 @@ async def index(_request: Request) -> HTMLResponse:
     styles_url = _static_asset_url("styles.css")
     theme_state_url = _static_asset_url("theme_state.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
+    filter_state_url = _static_asset_url("filter_state.js")
+    filter_controls_url = _static_asset_url("filter_controls.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree_expansion.js")
@@ -930,13 +932,15 @@ async def index(_request: Request) -> HTMLResponse:
       </header>
       <div class="tab-bar nav-tab-bar" role="tablist">
         <button class="tab-btn active" role="tab" data-tab="files" aria-selected="true">Files</button>
-        <button class="tab-btn" role="tab" data-tab="recent" aria-selected="false">Recent</button>
       </div>
+      <!-- Filter bar lives outside #tab-files: a tree reload replaces
+           that container's contents wholesale, and the bar must also
+           stay put while .tree-content scrolls. app.js fills it. -->
+      <div class="nav-filter-bar" id="nav-filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
           <div class="loading"><div class="spinner"></div>Loading...</div>
         </div>
-        <div id="tab-recent" data-tab-content="recent" style="display:none;"></div>
       </div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
@@ -958,6 +962,8 @@ async def index(_request: Request) -> HTMLResponse:
   {settings_block}
   <script src="{theme_state_url}"></script>
   <script src="{plugin_sdk_url}"></script>
+  <script src="{filter_state_url}"></script>
+  <script src="{filter_controls_url}"></script>
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>
@@ -1035,12 +1041,31 @@ async def api_tree(request: Request) -> JSONResponse:
             len(tree),
             inventory_status(),
         )
+    # Both tallies are O(index) passes. The nav re-requests this route
+    # (depth=0) while the walk converges, so running them on the loop
+    # would stall the event stream at the design-center index size for
+    # the same reason api_catalog offloads its own pass.
+    summary = None
+    extensions = None
+    if inv_can_serve and not subpath:
+        summary, extensions = await asyncio.to_thread(
+            lambda: (inventory.root_summary(), inventory.extension_tally())
+        )
     return JSONResponse(
         {
             "root": str(root_dir),
             "tree": tree,
             "tally_cache_status": inventory_status(),
             "tally_cache_max_files": inventory.max_files(),
+            # Tracked-versus-ignored split for the nav header, plus the
+            # extension tally behind the nav's type filter. Neither can
+            # be derived client-side: summing top-level children
+            # miscounts nested ignored files (see
+            # InventoryIndex.root_summary), and the Quick File catalog
+            # drops gitignored entries (see extension_tally). Only the
+            # full-tree request needs either.
+            "summary": summary,
+            "extensions": extensions,
         }
     )
 
@@ -1074,6 +1099,9 @@ async def api_recent(request: Request) -> JSONResponse:
         ext_raw = [s for s in single.split(",") if s] if single else []
     ext_filter = tuple(e if e.startswith(".") else "." + e for e in ext_raw)
     prefix_filter = request.query_params.get("prefix", "")
+    # Callers that hide gitignored entries pass include_ignored=0 so the
+    # cap is not spent on rows they will drop on arrival.
+    include_ignored = request.query_params.get("include_ignored", "1") not in ("0", "false")
 
     result = await asyncio.to_thread(
         collect_recent_entries,
@@ -1082,6 +1110,7 @@ async def api_recent(request: Request) -> JSONResponse:
         limit=limit,
         ext_filter=ext_filter,
         prefix_filter=prefix_filter,
+        include_ignored=include_ignored,
     )
     return JSONResponse(
         {

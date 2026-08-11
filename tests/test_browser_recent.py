@@ -250,3 +250,84 @@ def test_api_recent_invalid_window_returns_400(tmp_path: Path) -> None:
         return resp.status_code
 
     assert asyncio.run(_run()) == 400
+
+
+# ── Truncation priority ───────────────────────────────────────
+
+
+def _repo_with_ignored_bulk(tmp_path: Path, bulk: int) -> None:
+    """A handful of tracked files buried under a dependency install.
+
+    The bulk is written *after* the tracked files, so a straight
+    newest-first cap puts every ignored file ahead of every tracked
+    one — the shape that made a day window on a real repository return
+    2 000 ``node_modules`` entries and none of the user's own work.
+    """
+
+    _gitignore_repo(tmp_path, "node_modules/\n")
+    (tmp_path / "src").mkdir()
+    for i in range(3):
+        (tmp_path / "src" / f"mod{i}.py").write_text("x")
+    vendor = tmp_path / "node_modules"
+    vendor.mkdir()
+    for i in range(bulk):
+        (vendor / f"dep{i}.js").write_text("y")
+
+
+def test_truncation_drops_ignored_before_tracked(tmp_path: Path) -> None:
+    _repo_with_ignored_bulk(tmp_path, bulk=40)
+    asyncio.run(_drive_walker(tmp_path))
+
+    result = collect_recent_entries(root=tmp_path, window="all", limit=10)
+
+    paths = [e["path"] for e in result.entries_flat]
+    tracked = [p for p in paths if p.startswith("src/")]
+    assert len(paths) == 10
+    assert result.truncated is True
+    # Every tracked file survives the cap even though all 40 ignored
+    # files are newer than all of them.
+    assert sorted(tracked) == ["src/mod0.py", "src/mod1.py", "src/mod2.py"]
+    # The rest of the cap still goes to ignored files, newest-first.
+    assert len(paths) - len(tracked) == 7
+
+
+def test_truncated_result_stays_newest_first(tmp_path: Path) -> None:
+    """Prioritising tracked files must not leave the list out of order:
+    the selection is re-sorted before it goes on the wire."""
+
+    _repo_with_ignored_bulk(tmp_path, bulk=40)
+    asyncio.run(_drive_walker(tmp_path))
+
+    result = collect_recent_entries(root=tmp_path, window="all", limit=10)
+
+    mtimes = [e["mtime"] for e in result.entries_flat]
+    assert mtimes == sorted(mtimes, reverse=True)
+
+
+def test_include_ignored_false_spends_the_cap_on_tracked_files(tmp_path: Path) -> None:
+    """A caller that hides gitignored rows should not pay for them: the
+    cap would otherwise be spent fetching rows dropped on arrival."""
+
+    _repo_with_ignored_bulk(tmp_path, bulk=40)
+    asyncio.run(_drive_walker(tmp_path))
+
+    result = collect_recent_entries(root=tmp_path, window="all", limit=10, include_ignored=False)
+
+    paths = [e["path"] for e in result.entries_flat]
+    assert sorted(paths) == ["src/mod0.py", "src/mod1.py", "src/mod2.py"]
+    # total_matching reports the filtered universe, so "3 of 3" rather
+    # than a truncation the caller never hit.
+    assert result.total_matching == 3
+    assert result.truncated is False
+
+
+def test_untruncated_results_are_unchanged_by_the_priority_rule(tmp_path: Path) -> None:
+    _repo_with_ignored_bulk(tmp_path, bulk=4)
+    asyncio.run(_drive_walker(tmp_path))
+
+    result = collect_recent_entries(root=tmp_path, window="all", limit=200)
+
+    assert result.truncated is False
+    assert result.total_matching == 7
+    mtimes = [e["mtime"] for e in result.entries_flat]
+    assert mtimes == sorted(mtimes, reverse=True)

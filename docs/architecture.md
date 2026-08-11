@@ -92,6 +92,69 @@ Tree panels and recent-file views subscribe to that store rather than maintainin
 independent copies. If a client falls behind the bounded event buffer, it requests a
 fresh snapshot.
 
+## Where Filtering Happens
+
+Navigation filtering is split across two tiers, and which tier owns a dimension is a
+consequence of where the information lives rather than a preference.
+
+**Client, over rendered rows.** Type, size, and gitignored visibility are decided in the
+browser by walking the rows already in the DOM. Every predicate input — extension, byte
+count, gitignore flag — is on the row before any filter runs, so this costs one pass and
+no round trip, and it stays responsive while the user toggles.
+Its ceiling is what has been rendered: a collapsed subtree is unknown, so the pass keeps
+those folders and reports how many it could not speak for.
+
+**Server, as the source of the tree.** Recency is different.
+`/api/recent` scans the whole inventory rather than the loaded subtrees, which is the
+one thing a DOM walk cannot do, so setting a recency window swaps the panel’s data
+source instead of decorating it.
+Gitignored visibility rides along as a request parameter because it changes what the
+response cap is spent on, not just which rows are painted.
+
+The extension tally behind the type menu comes from the index too
+(`InventoryIndex.extension_tally`), because the Quick File catalog excludes gitignored
+entries and a menu built from it would undercount everything the tree still shows.
+
+### Response Caps Are a Ranking Problem
+
+Any server-side filter that caps its response has to decide what to drop.
+Newest-first alone is not enough: a dependency install touches thousands of files at
+once, so a 2 000-row cap on a day window can be entirely `node_modules` while none of
+the user’s own work appears.
+`collect_recent_entries` therefore drops gitignored files before tracked ones and
+re-sorts the selection, and reports `total_matching` and `truncated` so the client can
+say what it is not showing.
+Treat that as the rule for any future filtered endpoint: decide the priority order
+before the cap, and report the shortfall.
+
+### Moving More Filtering Upstream
+
+Client-side filtering is bounded by what is rendered, so a very large directory reaches
+a point where the honest answer needs the index.
+The tiers are not fixed, and the vocabulary was built so a dimension can move without
+changing what it means: `FilterState` holds the values, and the predicate helpers are
+shared, so a dimension evaluated server-side still has to agree with the same
+definition.
+
+Worth understanding before moving anything:
+
+- **What server-side filtering buys.** Completeness — an answer over the whole index
+  rather than the expanded subset — plus the ability to filter what was never loaded,
+  and aggregates that reflect the filter rather than the whole tree.
+- **What it costs.** A round trip per change, so a control that felt instant becomes
+  latency-bound; cache keys multiply by the filter combination; and every dimension
+  evaluated in two places is a chance for the two to disagree.
+- **Which dimensions are natural candidates.** Extension and size are cheap index
+  predicates and compose with the existing recency scan.
+  Activity is not: the tracker’s live set is small, client-held, and already complete.
+- **The rule of thumb.** Move a dimension upstream when its client-side answer is
+  *incomplete*, not when it is slow.
+  Incompleteness is a correctness problem and the user cannot see it; slowness they can.
+
+Two things should stay true whichever tier owns a dimension: with no filters set the
+rendered DOM is unchanged from an unfiltered render, and any filter that cannot see the
+whole tree says so rather than implying completeness.
+
 ## Caching
 
 File responses use stable ETags derived from file metadata.

@@ -350,7 +350,16 @@
   --content-padding-x: 24px;
   --content-padding-y: 16px;
   --embedded-document-padding-top: 8px;
-  --pane-header-padding-x: 16px;
+  /* The navigation column has one left inset, and everything in it
+     lines up on that edge: the brand, the served path, the Files tab,
+     the filter chips, the tally row, and every tree row. 12px is the
+     tree row's own content inset (10px padding + the 2px selection
+     bar), so the chrome above aligns to the content rather than the
+     content having to move. Controls with internal padding cancel it
+     — see .header-brand's negative margin and .nav-tab-bar below — so
+     their *text* lands on the inset; bordered controls like chips
+     align their border instead, since that is their visual edge. */
+  --pane-header-padding-x: 12px;
   --pane-header-padding-y: 8px;
   --file-header-padding-y: var(--pane-header-padding-y);
   --file-tab-padding-x: 12px;
@@ -1320,16 +1329,44 @@ html.theme-anim .menu {
    listing. Holds the served-root file count + total size. Rendered by
    loadTree() in app.js; the inner .size / .count chips inherit the
    shared sizeHtml() / countHtml() conventions. */
+/* Same vertical rhythm as the filter bar above it: both are one-line
+   bordered rows of chrome, so they get the same 6px and the column
+   reads as evenly spaced bands rather than one band and one gap.
+   .tree-content contributes no top padding, so this is the whole
+   distance between the bar's border and the tally text. */
 .tree-summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 12px 8px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
 }
 .tree-summary-count,
 .tree-summary-size {
+  font-size: var(--ui-small-font-size);
+}
+.tree-summary-split {
+  flex-wrap: wrap;
+  gap: 4px 5px;
+}
+.tree-summary-tracked,
+.tree-summary-bytes {
+  font-size: var(--ui-small-font-size);
+}
+.tree-summary-tracked {
+  color: var(--text);
+}
+/* The ignored half is muted to the same degree the gitignored rows
+   below it are, so the header reads at a glance as "this much is
+   yours, that much is build output". */
+.tree-summary-ignored,
+.tree-summary-plus {
+  color: var(--muted);
+}
+.tree-summary-ignored {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--ui-small-font-size);
 }
 
@@ -1423,10 +1460,14 @@ html.theme-anim .menu {
   position: relative;
   z-index: var(--z-pane);
 }
+/* No top padding: whatever leads this pane — the tally row, or tree
+   rows directly when a recency window is showing /api/recent results —
+   owns its own spacing below the filter bar's border. Padding here
+   would stack on top of it. */
 .tree-content {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 0 0 8px;
   --scrollbar-bg: var(--sidebar-bg);
 }
 
@@ -1874,57 +1915,449 @@ html[data-prose-font="sans"] {
    border-bottom from .tab-bar above is always present;
    the shadow is the additive cue. */
 .tab-bar.nav-tab-bar {
-  padding-left: var(--pane-header-padding-x);
+  /* Cancel the tab's own horizontal padding so the *label* sits on the
+     column inset, the same trick .header-brand uses. Left-padding the
+     bar instead would inset the label twice. */
+  padding-left: calc(var(--pane-header-padding-x) - var(--file-tab-padding-x));
   position: relative;
   z-index: 1;
   transition: box-shadow var(--transition-fast);
 }
-.tab-bar.nav-tab-bar.scrolled {
+.tab-bar.nav-tab-bar.scrolled,
+.nav-filter-bar.scrolled {
   box-shadow: var(--shadow-md);
 }
 
-/* Recent panel — controls (window picker) + flat file list.
-   The list reuses .tree-item rows (same icons, ages, sizes) so
-   click-to-open and hover affordances match the Files panel
-   exactly. */
-.recent-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-.recent-chip {
+/* ── Filter controls ─────────────────────────────────────────────
+   The one chip family for every filtering surface. See
+   docs/design-system.md ("Filter Controls") for the contract and
+   static/filter_controls.js for the markup that produces it.
+
+   Three shapes built from one atom:
+     .chip                          the pill itself; state on
+                                    [aria-pressed] or [aria-checked]
+     .chip-group[data-select="one"] joined single-select — the
+                                    segments read as one object and
+                                    the active one fills with the
+                                    accent tint
+     .chip-group[data-select="many"] joined multi-select — same
+                                    joinery, neutral fill, because
+                                    these accumulate rather than
+                                    replace each other
+     .chip-toggle                   a standalone boolean chip
+
+   The accent-versus-neutral fill is the only cue that separates
+   single- from multi-select before a click, so it is load-bearing:
+   it matches .menu-seg[aria-checked], which already means "one of
+   these" elsewhere in the app. */
+.chip {
   font: inherit;
   font-size: var(--ui-small-font-size);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--border);
+  background: var(--viz-surface);
+  border: 1px solid var(--viz-border);
   border-radius: var(--radius-pill);
-  padding: 2px 8px;
+  padding: 2px 9px;
   cursor: pointer;
+  user-select: var(--toggle-user-select);
+  white-space: nowrap;
   transition:
     color var(--transition-fast),
     border-color var(--transition-fast),
     background var(--transition-fast);
 }
-.recent-chip:hover {
+.chip:hover {
   color: var(--text);
   background: var(--hover-bg);
 }
-.recent-chip.active {
-  color: var(--tab-active-color);
-  border-color: var(--tab-active-color);
+.chip:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
 }
+/* Joined group: one shared border and radius, segments losing their
+   own so the row reads as a single control. Wrapping is allowed —
+   the type row has more members than a 300px pane can hold — and the
+   dividers survive it because they ride the segment, not the edge. */
+.chip-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--viz-border);
+  border-radius: var(--radius-pill);
+  background: var(--viz-surface);
+  overflow: hidden;
+}
+.chip-group > .chip {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.chip-group > .chip + .chip {
+  border-left: 1px solid var(--viz-border-subtle);
+}
+/* Single-select: accent fill, the .menu-seg[aria-checked] treatment. */
+.chip-group[data-select="one"] > .chip[aria-checked="true"] {
+  background: var(--highlight-bg);
+  color: var(--link);
+  font-weight: var(--weight-medium);
+}
+/* Multi-select: neutral fill plus its own inset frame, so a row of
+   them reads as several independent switches rather than one
+   exclusive choice. The frame is doing real work — --hover-bg alone
+   is nearly invisible on the light theme's white surface, and a
+   pressed toggle has to be unmistakable when several siblings are
+   also pressed. It also keeps the accent reserved for "one of
+   these", per the fill convention above. */
+.chip-group[data-select="many"] > .chip[aria-pressed="true"],
+.chip-toggle[aria-pressed="true"] {
+  background: var(--hover-bg);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+  box-shadow: inset 0 0 0 1px var(--viz-border-strong);
+}
+/* ── Multi-select dropdown ───────────────────────────────────────
+   A chip trigger over the shared .menu surface, with
+   role="menuitemcheckbox" rows. The app had a single-choice .menu and
+   a native .menu-select and neither can pick several things, so this
+   composes the existing menu rather than introducing a second look.
+   The trigger summarises like a select ("Any type", ".md", ".md +2")
+   so the closed control still answers "what is filtered?". */
+.chip-menu {
+  position: relative;
+  display: inline-flex;
+}
+.chip-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* A trigger holding a value carries the accent, so a set filter is
+   visible without reading the label. This is the same "one of these is
+   chosen" signal the selected single-select segment uses; at trigger
+   level it means "this dimension is constrained", which is the thing
+   worth seeing across the bar at a glance. */
+.chip-menu-trigger[data-active="true"] {
+  background: var(--highlight-bg);
+  border-color: var(--link);
+  color: var(--link);
+  font-weight: var(--weight-medium);
+}
+.chip-menu[aria-expanded="true"] .chip-menu-trigger {
+  background: var(--hover-bg);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--viz-border-strong);
+}
+.chip-menu-caret {
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.7;
+}
+/* Drawer disclosure. Geometry, hover surface, and focus ring come
+   entirely from the .icon-btn primitive — this is the same control as
+   the settings gear and the print button, so only the rotation lives
+   here. The shared chevron points right at rest; 90deg is "opens
+   downward", -90deg is "closes upward". The accessible name is on
+   aria-label, because a rotated glyph says nothing to a screen
+   reader. */
+.filter-drawer-toggle svg {
+  transform: rotate(90deg);
+  transition: transform var(--transition-fast);
+}
+.filter-drawer-toggle[aria-pressed="true"] svg {
+  transform: rotate(-90deg);
+}
+.chip-menu-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  /* The list is capped at 30 entries, which still overflows a short
+     pane; scroll inside the menu rather than off the page. */
+  max-height: 320px;
+  overflow-y: auto;
+}
+.chip-menu[aria-expanded="true"] .chip-menu-panel {
+  display: flex;
+}
+.chip-menu-item {
+  gap: 6px;
+}
+/* Fixed-width check column so the labels line up whether or not a row
+   is selected — a list that shifts sideways as you tick things is
+   hard to scan. */
+.chip-menu-check {
+  display: inline-flex;
+  justify-content: center;
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--link);
+}
+.chip-menu-item .menu-item-label {
+  flex: 1 1 auto;
+}
+/* Icon carries the type, the way it does on a tree row: the glyph
+   names the broad type and its ft-* class supplies the subtype hue.
+   The label stays plain — tinting eight rows of text would fight the
+   check mark for the eye and make the list harder to scan, not
+   easier. */
+.chip-menu-item .menu-item-icon {
+  color: var(--ft-color, var(--muted));
+}
+.chip-menu-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ui-small-font-size);
+}
+/* Age rows wear the freshness ramp, so the menu is the legend for the
+   colours in the tree. The .age-* classes already colour the button;
+   this only pulls the hour row's red back a little, because Live and
+   Past hour are adjacent steps and sit next to each other here in a
+   way they never do in a file listing. Scoped to the menu on purpose:
+   the tree's ramp is contrast-audited against every surface it rides
+   (see the --file-age-* block), and this is a legibility tweak for one
+   control, not a change to what the colours mean. */
+.chip-menu-item.age-min {
+  color: color-mix(in srgb, var(--file-age-min) 72%, var(--muted));
+}
+/* Labelled checkbox — the family's one deliberate break from
+   button-with-aria-pressed, for a boolean whose polarity has to be
+   legible. A pressed pill reading "Gitignored" does not say whether
+   pressed means shown or filtered away; "Show ignored" with a tick
+   does, and it is visibly lighter than a pill sitting beside it. */
+.filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--ui-small-font-size);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  white-space: nowrap;
+}
+.filter-check:hover {
+  color: var(--text);
+}
+.filter-check input {
+  margin: 0;
+  accent-color: var(--link);
+  cursor: pointer;
+}
+.filter-check:has(input:checked) {
+  color: var(--text);
+}
+.filter-check:has(input:focus-visible) {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
+}
+.chip-badge {
+  display: inline-block;
+  min-width: 14px;
+  margin-left: 5px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--link);
+  color: var(--bg);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Rendered only when something is set: a permanently visible Clear on
+   a clean state is noise. */
+.chip-clear {
+  font: inherit;
+  font-size: var(--ui-small-font-size);
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.chip-clear:hover {
+  text-decoration: underline;
+}
+.chip-clear:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+/* ── Navigation filter bar ───────────────────────────────────────
+   Sits between the nav tab bar and the scrolling tree, outside the
+   replaceable #tab-files container so a tree reload never destroys
+   it and so it never scrolls away. The always-visible row carries
+   recency; everything else lives in the drawer one toggle down. */
+.nav-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  /* Column gap only by default. A standing row gap survives the drawer
+     collapsing to zero height, so a closed bar sat 6px lower than it sat
+     high and read as bottom-heavy against the tally band below it. The
+     gap belongs to the drawer being open, so it opens with it — and it
+     has to live here rather than as padding inside the drawer, because
+     `overflow` clips a content box and leaves padding standing. */
+  column-gap: 6px;
+  row-gap: 0;
+  padding: 6px var(--pane-header-padding-x);
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  transition:
+    box-shadow var(--transition-fast),
+    row-gap var(--transition-fast);
+}
+/* Widens on the same token as the drawer's own grid track, so the gap
+   grows with the reveal rather than snapping open ahead of it. */
+.nav-filter-bar:has(.filter-drawer[data-open="true"]) {
+  row-gap: 6px;
+}
+/* Deliberately nowrap. A wrapping flex line breaks before it shrinks,
+   so with wrap on, the drawer toggle would drop to its own row the
+   moment the badge widened it — the bar would reflow under the control
+   you just clicked. Nowrap plus a shrinkable group means the recency
+   segments wrap inside their own pill instead. */
+.nav-filter-bar-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  width: 100%;
+}
+.nav-filter-bar-main > .chip-group {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* The always-visible row is the densest place a chip appears: six
+   recency segments plus the drawer toggle have to clear a 300px pane
+   without the group wrapping. One pixel of horizontal padding each
+   side buys that margin; the drawer's groups keep the roomier default. */
+.nav-filter-bar-main > .chip-group > .chip {
+  padding-inline: 7px;
+}
+/* Pushes the drawer toggle and Clear to the trailing edge, so the
+   recency group always starts at the same x as the tree's first row. */
+.nav-filter-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+/* The drawer opens on the shared motion token rather than snapping,
+   so the chevron's rotation and the reveal it announces run together.
+   A `display` toggle cannot be transitioned, so this animates a grid
+   track from 0fr to 1fr — that interpolates to the content's real
+   height without anyone having to hard-code it. The single child owns
+   the clipping while the track grows.
+   Closed state is `inert` rather than `hidden`: it keeps the drawer
+   out of the tab order and the accessibility tree the way `hidden`
+   did, without the `display: none` that would kill the transition. */
+.filter-drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  width: 100%;
+  transition: grid-template-rows var(--transition-fast);
+}
+.filter-drawer[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+/* No padding here: the grid track collapses to zero height but padding
+   would survive it, leaving a sliver of drawer visible when closed.
+   The bar's own bottom padding provides the separation. */
+/* Grid-track mechanics only. Layout belongs to the child's own rule
+   (.filter-drawer-row) — setting a direction here would fight it, and
+   the two selectors have equal specificity, so whichever came last
+   would silently win.
+   Nothing in here may carry padding or margin either: `overflow` clips
+   the content box, so either one survives the track collapsing to zero
+   and leaves a sliver of drawer below a closed bar. The bar's row-gap
+   owns that separation instead. */
+.filter-drawer > * {
+  min-height: 0;
+  overflow: hidden;
+}
+/* An open dropdown inside the drawer must not be clipped by the track
+   that revealed it. A menu can only be open once the drawer is fully
+   open, so lifting the clip here can never expose mid-transition
+   overflow. */
+.filter-drawer:has(.chip-menu[aria-expanded="true"]) > * {
+  overflow: visible;
+}
+/* No section headings in here: an extension menu, a size ramp, and a
+   checkbox labelled "Gitignored" already say what they are, and four
+   uppercase labels cost more vertical space in a 300px pane than they
+   were paying for. */
+.filter-drawer-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filter-drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+/* Honest incompleteness: hide mode prunes what it has loaded and says
+   so rather than implying the tree is now the whole answer. */
+.filter-note {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-style: italic;
+}
+
+/* Filtering prunes; there is no dim/hide switch, because removing what
+   does not match is what a filter is for. Only .tree-item rows carry
+   this — the .tree-children wrapper is left alone because the
+   expansion code owns its inline display, and the wrapper has no box
+   of its own (margin only), so a container whose rows are all hidden
+   collapses to nothing by itself. app.js propagates a hidden folder's
+   verdict down to its descendants so there is never an orphaned
+   visible row inside a pruned subtree. Gitignored rows keep the tree's
+   existing dimmed treatment when shown; unchecking removes them. */
+.tree-item-filter-hidden {
+  display: none;
+}
+
 .recent-empty {
   padding: 24px 12px;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   text-align: center;
+}
+/* Second line under the tally: what the filter narrowed the tree to.
+   Muted, because the totals above are the constant a reader orients
+   against and this is the delta from them. */
+.tree-summary-filtered {
+  padding: 3px 12px 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  border-bottom: 1px solid var(--border);
+}
+/* The tally and its filtered count are one block, so the rule belongs
+   under the pair rather than between them: the totals are what the
+   filtered figure reads against, and a border in between made them
+   look like two unrelated bands. */
+.tree-summary:has(+ .tree-summary-filtered) {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+/* Everything above the list is a band: its padding sits inside its own
+   border, and 6px is the rhythm they all keep. A tree row is not a
+   band — its 2px is sized for the distance between rows, not for the
+   distance from a rule — so the first one landed hard against the
+   tally's border. This makes up the difference, both when the tally
+   leads the pane and when rows do (a recency window renders no tally
+   of its own). Margin, not padding, so the row's hover fill and its
+   selected border stay the height of every other row. */
+.tree-summary + .tree-item,
+.tree-summary-filtered + .tree-item,
+.tree-content > * > .tree-item:first-child {
+  margin-top: 4px;
 }
 .recent-truncated-note {
   padding: 8px 12px;
@@ -2454,7 +2887,11 @@ html[data-prose-font="sans"] {
   color: hsl(220 9% 46%);
 }
 
-/* ── Event filter bar ─────────────────────────────────────────── */
+/* ── Event filter bar ───────────────────────────────────────────
+   The agent-log plugin's event-kind buttons. Unrelated to the nav
+   filter bar above, which is why that one is `.nav-filter-bar`: the
+   two shared the `.filter-bar` name for a while and this rule's
+   margin silently leaked into the navigation column. */
 .filter-bar {
   display: flex;
   gap: 0;
@@ -3437,6 +3874,21 @@ pre.code-block code.hljs {
   .tree-item-flash-in,
   .tree-item-flash-out {
     animation-duration: 1ms;
+  }
+  /* The drawer and its chevron still change state, just without the
+     travel. */
+  .filter-drawer,
+  .filter-drawer-toggle svg {
+    transition-duration: 1ms;
+  }
+  /* The bar's row-gap tracks the drawer, so it has to stop travelling
+     with it. Named individually rather than by transition-duration
+     because the same shorthand carries the scroll shadow, and a fade is
+     not motion — that one keeps its timing. */
+  .nav-filter-bar {
+    transition:
+      box-shadow var(--transition-fast),
+      row-gap 1ms;
   }
 }
 

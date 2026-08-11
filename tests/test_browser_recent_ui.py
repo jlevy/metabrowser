@@ -1,4 +1,11 @@
-"""Structural tests for the Recent view and its DOM contract.
+"""Structural tests for the recency data path and its DOM contract.
+
+Recency is a filter dimension rather than a tab: the Files panel
+renders ``/api/recent`` whenever a recency window is set and the
+treatment is hide. The fetch, overlay, clustering, and debounce
+machinery below is unchanged by that move — only the panel it paints
+into is. Filter-bar and chip-family structure lives in
+test_browser_filter_ui.py.
 
 Follows the test_browser_v2.py convention: parse the static
 HTML/JS/CSS sources and assert structural invariants. End-to-end
@@ -40,25 +47,24 @@ def _render_index_html() -> str:
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)
 
 
-def test_index_template_renders_files_and_recent_tab_bar() -> None:
+def test_index_template_renders_single_files_tab() -> None:
+    """Recent is a filter now, so the nav pane never needs switching."""
+
     html = _render_index_html()
     assert 'class="tab-bar nav-tab-bar"' in html
     assert 'data-tab="files"' in html
-    assert 'data-tab="recent"' in html
+    assert 'data-tab="recent"' not in html
     # Aria attributes for screen readers.
     assert 'role="tablist"' in html
     assert 'aria-selected="true"' in html
 
 
-def test_index_template_renders_tab_files_and_tab_recent_panels() -> None:
+def test_index_template_renders_only_the_files_panel() -> None:
     html = _render_index_html()
     assert 'id="tab-files"' in html
-    assert 'id="tab-recent"' in html
-    # Files initially visible; Recent hidden.
     assert 'data-tab-content="files"' in html
-    assert 'data-tab-content="recent"' in html
-    # Recent starts hidden.
-    assert 'id="tab-recent" data-tab-content="recent" style="display:none;"' in html
+    assert 'id="tab-recent"' not in html
+    assert 'data-tab-content="recent"' not in html
 
 
 def test_index_template_renders_index_progress_footer() -> None:
@@ -87,7 +93,7 @@ def test_dom_contract_all_referenced_ids_exist_in_rendered_html() -> None:
         "index-progress",
         "tree-content",
         "tab-files",
-        "tab-recent",
+        "nav-filter-bar",
         "tree-pane",
         "tree-resize",
         "preview-pane",
@@ -96,7 +102,7 @@ def test_dom_contract_all_referenced_ids_exist_in_rendered_html() -> None:
         assert f'id="{ident}"' in html, f"missing JS-referenced id={ident!r} in rendered HTML"
 
 
-def test_dom_contract_tab_panels_are_direct_children_of_tree_content() -> None:
+def test_dom_contract_files_panel_is_direct_child_of_tree_content() -> None:
     """A refactor that nests #tab-files inside another element
     would silently break selectors like '#tab-files > .tree-item'.
     Catch it via structural assertion."""
@@ -106,9 +112,17 @@ def test_dom_contract_tab_panels_are_direct_children_of_tree_content() -> None:
     # #tree-content tag (whitespace allowed).
     tree_content_open = html.index('id="tree-content"')
     after_open = html[tree_content_open : tree_content_open + 200]
-    # tab-files comes before tab-recent and both before any
-    # other top-level child.
-    assert after_open.index('id="tab-files"') < after_open.index('id="tab-recent"')
+    assert 'id="tab-files"' in after_open
+
+
+def test_dom_contract_filter_bar_sits_outside_the_scrolling_tree() -> None:
+    """The bar must not live inside #tab-files (a tree reload
+    replaces that container wholesale) nor inside #tree-content (the
+    scroll owner, which would scroll the bar away)."""
+
+    html = _render_index_html()
+    assert html.index('id="nav-filter-bar"') < html.index('id="tree-content"')
+    assert html.index('class="tab-bar nav-tab-bar"') < html.index('id="nav-filter-bar"')
 
 
 # ── Client wiring ──────────────────────────────────────────────
@@ -248,48 +262,41 @@ def test_render_tree_nodes_dir_metric_switches_chip_html() -> None:
     assert "sizeHtml(totalSize" in chip_block
 
 
-def test_window_chips_read_from_settings_with_fallback() -> None:
-    """RECENT_WINDOWS now reads from window.METABROWSER_SETTINGS
-    (injected by the index template via client_settings_dict).
-    The fallback literal preserves behaviour when settings are
-    missing (e.g. unit tests that load app.js without the
-    template)."""
+def test_recency_refetch_dedups_against_the_current_window() -> None:
+    """Re-selecting the same recency window must not refetch. The
+    filter-change handler compares against the last window it acted
+    on before delegating to loadRecent."""
 
     js = _read_app_js()
-    assert "_METABROWSER_SETTINGS.RECENT_WINDOWS" in js
-    assert '["1h", "24h", "7d", "30d", "all"]' in js
-    assert "var currentRecentWindow" in js
+    fn_start = js.index("function onFilterStateChange(state)")
+    fn_block = js[fn_start : fn_start + 1200]
+    assert "_filterLastRecency !== state.recency" in fn_block
+    assert "loadRecent(state.recency)" in fn_block
 
 
-def test_window_chip_click_dedups_against_current_window() -> None:
-    """Picking the same chip again is a no-op so a stray click
-    doesn't trigger an extra fetch."""
-
-    js = _read_app_js()
-    # Anchor on the click-delegate registration; the closer
-    # 'closest("[data-action=' anchor finds the chip handler
-    # body specifically (the other "recent-window" occurrence is
-    # in renderRecentControls).
-    handler_start = js.index("closest(\"[data-action='recent-window']\")")
-    handler_block = js[handler_start : handler_start + 600]
-    assert "if (w === currentRecentWindow)" in handler_block
-
-
-def test_load_recent_locks_window_synchronously_first() -> None:
-    """The chip-click handler dedups against currentRecentWindow.
-    The window assignment must come before any DOM mutation AND
-    before fetchRecent kicks off so a fast user double-click
-    doesn't race two fetches that resolve in the wrong order."""
+def test_load_recent_locks_window_synchronously_before_fetching() -> None:
+    """The window assignment must land before fetchRecent kicks off
+    so a fast double-click doesn't race two fetches that resolve in
+    the wrong order."""
 
     js = _read_app_js()
     fn_start = js.index("function loadRecent(windowKey)")
     fn_block = js[fn_start : fn_start + 1500]
     assign_idx = fn_block.index("currentRecentWindow = windowKey;")
-    # ensureRecentScaffold is the first DOM-touching call.
-    scaffold_idx = fn_block.index("ensureRecentScaffold()")
     fetch_idx = fn_block.index("fetchRecent(windowKey)")
-    assert assign_idx < scaffold_idx
     assert assign_idx < fetch_idx
+
+
+def test_recency_source_needs_a_window() -> None:
+    """/api/recent is the source whenever a window is set. "live"
+    stays on the tree source — the endpoint has no window for the
+    active tracker's files."""
+
+    js = _read_app_js()
+    fn_start = js.index("function filesPanelUsesRecentSource()")
+    fn_block = js[fn_start : fn_start + 600]
+    assert 'st.recency !== "all"' in fn_block
+    assert 'st.recency !== "live"' in fn_block
 
 
 # ── Cross-panel selection ──────────────────────────────────────
@@ -368,23 +375,20 @@ def test_styles_css_keeps_tab_padding_compact() -> None:
     assert "--file-tab-padding-y: 4px;" in css
 
 
-def test_styles_css_defines_recent_controls_and_chip() -> None:
+def test_styles_css_keeps_recency_list_states() -> None:
     css = _read_styles_css()
-    assert ".recent-controls {" in css
-    assert ".recent-chip {" in css
-    assert ".recent-chip.active {" in css
     assert ".recent-empty {" in css
+    assert ".recent-truncated-note {" in css
     assert ".tab-bar.nav-tab-bar {" in css
 
 
-def test_styles_css_recent_chip_active_uses_tab_active_color_token() -> None:
-    """Active chip colour reuses the same token the active tab
-    button uses, keeping the two surfaces visually locked."""
+def test_styles_css_drops_the_superseded_recent_chip() -> None:
+    """.recent-chip was one of four near-identical pill controls; the
+    shared .chip family replaced it."""
 
     css = _read_styles_css()
-    rule_start = css.index(".recent-chip.active {")
-    rule_block = css[rule_start : rule_start + 500]
-    assert "var(--tab-active-color)" in rule_block
+    assert ".recent-chip" not in css
+    assert ".recent-controls" not in css
 
 
 # ── findRootReadme follows the tab refactor ─────────────────

@@ -820,15 +820,10 @@ async function loadTree() {
     // Summary row sits at the top of the scrollable tree listing, not
     // in the sticky header — visible on first paint, scrolls away with
     // the rest of the tree. Keeps the upper nav header clean.
-    var summaryHtml =
-      '<div class="tree-summary">' +
-      '<span class="tree-summary-count">' +
-      countHtml(summaryFiles) +
-      "</span>" +
-      '<span class="tree-summary-size">' +
-      sizeHtml(summarySize) +
-      "</span>" +
-      "</div>";
+    var summaryHtml = treeSummaryHtml(data.summary, summaryFiles, summarySize);
+    // Cached so the recency source, which paints over the whole panel,
+    // can keep the same tally row above its own filtered count.
+    _lastTreeSummaryHtml = summaryHtml;
     // Walker truncation banner. The InventoryIndex
     // walker stops at INVENTORY_MAX_FILES; finalized dirs still
     // emit accumulated totals so the UI is usable, but the user
@@ -837,20 +832,127 @@ async function loadTree() {
     if (data.tally_cache_status === "truncated") {
       truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
     }
-    _perf.measure(
-      "renderTreeNodes:root",
-      () => {
-        pendingTreePages.clear();
-        pendingTreePageId = 0;
-        // Files and Recent are sibling panels inside #tree-content.
-        var filesPanel = document.getElementById("tab-files");
-        if (filesPanel) {
-          filesPanel.innerHTML = truncationHtml + summaryHtml + renderTreeNodes(data.tree, true);
-        }
-      },
-      { nodes: data.tree ? data.tree.length : 0 },
-    );
+    if (Array.isArray(data.extensions)) {
+      _extensionTally = data.extensions;
+      renderNavFilterBar();
+    }
+    _lastTreeRender = { tree: data.tree, chromeHtml: truncationHtml + summaryHtml };
+    renderFilesFromTree();
   });
+}
+
+// Nav header tally. Tracked and ignored are counted separately —
+// "12,582 files, 189.8 MB" hides that almost all of it is node_modules
+// — and the ignored half is dimmed to match how those rows read in the
+// tree below. Falls back to the combined figure when the server has no
+// split to give (a subtree request, or an index still warming up).
+function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
+  if (!summary || typeof summary.files !== "number") {
+    return (
+      '<div class="tree-summary">' +
+      `<span class="tree-summary-count">${countHtml(fallbackFiles)}</span>` +
+      `<span class="tree-summary-size">${sizeHtml(fallbackSize)}</span>` +
+      "</div>"
+    );
+  }
+  // Deliberately NOT .tree-summary-count / .tree-summary-size: those
+  // are the live-update targets of updateRootAggregatePresentation,
+  // which patches in the gitignore-blind root aggregate and would
+  // overwrite the tracked half with the combined total. The split row
+  // owns its own classes and its own refresh path.
+  var tracked =
+    `<span class="tree-summary-tracked">${esc(formatCount(summary.files))}</span>` +
+    `<span class="tree-summary-bytes">(${esc(formatSize(summary.size))})</span>`;
+  var ignored = "";
+  if (summary.ignored_files > 0) {
+    ignored =
+      '<span class="tree-summary-ignored">' +
+      '<span class="tree-summary-plus">+</span>' +
+      `${esc(summary.ignored_files.toLocaleString())} ignored` +
+      `<span class="tree-summary-bytes">(${esc(formatSize(summary.ignored_size))})</span>` +
+      "</span>";
+  }
+  return `<div class="tree-summary tree-summary-split">${tracked}${ignored}</div>`;
+}
+
+// The walker's root upsert carries gitignore-blind totals, so it
+// cannot refresh the split. Refetch the summary instead — depth=0 so
+// the response is the tally and nothing else — debounced, because the
+// root aggregate is patched repeatedly while the walk converges.
+var _summaryRefreshHandle = null;
+function scheduleRootSummaryRefresh() {
+  if (_summaryRefreshHandle || !document.querySelector(".tree-summary-split")) {
+    return;
+  }
+  _summaryRefreshHandle = setTimeout(() => {
+    _summaryRefreshHandle = null;
+    fetch("/api/tree?depth=0")
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data) => {
+        if (!data?.summary || !_lastTreeRender) {
+          return;
+        }
+        var row = document.querySelector(".tree-summary-split");
+        if (!row) {
+          return;
+        }
+        if (Array.isArray(data.extensions)) {
+          _extensionTally = data.extensions;
+          // Only rebuild the bar when no dropdown is open. Replacing
+          // its DOM mid-poll would drop focus out of a menu the user
+          // is arrowing through, and this runs repeatedly while the
+          // index warms up.
+          if (filterOpenMenu === null) {
+            renderNavFilterBar();
+          }
+        }
+        var html = treeSummaryHtml(data.summary, null, null);
+        row.outerHTML = html;
+        // Keep both caches in step: chromeHtml feeds a source swap back
+        // to the tree, and _lastTreeSummaryHtml is what the recency
+        // source prepends. Updating only the first left the tally
+        // showing first-paint figures under a recency filter.
+        _lastTreeSummaryHtml = html;
+        _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
+          /<div class="tree-summary tree-summary-split">.*?<\/div>$/,
+          html,
+        );
+      })
+      .catch(() => {
+        // A failed refresh leaves the previous figures in place, which
+        // is better than blanking a number the user is reading.
+      });
+  }, RECENT_RECLUSTER_DEBOUNCE_MS * 5);
+}
+
+// Last /api/tree payload plus the chrome rendered above it. Cached so
+// clearing a recency filter can restore the full tree from memory
+// instead of refetching on every chip click.
+var _lastTreeRender = null;
+// The tally row alone, so the recency source can reuse it verbatim.
+var _lastTreeSummaryHtml = "";
+
+// Paint #tab-files from that cache. Returns false when nothing has
+// been fetched yet, so the caller can fall back to loadTree().
+function renderFilesFromTree() {
+  if (!_lastTreeRender) {
+    return false;
+  }
+  var snapshot = _lastTreeRender;
+  _perf.measure(
+    "renderTreeNodes:root",
+    () => {
+      pendingTreePages.clear();
+      pendingTreePageId = 0;
+      var filesPanel = document.getElementById("tab-files");
+      if (filesPanel) {
+        filesPanel.innerHTML = snapshot.chromeHtml + renderTreeNodes(snapshot.tree, true);
+      }
+    },
+    { nodes: snapshot.tree ? snapshot.tree.length : 0 },
+  );
+  applyTreeFilters();
+  return true;
 }
 
 function treeTruncationNoteHtml(maxFiles) {
@@ -915,8 +1017,13 @@ function treeDirMetric(options) {
     : TREE_DIR_METRIC_SIZE;
 }
 
-function treeRenderOptionsForElement(el) {
-  return el?.closest?.("#tab-recent")
+// Dir rows show total bytes when the panel is rendering the whole
+// tree and descendant file count when it is rendering a recency
+// result — aggregating bytes across "files modified in the last 24h"
+// mixes incomparable things. Now that both sources render into
+// #tab-files, the active source decides, not the element.
+function treeRenderOptionsForElement(_el) {
+  return filesPanelUsesRecentSource()
     ? { dirMetric: TREE_DIR_METRIC_COUNT }
     : { dirMetric: TREE_DIR_METRIC_SIZE };
 }
@@ -1027,9 +1134,13 @@ function renderTreeNodes(nodes, isRoot, options) {
         ? `<span class="compression-badge" title="${esc(compressionName)} compressed">${compressionGlyph}</span>`
         : "";
       var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
+      // The index's compound-tail extension, which the type filter
+      // matches on. Separate from data-logical-ext, which means "inner
+      // extension of a compressed artifact" and drives icon dispatch.
+      var extAttr = node.ext ? ` data-ext="${esc(node.ext)}"` : "";
       var compressedAttr = compressed ? ' data-compressed="1"' : "";
       parts.push(
-        `<div class="tree-item tree-file${mutedCls}" data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${mutedCls}" data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
         '<span class="',
         iconCls,
         '">',
@@ -1181,6 +1292,9 @@ async function loadSubtree(path, childrenEl, options) {
       },
       { path: path, nodes: tree.length },
     );
+    // Newly rendered children carry no filter classes yet, so without
+    // this an expand under an active filter reveals the whole folder.
+    applyTreeFilters();
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
@@ -1508,6 +1622,8 @@ treePane.addEventListener("click", (e) => {
     if (nextBatch) {
       pendingTreePages.delete(pageId);
       pageRow.outerHTML = renderTreeNodes(nextBatch, false, page.options);
+      // Same reason as loadSubtree: a deferred page arrives unfiltered.
+      applyTreeFilters();
     }
     return;
   }
@@ -1578,15 +1694,15 @@ function setSelectedPath(path) {
   });
 }
 
-// ── Nav tabs (Files / Recent) ──────────────────────────────────
+// ── Nav pane ────────────────────────────────────────────────────
 //
-// Files panel reuses the existing tree machinery. Recent fetches a
-// flat newest-first leaf list from /api/recent (filter + gitignore
-// resolved server-side) and clusters it here via
+// One Files panel, two data sources. The default source is the
+// /api/tree walk. When the recency filter is set and the treatment is
+// hide, the panel instead renders /api/recent's flat newest-first leaf
+// list (filter + gitignore resolved server-side), clustered here via
 // ``clusterRecentTreeJs`` — clustering is a rendering concern, owned
 // by this layer. See ``metabrowser/recent.py`` for the layering
-// rationale. Both panels share the same .tab-bar styling as the
-// file-preview tabs (see :root --tab-active-* vars in styles.css).
+// rationale, and the nav filter bar section below for the switch.
 
 // Client constants come from window.METABROWSER_SETTINGS (injected
 // by the Starlette index handler). The server-side
@@ -1595,7 +1711,6 @@ function setSelectedPath(path) {
 // duplicating constants between Python and JS.
 var _METABROWSER_SETTINGS = (typeof window !== "undefined" && window.METABROWSER_SETTINGS) || {};
 const RECENT_LIMIT = _METABROWSER_SETTINGS.RECENT_LIMIT || 2000;
-const RECENT_WINDOWS = _METABROWSER_SETTINGS.RECENT_WINDOWS || ["1h", "24h", "7d", "30d", "all"];
 const RECENT_RECLUSTER_DEBOUNCE_MS = _METABROWSER_SETTINGS.RECENT_RECLUSTER_DEBOUNCE_MS || 100;
 const RECENT_CLUSTER_PCT = _METABROWSER_SETTINGS.RECENT_CLUSTER_PCT || 0.05;
 const INDEX_PROGRESS_POLL_MS = _METABROWSER_SETTINGS.INDEX_PROGRESS_POLL_MS || 1000;
@@ -1759,26 +1874,27 @@ function initNavTabs() {
       queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
         panel.style.display = panel.dataset.tabContent === tabId ? "" : "none";
       });
-      if (tabId === "recent" && !recentEverLoaded) {
-        loadRecent(currentRecentWindow);
-      }
     });
   });
 }
 
-// Toggle the nav tab bar's drop shadow based on whether the
+// Toggle the nav chrome's drop shadow based on whether the
 // tree-content scroll position is at the top. At scrollTop=0 the
 // shadow would fall onto whitespace and read as floating chrome;
-// once content has scrolled under the tabs the shadow becomes
+// once content has scrolled under the chrome the shadow becomes
 // useful as a "there's more above" cue. The hairline border-bottom
-// from .tab-bar stays in both states.
+// stays in both states.
+//
+// The shadow rides the filter bar, not the tab bar: the filter bar is
+// the bottom-most chrome above the scroll owner, so a shadow on the
+// tab bar would land on the filter bar instead of on the content.
 function initNavScrollShadow() {
-  const navBar = queryHtml(".nav-tab-bar");
+  const shadowTarget = document.getElementById("nav-filter-bar") || queryHtml(".nav-tab-bar");
   const content = document.getElementById("tree-content");
-  if (!navBar || !content) {
+  if (!shadowTarget || !content) {
     return;
   }
-  const scrollNavBar = navBar;
+  const scrollNavBar = shadowTarget;
   const scrollContent = content;
   function update() {
     if (scrollContent.scrollTop > 0) {
@@ -1843,11 +1959,9 @@ var recentInflight = null; // AbortController for the in-flight chip fetch
 var _GITIGNORED_DIR_PATHS = new Set();
 
 function loadRecent(windowKey) {
-  // Lock the user's window intent synchronously so the chip-
-  // click handler's dedup is honoured.
+  // Lock the user's window intent synchronously so a second chip
+  // click can dedup against it.
   currentRecentWindow = windowKey;
-  ensureRecentScaffold();
-  setActiveRecentChip(windowKey);
   recentEverLoaded = true;
   fetchRecent(windowKey);
 }
@@ -1857,8 +1971,13 @@ function fetchRecent(windowKey) {
     recentInflight.abort();
     recentInflight = null;
   }
-  var results = document.getElementById("recent-results");
-  if (results && recentBaseEntries.size === 0) {
+  var results = recentResultsHost();
+  // Always replace the panel, not just on a cold start. This source
+  // paints over the full tree, so leaving the previous contents up
+  // would show an unfiltered tree under a recency window that is
+  // already selected — and a warm `recentBaseEntries` from an earlier
+  // window is the wrong window's answer, not this one's.
+  if (results) {
     results.innerHTML = '<div class="recent-empty">Loading recent files…</div>';
   }
   var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
@@ -1867,7 +1986,11 @@ function fetchRecent(windowKey) {
     "/api/recent?window=" +
     encodeURIComponent(windowKey) +
     "&limit=" +
-    encodeURIComponent(String(RECENT_LIMIT));
+    encodeURIComponent(String(RECENT_LIMIT)) +
+    // Asking for rows we are about to hide would spend the server's
+    // cap on them; the filter drops gitignored entries anyway when
+    // Show ignored is off.
+    (filterState && filterState.get().showIgnored === false ? "&include_ignored=0" : "");
   var fetchOpts = ctrl ? { signal: ctrl.signal } : undefined;
   _perf
     .measureAsync(
@@ -1898,10 +2021,9 @@ function fetchRecent(windowKey) {
       recentTruncated = !!data?.truncated;
       var ignoredDirs = data?.gitignored_dirs || [];
       _GITIGNORED_DIR_PATHS = new Set(ignoredDirs);
+      // renderRecentFromBase reapplies filters and restores the
+      // selection; nothing more to do here.
       renderRecentFromBase();
-      if (currentPath) {
-        setSelectedPath(currentPath);
-      }
     })
     .catch((err) => {
       if (err && err.name === "AbortError") {
@@ -1925,8 +2047,41 @@ function fetchRecent(windowKey) {
 // fetched base + any live ``fs.change`` overlay). Called by
 // fetchRecent on chip change AND by ``_scheduleRecentRecompute``
 // on every fs.change burst.
+// Files the recency response still shows once the other dimensions
+// apply. The recency window itself was resolved server-side, so only
+// type, size, and gitignored visibility can rule an entry out here.
+//
+// Recomputed on every filter pass rather than cached from the last
+// render: type and size changes run applyTreeFilters alone, so a
+// cached count kept the previous value while the rows updated.
+function countRecentMatches(entries, nowSec) {
+  if (!filterState) {
+    return entries.length;
+  }
+  var st = filterState.get();
+  var n = 0;
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (!st.showIgnored && e.gitignored) {
+      continue;
+    }
+    if (
+      filterState.rowMatches(
+        { mtime: e.mtime, size: e.size, path: e.path, ext: e.logical_ext || e.ext || "" },
+        // The window already selected these rows; asking again here
+        // would re-test an mtime the server has ruled on.
+        Object.assign({}, st, { recency: "all" }),
+        nowSec,
+      )
+    ) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
 function renderRecentFromBase() {
-  const results = document.getElementById("recent-results");
+  const results = recentResultsHost();
   if (!results) {
     return;
   }
@@ -1943,14 +2098,16 @@ function renderRecentFromBase() {
       }
       var nowSec = Date.now() / 1000;
       var tree = clusterRecentTreeJs(entries, nowSec, RECENT_CLUSTER_PCT);
-      results.innerHTML = renderRecentList({
-        tree: tree,
-        total_matching: recentTotalMatching,
-        truncated: recentTruncated,
-      });
+      results.innerHTML = renderRecentList({ tree: tree });
     },
     { items: recentBaseEntries.size },
   );
+  // Recency is already resolved server-side; the remaining
+  // dimensions still apply over these rows.
+  applyTreeFilters();
+  if (currentPath) {
+    setSelectedPath(currentPath);
+  }
 }
 
 // Apply a live FileStore-equivalent op to the recent base. Used
@@ -1960,6 +2117,13 @@ function renderRecentFromBase() {
 // fs.change op shape: ``{op, entry?, path?}`` matching events.py.
 function recentBaseApplyOp(op) {
   if (!recentEverLoaded) {
+    return false;
+  }
+  // No active window means the panel is not on this source, so there
+  // is no overlay to keep current — and every op would otherwise be
+  // retained, since none of them can be judged against a window that
+  // does not exist.
+  if (!currentRecentWindow) {
     return false;
   }
   if (!op) {
@@ -1974,7 +2138,12 @@ function recentBaseApplyOp(op) {
     // Only retain entries that fall inside the active window;
     // anything older than the window's seconds-back is dropped.
     var seconds = _RECENT_WINDOW_SECONDS[currentRecentWindow];
-    if (seconds !== null) {
+    // `undefined`, not `null`, is what an unknown key gives — and the
+    // window is cleared to "" when the panel leaves this source. The
+    // old `!== null` guard let that through, so the cutoff became NaN,
+    // every comparison against it was false, and the base map grew
+    // without bound while the plain tree was on screen.
+    if (typeof seconds === "number") {
       var cutoffSec = Date.now() / 1000 - seconds;
       if (dict.mtime < cutoffSec) {
         // Out-of-window upsert — make sure any stale base entry
@@ -2022,6 +2191,12 @@ function recentEntryFromFsEntry(entry) {
     type: "file",
     size: entry.size || 0,
     mtime: (entry.mtime_ns || 0) / 1e9,
+    // Mirror _file_entry_to_recent_dict: without the index's compound
+    // tail, a file that reaches this panel only through the live
+    // overlay would be matched on its last dotted suffix while the
+    // rendered rows are matched on the tail, so a compound pick could
+    // hide it.
+    ext: entry.ext || "",
   };
   if (entry.gitignored) {
     out.gitignored = true;
@@ -2224,40 +2399,10 @@ function _agesWithinPctJs(ages, pct) {
   return (hi - lo) / hi <= pct;
 }
 
-function ensureRecentScaffold() {
-  var panel = document.getElementById("tab-recent");
-  if (document.getElementById("recent-controls")) {
-    return;
-  }
-  if (!panel) {
-    return;
-  }
-  panel.innerHTML = `${renderRecentControls(currentRecentWindow)}<div id="recent-results"></div>`;
-}
-
-function renderRecentControls(windowKey) {
-  var parts = ['<div class="recent-controls" id="recent-controls">'];
-  for (var i = 0; i < RECENT_WINDOWS.length; i++) {
-    var w = RECENT_WINDOWS[i];
-    var active = w === windowKey ? " active" : "";
-    parts.push(
-      '<button class="recent-chip' +
-        active +
-        '" data-action="recent-window" data-window="' +
-        esc(w) +
-        '">' +
-        esc(w) +
-        "</button>",
-    );
-  }
-  parts.push("</div>");
-  return parts.join("");
-}
-
-function setActiveRecentChip(windowKey) {
-  queryHtmlAll("#recent-controls .recent-chip").forEach((chip) => {
-    chip.classList.toggle("active", chip.dataset.window === windowKey);
-  });
+// Both tree sources paint into the Files panel now that Recent is a
+// filter rather than a tab.
+function recentResultsHost() {
+  return document.getElementById("tab-files");
 }
 
 function renderRecentList(data) {
@@ -2273,37 +2418,828 @@ function renderRecentList(data) {
   // the Recent tree builder leaves ``expanded`` unset on those
   // nodes so explicit cluster-collapse state still wins.
   var body = renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
-  // Truncation banner: when total_matching exceeds the cap (server
-  // tops out at ``RECENT_MAX_LIMIT = 2 000``), tell the user the
-  // window has more files than the response includes.
-  if (data.truncated && data.total_matching) {
-    body =
-      '<div class="recent-truncated-note">Showing ' +
-      RECENT_LIMIT +
-      " of " +
-      data.total_matching +
-      " files. Narrow the window to see fewer.</div>" +
-      body;
-  }
-  return body;
+  // Keep the tally row this source would otherwise paint over. The
+  // filtered count that hangs off it is written by applyTreeFilters,
+  // which runs next and is the only place that knows how many rows
+  // survived every dimension rather than just the recency one.
+  return (_lastTreeSummaryHtml || "") + body;
 }
 
-// Window-chip clicks delegated off #tree-pane (the same listener
-// that handles tree-item / page-more clicks); this binds the
-// chip-specific behavior. Picking the same chip again is a
-// no-op so a stray click doesn't trigger an extra fetch.
-treePane.addEventListener("click", (e) => {
-  var target = eventTargetElement(e);
-  var chip = /** @type {HTMLElement | null} */ (target?.closest("[data-action='recent-window']"));
-  if (!chip) {
+// ── Navigation filter bar ───────────────────────────────────────
+//
+// One always-visible row (recency) plus a drawer holding type, size,
+// and gitignored visibility. Controls come from the shared chip family
+// (static/filter_controls.js) and every click writes through to the
+// shared state (static/filter_state.js), so the bar holds no state of
+// its own.
+//
+// The drawer carries no section headings: an extension menu, a size
+// ramp, and a checkbox labelled "Show ignored" say what they are.
+//
+// See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
+
+var filterState = /** @type {any} */ (window).MetabrowserFilterState || null;
+var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || null;
+
+// Recency is one axis from "everything" to "being written right now".
+// Values match RECENT_WINDOWS and the /api/recent contract; labels are
+// shortened because the whole group has to fit a 300px pane.
+// No "all" entry: the menu's any-row is that value, and listing it
+// twice would offer the same choice under two names. Labels can be
+// words rather than the abbreviations the segmented ramp needed,
+// because a dropdown row is not fighting five siblings for width.
+// Each row wears the freshness colour the tree gives files of that
+// age, so the menu doubles as the legend for the ramp below it. The
+// buckets line up with formatAge exactly: Live is the "<1 min" red
+// because a file being written now *is* that bucket, then each window
+// takes the colour of the bucket it tops out at — Past hour is the
+// "<1 hour" step, Past day the "<1 day" step, and so on.
+var FILTER_RECENCY_OPTIONS = [
+  { value: "live", label: "Live", title: "Run logs being written right now", ageClass: "age-sec" },
+  { value: "1h", label: "Past hour", ageClass: "age-min" },
+  { value: "24h", label: "Past day", ageClass: "age-hr" },
+  { value: "7d", label: "Past week", ageClass: "age-day" },
+  { value: "30d", label: "Past month", ageClass: "age-wk" },
+];
+
+// Size is a cumulative floor rather than a band: "what is over 10M in
+// here" is the question people ask, and a floor never makes you guess
+// which band a file landed in.
+var FILTER_SIZE_OPTIONS = [
+  { value: "100k", label: ">100K" },
+  { value: "1m", label: ">1M" },
+  { value: "10m", label: ">10M" },
+  { value: "100m", label: ">100M" },
+  { value: "1g", label: ">1G" },
+];
+
+// Named shorthands at the top of the type menu, each standing for the
+// full list of extensions beneath it.
+//
+// A separate vocabulary from FILE_TYPES on purpose: that list answers
+// "what icon and hue does this one file get", which is why `.json`
+// lives with the YAML family there. These answer "which broad kind of
+// work is this", which groups differently — `.json` belongs with data.
+//
+// Entries follow the filter's own convention: a leading dot is an
+// extension, anything else is a whole filename. That is what lets Docs
+// reach README and LICENSE, which carry no extension and would
+// otherwise be unfilterable.
+var FILTER_TYPE_PRESETS = [
+  {
+    id: "docs",
+    label: "Docs",
+    values: [
+      ".md",
+      ".txt",
+      ".rst",
+      ".adoc",
+      ".org",
+      ".pdf",
+      ".docx",
+      ".doc",
+      ".pages",
+      ".rtf",
+      ".odt",
+      ".epub",
+      "readme",
+      "license",
+      "licence",
+      "copying",
+      "notice",
+      "changelog",
+      "authors",
+      "contributors",
+      "contributing",
+      "codeowners",
+    ],
+  },
+  {
+    id: "code",
+    label: "Code",
+    values: [
+      ".py",
+      ".pyi",
+      ".ts",
+      ".tsx",
+      ".js",
+      ".jsx",
+      ".mjs",
+      ".cjs",
+      ".rs",
+      ".go",
+      ".java",
+      ".kt",
+      ".kts",
+      ".swift",
+      ".m",
+      ".mm",
+      ".c",
+      ".h",
+      ".cc",
+      ".cpp",
+      ".hpp",
+      ".cs",
+      ".rb",
+      ".php",
+      ".scala",
+      ".clj",
+      ".ex",
+      ".exs",
+      ".erl",
+      ".hs",
+      ".ml",
+      ".lua",
+      ".pl",
+      ".r",
+      ".jl",
+      ".dart",
+      ".vue",
+      ".svelte",
+      ".sh",
+      ".bash",
+      ".zsh",
+      ".fish",
+      ".ps1",
+      ".sql",
+      ".css",
+      ".scss",
+      ".less",
+      ".html",
+      "makefile",
+      "dockerfile",
+      "justfile",
+      "rakefile",
+      "gemfile",
+      "procfile",
+    ],
+  },
+  {
+    id: "data",
+    label: "Data",
+    values: [
+      ".json",
+      ".jsonl",
+      ".ndjson",
+      ".yaml",
+      ".yml",
+      ".toml",
+      ".ini",
+      ".cfg",
+      ".conf",
+      ".properties",
+      ".csv",
+      ".tsv",
+      ".psv",
+      ".xml",
+      ".parquet",
+      ".arrow",
+      ".avro",
+      ".orc",
+      ".feather",
+      ".proto",
+      ".graphql",
+      ".sqlite",
+      ".db",
+    ],
+  },
+];
+
+// The extension menu is built from what the folder actually contains,
+// not a fixed vocabulary, so it never offers a type with nothing
+// behind it and never omits one the tree is full of.
+var FILTER_TYPE_MENU_MAX = 20;
+
+// How long a file keeps counting as "live" for the filter after the
+// last time the tracker reported it active.
+//
+// This is not cosmetic. The activity tracker polls every
+// ACTIVE_TRACKER_INTERVAL_S (5s), but the file watcher emits an upsert
+// on *every* append, and those carry whatever `active` flag the entry
+// held at that moment — false between polls. Mirroring that flag
+// straight into the filter made a file being written once a second
+// appear and vanish several times a minute.
+//
+// 90s comfortably spans the poll interval plus the tracker's own
+// quiet-poll hysteresis, so a steadily-written file stays put, while a
+// genuinely finished one still drops out promptly enough to be
+// believed.
+const FILTER_LIVE_PERSIST_MS = 90_000;
+
+// Deliberately not persisted. The drawer holds the secondary controls,
+// so a session that starts with it open costs vertical space the user
+// did not ask for on this visit; the filters themselves persist, and
+// the badge reports them whether or not the drawer is showing.
+var filterDrawerOpen = false;
+// At most one dropdown is open at a time — opening a second while the
+// first is still down would leave two panels overlapping a 300px pane.
+/** @type {string | null} */
+var filterOpenMenu = null;
+var filterBarUnbind = null;
+
+/** Is any dimension constraining what the tree shows? */
+function filterHasConstraints(state) {
+  return (
+    state.recency !== "all" || !!state.types || state.size !== "all" || state.showIgnored !== true
+  );
+}
+
+// Extension tallies come from the server's index pass (/api/tree
+// `extensions`), not from the Quick File catalog: that catalog drops
+// gitignored entries by design, so a menu built from it undercounts
+// every extension the tree still shows while gitignored rows are
+// visible. Rows arrive as [ext, tracked, ignored] already ranked, so
+// the count shown can follow the gitignored setting instead of being
+// wrong half the time.
+/** @type {Array<[string, number, number]>} */
+var _extensionTally = [];
+
+function filterTypeOptions() {
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const ranked = _extensionTally
+    .map(
+      (row) => /** @type {[string, number]} */ ([row[0], showIgnored ? row[1] + row[2] : row[1]]),
+    )
+    // An extension that exists only under gitignored paths has nothing
+    // to offer once those rows are hidden.
+    .filter((row) => row[1] > 0)
+    // Re-rank on the count actually being shown. The server ranks by
+    // the total, so hiding gitignored rows would otherwise leave the
+    // menu ordered by numbers that are no longer on screen — .py with
+    // 157 tracked files sorting below .d.ts with one.
+    .sort((a, b) => (b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1]));
+  // A hard cap, including anything currently selected. Appending
+  // selected-but-unranked tokens instead let one preset add dozens of
+  // rows — most of them extensions this folder does not contain, and
+  // bare filename tokens like "makefile" listed as if they were
+  // suffixes. A preset's members outside the top rows stay reachable
+  // through the preset row itself and through Clear.
+  const kept = ranked.slice(0, FILTER_TYPE_MENU_MAX);
+  return kept.map(([ext, count]) => {
+    // Same icon the tree row shows for that type, resolved through the
+    // same matcher, so a menu row and the files it keeps are visibly
+    // the same thing. `getFileIcon` wants a filename, not an
+    // extension, so give it a synthetic one.
+    const fi = getFileIcon(`x${ext}`);
+    return {
+      value: ext,
+      label: ext,
+      count: count,
+      icon: fi.svg,
+      iconClass: fi.cls,
+    };
+  });
+}
+
+// A recency window reads from /api/recent, which scans the whole index
+// rather than the loaded subtrees — the one thing the Recent tab did
+// that a DOM walk cannot. "live" stays on the tree source: the active
+// tracker's files are by definition inside the event scope, and
+// /api/recent has no window for them.
+function filesPanelUsesRecentSource() {
+  if (!filterState) {
+    return false;
+  }
+  var st = filterState.get();
+  return st.recency !== "all" && st.recency !== "live";
+}
+
+function renderNavFilterBar() {
+  var bar = document.getElementById("nav-filter-bar");
+  if (!bar || !filterState || !filterControls) {
     return;
   }
-  var w = chip.dataset.window;
-  if (w === currentRecentWindow) {
+  var st = filterState.get();
+  var count = filterState.activeCount();
+  var fc = filterControls;
+  var main =
+    '<div class="nav-filter-bar-main">' +
+    // Age and type ride the always-visible row: they are the two
+    // dimensions people reach for, and as dropdowns they cost a
+    // fraction of the width the segmented ramps did.
+    fc.menuGroupHtml({
+      key: "recency",
+      select: "one",
+      label: "Modified within",
+      options: FILTER_RECENCY_OPTIONS,
+      value: st.recency,
+      anyLabel: "Any age",
+      anyValue: "all",
+      open: filterOpenMenu === "recency",
+      menuId: "filter-recency-menu",
+    }) +
+    fc.menuGroupHtml({
+      key: "types",
+      label: "File extension",
+      options: filterTypeOptions(),
+      presets: FILTER_TYPE_PRESETS,
+      value: st.types,
+      anyLabel: "Any type",
+      open: filterOpenMenu === "types",
+      menuId: "filter-type-menu",
+    }) +
+    '<span class="nav-filter-bar-end">' +
+    // Clear sits with the dropdowns it undoes, not inside the drawer:
+    // it can only appear when something is set, and having to open the
+    // drawer to undo a filter set from the row above is a step too
+    // many.
+    // "Clear", not "Clear filters": it shares a 267px row with two
+    // dropdowns whose labels grow with the value they hold, and the
+    // shorter word buys the headroom for a long one.
+    (count > 0 ? fc.clearHtml({ label: "Clear" }) : "") +
+    fc.toggleHtml({
+      key: "drawer",
+      // The shared chevron glyph, rotated by CSS to point at the state
+      // it will produce — the same icon the tree uses for expansion.
+      icon: ICONS.toggle || "",
+      className: "filter-drawer-toggle",
+      pressed: filterDrawerOpen,
+      badge: count,
+      // A glyph-only control needs a name that says what happens, and
+      // the badge is decorative once the count is spoken here.
+      ariaLabel:
+        (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
+        (count > 0 ? ` (${count} active)` : ""),
+      title: filterDrawerOpen ? "Fewer filters" : "More filters",
+      controls: "filter-drawer",
+    }) +
+    "</span></div>";
+  var drawer =
+    // `inert` rather than `hidden`: it keeps the closed drawer out of
+    // the tab order and the accessibility tree without the
+    // `display: none` that would make the open transition impossible.
+    // The single child is the grid track's content — see the
+    // .filter-drawer rules.
+    '<div class="filter-drawer" id="filter-drawer" data-open="' +
+    (filterDrawerOpen ? "true" : "false") +
+    '"' +
+    (filterDrawerOpen ? "" : " inert") +
+    ">" +
+    '<div class="filter-drawer-row">' +
+    fc.menuGroupHtml({
+      key: "size",
+      select: "one",
+      label: "Minimum file size",
+      options: FILTER_SIZE_OPTIONS,
+      value: st.size,
+      anyLabel: "Any size",
+      anyValue: "all",
+      open: filterOpenMenu === "size",
+      menuId: "filter-size-menu",
+    }) +
+    fc.checkHtml({
+      key: "showIgnored",
+      label: "Show ignored",
+      checked: st.showIgnored,
+      title: "Show gitignored entries, dimmed",
+    }) +
+    "</div></div>";
+  bar.innerHTML = main + drawer;
+}
+
+// Flip the drawer's open state on the existing nodes. Re-rendering
+// would replace the element, and a new element starts at its final
+// grid track with nothing to animate from.
+function applyDrawerOpenState() {
+  var drawer = document.getElementById("filter-drawer");
+  var toggle = queryHtml("[data-chip-key='drawer']");
+  if (drawer) {
+    drawer.dataset.open = filterDrawerOpen ? "true" : "false";
+    drawer.toggleAttribute("inert", !filterDrawerOpen);
+  }
+  if (toggle) {
+    var count = filterState ? filterState.activeCount() : 0;
+    toggle.setAttribute("aria-pressed", String(filterDrawerOpen));
+    toggle.setAttribute(
+      "aria-label",
+      (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
+        (count > 0 ? ` (${count} active)` : ""),
+    );
+    toggle.setAttribute("title", filterDrawerOpen ? "Fewer filters" : "More filters");
+  }
+}
+
+function initFilterBar() {
+  var bar = document.getElementById("nav-filter-bar");
+  if (!bar || !filterState || !filterControls) {
     return;
   }
-  loadRecent(w);
-});
+  // Always starts closed; see filterDrawerOpen.
+  filterDrawerOpen = false;
+  renderNavFilterBar();
+  if (filterBarUnbind) {
+    filterBarUnbind();
+  }
+  filterBarUnbind = filterControls.bind(bar, {
+    onChange: (key, value, select) => {
+      if (select === "many") {
+        var current = filterState.get()[key] || null;
+        filterState.set({ [key]: filterControls.nextSelection("many", current, value) });
+      } else {
+        filterState.set({ [key]: value });
+      }
+    },
+    onToggle: (key, pressed) => {
+      if (key === "drawer") {
+        filterDrawerOpen = pressed;
+        // Closing the drawer must close a menu inside it, or the popup
+        // would hang over the tree with no owner in sight.
+        var hadMenu = filterOpenMenu === "size";
+        if (!pressed && hadMenu) {
+          filterOpenMenu = null;
+        }
+        // Mutate in place rather than re-render: a freshly built
+        // element starts at its final grid track and would snap open.
+        // Only a menu closing alongside needs the full rebuild.
+        if (hadMenu && !pressed) {
+          renderNavFilterBar();
+        } else {
+          applyDrawerOpenState();
+        }
+        return;
+      }
+      if (key === "showIgnored") {
+        filterState.set({ showIgnored: pressed });
+      }
+    },
+    onMenuToggle: (key, open) => {
+      filterOpenMenu = open ? key : null;
+      renderNavFilterBar();
+    },
+    onMenuPreset: (key, presetId, wasOn) => {
+      if (key !== "types") {
+        return;
+      }
+      // const, not var: the closures below need the narrowing that a
+      // function-scoped binding cannot promise.
+      const preset = FILTER_TYPE_PRESETS.find((p) => p.id === presetId);
+      if (!preset) {
+        return;
+      }
+      // Additive, like the extensions beside it: turning Docs on adds
+      // its values to whatever is already picked, and turning it off
+      // removes only its own.
+      var current = filterState.get().types || [];
+      var next = wasOn
+        ? current.filter((value) => preset.values.indexOf(value) < 0)
+        : current.concat(preset.values.filter((value) => current.indexOf(value) < 0));
+      filterState.set({ types: next.length > 0 ? next : null });
+    },
+    onMenuPick: (key, value) => {
+      // The any-row clears the dimension back to its default rather
+      // than toggling a value.
+      if (key === "types") {
+        if (value === null) {
+          filterState.set({ types: null });
+        } else {
+          var current = filterState.get().types;
+          filterState.set({ types: filterControls.nextSelection("many", current, value) });
+        }
+        // Multi-select stays open — picking several extensions is the
+        // whole point of it.
+        return;
+      }
+      if (key === "recency" || key === "size") {
+        filterState.set({ [key]: value === null ? "all" : value });
+        // Single-select closes on pick: the choice is made, and a menu
+        // left hanging over the tree has nothing more to offer.
+        filterOpenMenu = null;
+        renderNavFilterBar();
+      }
+    },
+    onClear: () => {
+      filterOpenMenu = null;
+      filterState.clear();
+    },
+  });
+  // Seed the source tracking from the persisted state so the first
+  // user change is compared against reality, not against null.
+  _filterLastSource = filesPanelUsesRecentSource();
+  _filterLastRecency = filterState.get().recency;
+  _filterLastShowIgnored = filterState.get().showIgnored;
+  filterState.subscribe(onFilterStateChange);
+}
+
+// One place decides what a filter change costs: a source swap plus a
+// re-render when the tree's data source changes, and a class pass over
+// the rendered rows otherwise.
+var _filterLastSource = false;
+var _filterLastRecency = "all";
+var _filterLastShowIgnored = true;
+function onFilterStateChange(state) {
+  renderNavFilterBar();
+  var usesRecent = filesPanelUsesRecentSource();
+  var sourceChanged = _filterLastSource !== usesRecent;
+  var windowChanged = usesRecent && _filterLastRecency !== state.recency;
+  // Gitignored visibility is a server-side parameter on the recency
+  // source, not just a class on the rows: it decides what the response
+  // cap gets spent on, so changing it has to refetch.
+  var ignoredChanged = usesRecent && _filterLastShowIgnored !== state.showIgnored;
+  _filterLastSource = usesRecent;
+  _filterLastRecency = state.recency;
+  _filterLastShowIgnored = state.showIgnored;
+  if (usesRecent && (sourceChanged || windowChanged || ignoredChanged)) {
+    loadRecent(state.recency);
+    return;
+  }
+  if (!usesRecent && sourceChanged) {
+    // Abandon any recency fetch still in flight and drop the window it
+    // was for. Otherwise a late response repaints the panel with the
+    // old window's list under a trigger that now reads "Any age".
+    if (recentInflight) {
+      recentInflight.abort();
+      recentInflight = null;
+    }
+    // Empty, not a window key: a late response compares against this
+    // and must never find a match.
+    currentRecentWindow = "";
+    // Restore the full tree from the cached payload; only fall back to
+    // a refetch when nothing has been cached yet.
+    if (!renderFilesFromTree()) {
+      loadTree();
+    }
+    return;
+  }
+  applyTreeFilters();
+}
+
+// ── Applying filters to the tree ────────────────────────────────
+//
+// A decoration layer over rendered rows, never a render fork: with no
+// filters set this removes its own classes and leaves the DOM exactly
+// as the renderer produced it.
+//
+// The walk runs in reverse document order so a folder is judged after
+// its descendants and can ask whether any of them survived. A folder
+// with no loaded children is unknown rather than excluded — the one
+// exception being recency, where the folder's own aggregate mtime
+// (newest descendant) is a definitive answer for the whole subtree.
+
+// Last time each path was reported active, so the filter can hold a
+// file steady across the gaps described at FILTER_LIVE_PERSIST_MS.
+/** @type {Map<string, number>} */
+const liveSeenAt = new Map();
+
+function noteLivePath(path) {
+  liveSeenAt.set(path, Date.now());
+}
+
+// Paths the *filter* treats as live: those active right now, plus
+// those seen active within the persistence window.
+function livePathsForFilter() {
+  var cutoff = Date.now() - FILTER_LIVE_PERSIST_MS;
+  var paths = new Set(activeFiles.keys());
+  for (const [path, seen] of liveSeenAt) {
+    if (seen < cutoff) {
+      liveSeenAt.delete(path); // bounded: entries expire as they age out
+    } else {
+      paths.add(path);
+    }
+  }
+  return paths;
+}
+
+// Is any file under this folder live? The live set holds full paths,
+// so a folder can be judged without its children being rendered — the
+// reason Live does not need the unloaded-folder escape the other
+// dimensions do.
+function hasLiveDescendant(dirPath, livePaths) {
+  if (livePaths.size === 0) {
+    return false;
+  }
+  var prefix = dirPath ? `${dirPath}/` : "";
+  for (const livePath of livePaths) {
+    if (!prefix || livePath.startsWith(prefix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function _childContainerFor(row) {
+  var next = row.nextElementSibling;
+  return next?.classList.contains("tree-children") ? next : null;
+}
+
+function applyTreeFilters() {
+  var panel = document.getElementById("tab-files");
+  if (!panel || !filterState) {
+    return;
+  }
+  var st = filterState.get();
+  var rows = /** @type {HTMLElement[]} */ (
+    Array.prototype.slice.call(panel.querySelectorAll(".tree-item"))
+  );
+  var constrained = filterHasConstraints(st);
+  if (!constrained) {
+    for (var c = 0; c < rows.length; c++) {
+      rows[c].classList.remove("tree-item-filter-hidden");
+    }
+    // Clear both lines too: this early return is the path taken when
+    // the last filter is removed, so leaving them would strand a
+    // "Filtered to N files" over an unfiltered tree.
+    _renderFilteredTally(panel, 0, st, null);
+    _renderFilterNote(panel, 0, st);
+    return;
+  }
+  var nowSec = Date.now() / 1000;
+  var keep = new Map();
+  var unloadedFolders = 0;
+  // "Live" is the one dimension the client knows completely: activeFiles
+  // is the whole set of paths currently being written, straight off the
+  // event stream. Reading it beats testing for a rendered .activity-dot,
+  // which only exists on rows that happen to be painted, and it lets a
+  // folder be judged on whether a live path lies beneath it rather than
+  // being waved through as "not loaded, so unknown".
+  var liveMode = st.recency === "live";
+  var livePaths = liveMode ? livePathsForFilter() : new Set();
+  for (var i = rows.length - 1; i >= 0; i--) {
+    var row = rows[i];
+    var isDir = row.classList.contains("tree-folder");
+    var gitignored = row.classList.contains("tree-item-gitignored");
+    var path = row.dataset.path || "";
+    var ok;
+    if (!st.showIgnored && gitignored) {
+      ok = false;
+    } else {
+      ok = filterState.rowMatches(
+        {
+          mtime: parseTipNumber(row.dataset.tipMtime),
+          size: isDir ? null : parseTipNumber(row.dataset.tipSize),
+          path: path,
+          // The renderer stamps the index's compound-tail extension on
+          // every file row; matching on it keeps a compound pick
+          // (".min.js") agreeing with the tally that offered it.
+          ext: row.dataset.ext || "",
+          live: isDir ? hasLiveDescendant(path, livePaths) : livePaths.has(path),
+          isDir: isDir,
+        },
+        st,
+        nowSec,
+      );
+    }
+    if (isDir && ok) {
+      var container = _childContainerFor(row);
+      var kids = container
+        ? Array.prototype.slice.call(container.querySelectorAll(":scope > .tree-item"))
+        : [];
+      if (kids.length > 0) {
+        ok = kids.some((kid) => keep.get(kid) === true);
+      } else if (!liveMode) {
+        // Nothing loaded under it: the filter cannot speak for this
+        // subtree, so the folder stays and gets counted. Live is the
+        // exception — the set of live paths is known in full, so an
+        // unloaded folder is a definite answer, not an unknown one.
+        unloadedFolders += 1;
+      }
+    }
+    keep.set(row, ok);
+  }
+  // Forward pass so a pruned folder is seen before its descendants:
+  // its verdict propagates down, and a subtree never keeps an orphaned
+  // visible row under a parent that is gone.
+  var suppressed = new Set();
+  var shownFiles = 0;
+  for (var j = 0; j < rows.length; j++) {
+    var el = rows[j];
+    var matched = !suppressed.has(el.parentElement) && keep.get(el) === true;
+    el.classList.toggle("tree-item-filter-hidden", !matched);
+    if (matched) {
+      if (!el.classList.contains("tree-folder")) {
+        shownFiles += 1;
+      }
+    } else {
+      var kidContainer = _childContainerFor(el);
+      if (kidContainer) {
+        suppressed.add(kidContainer);
+      }
+    }
+  }
+  // The recency source counts from its entries, not the rendered rows:
+  // renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count reports how
+  // much has been paged in rather than how many files passed.
+  var recencyCount = filesPanelUsesRecentSource()
+    ? countRecentMatches(
+        recentEntriesFromBase({ window: currentRecentWindow, limit: RECENT_LIMIT }),
+        nowSec,
+      )
+    : null;
+  _renderFilteredTally(panel, shownFiles, st, recencyCount);
+  _renderFilterNote(panel, unloadedFolders, st);
+  // Once writing stops no further events arrive, so nothing would
+  // re-evaluate the persistence window and the row would sit there
+  // looking live forever. Wake up when the oldest sighting expires.
+  if (liveMode) {
+    scheduleLiveExpiryRecheck();
+  }
+}
+
+var _liveExpiryHandle = null;
+function scheduleLiveExpiryRecheck() {
+  if (_liveExpiryHandle || liveSeenAt.size === 0) {
+    return;
+  }
+  var oldest = Math.min(...liveSeenAt.values());
+  var due = Math.max(250, oldest + FILTER_LIVE_PERSIST_MS - Date.now() + 50);
+  _liveExpiryHandle = setTimeout(() => {
+    _liveExpiryHandle = null;
+    applyTreeFilters();
+  }, due);
+}
+
+// How many files the filter is actually showing, as a second line
+// under the tally. Rendered whenever anything is filtered, not only
+// when a response was capped: "how many am I looking at" is the
+// question a filter raises every time, and the totals above are what
+// it reads against.
+//
+// Counted from the rows that survived, so it reflects every dimension
+// rather than just the one the server resolved.
+function _renderFilteredTally(panel, shownFiles, state, recencyCount) {
+  var existing = panel.querySelector(".tree-summary-filtered");
+  if (!filterHasConstraints(state)) {
+    if (existing) {
+      existing.remove();
+    }
+    return;
+  }
+  var count = recencyCount !== null ? recencyCount : shownFiles;
+  var text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
+  // A capped response has more matches than it sent, and only it can
+  // say so — the client never saw the rest.
+  if (filesPanelUsesRecentSource() && recentTruncated && recentTotalMatching) {
+    text += ` of ${recentTotalMatching.toLocaleString()} matching`;
+  }
+  text += ".";
+  if (existing) {
+    existing.textContent = text;
+    return;
+  }
+  var summary = panel.querySelector(".tree-summary");
+  var line = document.createElement("div");
+  line.className = "tree-summary-filtered";
+  line.setAttribute("role", "status");
+  line.textContent = text;
+  if (summary) {
+    summary.insertAdjacentElement("afterend", line);
+  } else {
+    panel.insertAdjacentElement("afterbegin", line);
+  }
+}
+
+// Filtering prunes what it has loaded, which is not the same as "this
+// is everything that matches". Say so rather than letting a short tree
+// imply completeness.
+function _renderFilterNote(panel, unloadedFolders, state) {
+  var existing = panel.querySelector(".filter-note");
+  // "Live" with nothing being written is a real answer, but an empty
+  // tree looks like a broken filter. Say it in words — and name what
+  // is watched, because the tracker only follows run artifacts
+  // (BROWSER_TRACKABLE_EXTS files under .logs/ or .state/), so on a
+  // repository without them this state is permanent rather than
+  // momentary. See metabrowser/active_tracker.py:_is_trackable.
+  // Must ask the same question row visibility asked. Testing
+  // activeFiles here instead would claim nothing is being written
+  // while the persistence window is still showing rows.
+  var liveEmpty = state.recency === "live" && livePathsForFilter().size === 0;
+  if ((unloadedFolders <= 0 && !liveEmpty) || !filterHasConstraints(state)) {
+    if (existing) {
+      existing.remove();
+    }
+    return;
+  }
+  var text = liveEmpty
+    ? "No run logs are being written right now."
+    : `Filtered within loaded folders. ${unloadedFolders.toLocaleString()} ` +
+      `${unloadedFolders === 1 ? "folder is" : "folders are"} not expanded yet.`;
+  if (existing) {
+    existing.textContent = text;
+    return;
+  }
+  var note = document.createElement("div");
+  note.className = "filter-note";
+  note.setAttribute("role", "status");
+  note.textContent = text;
+  panel.appendChild(note);
+}
+
+// Rows arriving from the event stream have to be classified too, or a
+// newly written file would appear regardless of the active filter.
+var _filterReapplyHandle = null;
+function scheduleFilterReapply() {
+  if (_filterReapplyHandle || !filterState) {
+    return;
+  }
+  // Nothing to reapply when nothing is filtered, and fs bursts would
+  // otherwise walk the whole tree every 100ms in the default state.
+  if (!filterHasConstraints(filterState.get())) {
+    return;
+  }
+  _filterReapplyHandle = setTimeout(() => {
+    _filterReapplyHandle = null;
+    applyTreeFilters();
+  }, RECENT_RECLUSTER_DEBOUNCE_MS);
+}
 
 // ── File selection + caching ────────────────────────────────────
 //
@@ -3265,6 +4201,10 @@ function fileStoreApplyChange(ops) {
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
       activeFiles.delete(op.path);
+      // Drop the persistence stamp too. A deleted file is not "recently
+      // live", and leaving it would keep its ancestor folders matching
+      // Live for up to FILTER_LIVE_PERSIST_MS after it is gone.
+      liveSeenAt.delete(op.path);
       // Remove rendered rows in every tab panel; also drops the
       // dir's `.tree-children` container so descendant rows go
       // with it. Server's bulk-remove op already lists each
@@ -3305,6 +4245,9 @@ function _mirrorActiveFromFsEntry(entry) {
   var wasActive = activeFiles.has(entry.path);
   if (entry.active) {
     activeFiles.set(entry.path, { pid_alive: pidLabel });
+    // Stamp every sighting, so the filter can ride out the gaps
+    // between tracker polls (see FILTER_LIVE_PERSIST_MS).
+    noteLivePath(entry.path);
     refreshActivityBadge(entry.path);
     // Inactive→active for the currently viewed file: switch the
     // header badge to "Live" and open the live stream if not
@@ -3500,6 +4443,10 @@ function _buildRowHtml(entry, options) {
     (entry.size || 0) +
     '" data-tip-mtime="' +
     (entry.mtime_ns || 0) / 1e9 +
+    // Live-inserted rows need the filter's extension too, or a row
+    // arriving over the event stream would be judged on its last
+    // suffix while the rendered ones are judged on the index's.
+    (entry.ext ? `" data-ext="${esc(entry.ext)}` : "") +
     '">' +
     '<span class="tree-item-icon ' +
     fi.cls +
@@ -3521,9 +4468,8 @@ function _buildRowHtml(entry, options) {
 }
 
 // Find the rendered child container under which an entry's
-// siblings live — for root entries this is `#tab-files` (or
-// `#tab-recent` on the Recent panel); for entries under a folder
-// it's the `.tree-children` immediate sibling of the
+// siblings live — for root entries this is `#tab-files`; for
+// entries under a folder it's the `.tree-children` sibling of the
 // `.tree-folder`. Returns null when the parent isn't rendered or
 // is collapsed (in which case we don't insert — the row will
 // appear when the user expands).
@@ -3639,6 +4585,9 @@ function updateRootAggregatePresentation(entry) {
   var totalFiles = entry.total_files == null ? null : entry.total_files;
   var totalSize = entry.total_size == null ? null : entry.total_size;
   var newestMtime = entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0;
+  // When the split row is on screen these selectors find nothing by
+  // design (see treeSummaryHtml): the blind aggregate cannot express
+  // tracked-versus-ignored, so the split refreshes itself instead.
   var countEl = queryHtml(".tree-summary-count");
   var sizeEl = queryHtml(".tree-summary-size");
   if (countEl) {
@@ -3647,6 +4596,7 @@ function updateRootAggregatePresentation(entry) {
   if (sizeEl) {
     sizeEl.innerHTML = sizeHtml(totalSize);
   }
+  scheduleRootSummaryRefresh();
   var pathEl = queryHtml(".header-path");
   if (pathEl) {
     pathEl.dataset.tipFiles = nullableDataValue(totalFiles);
@@ -3706,6 +4656,8 @@ function applyCellPatch(entry) {
       // (rare, but possible if .gitignore is edited) updates
       // the muted class without a full rerender.
       row.classList.toggle("tree-item-gitignored", !!entry.gitignored);
+      // mtime and active can both flip a row's filter verdict.
+      scheduleFilterReapply();
     }
     return;
   }
@@ -3718,18 +4670,18 @@ function applyCellPatch(entry) {
         ? entry.path.substring(0, entry.path.lastIndexOf("/"))
         : ""
       : entry.parent;
-  var panels = [document.getElementById("tab-files"), document.getElementById("tab-recent")];
-  for (var p = 0; p < panels.length; p++) {
-    var panel = panels[p];
-    if (!panel) {
-      continue;
-    }
-    var container = _findChildContainerFor(parentRel, panel);
-    if (!container) {
-      continue;
-    }
-    _insertRowSorted(container, entry, treeRenderOptionsForElement(panel));
+  var panel = document.getElementById("tab-files");
+  if (!panel) {
+    return;
   }
+  var container = _findChildContainerFor(parentRel, panel);
+  if (!container) {
+    return;
+  }
+  _insertRowSorted(container, entry, treeRenderOptionsForElement(panel));
+  // A freshly inserted row carries no filter classes yet; without this
+  // a new file would show up regardless of the active filter.
+  scheduleFilterReapply();
 }
 
 // Remove all rendered rows (in any tab panel) for *path*. For
@@ -3781,19 +4733,18 @@ function _removeRenderedRows(path) {
   }
 }
 
-// Recent re-cluster scheduling:
-// debounced so a burst of fs.change ops doesn't render-thrash.
-// The Recent panel reads from ``recentBaseEntries`` (chip-fetched
-// from /api/recent + live overlay from fs.change), so live
-// updates inside the active window flow through without a refetch.
+// Recency re-cluster scheduling: debounced so a burst of fs.change
+// ops doesn't render-thrash. The recency source reads from
+// ``recentBaseEntries`` (fetched from /api/recent plus a live overlay
+// from fs.change), so updates inside the active window flow through
+// without a refetch.
 var _recentRecomputeHandle = null;
 function _scheduleRecentRecompute() {
   if (!recentEverLoaded) {
-    return; // panel never mounted; nothing to do
+    return; // never fetched; nothing to recompute
   }
-  var panel = document.getElementById("tab-recent");
-  if (!panel || panel.style.display === "none") {
-    return; // hidden tab; defer
+  if (!filesPanelUsesRecentSource()) {
+    return; // the panel is showing the full tree; that path has its own updates
   }
   if (_recentRecomputeHandle) {
     return; // already pending
@@ -3801,9 +4752,6 @@ function _scheduleRecentRecompute() {
   _recentRecomputeHandle = setTimeout(() => {
     _recentRecomputeHandle = null;
     renderRecentFromBase();
-    if (currentPath) {
-      setSelectedPath(currentPath);
-    }
   }, RECENT_RECLUSTER_DEBOUNCE_MS);
 }
 
@@ -4137,6 +5085,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();
   initSettingsControl();
   initNavTabs();
+  initFilterBar();
   initNavScrollShadow();
   initQuickFileFinder();
   // Fire the URL-pinned file fetch in parallel with the tree walk: the
@@ -4150,7 +5099,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     selectFile(initialPath, true);
   }
   startIndexProgressPolling();
+  // The tree fetch always runs: it supplies the header path and the
+  // root aggregates even when a persisted recency filter is about to
+  // repaint the panel from /api/recent.
   await loadTree();
+  if (filesPanelUsesRecentSource()) {
+    loadRecent(filterState.get().recency);
+  }
   initPaneResize("tree-resize", ".tree-pane", 180, null);
   if (initialPath) {
     revealInTree(initialPath);

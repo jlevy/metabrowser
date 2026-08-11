@@ -108,6 +108,32 @@ Open the printed URL and verify:
 
 Do not make the manual check the only coverage for a deterministic contract.
 
+### Headless Screenshots
+
+There is no automated visual-regression layer.
+When a change is presentational and a reviewer needs to see it, drive a real browser
+manually.
+
+Chrome’s `--headless --screenshot --virtual-time-budget` mode does not work against the
+shell: the page holds the `/api/events` stream open, so virtual time never drains and
+Chrome hangs without writing a file.
+Two approaches work instead.
+
+Drive the live application over the DevTools protocol.
+Start Chrome with `--headless=new --remote-debugging-port=<port>` and a scratch
+`--user-data-dir`, read the page target from `http://127.0.0.1:<port>/json/list`, then
+send `Emulation.setDeviceMetricsOverride`, `Page.enable`, `Page.navigate`, and
+`Page.captureScreenshot` over the target’s WebSocket.
+Node 24 provides a `WebSocket` global, so the driver needs no dependency.
+
+For a question that is only about document CSS, skip the shell.
+Request `/api/kpress/render` for the file and view, then write a standalone page that
+inlines the returned `html` alongside the stylesheet entries in the returned asset
+manifest and `/static/styles.css`. Such a page holds no event stream, so the ordinary
+`--virtual-time-budget` screenshot works, and it can be rendered at several widths and
+disclosure states in one pass.
+Keep these harnesses in a scratch directory; they are debugging aids, not fixtures.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

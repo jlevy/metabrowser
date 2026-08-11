@@ -86,6 +86,7 @@ def collect_recent_entries(
     limit: int = DEFAULT_LIMIT,
     ext_filter: tuple[str, ...] = (),
     prefix_filter: str = "",
+    include_ignored: bool = True,
 ) -> RecentResult:
     """Read trackable file entries from the inventory, filter
     by mtime window + ext + prefix, sort by mtime desc, cap at
@@ -104,6 +105,19 @@ def collect_recent_entries(
 
     *prefix_filter* is a path prefix (e.g. ``"runs/2026-05-05"``);
     empty string disables.
+
+    *include_ignored* keeps gitignored files in the result. Pass False
+    when the caller is going to hide them anyway, so the cap is not
+    spent on rows nobody will see.
+
+    Truncation drops gitignored files before tracked ones. A dependency
+    install touches thousands of files at once, and a straight
+    newest-first cap let that bulk fill the whole response — a day
+    window on a repository with ``node_modules`` returned 2 000
+    gitignored entries and not one of the user's own files. Tracked
+    files therefore claim the cap first and ignored files fill whatever
+    is left, with the selection re-sorted by mtime so the result still
+    reads newest-first.
     """
 
     if window not in RECENT_WINDOW_SECONDS:
@@ -125,11 +139,20 @@ def collect_recent_entries(
             continue
         if prefix_filter and not entry.path.startswith(prefix_filter):
             continue
+        if not include_ignored and entry.gitignored:
+            continue
         matching.append(entry)
 
     matching.sort(key=lambda e: e.mtime_ns, reverse=True)
     total_matching = len(matching)
-    capped = matching[:cap]
+    if total_matching > cap:
+        # Tracked files claim the cap first; ignored ones fill the rest.
+        capped = [e for e in matching if not e.gitignored][:cap]
+        if len(capped) < cap:
+            capped += [e for e in matching if e.gitignored][: cap - len(capped)]
+        capped.sort(key=lambda e: e.mtime_ns, reverse=True)
+    else:
+        capped = matching
 
     file_dicts = [_file_entry_to_recent_dict(e) for e in capped]
     gitignored_dirs = _gitignored_ancestor_dirs(capped)
@@ -159,6 +182,11 @@ def _file_entry_to_recent_dict(entry: FsEntry) -> dict[str, Any]:
         "type": "file",
         "size": entry.size,
         "mtime": entry.mtime_ns / 1_000_000_000.0 if entry.mtime_ns else 0.0,
+        # The compound-tail extension (".min.js", ".runbook.md"), which
+        # is the unit the nav's type filter and its tally both use. The
+        # tree payload carries it too; without it here, rows from this
+        # source could not be matched against a compound extension.
+        "ext": entry.ext,
     }
     if entry.gitignored:
         out["gitignored"] = True
