@@ -5,7 +5,7 @@ title: Assess and publish Metabrowser v0.3.0 minor release
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 labels: []
 dependencies: []
 child_order_hints:
@@ -13,8 +13,9 @@ child_order_hints:
   - is-01kzs3c844hxhn5fmbxx8j5z1r
   - is-01kzs4vct70w4b81px21hj3dcn
   - is-01kzs5y3mbvz1151xyeg83znnj
+  - is-01kzsbeh7nmvevgsmyr9w174d5
 created_at: 2026-08-11T16:26:50.545Z
-updated_at: 2026-08-11T20:13:11.069Z
+updated_at: 2026-08-11T21:25:24.852Z
 ---
 Review all user-visible changes since v0.2.0, triage outstanding defects for release blockers, validate the filtering/search stabilization release, prepare accurate v0.3.0 notes, run the complete release gate, publish the GitHub release, verify PyPI artifacts and public smoke tests, and confirm CI.
 
