@@ -88,6 +88,10 @@ function load(filepath, label) {
 // ── 1. Plugin SDK ─────────────────────────────────────────────────
 
 load(path.join(repoRoot, "src", "metabrowser", "static", "plugin_sdk.js"), "plugin_sdk.js");
+load(
+  path.join(repoRoot, "src", "metabrowser", "static", "filter_controls.js"),
+  "filter_controls.js",
+);
 load(path.join(repoRoot, "src", "metabrowser", "static", "icons.js"), "icons.js");
 
 if (!sandbox.metabrowser) {

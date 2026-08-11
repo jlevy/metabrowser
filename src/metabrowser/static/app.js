@@ -2500,7 +2500,7 @@ function renderRecentList(data) {
 // See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
 
 var filterState = /** @type {any} */ (window).MetabrowserFilterState || null;
-var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || null;
+var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || null;
 
 // Recency is one axis from "everything" to the shortest mtime window.
 // Values match RECENT_WINDOWS and the /api/recent contract; labels are
@@ -3457,7 +3457,7 @@ function renderTextPreviewControls(data) {
   var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
   if (data.content_truncated) {
     html +=
-      '<button class="file-header-action" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
+      '<button class="btn file-header-action" type="button" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
   }
   return html;
 }
@@ -3608,9 +3608,9 @@ function renderFile(data) {
       html +=
         '<span class="file-header-path">' +
         esc(data.path) +
-        '<button class="file-header-copy" onclick="copyPath(this, \'' +
+        '<button class="icon-btn icon-btn-reveal file-header-copy" type="button" onclick="copyPath(this, \'' +
         esc(data.path).replace(/'/g, "\\'") +
-        '\')" title="Copy path">' +
+        '\')" title="Copy path" aria-label="Copy path">' +
         ICON_COPY +
         "</button>" +
         "</span>";
@@ -3618,7 +3618,7 @@ function renderFile(data) {
       html += sizeHtml(data.size, "file-header-size");
       html += renderTextPreviewControls(data);
       html +=
-        '<button class="file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+        '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
         (ICONS.print || "") +
         "</button>";
       html += "</div>";
@@ -3644,7 +3644,7 @@ function renderFile(data) {
             html +=
               '<button class="tab-btn' +
               active +
-              '" data-tab="' +
+              '" type="button" data-tab="' +
               esc(view.id) +
               '"' +
               viewMetaAttrs(view) +

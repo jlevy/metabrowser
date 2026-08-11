@@ -921,7 +921,7 @@ async def index(_request: Request) -> HTMLResponse:
              open/select + the dropdown. The wrapper's aria-expanded drives the
              menu's visibility via CSS. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
-          <button class="settings-btn" id="settings-btn" type="button"
+          <button class="icon-btn settings-btn" id="settings-btn" type="button"
                   aria-haspopup="true" title="Settings" aria-label="Settings"></button>
           <div class="settings-menu menu" role="menu" aria-label="Settings">
             <div class="menu-chooser" role="group" aria-label="Theme">
@@ -940,7 +940,7 @@ async def index(_request: Request) -> HTMLResponse:
         </div>
       </header>
       <div class="tab-bar nav-tab-bar" role="tablist">
-        <button class="tab-btn active" role="tab" data-tab="files" aria-selected="true">Files</button>
+        <button class="tab-btn active" type="button" role="tab" data-tab="files" aria-selected="true">Files</button>
       </div>
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also

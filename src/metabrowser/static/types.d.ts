@@ -72,6 +72,83 @@ type MetabrowserThemeRuntime = {
   subscribe(listener: (detail: MetabrowserThemeChange) => void): () => void;
 };
 
+type MetabrowserFilterOption = {
+  ageClass?: string;
+  className?: string;
+  count?: number;
+  icon?: string;
+  iconClass?: string;
+  label: string;
+  title?: string;
+  value: string;
+};
+
+type MetabrowserFilterSelection = string | Array<string> | null;
+
+type MetabrowserFilterHandlers = {
+  onChange?: (key: string, value: string, select: string) => void;
+  onClear?: () => void;
+  onMenuPick?: (key: string, value: string | null) => void;
+  onMenuPreset?: (key: string, presetId: string, wasOn: boolean) => void;
+  onMenuToggle?: (key: string, open: boolean) => void;
+  onToggle?: (key: string, pressed: boolean) => void;
+};
+
+type MetabrowserFilterControls = {
+  bind(root: Element, handlers: MetabrowserFilterHandlers): () => void;
+  checkHtml(spec: {
+    checked?: boolean;
+    className?: string;
+    key: string;
+    label: string;
+    title?: string;
+  }): string;
+  clearHtml(spec?: { className?: string; label?: string }): string;
+  escapeHtml(value: unknown): string;
+  groupHtml(spec: {
+    className?: string;
+    key: string;
+    label: string;
+    options: Array<MetabrowserFilterOption>;
+    select?: string;
+    value: MetabrowserFilterSelection;
+  }): string;
+  isSelected(current: MetabrowserFilterSelection, value: string): boolean;
+  menuGroupHtml(spec: {
+    anyLabel: string;
+    anyValue?: string;
+    key: string;
+    label: string;
+    menuId: string;
+    open?: boolean;
+    options: Array<MetabrowserFilterOption>;
+    presets?: Array<{
+      count?: number;
+      id: string;
+      label: string;
+      values: Array<string>;
+    }>;
+    select?: string;
+    value: MetabrowserFilterSelection;
+  }): string;
+  nextSelection(
+    select: string,
+    current: MetabrowserFilterSelection,
+    value: string,
+  ): MetabrowserFilterSelection;
+  toggleHtml(spec: {
+    ariaLabel?: string;
+    badge?: number;
+    className?: string;
+    controls?: string;
+    icon?: string;
+    key: string;
+    label?: string;
+    pressed?: boolean;
+    title?: string;
+  }): string;
+};
+
 type MetabrowserPluginData = {
   parse_error?: unknown;
   parsed?: unknown;
@@ -96,6 +173,7 @@ type StructuredBuiltins = {
 };
 
 type AgentLogBuiltins = {
+  disposeLog: () => void;
   renderCharts: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   renderLog: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   renderLogEvent: (container: HTMLElement, event: unknown) => unknown;
@@ -133,6 +211,7 @@ type MetabrowserSdk = {
     endpoint: string,
     params: Record<string, unknown>,
   ): Promise<MetabrowserPluginData>;
+  filterControls?: MetabrowserFilterControls;
   formatSize(value: number): string;
   getRegisteredView(kind: string, view: string): MetabrowserViewSpec | undefined;
   icons: Record<string, string>;

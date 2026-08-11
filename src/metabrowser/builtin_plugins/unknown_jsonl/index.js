@@ -25,6 +25,9 @@
     return;
   }
 
-  mb.registerView("unknown-jsonl", "log", { render: mb.builtins.agentLog.renderLog });
+  mb.registerView("unknown-jsonl", "log", {
+    render: mb.builtins.agentLog.renderLog,
+    dispose: mb.builtins.agentLog.disposeLog,
+  });
   mb.registerView("unknown-jsonl", "raw", { render: mb.builtins.agentLog.renderRaw });
 })();

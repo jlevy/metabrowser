@@ -8,7 +8,7 @@ const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
 
-const sandbox = { console: { warn() {} }, JSON, String, Array, Object };
+const sandbox = { console: { warn() {} }, JSON, String, Array, Object, metabrowser: {} };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -19,8 +19,10 @@ const source = fs.readFileSync(
 );
 vm.runInContext(source, sandbox, { filename: "filter_controls.js" });
 
-const fc = sandbox.MetabrowserFilterControls;
+const fc = sandbox.metabrowser.filterControls;
 const failures = [];
+
+assertEqual("filter controls join the plugin SDK", sandbox.metabrowser.filterControls, fc);
 
 function assertEqual(label, actual, expected) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
