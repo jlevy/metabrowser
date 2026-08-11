@@ -2047,6 +2047,38 @@ function fetchRecent(windowKey) {
 // fetched base + any live ``fs.change`` overlay). Called by
 // fetchRecent on chip change AND by ``_scheduleRecentRecompute``
 // on every fs.change burst.
+// Files the recency response still shows once the other dimensions
+// apply. The recency window itself was resolved server-side, so only
+// type, size, and gitignored visibility can rule an entry out here.
+/** @type {number | null} */
+var _recentFilteredCount = null;
+
+function countRecentMatches(entries, nowSec) {
+  if (!filterState) {
+    return entries.length;
+  }
+  var st = filterState.get();
+  var n = 0;
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (!st.showIgnored && e.gitignored) {
+      continue;
+    }
+    if (
+      filterState.rowMatches(
+        { mtime: e.mtime, size: e.size, path: e.path, ext: e.logical_ext || e.ext || "" },
+        // The window already selected these rows; asking again here
+        // would re-test an mtime the server has ruled on.
+        Object.assign({}, st, { recency: "all" }),
+        nowSec,
+      )
+    ) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
 function renderRecentFromBase() {
   const results = recentResultsHost();
   if (!results) {
@@ -2060,20 +2092,18 @@ function renderRecentFromBase() {
         limit: RECENT_LIMIT,
       });
       if (entries.length === 0) {
+        _recentFilteredCount = 0;
         results.innerHTML = renderRecentList({ tree: [] });
         return;
       }
       var nowSec = Date.now() / 1000;
+      // Count the filtered set from the entries, not from the rendered
+      // rows: renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count
+      // reports how much has been paged in rather than how many files
+      // passed the filter.
+      _recentFilteredCount = countRecentMatches(entries, nowSec);
       var tree = clusterRecentTreeJs(entries, nowSec, RECENT_CLUSTER_PCT);
-      results.innerHTML = renderRecentList({
-        tree: tree,
-        // What the panel is actually showing, which is the entry count
-        // after the live overlay — not the tree node count, since
-        // clustering folds directories into the same structure.
-        shown: entries.length,
-        total_matching: recentTotalMatching,
-        truncated: recentTruncated,
-      });
+      results.innerHTML = renderRecentList({ tree: tree });
     },
     { items: recentBaseEntries.size },
   );
@@ -2375,22 +2405,11 @@ function renderRecentList(data) {
   // the Recent tree builder leaves ``expanded`` unset on those
   // nodes so explicit cluster-collapse state still wins.
   var body = renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
-  // Keep the tally row this source would otherwise paint over, and
-  // hang the filtered count off it as a second line. The totals are
-  // the constant the user is orienting against; what the filter did is
-  // the delta from them, so the two belong together rather than the
-  // filtered figure arriving alone as a banner.
-  var shown = data.shown || tree.length;
-  var filtered =
-    '<div class="tree-summary-filtered">' +
-    `Filtered to ${esc(shown.toLocaleString())} ${shown === 1 ? "file" : "files"}` +
-    // Only a capped response needs to say the filter matched more than
-    // it is showing; an uncapped one has nothing to disclose.
-    (data.truncated && data.total_matching
-      ? ` of ${esc(data.total_matching.toLocaleString())} matching`
-      : "") +
-    ".</div>";
-  return (_lastTreeSummaryHtml || "") + filtered + body;
+  // Keep the tally row this source would otherwise paint over. The
+  // filtered count that hangs off it is written by applyTreeFilters,
+  // which runs next and is the only place that knows how many rows
+  // survived every dimension rather than just the recency one.
+  return (_lastTreeSummaryHtml || "") + body;
 }
 
 // ── Navigation filter bar ───────────────────────────────────────
@@ -3005,6 +3024,10 @@ function applyTreeFilters() {
     for (var c = 0; c < rows.length; c++) {
       rows[c].classList.remove("tree-item-filter-hidden");
     }
+    // Clear both lines too: this early return is the path taken when
+    // the last filter is removed, so leaving them would strand a
+    // "Filtered to N files" over an unfiltered tree.
+    _renderFilteredTally(panel, 0, st);
     _renderFilterNote(panel, 0, st);
     return;
   }
@@ -3065,17 +3088,23 @@ function applyTreeFilters() {
   // its verdict propagates down, and a subtree never keeps an orphaned
   // visible row under a parent that is gone.
   var suppressed = new Set();
+  var shownFiles = 0;
   for (var j = 0; j < rows.length; j++) {
     var el = rows[j];
     var matched = !suppressed.has(el.parentElement) && keep.get(el) === true;
     el.classList.toggle("tree-item-filter-hidden", !matched);
-    if (!matched) {
+    if (matched) {
+      if (!el.classList.contains("tree-folder")) {
+        shownFiles += 1;
+      }
+    } else {
       var kidContainer = _childContainerFor(el);
       if (kidContainer) {
         suppressed.add(kidContainer);
       }
     }
   }
+  _renderFilteredTally(panel, shownFiles, st);
   _renderFilterNote(panel, unloadedFolders, st);
   // Once writing stops no further events arrive, so nothing would
   // re-evaluate the persistence window and the row would sit there
@@ -3096,6 +3125,52 @@ function scheduleLiveExpiryRecheck() {
     _liveExpiryHandle = null;
     applyTreeFilters();
   }, due);
+}
+
+// How many files the filter is actually showing, as a second line
+// under the tally. Rendered whenever anything is filtered, not only
+// when a response was capped: "how many am I looking at" is the
+// question a filter raises every time, and the totals above are what
+// it reads against.
+//
+// Counted from the rows that survived, so it reflects every dimension
+// rather than just the one the server resolved.
+function _renderFilteredTally(panel, shownFiles, state) {
+  var existing = panel.querySelector(".tree-summary-filtered");
+  if (!filterHasConstraints(state)) {
+    if (existing) {
+      existing.remove();
+    }
+    return;
+  }
+  // The recency source counts from its entries, because the tree
+  // renderer pages at TREE_PAGE_SIZE and a DOM count would report how
+  // much has been paged in rather than how many files passed.
+  var count =
+    filesPanelUsesRecentSource() && _recentFilteredCount !== null
+      ? _recentFilteredCount
+      : shownFiles;
+  var text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
+  // A capped response has more matches than it sent, and only it can
+  // say so — the client never saw the rest.
+  if (filesPanelUsesRecentSource() && recentTruncated && recentTotalMatching) {
+    text += ` of ${recentTotalMatching.toLocaleString()} matching`;
+  }
+  text += ".";
+  if (existing) {
+    existing.textContent = text;
+    return;
+  }
+  var summary = panel.querySelector(".tree-summary");
+  var line = document.createElement("div");
+  line.className = "tree-summary-filtered";
+  line.setAttribute("role", "status");
+  line.textContent = text;
+  if (summary) {
+    summary.insertAdjacentElement("afterend", line);
+  } else {
+    panel.insertAdjacentElement("afterbegin", line);
+  }
 }
 
 // Filtering prunes what it has loaded, which is not the same as "this

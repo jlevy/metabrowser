@@ -167,7 +167,7 @@ def test_all_three_dimensions_are_dropdowns() -> None:
 
     js = _read("app.js")
     fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 3500]
+    fn_block = js[fn_start : fn_start + 4200]
     assert fn_block.count("fc.menuGroupHtml(") == 3
     # Age and size pick one; type picks several.
     assert fn_block.count('select: "one"') == 2
@@ -181,7 +181,7 @@ def test_age_and_type_ride_the_always_visible_row() -> None:
 
     js = _read("app.js")
     fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 3500]
+    fn_block = js[fn_start : fn_start + 4200]
     drawer_at = fn_block.index('class="filter-drawer"')
     assert fn_block.index('"Any age"') < drawer_at
     assert fn_block.index('"Any type"') < drawer_at
@@ -347,6 +347,48 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     assert "name === token" in tm_block
 
 
+def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
+    """ "How many am I looking at" is the question a filter raises every
+    time, not only when a response was capped."""
+
+    js = _read("app.js")
+    start = js.index("function _renderFilteredTally(panel, shownFiles, state)")
+    block = js[start : start + 1600]
+    assert "filterHasConstraints(state)" in block
+    assert "Filtered to ${" in block
+    # The "of N matching" half is the capped-response disclosure only.
+    assert "recentTruncated" in block
+
+    # Removing the last filter must clear the line, and that path is
+    # the unconstrained early return.
+    apply_start = js.index("function applyTreeFilters()")
+    apply_block = js[apply_start : apply_start + 1400]
+    assert "_renderFilteredTally(panel, 0, st);" in apply_block
+
+
+def test_the_recency_tally_counts_entries_not_rendered_rows() -> None:
+    """renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count reports
+    how much has been paged in rather than how many files passed."""
+
+    js = _read("app.js")
+    assert "function countRecentMatches(entries, nowSec)" in js
+    start = js.index("function _renderFilteredTally(panel, shownFiles, state)")
+    block = js[start : start + 1600]
+    assert "_recentFilteredCount" in block
+
+
+def test_the_recency_cap_records_why_it_is_where_it_is() -> None:
+    """The bound is the per-burst re-cluster, not first render, and the
+    number should not drift without someone re-measuring."""
+
+    settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()
+    start = settings.index("RECENT_DEFAULT_WINDOW")
+    block = settings[start : start + 1400]
+    assert "RECENT_RECLUSTER_DEBOUNCE_MS" in block
+    assert "RECENT_DEFAULT_LIMIT = 5_000" in block
+    assert "RECENT_MAX_LIMIT = 5_000" in block
+
+
 def test_the_extension_list_is_hard_capped() -> None:
     """Appending selected-but-unranked tokens let one preset add dozens
     of rows — extensions the folder does not contain, and bare filename
@@ -487,7 +529,7 @@ def test_hidden_folders_suppress_their_descendants() -> None:
 
     js = _read("app.js")
     fn_start = js.index("function applyTreeFilters()")
-    fn_block = js[fn_start : fn_start + 3500]
+    fn_block = js[fn_start : fn_start + 4200]
     assert "suppressed.add(kidContainer)" in fn_block
     assert "suppressed.has(el.parentElement)" in fn_block
 
@@ -631,7 +673,7 @@ def test_clear_sits_with_the_dropdowns_it_undoes() -> None:
 
     js = _read("app.js")
     fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 3500]
+    fn_block = js[fn_start : fn_start + 4200]
     clear_at = fn_block.index("fc.clearHtml(")
     assert clear_at < fn_block.index('class="filter-drawer"')
     assert '{ label: "Clear" }' in fn_block
