@@ -92,6 +92,10 @@ Reliability:
   status 130 instead of printing a traceback or waiting on a background thread.
   A second Ctrl-C remains an immediate forced exit if another operation cannot finish
   cooperatively.
+- Live updates remain correct when a large filesystem burst fills a bounded event queue.
+  The server replaces the incomplete backlog with a resynchronization marker, and each
+  affected browser reconnects for a fresh inventory snapshot instead of remaining open
+  with stale state.
 - Default server output no longer reports routine lifecycle events, expected concurrent
   inventory conflicts, protected directories, or sub-threshold helper timings.
   Slow requests, long inventory scans, plugin problems, and operational failures remain

@@ -21,8 +21,8 @@ surface:
   rejects only opt-in race-safety writes whose captured
   ``WriteToken`` is older than the current generation
   across invalidation races.
-* Subscriber overflow drops the slow consumer rather than
-  blocking the producer.
+* Subscriber overflow requests a bounded resync rather than
+  blocking the producer or silently losing updates.
 
 Test convention follows the broader repo pattern: sync tests that
 drive coroutines via ``asyncio.run``.
@@ -952,26 +952,31 @@ def test_inventory_subscribe_receives_walker_changes(tmp_path: Path) -> None:
     assert "sub1/file_b.log" in seen
 
 
-def test_inventory_slow_subscriber_dropped_not_blocking(tmp_path: Path) -> None:
+def test_inventory_slow_subscriber_gets_resync_without_blocking(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[bool, bool, int]:
+    async def _run() -> tuple[bool, bool, int, object]:
         inv = InventoryIndex()
         slow = inv.subscribe(max_queue=1)
         fast = inv.subscribe(max_queue=1024)
         # Drive emits directly: the walker batches upserts now, so a
         # tiny tree no longer guarantees N>queue events from start().
-        # The behavior under test is "_emit drops slow consumers
-        # rather than blocking the producer," which doesn't depend
-        # on the walker.
+        # The behavior under test doesn't depend on the walker.
         for _ in range(3):
             inv._emit(FsChange(ops=()))
-        return (slow in inv._subscribers, fast in inv._subscribers, inv.subscriber_count())
+        return (
+            slow in inv._subscribers,
+            fast in inv._subscribers,
+            inv.subscriber_count(),
+            slow.get_nowait(),
+        )
 
-    slow_attached, fast_attached, count = asyncio.run(_run())
-    assert slow_attached is False
+    slow_attached, fast_attached, count, slow_event = asyncio.run(_run())
+    assert slow_attached is True
     assert fast_attached is True
-    assert count == 1
+    assert count == 2
+    assert isinstance(slow_event, FsResyncRequired)
+    assert slow_event.reason == "subscriber_queue_overflow"
 
 
 def test_inventory_clear_emits_resync(tmp_path: Path) -> None:

@@ -95,6 +95,18 @@ def test_event_source_registers_fs_snapshot_listener() -> None:
     assert 'addEventListener("fs.resync_required"' in fn_block
 
 
+def test_resync_event_reconnects_for_a_fresh_snapshot() -> None:
+    js = _read_app_js()
+    start = js.index('addEventListener("fs.resync_required"')
+    block = js[start : start + 900]
+    assert "inventoryEventSource.close()" in block
+    assert "inventoryEventSource = null" in block
+    assert "_createInventoryEventSource()" in block
+    assert block.index("quickFileCatalogFeed?.onResync()") < block.index(
+        "_createInventoryEventSource()"
+    )
+
+
 def test_event_source_handles_typeof_undefined_for_graceful_fallback() -> None:
     """When EventSource isn't supported (older browsers, some
     SSE-stripping proxies), startInventoryEventStream short-

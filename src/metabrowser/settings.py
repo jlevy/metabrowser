@@ -67,20 +67,17 @@ INVENTORY_WALKER_EMIT_BATCH = 256
 # fresh snapshot.
 SSE_RING_BUFFER_CAPACITY = 5_000
 
-# Per-connection bounded queue. Overflow disconnects that
-# connection only; EventSource auto-reconnect drives a fresh
-# snapshot. This bound protects one connection; bus-level fanout
-# governs delivery across connections.
+# Per-connection bounded queue. Overflow replaces stale deltas with
+# a resync marker, and the browser reconnects for a fresh snapshot.
+# This bound protects one connection; bus-level fanout governs
+# delivery across connections.
 SSE_PER_CONNECTION_QUEUE_SIZE = 1_024
 
 # The event bus subscribes to the inventory once and fans out to
-# all connections. The walker batches its upserts (see
-# INVENTORY_WALKER_EMIT_BATCH), so the burst is bounded at roughly
-# (INVENTORY_MAX_FILES + dirs) / batch, about 2k-3k events for a
-# 500k-file repo with typical directory density. If this queue
-# overflows, the inventory drops the bus from its subscribers and
-# the relay's defensive resubscribe (events_route._relay_loop)
-# rebuilds the subscription.
+# all connections. The walker batches its upserts, but large roots
+# and watcher bursts can still fill this bounded queue. Overflow
+# replaces stale deltas with one resync marker so browsers refresh
+# from authoritative snapshots without losing live updates silently.
 SSE_BUS_INVENTORY_QUEUE_SIZE = 4_096
 
 # Heartbeat cadence — long enough to keep proxies alive; short
