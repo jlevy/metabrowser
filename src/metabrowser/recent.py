@@ -51,7 +51,7 @@ from metabrowser.settings import (
 # Re-exports kept so existing tests / external callers that
 # import the module-level constants directly stay working.
 # Authoritative defaults live in :mod:`metabrowser.settings`.
-WindowKey = Literal["1h", "24h", "7d", "30d", "all"]
+WindowKey = Literal["live", "1h", "24h", "7d", "30d", "all"]
 DEFAULT_LIMIT = RECENT_DEFAULT_LIMIT
 MAX_LIMIT = RECENT_MAX_LIMIT
 

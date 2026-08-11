@@ -4,9 +4,9 @@ Discovers candidate files (JSONL/state/PID files inside ``.logs/`` and
 ``.state/`` trees), then on each poll re-stats them and reports which
 ones changed within ``stale_after_s`` seconds.
 
-Discovery is scoped to ``.logs/`` and ``.state/`` subtrees, where active
-run artifacts live. Bounding the candidate set prevents repository size
-from turning each activity poll into a full-tree stat pass.
+Discovery is scoped to ``.logs/`` and ``.state/`` subtrees, where actively
+written logs and state files commonly live. Bounding the candidate set prevents
+repository size from turning each activity poll into a full-tree stat pass.
 """
 
 from __future__ import annotations

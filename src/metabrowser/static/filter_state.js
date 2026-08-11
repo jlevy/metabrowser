@@ -8,9 +8,8 @@
 //     size: "all"|"s"|"m"|"l",
 //     showIgnored: boolean }  // gitignored entries visible (dimmed)
 //
-// Recency is one axis, not two: "live" (the active tracker's flag) is
-// the narrowest point on it, so it is a value here rather than a
-// separate boolean.
+// Recency is one axis, not two: "live" is the shortest server-owned
+// mtime window, so it is a value here rather than a separate boolean.
 //
 // There is no dim/hide switch. A filter removes what does not match —
 // that is what filtering is — so the only display choice left is
@@ -25,13 +24,15 @@
 (() => {
   const PREF_KEY = "filters";
 
-  const RECENCY_VALUES = ["all", "live", "1h", "24h", "7d", "30d"];
   /**
-   * Seconds per windowed recency value; "all" and "live" are not
-   * windows and are absent on purpose.
-   * @type {Record<string, number>}
+   * Seconds per recency value, injected from metabrowser/settings.py.
+   * `all` maps to null and recencySeconds normalizes it to zero.
+   * @type {Record<string, number | null>}
    */
-  const RECENCY_SECONDS = { "1h": 3600, "24h": 86400, "7d": 604800, "30d": 2592000 };
+  const RECENCY_SECONDS = /** @type {Record<string, number | null>} */ (
+    /** @type {any} */ (window).METABROWSER_SETTINGS?.RECENT_WINDOW_SECONDS || {}
+  );
+  const RECENCY_VALUES = Object.keys(RECENCY_SECONDS);
   /**
    * Size is a cumulative floor, not a band: "bigger than this". Bands
    * force you to guess which one a file lands in, while "what is over
@@ -188,7 +189,7 @@
     return n;
   }
 
-  /** @param {string} recency @returns {number} 0 when not a time window */
+  /** @param {string} recency @returns {number} 0 when not a bounded window */
   function recencySeconds(recency) {
     return RECENCY_SECONDS[recency] || 0;
   }
@@ -270,27 +271,18 @@
   /**
    * The one row predicate every surface shares. `row` carries whatever
    * subset the caller knows: {mtime (seconds), size (bytes), path,
-   * live, isDir}. Missing fields never rule a row out — pending data
+   * isDir}. Missing fields never rule a row out — pending data
    * must not flicker as filtered. Directories are judged only on
    * recency, because a folder's type and size are aggregates that mean
    * something different from a file's.
-   * @param {{mtime?: number | null, size?: number | null, path?: string, live?: boolean, isDir?: boolean, ext?: string}} row
+   * @param {{mtime?: number | null, size?: number | null, path?: string, isDir?: boolean, ext?: string}} row
    * @param {FilterSnapshot} s
    * @param {number} nowSec
    */
   function rowMatches(row, s, nowSec) {
     // Note: gitignored is handled by the caller, which knows the row's
     // class; showIgnored is a visibility choice, not a predicate.
-    if (s.recency === "live") {
-      // `live` means "being written" for a file and "has a descendant
-      // being written" for a folder. Both are complete answers — the
-      // caller knows the whole live set — so a folder is judged here
-      // rather than waved through the way the other dimensions must
-      // wave through a subtree they cannot see.
-      if (row.live !== true) {
-        return false;
-      }
-    } else if (s.recency !== "all") {
+    if (s.recency !== "all") {
       const maxAge = recencySeconds(s.recency);
       if (typeof row.mtime === "number" && row.mtime > 0 && nowSec - row.mtime > maxAge) {
         return false;

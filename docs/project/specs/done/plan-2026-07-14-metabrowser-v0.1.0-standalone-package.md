@@ -10,8 +10,8 @@
 
 Publish Metabrowser as a Python package licensed under AGPL-3.0-or-later, with a
 self-contained source, test, documentation, and release workflow.
-The package provides a local browser for files and structured artifacts, supports
-trusted extensions through its plugin API, and uses KPress as its Markdown renderer.
+The package provides a local browser for files and structured data, supports trusted
+extensions through its plugin API, and uses KPress as its Markdown renderer.
 
 ## Goals
 
@@ -104,9 +104,9 @@ Connect trusted publishing without a package token.
 - [x] Remove specialized binary-store code and native dependencies from the core wheel;
   retain the manifest, browser SDK, and installed-entry-point seams needed by external
   format plugins
-- [x] Add bounded zlib artifact support with logical-extension handling, streaming
-  previews, rendering and export integration, malformed-stream errors, and
-  decompression-bomb limits
+- [x] Add bounded zlib-file support with logical-extension handling, streaming previews,
+  rendering and export integration, malformed-stream errors, and decompression-bomb
+  limits
 - [x] Apply the simple-modern-uv structure, committed uv lockfile, AGPL-3.0-or-later
   license, and package metadata
 - [x] Publish `metab` as the primary console script while retaining `metabrowser` for

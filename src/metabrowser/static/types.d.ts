@@ -470,6 +470,7 @@ declare global {
       RECENT_DEFAULT_WINDOW?: string;
       RECENT_LIMIT?: number;
       RECENT_RECLUSTER_DEBOUNCE_MS?: number;
+      RECENT_WINDOW_SECONDS?: Record<string, number | null>;
       RECENT_WINDOWS?: Array<string>;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
     };

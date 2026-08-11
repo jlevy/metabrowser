@@ -3,8 +3,8 @@ _commit: v0.4.0
 _src_path: gh:jlevy/simple-modern-uv
 package_author_email: joshua@cal.berkeley.edu
 package_author_name: Joshua Levy
-package_description: Local web UI for browsing files, logs, and structured artifacts
-    with extensible renderers.
+package_description: Browse local files from your web browser, with extensible
+    plugin-based rendering of Markdown, code, JSON, YAML, logs, and other files.
 package_github_org: jlevy
 package_license: AGPL-3.0-or-later
 package_module: metabrowser

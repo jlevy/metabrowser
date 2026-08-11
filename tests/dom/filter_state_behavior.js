@@ -39,6 +39,16 @@ function makeSandbox(options) {
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
+  sandbox.METABROWSER_SETTINGS = {
+    RECENT_WINDOW_SECONDS: {
+      live: 90,
+      "1h": 60 * 60,
+      "24h": 24 * 60 * 60,
+      "7d": 7 * 24 * 60 * 60,
+      "30d": 30 * 24 * 60 * 60,
+      all: null,
+    },
+  };
   sandbox.metabrowser = {
     prefs: {
       get(name, fallback) {
@@ -190,20 +200,18 @@ const HOUR = 3600;
 {
   const { state } = makeSandbox();
   const s = Object.assign(state.get(), { recency: "live" });
-  assertTrue("a live file matches", state.rowMatches({ live: true, path: "a.md" }, s, NOW));
-  assertEqual("a static file does not", state.rowMatches({ path: "a.md" }, s, NOW), false);
-  // Folders are judged too: `live` means "has a descendant being
-  // written" for a directory. Waving them through left every collapsed
-  // folder in the tree while every file was pruned, which read as a
-  // filter showing days-old content rather than live writes.
   assertTrue(
-    "a folder containing a live file matches",
-    state.rowMatches({ isDir: true, live: true, path: "src" }, s, NOW),
+    "an ordinary file touched inside the Live window matches",
+    state.rowMatches({ mtime: NOW - 89, path: "notes.md" }, s, NOW),
   );
   assertEqual(
-    "a folder with nothing live under it does not",
-    state.rowMatches({ isDir: true, path: "src" }, s, NOW),
+    "a file outside the Live window does not",
+    state.rowMatches({ mtime: NOW - 91, path: "session.jsonl" }, s, NOW),
     false,
+  );
+  assertTrue(
+    "missing mtime stays unknown rather than excluding a pending row",
+    state.rowMatches({ path: "pending.txt" }, s, NOW),
   );
 }
 

@@ -103,10 +103,16 @@ ACTIVE_TRACKER_QUIET_POLLS = 6
 # run-dir write-storm pattern collapses cleanly.
 RECENT_CLUSTER_PCT = 0.05
 
-# Window keys (UI chips) and their seconds-back values; ``None``
+# "Live" is the same recent-mtime window for every file. Specialized
+# log tracking still owns active badges and live tailing, but it does
+# not change filter membership.
+LIVE_FILE_WINDOW_S = 90.0
+
+# Window keys (UI choices) and their seconds-back values; ``None``
 # means unbounded ("all"). Both the server endpoint and the
-# client window-chip set read from this dict.
+# browser read from this dict.
 RECENT_WINDOW_SECONDS: dict[str, float | None] = {
+    "live": LIVE_FILE_WINDOW_S,
     "1h": 60 * 60,
     "24h": 24 * 60 * 60,
     "7d": 7 * 24 * 60 * 60,
@@ -171,6 +177,7 @@ def client_settings_dict() -> dict[str, Any]:
     return {
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
+        "RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS,
         # Window keys in UI chip order. Server enforces same set.
         "RECENT_WINDOWS": list(RECENT_WINDOW_SECONDS.keys()),
         "RECENT_CLUSTER_PCT": RECENT_CLUSTER_PCT,
@@ -194,6 +201,7 @@ __all__ = [
     "INVENTORY_WALKER_EMIT_BATCH",
     "INDEX_PROGRESS_POLL_MS",
     "INDEX_PROGRESS_UPDATE_FILES",
+    "LIVE_FILE_WINDOW_S",
     "RECENT_CLUSTER_PCT",
     "RECENT_DEFAULT_LIMIT",
     "RECENT_DEFAULT_WINDOW",

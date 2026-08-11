@@ -70,7 +70,7 @@ def test_cli_help_shows_modes_and_examples() -> None:
     assert "--doctor" in output
     assert "--version" in output
     assert "metab ." in compact_output
-    assert "metab --remote my-vm --path /srv/runs" in compact_output
+    assert "metab --remote example-host --path /srv/shared-files" in compact_output
 
 
 def test_cli_version_uses_installed_package_metadata() -> None:

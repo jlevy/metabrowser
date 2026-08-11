@@ -268,11 +268,12 @@ def test_menu_rows_use_type_icons_rather_than_tinted_labels() -> None:
 
 
 def test_recency_is_one_dimension_including_live() -> None:
-    """Live is the narrowest point on the recency axis, not a second
-    boolean; "live but older than a week" is not a query."""
+    """Live is the narrowest recency window, not a specialized
+    tracker flag or a second boolean dimension."""
 
     js = _read("filter_state.js")
-    assert 'const RECENCY_VALUES = ["all", "live", "1h", "24h", "7d", "30d"]' in js
+    assert "const RECENCY_VALUES = Object.keys(RECENCY_SECONDS);" in js
+    assert 's.recency === "live"' not in js
     assert "current:" not in js
     assert "ageWindow" not in js
 
@@ -728,27 +729,24 @@ def test_recency_fetch_carries_the_gitignored_setting() -> None:
     assert "ignoredChanged" in block
 
 
-def test_live_survives_the_gap_between_tracker_polls() -> None:
-    """The tracker polls every 5s but the watcher emits an upsert per
-    append, carrying a stale `active: false` in between. Mirroring
-    that straight into the filter made a file being written once a
-    second flicker in and out of the tree."""
+def test_live_uses_the_server_owned_ninety_second_window() -> None:
+    """Every file uses one cutoff. Agent logs retain their active badge
+    and tailing behavior, but the filter does not use that tracker."""
+
+    settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()
+    assert "LIVE_FILE_WINDOW_S = 90.0" in settings
+    assert '"live": LIVE_FILE_WINDOW_S' in settings
+    assert '"RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS' in settings
 
     js = _read("app.js")
-    assert "const FILTER_LIVE_PERSIST_MS = 90_000;" in js
-    # The filter reads a persisted set, not activeFiles directly.
-    apply_start = js.index("function applyTreeFilters()")
-    apply_block = js[apply_start : apply_start + 3000]
-    assert "livePathsForFilter()" in apply_block
-    assert "activeFiles.has(" not in apply_block
-    # Writing stops, no more events arrive; something has to re-check.
-    assert "function scheduleLiveExpiryRecheck()" in js
+    assert "_METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS" in js
+    assert "FILTER_LIVE_PERSIST_MS" not in js
+    assert "livePathsForFilter" not in js
 
 
 def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
-    """Live is the under-a-minute red because a file being written now
-    is that bucket; each window then takes the colour of the bucket it
-    tops out at."""
+    """Live uses the freshest color; each longer window takes the
+    color of the age bucket it tops out at."""
 
     js = _read("app.js")
     start = js.index("var FILTER_RECENCY_OPTIONS = [")
@@ -760,8 +758,9 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
         ('"7d"', "age-day"),
         ('"30d"', "age-wk"),
     ):
-        line = next(ln for ln in block.splitlines() if value in ln)
-        assert f'ageClass: "{age}"' in line, f"{value} should wear {age}"
+        value_start = block.index(f"value: {value}")
+        option = block[value_start : value_start + 240]
+        assert f'ageClass: "{age}"' in option, f"{value} should wear {age}"
 
     # Scoped to the menu: the tree's ramp is contrast-audited.
     css = _read("styles.css")

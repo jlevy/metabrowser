@@ -1909,17 +1909,9 @@ function initNavScrollShadow() {
   update();
 }
 
-// Window key → seconds-back from "now". Mirror of
-// RECENT_WINDOW_SECONDS in metabrowser/settings.py; if you
-// change one, change the other (or move both behind the
-// METABROWSER_SETTINGS injection).
-var _RECENT_WINDOW_SECONDS = {
-  "1h": 60 * 60,
-  "24h": 24 * 60 * 60,
-  "7d": 7 * 24 * 60 * 60,
-  "30d": 30 * 24 * 60 * 60,
-  all: null,
-};
+// Window key → seconds-back from "now", injected from the one
+// authoritative mapping in metabrowser/settings.py.
+const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {};
 
 // Recent is a hybrid
 // of "snapshot from /api/recent" + "live FileStore overlay".
@@ -1959,6 +1951,9 @@ var recentInflight = null; // AbortController for the in-flight chip fetch
 var _GITIGNORED_DIR_PATHS = new Set();
 
 function loadRecent(windowKey) {
+  // A timer scheduled for the previous window must not repaint its
+  // cached rows while this replacement request is still loading.
+  clearRecentExpiryRecheck();
   // Lock the user's window intent synchronously so a second chip
   // click can dedup against it.
   currentRecentWindow = windowKey;
@@ -2085,13 +2080,13 @@ function renderRecentFromBase() {
   if (!results) {
     return;
   }
+  var entries = recentEntriesFromBase({
+    window: currentRecentWindow,
+    limit: RECENT_LIMIT,
+  });
   _perf.measure(
     "renderRecent:root",
     () => {
-      var entries = recentEntriesFromBase({
-        window: currentRecentWindow,
-        limit: RECENT_LIMIT,
-      });
       if (entries.length === 0) {
         results.innerHTML = renderRecentList({ tree: [] });
         return;
@@ -2102,12 +2097,54 @@ function renderRecentFromBase() {
     },
     { items: recentBaseEntries.size },
   );
+  scheduleRecentExpiryRecheck(entries);
   // Recency is already resolved server-side; the remaining
   // dimensions still apply over these rows.
   applyTreeFilters();
   if (currentPath) {
     setSelectedPath(currentPath);
   }
+}
+
+const RECENT_EXPIRY_MIN_DELAY_MS = 250;
+const RECENT_EXPIRY_BOUNDARY_FUZZ_MS = 50;
+// Browsers store timer delays in a signed 32-bit integer. A freshly
+// touched file in the 30-day window crosses that limit, so wake once
+// at the maximum and schedule the remaining interval on that repaint.
+const RECENT_EXPIRY_MAX_DELAY_MS = 2_147_000_000;
+var recentExpiryHandle = null;
+
+function clearRecentExpiryRecheck() {
+  if (recentExpiryHandle !== null) {
+    clearTimeout(recentExpiryHandle);
+    recentExpiryHandle = null;
+  }
+}
+
+/** Repaint when the oldest visible file crosses the active window boundary. */
+function scheduleRecentExpiryRecheck(entries) {
+  clearRecentExpiryRecheck();
+  var seconds = _RECENT_WINDOW_SECONDS[currentRecentWindow];
+  if (typeof seconds !== "number" || entries.length === 0 || !filesPanelUsesRecentSource()) {
+    return;
+  }
+  var oldestMtime = entries[0].mtime || 0;
+  for (var i = 1; i < entries.length; i++) {
+    oldestMtime = Math.min(oldestMtime, entries[i].mtime || 0);
+  }
+  var due = Math.min(
+    RECENT_EXPIRY_MAX_DELAY_MS,
+    Math.max(
+      RECENT_EXPIRY_MIN_DELAY_MS,
+      (oldestMtime + seconds) * 1000 - Date.now() + RECENT_EXPIRY_BOUNDARY_FUZZ_MS,
+    ),
+  );
+  recentExpiryHandle = setTimeout(() => {
+    recentExpiryHandle = null;
+    if (filesPanelUsesRecentSource()) {
+      renderRecentFromBase();
+    }
+  }, due);
 }
 
 // Apply a live FileStore-equivalent op to the recent base. Used
@@ -2408,7 +2445,11 @@ function recentResultsHost() {
 function renderRecentList(data) {
   var tree = data.tree || [];
   if (tree.length === 0) {
-    return '<div class="recent-empty">No files modified in this window.</div>';
+    var emptyText =
+      currentRecentWindow === "live"
+        ? `No files touched in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
+        : "No files modified in this window.";
+    return `<div class="recent-empty">${emptyText}</div>`;
   }
   // Reuse the Files-tab renderer with one mode flip: dir rows
   // show file count instead of total bytes (see comments on
@@ -2441,7 +2482,7 @@ function renderRecentList(data) {
 var filterState = /** @type {any} */ (window).MetabrowserFilterState || null;
 var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || null;
 
-// Recency is one axis from "everything" to "being written right now".
+// Recency is one axis from "everything" to the shortest mtime window.
 // Values match RECENT_WINDOWS and the /api/recent contract; labels are
 // shortened because the whole group has to fit a 300px pane.
 // No "all" entry: the menu's any-row is that value, and listing it
@@ -2449,13 +2490,17 @@ var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || nu
 // words rather than the abbreviations the segmented ramp needed,
 // because a dropdown row is not fighting five siblings for width.
 // Each row wears the freshness colour the tree gives files of that
-// age, so the menu doubles as the legend for the ramp below it. The
-// buckets line up with formatAge exactly: Live is the "<1 min" red
-// because a file being written now *is* that bucket, then each window
-// takes the colour of the bucket it tops out at — Past hour is the
-// "<1 hour" step, Past day the "<1 day" step, and so on.
+// age, so the menu doubles as the legend for the ramp below it.
+// Longer windows take the colour of the bucket they top out at. Live
+// keeps the freshest colour and spells out its exact server-owned
+// cutoff in the accessible title.
 var FILTER_RECENCY_OPTIONS = [
-  { value: "live", label: "Live", title: "Run logs being written right now", ageClass: "age-sec" },
+  {
+    value: "live",
+    label: "Live",
+    title: `Files touched in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
+    ageClass: "age-sec",
+  },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
   { value: "24h", label: "Past day", ageClass: "age-hr" },
   { value: "7d", label: "Past week", ageClass: "age-day" },
@@ -2610,22 +2655,6 @@ var FILTER_TYPE_PRESETS = [
 // behind it and never omits one the tree is full of.
 var FILTER_TYPE_MENU_MAX = 20;
 
-// How long a file keeps counting as "live" for the filter after the
-// last time the tracker reported it active.
-//
-// This is not cosmetic. The activity tracker polls every
-// ACTIVE_TRACKER_INTERVAL_S (5s), but the file watcher emits an upsert
-// on *every* append, and those carry whatever `active` flag the entry
-// held at that moment — false between polls. Mirroring that flag
-// straight into the filter made a file being written once a second
-// appear and vanish several times a minute.
-//
-// 90s comfortably spans the poll interval plus the tracker's own
-// quiet-poll hysteresis, so a steadily-written file stays put, while a
-// genuinely finished one still drops out promptly enough to be
-// believed.
-const FILTER_LIVE_PERSIST_MS = 90_000;
-
 // Deliberately not persisted. The drawer holds the secondary controls,
 // so a session that starts with it open costs vertical space the user
 // did not ask for on this visit; the filters themselves persist, and
@@ -2693,15 +2722,14 @@ function filterTypeOptions() {
 
 // A recency window reads from /api/recent, which scans the whole index
 // rather than the loaded subtrees — the one thing the Recent tab did
-// that a DOM walk cannot. "live" stays on the tree source: the active
-// tracker's files are by definition inside the event scope, and
-// /api/recent has no window for them.
+// that a DOM walk cannot. This includes Live: it is the shortest
+// server-owned mtime window, not the specialized activity tracker.
 function filesPanelUsesRecentSource() {
   if (!filterState) {
     return false;
   }
   var st = filterState.get();
-  return st.recency !== "all" && st.recency !== "live";
+  return st.recency !== "all";
 }
 
 function renderNavFilterBar() {
@@ -2953,6 +2981,7 @@ function onFilterStateChange(state) {
     // Empty, not a window key: a late response compares against this
     // and must never find a match.
     currentRecentWindow = "";
+    clearRecentExpiryRecheck();
     // Restore the full tree from the cached payload; only fall back to
     // a refetch when nothing has been cached yet.
     if (!renderFilesFromTree()) {
@@ -2974,47 +3003,6 @@ function onFilterStateChange(state) {
 // with no loaded children is unknown rather than excluded — the one
 // exception being recency, where the folder's own aggregate mtime
 // (newest descendant) is a definitive answer for the whole subtree.
-
-// Last time each path was reported active, so the filter can hold a
-// file steady across the gaps described at FILTER_LIVE_PERSIST_MS.
-/** @type {Map<string, number>} */
-const liveSeenAt = new Map();
-
-function noteLivePath(path) {
-  liveSeenAt.set(path, Date.now());
-}
-
-// Paths the *filter* treats as live: those active right now, plus
-// those seen active within the persistence window.
-function livePathsForFilter() {
-  var cutoff = Date.now() - FILTER_LIVE_PERSIST_MS;
-  var paths = new Set(activeFiles.keys());
-  for (const [path, seen] of liveSeenAt) {
-    if (seen < cutoff) {
-      liveSeenAt.delete(path); // bounded: entries expire as they age out
-    } else {
-      paths.add(path);
-    }
-  }
-  return paths;
-}
-
-// Is any file under this folder live? The live set holds full paths,
-// so a folder can be judged without its children being rendered — the
-// reason Live does not need the unloaded-folder escape the other
-// dimensions do.
-function hasLiveDescendant(dirPath, livePaths) {
-  if (livePaths.size === 0) {
-    return false;
-  }
-  var prefix = dirPath ? `${dirPath}/` : "";
-  for (const livePath of livePaths) {
-    if (!prefix || livePath.startsWith(prefix)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 function _childContainerFor(row) {
   var next = row.nextElementSibling;
@@ -3045,14 +3033,6 @@ function applyTreeFilters() {
   var nowSec = Date.now() / 1000;
   var keep = new Map();
   var unloadedFolders = 0;
-  // "Live" is the one dimension the client knows completely: activeFiles
-  // is the whole set of paths currently being written, straight off the
-  // event stream. Reading it beats testing for a rendered .activity-dot,
-  // which only exists on rows that happen to be painted, and it lets a
-  // folder be judged on whether a live path lies beneath it rather than
-  // being waved through as "not loaded, so unknown".
-  var liveMode = st.recency === "live";
-  var livePaths = liveMode ? livePathsForFilter() : new Set();
   for (var i = rows.length - 1; i >= 0; i--) {
     var row = rows[i];
     var isDir = row.classList.contains("tree-folder");
@@ -3071,7 +3051,6 @@ function applyTreeFilters() {
           // every file row; matching on it keeps a compound pick
           // (".min.js") agreeing with the tally that offered it.
           ext: row.dataset.ext || "",
-          live: isDir ? hasLiveDescendant(path, livePaths) : livePaths.has(path),
           isDir: isDir,
         },
         st,
@@ -3085,11 +3064,9 @@ function applyTreeFilters() {
         : [];
       if (kids.length > 0) {
         ok = kids.some((kid) => keep.get(kid) === true);
-      } else if (!liveMode) {
+      } else {
         // Nothing loaded under it: the filter cannot speak for this
-        // subtree, so the folder stays and gets counted. Live is the
-        // exception — the set of live paths is known in full, so an
-        // unloaded folder is a definite answer, not an unknown one.
+        // subtree, so the folder stays and gets counted.
         unloadedFolders += 1;
       }
     }
@@ -3126,25 +3103,6 @@ function applyTreeFilters() {
     : null;
   _renderFilteredTally(panel, shownFiles, st, recencyCount);
   _renderFilterNote(panel, unloadedFolders, st);
-  // Once writing stops no further events arrive, so nothing would
-  // re-evaluate the persistence window and the row would sit there
-  // looking live forever. Wake up when the oldest sighting expires.
-  if (liveMode) {
-    scheduleLiveExpiryRecheck();
-  }
-}
-
-var _liveExpiryHandle = null;
-function scheduleLiveExpiryRecheck() {
-  if (_liveExpiryHandle || liveSeenAt.size === 0) {
-    return;
-  }
-  var oldest = Math.min(...liveSeenAt.values());
-  var due = Math.max(250, oldest + FILTER_LIVE_PERSIST_MS - Date.now() + 50);
-  _liveExpiryHandle = setTimeout(() => {
-    _liveExpiryHandle = null;
-    applyTreeFilters();
-  }, due);
 }
 
 // How many files the filter is actually showing, as a second line
@@ -3192,26 +3150,15 @@ function _renderFilteredTally(panel, shownFiles, state, recencyCount) {
 // imply completeness.
 function _renderFilterNote(panel, unloadedFolders, state) {
   var existing = panel.querySelector(".filter-note");
-  // "Live" with nothing being written is a real answer, but an empty
-  // tree looks like a broken filter. Say it in words — and name what
-  // is watched, because the tracker only follows run artifacts
-  // (BROWSER_TRACKABLE_EXTS files under .logs/ or .state/), so on a
-  // repository without them this state is permanent rather than
-  // momentary. See metabrowser/active_tracker.py:_is_trackable.
-  // Must ask the same question row visibility asked. Testing
-  // activeFiles here instead would claim nothing is being written
-  // while the persistence window is still showing rows.
-  var liveEmpty = state.recency === "live" && livePathsForFilter().size === 0;
-  if ((unloadedFolders <= 0 && !liveEmpty) || !filterHasConstraints(state)) {
+  if (unloadedFolders <= 0 || !filterHasConstraints(state)) {
     if (existing) {
       existing.remove();
     }
     return;
   }
-  var text = liveEmpty
-    ? "No run logs are being written right now."
-    : `Filtered within loaded folders. ${unloadedFolders.toLocaleString()} ` +
-      `${unloadedFolders === 1 ? "folder is" : "folders are"} not expanded yet.`;
+  var text =
+    `Filtered within loaded folders. ${unloadedFolders.toLocaleString()} ` +
+    `${unloadedFolders === 1 ? "folder is" : "folders are"} not expanded yet.`;
   if (existing) {
     existing.textContent = text;
     return;
@@ -4201,10 +4148,6 @@ function fileStoreApplyChange(ops) {
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
       activeFiles.delete(op.path);
-      // Drop the persistence stamp too. A deleted file is not "recently
-      // live", and leaving it would keep its ancestor folders matching
-      // Live for up to FILTER_LIVE_PERSIST_MS after it is gone.
-      liveSeenAt.delete(op.path);
       // Remove rendered rows in every tab panel; also drops the
       // dir's `.tree-children` container so descendant rows go
       // with it. Server's bulk-remove op already lists each
@@ -4245,9 +4188,6 @@ function _mirrorActiveFromFsEntry(entry) {
   var wasActive = activeFiles.has(entry.path);
   if (entry.active) {
     activeFiles.set(entry.path, { pid_alive: pidLabel });
-    // Stamp every sighting, so the filter can ride out the gaps
-    // between tracker polls (see FILTER_LIVE_PERSIST_MS).
-    noteLivePath(entry.path);
     refreshActivityBadge(entry.path);
     // Inactive→active for the currently viewed file: switch the
     // header badge to "Live" and open the live stream if not

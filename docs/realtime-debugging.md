@@ -26,7 +26,7 @@ Interpret it as follows:
 Enable one line for every request when correlation is more useful than log volume:
 
 ```shell
-METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab ./artifacts --no-open
+METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab ./path/to/directory --no-open
 ```
 
 The events and tail routes are intentionally long-lived and are excluded from ordinary
@@ -37,7 +37,7 @@ slow-request warnings.
 Enable the debug endpoint only for local investigation:
 
 ```shell
-METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab ./artifacts --no-open
+METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab ./path/to/directory --no-open
 ```
 
 During a stall, request `/_debug/tasks` from another terminal.
@@ -90,7 +90,7 @@ Include:
 
 - Metabrowser version and Python version;
 - operating system and filesystem type;
-- artifact size and kind, with sensitive content removed;
+- file size and kind, with sensitive content removed;
 - total, server, transit, and render durations;
 - whether the issue reproduces with optional plugins disabled;
 - a minimal fixture or generator when possible.

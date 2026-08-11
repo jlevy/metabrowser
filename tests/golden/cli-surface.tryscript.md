@@ -127,9 +127,9 @@ $ metab --help
 
  Examples:
  metab .
- metab ./path/to/artifacts --no-open
+ metab ./path/to/directory --no-open
  metab . --walk --format json
- metab --remote my-vm --path /srv/runs
+ metab --remote example-host --path /srv/shared-files
  metab --plugins
 ? 0
 ```
@@ -246,9 +246,9 @@ $ metab
 
  Examples:
  metab .
- metab ./path/to/artifacts --no-open
+ metab ./path/to/directory --no-open
  metab . --walk --format json
- metab --remote my-vm --path /srv/runs
+ metab --remote example-host --path /srv/shared-files
  metab --plugins
 ? 0
 ```

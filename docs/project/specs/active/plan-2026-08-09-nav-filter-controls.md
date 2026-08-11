@@ -97,10 +97,13 @@ single-select only, and lives in a plugin stylesheet.
 
 Defaults chosen to unblock implementation; each is cheap to change during review.
 
-1. **Recency is one dimension, not two.** Live (the active tracker’s flag) becomes the
-   leading segment of the recency group rather than a separate Current chip, because
+1. **Recency is one dimension, not two.** Live is the shortest window: every file whose
+   modification time is within the past 90 seconds.
+   It leads the recency group rather than becoming a separate Current chip, because
    “live” is the narrowest point on the same axis and “live but older than a week” is
    not a query anyone wants.
+   The specialized agent-log tracker still owns active badges and live tailing, but it
+   does not decide filter membership.
    One `recency` field replaces the treemap branch’s separate `current` and `ageWindow`.
 2. **Single-select fills with accent, multi-select fills with neutral.** A selected
    single-select segment takes `--highlight-bg` with `--link` text — the treatment
@@ -135,8 +138,8 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    corner: clicking a recency chip gives the Recent tab’s exact behavior inside the
    Files pane. The Files tree renders `/api/recent?window=`'s tree through the same
    `renderTreeNodes`, keeping the endpoint’s totals and truncation reporting.
-   `live` stays on the tree source — the endpoint has no window for the active tracker’s
-   files.
+   This includes `live`, whose 90-second cutoff comes from the same server-owned window
+   mapping as the longer choices.
 8. **Filter state persists through `mb.prefs` and stays out of the URL hash.** Same
    choice the treemap branch made, for the same reason: filters are a view preference,
    not an address. Persisted state is never invisible — the badge and Clear are always
@@ -420,10 +423,11 @@ worth noting: none of it was visible in a passing test suite.
 - [x] Clear moved onto the filter row; a dropdown holding a value now carries the accent
 - [x] The drawer animates a grid track instead of toggling `display`, and is `inert`
   when closed
-- [x] `Live` judged folders, not just files — it had been showing 59 folders and no
-  files, many stamped days old
-- [x] `FILTER_LIVE_PERSIST_MS` (90s) holds `Live` steady across the gap between tracker
-  polls, which had made a file written once a second flicker in and out
+- [x] `Live` became one server-owned 90-second modification-time window for every file.
+  Agent logs retain their active badges and live tailing without narrowing the filter’s
+  meaning to tracker-eligible paths.
+- [x] Windowed results repaint when their oldest file expires, even if no later
+  filesystem event arrives, and long-window timers stay within the browser delay limit
 - [x] Recency truncation drops ignored files before tracked ones, and `/api/recent`
   gained `include_ignored`
 
@@ -475,7 +479,8 @@ Tracked as beads under epic `mb-pcih`:
   that bead assumed
 - [ ] `mb-4k4d` — the folder-treemap branch rebases onto the core family and shared
   state. Belongs to that branch, not this one.
-- [ ] `mb-g675` — `Live` is not a recency window and may not belong on the age axis
+- [x] `mb-g675` — resolved by defining `Live` as the same 90-second recency window for
+  every file and keeping agent-log activity as a separate presentation signal
 - [ ] `mb-katw` — optionally mirror extension and size upstream, for directories large
   enough that a client-side answer is incomplete rather than merely slow
 
@@ -516,36 +521,22 @@ gitignored control to the shared dimension.
 Its `current` + `ageWindow` pair collapses to `recency`, and its `ignored` three-state
 to `showIgnored`.
 
+## Resolved Follow-up
+
+**`Live` means every file touched in the past 90 seconds.** The first implementation
+used the active tracker, which admits only supported log-like files beneath `.logs` or
+`.state` directories.
+That made the control structurally empty for ordinary directories and gave a general
+file browser an agent-log-specific definition.
+
+The filter now reads `live` from `/api/recent` like every other recency window.
+One server setting owns the 90-second cutoff and the browser uses the injected mapping
+for its predicate, menu explanation, event overlay, and expiry timer.
+The active tracker remains valuable and separate: it marks supported logs as actively
+written and drives live tailing, without changing which recently modified files the
+filter includes.
+
 ## Open Questions
-
-**`Live` is not a recency window, and probably does not belong on this axis.** An
-earlier draft of this plan called it “roughly a 30-second window”.
-That is wrong in the way that matters.
-`active_tracker._is_trackable` admits a file only when *all* of these hold:
-
-1. it sits under a `/.logs/` or `/.state/` path segment;
-2. its extension is in `BROWSER_TRACKABLE_EXTS` (`.jsonl`, `.yaml`, …);
-3. its size/mtime fingerprint changed within `stale_after_s` (30s), plus up to
-   `ACTIVE_TRACKER_QUIET_POLLS × ACTIVE_TRACKER_INTERVAL_S` (30s) of hysteresis.
-
-Only the third is a recency test.
-The first two mean `Live` answers “which run artifact is being appended to right now”,
-not “what changed recently” — so on a repository with no agent run logs it is
-*structurally* empty rather than momentarily empty.
-Verified in a browser: appending to an ordinary file for seven seconds never marks it
-live.
-
-That mismatch caused a real bug, since fixed.
-The predicate rejected only files, so under `Live` every folder fell through and every
-unloaded folder was kept as “unknown”: the tree showed 59 folders and no files, many
-stamped days old, which reads exactly like a broken filter.
-Folders are now judged on whether a live path lies beneath them — `activeFiles` carries
-the complete set, so unlike the other dimensions there is no unseen subtree to wave
-through — and the empty case says so in words.
-
-Still open: whether a control that is empty by construction on most repositories earns a
-slot beside `Past hour`. Moving it out of the age menu and naming it for what it tracks
-would be more honest than either keeping it there or deleting it.
 
 **Does the type menu want tracked-only counts by default?** With **Show ignored** on —
 the default — the ranking is dominated by whatever a package manager put on disk (`.ts`

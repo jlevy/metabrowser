@@ -10,7 +10,7 @@ The `metab` CLI starts a Starlette application with four main layers:
 
 1. **Safe filesystem access.** `paths_safe.py`, `gz_io.py`, and the file endpoints
    resolve every requested path beneath the selected root.
-   Gzip and zlib artifacts retain their logical extension and can be read transparently
+   Gzip and zlib files retain their logical extension and can be read transparently
    within shared resource bounds.
 2. **Inventory and change events.** `inventory.py` builds a bounded in-memory index.
    Watch backends and the active-file tracker publish normalized changes through the

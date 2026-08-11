@@ -1,13 +1,13 @@
 # Design System
 
 Metabrowser’s interface is an information-dense developer tool.
-Its design system prioritizes readable artifacts, stable spatial relationships,
+Its design system prioritizes readable file contents, stable spatial relationships,
 keyboard-sized controls, and consistent status cues over decorative chrome.
 
 ## Principles
 
-1. **The artifact is primary.** Navigation and controls stay compact so the preview
-   receives most of the viewport.
+1. **The file is primary.** Navigation and controls stay compact so the preview receives
+   most of the viewport.
 2. **Color has one meaning.** Status, file type, chart threshold, and selection colors
    come from tokens instead of local literals.
 3. **Text remains selectable.** Use real text and DOM structure for labels and data;

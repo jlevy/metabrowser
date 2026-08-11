@@ -262,7 +262,7 @@ class _BoundedZlibReader(io.RawIOBase):
         if not self._decompressor.eof:
             raise ArtifactCompressionError("truncated zlib stream")
         if self._decompressor.unused_data:
-            raise ArtifactCompressionError("zlib artifact contains trailing data")
+            raise ArtifactCompressionError("zlib file contains trailing data")
         trailing = self._source.read(1)
         self._compressed_read += len(trailing)
         if self._compressed_read > self._max_compressed_bytes:
@@ -270,7 +270,7 @@ class _BoundedZlibReader(io.RawIOBase):
                 f"compressed content exceeds {self._max_compressed_bytes} bytes"
             )
         if trailing:
-            raise ArtifactCompressionError("zlib artifact contains trailing data")
+            raise ArtifactCompressionError("zlib file contains trailing data")
         self._finished = True
 
     def _pump(self) -> None:
