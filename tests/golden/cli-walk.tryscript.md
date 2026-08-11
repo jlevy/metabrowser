@@ -72,7 +72,8 @@ $ metab walkroot --walk --format json
           "path": "logs/run.log",
           "type": "file",
           "size": 18,
-          "mtime": 1700000000.0
+          "mtime": 1700000000.0,
+          "ext": ".log"
         }
       ]
     },
@@ -81,14 +82,16 @@ $ metab walkroot --walk --format json
       "path": "README.md",
       "type": "file",
       "size": 17,
-      "mtime": 1700000000.0
+      "mtime": 1700000000.0,
+      "ext": ".md"
     },
     {
       "name": "data.jsonl",
       "path": "data.jsonl",
       "type": "file",
       "size": 37,
-      "mtime": 1700000000.0
+      "mtime": 1700000000.0,
+      "ext": ".jsonl"
     }
   ],
   "tally_cache_status": "done",
@@ -116,16 +119,19 @@ tree:
     type: file
     size: 18
     mtime: 1700000000.0
+    ext: .log
 - name: README.md
   path: README.md
   type: file
   size: 17
   mtime: 1700000000.0
+  ext: .md
 - name: data.jsonl
   path: data.jsonl
   type: file
   size: 37
   mtime: 1700000000.0
+  ext: .jsonl
 tally_cache_status: done
 tally_cache_max_files: 500000
 ? 0
@@ -157,7 +163,8 @@ $ metab walkroot --walk --format json --path logs
       "path": "logs/run.log",
       "type": "file",
       "size": 18,
-      "mtime": 1700000000.0
+      "mtime": 1700000000.0,
+      "ext": ".log"
     }
   ],
   "tally_cache_status": "done",

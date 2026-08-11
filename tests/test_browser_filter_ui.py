@@ -347,6 +347,78 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     assert "name === token" in tm_block
 
 
+def test_the_extension_list_is_hard_capped() -> None:
+    """Appending selected-but-unranked tokens let one preset add dozens
+    of rows — extensions the folder does not contain, and bare filename
+    tokens like "makefile" listed as if they were suffixes."""
+
+    js = _read("app.js")
+    assert "var FILTER_TYPE_MENU_MAX = 20;" in js
+    start = js.index("function filterTypeOptions()")
+    block = js[start : start + 1800]
+    assert "ranked.slice(0, FILTER_TYPE_MENU_MAX)" in block
+    # Nothing is pushed back in past the cap.
+    assert "kept.push(" not in block
+
+
+def test_filters_reapply_when_new_rows_render() -> None:
+    """Lazy subtrees and deferred pages arrive unfiltered; without a
+    reapply, expanding a folder under an active filter shows all of
+    its children."""
+
+    js = _read("app.js")
+    sub_start = js.index("async function loadSubtree(")
+    assert "applyTreeFilters();" in js[sub_start : sub_start + 2500]
+    page_start = js.index(".tree-page-more")
+    assert "applyTreeFilters();" in js[page_start : page_start + 700]
+
+
+def test_leaving_the_recency_source_abandons_its_fetch() -> None:
+    """A late /api/recent response would otherwise repaint the panel
+    with the old window's list under a trigger reading "Any age"."""
+
+    js = _read("app.js")
+    start = js.index("function onFilterStateChange(state)")
+    block = js[start : start + 1800]
+    assert "recentInflight.abort()" in block
+    assert 'currentRecentWindow = ""' in block
+
+
+def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
+    """It runs repeatedly while the index warms up; rebuilding the bar
+    would drop focus out of a dropdown being arrowed through."""
+
+    js = _read("app.js")
+    start = js.index("function scheduleRootSummaryRefresh()")
+    block = js[start : start + 1800]
+    assert "filterOpenMenu === null" in block
+    # Both caches move together, or the tally reverts to first-paint
+    # figures under a recency filter.
+    assert "_lastTreeSummaryHtml = html;" in block
+
+
+def test_index_wide_tallies_stay_off_the_event_loop() -> None:
+    """Two O(index) passes per request, and the nav re-requests this
+    route while the walk converges."""
+
+    py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
+    start = py.index("summary = None")
+    block = py[start : start + 700]
+    assert "asyncio.to_thread" in block
+    assert "root_summary()" in block
+    assert "extension_tally()" in block
+
+
+def test_reapply_is_skipped_when_nothing_is_filtered() -> None:
+    """fs bursts would otherwise walk the whole tree every 100ms in the
+    default state."""
+
+    js = _read("app.js")
+    start = js.index("function scheduleFilterReapply()")
+    block = js[start : start + 600]
+    assert "filterHasConstraints(filterState.get())" in block
+
+
 def test_compound_extensions_match_what_the_menu_counted() -> None:
     """The tally keys on the index's compound tail (".min.js"), so
     matching must too. Reducing to the last dotted suffix turned every
@@ -360,9 +432,9 @@ def test_compound_extensions_match_what_the_menu_counted() -> None:
 
     # The row carries it, and both tree sources supply it.
     app = _read("app.js")
-    assert "ext: row.dataset.logicalExt" in app
+    assert "ext: row.dataset.ext" in app
     recent = (proc_browser.STATIC_DIR.parent / "recent.py").read_text()
-    assert '"logical_ext": entry.ext,' in recent
+    assert '"ext": entry.ext,' in recent
 
 
 def test_filter_state_persists_through_prefs_and_emits_change() -> None:

@@ -898,12 +898,21 @@ function scheduleRootSummaryRefresh() {
         }
         if (Array.isArray(data.extensions)) {
           _extensionTally = data.extensions;
-          renderNavFilterBar();
+          // Only rebuild the bar when no dropdown is open. Replacing
+          // its DOM mid-poll would drop focus out of a menu the user
+          // is arrowing through, and this runs repeatedly while the
+          // index warms up.
+          if (filterOpenMenu === null) {
+            renderNavFilterBar();
+          }
         }
         var html = treeSummaryHtml(data.summary, null, null);
         row.outerHTML = html;
-        // Keep the cache in step so a source swap re-renders the row
-        // with the figures now on screen.
+        // Keep both caches in step: chromeHtml feeds a source swap back
+        // to the tree, and _lastTreeSummaryHtml is what the recency
+        // source prepends. Updating only the first left the tally
+        // showing first-paint figures under a recency filter.
+        _lastTreeSummaryHtml = html;
         _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
           /<div class="tree-summary tree-summary-split">.*?<\/div>$/,
           html,
@@ -1125,9 +1134,13 @@ function renderTreeNodes(nodes, isRoot, options) {
         ? `<span class="compression-badge" title="${esc(compressionName)} compressed">${compressionGlyph}</span>`
         : "";
       var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
+      // The index's compound-tail extension, which the type filter
+      // matches on. Separate from data-logical-ext, which means "inner
+      // extension of a compressed artifact" and drives icon dispatch.
+      var extAttr = node.ext ? ` data-ext="${esc(node.ext)}"` : "";
       var compressedAttr = compressed ? ' data-compressed="1"' : "";
       parts.push(
-        `<div class="tree-item tree-file${mutedCls}" data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${mutedCls}" data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
         '<span class="',
         iconCls,
         '">',
@@ -1279,6 +1292,9 @@ async function loadSubtree(path, childrenEl, options) {
       },
       { path: path, nodes: tree.length },
     );
+    // Newly rendered children carry no filter classes yet, so without
+    // this an expand under an active filter reveals the whole folder.
+    applyTreeFilters();
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
@@ -1606,6 +1622,8 @@ treePane.addEventListener("click", (e) => {
     if (nextBatch) {
       pendingTreePages.delete(pageId);
       pageRow.outerHTML = renderTreeNodes(nextBatch, false, page.options);
+      // Same reason as loadSubtree: a deferred page arrives unfiltered.
+      applyTreeFilters();
     }
     return;
   }
@@ -2558,7 +2576,7 @@ var FILTER_TYPE_PRESETS = [
 // The extension menu is built from what the folder actually contains,
 // not a fixed vocabulary, so it never offers a type with nothing
 // behind it and never omits one the tree is full of.
-var FILTER_TYPE_MENU_MAX = 30;
+var FILTER_TYPE_MENU_MAX = 20;
 
 // How long a file keeps counting as "live" for the filter after the
 // last time the tracker reported it active.
@@ -2615,16 +2633,13 @@ function filterTypeOptions() {
     // menu ordered by numbers that are no longer on screen — .py with
     // 157 tracked files sorting below .d.ts with one.
     .sort((a, b) => (b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1]));
+  // A hard cap, including anything currently selected. Appending
+  // selected-but-unranked tokens instead let one preset add dozens of
+  // rows — most of them extensions this folder does not contain, and
+  // bare filename tokens like "makefile" listed as if they were
+  // suffixes. A preset's members outside the top rows stay reachable
+  // through the preset row itself and through Clear.
   const kept = ranked.slice(0, FILTER_TYPE_MENU_MAX);
-  // A selected extension that fell outside the cap still has to appear,
-  // or the user could not switch it off from the menu that set it.
-  const selected = filterState ? filterState.get().types || [] : [];
-  for (const ext of selected) {
-    if (!kept.some((row) => row[0] === ext)) {
-      const known = ranked.find((row) => row[0] === ext);
-      kept.push([ext, known ? known[1] : 0]);
-    }
-  }
   return kept.map(([ext, count]) => {
     // Same icon the tree row shows for that type, resolved through the
     // same matcher, so a menu row and the files it keeps are visibly
@@ -2898,6 +2913,16 @@ function onFilterStateChange(state) {
     return;
   }
   if (!usesRecent && sourceChanged) {
+    // Abandon any recency fetch still in flight and drop the window it
+    // was for. Otherwise a late response repaints the panel with the
+    // old window's list under a trigger that now reads "Any age".
+    if (recentInflight) {
+      recentInflight.abort();
+      recentInflight = null;
+    }
+    // Empty, not a window key: a late response compares against this
+    // and must never find a match.
+    currentRecentWindow = "";
     // Restore the full tree from the cached payload; only fall back to
     // a refetch when nothing has been cached yet.
     if (!renderFilesFromTree()) {
@@ -3011,7 +3036,7 @@ function applyTreeFilters() {
           // The renderer stamps the index's compound-tail extension on
           // every file row; matching on it keeps a compound pick
           // (".min.js") agreeing with the tally that offered it.
-          ext: row.dataset.logicalExt || "",
+          ext: row.dataset.ext || "",
           live: isDir ? hasLiveDescendant(path, livePaths) : livePaths.has(path),
           isDir: isDir,
         },
@@ -3114,6 +3139,11 @@ function _renderFilterNote(panel, unloadedFolders, state) {
 var _filterReapplyHandle = null;
 function scheduleFilterReapply() {
   if (_filterReapplyHandle || !filterState) {
+    return;
+  }
+  // Nothing to reapply when nothing is filtered, and fs bursts would
+  // otherwise walk the whole tree every 100ms in the default state.
+  if (!filterHasConstraints(filterState.get())) {
     return;
   }
   _filterReapplyHandle = setTimeout(() => {
@@ -4324,6 +4354,10 @@ function _buildRowHtml(entry, options) {
     (entry.size || 0) +
     '" data-tip-mtime="' +
     (entry.mtime_ns || 0) / 1e9 +
+    // Live-inserted rows need the filter's extension too, or a row
+    // arriving over the event stream would be judged on its last
+    // suffix while the rendered ones are judged on the index's.
+    (entry.ext ? `" data-ext="${esc(entry.ext)}` : "") +
     '">' +
     '<span class="tree-item-icon ' +
     fi.cls +

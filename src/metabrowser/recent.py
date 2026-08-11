@@ -186,7 +186,7 @@ def _file_entry_to_recent_dict(entry: FsEntry) -> dict[str, Any]:
         # is the unit the nav's type filter and its tally both use. The
         # tree payload carries it too; without it here, rows from this
         # source could not be matched against a compound extension.
-        "logical_ext": entry.ext,
+        "ext": entry.ext,
     }
     if entry.gitignored:
         out["gitignored"] = True

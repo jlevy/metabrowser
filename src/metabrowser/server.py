@@ -1041,6 +1041,16 @@ async def api_tree(request: Request) -> JSONResponse:
             len(tree),
             inventory_status(),
         )
+    # Both tallies are O(index) passes. The nav re-requests this route
+    # (depth=0) while the walk converges, so running them on the loop
+    # would stall the event stream at the design-center index size for
+    # the same reason api_catalog offloads its own pass.
+    summary = None
+    extensions = None
+    if inv_can_serve and not subpath:
+        summary, extensions = await asyncio.to_thread(
+            lambda: (inventory.root_summary(), inventory.extension_tally())
+        )
     return JSONResponse(
         {
             "root": str(root_dir),
@@ -1054,8 +1064,8 @@ async def api_tree(request: Request) -> JSONResponse:
             # InventoryIndex.root_summary), and the Quick File catalog
             # drops gitignored entries (see extension_tally). Only the
             # full-tree request needs either.
-            "summary": inventory.root_summary() if inv_can_serve and not subpath else None,
-            "extensions": inventory.extension_tally() if inv_can_serve and not subpath else None,
+            "summary": summary,
+            "extensions": extensions,
         }
     )
 

@@ -158,7 +158,15 @@ _EXPECTED_TREE = [
         "total_files": 1,
         "total_size": 5,
         "has_children": True,
-        "children": [{"name": "secret.txt", "path": "extra/secret.txt", "type": "file", "size": 5}],
+        "children": [
+            {
+                "name": "secret.txt",
+                "path": "extra/secret.txt",
+                "type": "file",
+                "size": 5,
+                "ext": ".txt",
+            }
+        ],
     },
     {
         "name": "sub",
@@ -176,18 +184,30 @@ _EXPECTED_TREE = [
                 "total_size": 30,
                 "has_children": True,
                 "children": [
-                    {"name": "c.txt", "path": "sub/deep/c.txt", "type": "file", "size": 30}
+                    {
+                        "name": "c.txt",
+                        "path": "sub/deep/c.txt",
+                        "type": "file",
+                        "size": 30,
+                        "ext": ".txt",
+                    }
                 ],
             },
-            {"name": "b.txt", "path": "sub/b.txt", "type": "file", "size": 20},
+            {
+                "name": "b.txt",
+                "path": "sub/b.txt",
+                "type": "file",
+                "size": 20,
+                "ext": ".txt",
+            },
         ],
     },
-    {"name": "a.txt", "path": "a.txt", "type": "file", "size": 10},
+    {"name": "a.txt", "path": "a.txt", "type": "file", "size": 10, "ext": ".txt"},
     # The four symlinks: leaf file-entries, never expanded into subtrees.
-    {"name": "link_ancestor", "path": "link_ancestor", "type": "file", "size": 2},
-    {"name": "link_escape", "path": "link_escape", "type": "file", "size": 11},
-    {"name": "link_to_dir", "path": "link_to_dir", "type": "file", "size": 3},
-    {"name": "link_to_file", "path": "link_to_file", "type": "file", "size": 9},
+    {"name": "link_ancestor", "path": "link_ancestor", "type": "file", "size": 2, "ext": ""},
+    {"name": "link_escape", "path": "link_escape", "type": "file", "size": 11, "ext": ""},
+    {"name": "link_to_dir", "path": "link_to_dir", "type": "file", "size": 3, "ext": ""},
+    {"name": "link_to_file", "path": "link_to_file", "type": "file", "size": 9, "ext": ""},
 ]
 
 
