@@ -62,6 +62,15 @@ For a tree row that does not update:
 If an event buffer gap occurs, the client should replace state from a fresh snapshot.
 Do not repair a gap by replaying operations whose order is no longer known.
 
+A message that Metabrowser is refreshing browser connections after queue overflow means
+the bounded event buffer filled during a producer burst.
+The server discards the incomplete delta backlog, sends a resynchronization marker, and
+the browser reconnects for a fresh snapshot.
+One refresh is self-healing.
+Repeated refreshes are worth reporting with the root size, filesystem type, and
+surrounding slow-operation messages because they indicate that filesystem events are
+arriving faster than the browser stream can consume them.
+
 ## Plugin Problems
 
 Start with the registry:

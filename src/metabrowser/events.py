@@ -282,11 +282,12 @@ class CatalogChange:
 
 @dataclass(slots=True, frozen=True)
 class FsResyncRequired:
-    """Server-restart signal. Client drops state and re-subscribes
-    at the same scope it was previously on. NOT emitted for
-    slow-consumer disconnects — those force a per-connection close
-    and rely on EventSource auto-reconnect to drive a fresh
-    snapshot."""
+    """Ordered-stream reset signal.
+
+    The client drops derived state and reconnects at the same scope
+    so the next frame is a fresh snapshot. Producers use this for a
+    root swap or whenever bounded backpressure creates an event gap.
+    """
 
     reason: str
     type: Literal["fs.resync_required"] = "fs.resync_required"

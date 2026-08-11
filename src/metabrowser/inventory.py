@@ -582,12 +582,10 @@ class InventoryIndex:
         layer calls ``Queue.get()`` to pull events into the SSE
         stream.
 
-        Slow consumers are bounded: when the queue fills, the
-        connection is dropped (``unsubscribe`` is called and the
-        SSE handler closes the response). EventSource auto-reconnect
-        then drives a fresh scoped snapshot. We never emit
-        ``fs.resync_required`` for slow consumers — that event is
-        reserved for server restart / root swap.
+        Slow consumers remain bounded. When a queue fills, its stale
+        backlog is replaced with ``fs.resync_required`` so the route
+        layer can force a fresh scoped snapshot without silently
+        losing live updates.
         """
 
         q: asyncio.Queue[StreamEvent] = asyncio.Queue(maxsize=max_queue)
@@ -598,10 +596,7 @@ class InventoryIndex:
         self._subscribers.discard(q)
 
     def is_subscribed(self, q: asyncio.Queue[StreamEvent]) -> bool:
-        """True iff *q* is currently in the subscriber set. Becomes
-        False after ``_emit`` drops a slow consumer; the bus relay
-        polls this so it can resubscribe instead of waiting forever
-        on a dead queue."""
+        """True iff *q* is currently in the subscriber set."""
         return q in self._subscribers
 
     def subscriber_count(self) -> int:
@@ -1043,9 +1038,11 @@ class InventoryIndex:
         self._emit(event)
 
     def _emit(self, event: StreamEvent) -> None:
-        """Push *event* to every subscriber. Slow consumers are
-        dropped — full queue means we close that connection rather
-        than block the producer.
+        """Push *event* to every subscriber without blocking.
+
+        A full queue cannot preserve an ordered delta stream. Replace
+        its stale backlog with a resync marker so the consumer repairs
+        from an authoritative snapshot while memory stays bounded.
 
         Every ``fs.change`` also emits a minimal ``catalog.change``
         companion here, at the single choke point all producers
@@ -1053,15 +1050,25 @@ class InventoryIndex:
         any stream scope (scope filtering only narrows ``fs.change``).
         """
 
-        dead: list[asyncio.Queue[StreamEvent]] = []
+        overflowed = 0
         for q in self._subscribers:
             try:
                 q.put_nowait(event)
             except asyncio.QueueFull:
-                dead.append(q)
-        for q in dead:
-            self._subscribers.discard(q)
-            LOG.warning("dropped slow subscriber; queue full at %d", q.maxsize)
+                while True:
+                    try:
+                        q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                resync = (
+                    event
+                    if isinstance(event, FsResyncRequired)
+                    else FsResyncRequired(reason="subscriber_queue_overflow")
+                )
+                q.put_nowait(resync)
+                overflowed += 1
+        if overflowed:
+            LOG.debug("requested resync for %d full subscriber queue(s)", overflowed)
         if isinstance(event, FsChange):
             companion = _derive_catalog_change(event)
             if companion is not None:

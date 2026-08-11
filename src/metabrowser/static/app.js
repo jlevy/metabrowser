@@ -4700,13 +4700,19 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
     _resetEsCircuitBreaker();
-    // Server restart or root swap — drop everything; reconnect
-    // will deliver a fresh snapshot.
+    // A resync marks a gap in the ordered delta stream. Clear derived state,
+    // then replace this connection so the server sends an authoritative
+    // snapshot before live updates resume.
     knownFileCatalog?.clear();
     fileStore = new Map();
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
+    if (inventoryEventSource) {
+      inventoryEventSource.close();
+      inventoryEventSource = null;
+    }
+    _createInventoryEventSource();
   });
   inventoryEventSource.onopen = () => {
     _resetEsCircuitBreaker();
