@@ -1,13 +1,13 @@
 # Design System
 
 Metabrowser’s interface is an information-dense developer tool.
-Its design system prioritizes readable artifacts, stable spatial relationships,
+Its design system prioritizes readable file contents, stable spatial relationships,
 keyboard-sized controls, and consistent status cues over decorative chrome.
 
 ## Principles
 
-1. **The artifact is primary.** Navigation and controls stay compact so the preview
-   receives most of the viewport.
+1. **The file is primary.** Navigation and controls stay compact so the preview receives
+   most of the viewport.
 2. **Color has one meaning.** Status, file type, chart threshold, and selection colors
    come from tokens instead of local literals.
 3. **Text remains selectable.** Use real text and DOM structure for labels and data;
@@ -58,8 +58,9 @@ timestamps stay sans and use `--tabular-numerals`.
 
 The authoritative rule, the current list of deliberate exceptions, and the reasoning for
 each live in the `── Typography roles ──` block of `static/styles.css`, next to the
-tokens they govern. `tests/test_chrome_typography.py` enforces that list, so a new
-monospaced use site fails the build until it is classified.
+tokens they govern. `tests/test_chrome_typography.py` enforces that list across the host
+and plugin stylesheets, so a new monospace use site fails the build until it is
+classified.
 
 ### Keyboard Keys
 
@@ -168,6 +169,26 @@ Keep these roles distinct:
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
 
+## Control Families
+
+Every button belongs to one role-specific primitive:
+
+| Role | Primitive |
+| --- | --- |
+| Labelled action | `.btn` |
+| Icon-only action | `.icon-btn` |
+| Filter value or filter menu | `.chip` and its variants |
+| Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
+| Tab | `.tab-btn` |
+
+These primitives share the type scale, radii, semantic colors, focus treatment, and
+motion tokens, while their shapes communicate different interaction roles.
+A use-site class may add positioning, visibility, or domain state, but it must carry the
+primitive class in the markup and must not recreate the primitive’s border, fill,
+typography, or focus rules.
+Every non-submit button declares `type="button"`, and every icon-only button has an
+accessible action name.
+
 ## Icons and Icon Buttons
 
 Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
@@ -221,6 +242,13 @@ Every filter in the app is built from one chip family, documented in the
 `static/filter_controls.js`. A surface that needs a filter reaches for these rather than
 inventing a pill of its own; four near-identical pills is what this family replaced.
 
+Core and plugin views use the same renderer and interaction code.
+Plugins reach it through `window.metabrowser.filterControls`; they may use a plugin
+stylesheet to position the resulting control, but selected-state styling remains in the
+host chip primitive.
+Do not handwrite chip markup or add kind-specific selected colors.
+If the shared renderer cannot express a filter, extend it and its behavior tests.
+
 `.chip` is the atom.
 `.chip-group` joins chips into one bordered pill with hairline dividers, so a set of
 related choices reads as a single object.
@@ -246,10 +274,12 @@ must not repeat that value under another name.
 ### Groups Or Dropdowns
 
 Both exist because they fail differently as the value list grows.
-A joined `.chip-group` shows every option at once, which is the right trade for two or
-three short values; past that it eats the pane.
-A `.chip-menu` costs a click to see the options but stays one trigger wide however many
-there are, and it is the only choice when the values come from the data.
+A joined `.chip-group` shows every option at once, which is the right trade for a
+bounded set on a surface where scanning all values matters, such as agent-log event
+types.
+A `.chip-menu` costs a click to see the options but stays one trigger wide however
+many there are, so use it when the set is unbounded or the pane cannot afford the full
+group.
 
 The nav filter bar uses dropdowns throughout: six age windows and six size steps as
 segmented ramps left no room for anything else in a 300px pane.

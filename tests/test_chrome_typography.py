@@ -18,7 +18,8 @@ import re
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "metabrowser" / "static"
-STYLES_CSS = STATIC_DIR / "styles.css"
+AGENT_LOG_STYLES_CSS = STATIC_DIR.parent / "builtin_plugins" / "agent_log" / "styles.css"
+STYLE_FILES = (STATIC_DIR / "styles.css", AGENT_LOG_STYLES_CSS)
 SEARCH_PALETTE_JS = STATIC_DIR / "search_palette.js"
 
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -35,6 +36,8 @@ MONO_DECLARATION_RE = re.compile(r"(?:^|;)\s*font(?:-family)?\s*:[^;]*--font-mon
 #   .compression-badge          a 7px glyph, iconography rather than text
 #   .metabrowser-kpress-error-detail   a verbatim error payload
 #   .log-event-header           structured log values (type, timestamps), not paths
+#   .git-commit-sha             an object id, where every character is identity
+#   .git-commit-body            a verbatim commit message, the committer's own text
 MONO_ALLOWED_SELECTORS = frozenset(
     {
         "code.hljs",
@@ -45,6 +48,8 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".compression-badge",
         ".metabrowser-kpress-error-detail",
         ".log-event-header",
+        ".git-commit-sha",
+        ".git-commit-body",
     }
 )
 
@@ -55,6 +60,9 @@ PATH_SELECTORS = (
     ".file-header-path",
     ".search-palette-description",
     ".tally-tree",
+    # The changed-file list in a commit view is a list of paths, and it
+    # navigates like the tree does.
+    ".git-file-path",
 )
 
 KBD_TOKENS = (
@@ -72,7 +80,7 @@ KBD_TOKENS = (
 
 
 def _read_styles() -> str:
-    return STYLES_CSS.read_text()
+    return "\n".join(path.read_text() for path in STYLE_FILES)
 
 
 def _rules(css: str) -> list[tuple[str, str]]:

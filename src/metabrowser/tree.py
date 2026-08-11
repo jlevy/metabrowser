@@ -21,6 +21,7 @@ import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 from cachetools import TTLCache
@@ -31,6 +32,7 @@ from metabrowser.fs_paths import is_visible as _is_visible
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.ignore_filter import IgnoreMode, ignore_none, make_ignore_filter
 from metabrowser.paths_safe import _rel_path, register_root_callback
+from metabrowser.settings import SLOW_OPERATION_LOG_SECONDS
 
 LOG = logging.getLogger(__name__)
 
@@ -144,8 +146,19 @@ def _find_git_root(start: Path) -> Path | None:
     return None
 
 
-@log_calls(level="info", show_timing_only=True, if_slower_than=0.05)
-def build_gitignore_check(root: Path) -> tuple[Any, Path | None]:
+@log_calls(
+    level="info",
+    show_args=False,
+    show_return_value=False,
+    if_slower_than=SLOW_OPERATION_LOG_SECONDS,
+    include_module=False,
+    log_func=LOG.info,
+)
+def build_gitignore_check(
+    root: Path,
+    *,
+    cancel_event: Event | None = None,
+) -> tuple[Any, Path | None]:
     """Return ``(check, git_root)`` where ``check(abs_path, is_dir) -> bool``.
 
     Looks for the enclosing git repo so that patterns in ``.gitignore`` files
@@ -158,7 +171,13 @@ def build_gitignore_check(root: Path) -> tuple[Any, Path | None]:
         return cached
 
     git_root = _find_git_root(root)
-    base = make_ignore_filter(git_root, IgnoreMode.gitignore) if git_root else ignore_none
+    base = (
+        make_ignore_filter(git_root, IgnoreMode.gitignore, cancel_event=cancel_event)
+        if git_root
+        else ignore_none
+    )
+    if cancel_event is not None and cancel_event.is_set():
+        return _never_ignore, None
     if base is ignore_none or git_root is None:
         checker: Any = _never_ignore
     else:

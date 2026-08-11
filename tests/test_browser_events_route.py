@@ -31,7 +31,14 @@ from typing import Any, cast
 
 import metabrowser.events_route as evroute
 from metabrowser import paths_safe
-from metabrowser.events import FsChange, FsEntry, FsRemove, FsUpsert, Heartbeat
+from metabrowser.events import (
+    FsChange,
+    FsEntry,
+    FsRemove,
+    FsResyncRequired,
+    FsUpsert,
+    Heartbeat,
+)
 from metabrowser.events_route import (
     HEARTBEAT_INTERVAL_S,
     _filter_event_for_scope,
@@ -229,6 +236,85 @@ def test_api_events_replay_returns_envelopes_after_last_id(tmp_path: Path) -> No
             continue
         if rec["id"]:
             assert int(rec["id"]) > 2, f"replay leaked id={rec['id']}"
+
+
+def test_event_bus_overflow_restarts_slow_connection() -> None:
+    async def _run() -> tuple[int, object]:
+        original_size = evroute.PER_CONNECTION_QUEUE_SIZE
+        evroute.PER_CONNECTION_QUEUE_SIZE = 1
+        inventory = evroute.InventoryIndex()
+        bus = evroute._EventBus(inventory)
+        try:
+            await bus.start()
+            queue = bus.attach_connection()
+            inventory.emit_event(Heartbeat(ts_ns=1))
+            inventory.emit_event(Heartbeat(ts_ns=2))
+            await asyncio.sleep(0.05)
+            return bus.connection_count(), queue.get_nowait().event
+        finally:
+            evroute.PER_CONNECTION_QUEUE_SIZE = original_size
+            if bus._relay_task is not None:
+                bus._relay_task.cancel()
+
+    connection_count, event = asyncio.run(_run())
+    assert connection_count == 0
+    assert isinstance(event, FsResyncRequired)
+    assert event.reason == "connection_queue_overflow"
+
+
+def test_inventory_bus_overflow_refreshes_connected_browsers() -> None:
+    async def _run() -> tuple[int, bool, object]:
+        original_size = evroute.SSE_BUS_INVENTORY_QUEUE_SIZE
+        evroute.SSE_BUS_INVENTORY_QUEUE_SIZE = 1
+        inventory = evroute.InventoryIndex()
+        bus = evroute._EventBus(inventory)
+        try:
+            queue = bus.attach_connection()
+            inventory.emit_event(Heartbeat(ts_ns=1))
+            inventory.emit_event(Heartbeat(ts_ns=2))
+            inventory.emit_event(Heartbeat(ts_ns=3))
+            await bus.start()
+            await asyncio.sleep(0.05)
+            return (
+                bus.connection_count(),
+                inventory.is_subscribed(bus._inventory_queue),
+                queue.get_nowait().event,
+            )
+        finally:
+            evroute.SSE_BUS_INVENTORY_QUEUE_SIZE = original_size
+            if bus._relay_task is not None:
+                bus._relay_task.cancel()
+
+    connection_count, subscribed, event = asyncio.run(_run())
+    assert connection_count == 0
+    assert subscribed is True
+    assert isinstance(event, FsResyncRequired)
+    assert event.reason == "subscriber_queue_overflow"
+
+
+def test_resync_marker_ends_stream_after_delivery() -> None:
+    async def _run() -> tuple[str, bool]:
+        reset_instance_for_tests()
+        reset_bus_for_tests()
+        inventory = get_instance()
+        request = _FakeRequest()
+        stream = _stream_events(cast(Any, request))
+        await anext(stream)
+        inventory.emit_event(FsResyncRequired(reason="test_gap"))
+        frame = await asyncio.wait_for(anext(stream), timeout=1.0)
+        records = list(parse_sse_frames(frame))
+        ended = False
+        with _fast_heartbeat(0.01):
+            try:
+                await asyncio.wait_for(anext(stream), timeout=1.0)
+            except StopAsyncIteration:
+                ended = True
+        reset_bus_for_tests()
+        return records[0]["event"], ended
+
+    event_type, ended = asyncio.run(_run())
+    assert event_type == "fs.resync_required"
+    assert ended is True
 
 
 def test_root_depth_scope_filters_live_fs_change_ops() -> None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
@@ -23,6 +24,7 @@ from metabrowser.recent import (
     RecentResult,
     collect_recent_entries,
 )
+from metabrowser.settings import LIVE_FILE_WINDOW_S, RECENT_WINDOW_SECONDS
 
 # ── collect_recent_entries (integrated with InventoryIndex) ──
 
@@ -76,6 +78,31 @@ def test_collect_recent_entries_window_filters_by_mtime(tmp_path: Path) -> None:
     result = collect_recent_entries(root=tmp_path, window="24h", limit=200)
     paths = [e["path"] for e in result.entries_flat]
     assert "docs.md" not in paths
+
+
+def test_live_is_one_ninety_second_window_for_every_file(tmp_path: Path) -> None:
+    """Live is based on file mtime across the whole inventory, not on
+    whether a path belongs to a specialized log tracker."""
+
+    _build_fixture(tmp_path)
+    asyncio.run(_drive_walker(tmp_path))
+    inv = get_instance()
+    assert LIVE_FILE_WINDOW_S == 90.0
+    assert RECENT_WINDOW_SECONDS["live"] == LIVE_FILE_WINDOW_S
+
+    recent_ns = int((time.time() - 60) * 1_000_000_000)
+    stale_ns = int((time.time() - 120) * 1_000_000_000)
+    docs = inv.get("docs.md")
+    agent_log = inv.get("runs/x/a.jsonl")
+    assert docs is not None
+    assert agent_log is not None
+    inv._entries["docs.md"] = replace(docs, mtime_ns=recent_ns)
+    inv._entries["runs/x/a.jsonl"] = replace(agent_log, mtime_ns=stale_ns)
+
+    result = collect_recent_entries(root=tmp_path, window="live", limit=200)
+    paths = {entry["path"] for entry in result.entries_flat}
+    assert "docs.md" in paths
+    assert "runs/x/a.jsonl" not in paths
 
 
 def test_collect_recent_entries_limit_caps_results(tmp_path: Path) -> None:

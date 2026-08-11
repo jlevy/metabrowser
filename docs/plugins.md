@@ -244,6 +244,7 @@ Useful helpers include:
 - `wrapWithCopy(html)` for a standard copy-button frame;
 - `formatSize`, `formatTimestamp`, and `sizeHtml`;
 - `icons` and `icons.withClass`;
+- `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
 - `perf.measure` and `perf.measureAsync`.
 

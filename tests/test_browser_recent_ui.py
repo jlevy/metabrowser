@@ -129,19 +129,100 @@ def test_dom_contract_filter_bar_sits_outside_the_scrolling_tree() -> None:
 
 
 def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
+    """Nav tabs are a registry, not a hardcoded click handler.
+
+    ``initNavTabs`` declares the server-rendered panels and binds each
+    tab button; ``activateNavPanel`` owns the visibility toggle. The
+    split is what lets a conditional panel (Git, which only exists in a
+    repository) register itself later without duplicating either half.
+    """
+
     js = _read_app_js()
     assert "function initNavTabs()" in js
-    fn_start = js.index("function initNavTabs()")
-    fn_block = js[fn_start : fn_start + 1500]
-    assert "nav-tab-bar" in fn_block
-    assert "data-tab-content" in fn_block
+    init_block = js[js.index("function initNavTabs()") :][:1500]
+    assert "nav-tab-bar" in init_block
+    # Files is declared here rather than discovered from the DOM, so a
+    # panel can carry its own lazy first-show hook.
+    assert 'registerNavPanel({ id: "files"' in init_block
+    assert "activateNavPanel(panelId)" in init_block
+
+    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1200]
+    assert "data-tab-content" in activate_block
+    assert "aria-selected" in activate_block
+
+
+def test_recent_is_not_a_registered_nav_panel() -> None:
+    """Recent stopped being a tab when the filter work folded it into
+    the Files pane as the recency dimension.
+
+    Registering it would not merely be dead code. ``registerNavPanel``
+    creates the button for any panel the server-rendered markup does not
+    already carry — that is what lets Git add itself — so a leftover
+    registration puts the retired tab back on screen. The HTML
+    assertions above cannot catch that, because the tab would be built
+    at runtime.
+    """
+
+    js = _read_app_js()
+    init_block = js[js.index("function initNavTabs()") :][:1500]
+    assert 'id: "recent"' not in init_block
+    assert "loadRecent" not in init_block
+
+
+def test_switching_panels_hides_the_file_filter_bar() -> None:
+    """The filter bar sits outside the tab containers on purpose: a tree
+    reload replaces #tab-files wholesale, and the bar has to survive that
+    and stay put while the tree scrolls. Being outside means the
+    visibility loop does not reach it, so a panel that is not Files would
+    otherwise show file filters above content they cannot filter."""
+
+    js = _read_app_js()
+    activate_block = js[js.index("function activateNavPanel(panelId)") :][:2400]
+    assert 'getElementById("nav-filter-bar")' in activate_block
+    assert 'panelId === "files" ? "" : "none"' in activate_block
+
+
+def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
+    """The shadow marks the boundary of the scrolling region, so it has
+    to sit on the bottom-most chrome that is actually visible. Resolved
+    once at startup it stayed on the filter bar, which a non-Files panel
+    hides — leaving the scroll cue on a hidden element."""
+
+    js = _read_app_js()
+    block = js[js.index("function initNavScrollShadow()") :][:1400]
+    assert "offsetParent !== null" in block
+    # The loser is cleared, so a tab switch cannot arm two shadows.
+    assert 'other?.classList.remove("scrolled")' in block
+    # A tab switch fires no scroll event, so activation re-runs it.
+    activate_block = js[js.index("function activateNavPanel(panelId)") :][:2400]
+    assert "navScrollShadowUpdate?.()" in activate_block
+
+
+def test_nav_panels_support_an_every_show_retry_hook() -> None:
+    js = _read_app_js()
+    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1800]
+    assert "panel?.onShow?.()" in activate_block
+    assert activate_block.index("panel?.onFirstShow?.()") < activate_block.index(
+        "panel?.onShow?.()"
+    )
+
+
+def test_preview_shell_uses_generation_claims_across_owners() -> None:
+    js = _read_app_js()
+    assert "function claimPreview(owner)" in js
+    assert "function isPreviewClaimCurrent(claim)" in js
+    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1800]
+    assert "claimPreview(`nav:${panelId}`)" in activate_block
+    shell_block = js[js.index("window.MetabrowserShell = Object.freeze") :][:600]
+    assert "claimPreview" in shell_block
+    assert "isPreviewClaimCurrent" in shell_block
 
 
 def test_load_recent_fetches_api_recent_for_full_window_coverage() -> None:
     """Recent is hybrid: chip change fetches
     ``/api/recent`` so the panel covers files outside the SSE
-    ``root-depth-2`` scope (24h/7d/30d/all used to silently
-    truncate to whatever happened to be in FileStore). Live
+    ``root-depth-2`` scope (including Live, which applies to every
+    file rather than only specialized tracker paths). New
     fs.change ops still flow through the local re-cluster path
     via the ``recentBaseEntries`` overlay."""
 
@@ -174,6 +255,13 @@ def test_recent_entries_from_base_filters_window_ext_prefix() -> None:
     assert "prefixFilter" in fn_block
     # newest-first sort on recent-flat (mtime in seconds, not ns).
     assert "(b.mtime || 0) - (a.mtime || 0)" in fn_block
+
+
+def test_recent_window_cutoffs_come_from_the_server_settings() -> None:
+    js = _read_app_js()
+    assert "const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {};" in js
+    start = js.index("const _RECENT_WINDOW_SECONDS")
+    assert '"1h": 60 * 60' not in js[start : start + 500]
 
 
 def test_recent_base_apply_op_handles_upsert_remove_move() -> None:
@@ -225,6 +313,32 @@ def test_recent_recompute_is_debounced() -> None:
     assert "setTimeout" in fn_block
     # Debounce: skip if a recompute is already pending.
     assert "_recentRecomputeHandle" in fn_block
+
+
+def test_recent_windows_repaint_when_the_oldest_file_expires() -> None:
+    """Without an expiry timer, Live could display a file forever if
+    no later filesystem event arrived to trigger another render."""
+
+    js = _read_app_js()
+    assert "function scheduleRecentExpiryRecheck(entries)" in js
+    render_start = js.index("function renderRecentFromBase()")
+    render_block = js[render_start : render_start + 1800]
+    assert "scheduleRecentExpiryRecheck(entries)" in render_block
+    assert "RECENT_EXPIRY_MAX_DELAY_MS" in js
+    schedule_start = js.index("function scheduleRecentExpiryRecheck(entries)")
+    schedule_block = js[schedule_start : schedule_start + 1200]
+    assert "var due = Math.min(" in schedule_block
+    assert "RECENT_EXPIRY_MAX_DELAY_MS" in schedule_block
+
+
+def test_loading_a_recent_window_cancels_the_previous_expiry_timer() -> None:
+    """A timer from the previous window must not repaint its cached
+    rows while the replacement request is still loading."""
+
+    js = _read_app_js()
+    start = js.index("function loadRecent(windowKey)")
+    block = js[start : start + 500]
+    assert "clearRecentExpiryRecheck();" in block
 
 
 def test_recent_recompute_called_from_fs_change_handler() -> None:
@@ -288,15 +402,14 @@ def test_load_recent_locks_window_synchronously_before_fetching() -> None:
 
 
 def test_recency_source_needs_a_window() -> None:
-    """/api/recent is the source whenever a window is set. "live"
-    stays on the tree source — the endpoint has no window for the
-    active tracker's files."""
+    """/api/recent is the source whenever any time window is set,
+    including the general 90-second Live window."""
 
     js = _read_app_js()
     fn_start = js.index("function filesPanelUsesRecentSource()")
     fn_block = js[fn_start : fn_start + 600]
     assert 'st.recency !== "all"' in fn_block
-    assert 'st.recency !== "live"' in fn_block
+    assert 'st.recency !== "live"' not in fn_block
 
 
 # ── Cross-panel selection ──────────────────────────────────────

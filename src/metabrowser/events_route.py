@@ -50,6 +50,7 @@ from starlette.routing import Route
 from metabrowser.events import (
     EventEnvelope,
     FsChange,
+    FsResyncRequired,
     RingBuffer,
     StreamEvent,
     encode_heartbeat_comment,
@@ -128,13 +129,12 @@ async def build_lifespan(
     inventory = get_inventory()
     root = root_provider()
     walker_task: asyncio.Task[None] | None = None
-    gitignore_task: asyncio.Task[None] | None = None
     active_task: asyncio.Task[None] | None = None
     watcher_task: asyncio.Task[None] | None = None
     if isinstance(root, Path):
         try:
             walker_task = inventory.start(root)
-            LOG.info("inventory pre-warm started at %s", root)
+            LOG.debug("inventory pre-warm started at %s", root)
         except Exception:
             # Never crash startup because the pre-warm fell over —
             # the lazy path can rebuild on first user action and
@@ -142,21 +142,6 @@ async def build_lifespan(
             # process.
             LOG.exception("inventory pre-warm failed to start")
 
-        # Pre-warm the .gitignore filter so the first /api/tree
-        # doesn't pay the ~1.5 s parse cost. Background-only; the
-        # request path builds it lazily if pre-warm hasn't finished.
-        async def prewarm_gitignore() -> None:
-            try:
-                from metabrowser.tree import build_gitignore_check
-
-                await asyncio.to_thread(build_gitignore_check, root)
-            except Exception:
-                LOG.exception("gitignore pre-warm failed")
-
-        gitignore_task = asyncio.create_task(
-            prewarm_gitignore(),
-            name="metabrowser-gitignore-prewarm",
-        )
         # The active-file tracker pushes fs.change ops into the
         # inventory whenever a tracked file's active state flips.
         try:
@@ -188,7 +173,7 @@ async def build_lifespan(
     try:
         yield
     finally:
-        for t in (walker_task, gitignore_task, active_task, watcher_task):
+        for t in (walker_task, active_task, watcher_task):
             if t is not None and not t.done():
                 t.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -217,11 +202,9 @@ class _EventBus:
     def __init__(self, inventory: InventoryIndex) -> None:
         self._inventory = inventory
         self._ring = RingBuffer(capacity=RING_BUFFER_CAPACITY)
-        # The bus's subscription absorbs the full walker burst on
-        # startup. Sized larger than DEFAULT_MAX_FILES so the
-        # initial fan-out cannot drop the bus from the inventory's
-        # subscriber set (which would silence live events for
-        # every connection until process restart).
+        # The bus queue absorbs ordinary producer bursts. If it fills,
+        # the inventory replaces the stale backlog with a resync marker;
+        # connected browsers then refresh from a bounded snapshot.
         self._inventory_queue = inventory.subscribe(max_queue=SSE_BUS_INVENTORY_QUEUE_SIZE)
         self._connections: set[asyncio.Queue[EventEnvelope]] = set()
         self._relay_task: asyncio.Task[None] | None = None
@@ -234,10 +217,29 @@ class _EventBus:
                     self._relay_loop(), name="metabrowser-events-bus"
                 )
 
+    @staticmethod
+    def _replace_with_resync(
+        queue: asyncio.Queue[EventEnvelope],
+        envelope: EventEnvelope,
+        *,
+        reason: str,
+    ) -> None:
+        while True:
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        event = envelope.event
+        if not isinstance(event, FsResyncRequired) or event.reason != reason:
+            envelope = EventEnvelope(
+                id=envelope.id,
+                event=FsResyncRequired(reason=reason),
+            )
+        queue.put_nowait(envelope)
+
     async def _relay_loop(self) -> None:
-        # A relay exception must not stop process-wide SSE delivery, and
-        # inventory overflow can drop this subscriber queue. Back off after
-        # crashes and periodically resubscribe when the queue is detached.
+        # A relay exception must not stop process-wide SSE delivery. Back off
+        # after crashes and defensively repair an explicitly detached queue.
         backoff = 0.5
         while True:
             try:
@@ -249,14 +251,37 @@ class _EventBus:
                         )
                     except TimeoutError:
                         if not self._inventory.is_subscribed(self._inventory_queue):
-                            LOG.warning("events bus: lost inventory subscription; resubscribing")
+                            LOG.warning(
+                                "events bus: inventory subscription was lost; "
+                                "refreshing browser connections"
+                            )
                             self._inventory_queue = self._inventory.subscribe(
                                 max_queue=SSE_BUS_INVENTORY_QUEUE_SIZE,
+                            )
+                            self._inventory_queue.put_nowait(
+                                FsResyncRequired(reason="inventory_subscription_lost")
                             )
                         continue
                     envelope = self._ring.append(event)
                     event_type = getattr(event, "type", type(event).__name__)
                     n_conns = len(self._connections)
+                    if isinstance(event, FsResyncRequired):
+                        for q in tuple(self._connections):
+                            self._replace_with_resync(q, envelope, reason=event.reason)
+                            self._connections.discard(q)
+                        if n_conns and event.reason == "subscriber_queue_overflow":
+                            LOG.warning(
+                                "events bus: inventory updates exceeded the buffer; "
+                                "refreshing %d browser connection(s)",
+                                n_conns,
+                            )
+                        else:
+                            LOG.debug(
+                                "events bus: requested fresh snapshots reason=%s conns=%d",
+                                event.reason,
+                                n_conns,
+                            )
+                        continue
                     dead: list[asyncio.Queue[EventEnvelope]] = []
                     for q in self._connections:
                         try:
@@ -264,10 +289,20 @@ class _EventBus:
                         except asyncio.QueueFull:
                             dead.append(q)
                     for q in dead:
+                        self._replace_with_resync(
+                            q,
+                            envelope,
+                            reason="connection_queue_overflow",
+                        )
                         self._connections.discard(q)
-                        LOG.warning("events bus: dropped slow connection")
+                    if dead:
+                        LOG.warning(
+                            "events bus: refreshing %d slow browser connection(s) "
+                            "after queue overflow",
+                            len(dead),
+                        )
                     LOG.debug(
-                        "events bus: forwarded id=%d type=%s conns=%d dropped=%d",
+                        "events bus: forwarded id=%d type=%s conns=%d refreshed=%d",
                         envelope.id,
                         event_type,
                         n_conns,
@@ -479,6 +514,13 @@ async def _stream_events(
                 if scoped is None:
                     continue
                 yield encode_sse(scoped)
+                if isinstance(envelope.event, FsResyncRequired):
+                    LOG.debug(
+                        "sse: ending stream for fresh snapshot client=%s reason=%s",
+                        client_str,
+                        envelope.event.reason,
+                    )
+                    return
                 LOG.debug(
                     "sse: yielded id=%d to client=%s",
                     envelope.id,

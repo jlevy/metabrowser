@@ -26,14 +26,16 @@ Walker semantics (verified by tests in
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from collections import deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
+from threading import Event
 
+from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry
 from metabrowser.fs_paths import is_visible
 from metabrowser.settings import (
@@ -90,7 +92,11 @@ def depth_of(rel: str) -> int:
 # ── Gitignore checker setup ─────────────────────────────────────
 
 
-def build_gitignore_check_for(root: Path) -> Callable[[Path, bool], bool] | None:
+def build_gitignore_check_for(
+    root: Path,
+    *,
+    cancel_event: Event | None = None,
+) -> Callable[[Path, bool], bool] | None:
     """Build the gitignore checker the walker uses to populate
     ``FsEntry.gitignored``. Returns ``None`` when the served root
     isn't inside a git repo (no patterns to match), so the walker
@@ -98,7 +104,7 @@ def build_gitignore_check_for(root: Path) -> Callable[[Path, bool], bool] | None
     """
 
     try:
-        checker, git_root = build_gitignore_check(root)
+        checker, git_root = build_gitignore_check(root, cancel_event=cancel_event)
     except Exception:
         LOG.exception("walker: failed to build gitignore check for %s", root)
         return None
@@ -134,7 +140,10 @@ class _ScanItem:
         self.mtime_ns = mtime_ns
 
 
-def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
+def _scandir_visible(
+    dirpath: Path,
+    cancel_event: Event | None = None,
+) -> list[_ScanItem]:
     """One ``os.scandir`` call, filtered to visible names, with
     one stat per file. Symlinks are not followed.
 
@@ -145,6 +154,8 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
     try:
         with os.scandir(dirpath) as it:
             for raw in it:
+                if cancel_event is not None and cancel_event.is_set():
+                    break
                 if not is_visible(raw.name):
                     continue
                 try:
@@ -175,10 +186,15 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
                             mtime_ns=st.st_mtime_ns,
                         )
                     )
-    except (PermissionError, OSError, FileNotFoundError, NotADirectoryError) as exc:
-        # Outer scandir failure drops the entire dir's children from
-        # the inventory. Surface it so missing aggregates are
-        # traceable instead of silently null.
+    except PermissionError as exc:
+        # Broad roots commonly contain OS-protected directories. Skipping one
+        # is expected and already visible as a missing subtree in the browser.
+        LOG.debug("walker: permission denied at %s: %s", dirpath, exc)
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        # Watchers can invalidate a directory while the boot walk reaches it.
+        LOG.debug("walker: directory disappeared at %s: %s", dirpath, exc)
+    except OSError as exc:
+        # Other scandir failures can indicate storage or filesystem trouble.
         LOG.warning("walker: scandir failed at %s: %s", dirpath, exc)
     # Dirs first, then by name — matches the existing tree.py
     # convention so /api/tree responses stay stable.
@@ -366,7 +382,7 @@ async def walk_tree(
 
         # Read directory in a worker thread; blocking call.
         try:
-            child_entries = await asyncio.to_thread(_scandir_visible, abs_path)
+            child_entries = await run_cancellable_thread(partial(_scandir_visible, abs_path))
         except OSError as exc:
             LOG.debug("walk_tree scandir failed for %s: %s", abs_path, exc)
             child_entries = []

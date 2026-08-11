@@ -755,7 +755,8 @@ async function loadTree() {
       console.warn(`loadTree: HTTP ${resp.status}`);
       const treeEl = document.getElementById("tree-content");
       if (treeEl) {
-        treeEl.innerHTML = `<div class="preview-empty">Failed to load tree (HTTP ${resp.status})</div>`;
+        treeEl.innerHTML =
+          '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
       }
       return;
     }
@@ -832,8 +833,7 @@ async function loadTree() {
     if (data.tally_cache_status === "truncated") {
       truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
     }
-    if (Array.isArray(data.extensions)) {
-      _extensionTally = data.extensions;
+    if (updateFileTypeTallies(data)) {
       renderNavFilterBar();
     }
     _lastTreeRender = { tree: data.tree, chromeHtml: truncationHtml + summaryHtml };
@@ -896,15 +896,12 @@ function scheduleRootSummaryRefresh() {
         if (!row) {
           return;
         }
-        if (Array.isArray(data.extensions)) {
-          _extensionTally = data.extensions;
-          // Only rebuild the bar when no dropdown is open. Replacing
-          // its DOM mid-poll would drop focus out of a menu the user
-          // is arrowing through, and this runs repeatedly while the
-          // index warms up.
-          if (filterOpenMenu === null) {
-            renderNavFilterBar();
-          }
+        // Only rebuild the bar when no dropdown is open. Replacing
+        // its DOM mid-poll would drop focus out of a menu the user
+        // is arrowing through, and this runs repeatedly while the
+        // index warms up.
+        if (updateFileTypeTallies(data) && filterOpenMenu === null) {
+          renderNavFilterBar();
         }
         var html = treeSummaryHtml(data.summary, null, null);
         row.outerHTML = html;
@@ -956,13 +953,14 @@ function renderFilesFromTree() {
 }
 
 function treeTruncationNoteHtml(maxFiles) {
-  var capText = maxFiles ? formatCount(maxFiles) : "the file cap";
+  var reason = maxFiles
+    ? `Metabrowser stopped after ${formatCount(maxFiles)} files`
+    : "Metabrowser reached its file limit";
   return (
     '<div class="tree-truncation-note" role="status">' +
-    "Tree partial: capped at " +
-    capText +
-    ". " +
-    "Deep subtrees may be incomplete." +
+    "<strong>File list incomplete.</strong> " +
+    reason +
+    ", so some files and folders are not shown." +
     "</div>"
   );
 }
@@ -1189,7 +1187,7 @@ function treeLazyLoadingHtml(message) {
     '<div class="tree-lazy-placeholder" role="status" aria-live="polite">' +
     '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
     "<span>" +
-    esc(message || "Loading folder...") +
+    esc(message || "Loading folder…") +
     "</span>" +
     "</div>"
   );
@@ -1197,14 +1195,33 @@ function treeLazyLoadingHtml(message) {
 
 function treeLazyFailureHtml(message) {
   return (
-    '<div class="tree-lazy-placeholder tree-lazy-error" role="status">' +
-    esc(message || "Unable to load folder.") +
+    '<div class="tree-lazy-placeholder tree-lazy-error" role="alert">' +
+    esc(message || "Could not load this folder.") +
     "</div>"
   );
 }
 
 function errorMessage(e) {
-  return e?.message ? e.message : String(e || "unknown error");
+  return e?.message ? e.message : String(e || "An unknown error occurred.");
+}
+
+function responseErrorDetail(body, status) {
+  var text = String(body || "").trim();
+  if (text) {
+    try {
+      var parsed = JSON.parse(text);
+      var detail = parsed?.error || parsed?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail.trim();
+      }
+    } catch (_error) {
+      // A plain-text response is already suitable for the preview message.
+    }
+    if (text.length <= 400) {
+      return text;
+    }
+  }
+  return `The request failed (HTTP ${status}).`;
 }
 
 function subtreeIsExpanded(childrenEl) {
@@ -1256,7 +1273,7 @@ async function loadSubtree(path, childrenEl, options) {
     );
     return;
   }
-  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder...");
+  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…");
   try {
     const resp = await fetch(
       `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
@@ -1276,7 +1293,7 @@ async function loadSubtree(path, childrenEl, options) {
     var tree = data.tree;
     knownFileCatalog?.observeLazyTree(tree);
     if (tree.length === 0 && data.tally_cache_status === "scanning") {
-      childrenEl.innerHTML = treeLazyLoadingHtml("Folder still loading...");
+      childrenEl.innerHTML = treeLazyLoadingHtml("Still scanning this folder…");
       startIndexProgressPolling();
       scheduleSubtreeRetry(path, childrenEl);
       return;
@@ -1288,7 +1305,7 @@ async function loadSubtree(path, childrenEl, options) {
       () => {
         childrenEl.innerHTML = tree.length
           ? renderTreeNodes(tree, false, options)
-          : '<div class="tree-lazy-placeholder">Empty folder</div>';
+          : '<div class="tree-lazy-placeholder">This folder is empty.</div>';
       },
       { path: path, nodes: tree.length },
     );
@@ -1298,7 +1315,9 @@ async function loadSubtree(path, childrenEl, options) {
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
-    childrenEl.innerHTML = treeLazyFailureHtml(`Unable to load folder (${errorMessage(e)}).`);
+    childrenEl.innerHTML = treeLazyFailureHtml(
+      "Could not load this folder. Collapse and reopen it to try again.",
+    );
   }
 }
 
@@ -1374,14 +1393,14 @@ if (typeof window !== "undefined") {
 // visual category (this number is a size) is carried by the class.
 function _tipSize(bytes) {
   if (isPendingNumber(bytes)) {
-    return '<span class="tip-loading">Loading size...</span>';
+    return '<span class="tip-loading">Loading size…</span>';
   }
   var cls = `size ${sizeClass(bytes)}`.trim();
   return `<span class="${cls}">${formatExactSize(bytes || 0)}</span>`;
 }
 function _tipCount(n) {
   if (isPendingNumber(n)) {
-    return '<span class="tip-loading">Loading file count...</span>';
+    return '<span class="tip-loading">Loading file count…</span>';
   }
   return `<span class="count">${formatCount(n)}</span>`;
 }
@@ -1857,26 +1876,213 @@ function startIndexProgressPolling() {
   }, INDEX_PROGRESS_POLL_MS);
 }
 
+// ── Nav panel registry ─────────────────────────────────────────
+//
+// The tab bar used to be hardcoded buttons and a click handler that knew
+// each panel by name. It is a registry now for two reasons: a panel can
+// be conditional (Git appears only when the served root resolves to a
+// repository, which is not known until /api/git/repo answers), and a
+// panel's first-show hook belongs beside its declaration rather than in
+// an if-chain inside the handler.
+//
+// Files stays in the server-rendered HTML — it is first-paint critical,
+// and creating it in JS would flash an empty nav. Panels registered
+// later create their own button and container, which is what makes a
+// stale registration dangerous rather than merely dead: registering a
+// retired panel would put its tab back on screen.
+// This is the seam a plugin-facing registerNavPanel would build on; no
+// such SDK surface is exposed yet.
+
+/**
+ * @typedef {object} NavPanel
+ * @property {string} id
+ * @property {string} label
+ * @property {(() => void) | null} onFirstShow Runs once, the first time
+ *   the panel is shown. Lazy loading is the whole point: Recent and Git
+ *   both cost a request that a user who never opens them should not pay.
+ * @property {(() => void) | null | undefined} [onShow] Runs every time
+ *   the panel is activated, including the first. Panels use this only
+ *   for cheap refresh/retry checks after their lazy initialization.
+ */
+
+/** @type {NavPanel[]} */
+var navPanels = [];
+/** @type {Set<string>} */
+var navPanelsShown = new Set();
+var previewClaimGeneration = 0;
+
+/**
+ * Claim the shared preview pane for one navigation owner.
+ *
+ * Async preview producers keep the returned generation and check it
+ * before every write. A later file, commit, or nav action increments the
+ * generation, making all older writes harmless.
+ *
+ * @param {string} owner
+ * @returns {number}
+ */
+function claimPreview(owner) {
+  previewClaimGeneration += 1;
+  const preview = document.getElementById("preview-pane");
+  if (preview) {
+    preview.dataset.previewOwner = owner;
+  }
+  return previewClaimGeneration;
+}
+
+/** @param {number} claim */
+function isPreviewClaimCurrent(claim) {
+  return claim === previewClaimGeneration;
+}
+
+function registerNavPanel(panel) {
+  if (navPanels.some((existing) => existing.id === panel.id)) {
+    return;
+  }
+  navPanels.push(panel);
+  ensureNavPanelElements(panel);
+}
+
+// Create the button and container for a panel that was not in the
+// server-rendered markup. Idempotent, so a re-registration after a root
+// change does not duplicate the tab.
+function ensureNavPanelElements(panel) {
+  const navBar = queryHtml(".nav-tab-bar");
+  const content = document.getElementById("tree-content");
+  if (!navBar || !content) {
+    return;
+  }
+  if (!navBar.querySelector(`.tab-btn[data-tab="${panel.id}"]`)) {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn";
+    btn.type = "button";
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", "false");
+    btn.dataset.tab = panel.id;
+    btn.textContent = panel.label;
+    btn.addEventListener("click", () => activateNavPanel(panel.id));
+    navBar.appendChild(btn);
+  }
+  if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
+    const container = document.createElement("div");
+    container.id = `tab-${panel.id}`;
+    container.dataset.tabContent = panel.id;
+    container.style.display = "none";
+    content.appendChild(container);
+  }
+}
+
+function removeNavPanel(panelId) {
+  navPanels = navPanels.filter((panel) => panel.id !== panelId);
+  navPanelsShown.delete(panelId);
+  const navBar = queryHtml(".nav-tab-bar");
+  const button = navBar?.querySelector(`.tab-btn[data-tab="${panelId}"]`);
+  const container = document.querySelector(`[data-tab-content="${panelId}"]`);
+  const wasActive = button?.classList.contains("active");
+  button?.remove();
+  container?.remove();
+  // Never leave the nav with no active tab: if the panel being removed
+  // was the visible one, fall back to Files.
+  if (wasActive) {
+    activateNavPanel("files");
+  }
+}
+
+function activateNavPanel(panelId) {
+  const navBar = queryHtml(".nav-tab-bar");
+  if (!navBar) {
+    return;
+  }
+  claimPreview(`nav:${panelId}`);
+  queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
+    const selected = btn.dataset.tab === panelId;
+    btn.classList.toggle("active", selected);
+    btn.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+  queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
+    panel.style.display = panel.dataset.tabContent === panelId ? "" : "none";
+  });
+  // The filter bar is chrome for the file tree, and it sits outside the
+  // tab containers on purpose — a tree reload replaces #tab-files
+  // wholesale, and the bar has to survive that and stay put while the
+  // tree scrolls. Being outside means the loop above does not reach it,
+  // so a panel that is not Files would otherwise keep a bar of file
+  // filters on screen above content they cannot filter.
+  const filterBar = document.getElementById("nav-filter-bar");
+  if (filterBar) {
+    filterBar.style.display = panelId === "files" ? "" : "none";
+  }
+  // Hiding or restoring the bar changes which chrome the scroll shadow
+  // belongs to, and no scroll event fires on a tab switch.
+  navScrollShadowUpdate?.();
+
+  const panel = navPanels.find((candidate) => candidate.id === panelId);
+  if (!navPanelsShown.has(panelId)) {
+    navPanelsShown.add(panelId);
+    panel?.onFirstShow?.();
+  }
+  panel?.onShow?.();
+}
+
 function initNavTabs() {
   const navBar = queryHtml(".nav-tab-bar");
   if (!navBar) {
     return;
   }
+  // Files needs no first-show hook: the tree is already loading when the
+  // shell boots, and Files is the panel that starts visible.
+  //
+  // Recent is deliberately absent. It was a panel here until the filter
+  // work folded it into the Files pane as the recency dimension, and
+  // registering it now would not merely be dead code: a registration
+  // whose button is not in the server-rendered markup *creates* one, so
+  // this would put the retired tab back on screen.
+  registerNavPanel({ id: "files", label: "Files", onFirstShow: null });
+  navPanelsShown.add("files");
+
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      var tabId = btn.dataset.tab;
-      navBar.querySelectorAll(".tab-btn").forEach((b) => {
-        b.classList.remove("active");
-        b.setAttribute("aria-selected", "false");
-      });
-      btn.classList.add("active");
-      btn.setAttribute("aria-selected", "true");
-      queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
-        panel.style.display = panel.dataset.tabContent === tabId ? "" : "none";
-      });
-    });
+    const panelId = btn.dataset.tab;
+    if (!panelId) {
+      return;
+    }
+    btn.addEventListener("click", () => activateNavPanel(panelId));
   });
 }
+
+// Replace the preview pane's contents with shell-owned HTML.
+//
+// Disposal is the reason this is a function rather than an innerHTML
+// assignment at each call site: replacing the pane detaches whatever
+// plugin views are mounted, and skipping their disposers leaks their
+// listeners and retained resources.
+function renderPreviewHtml(html, claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return null;
+  }
+  const preview = document.getElementById("preview-pane");
+  if (!preview) {
+    return null;
+  }
+  disposeActivePluginViews();
+  preview.innerHTML = html;
+  return preview;
+}
+
+// The seam between the shell and modules that are not file renderers.
+//
+// Deliberately narrow, and deliberately not `window.metabrowser`: that
+// object is the documented plugin SDK with a compatibility contract,
+// whereas this is an internal boundary that core modules loaded by the
+// shell may use. Exposing it at all is what lets git_panel.js stay out
+// of app.js instead of adding a thousand lines to it.
+window.MetabrowserShell = Object.freeze({
+  activateNavPanel,
+  claimPreview,
+  isPreviewClaimCurrent,
+  registerNavPanel,
+  removeNavPanel,
+  renderPreviewHtml,
+});
 
 // Toggle the nav chrome's drop shadow based on whether the
 // tree-content scroll position is at the top. At scrollTop=0 the
@@ -1888,38 +2094,38 @@ function initNavTabs() {
 // The shadow rides the filter bar, not the tab bar: the filter bar is
 // the bottom-most chrome above the scroll owner, so a shadow on the
 // tab bar would land on the filter bar instead of on the content.
+/** @type {(() => void) | null} */
+var navScrollShadowUpdate = null;
+
 function initNavScrollShadow() {
-  const shadowTarget = document.getElementById("nav-filter-bar") || queryHtml(".nav-tab-bar");
+  const filterBar = document.getElementById("nav-filter-bar");
+  const tabBar = queryHtml(".nav-tab-bar");
   const content = document.getElementById("tree-content");
-  if (!shadowTarget || !content) {
+  if (!content || (!filterBar && !tabBar)) {
     return;
   }
-  const scrollNavBar = shadowTarget;
   const scrollContent = content;
   function update() {
-    if (scrollContent.scrollTop > 0) {
-      scrollNavBar.classList.add("scrolled");
-    } else {
-      scrollNavBar.classList.remove("scrolled");
-    }
+    // Resolved per call rather than once at startup: the filter bar is
+    // hidden on panels that are not Files, and a shadow on a hidden
+    // element is no cue at all. Whichever chrome is bottom-most *and
+    // visible* carries it, and the other is cleared so a tab switch
+    // cannot leave two shadows armed.
+    const target = filterBar && filterBar.offsetParent !== null ? filterBar : tabBar;
+    const other = target === filterBar ? tabBar : filterBar;
+    other?.classList.remove("scrolled");
+    target?.classList.toggle("scrolled", scrollContent.scrollTop > 0);
   }
+  navScrollShadowUpdate = update;
   // Passive listener — we never preventDefault — so the browser
   // can keep scroll responsive while we just read scrollTop.
   scrollContent.addEventListener("scroll", update, { passive: true });
   update();
 }
 
-// Window key → seconds-back from "now". Mirror of
-// RECENT_WINDOW_SECONDS in metabrowser/settings.py; if you
-// change one, change the other (or move both behind the
-// METABROWSER_SETTINGS injection).
-var _RECENT_WINDOW_SECONDS = {
-  "1h": 60 * 60,
-  "24h": 24 * 60 * 60,
-  "7d": 7 * 24 * 60 * 60,
-  "30d": 30 * 24 * 60 * 60,
-  all: null,
-};
+// Window key → seconds-back from "now", injected from the one
+// authoritative mapping in metabrowser/settings.py.
+const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {};
 
 // Recent is a hybrid
 // of "snapshot from /api/recent" + "live FileStore overlay".
@@ -1959,6 +2165,9 @@ var recentInflight = null; // AbortController for the in-flight chip fetch
 var _GITIGNORED_DIR_PATHS = new Set();
 
 function loadRecent(windowKey) {
+  // A timer scheduled for the previous window must not repaint its
+  // cached rows while this replacement request is still loading.
+  clearRecentExpiryRecheck();
   // Lock the user's window intent synchronously so a second chip
   // click can dedup against it.
   currentRecentWindow = windowKey;
@@ -2033,7 +2242,8 @@ function fetchRecent(windowKey) {
         return;
       }
       if (results) {
-        results.innerHTML = '<div class="recent-empty">Failed to load recent files.</div>';
+        results.innerHTML =
+          '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
       }
     })
     .finally(() => {
@@ -2085,13 +2295,13 @@ function renderRecentFromBase() {
   if (!results) {
     return;
   }
+  var entries = recentEntriesFromBase({
+    window: currentRecentWindow,
+    limit: RECENT_LIMIT,
+  });
   _perf.measure(
     "renderRecent:root",
     () => {
-      var entries = recentEntriesFromBase({
-        window: currentRecentWindow,
-        limit: RECENT_LIMIT,
-      });
       if (entries.length === 0) {
         results.innerHTML = renderRecentList({ tree: [] });
         return;
@@ -2102,12 +2312,54 @@ function renderRecentFromBase() {
     },
     { items: recentBaseEntries.size },
   );
+  scheduleRecentExpiryRecheck(entries);
   // Recency is already resolved server-side; the remaining
   // dimensions still apply over these rows.
   applyTreeFilters();
   if (currentPath) {
     setSelectedPath(currentPath);
   }
+}
+
+const RECENT_EXPIRY_MIN_DELAY_MS = 250;
+const RECENT_EXPIRY_BOUNDARY_FUZZ_MS = 50;
+// Browsers store timer delays in a signed 32-bit integer. A freshly
+// touched file in the 30-day window crosses that limit, so wake once
+// at the maximum and schedule the remaining interval on that repaint.
+const RECENT_EXPIRY_MAX_DELAY_MS = 2_147_000_000;
+var recentExpiryHandle = null;
+
+function clearRecentExpiryRecheck() {
+  if (recentExpiryHandle !== null) {
+    clearTimeout(recentExpiryHandle);
+    recentExpiryHandle = null;
+  }
+}
+
+/** Repaint when the oldest visible file crosses the active window boundary. */
+function scheduleRecentExpiryRecheck(entries) {
+  clearRecentExpiryRecheck();
+  var seconds = _RECENT_WINDOW_SECONDS[currentRecentWindow];
+  if (typeof seconds !== "number" || entries.length === 0 || !filesPanelUsesRecentSource()) {
+    return;
+  }
+  var oldestMtime = entries[0].mtime || 0;
+  for (var i = 1; i < entries.length; i++) {
+    oldestMtime = Math.min(oldestMtime, entries[i].mtime || 0);
+  }
+  var due = Math.min(
+    RECENT_EXPIRY_MAX_DELAY_MS,
+    Math.max(
+      RECENT_EXPIRY_MIN_DELAY_MS,
+      (oldestMtime + seconds) * 1000 - Date.now() + RECENT_EXPIRY_BOUNDARY_FUZZ_MS,
+    ),
+  );
+  recentExpiryHandle = setTimeout(() => {
+    recentExpiryHandle = null;
+    if (filesPanelUsesRecentSource()) {
+      renderRecentFromBase();
+    }
+  }, due);
 }
 
 // Apply a live FileStore-equivalent op to the recent base. Used
@@ -2408,7 +2660,11 @@ function recentResultsHost() {
 function renderRecentList(data) {
   var tree = data.tree || [];
   if (tree.length === 0) {
-    return '<div class="recent-empty">No files modified in this window.</div>';
+    var emptyText =
+      currentRecentWindow === "live"
+        ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
+        : "No files were modified during the selected time range.";
+    return `<div class="recent-empty">${emptyText}</div>`;
   }
   // Reuse the Files-tab renderer with one mode flip: dir rows
   // show file count instead of total bytes (see comments on
@@ -2439,9 +2695,9 @@ function renderRecentList(data) {
 // See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
 
 var filterState = /** @type {any} */ (window).MetabrowserFilterState || null;
-var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || null;
+var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || null;
 
-// Recency is one axis from "everything" to "being written right now".
+// Recency is one axis from "everything" to the shortest mtime window.
 // Values match RECENT_WINDOWS and the /api/recent contract; labels are
 // shortened because the whole group has to fit a 300px pane.
 // No "all" entry: the menu's any-row is that value, and listing it
@@ -2449,13 +2705,17 @@ var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || nu
 // words rather than the abbreviations the segmented ramp needed,
 // because a dropdown row is not fighting five siblings for width.
 // Each row wears the freshness colour the tree gives files of that
-// age, so the menu doubles as the legend for the ramp below it. The
-// buckets line up with formatAge exactly: Live is the "<1 min" red
-// because a file being written now *is* that bucket, then each window
-// takes the colour of the bucket it tops out at — Past hour is the
-// "<1 hour" step, Past day the "<1 day" step, and so on.
+// age, so the menu doubles as the legend for the ramp below it.
+// Longer windows take the colour of the bucket they top out at. Live
+// keeps the freshest colour and spells out its exact server-owned
+// cutoff in the accessible title.
 var FILTER_RECENCY_OPTIONS = [
-  { value: "live", label: "Live", title: "Run logs being written right now", ageClass: "age-sec" },
+  {
+    value: "live",
+    label: "Live",
+    title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
+    ageClass: "age-sec",
+  },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
   { value: "24h", label: "Past day", ageClass: "age-hr" },
   { value: "7d", label: "Past week", ageClass: "age-day" },
@@ -2473,162 +2733,18 @@ var FILTER_SIZE_OPTIONS = [
   { value: "1g", label: ">1G" },
 ];
 
-// Named shorthands at the top of the type menu, each standing for the
-// full list of extensions beneath it.
-//
-// A separate vocabulary from FILE_TYPES on purpose: that list answers
-// "what icon and hue does this one file get", which is why `.json`
-// lives with the YAML family there. These answer "which broad kind of
-// work is this", which groups differently — `.json` belongs with data.
-//
-// Entries follow the filter's own convention: a leading dot is an
-// extension, anything else is a whole filename. That is what lets Docs
-// reach README and LICENSE, which carry no extension and would
-// otherwise be unfilterable.
-var FILTER_TYPE_PRESETS = [
-  {
-    id: "docs",
-    label: "Docs",
-    values: [
-      ".md",
-      ".txt",
-      ".rst",
-      ".adoc",
-      ".org",
-      ".pdf",
-      ".docx",
-      ".doc",
-      ".pages",
-      ".rtf",
-      ".odt",
-      ".epub",
-      "readme",
-      "license",
-      "licence",
-      "copying",
-      "notice",
-      "changelog",
-      "authors",
-      "contributors",
-      "contributing",
-      "codeowners",
-    ],
-  },
-  {
-    id: "code",
-    label: "Code",
-    values: [
-      ".py",
-      ".pyi",
-      ".ts",
-      ".tsx",
-      ".js",
-      ".jsx",
-      ".mjs",
-      ".cjs",
-      ".rs",
-      ".go",
-      ".java",
-      ".kt",
-      ".kts",
-      ".swift",
-      ".m",
-      ".mm",
-      ".c",
-      ".h",
-      ".cc",
-      ".cpp",
-      ".hpp",
-      ".cs",
-      ".rb",
-      ".php",
-      ".scala",
-      ".clj",
-      ".ex",
-      ".exs",
-      ".erl",
-      ".hs",
-      ".ml",
-      ".lua",
-      ".pl",
-      ".r",
-      ".jl",
-      ".dart",
-      ".vue",
-      ".svelte",
-      ".sh",
-      ".bash",
-      ".zsh",
-      ".fish",
-      ".ps1",
-      ".sql",
-      ".css",
-      ".scss",
-      ".less",
-      ".html",
-      "makefile",
-      "dockerfile",
-      "justfile",
-      "rakefile",
-      "gemfile",
-      "procfile",
-    ],
-  },
-  {
-    id: "data",
-    label: "Data",
-    values: [
-      ".json",
-      ".jsonl",
-      ".ndjson",
-      ".yaml",
-      ".yml",
-      ".toml",
-      ".ini",
-      ".cfg",
-      ".conf",
-      ".properties",
-      ".csv",
-      ".tsv",
-      ".psv",
-      ".xml",
-      ".parquet",
-      ".arrow",
-      ".avro",
-      ".orc",
-      ".feather",
-      ".proto",
-      ".graphql",
-      ".sqlite",
-      ".db",
-    ],
-  },
-];
+// Named shorthands at the top of the type menu. The server injects the
+// vocabulary so the index can count the same tokens the browser uses.
+var FILTER_TYPE_PRESETS = _METABROWSER_SETTINGS.FILTER_TYPE_PRESETS || [];
 
 // The extension menu is built from what the folder actually contains,
 // not a fixed vocabulary, so it never offers a type with nothing
 // behind it and never omits one the tree is full of.
 var FILTER_TYPE_MENU_MAX = 20;
 
-// How long a file keeps counting as "live" for the filter after the
-// last time the tracker reported it active.
-//
-// This is not cosmetic. The activity tracker polls every
-// ACTIVE_TRACKER_INTERVAL_S (5s), but the file watcher emits an upsert
-// on *every* append, and those carry whatever `active` flag the entry
-// held at that moment — false between polls. Mirroring that flag
-// straight into the filter made a file being written once a second
-// appear and vanish several times a minute.
-//
-// 90s comfortably spans the poll interval plus the tracker's own
-// quiet-poll hysteresis, so a steadily-written file stays put, while a
-// genuinely finished one still drops out promptly enough to be
-// believed.
-const FILTER_LIVE_PERSIST_MS = 90_000;
-
 // Deliberately not persisted. The drawer holds the secondary controls,
 // so a session that starts with it open costs vertical space the user
-// did not ask for on this visit; the filters themselves persist, and
+// did not ask for on this visit. Filter selections are transient too;
 // the badge reports them whether or not the drawer is showing.
 var filterDrawerOpen = false;
 // At most one dropdown is open at a time — opening a second while the
@@ -2653,6 +2769,32 @@ function filterHasConstraints(state) {
 // wrong half the time.
 /** @type {Array<[string, number, number]>} */
 var _extensionTally = [];
+/** @type {Array<[string, number, number]>} */
+var _typePresetTally = [];
+
+function updateFileTypeTallies(data) {
+  let changed = false;
+  if (Array.isArray(data.extensions)) {
+    _extensionTally = data.extensions;
+    changed = true;
+  }
+  if (Array.isArray(data.type_presets)) {
+    _typePresetTally = data.type_presets;
+    changed = true;
+  }
+  return changed;
+}
+
+function filterTypePresets() {
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const counts = new Map(
+    _typePresetTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
+  );
+  return FILTER_TYPE_PRESETS.map((preset) => ({
+    ...preset,
+    count: counts.get(preset.id) || 0,
+  }));
+}
 
 function filterTypeOptions() {
   const showIgnored = filterState ? filterState.get().showIgnored : true;
@@ -2693,15 +2835,14 @@ function filterTypeOptions() {
 
 // A recency window reads from /api/recent, which scans the whole index
 // rather than the loaded subtrees — the one thing the Recent tab did
-// that a DOM walk cannot. "live" stays on the tree source: the active
-// tracker's files are by definition inside the event scope, and
-// /api/recent has no window for them.
+// that a DOM walk cannot. This includes Live: it is the shortest
+// server-owned mtime window, not the specialized activity tracker.
 function filesPanelUsesRecentSource() {
   if (!filterState) {
     return false;
   }
   var st = filterState.get();
-  return st.recency !== "all" && st.recency !== "live";
+  return st.recency !== "all";
 }
 
 function renderNavFilterBar() {
@@ -2732,7 +2873,7 @@ function renderNavFilterBar() {
       key: "types",
       label: "File extension",
       options: filterTypeOptions(),
-      presets: FILTER_TYPE_PRESETS,
+      presets: filterTypePresets(),
       value: st.types,
       anyLabel: "Any type",
       open: filterOpenMenu === "types",
@@ -2953,6 +3094,7 @@ function onFilterStateChange(state) {
     // Empty, not a window key: a late response compares against this
     // and must never find a match.
     currentRecentWindow = "";
+    clearRecentExpiryRecheck();
     // Restore the full tree from the cached payload; only fall back to
     // a refetch when nothing has been cached yet.
     if (!renderFilesFromTree()) {
@@ -2974,47 +3116,6 @@ function onFilterStateChange(state) {
 // with no loaded children is unknown rather than excluded — the one
 // exception being recency, where the folder's own aggregate mtime
 // (newest descendant) is a definitive answer for the whole subtree.
-
-// Last time each path was reported active, so the filter can hold a
-// file steady across the gaps described at FILTER_LIVE_PERSIST_MS.
-/** @type {Map<string, number>} */
-const liveSeenAt = new Map();
-
-function noteLivePath(path) {
-  liveSeenAt.set(path, Date.now());
-}
-
-// Paths the *filter* treats as live: those active right now, plus
-// those seen active within the persistence window.
-function livePathsForFilter() {
-  var cutoff = Date.now() - FILTER_LIVE_PERSIST_MS;
-  var paths = new Set(activeFiles.keys());
-  for (const [path, seen] of liveSeenAt) {
-    if (seen < cutoff) {
-      liveSeenAt.delete(path); // bounded: entries expire as they age out
-    } else {
-      paths.add(path);
-    }
-  }
-  return paths;
-}
-
-// Is any file under this folder live? The live set holds full paths,
-// so a folder can be judged without its children being rendered — the
-// reason Live does not need the unloaded-folder escape the other
-// dimensions do.
-function hasLiveDescendant(dirPath, livePaths) {
-  if (livePaths.size === 0) {
-    return false;
-  }
-  var prefix = dirPath ? `${dirPath}/` : "";
-  for (const livePath of livePaths) {
-    if (!prefix || livePath.startsWith(prefix)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 function _childContainerFor(row) {
   var next = row.nextElementSibling;
@@ -3045,14 +3146,6 @@ function applyTreeFilters() {
   var nowSec = Date.now() / 1000;
   var keep = new Map();
   var unloadedFolders = 0;
-  // "Live" is the one dimension the client knows completely: activeFiles
-  // is the whole set of paths currently being written, straight off the
-  // event stream. Reading it beats testing for a rendered .activity-dot,
-  // which only exists on rows that happen to be painted, and it lets a
-  // folder be judged on whether a live path lies beneath it rather than
-  // being waved through as "not loaded, so unknown".
-  var liveMode = st.recency === "live";
-  var livePaths = liveMode ? livePathsForFilter() : new Set();
   for (var i = rows.length - 1; i >= 0; i--) {
     var row = rows[i];
     var isDir = row.classList.contains("tree-folder");
@@ -3071,7 +3164,6 @@ function applyTreeFilters() {
           // every file row; matching on it keeps a compound pick
           // (".min.js") agreeing with the tally that offered it.
           ext: row.dataset.ext || "",
-          live: isDir ? hasLiveDescendant(path, livePaths) : livePaths.has(path),
           isDir: isDir,
         },
         st,
@@ -3085,11 +3177,9 @@ function applyTreeFilters() {
         : [];
       if (kids.length > 0) {
         ok = kids.some((kid) => keep.get(kid) === true);
-      } else if (!liveMode) {
+      } else {
         // Nothing loaded under it: the filter cannot speak for this
-        // subtree, so the folder stays and gets counted. Live is the
-        // exception — the set of live paths is known in full, so an
-        // unloaded folder is a definite answer, not an unknown one.
+        // subtree, so the folder stays and gets counted.
         unloadedFolders += 1;
       }
     }
@@ -3126,25 +3216,6 @@ function applyTreeFilters() {
     : null;
   _renderFilteredTally(panel, shownFiles, st, recencyCount);
   _renderFilterNote(panel, unloadedFolders, st);
-  // Once writing stops no further events arrive, so nothing would
-  // re-evaluate the persistence window and the row would sit there
-  // looking live forever. Wake up when the oldest sighting expires.
-  if (liveMode) {
-    scheduleLiveExpiryRecheck();
-  }
-}
-
-var _liveExpiryHandle = null;
-function scheduleLiveExpiryRecheck() {
-  if (_liveExpiryHandle || liveSeenAt.size === 0) {
-    return;
-  }
-  var oldest = Math.min(...liveSeenAt.values());
-  var due = Math.max(250, oldest + FILTER_LIVE_PERSIST_MS - Date.now() + 50);
-  _liveExpiryHandle = setTimeout(() => {
-    _liveExpiryHandle = null;
-    applyTreeFilters();
-  }, due);
 }
 
 // How many files the filter is actually showing, as a second line
@@ -3192,26 +3263,16 @@ function _renderFilteredTally(panel, shownFiles, state, recencyCount) {
 // imply completeness.
 function _renderFilterNote(panel, unloadedFolders, state) {
   var existing = panel.querySelector(".filter-note");
-  // "Live" with nothing being written is a real answer, but an empty
-  // tree looks like a broken filter. Say it in words — and name what
-  // is watched, because the tracker only follows run artifacts
-  // (BROWSER_TRACKABLE_EXTS files under .logs/ or .state/), so on a
-  // repository without them this state is permanent rather than
-  // momentary. See metabrowser/active_tracker.py:_is_trackable.
-  // Must ask the same question row visibility asked. Testing
-  // activeFiles here instead would claim nothing is being written
-  // while the persistence window is still showing rows.
-  var liveEmpty = state.recency === "live" && livePathsForFilter().size === 0;
-  if ((unloadedFolders <= 0 && !liveEmpty) || !filterHasConstraints(state)) {
+  if (unloadedFolders <= 0 || !filterHasConstraints(state)) {
     if (existing) {
       existing.remove();
     }
     return;
   }
-  var text = liveEmpty
-    ? "No run logs are being written right now."
-    : `Filtered within loaded folders. ${unloadedFolders.toLocaleString()} ` +
-      `${unloadedFolders === 1 ? "folder is" : "folders are"} not expanded yet.`;
+  var text =
+    `${unloadedFolders.toLocaleString()} collapsed ` +
+    `${unloadedFolders === 1 ? "folder may" : "folders may"} contain additional matches. ` +
+    `Expand ${unloadedFolders === 1 ? "it" : "them"} to check.`;
   if (existing) {
     existing.textContent = text;
     return;
@@ -3284,6 +3345,18 @@ function cachePut(cache, key, value, maxSize, onEvict) {
 }
 
 var textChunkLoadInFlight = false;
+/** @type {number | null} */
+var filePreviewClaim = null;
+
+function showTextChunkLoadError() {
+  var warning = document.querySelector(".metabrowser-source-truncation-warning");
+  if (!warning) {
+    return;
+  }
+  warning.setAttribute("role", "alert");
+  warning.innerHTML =
+    "<strong>Could not load more content.</strong> Select Load more to try again.";
+}
 
 // Called by the generated file-header action.
 // biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
@@ -3298,6 +3371,7 @@ async function loadMoreCurrentText() {
 
   textChunkLoadInFlight = true;
   var path = currentPath;
+  var previewClaim = filePreviewClaim;
   var offset = cached.bytes_read || 0;
   try {
     var resp = await fetch(
@@ -3309,14 +3383,14 @@ async function loadMoreCurrentText() {
         encodeURIComponent(String(TEXT_PREVIEW_CHUNK_BYTES)),
     );
     if (!resp.ok) {
-      return;
+      throw new Error(`HTTP ${resp.status}`);
     }
     var chunk = await _perf.measureAsync(
       "apiFile:textChunkJson",
       () => resp.json(),
       responsePerfMeta(resp, path, { offset: offset }),
     );
-    if (currentPath !== path) {
+    if (currentPath !== path || previewClaim === null || !isPreviewClaimCurrent(previewClaim)) {
       return;
     }
     if (chunk.mtime_hash && cached.mtime_hash && chunk.mtime_hash !== cached.mtime_hash) {
@@ -3330,9 +3404,12 @@ async function loadMoreCurrentText() {
     cached.bytes_read = chunk.bytes_read || cached.bytes_read;
     cached.content_truncated = !!chunk.content_truncated;
     cached.highlight_disabled = true;
-    renderFile(cached);
+    renderFile(cached, previewClaim);
   } catch (e) {
     console.warn("Failed to load text chunk", e);
+    if (currentPath === path) {
+      showTextChunkLoadError();
+    }
   } finally {
     textChunkLoadInFlight = false;
   }
@@ -3348,6 +3425,8 @@ var selectFileAbortController = null;
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, skipHash) {
+  var previewClaim = claimPreview("file");
+  filePreviewClaim = previewClaim;
   return _perf.measureAsync(
     "selectFile",
     async () => {
@@ -3361,7 +3440,10 @@ async function selectFile(path, skipHash) {
       }
       const preview = document.getElementById("preview-pane");
       if (!preview) {
-        return { message: "The preview destination is unavailable.", status: "error" };
+        return {
+          message: "Could not display the file. Refresh the page to try again.",
+          status: "error",
+        };
       }
 
       // Three-way cache state:
@@ -3372,7 +3454,7 @@ async function selectFile(path, skipHash) {
       const cached = fileCache.get(path);
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
-        renderFile(cached);
+        renderFile(cached, previewClaim);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
       }
@@ -3382,11 +3464,11 @@ async function selectFile(path, skipHash) {
       }
       loadingIndicatorTimer = setTimeout(() => {
         loadingIndicatorTimer = null;
-        if (currentPath !== path) {
+        if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
           return;
         }
         disposeActivePluginViews();
-        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading file…</div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
       if (selectFileAbortController) {
@@ -3412,12 +3494,12 @@ async function selectFile(path, skipHash) {
           // Server confirmed the cached payload is still fresh — zero-byte
           // body, render from memory.
           fileNeedsRevalidate.delete(path);
-          if (currentPath === path) {
+          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
             if (loadingIndicatorTimer) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
-            renderFile(cached);
+            renderFile(cached, previewClaim);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
           }
@@ -3429,7 +3511,7 @@ async function selectFile(path, skipHash) {
             () => resp.text(),
             responsePerfMeta(resp, path),
           );
-          throw Object.assign(new Error(text || `HTTP ${resp.status}`), {
+          throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
             notFound: resp.status === 404,
           });
         }
@@ -3445,12 +3527,12 @@ async function selectFile(path, skipHash) {
           boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
         }
         fileNeedsRevalidate.delete(path);
-        if (currentPath === path) {
+        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
-          renderFile(data);
+          renderFile(data, previewClaim);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
         }
@@ -3461,19 +3543,25 @@ async function selectFile(path, skipHash) {
           return { status: "cancelled" };
         }
         var notFound = caught?.notFound === true;
-        if (currentPath === path) {
+        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
           disposeActivePluginViews();
-          preview.innerHTML = `<div class="preview-empty">Error: ${esc(errorMessage(err))}</div>`;
+          preview.innerHTML =
+            '<div class="preview-empty" role="alert"><strong>Could not open this file.</strong> ' +
+            esc(errorMessage(err)) +
+            "</div>";
         } else {
           return { status: "cancelled" };
         }
         return notFound
-          ? { message: `File no longer available: ${path}`, status: "not-found" }
-          : { message: `Could not open ${path}: ${errorMessage(err)}`, status: "error" };
+          ? { message: `${path} is no longer available.`, status: "not-found" }
+          : {
+              message: `Could not open ${path}. Check that the file still exists and is readable.`,
+              status: "error",
+            };
       }
     },
     { path: path, skip_hash: !!skipHash },
@@ -3569,7 +3657,7 @@ function renderTextPreviewControls(data) {
   var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
   if (data.content_truncated) {
     html +=
-      '<button class="file-header-action" onclick="loadMoreCurrentText()" title="Load another text chunk">Load more</button>';
+      '<button class="btn file-header-action" type="button" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
   }
   return html;
 }
@@ -3689,18 +3777,23 @@ function mountPluginView(container, pluginView, ctx) {
     var maybePromise = pluginView.render(container, ctx);
     if (maybePromise && typeof maybePromise.catch === "function") {
       maybePromise.catch((err) => {
+        console.error("plugin render error:", err);
         container.innerHTML =
-          '<div class="preview-empty">Plugin render error: ' +
-          esc(String(err?.message || err)) +
-          "</div>";
+          '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
       });
     }
   } catch (err) {
-    container.innerHTML = `<div class="preview-empty">Plugin render error: ${esc(errorMessage(err))}</div>`;
+    console.error("plugin render error:", err);
+    container.innerHTML =
+      '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
   }
 }
 
-function renderFile(data) {
+function renderFile(data, claim) {
+  var renderClaim = claim ?? filePreviewClaim;
+  if (renderClaim === null || !isPreviewClaimCurrent(renderClaim)) {
+    return;
+  }
   return _perf.measure(
     `renderFile:${data.kind || data.type || "?"}`,
     () => {
@@ -3719,9 +3812,9 @@ function renderFile(data) {
       html +=
         '<span class="file-header-path">' +
         esc(data.path) +
-        '<button class="file-header-copy" onclick="copyPath(this, \'' +
+        '<button class="icon-btn icon-btn-reveal file-header-copy" type="button" onclick="copyPath(this, \'' +
         esc(data.path).replace(/'/g, "\\'") +
-        '\')" title="Copy path">' +
+        '\')" title="Copy path" aria-label="Copy path">' +
         ICON_COPY +
         "</button>" +
         "</span>";
@@ -3729,7 +3822,7 @@ function renderFile(data) {
       html += sizeHtml(data.size, "file-header-size");
       html += renderTextPreviewControls(data);
       html +=
-        '<button class="file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+        '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
         (ICONS.print || "") +
         "</button>";
       html += "</div>";
@@ -3741,7 +3834,7 @@ function renderFile(data) {
       // kinds; entry-point plugins own theirs. The shell here
       // builds the empty containers; each plugin's render(container, ctx)
       // fires below once the DOM is in place. If no plugin claims a
-      // (kind, viewId) we paint an "Unknown view" empty state — never a
+      // (kind, viewId) we paint an unavailable-view message — never a
       // fallback that pulls renderers out of the shell. This is the
       // contract: every kind is a plugin.
       var views = data.views;
@@ -3755,7 +3848,7 @@ function renderFile(data) {
             html +=
               '<button class="tab-btn' +
               active +
-              '" data-tab="' +
+              '" type="button" data-tab="' +
               esc(view.id) +
               '"' +
               viewMetaAttrs(view) +
@@ -3811,9 +3904,7 @@ function renderFile(data) {
               viewMetaAttrs(view) +
               ' data-active-view="false"' +
               hidden +
-              '><div class="preview-empty">Unknown view: ' +
-              esc(view.id) +
-              "</div></div>";
+              '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
           }
         }
       } else if (data.type === "image") {
@@ -3827,22 +3918,19 @@ function renderFile(data) {
           esc(data.path) +
           '"></div>';
       } else if (data.type === "binary") {
-        html += `<div class="content-body"><div class="preview-empty">Binary file (${formatSize(data.size || 0)})</div></div>`;
+        html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
       } else if (data.type === "jsonl_too_large") {
         html +=
           '<div class="content-body"><div class="preview-empty">' +
-          "<strong>Log file too large for browser parsing</strong><br><br>" +
-          "Size: " +
+          "<strong>This JSONL file is too large to preview.</strong><br><br>" +
+          "File size: " +
           formatSize(data.size || 0) +
-          " (limit: " +
+          "<br>Preview limit: " +
           formatSize(data.max_size || 0) +
-          ")<br><br>" +
-          "View with:<br><code>tail -f " +
-          esc(data.path) +
-          "</code>" +
+          "<br><br>Open it with a tool that can stream large files." +
           "</div></div>";
       } else if (data.type === "error") {
-        html += `<div class="content-body"><div class="preview-empty">Error: ${esc(data.error)}</div></div>`;
+        html += `<div class="content-body"><div class="preview-empty" role="alert"><strong>Could not preview this file.</strong> ${esc(data.error)}</div></div>`;
       }
 
       _perf.measure(
@@ -4201,10 +4289,6 @@ function fileStoreApplyChange(ops) {
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
       activeFiles.delete(op.path);
-      // Drop the persistence stamp too. A deleted file is not "recently
-      // live", and leaving it would keep its ancestor folders matching
-      // Live for up to FILTER_LIVE_PERSIST_MS after it is gone.
-      liveSeenAt.delete(op.path);
       // Remove rendered rows in every tab panel; also drops the
       // dir's `.tree-children` container so descendant rows go
       // with it. Server's bulk-remove op already lists each
@@ -4245,9 +4329,6 @@ function _mirrorActiveFromFsEntry(entry) {
   var wasActive = activeFiles.has(entry.path);
   if (entry.active) {
     activeFiles.set(entry.path, { pid_alive: pidLabel });
-    // Stamp every sighting, so the filter can ride out the gaps
-    // between tracker polls (see FILTER_LIVE_PERSIST_MS).
-    noteLivePath(entry.path);
     refreshActivityBadge(entry.path);
     // Inactive→active for the currently viewed file: switch the
     // header badge to "Live" and open the live stream if not
@@ -4823,13 +4904,19 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
     _resetEsCircuitBreaker();
-    // Server restart or root swap — drop everything; reconnect
-    // will deliver a fresh snapshot.
+    // A resync marks a gap in the ordered delta stream. Clear derived state,
+    // then replace this connection so the server sends an authoritative
+    // snapshot before live updates resume.
     knownFileCatalog?.clear();
     fileStore = new Map();
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
+    if (inventoryEventSource) {
+      inventoryEventSource.close();
+      inventoryEventSource = null;
+    }
+    _createInventoryEventSource();
   });
   inventoryEventSource.onopen = () => {
     _resetEsCircuitBreaker();
@@ -5088,6 +5175,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   initFilterBar();
   initNavScrollShadow();
   initQuickFileFinder();
+  // Not awaited: whether the served root is a repository is irrelevant
+  // to first paint, and blocking the tree walk on a git call would make
+  // every non-repository directory pay for a feature it will not show.
+  window.MetabrowserGitPanel?.init();
   // Fire the URL-pinned file fetch in parallel with the tree walk: the
   // two requests don't depend on each other, so a deep-link's preview
   // can render as soon as /api/file lands instead of waiting for the
@@ -5099,9 +5190,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     selectFile(initialPath, true);
   }
   startIndexProgressPolling();
-  // The tree fetch always runs: it supplies the header path and the
-  // root aggregates even when a persisted recency filter is about to
-  // repaint the panel from /api/recent.
+  // The tree fetch always runs: it supplies the header path and root
+  // aggregates before any later recency selection repaints the panel
+  // from /api/recent.
   await loadTree();
   if (filesPanelUsesRecentSource()) {
     loadRecent(filterState.get().recency);

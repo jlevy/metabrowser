@@ -52,7 +52,7 @@ metab [ROOT] [OPTIONS]
 metab .                                  # serve current directory
 metab path/to/file.jsonl                 # serve parent dir, deep-link the file
 metab . --walk --format json             # inventory walk, no server
-metab --remote my-vm --path /srv/runs    # SSH tunnel to a remote metab
+metab --remote example-host --path /srv/shared-files # SSH tunnel to a remote metab
 metab --plugins                          # list discovered plugins
 metab --plugin markdown                  # one plugin's resolved manifest
 metab --doctor                           # validate every plugin
@@ -158,11 +158,11 @@ The console interface changes as described; the old subcommands no longer parse.
 Ships in the 0.2.0 alpha release with a changelog entry spelling out the new command
 forms, including that `metab --remote` sessions require matching versions on both hosts.
 
-The agent skill teaches only the flat grammar and pins `uvx metabrowser@0.2.0`, so
-merging this change and publishing 0.2.0 form one release transaction.
-The publish workflow enforces it: publishing fails when the release tag does not match
-the version pinned in the skill, README, and installation guide, and after publishing it
-executes the skill’s pinned invocation (`--help` and `--doctor`) against PyPI.
+The 0.2.0 release pinned its new flat grammar in the Agent Skill, README, and
+installation guide as one release transaction.
+The skill now resolves `uvx metabrowser@latest` under the operator’s cool-off policy and
+uses `--help` as the source of truth, so later releases do not leave an installed skill
+pointing at an old package version.
 
 ## Open Questions
 

@@ -21,13 +21,24 @@
     console.error("metabrowser agent-log plugin: window.metabrowser missing — SDK not loaded");
     return;
   }
+  const filterControls = mb.filterControls;
+  if (!filterControls) {
+    console.error("metabrowser agent-log plugin: filter controls missing — host assets incomplete");
+    return;
+  }
+  const fc = filterControls;
 
   // ── Per-plugin filter state ─────────────────────────────────────
   let activeKindFilters = null; // Set<string> | null
+  let logFilterUnbind = null;
   let chartsRenderGeneration = 0;
 
   function kindClassToken(kind) {
     return String(kind || "unknown").replace(/[^a-z0-9_-]/gi, "-");
+  }
+
+  function kindLabel(kind) {
+    return String(kind || "unknown").replace(/[-_]+/g, " ");
   }
 
   function fmtDuration(s) {
@@ -81,11 +92,11 @@
   function renderLogEvent(evt, idx) {
     const kind = String(evt.kind || "unknown");
     const kindClass = `kind-${kindClassToken(kind)}${evt.is_error ? " error" : ""}`;
-    let kindLabel = kind.replace("_", " ");
+    let label = kindLabel(kind);
     if (kind === "tool_call") {
-      kindLabel = "→ tool call";
+      label = "→ tool call";
     } else if (kind === "tool_result") {
-      kindLabel = "← tool result";
+      label = "← tool result";
     }
 
     // The per-event raw container is mounted empty; mountLogEventRaw
@@ -106,7 +117,7 @@
       '<span class="log-event-kind ' +
       kindClass +
       '">' +
-      mb.escapeHtml(kindLabel) +
+      mb.escapeHtml(label) +
       "</span>" +
       '<span class="log-event-summary" title="' +
       mb.escapeHtml(evt.summary || "") +
@@ -197,64 +208,57 @@
 
     activeKindFilters = new Set(kinds);
 
-    const buttons = kinds
-      .map((k) => {
-        const label = k.replace("_", " ");
-        return (
-          '<button type="button" class="filter-btn active kind-' +
-          kindClassToken(k) +
-          '" data-filter-kind="' +
-          mb.escapeHtml(k) +
-          '">' +
-          mb.escapeHtml(label) +
-          ' <span class="filter-count">(' +
-          counts[k] +
-          ")</span></button>"
-        );
-      })
-      .join("");
-    return `<div class="filter-bar">${buttons}</div>`;
+    const options = kinds.map((kind) => ({
+      value: kind,
+      label: `${kindLabel(kind)} (${counts[kind].toLocaleString()})`,
+    }));
+    return (
+      '<div class="agent-log-filter-bar">' +
+      fc.groupHtml({
+        key: "agent-event-kind",
+        select: "many",
+        label: "Event types",
+        options,
+        value: kinds,
+      }) +
+      "</div>"
+    );
   }
 
   function toggleKindFilter(kind, root) {
     if (!activeKindFilters) {
       return;
     }
-    const btn = Array.from(root.querySelectorAll(".filter-btn[data-filter-kind]")).find(
-      (candidate) => candidate instanceof HTMLElement && candidate.dataset.filterKind === kind,
-    );
+    const btn = Array.from(
+      root.querySelectorAll('[data-chip-key="agent-event-kind"][data-chip-value]'),
+    ).find((candidate) => candidate.getAttribute("data-chip-value") === kind);
     if (!btn) {
       return;
     }
     if (activeKindFilters.has(kind)) {
       activeKindFilters.delete(kind);
-      btn.classList.remove("active");
+      btn.setAttribute("aria-pressed", "false");
     } else {
       activeKindFilters.add(kind);
-      btn.classList.add("active");
+      btn.setAttribute("aria-pressed", "true");
     }
     root.querySelectorAll(".log-event[data-kind]").forEach((el) => {
-      if (el.dataset.kind !== kind) {
+      const eventKind = el.getAttribute ? el.getAttribute("data-kind") : el.dataset.kind;
+      if (eventKind !== kind) {
         return;
       }
-      if (el instanceof HTMLElement) {
-        el.style.display = activeKindFilters.has(kind) ? "" : "none";
-      }
+      el.style.display = activeKindFilters.has(kind) ? "" : "none";
     });
   }
 
   function bindFilterBar(container) {
-    const filterBar = container.querySelector(".filter-bar");
-    if (!filterBar) {
-      return;
-    }
-    filterBar.addEventListener("click", (event) => {
-      const target = event.target instanceof Element ? event.target : null;
-      const button = target?.closest(".filter-btn[data-filter-kind]");
-      if (!(button instanceof HTMLElement) || !filterBar.contains(button)) {
-        return;
-      }
-      toggleKindFilter(button.dataset.filterKind || "", container);
+    return fc.bind(container, {
+      onChange(key, value, select) {
+        if (key !== "agent-event-kind" || select !== "many") {
+          return;
+        }
+        toggleKindFilter(value, container);
+      },
     });
   }
 
@@ -294,16 +298,17 @@
     let trailer = "";
     const t = data.raw_truncation;
     if (t) {
+      const skipped =
+        t.lines_skipped > 0
+          ? ` ${t.lines_skipped} oversized ${t.lines_skipped === 1 ? "line was" : "lines were"} skipped.`
+          : "";
       trailer =
-        "\n\n... (raw tab truncated at " +
+        "\n\n… Raw content truncated. Showing at most " +
         mb.formatSize(t.cap_bytes) +
-        " — file is " +
+        " of " +
         mb.formatSize(t.file_bytes) +
-        ", " +
-        t.lines_total +
-        " lines, " +
-        t.lines_skipped +
-        " skipped)";
+        "." +
+        skipped;
     }
     return mb.wrapWithCopy(
       '<pre class="code-block"><code class="' +
@@ -315,14 +320,27 @@
   }
 
   function renderLog(container, ctx) {
+    if (logFilterUnbind) {
+      logFilterUnbind();
+      logFilterUnbind = null;
+    }
     // Drop stale per-event raw payloads from the previously rendered
     // log; renderLogHtml repopulates them fresh below. Without this
     // the cache grows across the whole session.
     _logEventRawCache.clear();
     mb.perf.measure("renderAgentLog:log", () => {
       container.innerHTML = renderLogHtml(ctx.raw);
-      bindFilterBar(container);
+      logFilterUnbind = bindFilterBar(container);
     });
+  }
+
+  function disposeLog() {
+    if (logFilterUnbind) {
+      logFilterUnbind();
+      logFilterUnbind = null;
+    }
+    activeKindFilters = null;
+    _logEventRawCache.clear();
   }
 
   function renderRaw(container, ctx) {
@@ -333,7 +351,7 @@
 
   async function renderCharts(container, ctx) {
     const generation = ++chartsRenderGeneration;
-    container.innerHTML = '<div class="charts-placeholder preview-empty">Charts loading...</div>';
+    container.innerHTML = '<div class="charts-placeholder preview-empty">Loading charts…</div>';
     const chartData = await mb.fetchPluginData("agent-log", "charts", {
       path: ctx.path,
     });
@@ -341,7 +359,7 @@
       return;
     }
     if (!window.MetabrowserCharts) {
-      throw new Error("Metabrowser chart runtime is unavailable");
+      throw new Error("Chart rendering is unavailable.");
     }
     window.MetabrowserCharts.renderPayload(container, chartData);
   }
@@ -358,6 +376,7 @@
   }
   mb.builtins.agentLog = {
     renderLog: renderLog,
+    disposeLog: disposeLog,
     renderRaw: renderRaw,
     renderCharts: renderCharts,
     // Single-event renderer exposed for the shell's SSE live-stream
@@ -366,7 +385,7 @@
     renderLogEvent: renderLogEvent,
   };
 
-  mb.registerView("agent-log", "log", { render: renderLog });
+  mb.registerView("agent-log", "log", { render: renderLog, dispose: disposeLog });
   mb.registerView("agent-log", "charts", {
     render: renderCharts,
     dispose: disposeCharts,

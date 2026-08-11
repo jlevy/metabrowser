@@ -11,6 +11,7 @@ import logging
 import os
 from enum import StrEnum
 from pathlib import Path
+from threading import Event
 from typing import Protocol
 
 from pathspec.gitignore import GitIgnoreSpec
@@ -54,7 +55,7 @@ class IgnoreChecker:
         """Load patterns from a gitignore-format file."""
         with open(path) as f:
             lines = f.readlines()
-        log.info("Loaded ignore patterns (%s lines) from %s", len(lines), path)
+        log.debug("Loaded ignore patterns (%s lines) from %s", len(lines), path)
         return cls(lines)
 
     def matches(self, path: str | Path, *, is_dir: bool = False) -> bool:
@@ -82,7 +83,7 @@ ignore_none: IgnoreFilter = lambda path, *, is_dir=False: False
 """No-op filter that ignores nothing."""
 
 
-def load_gitignore(root: Path) -> IgnoreFilter:
+def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFilter:
     """Load ``.gitignore`` files from *root* and its subdirectories.
 
     Collects patterns from the root ``.gitignore`` and any nested ``.gitignore``
@@ -95,10 +96,15 @@ def load_gitignore(root: Path) -> IgnoreFilter:
     root_gitignore = root / ".gitignore"
     if root_gitignore.is_file():
         with open(root_gitignore) as f:
-            all_lines.extend(f.readlines())
+            for line in f:
+                if cancel_event is not None and cancel_event.is_set():
+                    return ignore_none
+                all_lines.append(line)
 
     # Walk for nested .gitignore files (skip .git itself).
     for dirpath, dirnames, filenames in os.walk(root):
+        if cancel_event is not None and cancel_event.is_set():
+            return ignore_none
         dirnames[:] = [d for d in dirnames if d != ".git"]
         if dirpath == str(root):
             continue  # already handled above
@@ -107,6 +113,8 @@ def load_gitignore(root: Path) -> IgnoreFilter:
             nested_path = Path(dirpath) / ".gitignore"
             with open(nested_path) as f:
                 for line in f:
+                    if cancel_event is not None and cancel_event.is_set():
+                        return ignore_none
                     stripped = line.strip()
                     # Skip blank lines and comments.
                     if not stripped or stripped.startswith("#"):
@@ -118,11 +126,16 @@ def load_gitignore(root: Path) -> IgnoreFilter:
     if not all_lines:
         return ignore_none
 
-    log.info("Loaded gitignore patterns (%s lines) from %s", len(all_lines), root)
+    log.debug("Loaded gitignore patterns (%s lines) from %s", len(all_lines), root)
     return IgnoreChecker(all_lines)
 
 
-def make_ignore_filter(root: Path, mode: IgnoreMode) -> IgnoreFilter:
+def make_ignore_filter(
+    root: Path,
+    mode: IgnoreMode,
+    *,
+    cancel_event: Event | None = None,
+) -> IgnoreFilter:
     """Build an ``IgnoreFilter`` for the given mode.
 
     - ``show_all``: returns ``ignore_none``.
@@ -132,7 +145,7 @@ def make_ignore_filter(root: Path, mode: IgnoreMode) -> IgnoreFilter:
     if mode is IgnoreMode.show_all:
         return ignore_none
 
-    base = load_gitignore(root)
+    base = load_gitignore(root, cancel_event=cancel_event)
     if base is ignore_none or mode is IgnoreMode.gitignore:
         return base
 

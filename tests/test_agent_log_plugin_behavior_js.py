@@ -29,8 +29,13 @@ def test_agent_log_escapes_kinds_and_disposes_charts() -> None:
     assert payload == {
         "chartDisposeCalls": 1,
         "chartRenderCalls": 0,
+        "dynamicEndsUnpressed": True,
+        "dynamicEventHidden": True,
+        "dynamicLabelIsReadable": True,
+        "dynamicStartsPressed": True,
         "hasDelegatedClick": True,
         "hasEscapedImage": True,
         "hasInlineKindHandler": False,
         "hasRawImage": False,
+        "usesSharedMultiSelect": True,
     }

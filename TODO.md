@@ -16,7 +16,7 @@ Checked items below are supported today; unchecked items are planned work.
 - [ ] Add complete server filename and bounded full-text providers, then evaluate
   optional persistent indexing only if measured inventory scans require it
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
-- [ ] Define a generic writer event-log backend for append-only generated artifacts
+- [ ] Define a generic writer event-log backend for append-only generated files
 - [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for
   directories containing hundreds of thousands of entries
 
@@ -62,7 +62,7 @@ other trusted desktop integrations can use them without entering Metabrowser cor
 - [x] Raw zlib streams (`.zlib`)
 - [ ] Zstandard (`.zst`)
 - [ ] Evaluate common single-file formats such as xz (`.xz`), bzip2 (`.bz2`), and Brotli
-  (`.br`) as real artifact demand appears
+  (`.br`) as real file-format demand appears
 
 Adding a format requires logical-name and extension handling, streaming input/output and
 CPU limits, malformed-stream behavior, and parity across preview, classification,

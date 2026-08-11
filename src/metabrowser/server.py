@@ -91,6 +91,8 @@ from metabrowser.file_kinds import (
     classify_file_kind,
     register_file_kind_detector,
 )
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -112,7 +114,11 @@ from metabrowser.paths_safe import (
 )
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
-from metabrowser.settings import RECENT_WINDOW_SECONDS, client_settings_dict
+from metabrowser.settings import (
+    RECENT_WINDOW_SECONDS,
+    SLOW_OPERATION_LOG_SECONDS,
+    client_settings_dict,
+)
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
     _IGNORE_CACHE,
@@ -152,13 +158,12 @@ _TREE_COLD_START_WAIT_S = 0.10
 
 # ── Performance logging setup ───────────────────────────────────
 #
-# The browser runs as a long-lived dev tool against potentially huge
-# trees, so timing visibility on every walk + handler is non-optional.
-# We route both our own ``metabrowser`` namespace and ``funlog``
-# (used for ``@log_calls`` decorators on hot paths) at INFO to stderr whenever
-# this module loads. A dynamic stream proxy keeps diagnostics separate from
-# machine-readable stdout and avoids retaining a closed test or embedding stream.
-# Idempotent so repeated imports don't double-attach handlers.
+# The browser runs as a long-lived tool against potentially huge trees. Route
+# its diagnostics to stderr without mixing them into machine-readable stdout.
+# Routine lifecycle and request details stay at DEBUG; INFO is reserved for
+# infrequent, useful summaries, while slow requests and failures use WARNING or
+# ERROR. A dynamic stream proxy avoids retaining a closed test or embedding
+# stream. Setup is idempotent so repeated imports do not double-attach handlers.
 
 _PERF_LOG_HANDLER_TAG = "metabrowser-perf"
 
@@ -188,12 +193,10 @@ def _setup_perf_logging() -> None:
     )
     # Attach to ``metabrowser`` so every child logger (server, tree,
     # activity, charts, sse, …) propagates up to this handler.
-    # ``funlog.funlog`` is a sibling tree (where ``@log_calls`` emits)
-    # and gets its own handler attachment.
     # ``METABROWSER_LOG_LEVEL`` (DEBUG/INFO/WARNING/ERROR) overrides; default INFO.
     level_name = os.environ.get("METABROWSER_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
-    for logger_name in ("metabrowser", "funlog.funlog"):
+    for logger_name in ("metabrowser",):
         lg = logging.getLogger(logger_name)
         lg.setLevel(level)
         already_attached = any(
@@ -226,7 +229,9 @@ from funlog import format_duration as _format_duration
 def log_async_calls(*, if_slower_than: float = 0.0) -> Any:
     """Async equivalent of ``@log_calls(show_timing_only=True)``.
 
-    *if_slower_than* in seconds; a value of 0 means "log every call".
+    *if_slower_than* is in seconds; a value of 0 traces every call. Request
+    timings are DEBUG diagnostics. The request middleware separately reports
+    genuinely slow end-to-end requests at WARNING.
     """
 
     def decorator(func: Any) -> Any:
@@ -238,7 +243,7 @@ def log_async_calls(*, if_slower_than: float = 0.0) -> Any:
             finally:
                 elapsed = time.monotonic() - started
                 if elapsed >= if_slower_than:
-                    LOG.info("⏱ %s took %s", func.__name__, _format_duration(elapsed))
+                    LOG.debug("⏱ %s took %s", func.__name__, _format_duration(elapsed))
 
         return wrapper
 
@@ -372,7 +377,12 @@ STATIC_DIR: Path = Path(__file__).parent / "static"
 _PERF_JS_AVAILABLE: bool = (STATIC_DIR / "perf.js").is_file()
 
 
-_SLOW_SERVER_REQUEST_MS = int(os.environ.get("METABROWSER_SLOW_SERVER_MS", "2000"))
+_SLOW_SERVER_REQUEST_MS = int(
+    os.environ.get(
+        "METABROWSER_SLOW_SERVER_MS",
+        str(int(SLOW_OPERATION_LOG_SECONDS * 1000)),
+    )
+)
 
 # Verbose request log: when METABROWSER_REQUEST_LOG=verbose, the
 # slow-request middleware logs *every* request (not just the slow
@@ -742,6 +752,8 @@ async def index(_request: Request) -> HTMLResponse:
     file_fuzzy_match_url = _static_asset_url("file_fuzzy_match.js")
     search_controller_url = _static_asset_url("search_controller.js")
     search_palette_url = _static_asset_url("search_palette.js")
+    git_graph_url = _static_asset_url("git_graph.js")
+    git_panel_url = _static_asset_url("git_panel.js")
     app_url = _static_asset_url("app.js")
     perf_block = (
         f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
@@ -912,7 +924,7 @@ async def index(_request: Request) -> HTMLResponse:
              open/select + the dropdown. The wrapper's aria-expanded drives the
              menu's visibility via CSS. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
-          <button class="settings-btn" id="settings-btn" type="button"
+          <button class="icon-btn settings-btn" id="settings-btn" type="button"
                   aria-haspopup="true" title="Settings" aria-label="Settings"></button>
           <div class="settings-menu menu" role="menu" aria-label="Settings">
             <div class="menu-chooser" role="group" aria-label="Theme">
@@ -931,7 +943,7 @@ async def index(_request: Request) -> HTMLResponse:
         </div>
       </header>
       <div class="tab-bar nav-tab-bar" role="tablist">
-        <button class="tab-btn active" role="tab" data-tab="files" aria-selected="true">Files</button>
+        <button class="tab-btn active" type="button" role="tab" data-tab="files" aria-selected="true">Files</button>
       </div>
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
@@ -939,7 +951,7 @@ async def index(_request: Request) -> HTMLResponse:
       <div class="nav-filter-bar" id="nav-filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
-          <div class="loading"><div class="spinner"></div>Loading...</div>
+          <div class="loading"><div class="spinner"></div>Loading files…</div>
         </div>
       </div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
@@ -949,7 +961,7 @@ async def index(_request: Request) -> HTMLResponse:
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
-      <div class="preview-empty">Select a file to view</div>
+      <div class="preview-empty">Select a file to preview.</div>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional
@@ -972,6 +984,10 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{file_fuzzy_match_url}"></script>
   <script src="{search_controller_url}"></script>
   <script src="{search_palette_url}"></script>
+  <!-- Git graph modules load before app.js: the shell's DOMContentLoaded
+       handler calls MetabrowserGitPanel.init(), which needs both present. -->
+  <script src="{git_graph_url}"></script>
+  <script src="{git_panel_url}"></script>
   <script src="{app_url}"></script>
   {plugin_scripts}
   {optional_assets_block}
@@ -1019,7 +1035,7 @@ async def api_tree(request: Request) -> JSONResponse:
             max_depth=remaining_depth,
             root_abs=root_dir,
         )
-        LOG.info(
+        LOG.debug(
             "api_tree (inventory) path=%r depth=%d entries=%d status=%s",
             subpath or "<root>",
             remaining_depth,
@@ -1034,7 +1050,7 @@ async def api_tree(request: Request) -> JSONResponse:
                 subpath or "<root>",
                 inventory_status(),
             )
-        LOG.info(
+        LOG.debug(
             "api_tree (inventory-miss) path=%r depth=%d entries=%d status=%s",
             subpath or "<root>",
             remaining_depth,
@@ -1047,10 +1063,17 @@ async def api_tree(request: Request) -> JSONResponse:
     # the same reason api_catalog offloads its own pass.
     summary = None
     extensions = None
+    type_presets = None
     if inv_can_serve and not subpath:
-        summary, extensions = await asyncio.to_thread(
-            lambda: (inventory.root_summary(), inventory.extension_tally())
+        summary, type_tallies = await asyncio.to_thread(
+            lambda: (
+                inventory.root_summary(),
+                inventory.file_type_tallies(
+                    [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
+                ),
+            )
         )
+        extensions, type_presets = type_tallies
     return JSONResponse(
         {
             "root": str(root_dir),
@@ -1058,14 +1081,15 @@ async def api_tree(request: Request) -> JSONResponse:
             "tally_cache_status": inventory_status(),
             "tally_cache_max_files": inventory.max_files(),
             # Tracked-versus-ignored split for the nav header, plus the
-            # extension tally behind the nav's type filter. Neither can
+            # extension and aggregate tallies behind the nav's type filter. None can
             # be derived client-side: summing top-level children
             # miscounts nested ignored files (see
             # InventoryIndex.root_summary), and the Quick File catalog
-            # drops gitignored entries (see extension_tally). Only the
-            # full-tree request needs either.
+            # drops gitignored entries (see file_type_tallies). Only the
+            # full-tree request needs these values.
             "summary": summary,
             "extensions": extensions,
+            "type_presets": type_presets,
         }
     )
 
@@ -1920,7 +1944,7 @@ async def api_activity(_request: Request) -> JSONResponse:
     instead — that's the live-update path.
     """
     active_files = await asyncio.to_thread(_activity_snapshot, _resolved_root_dir())
-    LOG.info("api_activity: %d active files", len(active_files))
+    LOG.debug("api_activity: %d active files", len(active_files))
     return JSONResponse(
         {
             "active_files": active_files,
@@ -2073,7 +2097,7 @@ _LOADED_PLUGINS = _DISCOVERY.plugins
 if _DISCOVERY.errors:
     for _err in _DISCOVERY.errors:
         LOG.warning("metabrowser plugin discovery: %s", _err)
-LOG.info(
+LOG.debug(
     "metabrowser loaded %d plugin(s): %s",
     len(_LOADED_PLUGINS),
     [p.name for p in _LOADED_PLUGINS],
@@ -2254,6 +2278,10 @@ routes = [
     Route("/raw", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
+    # Read-only git history, kept as its own collection in
+    # ``metabrowser.git.routes``: separate wire model, separate failure
+    # modes, separate resource bounds.
+    *GIT_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
 

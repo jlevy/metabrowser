@@ -833,6 +833,25 @@
   --standalone-label-kind: hsl(0 0% 40%);
   --standalone-label-badge: hsl(0 0% 27%);
   --standalone-edge: hsl(0 0% 33%);
+
+  /* Commit-graph branch lanes. These five are VS Code's graph
+     foreground colors, chosen upstream to stay distinguishable under
+     the common forms of color vision deficiency — which is why they are
+     kept as a set rather than resampled from the app palette. The
+     renderer references them only as tokens (see git_graph.js). They
+     are identical in both themes: they are drawn as 1px strokes on
+     either background and already carry enough contrast on both. */
+  --git-lane-1: #ffb000;
+  --git-lane-2: #dc267f;
+  --git-lane-3: #994f00;
+  --git-lane-4: #40b0a6;
+  --git-lane-5: #b66dff;
+
+  /* Ref badges, and the lane color for the branch HEAD is on. */
+  --git-ref-local: var(--status-info);
+  --git-ref-remote: hsl(265 75% 58%);
+  --git-ref-tag: hsl(38 92% 40%);
+  --git-ref-bg: var(--viz-surface-sunken);
 }
 
 [data-theme="dark"] {
@@ -907,6 +926,15 @@
   --ft-config-border: hsl(220 10% 30%);
   --chart-grid: hsl(220 13% 24%);
   --chart-label-text: var(--viz-text-meta);
+
+  /* Lane colors are intentionally not overridden: the five graph
+     foregrounds are readable as thin strokes on both backgrounds, and
+     re-tuning them per theme would break the colorblind-safe spacing
+     they were chosen for. Badge colors do need lifting — the light
+     values are text on a dark surface here, not fills on a light one. */
+  --git-ref-remote: hsl(265 75% 74%);
+  --git-ref-tag: hsl(38 92% 62%);
+  --git-ref-bg: hsl(220 16% 22%);
 }
 
 * {
@@ -1009,6 +1037,27 @@ body {
   padding: 2px 0;
   border-radius: var(--radius-chrome);
 }
+/* ── Text buttons — shared labelled action primitive ─────────────
+   A compact action with a persistent surface and border. Use-site
+   classes position the control; they do not restyle it. */
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-chrome);
+  padding: 3px 8px;
+  font: inherit;
+  font-size: var(--ui-small-font-size);
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: var(--link);
+  color: var(--link);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
    --icon-btn-size hit target holding the app-wide --icon-glyph mark,
@@ -1021,18 +1070,13 @@ body {
    stop looking like the same kind of thing. Reach for the hover
    surface to signal "this is clickable", not for a static frame.
 
-   `.icon-btn` is the class for new markup. The named classes listed
-   with it are today's use sites, carried here because plugin markup
-   writes those class names directly; each keeps only its own
-   positioning or reveal behavior in its own block. An icon button
+   Every icon-only button carries `.icon-btn`. A named use-site class
+   may sit beside it for positioning, reveal triggers, or copied-state
+   feedback, but it does not recreate the control. An icon button
    that floats above content takes `.icon-btn-overlay`, which is the
    one sanctioned resting surface: a bare glyph over source text is
    unreadable, so it needs an opaque plate of its own. */
-.icon-btn,
-.settings-btn,
-.file-header-icon,
-.file-header-copy,
-.content-copy-btn {
+.icon-btn {
   display: inline-flex;
   width: var(--icon-btn-size);
   height: var(--icon-btn-size);
@@ -1057,9 +1101,7 @@ body {
    while leaving it in the tab order, so a keyboard user can still reach
    it — see the focus rule below. Every reveal trigger must restore
    `pointer-events` along with the opacity. */
-.icon-btn-reveal,
-.file-header-copy,
-.content-copy-btn {
+.icon-btn-reveal {
   opacity: 0;
   pointer-events: none;
   transition:
@@ -1071,30 +1113,17 @@ body {
 /* Floating over content, where a transparent glyph would collide with
    the text underneath. Declared above the hover rule so hovering still
    swaps in the hover surface. */
-.icon-btn-overlay,
-.content-copy-btn {
+.icon-btn-overlay {
   background: var(--sidebar-bg);
 }
-.icon-btn svg,
-.settings-btn svg,
-.file-header-icon svg,
-.file-header-copy svg,
-.content-copy-btn svg {
+.icon-btn svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
 }
 /* Hover, keyboard focus, and "my menu is open" are the same state:
    the control has surfaced. */
 .icon-btn:hover,
-.settings-btn:hover,
-.file-header-icon:hover,
-.file-header-copy:hover,
-.content-copy-btn:hover,
 .icon-btn:focus-visible,
-.settings-btn:focus-visible,
-.file-header-icon:focus-visible,
-.file-header-copy:focus-visible,
-.content-copy-btn:focus-visible,
 .settings-toggle[aria-expanded="true"] .settings-btn {
   color: var(--text);
   background: var(--hover-bg);
@@ -1102,26 +1131,16 @@ body {
 }
 /* The hover surface alone is not a focus indicator — keyboard focus
    also takes the app's standard ring. */
-.icon-btn:focus-visible,
-.settings-btn:focus-visible,
-.file-header-icon:focus-visible,
-.file-header-copy:focus-visible,
-.content-copy-btn:focus-visible {
+.icon-btn:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
 }
 /* A reveal button that takes keyboard focus must actually appear. */
-.icon-btn-reveal:focus-visible,
-.file-header-copy:focus-visible,
-.content-copy-btn:focus-visible {
+.icon-btn-reveal:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
-.icon-btn[hidden],
-.settings-btn[hidden],
-.file-header-icon[hidden],
-.file-header-copy[hidden],
-.content-copy-btn[hidden] {
+.icon-btn[hidden] {
   display: none;
 }
 
@@ -2418,19 +2437,7 @@ html[data-prose-font="sans"] {
   flex-shrink: 0;
 }
 .file-header-action {
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  border-radius: var(--radius-chrome);
-  padding: 3px 8px;
-  font: inherit;
-  font-size: var(--ui-small-font-size);
-  cursor: pointer;
   flex-shrink: 0;
-}
-.file-header-action:hover {
-  border-color: var(--link);
-  color: var(--link);
 }
 /* .file-header-icon (the print action) has no block of its own: it is
    entirely the .icon-btn primitive. It sits beside the copy icon and,
@@ -2777,228 +2784,6 @@ html[data-prose-font="sans"] {
 .file-image {
   max-width: 100%;
   height: auto;
-  display: block;
-}
-
-/* ── Log summary ─────────────────────────────────────────────── */
-
-.log-summary {
-  display: flex;
-  gap: 16px;
-  padding: 12px var(--content-padding-x);
-  background: hsl(210 17% 98%);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-document);
-  margin-bottom: var(--content-padding-y);
-  flex-wrap: wrap;
-}
-.log-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.log-stat-label {
-  font-size: var(--label-font-size);
-  font-weight: var(--label-font-weight);
-  text-transform: var(--label-text-transform);
-  letter-spacing: var(--label-letter-spacing);
-  color: var(--muted);
-}
-.log-stat-value {
-  font-size: var(--body-font-size);
-  font-weight: var(--weight-bold);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── Log events ──────────────────────────────────────────────── */
-
-.log-event {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  margin-bottom: 4px;
-  overflow: hidden;
-}
-.log-event-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  cursor: pointer;
-  font-size: var(--mono-block-font-size);
-  font-family: var(--font-mono);
-  background: hsl(0 0% 98%);
-  transition: background var(--transition-fast);
-}
-.log-event-header:hover {
-  background: var(--hover-bg);
-}
-.log-event-expand {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  transition: transform var(--transition-fast);
-  color: var(--muted);
-}
-.log-event.expanded .log-event-expand {
-  transform: rotate(90deg);
-}
-.log-event-kind {
-  font-size: var(--ui-small-font-size);
-  font-weight: var(--weight-bold);
-  padding: 1px 6px;
-  border-radius: var(--radius-chrome);
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.kind-init {
-  background: hsl(214 95% 93%);
-  color: hsl(226 71% 40%);
-}
-.kind-tool_call {
-  background: hsl(48 96% 89%);
-  color: hsl(23 82% 31%);
-}
-.kind-tool_result {
-  background: hsl(48 96% 89%);
-  color: hsl(23 82% 31%);
-}
-.kind-text {
-  background: hsl(220 14% 96%);
-  color: hsl(217 19% 27%);
-}
-.kind-thinking {
-  background: hsl(251 91% 95%);
-  color: hsl(263 69% 42%);
-}
-.kind-result {
-  background: hsl(149 80% 90%);
-  color: hsl(163 88% 20%);
-}
-.kind-result.error {
-  background: hsl(0 93% 94%);
-  color: hsl(0 70% 35%);
-}
-.kind-system {
-  background: hsl(220 14% 96%);
-  color: hsl(220 9% 46%);
-}
-.kind-raw {
-  background: hsl(220 14% 96%);
-  color: hsl(220 9% 46%);
-}
-
-/* ── Event filter bar ───────────────────────────────────────────
-   The agent-log plugin's event-kind buttons. Unrelated to the nav
-   filter bar above, which is why that one is `.nav-filter-bar`: the
-   two shared the `.filter-bar` name for a while and this rule's
-   margin silently leaked into the navigation column. */
-.filter-bar {
-  display: flex;
-  gap: 0;
-  margin: 8px 0 12px 0;
-  flex-wrap: wrap;
-}
-.filter-btn {
-  font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
-  font-weight: var(--weight-bold);
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  cursor: pointer;
-  background: var(--bg);
-  color: var(--muted);
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast);
-  line-height: 1.4;
-}
-.filter-btn:first-child {
-  border-radius: var(--radius-chrome) 0 0 var(--radius-chrome);
-}
-.filter-btn:last-child {
-  border-radius: 0 var(--radius-chrome) var(--radius-chrome) 0;
-}
-.filter-btn:not(:first-child) {
-  margin-left: -1px;
-}
-.filter-btn .filter-count {
-  font-weight: var(--weight-normal);
-  opacity: 0.7;
-}
-
-/* Active states — colored to match kind badge */
-.filter-btn.active.kind-thinking {
-  background: hsl(251 91% 95%);
-  color: hsl(263 69% 42%);
-  border-color: hsl(252 95% 85%);
-}
-.filter-btn.active.kind-text {
-  background: hsl(220 14% 96%);
-  color: hsl(217 19% 27%);
-  border-color: hsl(216 12% 84%);
-}
-.filter-btn.active.kind-tool_call {
-  background: hsl(48 96% 89%);
-  color: hsl(23 82% 31%);
-  border-color: hsl(43 96% 56%);
-}
-.filter-btn.active.kind-tool_result {
-  background: hsl(48 96% 89%);
-  color: hsl(23 82% 31%);
-  border-color: hsl(43 96% 56%);
-}
-.filter-btn.active.kind-system {
-  background: hsl(220 14% 96%);
-  color: hsl(220 9% 46%);
-  border-color: hsl(216 12% 84%);
-}
-.filter-btn.active.kind-init {
-  background: hsl(214 95% 93%);
-  color: hsl(226 71% 40%);
-  border-color: hsl(212 96% 78%);
-}
-.filter-btn.active.kind-result {
-  background: hsl(149 80% 90%);
-  color: hsl(163 88% 20%);
-  border-color: hsl(156 72% 67%);
-}
-.log-event-summary {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--ui-small-font-size);
-  min-width: 0;
-}
-.summary-label {
-  font-weight: var(--weight-bold);
-}
-.summary-key {
-  color: var(--muted);
-}
-.summary-value {
-  color: var(--text);
-}
-.summary-omitted {
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  flex-shrink: 0;
-}
-.log-event-raw {
-  display: none;
-  max-height: 400px;
-  overflow-y: auto;
-  border-top: 1px solid var(--border);
-}
-.log-event-raw pre {
-  margin: 0;
-}
-.log-event-raw code {
-  font-family: var(--font-mono);
-  font-size: var(--mono-block-font-size);
-  line-height: 1.5;
-}
-.log-event.expanded .log-event-raw {
   display: block;
 }
 
@@ -3986,4 +3771,305 @@ pre.code-block code.hljs {
   .kpress-print-surface {
     display: block;
   }
+}
+
+/* ── Git graph panel ──────────────────────────────────────────
+   Row proportions follow VS Code's Source Control Graph
+   (.history-item in src/vs/workbench/contrib/scm/browser/media/scm.css):
+   a fixed-width graph gutter exactly one row tall, then badges, subject,
+   and right-aligned author and age.
+
+   The 22px row height is not a style choice — it is SWIMLANE_HEIGHT in
+   git_graph.js, and each row's SVG is drawn to exactly that height.
+   Changing one without the other misaligns every lane against its row. */
+
+.git-graph-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-graph-row {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding-right: 12px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  font-size: var(--nav-font-size);
+  transition: background var(--transition-fast);
+}
+
+.git-graph-row:hover {
+  background: var(--hover-bg);
+}
+
+.git-graph-row.selected {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+
+.git-graph-row:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+/* Width is set per panel from the widest row loaded, so the subject
+   column stays put instead of stepping in and out as lanes open and
+   close. */
+.git-graph-gutter {
+  display: flex;
+  flex-shrink: 0;
+  height: 22px;
+}
+
+/* The hollow centre of the HEAD and merge markers should read as the row
+   background rather than as a filled dot. Following the row's own
+   background through hover and selection keeps it hollow instead of
+   leaving a pale disc on a highlighted row. */
+.git-graph-row .git-graph-svg > circle:not([style*="fill"]) {
+  fill: var(--sidebar-bg);
+}
+
+.git-graph-row:hover .git-graph-svg > circle:not([style*="fill"]) {
+  fill: var(--hover-bg);
+}
+
+/* Ordered after :hover to match how the row background itself resolves:
+   .git-graph-row.selected and .git-graph-row:hover carry equal
+   specificity, so on a row that is both, source order is what makes the
+   selection colour win. The marker has to make the same choice, or a
+   selected row shows a sidebar-coloured disc inside its ring. */
+.git-graph-row.selected .git-graph-svg > circle:not([style*="fill"]) {
+  fill: var(--highlight-bg);
+}
+
+.git-graph-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-grow: 1;
+  padding-left: 6px;
+}
+
+.git-graph-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-grow: 1;
+}
+
+.git-graph-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-graph-age {
+  flex-shrink: 0;
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.git-graph-more {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-graph-more-failed {
+  color: var(--status-error-strong);
+}
+
+.git-panel-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: var(--nav-font-size);
+}
+
+/* Rides the .btn primitive; only the spacing is local. The hand-rolled
+   copy this replaced also had no :focus-visible ring. */
+.git-panel-refresh {
+  margin-top: 10px;
+}
+
+/* ── Ref badges ─────────────────────────────────────────────── */
+
+.git-ref {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 140px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--git-ref-bg);
+  color: var(--git-ref-local);
+  font-size: var(--micro-font-size);
+}
+
+.git-ref-remote {
+  color: var(--git-ref-remote);
+}
+
+.git-ref-tag {
+  color: var(--git-ref-tag);
+}
+
+.git-ref-head {
+  font-weight: var(--weight-bold);
+}
+
+/* ── Commit detail view ─────────────────────────────────────── */
+
+.git-commit-view {
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+
+.git-commit-subject {
+  margin: 0 0 8px;
+  font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+  line-height: 1.35;
+}
+
+.git-commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-commit-sha {
+  font-family: var(--font-mono);
+}
+
+.git-commit-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.git-commit-body {
+  margin: 16px 0;
+  padding: 12px;
+  border-radius: var(--radius-document);
+  background: var(--code-bg);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+}
+
+.git-commit-files {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.git-commit-files-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-commit-file {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: var(--radius-chrome);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--ui-small-font-size);
+  text-align: left;
+}
+
+.git-commit-file:hover {
+  background: var(--hover-bg);
+}
+
+.git-commit-file:focus-visible,
+.git-panel-refresh:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+
+/* Files outside the served root, and deleted files, are listed but not
+   navigable — the shell has nothing to open. Styling them inert stops
+   the pointer from promising a click that does nothing. */
+.git-commit-file-inert,
+.git-commit-file-note {
+  cursor: default;
+  color: var(--muted);
+}
+
+.git-commit-file-inert:hover,
+.git-commit-file-note:hover {
+  background: transparent;
+}
+
+.git-file-status {
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
+  color: var(--muted);
+  font-weight: var(--weight-bold);
+}
+
+.git-file-added .git-file-status {
+  color: var(--status-success);
+}
+
+.git-file-deleted .git-file-status {
+  color: var(--status-error-strong);
+}
+
+.git-file-path {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-stat-add,
+.git-stat-del,
+.git-stat-binary {
+  flex-shrink: 0;
+  font-size: var(--micro-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.git-stat-add {
+  color: var(--status-success);
+}
+
+.git-stat-del {
+  color: var(--status-error-strong);
+}
+
+.git-stat-binary {
+  color: var(--muted);
 }
