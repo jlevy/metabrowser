@@ -65,6 +65,25 @@ no viewer, `klaus` and `git instaweb` view local repos but cannot fetch.
 It also found that Git accepts plain repository URLs directly, so the fetch step is
 mostly cache bookkeeping rather than URL handling.
 
+The `feat/git-graph-view` work (PR #24) has since landed a `metabrowser.git` package
+with a bounded async subprocess runner, repository identity discovery, and a read-only
+`/api/git/` collection.
+That changes this plan: the Git plumbing this feature needs largely exists, and the job
+is to reuse it rather than build a second path to the `git` executable.
+Two of its properties are load-bearing here.
+
+First, `metabrowser.git.repo` requires the served root to *be* the repository’s
+working-tree root, on the grounds that history spans the whole working tree and exposing
+it while serving a subdirectory would describe files outside the navigation boundary.
+A URL-opened cache entry satisfies that by construction, so a repo opened from a URL
+gets the Git panel with no URL-specific work — which is exactly the payoff the research
+predicted from keeping a real clone.
+
+Second, `metabrowser.git.__init__` states a deliberate contract: *“Everything here is
+read-only. Nothing in this package stages, commits, checks out, fetches, or otherwise
+mutates a repository.”* Cloning fetches.
+That boundary decides where this feature’s code lives.
+
 ## Design
 
 ### Approach
@@ -109,26 +128,52 @@ The result is correct in every case and only the timing differs.
   version, timestamps, and head ref.
   Beside rather than inside, so it survives the rename and is never served.
 
-**`metabrowser/git_cmd.py`** (new) is a narrow wrapper over the `git` executable:
+**No new git wrapper.** An earlier draft of this spec proposed a `git_cmd.py`; that
+would have duplicated `metabrowser.git.process`, which already provides fixed argument
+vectors with no shell, a wall-clock timeout, incremental capped stdout reads, concurrent
+stdout and stderr draining, child reaping on timeout and cancellation, scrubbing of the
+repository-pinning `GIT_*` variables, `GIT_TERMINAL_PROMPT=0` with empty askpass
+settings, and a typed `GitError` hierarchy.
+Clone and backfill call `run_git` and inherit all of it.
+`process.py` stays the only place that spawns `git`.
 
-- Version detection with an anchored regex on `git version `, taking at most three
-  numeric components and ignoring vendor suffixes, since `2.39.5 (Apple Git-154)`,
-  `2.44.0.windows.1`, and `2.55.GIT` all occur.
+**`metabrowser/git/process.py`** needs three additions, each of which also improves the
+existing read paths:
+
+- **Version detection**, which the package currently has none of.
+  An anchored regex on `git version ` taking at most three numeric components and
+  ignoring vendor suffixes, since `2.39.5 (Apple Git-154)`, `2.44.0.windows.1`, and
+  `2.55.GIT` all occur.
   Unparseable means unknown, which degrades to a full clone rather than failing.
-- A non-interactive environment on every invocation: `GIT_TERMINAL_PROMPT=0`,
-  neutralized `GIT_ASKPASS` and `SSH_ASKPASS`, `SSH_ASKPASS_REQUIRE=never`,
-  `GCM_INTERACTIVE=never`, `GIT_SSH_COMMAND` carrying
-  `-o BatchMode=yes -o ConnectTimeout=10`, plus `stdin=DEVNULL` and a wall-clock
-  timeout. The environment is inherited and added to, never rebuilt: suppressing global
-  or system config breaks the user’s credential helper, and on macOS breaks it outright
-  because `osxkeychain` is configured in a packager-shipped system gitconfig.
-- Hardening through `-c` flags only: `core.symlinks=false` so a hostile symlink
-  materializes as an inert text file, `core.hooksPath` pinned empty,
-  `fetch.recurseSubmodules=false`, `protocol.allow=never` with explicit `https` and
-  `ssh` allowances, `gc.auto=0`, `--no-recurse-submodules`, and `--` before the URL.
-  `transfer.fsckObjects` stays at its default, because enabling it fails to clone
-  mainstream repositories including Flask.
-- Arguments always as a list, never through a shell.
+  Cached for the process lifetime alongside `git_executable()`.
+- **`stdin=DEVNULL` on spawn.** The runner currently passes no `stdin`, so children
+  inherit the parent’s. `GIT_TERMINAL_PROMPT=0` covers Git’s own prompt, but a network
+  operation can still reach an SSH or credential-manager prompt in ways the read paths
+  never exercised.
+- **Completing the non-interactive environment**: `SSH_ASKPASS_REQUIRE=never`,
+  `GCM_INTERACTIVE=never`, and `GIT_SSH_COMMAND` carrying
+  `-o BatchMode=yes -o ConnectTimeout=10`. The environment must keep being inherited and
+  added to, never rebuilt — suppressing global or system config breaks the user’s
+  credential helper, and on macOS breaks it outright because `osxkeychain` is configured
+  in a packager-shipped system gitconfig.
+
+**`metabrowser/repo_clone.py`** (new) holds the fetching operations, deliberately
+outside the `metabrowser.git` package so that package’s read-only contract stays true:
+
+- `clone` builds the argument vector and hardens through `-c` flags only:
+  `core.symlinks=false` so a hostile symlink materializes as an inert text file,
+  `core.hooksPath` pinned empty, `fetch.recurseSubmodules=false`, `protocol.allow=never`
+  with explicit `https` and `ssh` allowances, `gc.auto=0`, `--no-recurse-submodules`,
+  `--filter=blob:none`, and `--` before the URL. `transfer.fsckObjects` stays at its
+  default, because enabling it fails to clone mainstream repositories including Flask.
+- `backfill` runs `git backfill` when the detected version is at least 2.49.
+- Both pass an explicit `timeout_s` far above `GIT_SUBPROCESS_TIMEOUT_S`, which is 15
+  seconds because it bounds request-path reads.
+  A large repository clones in well over that; two new settings constants cover clone
+  and backfill separately.
+- Both are async, because `run_git` is.
+  The CLI clone happens before uvicorn starts, so it runs under `asyncio.run`; the
+  background backfill is scheduled on the running loop once the server is up.
 
 **`metabrowser/cli/main.py`** gains URL detection on ROOT. Because ROOT is typed as
 `Path`, detection runs on the raw string before path resolution.
@@ -139,12 +184,15 @@ Query and fragment are stripped.
 to use instead.
 
 **`metabrowser/errors.py`** needs no new type.
-Failures raise `CLIError`, which the entry point already renders as `Error: <message>`.
+Clone failures surface as `CLIError`, which the entry point already renders as
+`Error: <message>`.
 
 ### Error messages
 
 Every Git failure exits 128, so the exit code carries no information and stderr must be
-matched. Four cases are worth distinguishing:
+matched. `GitCommandError` already retains `stderr_summary`, so the classification has
+what it needs; the CLI translates a `GitError` into a `CLIError` carrying an actionable
+message. Four cases are worth distinguishing:
 
 | Matched in stderr | Message |
 | --- | --- |
@@ -154,6 +202,14 @@ matched. Four cases are worth distinguishing:
 | `Permission denied (publickey)` | No usable SSH key; suggest checking the agent. |
 
 Anything unmatched reports Git’s own stderr rather than guessing.
+
+This is a deliberate divergence from the rule in `process.py`, which logs stderr and
+never puts it in a response because Git writes absolute local paths into its error text.
+That rule is right for an HTTP response crossing a trust boundary.
+The CLI is the operator’s own terminal, where those paths are the user’s own and
+withholding them would make a failed clone undiagnosable.
+The divergence is confined to the CLI surface: nothing in `/api/git/` changes, and the
+classification helper must not be reused by a route.
 
 ### CLI additions
 
@@ -188,8 +244,11 @@ directories. Cloning with `core.symlinks=false` is defense in depth on top of th
 
 ### Phase 1: Fetch, cache, and serve
 
-- [ ] `git_cmd.py`: version detection, non-interactive hardened environment, `clone`,
-  `backfill`, and stderr classification.
+- [ ] `git/process.py`: add version detection, `stdin=DEVNULL` on spawn, and the
+  remaining non-interactive environment settings.
+  No behavior change for existing callers beyond closing those gaps.
+- [ ] `repo_clone.py`: hardened `clone` and `backfill` argument vectors over `run_git`
+  with clone-scale timeouts, plus stderr classification into actionable CLI messages.
 - [ ] `repo_cache.py`: cache root, path derivation and sanitization, lock,
   temp-and-rename publication, sidecar read and write.
 - [ ] URL detection on ROOT in `main.py`, with query and fragment stripped and deep-link
@@ -225,6 +284,10 @@ exercises the same clone and rename machinery without a remote.
   rather than blocking, proving the environment and timeout are wired.
 - **CLI surface** extends `tests/golden/cli-surface.tryscript.md` with the new modes and
   the deep-link rejection.
+- **Git panel on a cached repo** asserts the payoff end to end: a repo opened from a
+  `file://` URL satisfies the served-root-is-repo-root invariant, so `/api/git/log`
+  answers for it. `tests/test_git_e2e.py` already builds fixture repositories and is the
+  natural place to extend rather than duplicate.
 
 ## Rollout Plan
 
@@ -242,6 +305,16 @@ profile. The cache directory is created on first use and never written otherwise
   easier to document; the latter is better behaved.
 - Should an existing `ghq` checkout be reused when one is present, given the layouts
   match?
+- Should `repo_clone.py` live at the package top level, or as a `metabrowser.git`
+  submodule with that package’s read-only claim narrowed to the panel surface?
+  The former keeps the existing contract literally true and is the assumption here; the
+  latter keeps all Git code in one package.
+  This is worth settling with the author of `feat/git-graph-view` rather than
+  unilaterally.
+- Does the backfill’s long-running subprocess need a different cancellation story from
+  request-scoped reads?
+  `run_git` reaps children on cancellation, but a backfill outlives the request that
+  started it and is owned by the server’s lifetime instead.
 
 ## References
 
@@ -249,6 +322,8 @@ profile. The cache directory is created on first use and never written otherwise
   reasoning behind blobless-plus-backfill
 - `research-2026-07-17-web-diff-viewer-architecture.md` — the Git subprocess adapter
   discipline this reuses
+- `metabrowser.git` (PR #24, `feat/git-graph-view`) — the bounded runner, repository
+  identity, and read-only `/api/git/` collection this builds on
 - `plan-2026-08-06-html-rendering-and-trust-model.md` — the trust profile this depends
   on
 - `plan-2026-07-27-metab-flat-cli.md` — the mode and option table this extends
