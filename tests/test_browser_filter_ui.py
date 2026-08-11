@@ -122,6 +122,10 @@ def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
     assert "border: 1px solid var(--viz-border);" in chip_block
     assert "border-radius: var(--radius-pill);" in chip_block
 
+    hover_start = css.index('.chip-group[data-layout="wrap"] > .chip:hover')
+    hover_block = css[hover_start : css.index("}", hover_start)]
+    assert "background: var(--hover-bg);" in hover_block
+
 
 def test_groups_carry_the_aria_their_variant_implies() -> None:
     """Single-select is a radiogroup with aria-checked; multi-select

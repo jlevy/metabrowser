@@ -29,6 +29,7 @@ const dynamicChip = {
   },
 };
 const dynamicEvent = { dataset: { kind: "queue-operation" }, style: { display: "" } };
+const dynamicUnknownEvent = { dataset: { kind: "unknown" }, style: { display: "" } };
 const container = {
   innerHTML: "",
   addEventListener: (type, listener) => {
@@ -42,7 +43,7 @@ const container = {
       return [dynamicChip];
     }
     if (selector === ".log-event[data-kind]") {
-      return [dynamicEvent];
+      return [dynamicEvent, dynamicUnknownEvent];
     }
     return [];
   },
@@ -98,6 +99,7 @@ logView.render(container, {
     events: [
       { kind: hostileKind, summary: "safe", raw: {} },
       { kind: "queue-operation", summary: "queued", raw: {} },
+      { kind: "unknown", summary: "[unknown] unclassified", raw: {} },
     ],
     summary: {},
   },
@@ -117,7 +119,15 @@ const securityResult = {
   ),
   dynamicEndsUnpressed: dynamicChip.getAttribute("aria-pressed") === "false",
   dynamicEventHidden: dynamicEvent.style.display === "none",
+  unknownEventHiddenWhenFiltering: dynamicUnknownEvent.style.display === "none",
+  mixedUnknownKindHasNoChip: !container.innerHTML.includes('data-chip-value="unknown"'),
   dynamicLabelIsReadable: container.innerHTML.includes(">queue operation (1)</button>"),
+};
+if (listeners.click) {
+  listeners.click({ target: dynamicChip });
+}
+const filterRestoreResult = {
+  unknownEventRestoredWithAllKinds: dynamicUnknownEvent.style.display === "",
 };
 
 logView.render(container, {
@@ -161,6 +171,7 @@ sandbox.fetch = () =>
       chartDisposeCalls,
       chartRenderCalls,
       ...securityResult,
+      ...filterRestoreResult,
       ...unknownKindResult,
       ...singleKindResult,
     }),

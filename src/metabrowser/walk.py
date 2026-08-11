@@ -237,7 +237,11 @@ def walk_report(
 
 def _entry_to_dict(entry: FsEntry) -> dict[str, Any]:
     """An ``FsEntry`` as a plain dict — the streaming wire record."""
-    return asdict(entry)
+    record = asdict(entry)
+    # Child presence is inventory-derived live metadata. The raw walker
+    # stream cannot know it and keeps its established record schema.
+    record.pop("has_children", None)
+    return record
 
 
 def _to_yaml(data: Any) -> str:

@@ -740,6 +740,7 @@ class InventoryIndex:
                 total_files=self._descendant_file_counts.get(path, 0),
                 total_size=self._descendant_file_sizes.get(path, 0),
                 newest_mtime_ns=newest_mtime,
+                has_children=self.has_direct_child(path),
                 mtime_ns=newest_mtime,
                 write_token=WriteToken(self._generation.get(path, 0)),
             )
@@ -851,6 +852,8 @@ class InventoryIndex:
         elif existing.parent != entry.parent:
             self._remove_direct_child(existing)
             self._add_direct_child(entry)
+        if entry.type == "dir" and entry.total_files is not None:
+            entry = replace(entry, has_children=self.has_direct_child(entry.path))
         self._entries[entry.path] = entry
         if entry.type == "dir" and entry.total_files is None:
             self._pending_dirs.add(entry.path)
@@ -905,6 +908,7 @@ class InventoryIndex:
                     total_files=max(0, existing.total_files + delta_files),
                     total_size=max(0, existing.total_size + delta_size),
                     newest_mtime_ns=newest_mtime_ns,
+                    has_children=self.has_direct_child(cursor),
                     write_token=WriteToken(self._generation.get(cursor, 0)),
                 )
                 self._entries[cursor] = updated

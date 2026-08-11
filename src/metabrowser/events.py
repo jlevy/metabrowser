@@ -75,6 +75,8 @@ class FsEntry:
 
     Symlinks are typed leaves: the inventory records the link itself
     without following its target or including it in file aggregates.
+    ``has_children`` keeps visible entry presence separate from those
+    file-only aggregates; ``None`` means the directory is not finalized.
 
     ``views`` is the ordered list of preview-pane view ids (see
     :mod:`metabrowser.file_kinds`); empty for dirs and symlinks.
@@ -105,6 +107,7 @@ class FsEntry:
     total_files: int | None = None
     total_size: int | None = None
     newest_mtime_ns: int | None = None
+    has_children: bool | None = None
     gitignored: bool = False
     # walker bookkeeping (not part of the wire payload)
     write_token: WriteToken | None = None
@@ -509,15 +512,20 @@ class RingBuffer:
 
 
 def _wire_dict_factory(items: list[tuple[str, Any]]) -> dict[str, Any]:
-    """`asdict` dict factory that drops walker-internal bookkeeping.
+    """`asdict` dict factory that drops non-wire entry state.
 
     ``FsEntry.write_token`` is producer-side race-safety state, never
     part of the client contract; without this filter bare ``asdict``
     would leak it (as ``null`` or ``{"generation": N}``) into every
-    entry on the wire. Applied to every dataclass in the tree, so the
-    key is stripped wherever it appears.
+    entry on the wire. Unknown ``has_children`` values are also omitted;
+    the field becomes actionable only when directory finalization supplies
+    a boolean. Applied to every dataclass in the tree.
     """
-    return {key: value for key, value in items if key != "write_token"}
+    return {
+        key: value
+        for key, value in items
+        if key != "write_token" and not (key == "has_children" and value is None)
+    }
 
 
 def _event_to_dict(event: StreamEvent) -> dict[str, Any]:

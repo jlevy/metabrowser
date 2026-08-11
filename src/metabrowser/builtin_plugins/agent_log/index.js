@@ -30,6 +30,7 @@
 
   // ── Per-plugin filter state ─────────────────────────────────────
   let activeKindFilters = null; // Set<string> | null
+  let totalKindFilters = 0;
   let logFilterUnbind = null;
   let chartsRenderGeneration = 0;
 
@@ -216,10 +217,12 @@
     });
     if (kinds.length <= 1) {
       activeKindFilters = null;
+      totalKindFilters = 0;
       return "";
     }
 
     activeKindFilters = new Set(kinds);
+    totalKindFilters = kinds.length;
 
     const options = kinds.map((kind) => ({
       value: kind,
@@ -256,12 +259,11 @@
       activeKindFilters.add(kind);
       btn.setAttribute("aria-pressed", "true");
     }
+    const isFiltering = activeKindFilters.size < totalKindFilters;
     root.querySelectorAll(".log-event[data-kind]").forEach((el) => {
       const eventKind = el.getAttribute ? el.getAttribute("data-kind") : el.dataset.kind;
-      if (eventKind !== kind) {
-        return;
-      }
-      el.style.display = activeKindFilters.has(kind) ? "" : "none";
+      const visible = isUnknownKind(eventKind) ? !isFiltering : activeKindFilters.has(eventKind);
+      el.style.display = visible ? "" : "none";
     });
   }
 
@@ -354,6 +356,7 @@
       logFilterUnbind = null;
     }
     activeKindFilters = null;
+    totalKindFilters = 0;
     _logEventRawCache.clear();
   }
 

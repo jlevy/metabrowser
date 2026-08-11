@@ -2015,6 +2015,9 @@ html[data-prose-font="sans"] {
   border-radius: var(--radius-pill);
   background: var(--viz-surface);
 }
+.chip-group[data-layout="wrap"] > .chip:hover {
+  background: var(--hover-bg);
+}
 /* Single-select: accent fill, the .menu-seg[aria-checked] treatment. */
 .chip-group[data-select="one"] > .chip[aria-checked="true"] {
   background: var(--highlight-bg);

@@ -437,6 +437,46 @@ def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
     assert inv.has_direct_child("runs") is False
 
 
+def test_live_symlink_updates_keep_child_presence_separate_from_file_totals() -> None:
+    inv = InventoryIndex()
+    root = FsEntry(
+        path="",
+        parent="",
+        name="root",
+        type="dir",
+        ext="",
+        kind="dir",
+        size=0,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+        total_files=0,
+        total_size=0,
+        newest_mtime_ns=0,
+    )
+    assert inv.apply_walker_entries([root]) == 1
+
+    inv.apply_live_entry(
+        FsEntry.for_observed_symlink(
+            path="shortcut",
+            parent="",
+            name="shortcut",
+            size=8,
+            mtime_ns=1,
+        )
+    )
+    with_link = inv.get("")
+    assert with_link is not None
+    assert with_link.total_files == 0
+    assert with_link.has_children is True
+
+    inv.remove("shortcut")
+    without_link = inv.get("")
+    assert without_link is not None
+    assert without_link.total_files == 0
+    assert without_link.has_children is False
+
+
 def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 

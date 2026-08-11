@@ -4614,15 +4614,15 @@ function applyCellPatch(entry) {
       row.dataset.tipMtime = nullableDataValue(patch.tipMtime);
       if (patch.kind === "dir") {
         row.dataset.tipFiles = patch.tipFiles;
-        // Sync the gray "empty" class. Server emits null for
-        // walker-pending dirs (don't change the class) and 0
-        // for finalized-empty (gray). Without this toggle, a
-        // dir initially painted gray during inventory startup
-        // never cleared once its real count arrived via
-        // fs.change.
+        // A zero file total does not prove emptiness because symlinks
+        // are visible leaves but intentionally excluded from aggregates.
         var totalFiles = entry.total_files;
-        if (totalFiles != null) {
-          row.classList.toggle("tree-item-empty", totalFiles === 0);
+        if (typeof entry.has_children === "boolean") {
+          row.classList.toggle("tree-item-empty", !entry.has_children);
+        } else if (totalFiles > 0) {
+          // Positive totals remain an unambiguous fallback for events
+          // from an older server that lacks child-presence metadata.
+          row.classList.toggle("tree-item-empty", false);
         }
       }
       // Sync gitignored across every row type so a flag flip
