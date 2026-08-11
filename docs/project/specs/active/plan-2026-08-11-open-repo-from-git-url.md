@@ -65,8 +65,8 @@ no viewer, `klaus` and `git instaweb` view local repos but cannot fetch.
 It also found that Git accepts plain repository URLs directly, so the fetch step is
 mostly cache bookkeeping rather than URL handling.
 
-The `feat/git-graph-view` work (PR #24) has since landed a `metabrowser.git` package
-with a bounded async subprocess runner, repository identity discovery, and a read-only
+The `feat/git-graph-view` branch has since landed a `metabrowser.git` package with a
+bounded async subprocess runner, repository identity discovery, and a read-only
 `/api/git/` collection.
 That changes this plan: the Git plumbing this feature needs largely exists, and the job
 is to reuse it rather than build a second path to the `git` executable.
@@ -322,8 +322,8 @@ profile. The cache directory is created on first use and never written otherwise
   reasoning behind blobless-plus-backfill
 - `research-2026-07-17-web-diff-viewer-architecture.md` — the Git subprocess adapter
   discipline this reuses
-- `metabrowser.git` (PR #24, `feat/git-graph-view`) — the bounded runner, repository
-  identity, and read-only `/api/git/` collection this builds on
+- `metabrowser.git` (from the `feat/git-graph-view` branch) — the bounded runner,
+  repository identity, and read-only `/api/git/` collection this builds on
 - `plan-2026-08-06-html-rendering-and-trust-model.md` — the trust profile this depends
   on
 - `plan-2026-07-27-metab-flat-cli.md` — the mode and option table this extends
