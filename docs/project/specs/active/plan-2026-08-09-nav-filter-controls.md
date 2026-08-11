@@ -427,7 +427,42 @@ worth noting: none of it was visible in a passing test suite.
 - [x] Recency truncation drops ignored files before tracked ones, and `/api/recent`
   gained `include_ignored`
 
-### Phase 6: Follow-ups — open
+### Phase 6: Automated Review Findings — done
+
+Twelve inline findings across six review passes; nine were already fixed by the time
+they were triaged, and one was superseded.
+The three that were live shared a shape worth naming: each was a value going stale or
+missing behind a surface that still looked right.
+
+- [x] The recency overlay grew without bound once the window was cleared.
+  Leaving that source sets the window to `""`, and an absent key gives `undefined`
+  rather than `null`, so a `!== null` guard passed it through and the cutoff became
+  `NaN`. Every comparison against `NaN` is false, so nothing was ever dropped.
+  The guard now tests for a number, and the overlay bails out entirely when no window is
+  active.
+- [x] Overlay rows carry the index compound extension, so a file that reaches the panel
+  only over the event stream is matched on the same tail as a rendered row
+- [x] The filtered tally recomputes per filter pass rather than caching from the last
+  render, which changed only on a recency change and so went stale under type and size
+
+### Phase 7: Vertical Rhythm — done
+
+The nav column is a stack of bands that each keep 6px inside their own rule.
+Two places broke it, both found by measuring the live pane over CDP rather than by
+reading the CSS.
+
+- [x] The collapsed filter bar sat 6px above its controls and 13px below them: the bar’s
+  row-gap survived the drawer collapsing to a zero-height grid track.
+  The gap now belongs to the drawer being open and transitions on the same token as the
+  track. It cannot instead be padding inside the drawer — `overflow` clips a content box,
+  not a padding box, so padding survives the collapse the same way; the rule says so
+  now.
+- [x] The first tree row cleared the tally’s border by nothing at all.
+  A row’s 2px is sized for row-to-row spacing, not for clearing a rule, so whatever
+  leads the list makes up the difference — including rows alone under a recency window,
+  which renders no tally
+
+### Phase 8: Follow-ups — open
 
 Tracked as beads under epic `mb-pcih`:
 
