@@ -56,6 +56,8 @@
 //   Visual:
 //     icons.<name>                       — raw SVG strings for built-in icons
 //     icons.withClass(name, cls)         — returns SVG with extra class applied
+//     filterControls                      — shared filter markup and interaction
+//                                          helpers, installed before plugins load
 //
 //   Diagnostics:
 //     perf.measure(label, fn)            — wrap a render closure with timing logs
@@ -836,7 +838,8 @@
     // otherwise the delegate falls back to clipboard.writeText.
     return (
       '<div class="content-copy-wrap">' +
-      '<button class="content-copy-btn" data-mb-copy="wrap" title="Copy content">' +
+      '<button class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' +
+      ' type="button" data-mb-copy="wrap" title="Copy content" aria-label="Copy content">' +
       ICON_COPY +
       "</button>" +
       innerHtml +

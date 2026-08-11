@@ -14,6 +14,8 @@ tests/dom/filter_state_behavior.js.
 from __future__ import annotations
 
 import asyncio
+import re
+from pathlib import Path
 from typing import Any, cast
 
 from metabrowser import server as proc_browser
@@ -248,6 +250,74 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     # primitive, which is what keeps it the same control.
     assert '.filter-drawer-toggle[aria-pressed="true"] svg' in css
     assert ".filter-drawer-toggle {" not in css
+
+
+def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
+    """Use-site classes may position a button but may not recreate its control style."""
+
+    server = Path(proc_browser.__file__).read_text()
+    app = _read("app.js")
+    sdk = _read("plugin_sdk.js")
+    controls = _read("filter_controls.js")
+
+    assert 'class="icon-btn settings-btn"' in server
+    assert 'class="icon-btn icon-btn-reveal file-header-copy"' in app
+    assert 'class="icon-btn file-header-icon file-header-print"' in app
+    assert 'class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' in sdk
+    assert 'class="icon-btn${cls}"' in controls
+
+    css = _read("styles.css")
+    primitive = css[css.index("/* ── Icon buttons") : css.index("/* ── Settings toggle")]
+    assert "\n.icon-btn {" in primitive
+    for private_class in (
+        "settings-btn",
+        "file-header-icon",
+        "file-header-copy",
+        "content-copy-btn",
+    ):
+        assert f"\n.{private_class}," not in primitive
+        assert f"\n.{private_class} {{" not in primitive
+
+
+def test_plain_text_actions_use_the_shared_button_primitive() -> None:
+    app = _read("app.js")
+    css = _read("styles.css")
+
+    assert 'class="btn file-header-action"' in app
+    assert 'class="btn file-header-action" type="button"' in app
+    assert ".btn {" in css
+    assert ".btn:focus-visible {" in css
+
+
+def test_every_core_button_declares_non_submit_behavior() -> None:
+    html = _render_index_html()
+    for tag in re.findall(r"<button\b[^>]*>", html):
+        assert 'type="button"' in tag
+
+    for name in ("app.js", "filter_controls.js", "plugin_sdk.js"):
+        source = _read(name)
+        for match in re.finditer(r"<button\b", source):
+            nearby_markup = source[match.start() : match.start() + 320]
+            assert 'type="button"' in nearby_markup, f"{name}: {nearby_markup!r}"
+
+
+def test_filter_surfaces_have_no_private_button_family() -> None:
+    """Filter values come from filter_controls.js, never private button markup."""
+
+    builtin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins"
+    sources = [_read("app.js"), _read("styles.css")]
+    sources.extend(path.read_text() for path in builtin_root.glob("*/index.js"))
+    sources.extend(path.read_text() for path in builtin_root.glob("*/styles.css"))
+    combined = "\n".join(sources)
+
+    for legacy_token in ("filter-btn", "data-filter-kind", 'class="filter-bar"'):
+        assert legacy_token not in combined
+
+    design = (
+        proc_browser.STATIC_DIR.parent.parent.parent / "docs" / "design-system.md"
+    ).read_text()
+    assert "`window.metabrowser.filterControls`" in design
+    assert "Do not handwrite chip markup" in design
 
 
 def test_menu_rows_use_type_icons_rather_than_tinted_labels() -> None:
@@ -696,19 +766,29 @@ def test_dom_content_loaded_initializes_the_filter_bar() -> None:
     assert "initFilterBar();" in handler_block
 
 
-def test_nav_filter_bar_does_not_share_the_plugin_filter_bar_name() -> None:
-    """The agent-log plugin already owned `.filter-bar`, and its
-    `margin: 8px 0 12px` leaked into the navigation column — 20px of
-    dead space above the tally that no nav rule asked for. Distinct
-    names are what keep the two apart."""
+def test_agent_log_uses_the_shared_additive_chip_family() -> None:
+    """Event kinds are additive values, including kinds discovered at run time.
+
+    The shared chip contract makes every selected state visible through the same
+    ``aria-pressed`` selector instead of relying on a fixed list of kind colors.
+    """
 
     css = _read("styles.css")
+    plugin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "agent_log"
+    plugin = (plugin_root / "index.js").read_text()
+    plugin_css = (plugin_root / "styles.css").read_text()
+
     assert ".nav-filter-bar {" in css
-    # The plugin's rule keeps the old name and its margin.
-    plugin_start = css.index("/* ── Event filter bar ")
-    plugin_block = css[plugin_start : plugin_start + 500]
-    assert ".filter-bar {" in plugin_block
-    assert "margin: 8px 0 12px 0;" in plugin_block
+    assert "mb.filterControls" in plugin
+    assert "fc.groupHtml" in plugin
+    assert 'select: "many"' in plugin
+    assert 'label: "Event types"' in plugin
+    assert 'class="agent-log-filter-bar"' in plugin
+    assert "filter-btn" not in plugin
+    assert ".filter-bar" not in plugin
+    assert ".filter-btn" not in css
+    assert ".agent-log-filter-bar" in plugin_css
+    assert "margin: 8px 0 12px;" in plugin_css
 
     # The nav bar sets no margin of its own, so nothing can leak back.
     nav_start = css.index(".nav-filter-bar {")

@@ -22,6 +22,8 @@ Filtering and file navigation:
 - Filter controls are keyboard navigable, expose their state through ARIA, keep the
   active value visible when the drawer is closed, and share the documented design-system
   primitives with plugin views.
+- Agent-log event-type filters use the same additive chips, including counts and a
+  visible selected state for dynamically discovered record types.
 - Filter selections are transient view state and reset on every page load instead of
   leaking through a host-wide browser preference.
   Durable appearance choices such as theme and typography remain shared across

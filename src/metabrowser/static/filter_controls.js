@@ -577,7 +577,7 @@
     };
   }
 
-  /** @type {Record<string, any>} */ (window).MetabrowserFilterControls = {
+  const api = {
     escapeHtml: esc,
     nextSelection,
     isSelected,
@@ -588,4 +588,9 @@
     clearHtml,
     bind,
   };
+  if (!window.metabrowser) {
+    console.error("metabrowser filter controls: window.metabrowser missing — SDK not loaded");
+    return;
+  }
+  window.metabrowser.filterControls = api;
 })();
