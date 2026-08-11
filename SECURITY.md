@@ -69,7 +69,7 @@ itself, exactly as the trusted-local warning above says:
 - `/api` routes do not require proof that a request originated from the application’s
   own pages. The Host allowlist stops DNS rebinding, where the attacker must read the
   response; it does not stop fire-and-forget cross-site requests, and
-  `POST /api/kpress/export` writes rendered artifacts beneath the served root.
+  `POST /api/kpress/export` writes rendered output beneath the served root.
 
 The
 [HTML rendering and trust model plan](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)

@@ -17,8 +17,8 @@ custom views for arbitrary file types or folders.
 ## Use With Coding Agents
 
 Metabrowser ships a portable [Agent Skill](skills/metabrowser/SKILL.md) so a coding
-agent can browse directories, open Markdown documents, inspect logs, and validate
-plugins on your behalf.
+agent can browse directories, open files, inspect live logs, and validate plugins on
+your behalf.
 
 **Install the skill with one command:**
 
@@ -54,7 +54,7 @@ Unlike a typical local web view, it’s live and efficient about watching for up
 lots of files. The server watches the file tree in the background and streams updates to
 the frontend.
 
-It especially works well when browsing Markdown docs like agent-written specs.
+It especially works well when browsing technical documentation and other Markdown.
 It supports clean typography and full-featured Markdown rendering via
 [KPress](https://github.com/jlevy/kpress).
 
@@ -129,7 +129,7 @@ environment without resolving them again:
 
 ```shell
 make install
-uv --config-file uv.toml run --frozen metab ./path/to/artifacts
+uv --config-file uv.toml run --frozen metab ./path/to/directory
 ```
 
 > [!WARNING]
@@ -145,13 +145,13 @@ Built-in plugins provide views for:
 
 - Markdown rendered by KPress, alongside the source.
 - JSON, YAML, and other structured documents.
-- Coding-agent JSONL logs and generic JSONL streams.
+- JSONL streams, with timelines and chart summaries for supported event formats,
+  including coding-agent logs.
 - Text, source code, images, and binary-file metadata.
-- Generic chart summaries for supported agent logs.
 
-Gzip and zlib variants of supported artifacts open transparently with bounded
-decompression. Format-specific binary stores belong in separately installed plugins,
-keeping native readers out of the core package.
+Gzip and zlib variants of supported files open transparently with bounded decompression.
+Format-specific binary stores belong in separately installed plugins, keeping native
+readers out of the core package.
 
 Large trees are indexed in the background.
 The first preview does not wait for a full recursive crawl, and filesystem events update
@@ -164,20 +164,20 @@ the way `open` opens a folder on macOS. Mode flags select every other operation:
 
 ```shell
 # Browse a directory or open one file directly.
-metab ./path/to/artifacts
-metab ./path/to/artifacts/logs/session.jsonl
+metab ./path/to/directory
+metab ./path/to/directory/example.txt
 
 # Select a file relative to the served root.
-metab ./path/to/artifacts --path logs/session.jsonl
+metab ./path/to/directory --path documents/report.pdf
 
 # Start without opening a browser window.
-metab ./path/to/artifacts --no-open
+metab ./path/to/directory --no-open
 
 # Browse a directory on a remote host through an SSH tunnel.
-metab --remote example-host --path /srv/artifacts
+metab --remote example-host --path /srv/shared-files
 
 # Print a machine-readable inventory without starting the web UI.
-metab ./path/to/artifacts --walk --format json
+metab ./path/to/directory --walk --format json
 ```
 
 The server binds to `127.0.0.1:8411` by default and walks a bounded port range if that
@@ -216,7 +216,7 @@ Metabrowser. Operator-directory plugins are useful for local JavaScript-only ext
 For example, load an operator-reviewed plugin directory with:
 
 ```shell
-metab ./path/to/artifacts --plugins-dir ./trusted-plugins
+metab ./path/to/directory --plugins-dir ./trusted-plugins
 ```
 
 The served data tree is never an implicit plugin source.

@@ -8,30 +8,35 @@
 //     size: "all"|"s"|"m"|"l",
 //     showIgnored: boolean }  // gitignored entries visible (dimmed)
 //
-// Recency is one axis, not two: "live" (the active tracker's flag) is
-// the narrowest point on it, so it is a value here rather than a
-// separate boolean.
+// Recency is one axis, not two: "live" is the shortest server-owned
+// mtime window, so it is a value here rather than a separate boolean.
 //
 // There is no dim/hide switch. A filter removes what does not match —
 // that is what filtering is — so the only display choice left is
 // whether gitignored entries are in the tree at all, and when they are
 // they keep the dimmed treatment the tree has always given them.
 //
-// Persistence rides mb.prefs (host-only cookies, shared across
-// per-root ports); every change notifies subscribers and dispatches a
-// `metabrowser:filter-change` CustomEvent. The predicate helpers live
-// here so no two surfaces can disagree about what matches.
+// Filter selections are transient view state: every page starts from
+// the defaults, and changes live only in this module. Every change
+// notifies subscribers and dispatches a `metabrowser:filter-change`
+// CustomEvent. The predicate helpers live here so no two surfaces can
+// disagree about what matches.
 
 (() => {
-  const PREF_KEY = "filters";
+  // Development builds after v0.2.0 stored filters in the host-wide
+  // preference cookie. Expire that value once so an upgrade does not
+  // leave dead browser state behind.
+  const LEGACY_PREF_KEY = "filters";
 
-  const RECENCY_VALUES = ["all", "live", "1h", "24h", "7d", "30d"];
   /**
-   * Seconds per windowed recency value; "all" and "live" are not
-   * windows and are absent on purpose.
-   * @type {Record<string, number>}
+   * Seconds per recency value, injected from metabrowser/settings.py.
+   * `all` maps to null and recencySeconds normalizes it to zero.
+   * @type {Record<string, number | null>}
    */
-  const RECENCY_SECONDS = { "1h": 3600, "24h": 86400, "7d": 604800, "30d": 2592000 };
+  const RECENCY_SECONDS = /** @type {Record<string, number | null>} */ (
+    /** @type {any} */ (window).METABROWSER_SETTINGS?.RECENT_WINDOW_SECONDS || {}
+  );
+  const RECENCY_VALUES = Object.keys(RECENCY_SECONDS);
   /**
    * Size is a cumulative floor, not a band: "bigger than this". Bands
    * force you to guess which one a file lands in, while "what is over
@@ -72,10 +77,8 @@
   }
 
   /**
-   * Coerce arbitrary persisted or caller-supplied input into a valid
-   * snapshot. Unknown values fall back to the default rather than
-   * throwing: a stale cookie from a future version must not break the
-   * filter bar.
+   * Coerce arbitrary caller-supplied input into a valid snapshot.
+   * Unknown values fall back to the default rather than throwing.
    * @param {unknown} raw
    * @returns {FilterSnapshot}
    */
@@ -110,7 +113,10 @@
 
   function load() {
     const p = prefs();
-    state = sanitize(p ? p.get(PREF_KEY, null) : null);
+    if (p && typeof p.remove === "function") {
+      p.remove(LEGACY_PREF_KEY);
+    }
+    state = sanitize(null);
   }
 
   /** @returns {FilterSnapshot} */
@@ -131,10 +137,6 @@
   function set(patch) {
     const next = sanitize(Object.assign(get(), patch));
     state = next;
-    const p = prefs();
-    if (p) {
-      p.set(PREF_KEY, next);
-    }
     const snapshot = get();
     for (const listener of listeners.slice()) {
       try {
@@ -168,7 +170,7 @@
 
   /**
    * Number of dimensions away from their default — drives the badge on
-   * the drawer toggle so persisted filters are never invisible state.
+   * the drawer toggle so filters remain visible when it is collapsed.
    */
   function activeCount() {
     const s = get();
@@ -188,7 +190,7 @@
     return n;
   }
 
-  /** @param {string} recency @returns {number} 0 when not a time window */
+  /** @param {string} recency @returns {number} 0 when not a bounded window */
   function recencySeconds(recency) {
     return RECENCY_SECONDS[recency] || 0;
   }
@@ -270,27 +272,18 @@
   /**
    * The one row predicate every surface shares. `row` carries whatever
    * subset the caller knows: {mtime (seconds), size (bytes), path,
-   * live, isDir}. Missing fields never rule a row out — pending data
+   * isDir}. Missing fields never rule a row out — pending data
    * must not flicker as filtered. Directories are judged only on
    * recency, because a folder's type and size are aggregates that mean
    * something different from a file's.
-   * @param {{mtime?: number | null, size?: number | null, path?: string, live?: boolean, isDir?: boolean, ext?: string}} row
+   * @param {{mtime?: number | null, size?: number | null, path?: string, isDir?: boolean, ext?: string}} row
    * @param {FilterSnapshot} s
    * @param {number} nowSec
    */
   function rowMatches(row, s, nowSec) {
     // Note: gitignored is handled by the caller, which knows the row's
     // class; showIgnored is a visibility choice, not a predicate.
-    if (s.recency === "live") {
-      // `live` means "being written" for a file and "has a descendant
-      // being written" for a folder. Both are complete answers — the
-      // caller knows the whole live set — so a folder is judged here
-      // rather than waved through the way the other dimensions must
-      // wave through a subtree they cannot see.
-      if (row.live !== true) {
-        return false;
-      }
-    } else if (s.recency !== "all") {
+    if (s.recency !== "all") {
       const maxAge = recencySeconds(s.recency);
       if (typeof row.mtime === "number" && row.mtime > 0 && nowSec - row.mtime > maxAge) {
         return false;

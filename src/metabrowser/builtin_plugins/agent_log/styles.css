@@ -1,0 +1,5 @@
+.agent-log-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}

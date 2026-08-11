@@ -133,7 +133,7 @@ class MtimeCache[T]:
 
     def log_stats(self) -> None:
         if self._stats_changed(self.log_freq):
-            LOG.info(
+            LOG.debug(
                 "%s file cache stats: hits: %s, misses: %s, updates: %s, deletes: %s, absents: %s",
                 self.name,
                 self.stats.hits,

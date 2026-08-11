@@ -9,7 +9,9 @@ Every response includes a `Server-Timing` entry for measured server duration.
 Browser developer tools display it alongside the request waterfall.
 
 Slow server requests log a warning.
-The default threshold can be overridden with `METABROWSER_SLOW_SERVER_MS`.
+The default threshold can be overridden with `METABROWSER_SLOW_SERVER_MS`. Routine
+request timings, lifecycle events, and skipped protected directories stay quiet unless
+`--log-level debug` is set.
 
 The browser performance helper measures fetches and render spans.
 A slow fetch message includes total, server, and transit time.
@@ -26,7 +28,7 @@ Interpret it as follows:
 Enable one line for every request when correlation is more useful than log volume:
 
 ```shell
-METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab ./artifacts --no-open
+METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab ./path/to/directory --no-open
 ```
 
 The events and tail routes are intentionally long-lived and are excluded from ordinary
@@ -37,7 +39,7 @@ slow-request warnings.
 Enable the debug endpoint only for local investigation:
 
 ```shell
-METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab ./artifacts --no-open
+METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab ./path/to/directory --no-open
 ```
 
 During a stall, request `/_debug/tasks` from another terminal.
@@ -59,6 +61,15 @@ For a tree row that does not update:
 
 If an event buffer gap occurs, the client should replace state from a fresh snapshot.
 Do not repair a gap by replaying operations whose order is no longer known.
+
+A message that Metabrowser is refreshing browser connections after queue overflow means
+the bounded event buffer filled during a producer burst.
+The server discards the incomplete delta backlog, sends a resynchronization marker, and
+the browser reconnects for a fresh snapshot.
+One refresh is self-healing.
+Repeated refreshes are worth reporting with the root size, filesystem type, and
+surrounding slow-operation messages because they indicate that filesystem events are
+arriving faster than the browser stream can consume them.
 
 ## Plugin Problems
 
@@ -90,7 +101,7 @@ Include:
 
 - Metabrowser version and Python version;
 - operating system and filesystem type;
-- artifact size and kind, with sensitive content removed;
+- file size and kind, with sensitive content removed;
 - total, server, transit, and render durations;
 - whether the issue reproduces with optional plugins disabled;
 - a minimal fixture or generator when possible.

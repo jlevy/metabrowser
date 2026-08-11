@@ -34,6 +34,7 @@
    * @property {"idle" | "searching" | "complete"} phase
    * @property {Readonly<{query: string}> | null} request
    * @property {readonly PaletteResult[]} results
+   * @property {readonly string[]} errors
    * @property {string} statusMessage
    * @property {boolean} truncated
    */
@@ -328,9 +329,9 @@
       }
       if (!query) {
         const snapshot = options.getCatalogSnapshot();
-        const coverage = snapshot.complete ? "" : " Local coverage is incomplete.";
-        const noun = snapshot.complete ? "files" : "observed files";
-        status.textContent = `Type a filename to search ${snapshot.observedCount} ${noun}.${coverage}`;
+        status.textContent = snapshot.complete
+          ? `Type a filename to search ${snapshot.observedCount} files.`
+          : `Type a filename to search ${snapshot.observedCount} indexed files. More files may appear as scanning continues.`;
         return;
       }
       if (!searchState || searchState.phase === "searching") {
@@ -340,12 +341,16 @@
           return;
         }
         const snapshot = options.getCatalogSnapshot();
-        const noun = snapshot.complete ? "files" : "observed files";
+        const noun = snapshot.complete ? "files" : "indexed files";
         status.textContent = `Searching ${snapshot.observedCount} ${noun}…`;
         return;
       }
-      const limitMessage = searchState.truncated ? " Results are limited." : "";
-      status.textContent = `${searchState.statusMessage || "No known file matches."}${limitMessage}`;
+      const limitMessage = searchState.truncated ? " Showing only the top matches." : "";
+      if (searchState.errors?.length) {
+        status.textContent = `Could not complete the search. Try again.${limitMessage}`;
+        return;
+      }
+      status.textContent = `${searchState.statusMessage || "No files match your search."}${limitMessage}`;
     }
 
     /** @param {number} index */
@@ -507,7 +512,8 @@
         })
         .catch((error) => {
           if (!overlay.hidden && input.value === query) {
-            actionStatus = error instanceof Error ? error.message : "Search failed. Try again.";
+            console.warn("Quick File search failed", error);
+            actionStatus = "Could not search files. Try again.";
             renderStatus();
           }
         });
@@ -534,8 +540,9 @@
       try {
         outcome = await options.openFile(result.path);
       } catch (error) {
+        console.warn("Quick File open failed", error);
         outcome = {
-          message: error instanceof Error ? error.message : "Could not open file. Try again.",
+          message: "Could not open the file. Try again.",
           status: "error",
         };
       }
@@ -555,10 +562,8 @@
         try {
           await options.onNotFound?.(result.path);
         } catch (error) {
-          actionStatus =
-            error instanceof Error
-              ? error.message
-              : "Could not remove the stale result. Try again.";
+          console.warn("Quick File stale-result cleanup failed", error);
+          actionStatus = "Could not remove the stale result. Try again.";
           renderStatus();
           return;
         }

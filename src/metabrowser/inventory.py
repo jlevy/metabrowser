@@ -45,10 +45,12 @@ import asyncio
 import heapq
 import logging
 import time
+from collections.abc import Collection, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Literal
 
+from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import (
     CapabilityUpdate,
     CatalogChange,
@@ -286,6 +288,58 @@ class InventoryIndex:
             "ignored_size": ignored_size,
         }
 
+    def file_type_tallies(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        limit: int = 200,
+    ) -> tuple[list[list[object]], list[list[object]]]:
+        """Return extension and aggregate-preset rows in one index pass.
+
+        Both shapes are ``[key, tracked_files, ignored_files]``. Dotted
+        preset tokens match the indexed logical extension; other tokens
+        match a complete filename case-insensitively. A file is counted
+        at most once per preset.
+        """
+
+        extension_counts: dict[str, list[int]] = {}
+        preset_counts = {preset_id: [0, 0] for preset_id, _values in presets}
+        normalized_presets = [
+            (
+                preset_id,
+                frozenset(value.lower() for value in values if value.startswith(".")),
+                frozenset(value.lower() for value in values if not value.startswith(".")),
+            )
+            for preset_id, values in presets
+        ]
+        for entry in self._entries.values():
+            if entry.type != "file":
+                continue
+            ignored_index = 1 if entry.gitignored else 0
+            if entry.ext:
+                row = extension_counts.get(entry.ext)
+                if row is None:
+                    row = [0, 0]
+                    extension_counts[entry.ext] = row
+                row[ignored_index] += 1
+
+            name = entry.name.lower()
+            ext = entry.ext.lower()
+            for preset_id, extensions, names in normalized_presets:
+                if ext in extensions or name in names:
+                    preset_counts[preset_id][ignored_index] += 1
+
+        ranked = sorted(
+            extension_counts.items(),
+            key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+        )
+        extension_rows: list[list[object]] = [
+            [ext, counts[0], counts[1]] for ext, counts in ranked[:limit]
+        ]
+        preset_rows: list[list[object]] = [
+            [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
+        ]
+        return extension_rows, preset_rows
+
     def extension_tally(self, limit: int = 200) -> list[list[object]]:
         """``[ext, tracked_files, ignored_files]`` rows, most frequent first.
 
@@ -303,19 +357,8 @@ class InventoryIndex:
         extensions is exactly what a filter menu does not need.
         """
 
-        tally: dict[str, list[int]] = {}
-        for entry in self._entries.values():
-            if entry.type != "file" or not entry.ext:
-                continue
-            row = tally.get(entry.ext)
-            if row is None:
-                row = [0, 0]
-                tally[entry.ext] = row
-            row[1 if entry.gitignored else 0] += 1
-        # Frequency first, then alphabetical, so equal counts keep a
-        # stable order between requests instead of shuffling.
-        ranked = sorted(tally.items(), key=lambda kv: (-(kv[1][0] + kv[1][1]), kv[0]))
-        return [[ext, counts[0], counts[1]] for ext, counts in ranked[:limit]]
+        rows, _presets = self.file_type_tallies((), limit=limit)
+        return rows
 
     # ── Writes ──────────────────────────────────────────────
 
@@ -359,12 +402,13 @@ class InventoryIndex:
 
         if self._root is None:
             return
+        root = self._root
         previous_subtree = self._entries.get(rel)
         if not rel:
             # The whole-root re-walk is what start() does; refuse to
             # avoid two walkers writing into the index simultaneously.
             return
-        target = self._root / rel
+        target = root / rel
         try:
             target_resolved = target.resolve()
         except OSError:
@@ -394,7 +438,7 @@ class InventoryIndex:
         # In both cases we refuse and warn rather than walk, so an
         # unexpected filesystem shape is visible in the logs instead
         # of silently corrupting the tree.
-        root_resolved = self._root.resolve()
+        root_resolved = root.resolve()
         if target_resolved != root_resolved and root_resolved not in target_resolved.parents:
             LOG.warning(
                 "inventory: refusing rewalk of %r — resolves to %s, outside served root %s",
@@ -417,7 +461,12 @@ class InventoryIndex:
         # / ``METABROWSER_LOG_LEVEL=DEBUG``) shows every rewalk target and
         # its resolved path, making symlink-following auditable.
         LOG.debug("inventory: rewalk_subtree rel=%s resolved=%s", rel, target_resolved)
-        gi_check = await asyncio.to_thread(_build_gitignore_check_for, self._root)
+        gi_check = await run_cancellable_thread(
+            lambda cancel_event: _build_gitignore_check_for(
+                root,
+                cancel_event=cancel_event,
+            )
+        )
         async for entry in walk_tree(
             target_resolved,
             max_depth=self._max_depth,
@@ -533,12 +582,10 @@ class InventoryIndex:
         layer calls ``Queue.get()`` to pull events into the SSE
         stream.
 
-        Slow consumers are bounded: when the queue fills, the
-        connection is dropped (``unsubscribe`` is called and the
-        SSE handler closes the response). EventSource auto-reconnect
-        then drives a fresh scoped snapshot. We never emit
-        ``fs.resync_required`` for slow consumers — that event is
-        reserved for server restart / root swap.
+        Slow consumers remain bounded. When a queue fills, its stale
+        backlog is replaced with ``fs.resync_required`` so the route
+        layer can force a fresh scoped snapshot without silently
+        losing live updates.
         """
 
         q: asyncio.Queue[StreamEvent] = asyncio.Queue(maxsize=max_queue)
@@ -549,10 +596,7 @@ class InventoryIndex:
         self._subscribers.discard(q)
 
     def is_subscribed(self, q: asyncio.Queue[StreamEvent]) -> bool:
-        """True iff *q* is currently in the subscriber set. Becomes
-        False after ``_emit`` drops a slow consumer; the bus relay
-        polls this so it can resubscribe instead of waiting forever
-        on a dead queue."""
+        """True iff *q* is currently in the subscriber set."""
         return q in self._subscribers
 
     def subscriber_count(self) -> int:
@@ -583,8 +627,13 @@ class InventoryIndex:
         """
 
         batch: list[FsEntry] = []
-        gi_check = await asyncio.to_thread(_build_gitignore_check_for, root)
         try:
+            gi_check = await run_cancellable_thread(
+                lambda cancel_event: _build_gitignore_check_for(
+                    root,
+                    cancel_event=cancel_event,
+                )
+            )
             async for entry in walk_tree(
                 root,
                 max_depth=self._max_depth,
@@ -704,7 +753,7 @@ class InventoryIndex:
                 batch.clear()
         if batch:
             self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
-        LOG.info("inventory repaired %d pending dir aggregate(s)", repaired_count)
+        LOG.debug("inventory repaired %d pending dir aggregate(s)", repaired_count)
 
     def capture_write_token(self, path: str) -> WriteToken:
         """Capture the inventory's current generation counter for *path*.
@@ -752,10 +801,11 @@ class InventoryIndex:
         if token is not None and token.generation < cur_gen:
             # The producer captured the counter at observation start,
             # but an invalidation has bumped it since; drop the stale
-            # write and let the next observer pass refresh. A
-            # sustained stream of dropped writes points at a producer
-            # that's holding stale tokens — surface at WARNING.
-            LOG.warning(
+            # write and let the next observer pass refresh. This is the
+            # expected result of a watcher invalidation racing the boot walk,
+            # so retain it for concurrency debugging without presenting
+            # normal conflict resolution as a failure.
+            LOG.debug(
                 "inventory: dropped stale walker write path=%s token_gen=%d cur_gen=%d",
                 entry.path,
                 token.generation,
@@ -988,9 +1038,11 @@ class InventoryIndex:
         self._emit(event)
 
     def _emit(self, event: StreamEvent) -> None:
-        """Push *event* to every subscriber. Slow consumers are
-        dropped — full queue means we close that connection rather
-        than block the producer.
+        """Push *event* to every subscriber without blocking.
+
+        A full queue cannot preserve an ordered delta stream. Replace
+        its stale backlog with a resync marker so the consumer repairs
+        from an authoritative snapshot while memory stays bounded.
 
         Every ``fs.change`` also emits a minimal ``catalog.change``
         companion here, at the single choke point all producers
@@ -998,15 +1050,25 @@ class InventoryIndex:
         any stream scope (scope filtering only narrows ``fs.change``).
         """
 
-        dead: list[asyncio.Queue[StreamEvent]] = []
+        overflowed = 0
         for q in self._subscribers:
             try:
                 q.put_nowait(event)
             except asyncio.QueueFull:
-                dead.append(q)
-        for q in dead:
-            self._subscribers.discard(q)
-            LOG.warning("dropped slow subscriber; queue full at %d", q.maxsize)
+                while True:
+                    try:
+                        q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                resync = (
+                    event
+                    if isinstance(event, FsResyncRequired)
+                    else FsResyncRequired(reason="subscriber_queue_overflow")
+                )
+                q.put_nowait(resync)
+                overflowed += 1
+        if overflowed:
+            LOG.debug("requested resync for %d full subscriber queue(s)", overflowed)
         if isinstance(event, FsChange):
             companion = _derive_catalog_change(event)
             if companion is not None:

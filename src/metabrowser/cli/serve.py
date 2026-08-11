@@ -1,6 +1,6 @@
 """Serve mode: launch a local web server to browse a directory's files.
 
-This is the default operation of the ``metab`` CLI: ``metab ./runs``
+This is the default operation of the ``metab`` CLI: ``metab ./path/to/directory``
 serves that directory. Argument parsing and mode selection live in
 :mod:`metabrowser.cli.main`; this module owns only the serve
 implementation.
@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 import threading
 import webbrowser
 from pathlib import Path
@@ -22,6 +23,7 @@ import typer
 import uvicorn
 
 from metabrowser.cli.common import apply_log_level, validate_contained_path
+from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
@@ -82,11 +84,16 @@ class _QuietForceExitServer(uvicorn.Server):
     is actionable, so drop them all at the logger level instead.
     """
 
+    interrupted: bool = False
+
     @override
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
+        if sig == signal.SIGINT:
+            self.interrupted = True
         super().handle_exit(sig, frame)
         if self.force_exit:
             logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
+            os._exit(INTERRUPTED_EXIT_CODE)
 
 
 def run_serve(
@@ -186,7 +193,7 @@ def run_serve(
     original_uvicorn_log_level = uvicorn_logger.level
     uvicorn_logger.addFilter(_shutdown_noise_filter)
     try:
-        _QuietForceExitServer(
+        uvicorn_server = _QuietForceExitServer(
             uvicorn.Config(
                 server.app,
                 host=host,
@@ -194,7 +201,10 @@ def run_serve(
                 log_level="warning",
                 timeout_graceful_shutdown=0,
             )
-        ).run()
+        )
+        uvicorn_server.run()
+        if uvicorn_server.interrupted is True:
+            raise typer.Exit(code=INTERRUPTED_EXIT_CODE)
     finally:
         uvicorn_logger.removeFilter(_shutdown_noise_filter)
         uvicorn_logger.setLevel(original_uvicorn_log_level)

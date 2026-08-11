@@ -1,7 +1,7 @@
-// Behavioural checks for static/filter_state.js: defaults,
-// sanitization of anything a stale cookie could hand back, the
-// predicate contract (missing data never excludes), change delivery,
-// and unsubscribe.
+// Behavioural checks for static/filter_state.js: transient defaults,
+// sanitization of caller-supplied values, legacy preference cleanup,
+// the predicate contract (missing data never excludes), change
+// delivery, and unsubscribe.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -39,6 +39,16 @@ function makeSandbox(options) {
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
+  sandbox.METABROWSER_SETTINGS = {
+    RECENT_WINDOW_SECONDS: {
+      live: 90,
+      "1h": 60 * 60,
+      "24h": 24 * 60 * 60,
+      "7d": 7 * 24 * 60 * 60,
+      "30d": 30 * 24 * 60 * 60,
+      all: null,
+    },
+  };
   sandbox.metabrowser = {
     prefs: {
       get(name, fallback) {
@@ -46,6 +56,10 @@ function makeSandbox(options) {
       },
       set(name, value) {
         store.set(name, value);
+        return true;
+      },
+      remove(name) {
+        store.delete(name);
         return true;
       },
     },
@@ -72,11 +86,11 @@ function makeSandbox(options) {
   return { state: sandbox.MetabrowserFilterState, store, events, sandbox };
 }
 
-// ── Defaults and persistence ───────────────────────────────────
+// ── Transient defaults ─────────────────────────────────────────
 
 {
   const { state } = makeSandbox();
-  assertEqual("defaults with no stored preference", state.get(), {
+  assertEqual("a new page starts from defaults", state.get(), {
     recency: "all",
     types: null,
     size: "all",
@@ -88,7 +102,7 @@ function makeSandbox(options) {
 {
   const { state, store } = makeSandbox();
   state.set({ recency: "7d" });
-  assertEqual("set writes through to prefs", store.get("filters").recency, "7d");
+  assertEqual("set does not persist filters", store.has("filters"), false);
   assertEqual("one dimension away from default", state.activeCount(), 1);
 }
 
@@ -96,21 +110,7 @@ function makeSandbox(options) {
   const { state } = makeSandbox({
     prefs: { filters: { recency: "24h", types: [".md"], size: "1m", showIgnored: false } },
   });
-  assertEqual("stored preferences are restored", state.get(), {
-    recency: "24h",
-    types: [".md"],
-    size: "1m",
-    showIgnored: false,
-  });
-  assertEqual("each non-default dimension counts once", state.activeCount(), 4);
-}
-
-// A cookie written by a future version must degrade, never throw.
-{
-  const { state } = makeSandbox({
-    prefs: { filters: { recency: "since-tuesday", size: 42, showIgnored: "yes", types: "md" } },
-  });
-  assertEqual("unknown values fall back to defaults", state.get(), {
+  assertEqual("saved filters from an older version are ignored", state.get(), {
     recency: "all",
     types: null,
     size: "all",
@@ -119,15 +119,23 @@ function makeSandbox(options) {
 }
 
 {
-  const { state } = makeSandbox({ prefs: { filters: { types: [] } } });
+  const { state, store } = makeSandbox({
+    prefs: { filters: { recency: "since-tuesday", size: 42, showIgnored: "yes", types: "md" } },
+  });
+  state.get();
+  assertEqual("the obsolete filter preference is removed", store.has("filters"), false);
+}
+
+{
+  const { state } = makeSandbox();
+  state.set({ types: [] });
   assertEqual("an empty type list normalizes to no constraint", state.get().types, null);
   assertEqual("...and does not count as active", state.activeCount(), 0);
 }
 
 {
-  const { state } = makeSandbox({
-    prefs: { filters: { recency: "7d", types: [".md"], showIgnored: false } },
-  });
+  const { state } = makeSandbox();
+  state.set({ recency: "7d", types: [".md"], showIgnored: false });
   state.clear();
   assertEqual("clear resets every dimension", state.activeCount(), 0);
   assertEqual("clear restores gitignored visibility", state.get().showIgnored, true);
@@ -135,7 +143,8 @@ function makeSandbox(options) {
 
 // get() must not hand out a reference into internal state.
 {
-  const { state } = makeSandbox({ prefs: { filters: { types: [".md"] } } });
+  const { state } = makeSandbox();
+  state.set({ types: [".md"] });
   const snapshot = state.get();
   snapshot.types.push(".py");
   assertEqual("snapshots are copies", state.get().types, [".md"]);
@@ -190,20 +199,18 @@ const HOUR = 3600;
 {
   const { state } = makeSandbox();
   const s = Object.assign(state.get(), { recency: "live" });
-  assertTrue("a live file matches", state.rowMatches({ live: true, path: "a.md" }, s, NOW));
-  assertEqual("a static file does not", state.rowMatches({ path: "a.md" }, s, NOW), false);
-  // Folders are judged too: `live` means "has a descendant being
-  // written" for a directory. Waving them through left every collapsed
-  // folder in the tree while every file was pruned, which read as a
-  // filter showing days-old content rather than live writes.
   assertTrue(
-    "a folder containing a live file matches",
-    state.rowMatches({ isDir: true, live: true, path: "src" }, s, NOW),
+    "an ordinary file touched inside the Live window matches",
+    state.rowMatches({ mtime: NOW - 89, path: "notes.md" }, s, NOW),
   );
   assertEqual(
-    "a folder with nothing live under it does not",
-    state.rowMatches({ isDir: true, path: "src" }, s, NOW),
+    "a file outside the Live window does not",
+    state.rowMatches({ mtime: NOW - 91, path: "session.jsonl" }, s, NOW),
     false,
+  );
+  assertTrue(
+    "missing mtime stays unknown rather than excluding a pending row",
+    state.rowMatches({ path: "pending.txt" }, s, NOW),
   );
 }
 

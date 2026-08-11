@@ -265,12 +265,14 @@
           score: ordered.length - index,
         });
       });
-      const incompleteSuffix = snapshot.complete ? "" : " Local coverage is incomplete.";
-      const filesNoun = snapshot.complete ? "files" : "observed files";
       const statusMessage =
         results.length === 0
-          ? `No known file matches among ${snapshot.observedCount} ${filesNoun}.${incompleteSuffix}`
-          : `${snapshot.observedCount} ${filesNoun} are searchable.${incompleteSuffix}`;
+          ? snapshot.complete
+            ? `No files match your search among ${snapshot.observedCount} files.`
+            : `No indexed files match your search. More files may appear as scanning continues.`
+          : snapshot.complete
+            ? `${snapshot.observedCount} files are searchable.`
+            : `${snapshot.observedCount} indexed files are searchable. More files may appear as scanning continues.`;
       return Object.freeze({
         candidateCount: snapshot.observedCount,
         complete: snapshot.complete,

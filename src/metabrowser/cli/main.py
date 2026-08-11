@@ -3,12 +3,12 @@
 ``metab .`` serves the current directory the way ``open .`` opens it on
 macOS. Every other operation is a mode flag on the same command:
 
-    metab path/to/run-dir              # browse a directory
-    metab path/to/file.jsonl           # open file directly (root = parent)
-    metab run-dir --path .logs/predict/ALPHA.jsonl   # deep-link within root
+    metab path/to/directory            # browse a directory
+    metab path/to/example.txt          # open file directly (root = parent)
+    metab path/to/directory --path documents/report.pdf  # deep-link within root
 
     metab . --walk --format json       # inventory walk, no server
-    metab --remote my-vm --path /mnt/filestore/runs  # SSH-tunnel a remote host
+    metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
     metab --doctor                     # validate all plugins
@@ -167,9 +167,9 @@ _app = typer.Typer(add_completion=False)
     epilog=(
         "Examples:\n\n"
         "metab .\n\n"
-        "metab ./path/to/artifacts --no-open\n\n"
+        "metab ./path/to/directory --no-open\n\n"
         "metab . --walk --format json\n\n"
-        "metab --remote my-vm --path /srv/runs\n\n"
+        "metab --remote example-host --path /srv/shared-files\n\n"
         "metab --plugins"
     ),
 )

@@ -19,11 +19,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+
 # ── Server port ──────────────────────────────────────────────
 
 # Canonical port for metabrowser (serve + browse tunnel endpoint).
 # Single source of truth — do not hardcode 8411 anywhere else.
 DEFAULT_BROWSER_PORT = 8411
+
+# ── Diagnostics ──────────────────────────────────────────────
+
+# Shared cutoff for slow-request warnings and slow background-helper summaries.
+# Routine details stay behind DEBUG without obscuring failures.
+SLOW_OPERATION_LOG_SECONDS = 2.0
 
 # ── InventoryIndex walker ────────────────────────────────────
 
@@ -59,20 +67,17 @@ INVENTORY_WALKER_EMIT_BATCH = 256
 # fresh snapshot.
 SSE_RING_BUFFER_CAPACITY = 5_000
 
-# Per-connection bounded queue. Overflow disconnects that
-# connection only; EventSource auto-reconnect drives a fresh
-# snapshot. This bound protects one connection; bus-level fanout
-# governs delivery across connections.
+# Per-connection bounded queue. Overflow replaces stale deltas with
+# a resync marker, and the browser reconnects for a fresh snapshot.
+# This bound protects one connection; bus-level fanout governs
+# delivery across connections.
 SSE_PER_CONNECTION_QUEUE_SIZE = 1_024
 
 # The event bus subscribes to the inventory once and fans out to
-# all connections. The walker batches its upserts (see
-# INVENTORY_WALKER_EMIT_BATCH), so the burst is bounded at roughly
-# (INVENTORY_MAX_FILES + dirs) / batch, about 2k-3k events for a
-# 500k-file repo with typical directory density. If this queue
-# overflows, the inventory drops the bus from its subscribers and
-# the relay's defensive resubscribe (events_route._relay_loop)
-# rebuilds the subscription.
+# all connections. The walker batches its upserts, but large roots
+# and watcher bursts can still fill this bounded queue. Overflow
+# replaces stale deltas with one resync marker so browsers refresh
+# from authoritative snapshots without losing live updates silently.
 SSE_BUS_INVENTORY_QUEUE_SIZE = 4_096
 
 # Heartbeat cadence — long enough to keep proxies alive; short
@@ -103,10 +108,16 @@ ACTIVE_TRACKER_QUIET_POLLS = 6
 # run-dir write-storm pattern collapses cleanly.
 RECENT_CLUSTER_PCT = 0.05
 
-# Window keys (UI chips) and their seconds-back values; ``None``
+# "Live" is the same recent-mtime window for every file. Specialized
+# log tracking still owns active badges and live tailing, but it does
+# not change filter membership.
+LIVE_FILE_WINDOW_S = 90.0
+
+# Window keys (UI choices) and their seconds-back values; ``None``
 # means unbounded ("all"). Both the server endpoint and the
-# client window-chip set read from this dict.
+# browser read from this dict.
 RECENT_WINDOW_SECONDS: dict[str, float | None] = {
+    "live": LIVE_FILE_WINDOW_S,
     "1h": 60 * 60,
     "24h": 24 * 60 * 60,
     "7d": 7 * 24 * 60 * 60,
@@ -212,8 +223,10 @@ def client_settings_dict() -> dict[str, Any]:
     """
 
     return {
+        "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
+        "RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS,
         # Window keys in UI chip order. Server enforces same set.
         "RECENT_WINDOWS": list(RECENT_WINDOW_SECONDS.keys()),
         "RECENT_CLUSTER_PCT": RECENT_CLUSTER_PCT,
@@ -250,6 +263,7 @@ __all__ = [
     "INVENTORY_WALKER_EMIT_BATCH",
     "INDEX_PROGRESS_POLL_MS",
     "INDEX_PROGRESS_UPDATE_FILES",
+    "LIVE_FILE_WINDOW_S",
     "RECENT_CLUSTER_PCT",
     "RECENT_DEFAULT_LIMIT",
     "RECENT_DEFAULT_WINDOW",

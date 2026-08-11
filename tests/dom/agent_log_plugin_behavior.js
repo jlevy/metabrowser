@@ -3,23 +3,59 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const repoRoot = path.resolve(process.argv[2]);
-const listeners = [];
+const listeners = {};
 let chartDisposeCalls = 0;
 let chartRenderCalls = 0;
 
-const filterBar = {
-  addEventListener: (type) => listeners.push(type),
+const dynamicChipAttributes = new Map([
+  ["data-chip-key", "agent-event-kind"],
+  ["data-chip-value", "queue-operation"],
+  ["aria-pressed", "true"],
+]);
+const dynamicGroup = {
+  getAttribute: (name) => (name === "data-select" ? "many" : null),
 };
+const dynamicChip = {
+  getAttribute: (name) => dynamicChipAttributes.get(name) || null,
+  setAttribute: (name, value) => dynamicChipAttributes.set(name, String(value)),
+  closest: (selector) => {
+    if (selector === "[data-chip-key]") {
+      return dynamicChip;
+    }
+    if (selector === ".chip-group") {
+      return dynamicGroup;
+    }
+    return null;
+  },
+};
+const dynamicEvent = { dataset: { kind: "queue-operation" }, style: { display: "" } };
 const container = {
   innerHTML: "",
-  querySelector: (selector) => (selector === ".filter-bar" ? filterBar : null),
+  addEventListener: (type, listener) => {
+    listeners[type] = listener;
+  },
+  removeEventListener: () => {},
+  contains: () => true,
+  querySelector: () => null,
+  querySelectorAll: (selector) => {
+    if (selector.includes("data-chip-key")) {
+      return [dynamicChip];
+    }
+    if (selector === ".log-event[data-kind]") {
+      return [dynamicEvent];
+    }
+    return [];
+  },
 };
 const document = {
+  addEventListener: () => {},
+  removeEventListener: () => {},
   createElement: () => ({ appendChild: () => {} }),
   documentElement: {},
   querySelector: () => null,
   querySelectorAll: () => [],
 };
+container.ownerDocument = document;
 const sandbox = {
   console,
   document,
@@ -46,6 +82,7 @@ sandbox.MetabrowserCharts = {
 vm.createContext(sandbox);
 for (const relative of [
   "src/metabrowser/static/plugin_sdk.js",
+  "src/metabrowser/static/filter_controls.js",
   "src/metabrowser/static/icons.js",
   "src/metabrowser/builtin_plugins/agent_log/index.js",
 ]) {
@@ -58,15 +95,28 @@ const chartsView = sandbox.metabrowser.getRegisteredView("agent-log", "charts");
 const hostileKind = 'custom"><img src=x onerror="globalThis.pwned=1">';
 logView.render(container, {
   raw: {
-    events: [{ kind: hostileKind, summary: "safe", raw: {} }],
+    events: [
+      { kind: hostileKind, summary: "safe", raw: {} },
+      { kind: "queue-operation", summary: "queued", raw: {} },
+    ],
     summary: {},
   },
 });
+if (listeners.click) {
+  listeners.click({ target: dynamicChip });
+}
 const securityResult = {
-  hasDelegatedClick: listeners.includes("click"),
+  hasDelegatedClick: typeof listeners.click === "function",
   hasInlineKindHandler: container.innerHTML.includes("toggleKindFilter("),
   hasRawImage: container.innerHTML.includes("<img"),
   hasEscapedImage: container.innerHTML.includes("&lt;img"),
+  usesSharedMultiSelect: container.innerHTML.includes('data-select="many"'),
+  dynamicStartsPressed: container.innerHTML.includes(
+    'data-chip-value="queue-operation" aria-pressed="true"',
+  ),
+  dynamicEndsUnpressed: dynamicChip.getAttribute("aria-pressed") === "false",
+  dynamicEventHidden: dynamicEvent.style.display === "none",
+  dynamicLabelIsReadable: container.innerHTML.includes(">queue operation (1)</button>"),
 };
 let resolveChartFetch;
 sandbox.location = { origin: "http://127.0.0.1:8411" };

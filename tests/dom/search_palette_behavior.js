@@ -365,7 +365,8 @@ async function main() {
         request,
         requestId,
         results: availableResults,
-        statusMessage: "5 observed files are searchable. Local coverage is incomplete.",
+        statusMessage:
+          "5 indexed files are searchable. More files may appear as scanning continues.",
         truncated: availableResults.length > 3,
       });
       // The real controller publishes one empty "searching" composition before
@@ -532,8 +533,9 @@ async function main() {
     document.activeElement === input && input.selectCalls === selectCallsBeforeReopen + 1,
   );
   check(
-    "empty query reports observed incomplete coverage",
-    status.textContent.includes("5 observed files") && status.textContent.includes("incomplete"),
+    "empty query explains incomplete indexed coverage",
+    status.textContent.includes("5 indexed files") &&
+      status.textContent.includes("More files may appear"),
     status.textContent,
   );
   palette.open();
@@ -560,7 +562,11 @@ async function main() {
     listbox.children[0].textContent.includes("app.js") &&
       listbox.children[0].textContent.includes("src"),
   );
-  check("result limit stays visible", status.textContent.includes("limited"), status.textContent);
+  check(
+    "result limit stays visible",
+    status.textContent.includes("Showing only the top matches"),
+    status.textContent,
+  );
 
   const requestCountBeforeComposition = requests.length;
   input.value = "composing";
@@ -799,18 +805,18 @@ async function main() {
   );
 
   // With an empty query there is no search to re-run, but the idle line quotes
-  // the observed count, which is exactly what a catalog change moves.
+  // the indexed count, which is exactly what a catalog change moves.
   input.value = "";
   input.dispatchEvent(fakeEvent("input", { target: input }));
   await settle();
-  check("the idle line reports the starting count", status.textContent.includes("5 observed"));
+  check("the idle line reports the starting count", status.textContent.includes("5 indexed"));
   const requestsBeforeIdle = requests.length;
   catalogObservedCount = 4242;
   emitCatalogChange();
   await waitMs(220);
   check(
     "an idle palette refreshes its status line",
-    status.textContent.includes("4242 observed"),
+    status.textContent.includes("4242 indexed"),
     status.textContent,
   );
   check("an idle palette runs no search", requests.length === requestsBeforeIdle);

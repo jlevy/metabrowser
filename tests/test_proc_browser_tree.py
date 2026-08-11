@@ -13,7 +13,6 @@ import subprocess
 from pathlib import Path
 
 from metabrowser import server as proc_browser
-from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.server import (
     DEFAULT_TREE_DEPTH,
     MAX_TREE_DEPTH,
@@ -37,6 +36,20 @@ def _init_git(root: Path, *, gitignore: str = "") -> None:
 def _touch(path: Path, content: str = "x") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
+
+
+def _isolated_git_env() -> dict[str, str]:
+    """Return an environment that does not target the caller's repository."""
+    env = os.environ.copy()
+    local_names = subprocess.run(
+        ["git", "rev-parse", "--local-env-vars"],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.splitlines()
+    for name in local_names:
+        env.pop(name, None)
+    return env
 
 
 def test_subtree_is_empty_with_no_children() -> None:
@@ -304,12 +317,12 @@ def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     # pointing at the real repository — and GIT_DIR outranks cwd, so the
     # bare `git init` below would re-initialize the served repository as
     # bare instead of creating the fixture repo.
-    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
-    if subprocess.run(["git", "--version"], capture_output=True, env=env).returncode != 0:
+    if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
         return
+    git_env = _isolated_git_env()
     repo = tmp_path / "repo"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=env)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=git_env)
     (repo / ".gitignore").write_text("*.log\ncache/\n")
     _touch(repo / "cache" / "a.bin")
     _touch(repo / "app.log")
@@ -318,7 +331,7 @@ def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     check, _ = build_gitignore_check(repo)
 
     def git_ignored(rel: str) -> bool:
-        r = subprocess.run(["git", "check-ignore", "--quiet", rel], cwd=repo, env=env)
+        r = subprocess.run(["git", "check-ignore", "--quiet", rel], cwd=repo, env=git_env)
         return r.returncode == 0
 
     assert check(repo / "cache", is_dir=True) == git_ignored("cache")

@@ -4,9 +4,9 @@ Discovers candidate files (JSONL/state/PID files inside ``.logs/`` and
 ``.state/`` trees), then on each poll re-stats them and reports which
 ones changed within ``stale_after_s`` seconds.
 
-Discovery is scoped to ``.logs/`` and ``.state/`` subtrees, where active
-run artifacts live. Bounding the candidate set prevents repository size
-from turning each activity poll into a full-tree stat pass.
+Discovery is scoped to ``.logs/`` and ``.state/`` subtrees, where actively
+written logs and state files commonly live. Bounding the candidate set prevents
+repository size from turning each activity poll into a full-tree stat pass.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
 from metabrowser.inventory import get_instance as get_inventory
 from metabrowser.paths_safe import _rel_path, register_root_callback
+from metabrowser.settings import SLOW_OPERATION_LOG_SECONDS
 
 LOG = logging.getLogger(__name__)
 
@@ -181,7 +182,14 @@ def _discover_trackable_files_from_inventory(root: Path) -> tuple[Path, ...] | N
     return tuple(trackable)
 
 
-@log_calls(level="info", show_timing_only=True, if_slower_than=0.05)
+@log_calls(
+    level="info",
+    show_args=False,
+    show_return_value=False,
+    if_slower_than=SLOW_OPERATION_LOG_SECONDS,
+    include_module=False,
+    log_func=LOG.info,
+)
 def _discover_trackable_files(root: Path) -> tuple[Path, ...]:
     """Collect files worth tracking for activity.
 
@@ -250,11 +258,8 @@ def _activity_snapshot(root: Path) -> list[dict[str, Any]]:
 
         active_files.append(entry)
 
-    # One-line summary so the operator can see what /api/activity is
-    # actually doing each poll: how many files were stat'd, how long the
-    # discovery walk took (almost always cached, so ~0ms), how long the
-    # stat-storm took, how many came back active.
-    LOG.info(
+    # DEBUG exposes per-poll work without flooding ordinary server output.
+    LOG.debug(
         "_activity_snapshot tracked=%d active=%d discovery=%dms stat_poll=%dms",
         len(paths),
         len(active_files),

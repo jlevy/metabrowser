@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.inventory import InventoryIndex
 
 
@@ -120,6 +121,39 @@ def test_extension_tally_respects_its_limit(tmp_path: Path) -> None:
         index.clear()
 
     assert len(rows) == 5
+
+
+def test_file_type_tallies_match_preset_filter_semantics(tmp_path: Path) -> None:
+    """Aggregate counts include extensions and whole filenames, split
+    by the same ignored-file state as the extension rows."""
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".gitignore").write_text("build/\n")
+    (tmp_path / "README").write_text("docs without an extension")
+    (tmp_path / "guide.md").write_text("docs")
+    (tmp_path / "app.py").write_text("code")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build" / "LICENSE").write_text("ignored docs")
+    (tmp_path / "build" / "vendor.py").write_text("ignored code")
+    (tmp_path / "build" / "records.json").write_text("ignored data")
+
+    index = _index_for(tmp_path)
+    try:
+        extensions, presets = index.file_type_tallies(
+            [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
+        )
+    finally:
+        index.clear()
+
+    extension_rows = {row[0]: (row[1], row[2]) for row in extensions}
+    preset_rows = {row[0]: (row[1], row[2]) for row in presets}
+    assert extension_rows[".md"] == (1, 0)
+    assert extension_rows[".py"] == (1, 1)
+    assert preset_rows == {
+        "docs": (2, 1),
+        "code": (1, 1),
+        "data": (0, 1),
+    }
 
 
 def test_root_summary_is_zero_for_an_empty_root(tmp_path: Path) -> None:

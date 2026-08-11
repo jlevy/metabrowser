@@ -13,7 +13,7 @@ Surface checked:
 - mb.icons proxy (new in 3b — backed by window.MetabrowserIcons)
 - mb.perf.measure (new in 3b — wraps app.js's _mbPerf)
 - mb.fetchKpressRender (KPress document fragment fetch + diagnostics)
-- mb.renderTextTruncationWarning (print-visible partial source warning)
+- mb.renderTextTruncationWarning (visible partial-content warning)
 """
 
 from __future__ import annotations
@@ -84,11 +84,14 @@ def test_sdk_exports_kpress_render_helper() -> None:
     assert "_loadedKpressAssets" in src
 
 
-def test_sdk_exports_print_visible_truncation_warning() -> None:
+def test_sdk_exports_clear_truncation_warning() -> None:
     src = _sdk_source()
     assert "renderTextTruncationWarning: renderTextTruncationWarning" in src
     assert "function renderTextTruncationWarning" in src
-    assert "Source preview truncated." in src
+    assert "Content truncated." in src
+    assert "Select Load more to continue." in src
+    assert "Printed output" not in src
+    assert "complete source PDF" not in src
     assert "metabrowser-source-truncation-warning" in src
 
 

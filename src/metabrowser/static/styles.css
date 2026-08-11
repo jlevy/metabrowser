@@ -1037,6 +1037,27 @@ body {
   padding: 2px 0;
   border-radius: var(--radius-chrome);
 }
+/* ── Text buttons — shared labelled action primitive ─────────────
+   A compact action with a persistent surface and border. Use-site
+   classes position the control; they do not restyle it. */
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-chrome);
+  padding: 3px 8px;
+  font: inherit;
+  font-size: var(--ui-small-font-size);
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: var(--link);
+  color: var(--link);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
    --icon-btn-size hit target holding the app-wide --icon-glyph mark,
@@ -1049,18 +1070,13 @@ body {
    stop looking like the same kind of thing. Reach for the hover
    surface to signal "this is clickable", not for a static frame.
 
-   `.icon-btn` is the class for new markup. The named classes listed
-   with it are today's use sites, carried here because plugin markup
-   writes those class names directly; each keeps only its own
-   positioning or reveal behavior in its own block. An icon button
+   Every icon-only button carries `.icon-btn`. A named use-site class
+   may sit beside it for positioning, reveal triggers, or copied-state
+   feedback, but it does not recreate the control. An icon button
    that floats above content takes `.icon-btn-overlay`, which is the
    one sanctioned resting surface: a bare glyph over source text is
    unreadable, so it needs an opaque plate of its own. */
-.icon-btn,
-.settings-btn,
-.file-header-icon,
-.file-header-copy,
-.content-copy-btn {
+.icon-btn {
   display: inline-flex;
   width: var(--icon-btn-size);
   height: var(--icon-btn-size);
@@ -1085,9 +1101,7 @@ body {
    while leaving it in the tab order, so a keyboard user can still reach
    it — see the focus rule below. Every reveal trigger must restore
    `pointer-events` along with the opacity. */
-.icon-btn-reveal,
-.file-header-copy,
-.content-copy-btn {
+.icon-btn-reveal {
   opacity: 0;
   pointer-events: none;
   transition:
@@ -1099,30 +1113,17 @@ body {
 /* Floating over content, where a transparent glyph would collide with
    the text underneath. Declared above the hover rule so hovering still
    swaps in the hover surface. */
-.icon-btn-overlay,
-.content-copy-btn {
+.icon-btn-overlay {
   background: var(--sidebar-bg);
 }
-.icon-btn svg,
-.settings-btn svg,
-.file-header-icon svg,
-.file-header-copy svg,
-.content-copy-btn svg {
+.icon-btn svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
 }
 /* Hover, keyboard focus, and "my menu is open" are the same state:
    the control has surfaced. */
 .icon-btn:hover,
-.settings-btn:hover,
-.file-header-icon:hover,
-.file-header-copy:hover,
-.content-copy-btn:hover,
 .icon-btn:focus-visible,
-.settings-btn:focus-visible,
-.file-header-icon:focus-visible,
-.file-header-copy:focus-visible,
-.content-copy-btn:focus-visible,
 .settings-toggle[aria-expanded="true"] .settings-btn {
   color: var(--text);
   background: var(--hover-bg);
@@ -1130,26 +1131,16 @@ body {
 }
 /* The hover surface alone is not a focus indicator — keyboard focus
    also takes the app's standard ring. */
-.icon-btn:focus-visible,
-.settings-btn:focus-visible,
-.file-header-icon:focus-visible,
-.file-header-copy:focus-visible,
-.content-copy-btn:focus-visible {
+.icon-btn:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
 }
 /* A reveal button that takes keyboard focus must actually appear. */
-.icon-btn-reveal:focus-visible,
-.file-header-copy:focus-visible,
-.content-copy-btn:focus-visible {
+.icon-btn-reveal:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
-.icon-btn[hidden],
-.settings-btn[hidden],
-.file-header-icon[hidden],
-.file-header-copy[hidden],
-.content-copy-btn[hidden] {
+.icon-btn[hidden] {
   display: none;
 }
 
@@ -2446,19 +2437,7 @@ html[data-prose-font="sans"] {
   flex-shrink: 0;
 }
 .file-header-action {
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  border-radius: var(--radius-chrome);
-  padding: 3px 8px;
-  font: inherit;
-  font-size: var(--ui-small-font-size);
-  cursor: pointer;
   flex-shrink: 0;
-}
-.file-header-action:hover {
-  border-color: var(--link);
-  color: var(--link);
 }
 /* .file-header-icon (the print action) has no block of its own: it is
    entirely the .icon-btn primitive. It sits beside the copy icon and,
@@ -2915,81 +2894,6 @@ html[data-prose-font="sans"] {
   color: hsl(220 9% 46%);
 }
 
-/* ── Event filter bar ───────────────────────────────────────────
-   The agent-log plugin's event-kind buttons. Unrelated to the nav
-   filter bar above, which is why that one is `.nav-filter-bar`: the
-   two shared the `.filter-bar` name for a while and this rule's
-   margin silently leaked into the navigation column. */
-.filter-bar {
-  display: flex;
-  gap: 0;
-  margin: 8px 0 12px 0;
-  flex-wrap: wrap;
-}
-.filter-btn {
-  font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
-  font-weight: var(--weight-bold);
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  cursor: pointer;
-  background: var(--bg);
-  color: var(--muted);
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast);
-  line-height: 1.4;
-}
-.filter-btn:first-child {
-  border-radius: var(--radius-chrome) 0 0 var(--radius-chrome);
-}
-.filter-btn:last-child {
-  border-radius: 0 var(--radius-chrome) var(--radius-chrome) 0;
-}
-.filter-btn:not(:first-child) {
-  margin-left: -1px;
-}
-.filter-btn .filter-count {
-  font-weight: var(--weight-normal);
-  opacity: 0.7;
-}
-
-/* Active states — colored to match kind badge */
-.filter-btn.active.kind-thinking {
-  background: hsl(251 91% 95%);
-  color: hsl(263 69% 42%);
-  border-color: hsl(252 95% 85%);
-}
-.filter-btn.active.kind-text {
-  background: hsl(220 14% 96%);
-  color: hsl(217 19% 27%);
-  border-color: hsl(216 12% 84%);
-}
-.filter-btn.active.kind-tool_call {
-  background: hsl(48 96% 89%);
-  color: hsl(23 82% 31%);
-  border-color: hsl(43 96% 56%);
-}
-.filter-btn.active.kind-tool_result {
-  background: hsl(48 96% 89%);
-  color: hsl(23 82% 31%);
-  border-color: hsl(43 96% 56%);
-}
-.filter-btn.active.kind-system {
-  background: hsl(220 14% 96%);
-  color: hsl(220 9% 46%);
-  border-color: hsl(216 12% 84%);
-}
-.filter-btn.active.kind-init {
-  background: hsl(214 95% 93%);
-  color: hsl(226 71% 40%);
-  border-color: hsl(212 96% 78%);
-}
-.filter-btn.active.kind-result {
-  background: hsl(149 80% 90%);
-  color: hsl(163 88% 20%);
-  border-color: hsl(156 72% 67%);
-}
 .log-event-summary {
   flex: 1;
   overflow: hidden;

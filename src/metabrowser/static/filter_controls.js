@@ -180,7 +180,7 @@
    *          value: string[] | string | null, anyLabel: string,
    *          anyValue?: string, select?: string, open?: boolean,
    *          menuId: string,
-   *          presets?: Array<{id: string, label: string, values: string[]}>}} spec
+   *          presets?: Array<{id: string, label: string, values: string[], count?: number}>}} spec
    */
   function menuGroupHtml(spec) {
     const many = spec.select !== "one";
@@ -218,6 +218,7 @@
       .map((opt) => {
         const on = selected.indexOf(opt.value) >= 0;
         const extra = opt.className ? ` ${esc(opt.className)}` : "";
+        const title = opt.title ? ` title="${esc(opt.title)}"` : "";
         const count =
           typeof opt.count === "number"
             ? `<span class="chip-menu-count">${esc(opt.count.toLocaleString())}</span>`
@@ -237,6 +238,7 @@
         const age = opt.ageClass ? ` ${esc(opt.ageClass)}` : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +
+          `${title}` +
           ` role="${rowRole}" aria-checked="${on}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
@@ -265,12 +267,16 @@
             const on =
               preset.values.length > 0 &&
               preset.values.every((value) => selected.indexOf(value) >= 0);
+            const count =
+              typeof preset.count === "number"
+                ? `<span class="chip-menu-count">${esc(preset.count.toLocaleString())}</span>`
+                : "";
             return (
               `<button type="button" class="menu-item chip-menu-item chip-menu-preset"` +
               ` role="${rowRole}" aria-checked="${on}"` +
               ` data-chip-key="${esc(spec.key)}" data-chip-preset="${esc(preset.id)}">` +
               `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
-              `<span class="menu-item-label">${esc(preset.label)}</span></button>`
+              `<span class="menu-item-label">${esc(preset.label)}</span>${count}</button>`
             );
           })
           .join("") +
@@ -571,7 +577,7 @@
     };
   }
 
-  /** @type {Record<string, any>} */ (window).MetabrowserFilterControls = {
+  const api = {
     escapeHtml: esc,
     nextSelection,
     isSelected,
@@ -582,4 +588,9 @@
     clearHtml,
     bind,
   };
+  if (!window.metabrowser) {
+    console.error("metabrowser filter controls: window.metabrowser missing — SDK not loaded");
+    return;
+  }
+  window.metabrowser.filterControls = api;
 })();
