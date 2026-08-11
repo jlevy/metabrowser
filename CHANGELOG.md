@@ -92,6 +92,10 @@ Reliability:
   status 130 instead of printing a traceback or waiting on a background thread.
   A second Ctrl-C remains an immediate forced exit if another operation cannot finish
   cooperatively.
+- Default server output no longer reports routine lifecycle events, expected concurrent
+  inventory conflicts, protected directories, or sub-threshold helper timings.
+  Slow requests, long inventory scans, plugin problems, and operational failures remain
+  visible, while `--log-level debug` retains the detailed trace when needed.
 
 Security documentation:
 

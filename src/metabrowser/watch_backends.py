@@ -350,9 +350,9 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
     inventory = get_inventory()
     if mode is None:
         mode, reason = await asyncio.to_thread(select_watch_mode, root)
-        LOG.info("watcher starting at %s mode=%s reason=%s", root, mode, reason)
+        LOG.debug("watcher starting at %s mode=%s reason=%s", root, mode, reason)
     else:
-        LOG.info("watcher starting at %s mode=%s (override)", root, mode)
+        LOG.debug("watcher starting at %s mode=%s (override)", root, mode)
 
     force_polling = mode == "polling"
     poll_delay_ms = 2000 if force_polling else 50
@@ -371,7 +371,7 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
                 except Exception:
                     LOG.exception("watcher emit failed for %s", abs_path)
     except asyncio.CancelledError:
-        LOG.info("watcher cancelled")
+        LOG.debug("watcher cancelled")
         raise
 
 

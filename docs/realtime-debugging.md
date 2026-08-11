@@ -9,7 +9,9 @@ Every response includes a `Server-Timing` entry for measured server duration.
 Browser developer tools display it alongside the request waterfall.
 
 Slow server requests log a warning.
-The default threshold can be overridden with `METABROWSER_SLOW_SERVER_MS`.
+The default threshold can be overridden with `METABROWSER_SLOW_SERVER_MS`. Routine
+request timings, lifecycle events, and skipped protected directories stay quiet unless
+`--log-level debug` is set.
 
 The browser performance helper measures fetches and render spans.
 A slow fetch message includes total, server, and transit time.

@@ -192,7 +192,7 @@ async def run_active_tracker(
 
     quiet_counters: dict[str, int] = {}
     inventory = get_inventory()
-    LOG.info("active tracker starting at %s", root)
+    LOG.debug("active tracker starting at %s", root)
     try:
         while True:
             try:
@@ -201,7 +201,7 @@ async def run_active_tracker(
                 LOG.exception("active tracker tick failed; continuing")
             await asyncio.sleep(interval_s)
     except asyncio.CancelledError:
-        LOG.info("active tracker cancelled")
+        LOG.debug("active tracker cancelled")
         raise
 
 

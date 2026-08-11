@@ -31,6 +31,7 @@ drive coroutines via ``asyncio.run``.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import replace
 from pathlib import Path
 from time import monotonic, sleep
@@ -618,6 +619,51 @@ def test_inventory_apply_walker_entry_drops_stale_writes() -> None:
         return "sub/x" in inv._entries
 
     assert asyncio.run(_run()) is False
+
+
+def test_inventory_stale_walker_write_is_debug_diagnostic() -> None:
+    """Expected generation races must not surface as operator warnings."""
+
+    class _RecordHandler(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__(level=logging.DEBUG)
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    logger = logging.getLogger("metabrowser.inventory")
+    original_level = logger.level
+    handler = _RecordHandler()
+    logger.addHandler(handler)
+    try:
+        logger.setLevel(logging.DEBUG)
+        inv = InventoryIndex()
+        inv._generation["sub/x"] = 5
+        inv._apply_walker_entry(
+            FsEntry(
+                path="sub/x",
+                parent="sub",
+                name="x",
+                type="file",
+                ext="",
+                kind="file",
+                size=10,
+                mtime_ns=0,
+                mtime_hash="",
+                active=False,
+                write_token=WriteToken(2),
+            )
+        )
+    finally:
+        logger.setLevel(original_level)
+        logger.removeHandler(handler)
+
+    records = [
+        record for record in handler.records if "dropped stale walker write" in record.getMessage()
+    ]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
 
 
 def test_inventory_apply_walker_entry_accepts_fresh_observation_after_invalidate() -> None:

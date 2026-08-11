@@ -113,7 +113,11 @@ from metabrowser.paths_safe import (
 )
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
-from metabrowser.settings import RECENT_WINDOW_SECONDS, client_settings_dict
+from metabrowser.settings import (
+    RECENT_WINDOW_SECONDS,
+    SLOW_OPERATION_LOG_SECONDS,
+    client_settings_dict,
+)
 from metabrowser.sse import api_stream
 from metabrowser.tree import (
     _IGNORE_CACHE,
@@ -153,13 +157,12 @@ _TREE_COLD_START_WAIT_S = 0.10
 
 # ── Performance logging setup ───────────────────────────────────
 #
-# The browser runs as a long-lived dev tool against potentially huge
-# trees, so timing visibility on every walk + handler is non-optional.
-# We route both our own ``metabrowser`` namespace and ``funlog``
-# (used for ``@log_calls`` decorators on hot paths) at INFO to stderr whenever
-# this module loads. A dynamic stream proxy keeps diagnostics separate from
-# machine-readable stdout and avoids retaining a closed test or embedding stream.
-# Idempotent so repeated imports don't double-attach handlers.
+# The browser runs as a long-lived tool against potentially huge trees. Route
+# its diagnostics to stderr without mixing them into machine-readable stdout.
+# Routine lifecycle and request details stay at DEBUG; INFO is reserved for
+# infrequent, useful summaries, while slow requests and failures use WARNING or
+# ERROR. A dynamic stream proxy avoids retaining a closed test or embedding
+# stream. Setup is idempotent so repeated imports do not double-attach handlers.
 
 _PERF_LOG_HANDLER_TAG = "metabrowser-perf"
 
@@ -189,12 +192,10 @@ def _setup_perf_logging() -> None:
     )
     # Attach to ``metabrowser`` so every child logger (server, tree,
     # activity, charts, sse, …) propagates up to this handler.
-    # ``funlog.funlog`` is a sibling tree (where ``@log_calls`` emits)
-    # and gets its own handler attachment.
     # ``METABROWSER_LOG_LEVEL`` (DEBUG/INFO/WARNING/ERROR) overrides; default INFO.
     level_name = os.environ.get("METABROWSER_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
-    for logger_name in ("metabrowser", "funlog.funlog"):
+    for logger_name in ("metabrowser",):
         lg = logging.getLogger(logger_name)
         lg.setLevel(level)
         already_attached = any(
@@ -227,7 +228,9 @@ from funlog import format_duration as _format_duration
 def log_async_calls(*, if_slower_than: float = 0.0) -> Any:
     """Async equivalent of ``@log_calls(show_timing_only=True)``.
 
-    *if_slower_than* in seconds; a value of 0 means "log every call".
+    *if_slower_than* is in seconds; a value of 0 traces every call. Request
+    timings are DEBUG diagnostics. The request middleware separately reports
+    genuinely slow end-to-end requests at WARNING.
     """
 
     def decorator(func: Any) -> Any:
@@ -239,7 +242,7 @@ def log_async_calls(*, if_slower_than: float = 0.0) -> Any:
             finally:
                 elapsed = time.monotonic() - started
                 if elapsed >= if_slower_than:
-                    LOG.info("⏱ %s took %s", func.__name__, _format_duration(elapsed))
+                    LOG.debug("⏱ %s took %s", func.__name__, _format_duration(elapsed))
 
         return wrapper
 
@@ -373,7 +376,12 @@ STATIC_DIR: Path = Path(__file__).parent / "static"
 _PERF_JS_AVAILABLE: bool = (STATIC_DIR / "perf.js").is_file()
 
 
-_SLOW_SERVER_REQUEST_MS = int(os.environ.get("METABROWSER_SLOW_SERVER_MS", "2000"))
+_SLOW_SERVER_REQUEST_MS = int(
+    os.environ.get(
+        "METABROWSER_SLOW_SERVER_MS",
+        str(int(SLOW_OPERATION_LOG_SECONDS * 1000)),
+    )
+)
 
 # Verbose request log: when METABROWSER_REQUEST_LOG=verbose, the
 # slow-request middleware logs *every* request (not just the slow
@@ -1020,7 +1028,7 @@ async def api_tree(request: Request) -> JSONResponse:
             max_depth=remaining_depth,
             root_abs=root_dir,
         )
-        LOG.info(
+        LOG.debug(
             "api_tree (inventory) path=%r depth=%d entries=%d status=%s",
             subpath or "<root>",
             remaining_depth,
@@ -1035,7 +1043,7 @@ async def api_tree(request: Request) -> JSONResponse:
                 subpath or "<root>",
                 inventory_status(),
             )
-        LOG.info(
+        LOG.debug(
             "api_tree (inventory-miss) path=%r depth=%d entries=%d status=%s",
             subpath or "<root>",
             remaining_depth,
@@ -1929,7 +1937,7 @@ async def api_activity(_request: Request) -> JSONResponse:
     instead — that's the live-update path.
     """
     active_files = await asyncio.to_thread(_activity_snapshot, _resolved_root_dir())
-    LOG.info("api_activity: %d active files", len(active_files))
+    LOG.debug("api_activity: %d active files", len(active_files))
     return JSONResponse(
         {
             "active_files": active_files,
@@ -2082,7 +2090,7 @@ _LOADED_PLUGINS = _DISCOVERY.plugins
 if _DISCOVERY.errors:
     for _err in _DISCOVERY.errors:
         LOG.warning("metabrowser plugin discovery: %s", _err)
-LOG.info(
+LOG.debug(
     "metabrowser loaded %d plugin(s): %s",
     len(_LOADED_PLUGINS),
     [p.name for p in _LOADED_PLUGINS],

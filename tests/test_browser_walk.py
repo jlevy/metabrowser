@@ -21,6 +21,7 @@ from typing import Any
 
 import yaml
 
+from metabrowser import walker
 from metabrowser.inventory import InventoryIndex
 from metabrowser.walk import (
     build_tree_envelope,
@@ -317,6 +318,37 @@ class _ListHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         self.messages.append(record.getMessage())
+
+
+def test_walker_permission_denied_is_debug_diagnostic(tmp_path: Path, monkeypatch) -> None:
+    """Unreadable subtrees are expected when browsing broad system roots."""
+
+    class _RecordHandler(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__(level=logging.DEBUG)
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    def _deny(_path: Path) -> None:
+        raise PermissionError(1, "Operation not permitted", str(tmp_path))
+
+    logger = logging.getLogger("metabrowser.walker")
+    original_level = logger.level
+    handler = _RecordHandler()
+    logger.addHandler(handler)
+    monkeypatch.setattr(walker.os, "scandir", _deny)
+    try:
+        logger.setLevel(logging.DEBUG)
+        assert walker._scandir_visible(tmp_path) == []
+    finally:
+        logger.setLevel(original_level)
+        logger.removeHandler(handler)
+
+    records = [record for record in handler.records if "permission denied" in record.getMessage()]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
 
 
 def test_rewalk_subtree_refuses_escaping_and_ancestor_symlinks(tmp_path: Path) -> None:

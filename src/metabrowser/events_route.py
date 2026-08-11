@@ -133,7 +133,7 @@ async def build_lifespan(
     if isinstance(root, Path):
         try:
             walker_task = inventory.start(root)
-            LOG.info("inventory pre-warm started at %s", root)
+            LOG.debug("inventory pre-warm started at %s", root)
         except Exception:
             # Never crash startup because the pre-warm fell over —
             # the lazy path can rebuild on first user action and

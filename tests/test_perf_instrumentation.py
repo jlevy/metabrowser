@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
-from metabrowser import server
+from metabrowser import server, tree
 
 
 def test_perf_logging_writes_to_current_stderr(capsys) -> None:
@@ -101,6 +101,47 @@ def _attach_capture() -> _CaptureHandler:
 
 def _detach_capture(handler: _CaptureHandler) -> None:
     server.LOG.removeHandler(handler)
+
+
+def test_route_timing_is_debug_diagnostic() -> None:
+    """Routine handler timings stay behind the explicit DEBUG log level."""
+    handler = _attach_capture()
+    original_level = server.LOG.level
+
+    @server.log_async_calls()
+    async def fast_route() -> None: ...
+
+    try:
+        server.LOG.setLevel(logging.DEBUG)
+        asyncio.run(fast_route())
+    finally:
+        server.LOG.setLevel(original_level)
+        _detach_capture(handler)
+
+    records = [record for record in handler.records if "fast_route took" in record.getMessage()]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
+
+
+def test_fast_gitignore_setup_does_not_emit_timing_at_info(tmp_path: Path) -> None:
+    """The slow-call threshold must suppress sub-threshold helper timings."""
+    loggers = (tree.LOG, logging.getLogger("funlog.funlog"))
+    handler = _CaptureHandler()
+    original_levels = [logger.level for logger in loggers]
+    for logger in loggers:
+        logger.addHandler(handler)
+    tree._IGNORE_CACHE.clear()
+    try:
+        for logger in loggers:
+            logger.setLevel(logging.INFO)
+        tree.build_gitignore_check(tmp_path)
+    finally:
+        tree._IGNORE_CACHE.clear()
+        for logger, original_level in zip(loggers, original_levels, strict=True):
+            logger.setLevel(original_level)
+            logger.removeHandler(handler)
+
+    assert not any("build_gitignore_check" in message for message in handler.messages())
 
 
 def test_verbose_request_log_logs_every_request() -> None:

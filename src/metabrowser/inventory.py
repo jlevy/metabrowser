@@ -758,7 +758,7 @@ class InventoryIndex:
                 batch.clear()
         if batch:
             self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
-        LOG.info("inventory repaired %d pending dir aggregate(s)", repaired_count)
+        LOG.debug("inventory repaired %d pending dir aggregate(s)", repaired_count)
 
     def capture_write_token(self, path: str) -> WriteToken:
         """Capture the inventory's current generation counter for *path*.
@@ -806,10 +806,11 @@ class InventoryIndex:
         if token is not None and token.generation < cur_gen:
             # The producer captured the counter at observation start,
             # but an invalidation has bumped it since; drop the stale
-            # write and let the next observer pass refresh. A
-            # sustained stream of dropped writes points at a producer
-            # that's holding stale tokens — surface at WARNING.
-            LOG.warning(
+            # write and let the next observer pass refresh. This is the
+            # expected result of a watcher invalidation racing the boot walk,
+            # so retain it for concurrency debugging without presenting
+            # normal conflict resolution as a failure.
+            LOG.debug(
                 "inventory: dropped stale walker write path=%s token_gen=%d cur_gen=%d",
                 entry.path,
                 token.generation,

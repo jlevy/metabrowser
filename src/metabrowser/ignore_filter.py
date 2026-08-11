@@ -55,7 +55,7 @@ class IgnoreChecker:
         """Load patterns from a gitignore-format file."""
         with open(path) as f:
             lines = f.readlines()
-        log.info("Loaded ignore patterns (%s lines) from %s", len(lines), path)
+        log.debug("Loaded ignore patterns (%s lines) from %s", len(lines), path)
         return cls(lines)
 
     def matches(self, path: str | Path, *, is_dir: bool = False) -> bool:
@@ -126,7 +126,7 @@ def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFi
     if not all_lines:
         return ignore_none
 
-    log.info("Loaded gitignore patterns (%s lines) from %s", len(all_lines), root)
+    log.debug("Loaded gitignore patterns (%s lines) from %s", len(all_lines), root)
     return IgnoreChecker(all_lines)
 
 
