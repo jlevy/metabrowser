@@ -58,8 +58,9 @@ timestamps stay sans and use `--tabular-numerals`.
 
 The authoritative rule, the current list of deliberate exceptions, and the reasoning for
 each live in the `── Typography roles ──` block of `static/styles.css`, next to the
-tokens they govern. `tests/test_chrome_typography.py` enforces that list, so a new
-monospaced use site fails the build until it is classified.
+tokens they govern. `tests/test_chrome_typography.py` enforces that list across the host
+and plugin stylesheets, so a new monospace use site fails the build until it is
+classified.
 
 ### Keyboard Keys
 

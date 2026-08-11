@@ -18,7 +18,8 @@ import re
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "metabrowser" / "static"
-STYLES_CSS = STATIC_DIR / "styles.css"
+AGENT_LOG_STYLES_CSS = STATIC_DIR.parent / "builtin_plugins" / "agent_log" / "styles.css"
+STYLE_FILES = (STATIC_DIR / "styles.css", AGENT_LOG_STYLES_CSS)
 SEARCH_PALETTE_JS = STATIC_DIR / "search_palette.js"
 
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -79,7 +80,7 @@ KBD_TOKENS = (
 
 
 def _read_styles() -> str:
-    return STYLES_CSS.read_text()
+    return "\n".join(path.read_text() for path in STYLE_FILES)
 
 
 def _rules(css: str) -> list[tuple[str, str]]:
