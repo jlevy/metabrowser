@@ -51,6 +51,7 @@ from typing import Literal
 
 from watchfiles import Change, awatch
 
+from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry, ProjectionInvalidate
 from metabrowser.fs_paths import is_visible_segment as _is_visible_segment
 from metabrowser.inventory import InventoryIndex
@@ -292,7 +293,12 @@ async def _emit_for_path(
     # ``tree._IGNORE_CACHE``, so this is one dict lookup per event
     # past the first.
     try:
-        gi_check, git_root = await asyncio.to_thread(build_gitignore_check, root)
+        gi_check, git_root = await run_cancellable_thread(
+            lambda cancel_event: build_gitignore_check(
+                root,
+                cancel_event=cancel_event,
+            )
+        )
     except Exception:
         gi_check, git_root = None, None
     gitignored = False

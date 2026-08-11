@@ -86,6 +86,13 @@ Design system:
   sans face as the rows they point at, leaving mono for the user’s own content.
   A contract test enforces the three named exceptions.
 
+Reliability:
+
+- Ctrl-C during command startup or an in-progress filesystem scan now exits quietly with
+  status 130 instead of printing a traceback or waiting on a background thread.
+  A second Ctrl-C remains an immediate forced exit if another operation cannot finish
+  cooperatively.
+
 Security documentation:
 
 - SECURITY.md now states the content trust model: application surfaces (the shell,

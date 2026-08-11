@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import signal
+import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
+from textwrap import dedent
 from typing import Protocol
 from unittest.mock import patch
 
@@ -201,6 +205,127 @@ def test_cli_rejects_invalid_option_values_during_parsing(args: list[str]) -> No
 # ── Console entry point ────────────────────────────────────────
 
 
+def test_console_entry_point_handles_interrupt_while_loading_cli(tmp_path: Path) -> None:
+    marker = tmp_path / "cli-import-started"
+    (tmp_path / "sitecustomize.py").write_text(
+        dedent(
+            """
+            import builtins
+            import os
+            import time
+            from pathlib import Path
+
+            real_import = builtins.__import__
+
+            def delayed_import(name, globals=None, locals=None, fromlist=(), level=0):
+                if name == "metabrowser.cli.main":
+                    Path(os.environ["METABROWSER_TEST_IMPORT_MARKER"]).touch()
+                    while True:
+                        time.sleep(1)
+                return real_import(name, globals, locals, fromlist, level)
+
+            builtins.__import__ = delayed_import
+            """
+        ).lstrip()
+    )
+    env = os.environ.copy()
+    env["METABROWSER_TEST_IMPORT_MARKER"] = str(marker)
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(tmp_path), env.get("PYTHONPATH")) if part
+    )
+    console_script = Path(sys.executable).with_name("metab")
+    process = subprocess.Popen(
+        [str(console_script), "--help"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    try:
+        for _ in range(500):
+            if marker.exists() or process.poll() is not None:
+                break
+            time.sleep(0.01)
+        assert marker.exists()
+
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=5)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+    assert process.returncode == 130
+    assert stdout == ""
+    assert stderr == ""
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal behavior")
+def test_console_entry_point_interrupts_background_filesystem_work(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").mkdir()
+    marker = tmp_path / "gitignore-walk-started"
+    (tmp_path / "sitecustomize.py").write_text(
+        dedent(
+            """
+            import os
+            import time
+            from pathlib import Path
+
+            real_walk = os.walk
+
+            def delayed_walk(root, *args, **kwargs):
+                if Path(root) == Path(os.environ["METABROWSER_TEST_SLOW_WALK_ROOT"]):
+                    while True:
+                        Path(os.environ["METABROWSER_TEST_WALK_MARKER"]).touch()
+                        yield str(root), [], []
+                        time.sleep(0.01)
+                else:
+                    yield from real_walk(root, *args, **kwargs)
+
+            os.walk = delayed_walk
+            """
+        ).lstrip()
+    )
+    env = os.environ.copy()
+    env["METABROWSER_TEST_SLOW_WALK_ROOT"] = str(root)
+    env["METABROWSER_TEST_WALK_MARKER"] = str(marker)
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(tmp_path), env.get("PYTHONPATH")) if part
+    )
+    with socket.socket() as port_probe:
+        port_probe.bind(("127.0.0.1", 0))
+        port = port_probe.getsockname()[1]
+
+    console_script = Path(sys.executable).with_name("metab")
+    process = subprocess.Popen(
+        [str(console_script), str(root), "--no-open", "--port", str(port)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    try:
+        for _ in range(1_000):
+            if marker.exists() or process.poll() is not None:
+                break
+            time.sleep(0.01)
+        assert marker.exists()
+
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=5)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+    assert process.returncode == 130
+    assert "Traceback" not in stderr
+    assert "Exception ignored" not in stderr
+    assert "Serving" in stdout
+
+
 def test_console_entry_point_reports_expected_errors_without_tracebacks(tmp_path: Path) -> None:
     missing = tmp_path / "missing"
 
@@ -329,11 +454,25 @@ def test_force_exit_silences_uvicorn_error_logger() -> None:
         assert server.should_exit and not server.force_exit
         assert uvicorn_logger.level == original_level
 
-        server.handle_exit(signal.SIGINT, None)
+        with patch("metabrowser.cli.serve.os._exit") as hard_exit:
+            server.handle_exit(signal.SIGINT, None)
+
         assert server.force_exit
         assert uvicorn_logger.level == logging.CRITICAL
+        hard_exit.assert_called_once_with(130)
     finally:
         uvicorn_logger.setLevel(original_level)
+
+
+def test_serve_reports_sigint_as_exit_130(tmp_path: Path) -> None:
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        server_cls.return_value.interrupted = True
+        result = runner.invoke(_app, [str(tmp_path), "--no-open"])
+
+    assert result.exit_code == 130
 
 
 def test_cli_bare_path_routes_to_serve() -> None:

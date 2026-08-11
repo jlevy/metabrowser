@@ -50,6 +50,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Literal
 
+from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import (
     CapabilityUpdate,
     CatalogChange,
@@ -401,12 +402,13 @@ class InventoryIndex:
 
         if self._root is None:
             return
+        root = self._root
         previous_subtree = self._entries.get(rel)
         if not rel:
             # The whole-root re-walk is what start() does; refuse to
             # avoid two walkers writing into the index simultaneously.
             return
-        target = self._root / rel
+        target = root / rel
         try:
             target_resolved = target.resolve()
         except OSError:
@@ -436,7 +438,7 @@ class InventoryIndex:
         # In both cases we refuse and warn rather than walk, so an
         # unexpected filesystem shape is visible in the logs instead
         # of silently corrupting the tree.
-        root_resolved = self._root.resolve()
+        root_resolved = root.resolve()
         if target_resolved != root_resolved and root_resolved not in target_resolved.parents:
             LOG.warning(
                 "inventory: refusing rewalk of %r — resolves to %s, outside served root %s",
@@ -459,7 +461,12 @@ class InventoryIndex:
         # / ``METABROWSER_LOG_LEVEL=DEBUG``) shows every rewalk target and
         # its resolved path, making symlink-following auditable.
         LOG.debug("inventory: rewalk_subtree rel=%s resolved=%s", rel, target_resolved)
-        gi_check = await asyncio.to_thread(_build_gitignore_check_for, self._root)
+        gi_check = await run_cancellable_thread(
+            lambda cancel_event: _build_gitignore_check_for(
+                root,
+                cancel_event=cancel_event,
+            )
+        )
         async for entry in walk_tree(
             target_resolved,
             max_depth=self._max_depth,
@@ -625,8 +632,13 @@ class InventoryIndex:
         """
 
         batch: list[FsEntry] = []
-        gi_check = await asyncio.to_thread(_build_gitignore_check_for, root)
         try:
+            gi_check = await run_cancellable_thread(
+                lambda cancel_event: _build_gitignore_check_for(
+                    root,
+                    cancel_event=cancel_event,
+                )
+            )
             async for entry in walk_tree(
                 root,
                 max_depth=self._max_depth,
