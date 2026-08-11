@@ -30,6 +30,7 @@ from typing import Any
 
 import yaml
 
+from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry
 from metabrowser.inventory import (
     DEFAULT_FIRST_RENDER_DEPTH,
@@ -101,7 +102,12 @@ async def walk_collect(
     expanded subtree.
     """
 
-    gi_check = await asyncio.to_thread(build_gitignore_check_for, root)
+    gi_check = await run_cancellable_thread(
+        lambda cancel_event: build_gitignore_check_for(
+            root,
+            cancel_event=cancel_event,
+        )
+    )
     # ``walk_tree`` yields dirs twice (placeholder then finalized); keep
     # the last write per path so dir rows carry real aggregates.
     latest: dict[str, FsEntry] = {}
@@ -308,7 +314,12 @@ async def stream_entries(
     """Yield each walker record in walk order — the streaming surface
     (mirrors the server's ``fs.change`` upserts)."""
 
-    gi_check = await asyncio.to_thread(build_gitignore_check_for, root)
+    gi_check = await run_cancellable_thread(
+        lambda cancel_event: build_gitignore_check_for(
+            root,
+            cancel_event=cancel_event,
+        )
+    )
     async for entry in walk_tree(
         root,
         max_depth=max_depth,
