@@ -86,6 +86,29 @@ def test_chip_family_uses_tokens_not_color_literals() -> None:
         assert literal not in block, f"chip family must use design tokens, found {literal!r}"
 
 
+def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
+    """Segmented controls stay on one line. A long additive set wraps as
+    individually bounded chips without an enclosing pill, so every visible
+    shape remains an interactive target."""
+
+    css = _read("styles.css")
+    joined_start = css.index(".chip-group {")
+    joined_block = css[joined_start : css.index("}", joined_start)]
+    assert "flex-wrap: nowrap;" in joined_block
+
+    wrapped_start = css.index('.chip-group[data-layout="wrap"] {')
+    wrapped_block = css[wrapped_start : css.index("}", wrapped_start)]
+    assert "flex-wrap: wrap;" in wrapped_block
+    assert "gap: var(--chip-cluster-gap);" in wrapped_block
+    assert "border: 0;" in wrapped_block
+    assert "background: transparent;" in wrapped_block
+
+    chip_start = css.index('.chip-group[data-layout="wrap"] > .chip {')
+    chip_block = css[chip_start : css.index("}", chip_start)]
+    assert "border: 1px solid var(--viz-border);" in chip_block
+    assert "border-radius: var(--radius-pill);" in chip_block
+
+
 def test_groups_carry_the_aria_their_variant_implies() -> None:
     """Single-select is a radiogroup with aria-checked; multi-select
     is a plain group of aria-pressed toggles. Styling keys off these
@@ -118,6 +141,14 @@ def test_filter_values_are_carried_by_buttons() -> None:
         start = js.index(f"function {fn}(spec)")
         block = js[start : js.index("\n  }", start)]
         assert "<input" not in block, f"{fn} must not use inputs"
+
+
+def test_filter_control_types_expose_the_wrapping_chip_layout() -> None:
+    """Plugins must be able to select the documented chip-cluster layout
+    without escaping the public SDK type contract."""
+
+    types = _read("types.d.ts")
+    assert 'layout?: "joined" | "wrap";' in types
 
 
 def test_the_checkbox_exception_is_scoped_and_explained() -> None:

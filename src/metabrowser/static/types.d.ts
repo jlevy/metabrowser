@@ -109,6 +109,7 @@ type MetabrowserFilterControls = {
     className?: string;
     key: string;
     label: string;
+    layout?: "joined" | "wrap";
     options: Array<MetabrowserFilterOption>;
     select?: string;
     value: MetabrowserFilterSelection;

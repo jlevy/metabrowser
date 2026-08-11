@@ -111,6 +111,7 @@ const securityResult = {
   hasRawImage: container.innerHTML.includes("<img"),
   hasEscapedImage: container.innerHTML.includes("&lt;img"),
   usesSharedMultiSelect: container.innerHTML.includes('data-select="many"'),
+  usesWrappedChipCluster: container.innerHTML.includes('data-layout="wrap"'),
   dynamicStartsPressed: container.innerHTML.includes(
     'data-chip-value="queue-operation" aria-pressed="true"',
   ),

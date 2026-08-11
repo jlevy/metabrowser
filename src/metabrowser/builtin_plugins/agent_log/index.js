@@ -217,6 +217,7 @@
       fc.groupHtml({
         key: "agent-event-kind",
         select: "many",
+        layout: "wrap",
         label: "Event types",
         options,
         value: kinds,

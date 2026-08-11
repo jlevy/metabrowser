@@ -250,8 +250,10 @@ Do not handwrite chip markup or add kind-specific selected colors.
 If the shared renderer cannot express a filter, extend it and its behavior tests.
 
 `.chip` is the atom.
-`.chip-group` joins chips into one bordered pill with hairline dividers, so a set of
-related choices reads as a single object.
+`.chip-group[data-layout="joined"]` joins a short, single-row set into one bordered pill
+with hairline dividers.
+`.chip-group[data-layout="wrap"]` lays out a longer set as independently bordered pills
+with consistent gaps, so the set can wrap without drawing one frame around several rows.
 `.chip-toggle` is a standalone boolean.
 `.chip-menu` is a chip that opens a dropdown, single- or multi-select.
 `.chip-badge` carries a count, and `.chip-clear` is the quiet reset.
@@ -274,12 +276,13 @@ must not repeat that value under another name.
 ### Groups Or Dropdowns
 
 Both exist because they fail differently as the value list grows.
-A joined `.chip-group` shows every option at once, which is the right trade for a
-bounded set on a surface where scanning all values matters, such as agent-log event
-types.
-A `.chip-menu` costs a click to see the options but stays one trigger wide however
-many there are, so use it when the set is unbounded or the pane cannot afford the full
-group.
+A `.chip-group` shows every option at once, which is the right trade for a bounded set
+on a surface where scanning all values matters.
+Short sets use the joined layout.
+Sets that can exceed one line, such as agent-log event types, use the wrapping
+chip-cluster layout; segmented controls never wrap.
+A `.chip-menu` costs a click to see the options but stays one trigger wide however many
+there are, so use it when the set is unbounded or the pane cannot afford the full group.
 
 The nav filter bar uses dropdowns throughout: six age windows and six size steps as
 segmented ramps left no room for anything else in a 300px pane.

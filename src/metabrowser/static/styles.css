@@ -319,6 +319,8 @@
   --radius-document: 0;
   --radius-pill: 999px;
   --radius-circle: 50%;
+  /* Space between independently bounded chips in a wrapping cluster. */
+  --chip-cluster-gap: 4px;
 
   /* Z-index scale — the named stacking layers. Use these tokens at use
      sites rather than ad-hoc integers so the relative order of panes,
@@ -1927,14 +1929,9 @@ html[data-prose-font="sans"] {
    Three shapes built from one atom:
      .chip                          the pill itself; state on
                                     [aria-pressed] or [aria-checked]
-     .chip-group[data-select="one"] joined single-select — the
-                                    segments read as one object and
-                                    the active one fills with the
-                                    accent tint
-     .chip-group[data-select="many"] joined multi-select — same
-                                    joinery, neutral fill, because
-                                    these accumulate rather than
-                                    replace each other
+     .chip-group[data-layout="joined"] single-row segmented control
+     .chip-group[data-layout="wrap"]   wrapping cluster whose chips
+                                        keep individual pill borders
      .chip-toggle                   a standalone boolean chip
 
    The accent-versus-neutral fill is the only cue that separates
@@ -1965,13 +1962,12 @@ html[data-prose-font="sans"] {
   outline: 2px solid var(--link);
   outline-offset: -2px;
 }
-/* Joined group: one shared border and radius, segments losing their
-   own so the row reads as a single control. Wrapping is allowed —
-   the type row has more members than a 300px pane can hold — and the
-   dividers survive it because they ride the segment, not the edge. */
+/* Joined groups are segmented controls: one shared border and one
+   row. A set that cannot fit that contract opts into the wrapping
+   cluster below instead of folding one outer pill across rows. */
 .chip-group {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   border: 1px solid var(--viz-border);
   border-radius: var(--radius-pill);
   background: var(--viz-surface);
@@ -1984,6 +1980,23 @@ html[data-prose-font="sans"] {
 }
 .chip-group > .chip + .chip {
   border-left: 1px solid var(--viz-border-subtle);
+}
+/* A long additive set is a chip cluster, not a segmented control.
+   Each visible shape is its own target; the semantic group contributes
+   layout only, with no oversized frame or decorative end caps. */
+.chip-group[data-layout="wrap"] {
+  flex-wrap: wrap;
+  gap: var(--chip-cluster-gap);
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.chip-group[data-layout="wrap"] > .chip {
+  border: 1px solid var(--viz-border);
+  border-radius: var(--radius-pill);
+  background: var(--viz-surface);
 }
 /* Single-select: accent fill, the .menu-seg[aria-checked] treatment. */
 .chip-group[data-select="one"] > .chip[aria-checked="true"] {
@@ -2205,11 +2218,10 @@ html[data-prose-font="sans"] {
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {
   row-gap: 6px;
 }
-/* Deliberately nowrap. A wrapping flex line breaks before it shrinks,
-   so with wrap on, the drawer toggle would drop to its own row the
-   moment the badge widened it — the bar would reflow under the control
-   you just clicked. Nowrap plus a shrinkable group means the recency
-   segments wrap inside their own pill instead. */
+/* Deliberately nowrap. The drawer toggle stays on the same line as its
+   trigger, and any grouped control in this row keeps the single-line
+   segmented-control contract. Longer value sets belong in a menu or a
+   wrapping chip cluster on another row. */
 .nav-filter-bar-main {
   display: flex;
   align-items: center;

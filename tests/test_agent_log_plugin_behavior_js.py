@@ -38,4 +38,5 @@ def test_agent_log_escapes_kinds_and_disposes_charts() -> None:
         "hasInlineKindHandler": False,
         "hasRawImage": False,
         "usesSharedMultiSelect": True,
+        "usesWrappedChipCluster": True,
     }
