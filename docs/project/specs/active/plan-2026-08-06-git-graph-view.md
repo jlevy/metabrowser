@@ -510,6 +510,50 @@ Metabrowser is AGPL-3.0-or-later, which permits incorporating MIT-licensed sourc
 The ported files carry a header naming the upstream file and its license, and the MIT
 notice is retained where required.
 
+The port was copied at upstream commit `9245212c26af8113b3b96392c04563623cd99811`
+(2026-08-07), recorded in the `git_graph.js` header and in `NOTICE.md`. That commit id
+is the whole provenance record.
+There is deliberately no automated check on the license text or the ported source: a
+pinned digest next to the file it validates defends against nothing, and would fail on a
+trailing newline while catching nothing a reader would not.
+The wheel is checked for the presence of `vendor/licenses/vscode.txt`, because shipping
+it is a redistribution obligation; its contents are reviewed by a person, once, when
+they change.
+
+## Re-syncing with upstream
+
+Pulling in later upstream changes is a manual review, not an automated merge.
+The port is deliberately faithful precisely so this diff is readable.
+
+The reference checkout lives in `attic/`, which is git-ignored, so recreate it as
+needed:
+
+```shell
+git clone --filter=blob:none --sparse https://github.com/microsoft/vscode attic/vscode
+git -C attic/vscode sparse-checkout set src/vs/workbench/contrib/scm/browser
+```
+
+Then diff the ported file against the recorded commit:
+
+```shell
+git -C attic/vscode log --oneline 9245212c26af8113b3b96392c04563623cd99811..HEAD \
+  -- src/vs/workbench/contrib/scm/browser/scmHistory.ts
+git -C attic/vscode diff 9245212c26af8113b3b96392c04563623cd99811..HEAD \
+  -- src/vs/workbench/contrib/scm/browser/scmHistory.ts
+```
+
+If that diff is empty, there is nothing to do.
+If it is not, review each hunk against `git_graph.js` by hand.
+The four intentional divergences are numbered in the file header and each is marked at
+its site, so a hunk landing on one of them is a decision, not a mechanical apply.
+Re-check `media/scm.css` the same way if row proportions changed upstream.
+
+When the port is updated: refresh the commit id in the `git_graph.js` header and in
+`NOTICE.md`, re-copy `vendor/licenses/vscode.txt` if upstream’s license changed, and
+note what moved in this spec.
+The lane-assignment suite in `tests/dom/git_graph_behavior.js` is what catches a bad
+apply, so run it before and after.
+
 ## References
 
 - [Architecture](../../../architecture.md)

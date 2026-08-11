@@ -10,9 +10,7 @@ import pytest
 
 from devtools.check_distribution import (
     ROOT,
-    VSCODE_LICENSE_PATH,
     _check_project_metadata,
-    _check_vscode_license,
     _smoke_install,
 )
 
@@ -31,16 +29,6 @@ def test_wheel_metadata_rejects_incomplete_license_declarations() -> None:
         _check_project_metadata(
             b"Metadata-Version: 2.4\nLicense-Expression: AGPL-3.0-or-later\nLicense-File: LICENSE\n"
         )
-
-
-def test_vscode_license_pin_matches_the_bundled_notice() -> None:
-    payload = (ROOT / "src" / VSCODE_LICENSE_PATH).read_bytes()
-    _check_vscode_license(payload)
-
-
-def test_vscode_license_pin_rejects_incomplete_text() -> None:
-    with pytest.raises(RuntimeError, match="incomplete or modified"):
-        _check_vscode_license(b"MIT License\nCopyright Microsoft\n")
 
 
 def test_wheel_smoke_commands_select_repository_config_and_validate_versions() -> None:

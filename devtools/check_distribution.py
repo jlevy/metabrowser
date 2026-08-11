@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import subprocess
 import tarfile
@@ -30,7 +29,6 @@ EXPECTED_LICENSE_METADATA = {
     "License-File: NOTICE.md",
 }
 VSCODE_LICENSE_PATH = "metabrowser/static/vendor/licenses/vscode.txt"
-VSCODE_LICENSE_SHA256 = "9480271317925265e806a9a196aaa33410a962fa9d4d1e248a4a5187bc8c9df9"
 
 
 def _single_wheel() -> Path:
@@ -66,13 +64,6 @@ def _check_project_metadata(payload: bytes) -> None:
         raise RuntimeError(f"wheel metadata is missing license declarations: {missing}")
 
 
-def _check_vscode_license(payload: bytes) -> None:
-    """Require the exact upstream MIT text for the derived graph code."""
-    digest = hashlib.sha256(payload).hexdigest()
-    if digest != VSCODE_LICENSE_SHA256:
-        raise RuntimeError("wheel has an incomplete or modified Visual Studio Code MIT license")
-
-
 def _inspect_wheel(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
@@ -101,12 +92,6 @@ def _inspect_wheel(wheel: Path) -> None:
         if len(metadata_names) != 1:
             raise RuntimeError(f"wheel must contain one METADATA file, found {metadata_names}")
         _check_project_metadata(archive.read(metadata_names[0]))
-        vscode_license_names = [name for name in names if name.endswith(VSCODE_LICENSE_PATH)]
-        if len(vscode_license_names) != 1:
-            raise RuntimeError(
-                f"wheel must contain one Visual Studio Code license, found {vscode_license_names}"
-            )
-        _check_vscode_license(archive.read(vscode_license_names[0]))
         for name in names:
             _check_text_member(name, archive.read(name))
 

@@ -4,6 +4,12 @@
 //   src/vs/workbench/contrib/scm/browser/scmHistory.ts
 //   Copyright (c) Microsoft Corporation. Licensed under the MIT License.
 //
+// Ported from upstream commit 9245212c26af8113b3b96392c04563623cd99811
+// (2026-08-07). That commit id is the record of what this file was
+// copied from; to pull in upstream changes later, diff against it. The
+// procedure is in docs/project/specs/active/plan-2026-08-06-git-graph-view.md
+// under "Re-syncing with upstream".
+//
 // The port is deliberately faithful. Lane geometry, path commands, and
 // assignment order match upstream so a future layout fix can be diffed
 // against this file rather than reverse-engineered. Four changes were
