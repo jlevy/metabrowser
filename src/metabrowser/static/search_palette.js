@@ -98,6 +98,12 @@
     );
   }
 
+  /** @param {number} count @param {string} [modifier] */
+  function fileCount(count, modifier = "") {
+    const noun = count === 1 ? "file" : "files";
+    return `${count.toLocaleString()}${modifier ? ` ${modifier}` : ""} ${noun}`;
+  }
+
   /**
    * Append text and matching marks without interpreting result strings as markup.
    * @param {Document} hostDocument
@@ -329,9 +335,10 @@
       }
       if (!query) {
         const snapshot = options.getCatalogSnapshot();
+        const scope = fileCount(snapshot.observedCount, snapshot.complete ? "" : "indexed");
         status.textContent = snapshot.complete
-          ? `Type a filename to search ${snapshot.observedCount} files.`
-          : `Type a filename to search ${snapshot.observedCount} indexed files. More files may appear as scanning continues.`;
+          ? `Search includes ${scope}.`
+          : `Search includes ${scope}. Scanning continues.`;
         return;
       }
       if (!searchState || searchState.phase === "searching") {
@@ -341,16 +348,16 @@
           return;
         }
         const snapshot = options.getCatalogSnapshot();
-        const noun = snapshot.complete ? "files" : "indexed files";
-        status.textContent = `Searching ${snapshot.observedCount} ${noun}…`;
+        const scope = fileCount(snapshot.observedCount, snapshot.complete ? "" : "indexed");
+        status.textContent = `Searching ${scope}…`;
         return;
       }
-      const limitMessage = searchState.truncated ? " Showing only the top matches." : "";
+      const limitMessage = searchState.truncated ? " Showing the top matches." : "";
       if (searchState.errors?.length) {
         status.textContent = `Could not complete the search. Try again.${limitMessage}`;
         return;
       }
-      status.textContent = `${searchState.statusMessage || "No files match your search."}${limitMessage}`;
+      status.textContent = `${searchState.statusMessage || "No matches."}${limitMessage}`;
     }
 
     /** @param {number} index */
@@ -513,7 +520,7 @@
         .catch((error) => {
           if (!overlay.hidden && input.value === query) {
             console.warn("Quick File search failed", error);
-            actionStatus = "Could not search files. Try again.";
+            actionStatus = "Could not complete the search. Try again.";
             renderStatus();
           }
         });
@@ -542,7 +549,7 @@
       } catch (error) {
         console.warn("Quick File open failed", error);
         outcome = {
-          message: "Could not open the file. Try again.",
+          message: "Could not open this file. Try again.",
           status: "error",
         };
       }
@@ -563,7 +570,7 @@
           await options.onNotFound?.(result.path);
         } catch (error) {
           console.warn("Quick File stale-result cleanup failed", error);
-          actionStatus = "Could not remove the stale result. Try again.";
+          actionStatus = "Could not refresh search results. Try again.";
           renderStatus();
           return;
         }
@@ -579,7 +586,7 @@
         return;
       }
       if (outcome.status === "error") {
-        actionStatus = outcome.message || "Could not open file. Try again.";
+        actionStatus = outcome.message || "Could not open this file. Try again.";
         renderStatus();
         return;
       }

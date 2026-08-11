@@ -61,9 +61,15 @@ def test_search_copy_explains_incomplete_indexing() -> None:
     controller = _read(STATIC / "search_controller.js")
     copy = palette + controller
 
-    assert "More files may appear as scanning continues." in copy
-    assert "No files match your search." in copy
-    assert "Showing only the top matches." in copy
+    assert "Search includes ${scope}." in palette
+    assert "No matches in ${searchScope}." in controller
+    assert "Scanning continues." in copy
+    assert "Showing the top matches." in copy
+    assert "Type a filename to search" not in copy
+    assert "No files match your search." not in copy
+    assert "files are searchable" not in copy
+    assert "More files may appear as scanning continues." not in copy
+    assert "stale result" not in palette
     assert "Local coverage is incomplete." not in copy
     assert "observed files" not in copy
 

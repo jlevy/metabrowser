@@ -445,6 +445,81 @@ Never put `user-select: none` on a container whose descendants include content.
 Do not set `user-select: none` on a broad container because its children are mostly
 interactive.
 
+## Interface Copy
+
+Product chrome includes navigation, controls, dialogs, tooltips, status regions, empty
+states, errors, and plugin-owned controls around file content.
+Its text is part of the component contract and receives the same review as behavior,
+layout, typography, and color.
+
+### One Role Per Element
+
+Adjacent text elements must not repeat the same information.
+
+| Element | Purpose | Avoid |
+| --- | --- | --- |
+| Label | Identify a control, field, or region | Instructions and status |
+| Placeholder | Show the input’s accepted content or format | Essential labels and repeated instructions |
+| Hint | Explain a non-obvious interaction or shortcut | Restating the label or visible action |
+| Status | Report scope, progress, outcome, or recovery | Repeating the placeholder or control label |
+| Empty state | Explain what is absent and whether the state is final | Blank panels and false finality during loading |
+| Error | State what failed and, when useful, the next action | Stack traces, implementation terms, and generic failure text |
+| Tooltip | Add supplementary context | Information available nowhere else |
+
+If removing a sentence loses no information because an adjacent label, control, or
+visual state already communicates it, remove the sentence.
+
+### State Language
+
+Use a consistent progression:
+
+- Idle text reports scope or availability.
+- Active work uses a progressive verb and a Unicode ellipsis, such as “Searching 283
+  files…”
+- Completion reports a result, count, or explicit empty state.
+- A recoverable failure says what could not be completed and gives one relevant next
+  step.
+
+Do not announce success when the resulting state is already obvious.
+Do not use a print-specific, plugin-specific, or implementation-specific explanation for
+an effect that applies to the whole view.
+
+### Style
+
+- Use sentence case and the terms already used by the surrounding interface.
+- Prefer one short sentence.
+  Add a second only for recovery or material incomplete state.
+- Remove filler such as “currently,” “simply,” “just,” and “successfully.”
+  Use “only” when it changes the meaning.
+- Use exact counts and cutoffs when known.
+  Format counts for the user’s locale and use the correct singular or plural form.
+- Control labels and placeholders have no terminal punctuation.
+  Status, empty, and error sentences use terminal punctuation; active progress ends in
+  an ellipsis.
+- Describe user-visible effects, not payloads, providers, caches, exceptions, or other
+  implementation details.
+
+### Accessibility
+
+Visible labels remain the source of accessible names; a placeholder is not a label.
+A live-region message must make sense when announced without nearby visual context and
+must not repeat an instruction the user has already heard.
+Delay transient progress text when work normally completes before it can be read.
+Essential guidance remains persistent and does not exist only in a tooltip, color, or
+animation.
+
+### Chrome Copy Review
+
+Every change to product chrome includes a copy review of the changed component and its
+adjacent text. Review idle, loading, success, empty, partial, truncated, and failure
+states that the component supports.
+Confirm that each text element has one role, terminology and state language are
+consistent, recovery advice is actionable, and no sentence duplicates visible
+information. Exercise narrow layouts and keyboard or assistive-technology announcements
+where the copy can wrap, truncate, or update dynamically.
+Behavior tests should protect meaningful state distinctions and recovery guidance
+without freezing incidental wording throughout the codebase.
+
 ## Accessibility Checklist
 
 - Every interactive element is reachable and operable by keyboard.
@@ -461,9 +536,10 @@ When adding a component or plugin view:
 
 1. Identify the existing primitive and tokens it can reuse.
 2. Test narrow and wide panes, long paths, empty data, malformed data, and large data.
-3. Check light theme, dark theme, keyboard focus, reduced motion, and print output.
-4. Verify lazy mount and disposal behavior.
-5. Run Biome, TypeScript check-JS, and the relevant browser-side tests.
+3. Review all chrome copy and adjacent text across supported states.
+4. Check light theme, dark theme, keyboard focus, reduced motion, and print output.
+5. Verify lazy mount and disposal behavior.
+6. Run Biome, TypeScript check-JS, and the relevant browser-side tests.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
