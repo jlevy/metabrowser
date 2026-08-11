@@ -367,9 +367,24 @@ reasons: it is predictable enough to type and to `cd` into, it makes an existing
 user’s checkouts trivially interoperable, and it keeps the path human-legible in the
 Metabrowser title bar.
 A content hash would dedupe better but is unreadable, and dedupe is not the pressing
-problem. Segments still need sanitizing — case folding, Unicode normalization, Windows
-reserved names, and `..` rejection — with a short hash of the canonical URL appended
-whenever sanitizing changed the name, so the mapping stays injective.
+problem.
+
+The only transform the path needs is lowercasing, and it is not a sanitizing measure but
+a correctness one: GitHub is case-insensitive, verified above, so `PALLETS/FLASK` and
+`pallets/flask` are one repository and must be one cache entry.
+Beyond that, resist adding machinery.
+Owner and repo names on GitHub, GitLab, and Gitea are already restricted to ASCII
+alphanumerics with `.`, `-`, and `_`, so Unicode normalization has nothing to normalize.
+`..` must be rejected, as must a Windows reserved name such as `CON` — but rejected with
+a clear error, not silently rewritten into something that no longer names the repo.
+Rejecting is both simpler and more honest than disambiguating.
+
+Specifically, do not append a hash suffix when a name needs adjusting.
+It verifies nothing, and it contradicts the reason readable paths were chosen: a
+directory called `flask-8f3a2c11` cannot be typed without looking it up.
+It is also a ratchet, because the derivation’s output is baked into every directory
+name, so any later change to it silently orphans the whole cache.
+The origin URL in the sidecar is the honest record of what an entry holds.
 
 Per-repo sidecar metadata is preferable to a central index: origin URL, clone strategy,
 Git version, cloned/fetched/accessed timestamps, and byte size.
@@ -625,6 +640,10 @@ The cache persists and is purged by an explicit command.
   path-limited log and blame fails.
 - **Content-hash cache layout:** eliminated because unreadable paths cost more than
   dedupe saves for repo-scale entries.
+- **A hash suffix on adjusted path segments:** eliminated because it verifies nothing,
+  defeats the readability that motivated the layout, and makes the cache dependent on a
+  derivation function that can never change without orphaning every entry.
+  Reject unrepresentable names instead.
 - **Central cache index:** eliminated in favor of per-repo sidecars, which avoid lock
   contention between concurrent invocations.
 - **`ls-remote` freshness probe before fetching:** eliminated by measurement — the probe

@@ -114,10 +114,13 @@ The result is correct in every case and only the timing differs.
 - Cache root from `METABROWSER_CACHE_DIR`, else `~/.metabrowser/cache`.
 - Path derivation to `repos/<host>/<owner>/<repo>` using `urlsplit` plus a small regex
   for the SCP-like `git@host:path` form.
-  Segments are lowercased and sanitized; a short hash of the canonical URL is appended
-  when sanitizing changed the name, so the mapping stays injective.
-  Lowercasing matters because GitHub is case-insensitive and `PALLETS/FLASK` would
+  Segments are lowercased, because GitHub is case-insensitive and `PALLETS/FLASK` would
   otherwise occupy a second entry for the same repository.
+  A segment that cannot be represented — `..`, or a Windows reserved name such as `CON`
+  — is rejected with a clear error rather than rewritten.
+  No hash suffix, no disambiguation: rewriting a name so it no longer identifies the
+  repo is worse than refusing, and encoding the derivation’s output into every directory
+  name would orphan the whole cache the first time that derivation changed.
 - Publication by clone-to-temp then rename.
   The temp directory lives inside the cache root so the rename stays on one filesystem.
   A killed clone leaves a directory that looks like a repo to a naive existence check,
