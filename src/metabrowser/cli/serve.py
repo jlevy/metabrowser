@@ -1,0 +1,200 @@
+"""Serve mode: launch a local web server to browse a directory's files.
+
+This is the default operation of the ``metab`` CLI: ``metab ./path/to/directory``
+serves that directory. Argument parsing and mode selection live in
+:mod:`metabrowser.cli.main`; this module owns only the serve
+implementation.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import threading
+import webbrowser
+from pathlib import Path
+from types import FrameType
+from typing import override
+from urllib.parse import quote
+
+import typer
+import uvicorn
+
+from metabrowser.cli.common import apply_log_level, validate_contained_path
+from metabrowser.cli.http_readiness import wait_for_http_ok_then
+from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
+from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
+from metabrowser.errors import CLIError
+from metabrowser.server_utils import find_available_local_port, port_search_range
+
+
+def _open_browser(url: str) -> None:
+    try:
+        webbrowser.open(url, new=2)
+    except (webbrowser.Error, OSError) as exc:
+        typer.echo(f"Could not auto-open browser ({exc}); visit {url} manually.", err=True)
+
+
+def _wait_for_http_ok_then_open(
+    host: str,
+    port: int,
+    url: str,
+    *,
+    timeout_s: float = 10.0,
+) -> None:
+    """Poll the index route until it serves HTTP OK, then open the URL.
+
+    Polls every 50 ms up to ``timeout_s``. A bare TCP accept is not
+    enough: the probe requires a non-error HTTP response from the index
+    route, preventing auto-open before uvicorn is ready.
+    On timeout or 4xx/5xx, print the URL and leave the browser closed.
+    """
+    wait_for_http_ok_then(
+        host,
+        port,
+        url,
+        on_ready=lambda: _open_browser(url),
+        on_error=lambda message: typer.echo(message, err=True),
+        timeout_s=timeout_s,
+    )
+
+
+def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
+    """Drop Uvicorn's expected cancellation records during local shutdown.
+
+    Serving cancels open SSE streams on Ctrl-C. Uvicorn reports those expected
+    cancellations as errors even though no actionable server failure occurred.
+    """
+    if record.exc_info is not None and isinstance(record.exc_info[1], asyncio.CancelledError):
+        return False
+    return "timeout graceful shutdown exceeded" not in record.getMessage()
+
+
+class _QuietForceExitServer(uvicorn.Server):
+    """Uvicorn server that silences teardown logging once exit is forced.
+
+    A second Ctrl-C forces exit before the ASGI lifespan finishes shutting
+    down; the interpreter then cancels the pending lifespan task and the
+    cancellation is reported as a pre-formatted traceback string with no
+    ``exc_info``, which :func:`_shutdown_noise_filter` cannot match without
+    fragile text parsing. After the operator forces exit, no teardown record
+    is actionable, so drop them all at the logger level instead.
+    """
+
+    @override
+    def handle_exit(self, sig: int, frame: FrameType | None) -> None:
+        super().handle_exit(sig, frame)
+        if self.force_exit:
+            logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
+
+
+def run_serve(
+    root: Path,
+    *,
+    path: str = "",
+    port: int,
+    host: str = "127.0.0.1",
+    no_open: bool = False,
+    plugins_dir: list[Path] | None = None,
+    log_level: str = "",
+) -> None:
+    """Serve ``root`` (a directory, or a file resolved to parent + selection).
+
+    If ``root`` is a file, automatically split into parent directory plus a
+    ``--path`` selection. An explicit ``path`` deep-links a file within the
+    root directory.
+    """
+    # Dotenv is operator configuration for the entire command. Apply it before
+    # log-level selection, plugin discovery, or path expansion so values such
+    # as HOME affect every bootstrap step consistently with walk mode.
+    _load_dotenv_chain()
+
+    # Must run before ``from metabrowser import server`` below — the
+    # server module configures logging at import time from the env var.
+    apply_log_level(log_level)
+
+    # Resolve file-as-ROOT shorthand before server initialization.
+    resolved = root.expanduser().resolve()
+    if resolved.is_file():
+        if path:
+            raise typer.BadParameter(
+                f"{resolved} is a file — cannot combine with --path. "
+                "Use the parent directory as ROOT instead.",
+                param_hint="--path",
+            )
+        path = resolved.name
+        resolved = resolved.parent
+
+    if not resolved.is_dir():
+        raise CLIError(f"{resolved} is not a directory")
+
+    # Normalize env/CLI plugin directories before the discovery layer first
+    # runs at server-module import. This is the same path resolution and
+    # validation used by the plugin modes.
+    extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
+    os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(
+        str(plugin_dir) for plugin_dir in extra_plugin_dirs
+    )
+
+    if path:
+        validate_contained_path(resolved, path)
+
+    # Server import performs logging setup and plugin discovery. Keep it after
+    # dotenv loading, CLI log-level application, and plugin-dir merging so all
+    # startup configuration is visible on the first import.
+    from metabrowser import server
+
+    try:
+        actual_port = find_available_local_port(host, port_search_range(port))
+    except RuntimeError as exc:
+        raise CLIError(str(exc)) from exc
+
+    server._set_root_dir(resolved)
+
+    # A concrete --host is a trusted name the operator chose; permit it at
+    # the Host-validation boundary. Wildcard binds accept every interface,
+    # so the printed URL, readiness probe, and auto-open use loopback
+    # (which the allowlist always permits) instead of an unroutable
+    # 0.0.0.0-style name.
+    server._register_allowed_host(host)
+    display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
+
+    url = f"http://{display_host}:{actual_port}"
+    if path:
+        url += f"#{quote(path)}"
+
+    typer.echo(f"Serving {resolved} at {url}")
+    if server._LOADED_PLUGINS:
+        names = ", ".join(p.name for p in server._LOADED_PLUGINS)
+        typer.echo(f"Plugins: {names}")
+
+    # Race fix: open the browser only AFTER uvicorn is accepting
+    # connections. The poll-then-open helper runs on a daemon thread
+    # so uvicorn keeps signal handling in the main thread (Ctrl-C
+    # still works).
+    if not no_open:
+        threading.Thread(
+            target=_wait_for_http_ok_then_open,
+            args=(display_host, actual_port, url),
+            daemon=True,
+        ).start()
+
+    # Browser tabs hold open SSE streams, so cancel in-flight local requests rather
+    # than waiting indefinitely for graceful shutdown after Ctrl-C.
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    original_uvicorn_log_level = uvicorn_logger.level
+    uvicorn_logger.addFilter(_shutdown_noise_filter)
+    try:
+        _QuietForceExitServer(
+            uvicorn.Config(
+                server.app,
+                host=host,
+                port=actual_port,
+                log_level="warning",
+                timeout_graceful_shutdown=0,
+            )
+        ).run()
+    finally:
+        uvicorn_logger.removeFilter(_shutdown_noise_filter)
+        uvicorn_logger.setLevel(original_uvicorn_log_level)

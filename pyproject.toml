@@ -1,0 +1,226 @@
+# ---- Project Info and Dependencies ----
+
+[project.urls]
+Homepage = "https://github.com/jlevy/metabrowser"
+Repository = "https://github.com/jlevy/metabrowser"
+Documentation = "https://github.com/jlevy/metabrowser#readme"
+Issues = "https://github.com/jlevy/metabrowser/issues"
+
+[project]
+name = "metabrowser"
+description = "Browse local files from your web browser, with extensible plugin-based rendering of Markdown, code, JSON, YAML, logs, and other files."
+authors = [
+    { name="Joshua Levy", email="joshua@cal.berkeley.edu" },
+]
+maintainers = [
+    { name="Joshua Levy", email="joshua@cal.berkeley.edu" },
+]
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.12,<4.0"
+dynamic = ["version"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+    "Topic :: Software Development :: User Interfaces",
+]
+keywords = ["browser", "jsonl", "logs", "markdown", "developer-tools"]
+
+
+# ---- Main dependencies ----
+
+dependencies = [
+    "cachetools>=7.1.4",
+    "frontmatter-format>=0.3.0",
+    "funlog>=0.2.1",
+    "json5>=0.15.0",
+    "jsonschema>=4.26.0",
+    "kpress==0.3.2",
+    "pathspec>=1.1.1",
+    "prettyfmt>=0.4.1",
+    "psutil>=7.2.2",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
+    "ruamel.yaml>=0.19.1",
+    "starlette>=1.3.1",
+    "strif>=3.1.0",
+    "typer>=0.26.8",
+    "uvicorn>=0.49.0",
+    "watchfiles>=1.2.0",
+]
+
+
+# ---- Dev dependencies ----
+
+[dependency-groups]
+build = [
+    "hatchling==1.30.1",
+    "uv-dynamic-versioning==0.14.0",
+]
+dev = [
+    "basedpyright>=1.39.9",
+    "codespell>=2.4.2",
+    "httpx2>=2.5.0",
+    "pytest>=9.1.1",
+    "pytest-sugar>=1.1.1",
+    "pytest-timeout>=2.4.0",
+    "rich>=15.0.0",
+    "ruff>=0.15.20",
+]
+
+[project.scripts]
+metab = "metabrowser.cli.main:main"
+metabrowser = "metabrowser.cli.main:main"
+
+
+# ---- Build system ----
+
+# Dynamic versioning from:
+# https://github.com/ninoseki/uv-dynamic-versioning/
+
+[build-system]
+requires = ["hatchling==1.30.1", "uv-dynamic-versioning==0.14.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+# Note JSON schemas don't seem to be right for tool.hatch.version.source so
+# this may cause false warnings in IDEs.
+# https://github.com/ninoseki/uv-dynamic-versioning/issues/21
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+
+[tool.hatch.build]
+exclude = [
+    "/.agents/",
+    "/.claude/",
+    "/.codex/",
+    "/.github/",
+    "/.tbd/",
+    "/.copier-answers.yml",
+    "/AGENTS.md",
+    "/CLAUDE.md",
+    "/skills-lock.json",
+    "/.venv/",
+    "/attic/",
+    "/dist/",
+    "/node_modules/",
+]
+
+[tool.hatch.build.targets.wheel]
+# The source location for the package.
+packages = ["src/metabrowser"]
+
+
+[tool.ruff]
+# Set as desired, typically 88 (black standard) or 100 (wide).
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    # Correctness-oriented floor shared with KPress. Formatting and narrow
+    # preferences remain the formatter's responsibility.
+    "E",
+    "F",
+    "B",
+    "UP",
+    "I",
+    "C4",
+    "SIM",
+    "RUF",
+    "ASYNC",
+    "TID",
+    "LOG",
+    "G",
+]
+ignore = [
+    # Disable some rules that are overly pedantic. Add/remove as desired:
+    "E501", # https://docs.astral.sh/ruff/rules/line-too-long/
+    "E402", # https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file/
+    "E731", # https://docs.astral.sh/ruff/rules/lambda-assignment/
+    "B008",
+    # Maintained prose intentionally uses typographic characters.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    "RUF022",
+    "RUF043",
+    # These APIs intentionally expose timeouts and perform bounded metadata calls
+    # while coordinating asyncio-native filesystem work.
+    "ASYNC109",
+    "ASYNC240",
+    # We use both ruff formatter and linter so some rules should always be disabled.
+    # See: https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "W191", # https://docs.astral.sh/ruff/rules/tab-indentation/
+    "E111", # https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple/
+    "E114", # https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple-comment/
+    "E117", # https://docs.astral.sh/ruff/rules/over-indented/
+    "D206", # https://docs.astral.sh/ruff/rules/docstring-tab-indentation/
+    "D300", # https://docs.astral.sh/ruff/rules/triple-single-quotes/
+    "Q000", # https://docs.astral.sh/ruff/rules/bad-quotes-inline-string/
+    "Q001", # https://docs.astral.sh/ruff/rules/bad-quotes-multiline-string/
+    "Q002", # https://docs.astral.sh/ruff/rules/bad-quotes-docstring/
+    "Q003", # https://docs.astral.sh/ruff/rules/avoidable-escaped-quote/
+    "COM812", # https://docs.astral.sh/ruff/rules/missing-trailing-comma/
+    "COM819", # https://docs.astral.sh/ruff/rules/prohibited-trailing-comma/
+    "ISC002", # https://docs.astral.sh/ruff/rules/multi-line-implicit-string-concatenation/
+]
+
+[tool.basedpyright]
+# BasedPyright currently seems like the best type checker option, much faster
+# than mypy and with a good extension for VSCode/Cursor.
+# https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright
+# https://docs.basedpyright.com/latest/configuration/config-files/#sample-pyprojecttoml-file
+include = ["src", "tests", "devtools"]
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+reportUnusedCallResult = false
+reportImplicitStringConcatenation = false
+reportImplicitOverride = false
+executionEnvironments = [
+    # The source tree still has legacy cross-module private helpers and dynamic
+    # JSON/plugin boundaries. Keep those diagnostics local to source code so
+    # devtools remain at the KPress strict floor.
+    { root = "src", reportPrivateUsage = false, reportUnknownArgumentType = false, reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnusedFunction = false },
+    # Pytest fixtures and monkeypatched boundaries are dynamically typed. This
+    # environment contains that debt without weakening source or devtools.
+    { root = "tests", extraPaths = ["."], reportPrivateUsage = false, reportUnknownArgumentType = false, reportUnknownLambdaType = false, reportUnknownMemberType = false, reportUnknownParameterType = false, reportUnknownVariableType = false, reportMissingParameterType = false },
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["metabrowser"]
+
+[tool.codespell]
+ignore-words-list = "browseable,fo,ue,unparseable"
+# Vendored third-party browser bundles are minified upstream artifacts;
+# their identifiers are not prose to spell-check. attic/ holds read-only
+# third-party checkouts kept for research (gitignored, never shipped); this
+# guard covers a direct codespell run, since devtools/lint.py already asks
+# git for the doc set and git honors .gitignore.
+skip = "*/static/vendor/*,./attic/*"
+
+[tool.pytest.ini_options]
+python_files = ["*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = [
+    "src",
+    "tests",
+]
+pythonpath = ["."]
+norecursedirs = []
+filterwarnings = []
+timeout = 60
+timeout_method = "thread"

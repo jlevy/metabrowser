@@ -1,0 +1,13 @@
+/* Sample plugin styles — scoped under .mb-plugin-sample. */
+
+.mb-plugin-sample.sample-card {
+  border: 1px solid var(--border, #ccc);
+  padding: 1em;
+}
+
+.mb-plugin-sample .tag {
+  background: var(--accent, #eef);
+  border-radius: 0.25em;
+  padding: 0.1em 0.4em;
+  margin: 0 0.2em;
+}

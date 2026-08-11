@@ -1,0 +1,21 @@
+{
+  "name": "metabrowser-devtools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned JavaScript toolchain for Metabrowser browser linting, type checking, and git hooks.",
+  "engines": {
+    "node": ">=24.18.0 <25",
+    "npm": ">=11.10.0 <12"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.2",
+    "@highlightjs/cdn-assets": "11.9.0",
+    "chart.js": "4.5.1",
+    "chartjs-adapter-date-fns": "3.0.0",
+    "chartjs-plugin-annotation": "3.1.0",
+    "lefthook": "2.1.9",
+    "mustache": "4.2.0",
+    "tryscript": "0.1.7",
+    "typescript": "6.0.3"
+  }
+}
