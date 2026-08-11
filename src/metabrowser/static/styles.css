@@ -2191,14 +2191,28 @@ html[data-prose-font="sans"] {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  /* Column gap only by default. A standing row gap survives the drawer
+     collapsing to zero height, so a closed bar sat 6px lower than it sat
+     high and read as bottom-heavy against the tally band below it. The
+     gap belongs to the drawer being open, so it opens with it — and it
+     has to live here rather than as padding inside the drawer, because
+     `overflow` clips a content box and leaves padding standing. */
+  column-gap: 6px;
+  row-gap: 0;
   padding: 6px var(--pane-header-padding-x);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
   position: relative;
   z-index: 1;
-  transition: box-shadow var(--transition-fast);
+  transition:
+    box-shadow var(--transition-fast),
+    row-gap var(--transition-fast);
+}
+/* Widens on the same token as the drawer's own grid track, so the gap
+   grows with the reveal rather than snapping open ahead of it. */
+.nav-filter-bar:has(.filter-drawer[data-open="true"]) {
+  row-gap: 6px;
 }
 /* Deliberately nowrap. A wrapping flex line breaks before it shrinks,
    so with wrap on, the drawer toggle would drop to its own row the
@@ -2256,7 +2270,11 @@ html[data-prose-font="sans"] {
 /* Grid-track mechanics only. Layout belongs to the child's own rule
    (.filter-drawer-row) — setting a direction here would fight it, and
    the two selectors have equal specificity, so whichever came last
-   would silently win. */
+   would silently win.
+   Nothing in here may carry padding or margin either: `overflow` clips
+   the content box, so either one survives the track collapsing to zero
+   and leaves a sliver of drawer below a closed bar. The bar's row-gap
+   owns that separation instead. */
 .filter-drawer > * {
   min-height: 0;
   overflow: hidden;
@@ -2327,6 +2345,19 @@ html[data-prose-font="sans"] {
 .tree-summary:has(+ .tree-summary-filtered) {
   border-bottom: none;
   padding-bottom: 0;
+}
+/* Everything above the list is a band: its padding sits inside its own
+   border, and 6px is the rhythm they all keep. A tree row is not a
+   band — its 2px is sized for the distance between rows, not for the
+   distance from a rule — so the first one landed hard against the
+   tally's border. This makes up the difference, both when the tally
+   leads the pane and when rows do (a recency window renders no tally
+   of its own). Margin, not padding, so the row's hover fill and its
+   selected border stay the height of every other row. */
+.tree-summary + .tree-item,
+.tree-summary-filtered + .tree-item,
+.tree-content > * > .tree-item:first-child {
+  margin-top: 4px;
 }
 .recent-truncated-note {
   padding: 8px 12px;
@@ -3849,6 +3880,15 @@ pre.code-block code.hljs {
   .filter-drawer,
   .filter-drawer-toggle svg {
     transition-duration: 1ms;
+  }
+  /* The bar's row-gap tracks the drawer, so it has to stop travelling
+     with it. Named individually rather than by transition-duration
+     because the same shorthand carries the scroll shadow, and a fade is
+     not motion — that one keeps its timing. */
+  .nav-filter-bar {
+    transition:
+      box-shadow var(--transition-fast),
+      row-gap 1ms;
   }
 }
 

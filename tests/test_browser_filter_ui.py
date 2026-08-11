@@ -371,6 +371,48 @@ def test_the_tally_and_its_filtered_count_read_as_one_block() -> None:
     assert "padding-bottom: 0;" in block
 
 
+def test_a_closed_bar_is_vertically_symmetric() -> None:
+    """The nav column is a stack of bands that all keep the same 6px.
+    A standing row-gap broke that: it survived the drawer collapsing to
+    zero height, so a closed bar sat 6px lower than it sat high. The gap
+    belongs to the drawer being open, so it is gated on that."""
+
+    css = _read("styles.css")
+    start = css.index(".nav-filter-bar {")
+    block = css[start : start + 700]
+    assert "row-gap: 0;" in block
+    assert "column-gap: 6px;" in block
+    assert '.nav-filter-bar:has(.filter-drawer[data-open="true"])' in css
+
+
+def test_nothing_inside_the_drawer_track_carries_its_own_spacing() -> None:
+    """`overflow` clips a content box, not a padding or margin box, so
+    either one on the grid item survives the 0fr track and leaves a
+    sliver of drawer visible below a closed bar."""
+
+    css = _read("styles.css")
+    start = css.index(".filter-drawer > * {")
+    block = css[start : css.index("}", start)]
+    for prop in ("padding", "margin"):
+        assert prop not in block, f".filter-drawer > * must not set {prop}"
+
+
+def test_the_first_tree_row_clears_the_tally_rule() -> None:
+    """A tree row's 2px is sized for the distance between rows, not for
+    the distance from a rule, so the first one landed hard against the
+    tally's border while every band above kept 6px."""
+
+    css = _read("styles.css")
+    start = css.index(".tree-summary + .tree-item,")
+    block = css[start : css.index("}", start)]
+    # Both leading cases: the tally, and rows alone under a recency window.
+    assert ".tree-summary-filtered + .tree-item" in block
+    assert ".tree-content > * > .tree-item:first-child" in block
+    # Margin, so the hover fill and selected border stay row-height.
+    assert "margin-top" in block
+    assert "padding-top" not in block
+
+
 def test_the_overlay_stops_when_the_recency_window_is_cleared() -> None:
     """Leaving the source sets the window to "", and an unknown key
     gives `undefined`, not `null`. The old `!== null` guard let that
@@ -782,7 +824,7 @@ def test_the_nav_column_shares_one_vertical_rhythm() -> None:
 
     css = _read("styles.css")
     bar_start = css.index(".nav-filter-bar {")
-    assert "padding: 6px var(--pane-header-padding-x);" in css[bar_start : bar_start + 400]
+    assert "padding: 6px var(--pane-header-padding-x);" in css[bar_start : bar_start + 900]
 
     sum_start = css.index(".tree-summary {")
     sum_block = css[sum_start : css.index("}", sum_start)]
