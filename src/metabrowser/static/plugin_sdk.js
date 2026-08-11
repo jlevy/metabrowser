@@ -269,7 +269,23 @@
     }
   }
 
-  const prefs = { get: prefsGet, set: prefsSet };
+  function prefsRemove(name) {
+    if (typeof name !== "string" || !PREF_NAME_RE.test(name)) {
+      return false;
+    }
+    try {
+      const doc = global.document;
+      if (!doc || typeof doc.cookie !== "string") {
+        return false;
+      }
+      doc.cookie = `${_prefCookieName(name)}=; path=/; max-age=0; samesite=lax`;
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  const prefs = { get: prefsGet, set: prefsSet, remove: prefsRemove };
 
   // Shared filter state (static/filter_state.js). Views bind to the
   // same vocabulary the nav filter bar edits; safe no-ops when the

@@ -50,7 +50,7 @@ server-side full-text provider plugs into the same runtime without changing it.
 
 - Loading all 500,000 possible inventory entries into the browser at startup
 - Running full-text search automatically for every filename query that has no match
-- Persisting the finder query or folding it into shared filter preferences
+- Persisting the finder query or coupling it to the navigation filters
 - Replacing the Files tree with search results
 - Requiring a database, external search daemon, native extension, or third-party fuzzy
   matching dependency

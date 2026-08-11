@@ -140,9 +140,10 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    `renderTreeNodes`, keeping the endpoint’s totals and truncation reporting.
    This includes `live`, whose 90-second cutoff comes from the same server-owned window
    mapping as the longer choices.
-8. **Filter state persists through `mb.prefs` and stays out of the URL hash.** Same
-   choice the treemap branch made, for the same reason: filters are a view preference,
-   not an address. Persisted state is never invisible — the badge and Clear are always
+8. **Filter state is transient and stays out of the URL hash.** Filters answer a
+   question about the current view, so each page load starts clean; they are neither
+   durable user preferences nor part of a file’s address.
+   Within the page, active state is never invisible — the badge and Clear are always
    present when anything is set.
 9. **Type filtering is by literal extension, offered from what the tree contains.** The
    menu lists real extensions (`.md`, `.py`, `.ts`) rather than abstract `ft-*`
@@ -251,8 +252,11 @@ with an `mb.filters` SDK proxy so plugin views never touch the global:
 The module owns `get`, `set(patch)`, `clear`, `subscribe`, `activeCount`, and the shared
 predicates `rowMatches`, `typeMatches`, and `sizeMatches`, so the tree and any future
 surface can never disagree about what matches.
-Persistence rides `mb.prefs` under one versioned `filters` key; every change dispatches
+State lives in memory for the page’s lifetime; every change dispatches
 `metabrowser:filter-change` alongside the subscriber callbacks.
+The module removes the obsolete `filters` preference written by development builds after
+v0.2.0, while durable appearance choices such as theme and typography continue to use
+preference storage.
 
 Missing data never rules a row out: an absent mtime or a pending size is incomplete
 information, not a non-match, and pending rows must not flicker as filtered.
@@ -322,8 +326,9 @@ Clear resets every dimension including the ones in the collapsed row.
 The drawer always opens closed and its state is deliberately not persisted: it holds the
 secondary controls, so restoring it open would spend vertical space on this visit that
 was asked for on a previous one.
-The filters themselves do persist, and the badge reports them whether or not the drawer
-is showing, so nothing is hidden by starting collapsed.
+The filters also start clean on every page load.
+During the current visit, the badge reports them whether or not the drawer is showing,
+so nothing is hidden by collapsing it.
 
 ### The Nav Tally
 
@@ -390,11 +395,11 @@ Checked items are implemented and covered by tests; `make verify` passes on the 
 
 ### Phase 2: Filter State and the Bar — done
 
-- [x] `static/filter_state.js` under the strict `tsconfig.json` gate, with prefs
-  persistence, change events, `activeCount`, and the shared predicates
+- [x] `static/filter_state.js` under the strict `tsconfig.json` gate, with transient
+  state, change events, `activeCount`, and the shared predicates
 - [x] `mb.prefs` and `mb.filters` SDK surfaces with safe no-ops when absent
 - [x] The filter bar and drawer in the shell HTML, wired to the state, with the badge,
-  Clear, and persisted drawer state
+  Clear, and an initially closed drawer
 - [x] Extension dropdown built from known-file-catalog tallies, ranked and capped
 
 ### Phase 3: Applying Filters to the Tree — done
@@ -492,10 +497,10 @@ Implemented:
   single-select exclusivity, multi-select accumulation and empty-set normalization,
   `aria-pressed` / `aria-checked` correctness, roving tabindex, dropdown summarisation
   and row state, and HTML escaping
-- vm tests (`tests/dom/filter_state_behavior.js`) for `FilterState`: defaults,
-  sanitization of malformed persisted values, `activeCount`, event and subscriber
-  delivery, unsubscribe, snapshot isolation, the cumulative size floor, and extension
-  matching
+- vm tests (`tests/dom/filter_state_behavior.js`) for `FilterState`: transient defaults,
+  legacy preference cleanup, caller-value sanitization, `activeCount`, event and
+  subscriber delivery, unsubscribe, snapshot isolation, the cumulative size floor, and
+  extension matching
 - Predicate tests asserting that a missing mtime or pending size never excludes a row,
   and that a missing extension does
 - Structural tests (`tests/test_browser_filter_ui.py`) pinning the fill convention, the

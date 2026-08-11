@@ -16,13 +16,17 @@
 // whether gitignored entries are in the tree at all, and when they are
 // they keep the dimmed treatment the tree has always given them.
 //
-// Persistence rides mb.prefs (host-only cookies, shared across
-// per-root ports); every change notifies subscribers and dispatches a
-// `metabrowser:filter-change` CustomEvent. The predicate helpers live
-// here so no two surfaces can disagree about what matches.
+// Filter selections are transient view state: every page starts from
+// the defaults, and changes live only in this module. Every change
+// notifies subscribers and dispatches a `metabrowser:filter-change`
+// CustomEvent. The predicate helpers live here so no two surfaces can
+// disagree about what matches.
 
 (() => {
-  const PREF_KEY = "filters";
+  // Development builds after v0.2.0 stored filters in the host-wide
+  // preference cookie. Expire that value once so an upgrade does not
+  // leave dead browser state behind.
+  const LEGACY_PREF_KEY = "filters";
 
   /**
    * Seconds per recency value, injected from metabrowser/settings.py.
@@ -73,10 +77,8 @@
   }
 
   /**
-   * Coerce arbitrary persisted or caller-supplied input into a valid
-   * snapshot. Unknown values fall back to the default rather than
-   * throwing: a stale cookie from a future version must not break the
-   * filter bar.
+   * Coerce arbitrary caller-supplied input into a valid snapshot.
+   * Unknown values fall back to the default rather than throwing.
    * @param {unknown} raw
    * @returns {FilterSnapshot}
    */
@@ -111,7 +113,10 @@
 
   function load() {
     const p = prefs();
-    state = sanitize(p ? p.get(PREF_KEY, null) : null);
+    if (p && typeof p.remove === "function") {
+      p.remove(LEGACY_PREF_KEY);
+    }
+    state = sanitize(null);
   }
 
   /** @returns {FilterSnapshot} */
@@ -132,10 +137,6 @@
   function set(patch) {
     const next = sanitize(Object.assign(get(), patch));
     state = next;
-    const p = prefs();
-    if (p) {
-      p.set(PREF_KEY, next);
-    }
     const snapshot = get();
     for (const listener of listeners.slice()) {
       try {
@@ -169,7 +170,7 @@
 
   /**
    * Number of dimensions away from their default — drives the badge on
-   * the drawer toggle so persisted filters are never invisible state.
+   * the drawer toggle so filters remain visible when it is collapsed.
    */
   function activeCount() {
     const s = get();
