@@ -214,21 +214,21 @@ def test_apply_cell_patch_targets_data_path_rows_in_dom() -> None:
     assert "outerHTML !== patch.sizeHtml" in fn_block
 
 
-def test_apply_cell_patch_uses_child_presence_for_empty_class() -> None:
+def test_apply_cell_patch_uses_subtree_empty_state_for_empty_class() -> None:
     """A dir initially painted gray during inventory startup
     (walker-pending ``total_files=null`` historically conflated
     with ``0`` server-side) used to keep its ``tree-item-empty``
     class even after fs.change delivered a positive count. File totals
     cannot identify link-only folders, so live patches use the explicit
-    child-presence field and retain a positive-count fallback for older
+    subtree-empty field and retain a positive-count fallback for older
     event payloads."""
 
     js = _read_app_js()
     fn_start = js.index("function applyCellPatch(entry)")
     fn_block = js[fn_start : fn_start + 3000]
     assert 'classList.toggle("tree-item-empty"' in fn_block
-    assert 'typeof entry.has_children === "boolean"' in fn_block
-    assert "!entry.has_children" in fn_block
+    assert 'typeof entry.empty === "boolean"' in fn_block
+    assert "entry.empty" in fn_block
     assert "totalFiles > 0" in fn_block
     assert "totalFiles === 0" not in fn_block
 

@@ -281,7 +281,7 @@ def test_stream_records(tmp_path: Path) -> None:
     assert first["path"] == ""
     assert first["name"] == "fixture"
     assert first["type"] == "dir"
-    assert all("has_children" not in record for record in records)
+    assert all("empty" not in record for record in records)
 
     # Symlinks appear exactly once each, as typed leaves, with no descendants.
     by_path: dict[str, list[dict[str, Any]]] = {}

@@ -437,7 +437,7 @@ def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
     assert inv.has_direct_child("runs") is False
 
 
-def test_live_symlink_updates_keep_child_presence_separate_from_file_totals() -> None:
+def test_live_empty_state_tracks_subtree_leaves_separately_from_file_totals() -> None:
     inv = InventoryIndex()
     root = FsEntry(
         path="",
@@ -455,11 +455,36 @@ def test_live_symlink_updates_keep_child_presence_separate_from_file_totals() ->
         newest_mtime_ns=0,
     )
     assert inv.apply_walker_entries([root]) == 1
+    indexed_root = inv.get("")
+    assert indexed_root is not None
+    assert indexed_root.empty is True
+
+    inv.apply_live_entry(
+        FsEntry(
+            path="nested",
+            parent="",
+            name="nested",
+            type="dir",
+            ext="",
+            kind="dir",
+            size=0,
+            mtime_ns=0,
+            mtime_hash="",
+            active=False,
+            total_files=0,
+            total_size=0,
+            newest_mtime_ns=0,
+        )
+    )
+    with_empty_subfolder = inv.get("")
+    assert with_empty_subfolder is not None
+    assert with_empty_subfolder.total_files == 0
+    assert with_empty_subfolder.empty is True
 
     inv.apply_live_entry(
         FsEntry.for_observed_symlink(
-            path="shortcut",
-            parent="",
+            path="nested/shortcut",
+            parent="nested",
             name="shortcut",
             size=8,
             mtime_ns=1,
@@ -468,13 +493,19 @@ def test_live_symlink_updates_keep_child_presence_separate_from_file_totals() ->
     with_link = inv.get("")
     assert with_link is not None
     assert with_link.total_files == 0
-    assert with_link.has_children is True
+    assert with_link.empty is False
+    nested_with_link = inv.get("nested")
+    assert nested_with_link is not None
+    assert nested_with_link.empty is False
 
-    inv.remove("shortcut")
+    inv.remove("nested/shortcut")
     without_link = inv.get("")
     assert without_link is not None
     assert without_link.total_files == 0
-    assert without_link.has_children is False
+    assert without_link.empty is True
+    nested_without_link = inv.get("nested")
+    assert nested_without_link is not None
+    assert nested_without_link.empty is True
 
 
 def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:

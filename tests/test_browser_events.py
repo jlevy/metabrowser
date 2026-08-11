@@ -59,7 +59,7 @@ def _make_file_entry(path: str = "a/b/c.log", size: int = 100) -> FsEntry:
 
 
 def _make_dir_entry(
-    path: str = "a", *, total_files: int | None = None, has_children: bool | None = None
+    path: str = "a", *, total_files: int | None = None, empty: bool | None = None
 ) -> FsEntry:
     return FsEntry(
         path=path,
@@ -75,7 +75,7 @@ def _make_dir_entry(
         total_files=total_files,
         total_size=0 if total_files is not None else None,
         newest_mtime_ns=0 if total_files is not None else None,
-        has_children=has_children,
+        empty=empty,
     )
 
 
@@ -178,7 +178,7 @@ def test_round_trip_fs_snapshot() -> None:
     snap = FsSnapshot(
         scope="root-depth-2",
         entries=(
-            _make_dir_entry("a", total_files=3, has_children=True),
+            _make_dir_entry("a", total_files=3, empty=False),
             _make_file_entry("a/b.log", 50),
         ),
         complete=False,
@@ -191,7 +191,7 @@ def test_round_trip_fs_snapshot() -> None:
     # FsEntry inner fields preserved
     assert out["entries"][0]["path"] == "a"
     assert out["entries"][0]["total_files"] == 3
-    assert out["entries"][0]["has_children"] is True
+    assert out["entries"][0]["empty"] is False
     assert out["entries"][1]["size"] == 50
 
 

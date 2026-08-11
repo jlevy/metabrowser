@@ -117,6 +117,7 @@ class InventoryIndex:
         self._pending_dirs: set[str] = set()
         self._descendant_file_counts: dict[str, int] = {}
         self._descendant_file_sizes: dict[str, int] = {}
+        self._descendant_leaf_counts: dict[str, int] = {}
         self._walker_dir_generations: dict[str, int] = {}
         self._generation: dict[str, int] = {}
         self._subscribers: set[asyncio.Queue[StreamEvent]] = set()
@@ -173,6 +174,7 @@ class InventoryIndex:
         self._pending_dirs.clear()
         self._descendant_file_counts.clear()
         self._descendant_file_sizes.clear()
+        self._descendant_leaf_counts.clear()
         self._walker_dir_generations.clear()
         self._generation.clear()
         self._files_indexed = 0
@@ -550,6 +552,11 @@ class InventoryIndex:
         for cur in removed:
             entry = self._entries.pop(cur, None)
             if entry is not None:
+                if entry.type in ("file", "symlink"):
+                    self._adjust_descendant_leaf_aggregates(
+                        parent=entry.parent,
+                        delta_leaves=-1,
+                    )
                 if entry.type == "file":
                     self._files_indexed -= 1
                     self._adjust_descendant_file_aggregates(
@@ -740,7 +747,7 @@ class InventoryIndex:
                 total_files=self._descendant_file_counts.get(path, 0),
                 total_size=self._descendant_file_sizes.get(path, 0),
                 newest_mtime_ns=newest_mtime,
-                has_children=self.has_direct_child(path),
+                empty=self._descendant_leaf_counts.get(path, 0) == 0,
                 mtime_ns=newest_mtime,
                 write_token=WriteToken(self._generation.get(path, 0)),
             )
@@ -821,6 +828,25 @@ class InventoryIndex:
         if entry.write_token != stamped_token:
             entry = replace(entry, write_token=stamped_token)
         existing = self._entries.get(entry.path)
+        existing_leaf = (
+            existing if existing is not None and existing.type in ("file", "symlink") else None
+        )
+        incoming_leaf = entry if entry.type in ("file", "symlink") else None
+        if not (
+            existing_leaf is not None
+            and incoming_leaf is not None
+            and existing_leaf.parent == incoming_leaf.parent
+        ):
+            if existing_leaf is not None:
+                self._adjust_descendant_leaf_aggregates(
+                    parent=existing_leaf.parent,
+                    delta_leaves=-1,
+                )
+            if incoming_leaf is not None:
+                self._adjust_descendant_leaf_aggregates(
+                    parent=incoming_leaf.parent,
+                    delta_leaves=1,
+                )
         existing_file = existing if existing is not None and existing.type == "file" else None
         incoming_file = entry if entry.type == "file" else None
         if (
@@ -853,7 +879,7 @@ class InventoryIndex:
             self._remove_direct_child(existing)
             self._add_direct_child(entry)
         if entry.type == "dir" and entry.total_files is not None:
-            entry = replace(entry, has_children=self.has_direct_child(entry.path))
+            entry = replace(entry, empty=self._descendant_leaf_counts.get(entry.path, 0) == 0)
         self._entries[entry.path] = entry
         if entry.type == "dir" and entry.total_files is None:
             self._pending_dirs.add(entry.path)
@@ -908,7 +934,7 @@ class InventoryIndex:
                     total_files=max(0, existing.total_files + delta_files),
                     total_size=max(0, existing.total_size + delta_size),
                     newest_mtime_ns=newest_mtime_ns,
-                    has_children=self.has_direct_child(cursor),
+                    empty=self._descendant_leaf_counts.get(cursor, 0) == 0,
                     write_token=WriteToken(self._generation.get(cursor, 0)),
                 )
                 self._entries[cursor] = updated
@@ -961,6 +987,20 @@ class InventoryIndex:
                 self._descendant_file_sizes[cursor] = max(
                     0, self._descendant_file_sizes.get(cursor, 0) + delta_size
                 )
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+
+    def _adjust_descendant_leaf_aggregates(self, *, parent: str, delta_leaves: int) -> None:
+        """Adjust visible file-or-symlink leaf counts for every ancestor."""
+
+        cursor = parent
+        while True:
+            leaf_count = self._descendant_leaf_counts.get(cursor, 0) + delta_leaves
+            if leaf_count <= 0:
+                self._descendant_leaf_counts.pop(cursor, None)
+            else:
+                self._descendant_leaf_counts[cursor] = leaf_count
             if cursor == "":
                 break
             cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""

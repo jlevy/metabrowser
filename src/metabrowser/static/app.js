@@ -4617,11 +4617,11 @@ function applyCellPatch(entry) {
         // A zero file total does not prove emptiness because symlinks
         // are visible leaves but intentionally excluded from aggregates.
         var totalFiles = entry.total_files;
-        if (typeof entry.has_children === "boolean") {
-          row.classList.toggle("tree-item-empty", !entry.has_children);
+        if (typeof entry.empty === "boolean") {
+          row.classList.toggle("tree-item-empty", entry.empty);
         } else if (totalFiles > 0) {
           // Positive totals remain an unambiguous fallback for events
-          // from an older server that lacks child-presence metadata.
+          // from an older server that lacks explicit empty-state metadata.
           row.classList.toggle("tree-item-empty", false);
         }
       }
