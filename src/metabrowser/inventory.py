@@ -45,6 +45,7 @@ import asyncio
 import heapq
 import logging
 import time
+from collections.abc import Collection, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Literal
@@ -286,6 +287,58 @@ class InventoryIndex:
             "ignored_size": ignored_size,
         }
 
+    def file_type_tallies(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        limit: int = 200,
+    ) -> tuple[list[list[object]], list[list[object]]]:
+        """Return extension and aggregate-preset rows in one index pass.
+
+        Both shapes are ``[key, tracked_files, ignored_files]``. Dotted
+        preset tokens match the indexed logical extension; other tokens
+        match a complete filename case-insensitively. A file is counted
+        at most once per preset.
+        """
+
+        extension_counts: dict[str, list[int]] = {}
+        preset_counts = {preset_id: [0, 0] for preset_id, _values in presets}
+        normalized_presets = [
+            (
+                preset_id,
+                frozenset(value.lower() for value in values if value.startswith(".")),
+                frozenset(value.lower() for value in values if not value.startswith(".")),
+            )
+            for preset_id, values in presets
+        ]
+        for entry in self._entries.values():
+            if entry.type != "file":
+                continue
+            ignored_index = 1 if entry.gitignored else 0
+            if entry.ext:
+                row = extension_counts.get(entry.ext)
+                if row is None:
+                    row = [0, 0]
+                    extension_counts[entry.ext] = row
+                row[ignored_index] += 1
+
+            name = entry.name.lower()
+            ext = entry.ext.lower()
+            for preset_id, extensions, names in normalized_presets:
+                if ext in extensions or name in names:
+                    preset_counts[preset_id][ignored_index] += 1
+
+        ranked = sorted(
+            extension_counts.items(),
+            key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+        )
+        extension_rows: list[list[object]] = [
+            [ext, counts[0], counts[1]] for ext, counts in ranked[:limit]
+        ]
+        preset_rows: list[list[object]] = [
+            [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
+        ]
+        return extension_rows, preset_rows
+
     def extension_tally(self, limit: int = 200) -> list[list[object]]:
         """``[ext, tracked_files, ignored_files]`` rows, most frequent first.
 
@@ -303,19 +356,8 @@ class InventoryIndex:
         extensions is exactly what a filter menu does not need.
         """
 
-        tally: dict[str, list[int]] = {}
-        for entry in self._entries.values():
-            if entry.type != "file" or not entry.ext:
-                continue
-            row = tally.get(entry.ext)
-            if row is None:
-                row = [0, 0]
-                tally[entry.ext] = row
-            row[1 if entry.gitignored else 0] += 1
-        # Frequency first, then alphabetical, so equal counts keep a
-        # stable order between requests instead of shuffling.
-        ranked = sorted(tally.items(), key=lambda kv: (-(kv[1][0] + kv[1][1]), kv[0]))
-        return [[ext, counts[0], counts[1]] for ext, counts in ranked[:limit]]
+        rows, _presets = self.file_type_tallies((), limit=limit)
+        return rows
 
     # ── Writes ──────────────────────────────────────────────
 

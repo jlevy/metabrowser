@@ -464,6 +464,11 @@ declare global {
     };
     METABROWSER_INITIAL_PATH?: string;
     METABROWSER_SETTINGS?: {
+      FILTER_TYPE_PRESETS?: Array<{
+        id: string;
+        label: string;
+        values: Array<string>;
+      }>;
       INDEX_PROGRESS_POLL_MS?: number;
       INDEX_PROGRESS_UPDATE_FILES?: number;
       RECENT_CLUSTER_PCT?: number;

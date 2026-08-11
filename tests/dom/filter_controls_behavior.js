@@ -312,8 +312,8 @@ assertContains(
 // ── Menu presets ───────────────────────────────────────────────
 
 const PRESETS = [
-  { id: "docs", label: "Docs", values: [".md", "readme"] },
-  { id: "code", label: "Code", values: [".py", ".ts"] },
+  { id: "docs", label: "Docs", values: [".md", "readme"], count: 34 },
+  { id: "code", label: "Code", values: [".py", ".ts"], count: 159 },
 ];
 const menuPresets = fc.menuGroupHtml({
   key: "types",
@@ -326,6 +326,11 @@ const menuPresets = fc.menuGroupHtml({
 });
 assertContains("presets render above the raw list", menuPresets, 'data-chip-preset="docs"');
 assertContains("presets are separated from the extensions", menuPresets, "menu-separator");
+assertContains(
+  "presets carry the same tally as extension rows",
+  menuPresets,
+  '<span class="chip-menu-count">34</span>',
+);
 // A half-covered group must not claim to be on.
 assertContains(
   "an unselected preset is unchecked",

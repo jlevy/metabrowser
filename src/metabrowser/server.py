@@ -91,6 +91,7 @@ from metabrowser.file_kinds import (
     classify_file_kind,
     register_file_kind_detector,
 )
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -1047,10 +1048,17 @@ async def api_tree(request: Request) -> JSONResponse:
     # the same reason api_catalog offloads its own pass.
     summary = None
     extensions = None
+    type_presets = None
     if inv_can_serve and not subpath:
-        summary, extensions = await asyncio.to_thread(
-            lambda: (inventory.root_summary(), inventory.extension_tally())
+        summary, type_tallies = await asyncio.to_thread(
+            lambda: (
+                inventory.root_summary(),
+                inventory.file_type_tallies(
+                    [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
+                ),
+            )
         )
+        extensions, type_presets = type_tallies
     return JSONResponse(
         {
             "root": str(root_dir),
@@ -1058,14 +1066,15 @@ async def api_tree(request: Request) -> JSONResponse:
             "tally_cache_status": inventory_status(),
             "tally_cache_max_files": inventory.max_files(),
             # Tracked-versus-ignored split for the nav header, plus the
-            # extension tally behind the nav's type filter. Neither can
+            # extension and aggregate tallies behind the nav's type filter. None can
             # be derived client-side: summing top-level children
             # miscounts nested ignored files (see
             # InventoryIndex.root_summary), and the Quick File catalog
-            # drops gitignored entries (see extension_tally). Only the
-            # full-tree request needs either.
+            # drops gitignored entries (see file_type_tallies). Only the
+            # full-tree request needs these values.
             "summary": summary,
             "extensions": extensions,
+            "type_presets": type_presets,
         }
     )
 

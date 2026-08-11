@@ -17,6 +17,7 @@ import asyncio
 from typing import Any, cast
 
 from metabrowser import server as proc_browser
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 
 
 def _read(name: str) -> str:
@@ -329,17 +330,21 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     get" (which is why .json sits with YAML there), these answer "which
     kind of work is this"."""
 
+    labels = [preset["label"] for preset in FILTER_TYPE_PRESETS]
+    assert labels == ["Docs", "Code", "Data"]
+
+    settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()
+    assert '"FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS' in settings
+
     js = _read("app.js")
-    start = js.index("var FILTER_TYPE_PRESETS = [")
-    block = js[start : js.index("\n];", start)]
-    for label in ('"Docs"', '"Code"', '"Data"'):
-        assert label in block
+    assert "var FILTER_TYPE_PRESETS = _METABROWSER_SETTINGS.FILTER_TYPE_PRESETS || [];" in js
 
     # The convention: leading dot is an extension, anything else a
     # whole filename. Docs reaches README and LICENSE only because of it.
-    assert '"readme"' in block
-    assert '"license"' in block
-    assert '".md"' in block
+    docs = next(preset for preset in FILTER_TYPE_PRESETS if preset["id"] == "docs")
+    assert "readme" in docs["values"]
+    assert "license" in docs["values"]
+    assert ".md" in docs["values"]
 
     state = _read("filter_state.js")
     tm_start = state.index("function typeMatches(pathLike, types, logicalExt)")
@@ -506,6 +511,22 @@ def test_the_extension_list_is_hard_capped() -> None:
     assert "kept.push(" not in block
 
 
+def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
+    """The aggregate rows must answer the same question as selecting
+    them, including extensionless filenames and Show ignored."""
+
+    js = _read("app.js")
+    assert "var _typePresetTally = [];" in js
+    start = js.index("function filterTypePresets()")
+    block = js[start : start + 1000]
+    assert "showIgnored ? row[1] + row[2] : row[1]" in block
+    assert "count:" in block
+
+    render_start = js.index("function renderNavFilterBar()")
+    render_block = js[render_start : render_start + 2200]
+    assert "presets: filterTypePresets()" in render_block
+
+
 def test_filters_reapply_when_new_rows_render() -> None:
     """Lazy subtrees and deferred pages arrive unfiltered; without a
     reapply, expanding a folder under an active filter shows all of
@@ -551,7 +572,7 @@ def test_index_wide_tallies_stay_off_the_event_loop() -> None:
     block = py[start : start + 700]
     assert "asyncio.to_thread" in block
     assert "root_summary()" in block
-    assert "extension_tally()" in block
+    assert "file_type_tallies(" in block
 
 
 def test_reapply_is_skipped_when_nothing_is_filtered() -> None:
