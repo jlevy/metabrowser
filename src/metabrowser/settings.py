@@ -27,6 +27,12 @@ from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 # Single source of truth — do not hardcode 8411 anywhere else.
 DEFAULT_BROWSER_PORT = 8411
 
+# ── Diagnostics ──────────────────────────────────────────────
+
+# Shared cutoff for slow-request warnings and slow background-helper summaries.
+# Routine details stay behind DEBUG without obscuring failures.
+SLOW_OPERATION_LOG_SECONDS = 2.0
+
 # ── InventoryIndex walker ────────────────────────────────────
 
 INVENTORY_FIRST_RENDER_DEPTH = 2

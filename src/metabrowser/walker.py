@@ -186,10 +186,15 @@ def _scandir_visible(
                             mtime_ns=st.st_mtime_ns,
                         )
                     )
-    except (PermissionError, OSError, FileNotFoundError, NotADirectoryError) as exc:
-        # Outer scandir failure drops the entire dir's children from
-        # the inventory. Surface it so missing aggregates are
-        # traceable instead of silently null.
+    except PermissionError as exc:
+        # Broad roots commonly contain OS-protected directories. Skipping one
+        # is expected and already visible as a missing subtree in the browser.
+        LOG.debug("walker: permission denied at %s: %s", dirpath, exc)
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        # Watchers can invalidate a directory while the boot walk reaches it.
+        LOG.debug("walker: directory disappeared at %s: %s", dirpath, exc)
+    except OSError as exc:
+        # Other scandir failures can indicate storage or filesystem trouble.
         LOG.warning("walker: scandir failed at %s: %s", dirpath, exc)
     # Dirs first, then by name — matches the existing tree.py
     # convention so /api/tree responses stay stable.
