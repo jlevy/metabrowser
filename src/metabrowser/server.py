@@ -939,7 +939,7 @@ async def index(_request: Request) -> HTMLResponse:
       <div class="nav-filter-bar" id="nav-filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
-          <div class="loading"><div class="spinner"></div>Loading...</div>
+          <div class="loading"><div class="spinner"></div>Loading files…</div>
         </div>
       </div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
@@ -949,7 +949,7 @@ async def index(_request: Request) -> HTMLResponse:
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
-      <div class="preview-empty">Select a file to view</div>
+      <div class="preview-empty">Select a file to preview.</div>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional

@@ -196,7 +196,8 @@
       "renderChartSpecs",
       () => {
         if (typeof Chart === "undefined") {
-          container.innerHTML += '<div class="preview-empty">Chart.js not loaded</div>';
+          container.innerHTML +=
+            '<div class="preview-empty" role="alert">Charts are unavailable. Refresh the page to try again.</div>';
           return;
         }
 
@@ -438,7 +439,7 @@
           renderChartSpecs(container, chartData.charts);
         }
         if (!chartData.summary && (!chartData.charts || chartData.charts.length === 0)) {
-          container.innerHTML = '<div class="preview-empty">No chart data available</div>';
+          container.innerHTML = '<div class="preview-empty">This file has no chart data.</div>';
         }
       },
       {

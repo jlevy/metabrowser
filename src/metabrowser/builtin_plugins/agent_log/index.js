@@ -294,16 +294,17 @@
     let trailer = "";
     const t = data.raw_truncation;
     if (t) {
+      const skipped =
+        t.lines_skipped > 0
+          ? ` ${t.lines_skipped} oversized ${t.lines_skipped === 1 ? "line was" : "lines were"} skipped.`
+          : "";
       trailer =
-        "\n\n... (raw tab truncated at " +
+        "\n\n… Raw content truncated. Showing at most " +
         mb.formatSize(t.cap_bytes) +
-        " — file is " +
+        " of " +
         mb.formatSize(t.file_bytes) +
-        ", " +
-        t.lines_total +
-        " lines, " +
-        t.lines_skipped +
-        " skipped)";
+        "." +
+        skipped;
     }
     return mb.wrapWithCopy(
       '<pre class="code-block"><code class="' +
@@ -333,7 +334,7 @@
 
   async function renderCharts(container, ctx) {
     const generation = ++chartsRenderGeneration;
-    container.innerHTML = '<div class="charts-placeholder preview-empty">Charts loading...</div>';
+    container.innerHTML = '<div class="charts-placeholder preview-empty">Loading charts…</div>';
     const chartData = await mb.fetchPluginData("agent-log", "charts", {
       path: ctx.path,
     });
@@ -341,7 +342,7 @@
       return;
     }
     if (!window.MetabrowserCharts) {
-      throw new Error("Metabrowser chart runtime is unavailable");
+      throw new Error("Chart rendering is unavailable.");
     }
     window.MetabrowserCharts.renderPayload(container, chartData);
   }

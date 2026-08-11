@@ -146,7 +146,7 @@
       (payload.detail ? `: ${payload.detail}` : err?.message ? `: ${err.message}` : "");
     return (
       '<div class="metabrowser-kpress-render-error" role="alert">' +
-      "<strong>KPress render failed.</strong>" +
+      "<strong>Could not render this document.</strong>" +
       '<pre class="metabrowser-kpress-error-detail">' +
       mb.escapeHtml(message) +
       "</pre>" +

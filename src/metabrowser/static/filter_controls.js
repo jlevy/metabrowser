@@ -218,6 +218,7 @@
       .map((opt) => {
         const on = selected.indexOf(opt.value) >= 0;
         const extra = opt.className ? ` ${esc(opt.className)}` : "";
+        const title = opt.title ? ` title="${esc(opt.title)}"` : "";
         const count =
           typeof opt.count === "number"
             ? `<span class="chip-menu-count">${esc(opt.count.toLocaleString())}</span>`
@@ -237,6 +238,7 @@
         const age = opt.ageClass ? ` ${esc(opt.ageClass)}` : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +
+          `${title}` +
           ` role="${rowRole}" aria-checked="${on}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +

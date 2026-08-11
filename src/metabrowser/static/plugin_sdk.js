@@ -41,7 +41,7 @@
 //     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
 //     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
-//     renderTextTruncationWarning(data) — print-visible source truncation warning
+//     renderTextTruncationWarning(data) — visible partial-content warning
 //
 //   Navigation:
 //     openPath(path)                     — open a path in the preview pane
@@ -340,13 +340,12 @@
     const totalLabel = formatSize(totalBytes);
     return (
       '<div class="metabrowser-source-truncation-warning" role="status">' +
-      "<strong>Source preview truncated.</strong> " +
-      "Printed output includes only " +
+      "<strong>Content truncated.</strong> " +
+      "Showing " +
       escapeHtml(loadedLabel) +
       " of " +
       escapeHtml(totalLabel) +
-      ". " +
-      "Load the remaining text before printing a complete source PDF." +
+      ". Select Load more to continue." +
       "</div>"
     );
   }

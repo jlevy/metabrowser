@@ -41,6 +41,19 @@ def test_parse_small_json(tmp_path: Path) -> None:
     assert payload.node_count == 6
 
 
+def test_parse_root_json_null_as_valid_data(tmp_path: Path) -> None:
+    f = tmp_path / "null.json"
+    f.write_text("null")
+
+    payload = parse_structured(f, ".json", "h-null")
+
+    assert payload.parsed is None
+    assert payload.parse_error is None
+    assert payload.truncated is False
+    assert payload.pretty_yaml.strip().startswith("null")
+    assert payload.node_count == 1
+
+
 def test_parse_jsonc_with_comments_and_trailing_commas(tmp_path: Path) -> None:
     # tsconfig.json et al. are JSONC: // + /* */ comments and trailing
     # commas. Strict json.loads rejects these; the parser falls back to

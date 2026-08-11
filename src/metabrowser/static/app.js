@@ -755,7 +755,8 @@ async function loadTree() {
       console.warn(`loadTree: HTTP ${resp.status}`);
       const treeEl = document.getElementById("tree-content");
       if (treeEl) {
-        treeEl.innerHTML = `<div class="preview-empty">Failed to load tree (HTTP ${resp.status})</div>`;
+        treeEl.innerHTML =
+          '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
       }
       return;
     }
@@ -956,13 +957,14 @@ function renderFilesFromTree() {
 }
 
 function treeTruncationNoteHtml(maxFiles) {
-  var capText = maxFiles ? formatCount(maxFiles) : "the file cap";
+  var reason = maxFiles
+    ? `Metabrowser stopped after ${formatCount(maxFiles)} files`
+    : "Metabrowser reached its file limit";
   return (
     '<div class="tree-truncation-note" role="status">' +
-    "Tree partial: capped at " +
-    capText +
-    ". " +
-    "Deep subtrees may be incomplete." +
+    "<strong>File list incomplete.</strong> " +
+    reason +
+    ", so some files and folders are not shown." +
     "</div>"
   );
 }
@@ -1189,7 +1191,7 @@ function treeLazyLoadingHtml(message) {
     '<div class="tree-lazy-placeholder" role="status" aria-live="polite">' +
     '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
     "<span>" +
-    esc(message || "Loading folder...") +
+    esc(message || "Loading folder…") +
     "</span>" +
     "</div>"
   );
@@ -1197,14 +1199,33 @@ function treeLazyLoadingHtml(message) {
 
 function treeLazyFailureHtml(message) {
   return (
-    '<div class="tree-lazy-placeholder tree-lazy-error" role="status">' +
-    esc(message || "Unable to load folder.") +
+    '<div class="tree-lazy-placeholder tree-lazy-error" role="alert">' +
+    esc(message || "Could not load this folder.") +
     "</div>"
   );
 }
 
 function errorMessage(e) {
-  return e?.message ? e.message : String(e || "unknown error");
+  return e?.message ? e.message : String(e || "An unknown error occurred.");
+}
+
+function responseErrorDetail(body, status) {
+  var text = String(body || "").trim();
+  if (text) {
+    try {
+      var parsed = JSON.parse(text);
+      var detail = parsed?.error || parsed?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail.trim();
+      }
+    } catch (_error) {
+      // A plain-text response is already suitable for the preview message.
+    }
+    if (text.length <= 400) {
+      return text;
+    }
+  }
+  return `The request failed (HTTP ${status}).`;
 }
 
 function subtreeIsExpanded(childrenEl) {
@@ -1256,7 +1277,7 @@ async function loadSubtree(path, childrenEl, options) {
     );
     return;
   }
-  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder...");
+  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…");
   try {
     const resp = await fetch(
       `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
@@ -1276,7 +1297,7 @@ async function loadSubtree(path, childrenEl, options) {
     var tree = data.tree;
     knownFileCatalog?.observeLazyTree(tree);
     if (tree.length === 0 && data.tally_cache_status === "scanning") {
-      childrenEl.innerHTML = treeLazyLoadingHtml("Folder still loading...");
+      childrenEl.innerHTML = treeLazyLoadingHtml("Still scanning this folder…");
       startIndexProgressPolling();
       scheduleSubtreeRetry(path, childrenEl);
       return;
@@ -1288,7 +1309,7 @@ async function loadSubtree(path, childrenEl, options) {
       () => {
         childrenEl.innerHTML = tree.length
           ? renderTreeNodes(tree, false, options)
-          : '<div class="tree-lazy-placeholder">Empty folder</div>';
+          : '<div class="tree-lazy-placeholder">This folder is empty.</div>';
       },
       { path: path, nodes: tree.length },
     );
@@ -1298,7 +1319,9 @@ async function loadSubtree(path, childrenEl, options) {
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
-    childrenEl.innerHTML = treeLazyFailureHtml(`Unable to load folder (${errorMessage(e)}).`);
+    childrenEl.innerHTML = treeLazyFailureHtml(
+      "Could not load this folder. Collapse and reopen it to try again.",
+    );
   }
 }
 
@@ -1374,14 +1397,14 @@ if (typeof window !== "undefined") {
 // visual category (this number is a size) is carried by the class.
 function _tipSize(bytes) {
   if (isPendingNumber(bytes)) {
-    return '<span class="tip-loading">Loading size...</span>';
+    return '<span class="tip-loading">Loading size…</span>';
   }
   var cls = `size ${sizeClass(bytes)}`.trim();
   return `<span class="${cls}">${formatExactSize(bytes || 0)}</span>`;
 }
 function _tipCount(n) {
   if (isPendingNumber(n)) {
-    return '<span class="tip-loading">Loading file count...</span>';
+    return '<span class="tip-loading">Loading file count…</span>';
   }
   return `<span class="count">${formatCount(n)}</span>`;
 }
@@ -2028,7 +2051,8 @@ function fetchRecent(windowKey) {
         return;
       }
       if (results) {
-        results.innerHTML = '<div class="recent-empty">Failed to load recent files.</div>';
+        results.innerHTML =
+          '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
       }
     })
     .finally(() => {
@@ -2447,8 +2471,8 @@ function renderRecentList(data) {
   if (tree.length === 0) {
     var emptyText =
       currentRecentWindow === "live"
-        ? `No files touched in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
-        : "No files modified in this window.";
+        ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
+        : "No files were modified during the selected time range.";
     return `<div class="recent-empty">${emptyText}</div>`;
   }
   // Reuse the Files-tab renderer with one mode flip: dir rows
@@ -2498,7 +2522,7 @@ var FILTER_RECENCY_OPTIONS = [
   {
     value: "live",
     label: "Live",
-    title: `Files touched in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
+    title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
     ageClass: "age-sec",
   },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
@@ -3157,8 +3181,9 @@ function _renderFilterNote(panel, unloadedFolders, state) {
     return;
   }
   var text =
-    `Filtered within loaded folders. ${unloadedFolders.toLocaleString()} ` +
-    `${unloadedFolders === 1 ? "folder is" : "folders are"} not expanded yet.`;
+    `${unloadedFolders.toLocaleString()} collapsed ` +
+    `${unloadedFolders === 1 ? "folder may" : "folders may"} contain additional matches. ` +
+    `Expand ${unloadedFolders === 1 ? "it" : "them"} to check.`;
   if (existing) {
     existing.textContent = text;
     return;
@@ -3232,6 +3257,16 @@ function cachePut(cache, key, value, maxSize, onEvict) {
 
 var textChunkLoadInFlight = false;
 
+function showTextChunkLoadError() {
+  var warning = document.querySelector(".metabrowser-source-truncation-warning");
+  if (!warning) {
+    return;
+  }
+  warning.setAttribute("role", "alert");
+  warning.innerHTML =
+    "<strong>Could not load more content.</strong> Select Load more to try again.";
+}
+
 // Called by the generated file-header action.
 // biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 async function loadMoreCurrentText() {
@@ -3256,7 +3291,7 @@ async function loadMoreCurrentText() {
         encodeURIComponent(String(TEXT_PREVIEW_CHUNK_BYTES)),
     );
     if (!resp.ok) {
-      return;
+      throw new Error(`HTTP ${resp.status}`);
     }
     var chunk = await _perf.measureAsync(
       "apiFile:textChunkJson",
@@ -3280,6 +3315,9 @@ async function loadMoreCurrentText() {
     renderFile(cached);
   } catch (e) {
     console.warn("Failed to load text chunk", e);
+    if (currentPath === path) {
+      showTextChunkLoadError();
+    }
   } finally {
     textChunkLoadInFlight = false;
   }
@@ -3308,7 +3346,10 @@ async function selectFile(path, skipHash) {
       }
       const preview = document.getElementById("preview-pane");
       if (!preview) {
-        return { message: "The preview destination is unavailable.", status: "error" };
+        return {
+          message: "Could not display the file. Refresh the page to try again.",
+          status: "error",
+        };
       }
 
       // Three-way cache state:
@@ -3333,7 +3374,7 @@ async function selectFile(path, skipHash) {
           return;
         }
         disposeActivePluginViews();
-        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading file…</div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
       if (selectFileAbortController) {
@@ -3376,7 +3417,7 @@ async function selectFile(path, skipHash) {
             () => resp.text(),
             responsePerfMeta(resp, path),
           );
-          throw Object.assign(new Error(text || `HTTP ${resp.status}`), {
+          throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
             notFound: resp.status === 404,
           });
         }
@@ -3414,13 +3455,19 @@ async function selectFile(path, skipHash) {
             loadingIndicatorTimer = null;
           }
           disposeActivePluginViews();
-          preview.innerHTML = `<div class="preview-empty">Error: ${esc(errorMessage(err))}</div>`;
+          preview.innerHTML =
+            '<div class="preview-empty" role="alert"><strong>Could not open this file.</strong> ' +
+            esc(errorMessage(err)) +
+            "</div>";
         } else {
           return { status: "cancelled" };
         }
         return notFound
-          ? { message: `File no longer available: ${path}`, status: "not-found" }
-          : { message: `Could not open ${path}: ${errorMessage(err)}`, status: "error" };
+          ? { message: `${path} is no longer available.`, status: "not-found" }
+          : {
+              message: `Could not open ${path}. Check that the file still exists and is readable.`,
+              status: "error",
+            };
       }
     },
     { path: path, skip_hash: !!skipHash },
@@ -3516,7 +3563,7 @@ function renderTextPreviewControls(data) {
   var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
   if (data.content_truncated) {
     html +=
-      '<button class="file-header-action" onclick="loadMoreCurrentText()" title="Load another text chunk">Load more</button>';
+      '<button class="file-header-action" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
   }
   return html;
 }
@@ -3636,14 +3683,15 @@ function mountPluginView(container, pluginView, ctx) {
     var maybePromise = pluginView.render(container, ctx);
     if (maybePromise && typeof maybePromise.catch === "function") {
       maybePromise.catch((err) => {
+        console.error("plugin render error:", err);
         container.innerHTML =
-          '<div class="preview-empty">Plugin render error: ' +
-          esc(String(err?.message || err)) +
-          "</div>";
+          '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
       });
     }
   } catch (err) {
-    container.innerHTML = `<div class="preview-empty">Plugin render error: ${esc(errorMessage(err))}</div>`;
+    console.error("plugin render error:", err);
+    container.innerHTML =
+      '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
   }
 }
 
@@ -3688,7 +3736,7 @@ function renderFile(data) {
       // kinds; entry-point plugins own theirs. The shell here
       // builds the empty containers; each plugin's render(container, ctx)
       // fires below once the DOM is in place. If no plugin claims a
-      // (kind, viewId) we paint an "Unknown view" empty state — never a
+      // (kind, viewId) we paint an unavailable-view message — never a
       // fallback that pulls renderers out of the shell. This is the
       // contract: every kind is a plugin.
       var views = data.views;
@@ -3758,9 +3806,7 @@ function renderFile(data) {
               viewMetaAttrs(view) +
               ' data-active-view="false"' +
               hidden +
-              '><div class="preview-empty">Unknown view: ' +
-              esc(view.id) +
-              "</div></div>";
+              '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
           }
         }
       } else if (data.type === "image") {
@@ -3774,22 +3820,19 @@ function renderFile(data) {
           esc(data.path) +
           '"></div>';
       } else if (data.type === "binary") {
-        html += `<div class="content-body"><div class="preview-empty">Binary file (${formatSize(data.size || 0)})</div></div>`;
+        html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
       } else if (data.type === "jsonl_too_large") {
         html +=
           '<div class="content-body"><div class="preview-empty">' +
-          "<strong>Log file too large for browser parsing</strong><br><br>" +
-          "Size: " +
+          "<strong>This JSONL file is too large to preview.</strong><br><br>" +
+          "File size: " +
           formatSize(data.size || 0) +
-          " (limit: " +
+          "<br>Preview limit: " +
           formatSize(data.max_size || 0) +
-          ")<br><br>" +
-          "View with:<br><code>tail -f " +
-          esc(data.path) +
-          "</code>" +
+          "<br><br>Open it with a tool that can stream large files." +
           "</div></div>";
       } else if (data.type === "error") {
-        html += `<div class="content-body"><div class="preview-empty">Error: ${esc(data.error)}</div></div>`;
+        html += `<div class="content-body"><div class="preview-empty" role="alert"><strong>Could not preview this file.</strong> ${esc(data.error)}</div></div>`;
       }
 
       _perf.measure(
