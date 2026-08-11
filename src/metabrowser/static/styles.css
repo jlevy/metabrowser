@@ -3982,6 +3982,15 @@ pre.code-block code.hljs {
   fill: var(--hover-bg);
 }
 
+/* Ordered after :hover to match how the row background itself resolves:
+   .git-graph-row.selected and .git-graph-row:hover carry equal
+   specificity, so on a row that is both, source order is what makes the
+   selection colour win. The marker has to make the same choice, or a
+   selected row shows a sidebar-coloured disc inside its ring. */
+.git-graph-row.selected .git-graph-svg > circle:not([style*="fill"]) {
+  fill: var(--highlight-bg);
+}
+
 .git-graph-body {
   display: flex;
   align-items: center;
@@ -4033,19 +4042,10 @@ pre.code-block code.hljs {
   font-size: var(--nav-font-size);
 }
 
+/* Rides the .btn primitive; only the spacing is local. The hand-rolled
+   copy this replaced also had no :focus-visible ring. */
 .git-panel-refresh {
   margin-top: 10px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  background: transparent;
-  color: var(--link);
-  cursor: pointer;
-  font: inherit;
-}
-
-.git-panel-refresh:hover {
-  background: var(--hover-bg);
 }
 
 /* ── Ref badges ─────────────────────────────────────────────── */

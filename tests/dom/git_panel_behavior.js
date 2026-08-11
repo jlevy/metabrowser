@@ -760,6 +760,48 @@ async function run() {
   assertEqual("cursor: reopening restarts at page one", internals.stateForTests().rows.length, 1);
   assertTrue("cursor: successful restart clears failure", !internals.stateForTests().failed);
 
+  // ── Reopening after a checkout ─────────────────────────────
+  //
+  // HEAD is an input to lane layout, baked into each row when the page
+  // was laid out, so a checkout made while another tab was showing can
+  // only be recomputed, never repainted. Re-reading repository identity
+  // on activation is what catches it.
+  responses.set(`/api/git/commit/${SHA_B}`, {
+    is_repo: true,
+    commit: commit(SHA_B, [], "cursor recovery succeeded"),
+    body: "",
+    stats: { files_changed: 0, additions: 0, deletions: 0 },
+    files: [],
+    files_truncated: false,
+  });
+  await internals.selectCommit(SHA_B);
+  const primedCache = fetchCount;
+  await internals.selectCommit(SHA_B);
+  assertEqual("head: the detail cache serves a repeat select", fetchCount, primedCache);
+
+  responses.set("/api/git/repo", {
+    is_repo: true,
+    root: "",
+    head: { ref: "refs/heads/other", revision: SHA_C, detached: false, unborn: false },
+  });
+  responses.set("/api/git/log", {
+    is_repo: true,
+    commits: [commit(SHA_C, [], "after checkout"), commit(SHA_B, [], "older")],
+    cursor: null,
+    has_more: false,
+  });
+  registeredPanel.onShow();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEqual("head: a moved HEAD recomputes the graph", internals.stateForTests().rows.length, 2);
+  assertEqual("head: state adopts the new revision", internals.stateForTests().headRevision, SHA_C);
+
+  // A commit's object id is immutable but its payload is not: refs move
+  // as branches and tags do, so a detail cached before the refresh must
+  // not survive it.
+  const afterRefresh = fetchCount;
+  await internals.selectCommit(SHA_B);
+  assertTrue("head: a refresh clears the detail cache", fetchCount > afterRefresh);
+
   // ── Relative age ───────────────────────────────────────────
   {
     const now = Date.now() / 1000;

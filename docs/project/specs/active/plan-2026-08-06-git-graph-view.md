@@ -460,6 +460,48 @@ current linked worktree, not the primary worktree.
 Tests cover a repository root, a linked-worktree root, a repository subdirectory, a
 plain directory, and the negative envelope across every Git endpoint.
 
+## Addendum: v0.3.0 Merge and Second Review Round (2026-08-11)
+
+The branch merged the v0.3.0 filtering and server-reliability work.
+Three textual conflicts were additive collisions resolved by keeping both sides.
+The one that was not mechanical is the `git check-ignore` cross-validation test: both
+branches had independently isolated the git environment, and the release branch’s
+`_isolated_git_env()` asks git for the authoritative variable list via
+`git rev-parse --local-env-vars`, which supersedes this branch’s hardcoded scrub.
+The hardcoded tuple stays in `git/process.py`, because the server’s git spawner cannot
+shell out to discover the list on every spawn.
+
+The merge also brought a role-based control family (`.btn`, `.icon-btn`) that the Git
+panel predates. `.git-panel-refresh` was a hand-rolled near-duplicate that had no
+`:focus-visible` ring, so adopting the primitive both removes the duplication and
+restores the focus affordance.
+
+A second review round found four further defects, all now fixed:
+
+- **Reopening the tab did not re-read HEAD.** HEAD is an input to lane layout and is
+  baked into each row when the page is laid out, so a checkout made while another tab
+  was showing can only be recomputed, never repainted.
+  The panel now re-reads repository identity on every activation — the response is
+  TTL-cached server-side, so a tab switch that changes nothing costs nothing — and
+  recomputes when the revision moved.
+- **Refresh kept a stale commit-detail cache.** A commit’s object id is immutable but
+  its payload is not: refs move as branches and tags do.
+  The cache is now cleared as part of the refresh reset.
+- **Page cursors carried an unbounded `--skip`.** Malformed cursors were already
+  rejected, but a well-formed one could name any offset, and `git log --skip` walks and
+  discards the whole prefix.
+  `GIT_LOG_MAX_SKIP` bounds it at roughly four hundred pages of the default limit, far
+  past anything the panel can reach given its own row cap.
+- **The HEAD ring showed a filled disc when selected.** The hollow marker follows the
+  row background, but only the default and hover cases had rules.
+  The selected rule is ordered after the hover rule because the two carry equal
+  specificity, which is what makes source order decide a row that is both; a structural
+  test pins that ordering so a future reshuffle cannot silently invert it.
+
+What remains is the manual pass the branch has always been waiting on: a human eye on
+the graph’s proportions across themes and the paging boundary.
+Everything else is automated-green under `make verify`.
+
 ## Attribution
 
 `git_graph.js` is a derivative of `scmHistory.ts` from `microsoft/vscode`, MIT-licensed,

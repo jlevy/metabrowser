@@ -50,6 +50,7 @@ from metabrowser.git.wire import (
     validate_git_ref,
     validate_git_repo_info,
 )
+from metabrowser.settings import GIT_LOG_MAX_SKIP
 
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None,
@@ -448,6 +449,22 @@ def test_cursor_round_trips_and_rejects_junk() -> None:
 
     negative = base64.urlsafe_b64encode(json.dumps({"skip": -5}).encode()).decode().rstrip("=")
     assert decode_cursor(negative) is None
+
+
+def test_cursor_rejects_an_offset_past_the_skip_bound() -> None:
+    # A well-formed cursor is not automatically a usable one. `git log
+    # --skip` walks and discards the whole prefix, so an unbounded offset
+    # buys a full history walk that returns nothing.
+    assert decode_cursor(encode_cursor(GIT_LOG_MAX_SKIP)) == GIT_LOG_MAX_SKIP
+    assert decode_cursor(encode_cursor(GIT_LOG_MAX_SKIP + 1)) is None
+    assert decode_cursor(encode_cursor(10**15)) is None
+
+
+def test_log_route_rejects_an_over_bound_cursor(repo: Path) -> None:
+    with _served(repo):
+        request = _FakeRequest({"cursor": encode_cursor(GIT_LOG_MAX_SKIP + 1)})
+        response = asyncio.run(api_git_log(request))  # pyright: ignore[reportArgumentType]
+    assert response.status_code == 400
 
 
 # ── Refs ─────────────────────────────────────────────────────

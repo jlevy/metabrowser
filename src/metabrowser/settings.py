@@ -182,11 +182,19 @@ GIT_SUBPROCESS_MAX_BYTES = 32 * 1024 * 1024
 GIT_LOG_DEFAULT_LIMIT = 250
 GIT_LOG_MAX_LIMIT = 1_000
 
-# Maximum commit rows retained and mounted by the browser. The API can
-# page arbitrarily deep, but a navigation panel must not grow its DOM or
-# client state with the lifetime of a repository. The panel discloses the
-# cap instead of presenting the bounded list as complete.
+# Maximum commit rows retained and mounted by the browser. A navigation
+# panel must not grow its DOM or client state with the lifetime of a
+# repository. The panel discloses the cap instead of presenting the
+# bounded list as complete.
 GIT_HISTORY_MAX_ROWS = 500
+
+# Largest ``--skip`` offset a page cursor may carry. Cursors are opaque
+# and server-issued, and the panel stops paging at GIT_HISTORY_MAX_ROWS,
+# so no legitimate cursor comes near this; it is ~400 pages at the default
+# limit. Without the bound, a well-formed cursor carrying an arbitrary
+# offset makes git walk and discard that whole prefix of history on every
+# request, spending the subprocess timeout budget to return nothing.
+GIT_LOG_MAX_SKIP = 100_000
 
 # Changed files returned by ``/api/git/commit/{revision}``. A commit that
 # touches more than this reports ``files_truncated`` rather than being
@@ -253,6 +261,7 @@ __all__ = [
     "GIT_HISTORY_MAX_ROWS",
     "GIT_LOG_DEFAULT_LIMIT",
     "GIT_LOG_MAX_LIMIT",
+    "GIT_LOG_MAX_SKIP",
     "GIT_REPO_INFO_TTL_S",
     "GIT_SUBPROCESS_MAX_BYTES",
     "GIT_SUBPROCESS_TIMEOUT_S",

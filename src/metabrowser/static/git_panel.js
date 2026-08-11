@@ -322,7 +322,7 @@
 
     const refresh = document.createElement("button");
     refresh.type = "button";
-    refresh.className = "git-panel-refresh";
+    refresh.className = "btn git-panel-refresh";
     refresh.textContent = "Refresh";
     refresh.addEventListener("click", () => {
       void refreshHistory();
@@ -669,6 +669,11 @@
 
     refreshing = true;
     state = emptyState();
+    // The detail cache is keyed by object id, but a commit's *payload*
+    // is not immutable: its refs move as branches and tags do. Keeping
+    // the cache across a refresh would let the hover card and detail
+    // view serve pre-refresh refs for a row the graph just redrew.
+    detailCache.clear();
     state.loading = true;
     renderPanel();
     try {
@@ -700,6 +705,23 @@
       await refreshHistory();
       return;
     }
+
+    // HEAD is an input to lane layout, baked into each row when the page
+    // was laid out — so a checkout made while another tab was showing
+    // cannot be repainted, only recomputed. Re-reading identity on every
+    // activation is what catches that; the response is TTL-cached
+    // server-side, so a tab switch that changes nothing costs nothing.
+    const info = await fetchRepoInfo();
+    if (!info) {
+      // The served root stopped being a repository under us.
+      teardown();
+      return;
+    }
+    if ((info.head?.revision ?? null) !== state.headRevision) {
+      await refreshHistory();
+      return;
+    }
+
     if (state.failed && state.cursor) {
       await loadNextPage(false);
     }

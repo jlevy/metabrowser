@@ -38,6 +38,7 @@ from pathlib import Path
 
 from metabrowser.git.process import run_git
 from metabrowser.git.wire import GitAuthor, GitCommit, GitLogPage, GitRef, is_full_revision
+from metabrowser.settings import GIT_LOG_MAX_SKIP
 
 # Field separator inside one commit record. Chosen from the C0 separator
 # block, which git never emits itself in these fields.
@@ -256,11 +257,16 @@ def encode_cursor(skip: int) -> str:
 
 
 def decode_cursor(cursor: str) -> int | None:
-    """Decode a page cursor to its skip offset, or ``None`` if malformed.
+    """Decode a page cursor to its skip offset, or ``None`` if unusable.
 
     The route rejects ``None`` as a bad request. Restarting at offset zero
     would make the append-only client duplicate commits and corrupt lane
     continuity.
+
+    A well-formed cursor is not yet a usable one: the offset is bounded by
+    ``GIT_LOG_MAX_SKIP`` because ``git log --skip`` walks and discards the
+    whole prefix, so an arbitrary offset buys a full history walk that
+    returns nothing.
     """
     try:
         padding = "=" * (-len(cursor) % 4)
@@ -269,6 +275,8 @@ def decode_cursor(cursor: str) -> int | None:
     except (binascii.Error, UnicodeDecodeError, ValueError, KeyError, TypeError):
         return None
     if not isinstance(skip, int) or isinstance(skip, bool) or skip < 0:
+        return None
+    if skip > GIT_LOG_MAX_SKIP:
         return None
     return skip
 
