@@ -62,8 +62,8 @@ class WriteToken:
 
 @dataclass(slots=True, frozen=True)
 class FsEntry:
-    """A single filesystem object — file or directory — as the
-    inventory tracks it.
+    """A single filesystem object — file, directory, or symlink — as
+    the inventory tracks it.
 
     Files always carry concrete ``size`` / ``mtime_ns``. Directories
     carry their immediate-child count via ``total_files`` (with the
@@ -73,8 +73,11 @@ class FsEntry:
     finalized values atomically (``dataclasses.replace``) once the
     subtree is complete.
 
+    Symlinks are typed leaves: the inventory records the link itself
+    without following its target or including it in file aggregates.
+
     ``views`` is the ordered list of preview-pane view ids (see
-    :mod:`metabrowser.file_kinds`); empty for dirs.
+    :mod:`metabrowser.file_kinds`); empty for dirs and symlinks.
     ``labels`` is an open dict for run-state, pid-alive, errored,
     plugin badges; meaningful only for files.
 
@@ -89,7 +92,7 @@ class FsEntry:
     path: str
     parent: str
     name: str
-    type: Literal["file", "dir"]
+    type: Literal["file", "dir", "symlink"]
     ext: str
     kind: str
     size: int
@@ -172,6 +175,33 @@ class FsEntry:
             kind="dir",
             size=0,
             mtime_ns=0,
+            mtime_hash="",
+            active=False,
+            gitignored=gitignored,
+        )
+
+    @classmethod
+    def for_observed_symlink(
+        cls,
+        *,
+        path: str,
+        parent: str,
+        name: str,
+        size: int,
+        mtime_ns: int,
+        gitignored: bool = False,
+    ) -> FsEntry:
+        """Build a symlink leaf without treating it as a regular file."""
+
+        return cls(
+            path=path,
+            parent=parent,
+            name=name,
+            type="symlink",
+            ext="",
+            kind="symlink",
+            size=size,
+            mtime_ns=mtime_ns,
             mtime_hash="",
             active=False,
             gitignored=gitignored,

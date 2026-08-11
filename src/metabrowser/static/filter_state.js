@@ -272,17 +272,22 @@
   /**
    * The one row predicate every surface shares. `row` carries whatever
    * subset the caller knows: {mtime (seconds), size (bytes), path,
-   * isDir}. Missing fields never rule a row out — pending data
+   * isDir, isSymlink}. Missing fields never rule a row out — pending data
    * must not flicker as filtered. Directories are judged only on
    * recency, because a folder's type and size are aggregates that mean
-   * something different from a file's.
-   * @param {{mtime?: number | null, size?: number | null, path?: string, isDir?: boolean, ext?: string}} row
+   * something different from a file's. Symlinks stay visible only when
+   * no file-specific filter is active; they are filesystem references,
+   * not members of a file age, type, or size bucket.
+   * @param {{mtime?: number | null, size?: number | null, path?: string, isDir?: boolean, isSymlink?: boolean, ext?: string}} row
    * @param {FilterSnapshot} s
    * @param {number} nowSec
    */
   function rowMatches(row, s, nowSec) {
     // Note: gitignored is handled by the caller, which knows the row's
     // class; showIgnored is a visibility choice, not a predicate.
+    if (row.isSymlink) {
+      return s.recency === "all" && !s.types && s.size === "all";
+    }
     if (s.recency !== "all") {
       const maxAge = recencySeconds(s.recency);
       if (typeof row.mtime === "number" && row.mtime > 0 && nowSec - row.mtime > maxAge) {

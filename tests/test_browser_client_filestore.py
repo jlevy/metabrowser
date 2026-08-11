@@ -539,10 +539,10 @@ def test_mirror_active_from_fs_entry_handles_transitions() -> None:
     assert "fileNeedsRevalidate.add" in fn_block
 
 
-# ── Renderer file/dir live update path ────────────────────────
+# ── Renderer filesystem-entry live update path ────────────────
 
 
-def test_compute_cell_patch_returns_patch_for_files_not_just_dirs() -> None:
+def test_compute_cell_patch_returns_each_filesystem_row_shape() -> None:
     """Pre-fix, ``computeCellPatch`` returned ``null`` for any
     entry whose ``type !== "dir"`` — so file ops were silently
     dropped by ``applyCellPatch``. The fix routes file entries
@@ -551,14 +551,13 @@ def test_compute_cell_patch_returns_patch_for_files_not_just_dirs() -> None:
     js = _read_app_js()
     fn_start = js.index("function computeCellPatch(entry, options)")
     fn_block = js[fn_start : fn_start + 2500]
-    # The dir branch and the file branch must both return a
-    # populated patch object — the function no longer returns
-    # null for files.
+    # Each inventory type returns its own populated patch object.
     assert 'kind: "dir"' in fn_block
+    assert 'kind: "symlink"' in fn_block
     assert 'kind: "file"' in fn_block
 
 
-def test_apply_cell_patch_handles_both_tree_folder_and_tree_file_rows() -> None:
+def test_apply_cell_patch_handles_every_tree_row_type() -> None:
     """Pre-fix, ``applyCellPatch`` only looked up
     ``.tree-folder[data-path=…]``. The fix picks the right
     selector by entry.type so existing file rows update on touch."""
@@ -567,6 +566,7 @@ def test_apply_cell_patch_handles_both_tree_folder_and_tree_file_rows() -> None:
     fn_start = js.index("function applyCellPatch(entry)")
     fn_block = js[fn_start : fn_start + 3000]
     assert ".tree-folder[data-path=" in fn_block
+    assert ".tree-symlink[data-path=" in fn_block
     assert ".tree-file[data-path=" in fn_block
     assert "computeCellPatch(entry, treeRenderOptionsForElement(row))" in fn_block
 

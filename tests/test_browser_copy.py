@@ -15,6 +15,7 @@ def _read(path: Path) -> str:
 
 def test_shell_messages_explain_state_and_recovery() -> None:
     app = _read(STATIC / "app.js")
+    styles = _read(STATIC / "styles.css")
 
     assert "Could not load files. Refresh the page to try again." in app
     assert "File list incomplete." in app
@@ -27,6 +28,12 @@ def test_shell_messages_explain_state_and_recovery() -> None:
     assert "function responseErrorDetail(body, status)" in app
     assert "new Error(responseErrorDetail(text, resp.status))" in app
     assert "Could not display this view. Refresh the page to try again." in app
+    assert "function previewErrorHtml(summary, detail)" in app
+    assert 'class="preview-error-title"' in app
+    assert 'class="preview-error-detail"' in app
+    assert ".preview-error {" in styles
+    assert "flex-direction: column;" in styles
+    assert "max-width: var(--preview-message-max-width);" in styles
 
     for internal_wording in (
         "Failed to load tree",

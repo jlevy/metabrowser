@@ -791,7 +791,7 @@ async function loadTree() {
           totalSize += n.total_size;
           totalFiles += n.total_files;
         }
-      } else {
+      } else if (n.type === "file") {
         totalSize += n.size || 0;
         totalFiles += 1;
       }
@@ -1119,6 +1119,21 @@ function renderTreeNodes(nodes, isRoot, options) {
         );
       }
       parts.push("</div>");
+    } else if (node.type === "symlink") {
+      var linkAge = formatAge(node.mtime);
+      parts.push(
+        `<div class="tree-item tree-symlink${mutedCls}" data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(node.name)}" data-tip-mtime="${node.mtime || 0}">`,
+        '<span class="tree-item-icon">',
+        ICONS.fileSymlink,
+        "</span>",
+        '<span class="tree-item-name">',
+        esc(node.name),
+        "</span>",
+        '<span class="tree-item-age-inline"><span class="tree-item-age">',
+        linkAge,
+        '</span><span class="tree-item-activity"></span></span>',
+        "</div>",
+      );
     } else {
       // Icon dispatch keys off the *logical* name so subtype matchers
       // (`.process.md`, `.runbook.md`, etc.) work on `foo.process.md.gz`.
@@ -1222,6 +1237,33 @@ function responseErrorDetail(body, status) {
     }
   }
   return `The request failed (HTTP ${status}).`;
+}
+
+function responseErrorSummary(body, fallback) {
+  var text = String(body || "").trim();
+  if (text) {
+    try {
+      var parsed = JSON.parse(text);
+      if (typeof parsed?.summary === "string" && parsed.summary.trim()) {
+        return parsed.summary.trim();
+      }
+    } catch (_error) {
+      // Plain-text responses use the caller's stable summary.
+    }
+  }
+  return fallback;
+}
+
+function previewErrorHtml(summary, detail) {
+  return (
+    '<div class="preview-empty preview-error" role="alert">' +
+    '<strong class="preview-error-title">' +
+    esc(summary) +
+    "</strong>" +
+    '<span class="preview-error-detail">' +
+    esc(detail) +
+    "</span></div>"
+  );
 }
 
 function subtreeIsExpanded(childrenEl) {
@@ -1421,6 +1463,16 @@ function fileTooltipHtml(name, size, mtime, includeName) {
   );
 }
 
+function symlinkTooltipHtml(name, mtime, includeName) {
+  return (
+    treeTooltipNameHtml(name, includeName) +
+    '<div class="tip-detail">Symbolic link</div>' +
+    '<div class="tip-detail">' +
+    formatTimestamp(mtime) +
+    "</div>"
+  );
+}
+
 function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
   return (
     treeTooltipNameHtml(name, includeName) +
@@ -1464,6 +1516,8 @@ treePane.addEventListener(
         parseTipNumber(d.tipMtime),
         includeName,
       );
+    } else if (d.tipType === "symlink") {
+      html = symlinkTooltipHtml(d.tipName, parseTipNumber(d.tipMtime), includeName);
     } else {
       html = fileTooltipHtml(
         d.tipName,
@@ -2954,6 +3008,7 @@ function applyTreeFilters() {
   for (var i = rows.length - 1; i >= 0; i--) {
     var row = rows[i];
     var isDir = row.classList.contains("tree-folder");
+    var isSymlink = row.classList.contains("tree-symlink");
     var gitignored = row.classList.contains("tree-item-gitignored");
     var path = row.dataset.path || "";
     var ok;
@@ -2970,6 +3025,7 @@ function applyTreeFilters() {
           // (".min.js") agreeing with the tally that offered it.
           ext: row.dataset.ext || "",
           isDir: isDir,
+          isSymlink: isSymlink,
         },
         st,
         nowSec,
@@ -3000,7 +3056,7 @@ function applyTreeFilters() {
     var matched = !suppressed.has(el.parentElement) && keep.get(el) === true;
     el.classList.toggle("tree-item-filter-hidden", !matched);
     if (matched) {
-      if (!el.classList.contains("tree-folder")) {
+      if (!el.classList.contains("tree-folder") && !el.classList.contains("tree-symlink")) {
         shownFiles += 1;
       }
     } else {
@@ -3313,6 +3369,7 @@ async function selectFile(path, skipHash) {
           );
           throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
             notFound: resp.status === 404,
+            summary: responseErrorSummary(text, "Could not open this file."),
           });
         }
         const data = await _perf.measureAsync(
@@ -3338,7 +3395,7 @@ async function selectFile(path, skipHash) {
         }
         return { status: "cancelled" };
       } catch (err) {
-        var caught = /** @type {{name?: string, notFound?: boolean}} */ (err);
+        var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
         if (caught?.name === "AbortError") {
           return { status: "cancelled" };
         }
@@ -3349,10 +3406,10 @@ async function selectFile(path, skipHash) {
             loadingIndicatorTimer = null;
           }
           disposeActivePluginViews();
-          preview.innerHTML =
-            '<div class="preview-empty" role="alert"><strong>Could not open this file.</strong> ' +
-            esc(errorMessage(err)) +
-            "</div>";
+          preview.innerHTML = previewErrorHtml(
+            caught?.summary || "Could not open this file.",
+            errorMessage(err),
+          );
         } else {
           return { status: "cancelled" };
         }
@@ -3726,7 +3783,7 @@ function renderFile(data) {
           "<br><br>Open it with a tool that can stream large files." +
           "</div></div>";
       } else if (data.type === "error") {
-        html += `<div class="content-body"><div class="preview-empty" role="alert"><strong>Could not preview this file.</strong> ${esc(data.error)}</div></div>`;
+        html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
       }
 
       _perf.measure(
@@ -4209,8 +4266,8 @@ function notifyFileStoreSubscribers(evt) {
 }
 
 // Pure function: derive the patched cell HTML for a single
-// FsEntry. Returns separate dir/file shapes; applyCellPatch picks
-// the matching DOM target (.tree-folder vs .tree-file).
+// FsEntry. Returns separate directory, symlink, and file shapes;
+// applyCellPatch picks the matching DOM target.
 //
 // Directory aggregates, file updates, inserts, and removals all use this
 // path. See the realtime-debugging guide for the layer-by-layer contract.
@@ -4230,6 +4287,20 @@ function computeCellPatch(entry, options) {
       tipFiles: nullableDataValue(totalFiles),
       tipSize: nullableDataValue(totalSize),
       tipMtime: nullableDataValue(dirMtimeSec),
+    };
+  }
+  if (entry.type === "symlink") {
+    var linkMtimeSec = entry.mtime_ns ? entry.mtime_ns / 1e9 : 0;
+    return {
+      kind: "symlink",
+      sizeHtml: "",
+      ageHtml:
+        '<span class="tree-item-age">' +
+        formatAge(linkMtimeSec) +
+        '</span><span class="tree-item-activity"></span>',
+      tipSize: null,
+      tipMtime: linkMtimeSec,
+      active: false,
     };
   }
   // File entry: size + age + active class.
@@ -4304,6 +4375,30 @@ function _buildRowHtml(entry, options) {
       '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
       '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
       "</div>" +
+      "</div>"
+    );
+  }
+  if (entry.type === "symlink") {
+    var linkAge = formatAge(entry.mtime_ns ? entry.mtime_ns / 1e9 : 0);
+    return (
+      '<div class="tree-item tree-symlink' +
+      muted +
+      '" data-action="select" data-path="' +
+      esc(entry.path) +
+      '" data-tip-type="symlink" data-tip-name="' +
+      esc(name) +
+      '" data-tip-mtime="' +
+      (entry.mtime_ns || 0) / 1e9 +
+      '">' +
+      '<span class="tree-item-icon">' +
+      ICONS.fileSymlink +
+      "</span>" +
+      '<span class="tree-item-name">' +
+      esc(name) +
+      "</span>" +
+      '<span class="tree-item-age-inline"><span class="tree-item-age">' +
+      linkAge +
+      '</span><span class="tree-item-activity"></span></span>' +
       "</div>"
     );
   }
@@ -4410,10 +4505,10 @@ function _insertRowSorted(container, entry, options) {
         anchor = ch;
         break;
       }
-    } else if (ch.classList.contains("tree-file")) {
+    } else if (ch.classList.contains("tree-file") || ch.classList.contains("tree-symlink")) {
       var name2 = ch.querySelector(".tree-item-name");
       var k2 = _treeSortKey({
-        type: "file",
+        type: ch.classList.contains("tree-symlink") ? "symlink" : "file",
         name: name2 ? name2.textContent : "",
       });
       if (_treeKeyCmp(entryKey, k2) < 0) {
@@ -4449,12 +4544,11 @@ function _insertRowSorted(container, entry, options) {
   return true;
 }
 
-// Apply the patch+insert path for one fs.change op. For type=file,
-// patches existing .tree-file rows (size/age/active). For type=dir,
-// patches existing .tree-folder rows (metric chip + age + tip-*). If
+// Apply the patch+insert path for one fs.change op. File, directory,
+// and symlink entries patch their matching row shape. If
 // no row exists for the entry's path AND the entry's parent is
 // rendered + expanded in either tab panel, insert a new row in
-// sorted position so the user sees new files/dirs without a reload.
+// sorted position so the user sees new entries without a reload.
 function updateRootAggregatePresentation(entry) {
   if (entry.path || entry.type !== "dir") {
     return;
@@ -4497,7 +4591,9 @@ function applyCellPatch(entry) {
   var selector =
     entry.type === "dir"
       ? `.tree-folder[data-path="${safePath}"]`
-      : `.tree-file[data-path="${safePath}"]`;
+      : entry.type === "symlink"
+        ? `.tree-symlink[data-path="${safePath}"]`
+        : `.tree-file[data-path="${safePath}"]`;
   var rows = queryHtmlAll(selector);
   if (rows.length > 0) {
     for (var i = 0; i < rows.length; i++) {
@@ -4529,7 +4625,7 @@ function applyCellPatch(entry) {
           row.classList.toggle("tree-item-empty", totalFiles === 0);
         }
       }
-      // Sync gitignored across dir + file rows so a flag flip
+      // Sync gitignored across every row type so a flag flip
       // (rare, but possible if .gitignore is edited) updates
       // the muted class without a full rerender.
       row.classList.toggle("tree-item-gitignored", !!entry.gitignored);
@@ -4835,7 +4931,10 @@ async function revealInTree(path) {
       }
     }
   }
-  var target = document.querySelector(`.tree-file[data-path="${escapePathForSelector(path)}"]`);
+  var safePath = escapePathForSelector(path);
+  var target = document.querySelector(
+    `.tree-file[data-path="${safePath}"],.tree-symlink[data-path="${safePath}"]`,
+  );
   if (!target) {
     return false;
   }

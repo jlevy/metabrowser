@@ -123,19 +123,21 @@ class _ScanItem:
     / ``is_dir`` matter; size/mtime are populated via the
     aggregate-rollup path."""
 
-    __slots__ = ("abs_path", "is_dir", "mtime_ns", "name", "size")
+    __slots__ = ("abs_path", "is_dir", "is_symlink", "mtime_ns", "name", "size")
 
     def __init__(
         self,
         name: str,
         abs_path: Path,
         is_dir: bool,
+        is_symlink: bool,
         size: int,
         mtime_ns: int,
     ) -> None:
         self.name = name
         self.abs_path = abs_path
         self.is_dir = is_dir
+        self.is_symlink = is_symlink
         self.size = size
         self.mtime_ns = mtime_ns
 
@@ -159,6 +161,7 @@ def _scandir_visible(
                 if not is_visible(raw.name):
                     continue
                 try:
+                    raw_is_symlink = raw.is_symlink()
                     raw_is_dir = raw.is_dir(follow_symlinks=False)
                 except OSError:
                     continue
@@ -168,6 +171,7 @@ def _scandir_visible(
                             name=raw.name,
                             abs_path=Path(raw.path),
                             is_dir=True,
+                            is_symlink=False,
                             size=0,
                             mtime_ns=0,
                         )
@@ -182,6 +186,7 @@ def _scandir_visible(
                             name=raw.name,
                             abs_path=Path(raw.path),
                             is_dir=False,
+                            is_symlink=raw_is_symlink,
                             size=st.st_size,
                             mtime_ns=st.st_mtime_ns,
                         )
@@ -430,6 +435,16 @@ async def walk_tree(
                     queue.appendleft((ce.abs_path, child_rel, depth + 1))
                 else:
                     queue.append((ce.abs_path, child_rel, depth + 1))
+            elif ce.is_symlink:
+                link_gi = parent_ignored or _gi(ce.abs_path, False)
+                yield FsEntry.for_observed_symlink(
+                    path=child_rel,
+                    parent=rel_path_cur,
+                    name=ce.name,
+                    size=ce.size,
+                    mtime_ns=ce.mtime_ns,
+                    gitignored=link_gi,
+                )
             else:
                 files_indexed += 1
                 # Files inherit gitignored from parent the same way dirs do.

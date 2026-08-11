@@ -60,6 +60,10 @@ def test_subtree_is_empty_with_a_file() -> None:
     assert _subtree_is_empty([{"type": "file", "name": "a"}]) is False
 
 
+def test_subtree_is_not_empty_with_a_symlink() -> None:
+    assert _subtree_is_empty([{"type": "symlink", "name": "linked"}]) is False
+
+
 def test_subtree_is_empty_with_only_empty_dirs() -> None:
     children = [{"type": "dir", "name": "a", "empty": True}]
     assert _subtree_is_empty(children) is True

@@ -1,6 +1,6 @@
 """Process-wide inventory of filesystem state for the browser.
 
-``InventoryIndex`` is the single source of truth for file/directory
+``InventoryIndex`` is the single source of truth for filesystem-entry
 metadata in the browser process. The server lifespan eagerly populates
 it, ``/api/tree`` and ``/api/activity`` read from it, and writes emit
 ``fs.change`` events on a single shared SSE channel so the client
@@ -515,7 +515,7 @@ class InventoryIndex:
         batch. Idempotent: removing a path that isn't in the index
         is a no-op.
 
-        For files this drops one entry. For directories it walks
+        For files and symlinks this drops one entry. For directories it walks
         ``_entries`` for any path equal to ``{path}`` or under
         ``{path}/`` and drops them all. The order of ops in the
         emitted ``FsChange`` is unspecified — clients should treat
@@ -537,13 +537,13 @@ class InventoryIndex:
         target = self._entries.get(path)
         if target is None:
             return
-        if target.type == "file":
-            removed = [path]
-        else:
+        if target.type == "dir":
             prefix = path + "/"
             removed = [
                 cur for cur in list(self._entries.keys()) if cur == path or cur.startswith(prefix)
             ]
+        else:
+            removed = [path]
         removed_entries = [self._entries[cur] for cur in removed]
         removed_files = [entry for entry in removed_entries if entry.type == "file"]
         outer_parent = target.parent
@@ -557,7 +557,7 @@ class InventoryIndex:
                         delta_files=-1,
                         delta_size=-entry.size,
                     )
-                else:
+                elif entry.type == "dir":
                     self._pending_dirs.discard(entry.path)
                     self._child_mtime_heaps.pop(entry.path, None)
                 self._remove_direct_child(entry)

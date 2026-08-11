@@ -162,6 +162,34 @@ def test_api_file_emits_etag_header_and_304s_on_match(tmp_path: Path) -> None:
         proc_browser._set_root_dir(Path())
 
 
+def test_api_file_explains_symlink_outside_served_folder(tmp_path: Path) -> None:
+    """A listed symlink must not degrade to the false claim ``Not found``."""
+
+    served = tmp_path / "served"
+    outside = tmp_path / "outside"
+    served.mkdir()
+    outside.mkdir()
+    (outside / "target.txt").write_text("outside")
+    (served / "outside-link").symlink_to(outside / "target.txt")
+
+    proc_browser._set_root_dir(served)
+    try:
+        response = asyncio.run(
+            proc_browser.api_file(cast(Any, _FakeRequest({"path": "outside-link"})))
+        )
+    finally:
+        proc_browser._set_root_dir(Path())
+
+    assert response.status_code == 404
+    assert json.loads(bytes(response.body)) == {
+        "summary": "Could not open this link.",
+        "error": (
+            "This symbolic link points outside the served folder. "
+            "Serve a folder containing its target to browse it."
+        ),
+    }
+
+
 def test_api_file_etag_changes_when_file_changes(tmp_path: Path) -> None:
     """A modification must invalidate the ETag — otherwise the client
     keeps the stale cached payload forever."""

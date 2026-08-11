@@ -351,6 +351,7 @@
   /* Content spacing */
   --content-padding-x: 24px;
   --content-padding-y: 16px;
+  --preview-message-max-width: 42rem;
   --embedded-document-padding-top: 8px;
   /* The navigation column has one left inset, and everything in it
      lines up on that edge: the brand, the served path, the Files tab,
@@ -1607,6 +1608,19 @@ html[data-prose-font="sans"] {
   color: var(--muted);
   font-size: var(--body-font-size);
 }
+.preview-error {
+  flex-direction: column;
+  gap: var(--pane-header-padding-y);
+  box-sizing: border-box;
+  padding: var(--content-padding-y) var(--content-padding-x);
+  text-align: center;
+}
+.preview-error-title {
+  color: var(--text);
+}
+.preview-error-detail {
+  max-width: var(--preview-message-max-width);
+}
 
 /* ── Tree items ──────────────────────────────────────────────── */
 
@@ -1774,6 +1788,9 @@ html[data-prose-font="sans"] {
   color: var(--text);
 }
 .tree-file .tree-item-icon {
+  color: var(--muted);
+}
+.tree-symlink .tree-item-icon {
   color: var(--muted);
 }
 /* File-type design system — systematic hue triplet per subtype.

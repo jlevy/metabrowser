@@ -53,12 +53,10 @@ FORMATS: tuple[str, ...] = ("text", "json", "yaml")
 
 @dataclass(frozen=True)
 class WalkRow:
-    """One rendered entry: the walker's view plus a symlink flag the
-    walker itself doesn't carry (it scans ``follow_symlinks=False`` so
-    a symlink-to-dir lands as a leaf ``file`` entry)."""
+    """One rendered entry plus the symlink's raw target for diagnostics."""
 
     path: str
-    type: str  # "file" | "dir"
+    type: str  # "file" | "dir" | "symlink"
     is_symlink: bool
     symlink_target: str  # raw readlink value, "" when not a symlink
     gitignored: bool

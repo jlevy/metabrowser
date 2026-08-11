@@ -185,6 +185,30 @@ const HOUR = 3600;
 
 {
   const { state } = makeSandbox();
+  const link = { isSymlink: true, mtime: NOW - 5, size: 10, path: "linked.md", ext: ".md" };
+  assertTrue(
+    "a symlink remains visible with no file filter",
+    state.rowMatches(link, state.get(), NOW),
+  );
+  assertEqual(
+    "a symlink is not classified by file age",
+    state.rowMatches(link, Object.assign(state.get(), { recency: "live" }), NOW),
+    false,
+  );
+  assertEqual(
+    "a symlink is not classified by file type",
+    state.rowMatches(link, Object.assign(state.get(), { types: [".md"] }), NOW),
+    false,
+  );
+  assertEqual(
+    "a symlink is not classified by file size",
+    state.rowMatches(link, Object.assign(state.get(), { size: "100k" }), NOW),
+    false,
+  );
+}
+
+{
+  const { state } = makeSandbox();
   const within = { mtime: NOW - HOUR / 2, size: 100, path: "a.md" };
   const older = { mtime: NOW - 5 * HOUR, size: 100, path: "a.md" };
   const s = Object.assign(state.get(), { recency: "1h" });

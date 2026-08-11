@@ -86,6 +86,20 @@ def test_chip_family_uses_tokens_not_color_literals() -> None:
         assert literal not in block, f"chip family must use design tokens, found {literal!r}"
 
 
+def test_symlinks_use_the_lucide_icon_in_the_standard_leading_slot() -> None:
+    """A link replaces the ordinary file icon; it is not an extra badge."""
+
+    icons = _read("icons.js")
+    app = _read("app.js")
+    css = _read("styles.css")
+
+    assert "fileSymlink: // Lucide `file-symlink`" in icons
+    assert "ICONS.fileSymlink" in app
+    assert 'class="tree-item tree-symlink' in app
+    assert 'data-tip-type="symlink"' in app
+    assert ".tree-symlink .tree-item-icon" in css
+
+
 def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
     """Segmented controls stay on one line. A long additive set wraps as
     individually bounded chips without an enclosing pill, so every visible
