@@ -173,10 +173,14 @@
    * scalar that means "no constraint" so the any-row can show as
    * checked.
    *
+   * `presets` are named shorthands rendered above the raw list, each
+   * standing for the full set of values it names.
+   *
    * @param {{key: string, label: string, options: ChipOption[],
    *          value: string[] | string | null, anyLabel: string,
    *          anyValue?: string, select?: string, open?: boolean,
-   *          menuId: string}} spec
+   *          menuId: string,
+   *          presets?: Array<{id: string, label: string, values: string[]}>}} spec
    */
   function menuGroupHtml(spec) {
     const many = spec.select !== "one";
@@ -195,6 +199,16 @@
       summary = chosen[0].label;
     } else if (chosen.length > 1) {
       summary = `${chosen[0].label} +${chosen.length - 1}`;
+    }
+    // A selection that is exactly one preset reads better by its name
+    // than as ".md +21" — the user picked "Docs", so say Docs.
+    const exact = (spec.presets || []).find(
+      (preset) =>
+        preset.values.length === selected.length &&
+        preset.values.every((value) => selected.indexOf(value) >= 0),
+    );
+    if (exact) {
+      summary = exact.label;
     }
     // A radio menu names one choice; a checkbox menu names several.
     // Getting this wrong is the same failure the chip groups guard
@@ -239,6 +253,29 @@
       ` data-chip-key="${esc(spec.key)}" data-chip-any>` +
       `<span class="chip-menu-check" aria-hidden="true">${selected.length === 0 ? "✓" : ""}</span>` +
       `<span class="menu-item-label">${esc(spec.anyLabel)}</span></button>`;
+
+    // Named shorthands above the raw list. A preset is checked only
+    // when every value it stands for is selected, so a half-covered
+    // group never claims to be on.
+    const presets = spec.presets || [];
+    const presetRows = presets.length
+      ? '<div class="menu-separator"></div>' +
+        presets
+          .map((preset) => {
+            const on =
+              preset.values.length > 0 &&
+              preset.values.every((value) => selected.indexOf(value) >= 0);
+            return (
+              `<button type="button" class="menu-item chip-menu-item chip-menu-preset"` +
+              ` role="${rowRole}" aria-checked="${on}"` +
+              ` data-chip-key="${esc(spec.key)}" data-chip-preset="${esc(preset.id)}">` +
+              `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
+              `<span class="menu-item-label">${esc(preset.label)}</span></button>`
+            );
+          })
+          .join("") +
+        '<div class="menu-separator"></div>'
+      : "";
     return (
       `<span class="chip-menu" data-chip-menu="${esc(spec.key)}"` +
       ` aria-expanded="${spec.open === true}">` +
@@ -252,7 +289,7 @@
       ` aria-controls="${esc(spec.menuId)}" aria-label="${esc(spec.label)}">` +
       `${esc(summary)}<span class="chip-menu-caret" aria-hidden="true">⌄</span></button>` +
       `<span class="menu chip-menu-panel" id="${esc(spec.menuId)}" role="menu"` +
-      ` aria-label="${esc(spec.label)}">${anyRow}${rows}</span></span>`
+      ` aria-label="${esc(spec.label)}">${anyRow}${presetRows}${rows}</span></span>`
     );
   }
 
@@ -306,6 +343,7 @@
    *          onToggle?: (key: string, pressed: boolean) => void,
    *          onMenuToggle?: (key: string, open: boolean) => void,
    *          onMenuPick?: (key: string, value: string | null) => void,
+   *          onMenuPreset?: (key: string, presetId: string, wasOn: boolean) => void,
    *          onClear?: () => void}} handlers
    */
   function bind(root, handlers) {
@@ -348,6 +386,13 @@
       );
       if (menuItem && root.contains(menuItem)) {
         const key = menuItem.getAttribute("data-chip-key") || "";
+        const preset = menuItem.getAttribute("data-chip-preset");
+        if (preset !== null) {
+          if (opts.onMenuPreset) {
+            opts.onMenuPreset(key, preset, menuItem.getAttribute("aria-checked") === "true");
+          }
+          return;
+        }
         if (opts.onMenuPick) {
           opts.onMenuPick(
             key,

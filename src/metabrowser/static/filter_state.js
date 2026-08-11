@@ -232,13 +232,27 @@
       return true;
     }
     const ext = (logicalExt || extensionOf(pathLike)).toLowerCase();
-    if (!ext) {
-      // A file with no extension cannot match an extension filter.
-      // Unlike a pending size this is complete information, so it is a
-      // real non-match rather than a row we must leave in place.
-      return false;
+    const name = String(pathLike || "")
+      .slice(String(pathLike || "").lastIndexOf("/") + 1)
+      .toLowerCase();
+    for (const raw of types) {
+      const token = String(raw).toLowerCase();
+      // One convention, no ambiguity: a leading dot means extension,
+      // anything else is a whole filename. That is what lets a preset
+      // name README and LICENSE alongside .md and .txt — files that
+      // carry no extension at all and would otherwise be unreachable.
+      if (token.charAt(0) === ".") {
+        if (ext && ext === token) {
+          return true;
+        }
+      } else if (name === token) {
+        return true;
+      }
     }
-    return types.indexOf(ext) >= 0;
+    // No token matched. For an extensionless file this is still a real
+    // non-match rather than missing data: the name was known, it just
+    // was not asked for.
+    return false;
   }
 
   /** @param {number | null | undefined} bytes @param {string} bucket */

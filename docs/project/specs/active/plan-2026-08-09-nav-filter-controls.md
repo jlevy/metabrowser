@@ -154,6 +154,15 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    `ft-*` subtype; the label stays plain text.
    Tinting eight row labels made the hue compete with the check mark rather than help
    anyone scan, and the icon is what identifies a type everywhere else in the app.
+   The menu leads with **Docs / Code / Data** presets, each a shorthand for the full
+   extension list beneath it.
+   Preset entries follow one convention — a leading dot is an extension, anything else a
+   whole filename — which is what lets Docs reach `README` and `LICENSE`, files that
+   carry no extension and would otherwise be unfilterable.
+   These are a separate vocabulary from `FILE_TYPES`: that list answers “what icon and
+   hue does this one file get”, which is why `.json` sits with the YAML family there,
+   while these answer “which broad kind of work is this”, where `.json` belongs with
+   data.
 10. **Size is a cumulative floor, not a band.**
     `Any / >100K / >1M / >10M / >100M / >1G`. “What is over 10M in here” is the question
     people ask; bands make you guess which one a file landed in.

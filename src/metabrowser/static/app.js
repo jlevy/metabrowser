@@ -2423,6 +2423,138 @@ var FILTER_SIZE_OPTIONS = [
   { value: "1g", label: ">1G" },
 ];
 
+// Named shorthands at the top of the type menu, each standing for the
+// full list of extensions beneath it.
+//
+// A separate vocabulary from FILE_TYPES on purpose: that list answers
+// "what icon and hue does this one file get", which is why `.json`
+// lives with the YAML family there. These answer "which broad kind of
+// work is this", which groups differently — `.json` belongs with data.
+//
+// Entries follow the filter's own convention: a leading dot is an
+// extension, anything else is a whole filename. That is what lets Docs
+// reach README and LICENSE, which carry no extension and would
+// otherwise be unfilterable.
+var FILTER_TYPE_PRESETS = [
+  {
+    id: "docs",
+    label: "Docs",
+    values: [
+      ".md",
+      ".txt",
+      ".rst",
+      ".adoc",
+      ".org",
+      ".pdf",
+      ".docx",
+      ".doc",
+      ".pages",
+      ".rtf",
+      ".odt",
+      ".epub",
+      "readme",
+      "license",
+      "licence",
+      "copying",
+      "notice",
+      "changelog",
+      "authors",
+      "contributors",
+      "contributing",
+      "codeowners",
+    ],
+  },
+  {
+    id: "code",
+    label: "Code",
+    values: [
+      ".py",
+      ".pyi",
+      ".ts",
+      ".tsx",
+      ".js",
+      ".jsx",
+      ".mjs",
+      ".cjs",
+      ".rs",
+      ".go",
+      ".java",
+      ".kt",
+      ".kts",
+      ".swift",
+      ".m",
+      ".mm",
+      ".c",
+      ".h",
+      ".cc",
+      ".cpp",
+      ".hpp",
+      ".cs",
+      ".rb",
+      ".php",
+      ".scala",
+      ".clj",
+      ".ex",
+      ".exs",
+      ".erl",
+      ".hs",
+      ".ml",
+      ".lua",
+      ".pl",
+      ".r",
+      ".jl",
+      ".dart",
+      ".vue",
+      ".svelte",
+      ".sh",
+      ".bash",
+      ".zsh",
+      ".fish",
+      ".ps1",
+      ".sql",
+      ".css",
+      ".scss",
+      ".less",
+      ".html",
+      "makefile",
+      "dockerfile",
+      "justfile",
+      "rakefile",
+      "gemfile",
+      "procfile",
+    ],
+  },
+  {
+    id: "data",
+    label: "Data",
+    values: [
+      ".json",
+      ".jsonl",
+      ".ndjson",
+      ".yaml",
+      ".yml",
+      ".toml",
+      ".ini",
+      ".cfg",
+      ".conf",
+      ".properties",
+      ".csv",
+      ".tsv",
+      ".psv",
+      ".xml",
+      ".parquet",
+      ".arrow",
+      ".avro",
+      ".orc",
+      ".feather",
+      ".proto",
+      ".graphql",
+      ".sqlite",
+      ".db",
+    ],
+  },
+];
+
 // The extension menu is built from what the folder actually contains,
 // not a fixed vocabulary, so it never offers a type with nothing
 // behind it and never omits one the tree is full of.
@@ -2550,6 +2682,7 @@ function renderNavFilterBar() {
       key: "types",
       label: "File extension",
       options: filterTypeOptions(),
+      presets: FILTER_TYPE_PRESETS,
       value: st.types,
       anyLabel: "Any type",
       open: filterOpenMenu === "types",
@@ -2687,6 +2820,25 @@ function initFilterBar() {
     onMenuToggle: (key, open) => {
       filterOpenMenu = open ? key : null;
       renderNavFilterBar();
+    },
+    onMenuPreset: (key, presetId, wasOn) => {
+      if (key !== "types") {
+        return;
+      }
+      // const, not var: the closures below need the narrowing that a
+      // function-scoped binding cannot promise.
+      const preset = FILTER_TYPE_PRESETS.find((p) => p.id === presetId);
+      if (!preset) {
+        return;
+      }
+      // Additive, like the extensions beside it: turning Docs on adds
+      // its values to whatever is already picked, and turning it off
+      // removes only its own.
+      var current = filterState.get().types || [];
+      var next = wasOn
+        ? current.filter((value) => preset.values.indexOf(value) < 0)
+        : current.concat(preset.values.filter((value) => current.indexOf(value) < 0));
+      filterState.set({ types: next.length > 0 ? next : null });
     },
     onMenuPick: (key, value) => {
       // The any-row clears the dimension back to its default rather

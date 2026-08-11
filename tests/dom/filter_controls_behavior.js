@@ -299,6 +299,62 @@ assertContains(
   'aria-checked="true" data-chip-key="recency" data-chip-any',
 );
 
+// ── Menu presets ───────────────────────────────────────────────
+
+const PRESETS = [
+  { id: "docs", label: "Docs", values: [".md", "readme"] },
+  { id: "code", label: "Code", values: [".py", ".ts"] },
+];
+const menuPresets = fc.menuGroupHtml({
+  key: "types",
+  label: "File extension",
+  options: menuOptions,
+  presets: PRESETS,
+  value: null,
+  anyLabel: "Any type",
+  menuId: "m",
+});
+assertContains("presets render above the raw list", menuPresets, 'data-chip-preset="docs"');
+assertContains("presets are separated from the extensions", menuPresets, "menu-separator");
+// A half-covered group must not claim to be on.
+assertContains(
+  "an unselected preset is unchecked",
+  menuPresets,
+  'aria-checked="false" data-chip-key="types" data-chip-preset="docs"',
+);
+
+const menuHalfPreset = fc.menuGroupHtml({
+  key: "types",
+  label: "File extension",
+  options: menuOptions,
+  presets: PRESETS,
+  value: [".md"],
+  anyLabel: "Any type",
+  menuId: "m",
+});
+assertContains(
+  "a partially covered preset stays unchecked",
+  menuHalfPreset,
+  'aria-checked="false" data-chip-key="types" data-chip-preset="docs"',
+);
+
+const menuFullPreset = fc.menuGroupHtml({
+  key: "types",
+  label: "File extension",
+  options: menuOptions,
+  presets: PRESETS,
+  value: [".md", "readme"],
+  anyLabel: "Any type",
+  menuId: "m",
+});
+assertContains(
+  "a fully covered preset is checked",
+  menuFullPreset,
+  'aria-checked="true" data-chip-key="types" data-chip-preset="docs"',
+);
+// The user picked "Docs"; say Docs rather than ".md +1".
+assertContains("an exact preset names the trigger", menuFullPreset, ">Docs<");
+
 // ── Escaping ───────────────────────────────────────────────────
 
 const hostile = fc.groupHtml({

@@ -259,6 +259,12 @@ Values that come from the data are ranked by frequency and capped, and each row 
 its tally. A menu built from the tree can then never offer a value with nothing behind
 it, and the cap cuts the long tail rather than an arbitrary alphabetical slice.
 
+A dropdown may lead with named **presets** — shorthands standing for the full set of
+values beneath them, separated from the raw list.
+A preset is checked only when every value it names is selected, so a half-covered group
+never claims to be on, and a selection that is exactly one preset shows by its name
+rather than as `.md +21`.
+
 Where a row stands for a file type, it carries that type’s icon and leaves the label
 plain.
 The icon is what identifies a type everywhere else in the app, and tinting a whole

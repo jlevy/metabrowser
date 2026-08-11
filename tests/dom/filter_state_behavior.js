@@ -253,6 +253,31 @@ const HOUR = 3600;
     state.typeMatches("a.js", [".min.js"], ".js"),
     false,
   );
+
+  // One convention: a leading dot is an extension, anything else is a
+  // whole filename. That is what lets a preset name README and LICENSE,
+  // which carry no extension and would otherwise be unfilterable.
+  assertTrue(
+    "a bare token matches the whole filename",
+    state.typeMatches("a/LICENSE", ["license"]),
+  );
+  assertTrue(
+    "filename matching is case-insensitive",
+    state.typeMatches("a/Makefile", ["MAKEFILE"]),
+  );
+  assertEqual(
+    "a bare token does not match a prefix of a longer name",
+    state.typeMatches("a/LICENSE.txt", ["license"]),
+    false,
+  );
+  assertEqual(
+    "nor does it match an unrelated file",
+    state.typeMatches("a/main.py", ["license"]),
+    false,
+  );
+  // Mixed tokens are ORed like any other selection.
+  assertTrue("extensions and names combine", state.typeMatches("a/LICENSE", [".md", "license"]));
+  assertTrue("and the extension half still works", state.typeMatches("a/x.md", [".md", "license"]));
 }
 
 if (failures.length > 0) {

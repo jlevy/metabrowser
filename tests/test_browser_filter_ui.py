@@ -321,6 +321,32 @@ def test_missing_data_never_excludes_a_row() -> None:
     assert "return false;" in type_block
 
 
+def test_type_presets_name_broad_kinds_of_work() -> None:
+    """Docs / Code / Data are shorthands for the full extension list
+    beneath them, and a deliberately separate vocabulary from
+    FILE_TYPES: that list answers "what icon and hue does this file
+    get" (which is why .json sits with YAML there), these answer "which
+    kind of work is this"."""
+
+    js = _read("app.js")
+    start = js.index("var FILTER_TYPE_PRESETS = [")
+    block = js[start : js.index("\n];", start)]
+    for label in ('"Docs"', '"Code"', '"Data"'):
+        assert label in block
+
+    # The convention: leading dot is an extension, anything else a
+    # whole filename. Docs reaches README and LICENSE only because of it.
+    assert '"readme"' in block
+    assert '"license"' in block
+    assert '".md"' in block
+
+    state = _read("filter_state.js")
+    tm_start = state.index("function typeMatches(pathLike, types, logicalExt)")
+    tm_block = state[tm_start : tm_start + 1400]
+    assert 'token.charAt(0) === "."' in tm_block
+    assert "name === token" in tm_block
+
+
 def test_compound_extensions_match_what_the_menu_counted() -> None:
     """The tally keys on the index's compound tail (".min.js"), so
     matching must too. Reducing to the last dotted suffix turned every
