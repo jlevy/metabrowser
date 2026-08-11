@@ -8,7 +8,7 @@ All notable changes to Metabrowser are documented here.
 
 Filtering and file navigation:
 
-- The Files pane gains one persistent filter bar for age, type, minimum size, and
+- The Files pane gains one always-available filter bar for age, type, minimum size, and
   gitignored visibility, with Docs, Code, and Data presets and a one-click Clear action.
   The separate Recent tab is folded into this pane so every dimension composes in one
   place.
@@ -22,6 +22,10 @@ Filtering and file navigation:
 - Filter controls are keyboard navigable, expose their state through ARIA, keep the
   active value visible when the drawer is closed, and share the documented design-system
   primitives with plugin views.
+- Filter selections are transient view state and reset on every page load instead of
+  leaking through a host-wide browser preference.
+  Durable appearance choices such as theme and typography remain shared across
+  Metabrowser instances.
 - Recency overlays no longer grow after returning to the full tree, compound extensions
   match consistently on streamed rows, and filtered tallies update under every
   dimension.

@@ -2657,7 +2657,7 @@ var FILTER_TYPE_MENU_MAX = 20;
 
 // Deliberately not persisted. The drawer holds the secondary controls,
 // so a session that starts with it open costs vertical space the user
-// did not ask for on this visit; the filters themselves persist, and
+// did not ask for on this visit. Filter selections are transient too;
 // the badge reports them whether or not the drawer is showing.
 var filterDrawerOpen = false;
 // At most one dropdown is open at a time — opening a second while the
@@ -5039,9 +5039,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     selectFile(initialPath, true);
   }
   startIndexProgressPolling();
-  // The tree fetch always runs: it supplies the header path and the
-  // root aggregates even when a persisted recency filter is about to
-  // repaint the panel from /api/recent.
+  // The tree fetch always runs: it supplies the header path and root
+  // aggregates before any later recency selection repaints the panel
+  // from /api/recent.
   await loadTree();
   if (filesPanelUsesRecentSource()) {
     loadRecent(filterState.get().recency);

@@ -351,8 +351,8 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
 def test_the_drawer_always_opens_closed() -> None:
     """Its state is deliberately not persisted: it holds the secondary
     controls, so restoring it open spends vertical space asked for on
-    a previous visit. The filters do persist, and the badge reports
-    them either way."""
+    a previous visit. Active filters are transient, and the badge
+    reports them while the drawer is closed."""
 
     js = _read("app.js")
     assert "filters.drawer" not in js
@@ -582,11 +582,12 @@ def test_compound_extensions_match_what_the_menu_counted() -> None:
     assert '"ext": entry.ext,' in recent
 
 
-def test_filter_state_persists_through_prefs_and_emits_change() -> None:
+def test_filter_state_is_transient_and_emits_change() -> None:
     js = _read("filter_state.js")
-    assert 'const PREF_KEY = "filters"' in js
+    assert 'const LEGACY_PREF_KEY = "filters"' in js
     assert '"metabrowser:filter-change"' in js
-    assert "mb?.prefs" in js
+    assert "p.remove(LEGACY_PREF_KEY)" in js
+    assert "p.set(LEGACY_PREF_KEY" not in js
 
 
 def test_sdk_exposes_prefs_and_filters() -> None:
@@ -594,6 +595,7 @@ def test_sdk_exposes_prefs_and_filters() -> None:
     documented SDK rather than reaching for the global."""
 
     js = _read("plugin_sdk.js")
+    assert "remove: prefsRemove" in js
     assert "prefs: prefs," in js
     assert "filters: filters," in js
 
