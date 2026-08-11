@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title description" viewBox="0 0 320 180">
-  <title id="title">Sample status card</title>
-  <desc id="description">A green circle and the word complete on a neutral background.</desc>
-  <rect width="320" height="180" rx="16" fill="#f1f5f9"/>
-  <circle cx="72" cy="90" r="30" fill="#16a34a"/>
-  <path d="m57 90 10 10 21-23" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="8"/>
-  <text x="120" y="99" fill="#0f172a" font-family="sans-serif" font-size="28">Complete</text>
-</svg>

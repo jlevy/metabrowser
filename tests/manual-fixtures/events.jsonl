@@ -1,3 +1,0 @@
-{"timestamp":"2026-01-01T00:00:00Z","kind":"start","message":"Started sample task"}
-{"timestamp":"2026-01-01T00:00:01Z","kind":"progress","message":"Processed three records","count":3}
-{"timestamp":"2026-01-01T00:00:02Z","kind":"finish","message":"Completed sample task","ok":true}
