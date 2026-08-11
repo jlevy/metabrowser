@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+
 # ── Server port ──────────────────────────────────────────────
 
 # Canonical port for metabrowser (serve + browse tunnel endpoint).
@@ -175,6 +177,7 @@ def client_settings_dict() -> dict[str, Any]:
     """
 
     return {
+        "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
         "RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS,

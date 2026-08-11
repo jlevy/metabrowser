@@ -147,10 +147,10 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    present when anything is set.
 9. **Type filtering is by literal extension, offered from what the tree contains.** The
    menu lists real extensions (`.md`, `.py`, `.ts`) rather than abstract `ft-*`
-   families, ranked by frequency, capped at 30, each row carrying its tally.
-   Tallies come from the server’s index pass (`InventoryIndex.extension_tally`, carried
+   families, ranked by frequency, capped at 20, each row carrying its tally.
+   Tallies come from one server index pass (`InventoryIndex.file_type_tallies`, carried
    on `/api/tree`), not from the Quick File catalog: that catalog drops gitignored
-   entries by design, so a menu built from it undercounts every extension the tree still
+   entries by design, so a menu built from it undercounts every type the tree still
    shows while gitignored rows are visible.
    Tracked and ignored counts stay apart on the wire so the menu reports whichever total
    matches the current **Show ignored** setting, and re-ranks on the count it is
@@ -158,8 +158,8 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    `ft-*` subtype; the label stays plain text.
    Tinting eight row labels made the hue compete with the check mark rather than help
    anyone scan, and the icon is what identifies a type everywhere else in the app.
-   The menu leads with **Docs / Code / Data** presets, each a shorthand for the full
-   extension list beneath it.
+   The menu leads with **Docs / Code / Data** presets, each a shorthand for its full
+   token set and carrying the tally for that aggregate.
    Preset entries follow one convention — a leading dot is an extension, anything else a
    whole filename — which is what lets Docs reach `README` and `LICENSE`, files that
    carry no extension and would otherwise be unfilterable.
@@ -310,11 +310,16 @@ Expanded, the drawer adds the two secondary controls:
 Every dropdown opens over the shared `.menu` surface and leads with an any-row naming
 the dimension’s default, so clearing one dimension is a pick rather than a separate
 control. Age and size are single-select (`menuitemradio`, closes on pick); type is
-multi-select (`menuitemcheckbox`, stays open), ranked by frequency and capped at 30,
-each row carrying the tree’s own file-type icon and its tally:
+multi-select (`menuitemcheckbox`, stays open), ranked by frequency and capped at 20,
+each row carrying the tree’s own file-type icon and its tally.
+The aggregate presets use the same right-aligned tally:
 
 ```
    ✓   Any type
+       Docs      42
+       Code     118
+       Data      27
+       ───────────
      ≡ .py      157
      ≡ .js       43
      ▤ .md       33
@@ -400,7 +405,7 @@ Checked items are implemented and covered by tests; `make verify` passes on the 
 - [x] `mb.prefs` and `mb.filters` SDK surfaces with safe no-ops when absent
 - [x] The filter bar and drawer in the shell HTML, wired to the state, with the badge,
   Clear, and an initially closed drawer
-- [x] Extension dropdown built from known-file-catalog tallies, ranked and capped
+- [x] Extension dropdown built from index-wide file-type tallies, ranked and capped
 
 ### Phase 3: Applying Filters to the Tree — done
 
@@ -475,9 +480,11 @@ reading the CSS.
 
 Tracked as beads under epic `mb-pcih`:
 
-- [x] `mb-r4tq` — extension tallies now come from `InventoryIndex.extension_tally`
+- [x] `mb-r4tq` — extension tallies now come from `InventoryIndex.file_type_tallies`
   rather than the gitignore-filtered Quick File catalog, with tracked and ignored counts
   kept apart so the menu follows **Show ignored**
+- [x] `mb-6wuy` — Docs, Code, and Data carry index-wide tallies from the same pass,
+  including extensionless preset names such as `README` and `LICENSE`
 - [x] `mb-5e20` — the dropdown gained arrow-key row traversal (the gap was the behavior,
   not only its test) plus coverage
 - [x] `mb-9zrh` — superseded by `mb-g675`; what `Live` is turned out to be narrower than
