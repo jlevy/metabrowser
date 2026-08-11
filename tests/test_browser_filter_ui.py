@@ -371,12 +371,48 @@ def test_the_tally_and_its_filtered_count_read_as_one_block() -> None:
     assert "padding-bottom: 0;" in block
 
 
+def test_the_overlay_stops_when_the_recency_window_is_cleared() -> None:
+    """Leaving the source sets the window to "", and an unknown key
+    gives `undefined`, not `null`. The old `!== null` guard let that
+    through, so the cutoff became NaN, every comparison against it was
+    false, and the base map grew without bound behind the plain tree."""
+
+    js = _read("app.js")
+    start = js.index("function recentBaseApplyOp(op)")
+    block = js[start : start + 1600]
+    assert "if (!currentRecentWindow) {" in block
+    assert 'typeof seconds === "number"' in block
+
+
+def test_live_overlay_rows_carry_the_index_extension() -> None:
+    """recentEntryFromFsEntry mirrors _file_entry_to_recent_dict; without
+    the compound tail a file reaching the panel only through the overlay
+    is matched on its last suffix while rendered rows are matched on the
+    tail, so a compound pick hides it."""
+
+    js = _read("app.js")
+    start = js.index("function recentEntryFromFsEntry(entry)")
+    block = js[start : start + 900]
+    assert "ext: entry.ext" in block
+
+
+def test_the_recency_tally_is_recomputed_not_cached() -> None:
+    """Type and size changes run applyTreeFilters alone, so a count
+    cached at render time kept its previous value while rows updated."""
+
+    js = _read("app.js")
+    assert "_recentFilteredCount" not in js
+    start = js.index("function applyTreeFilters()")
+    block = js[start : start + 4200]
+    assert "countRecentMatches(" in block
+
+
 def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     """ "How many am I looking at" is the question a filter raises every
     time, not only when a response was capped."""
 
     js = _read("app.js")
-    start = js.index("function _renderFilteredTally(panel, shownFiles, state)")
+    start = js.index("function _renderFilteredTally(panel, shownFiles, state, recencyCount)")
     block = js[start : start + 1600]
     assert "filterHasConstraints(state)" in block
     assert "Filtered to ${" in block
@@ -387,7 +423,7 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     # the unconstrained early return.
     apply_start = js.index("function applyTreeFilters()")
     apply_block = js[apply_start : apply_start + 1400]
-    assert "_renderFilteredTally(panel, 0, st);" in apply_block
+    assert "_renderFilteredTally(panel, 0, st, null);" in apply_block
 
 
 def test_the_recency_tally_counts_entries_not_rendered_rows() -> None:
@@ -396,9 +432,9 @@ def test_the_recency_tally_counts_entries_not_rendered_rows() -> None:
 
     js = _read("app.js")
     assert "function countRecentMatches(entries, nowSec)" in js
-    start = js.index("function _renderFilteredTally(panel, shownFiles, state)")
+    start = js.index("function _renderFilteredTally(panel, shownFiles, state, recencyCount)")
     block = js[start : start + 1600]
-    assert "_recentFilteredCount" in block
+    assert "recencyCount !== null ? recencyCount : shownFiles" in block
 
 
 def test_the_recency_cap_records_why_it_is_where_it_is() -> None:

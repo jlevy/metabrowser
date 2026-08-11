@@ -2050,9 +2050,10 @@ function fetchRecent(windowKey) {
 // Files the recency response still shows once the other dimensions
 // apply. The recency window itself was resolved server-side, so only
 // type, size, and gitignored visibility can rule an entry out here.
-/** @type {number | null} */
-var _recentFilteredCount = null;
-
+//
+// Recomputed on every filter pass rather than cached from the last
+// render: type and size changes run applyTreeFilters alone, so a
+// cached count kept the previous value while the rows updated.
 function countRecentMatches(entries, nowSec) {
   if (!filterState) {
     return entries.length;
@@ -2092,16 +2093,10 @@ function renderRecentFromBase() {
         limit: RECENT_LIMIT,
       });
       if (entries.length === 0) {
-        _recentFilteredCount = 0;
         results.innerHTML = renderRecentList({ tree: [] });
         return;
       }
       var nowSec = Date.now() / 1000;
-      // Count the filtered set from the entries, not from the rendered
-      // rows: renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count
-      // reports how much has been paged in rather than how many files
-      // passed the filter.
-      _recentFilteredCount = countRecentMatches(entries, nowSec);
       var tree = clusterRecentTreeJs(entries, nowSec, RECENT_CLUSTER_PCT);
       results.innerHTML = renderRecentList({ tree: tree });
     },
@@ -2124,6 +2119,13 @@ function recentBaseApplyOp(op) {
   if (!recentEverLoaded) {
     return false;
   }
+  // No active window means the panel is not on this source, so there
+  // is no overlay to keep current — and every op would otherwise be
+  // retained, since none of them can be judged against a window that
+  // does not exist.
+  if (!currentRecentWindow) {
+    return false;
+  }
   if (!op) {
     return false;
   }
@@ -2136,7 +2138,12 @@ function recentBaseApplyOp(op) {
     // Only retain entries that fall inside the active window;
     // anything older than the window's seconds-back is dropped.
     var seconds = _RECENT_WINDOW_SECONDS[currentRecentWindow];
-    if (seconds !== null) {
+    // `undefined`, not `null`, is what an unknown key gives — and the
+    // window is cleared to "" when the panel leaves this source. The
+    // old `!== null` guard let that through, so the cutoff became NaN,
+    // every comparison against it was false, and the base map grew
+    // without bound while the plain tree was on screen.
+    if (typeof seconds === "number") {
       var cutoffSec = Date.now() / 1000 - seconds;
       if (dict.mtime < cutoffSec) {
         // Out-of-window upsert — make sure any stale base entry
@@ -2184,6 +2191,12 @@ function recentEntryFromFsEntry(entry) {
     type: "file",
     size: entry.size || 0,
     mtime: (entry.mtime_ns || 0) / 1e9,
+    // Mirror _file_entry_to_recent_dict: without the index's compound
+    // tail, a file that reaches this panel only through the live
+    // overlay would be matched on its last dotted suffix while the
+    // rendered rows are matched on the tail, so a compound pick could
+    // hide it.
+    ext: entry.ext || "",
   };
   if (entry.gitignored) {
     out.gitignored = true;
@@ -3025,7 +3038,7 @@ function applyTreeFilters() {
     // Clear both lines too: this early return is the path taken when
     // the last filter is removed, so leaving them would strand a
     // "Filtered to N files" over an unfiltered tree.
-    _renderFilteredTally(panel, 0, st);
+    _renderFilteredTally(panel, 0, st, null);
     _renderFilterNote(panel, 0, st);
     return;
   }
@@ -3102,7 +3115,16 @@ function applyTreeFilters() {
       }
     }
   }
-  _renderFilteredTally(panel, shownFiles, st);
+  // The recency source counts from its entries, not the rendered rows:
+  // renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count reports how
+  // much has been paged in rather than how many files passed.
+  var recencyCount = filesPanelUsesRecentSource()
+    ? countRecentMatches(
+        recentEntriesFromBase({ window: currentRecentWindow, limit: RECENT_LIMIT }),
+        nowSec,
+      )
+    : null;
+  _renderFilteredTally(panel, shownFiles, st, recencyCount);
   _renderFilterNote(panel, unloadedFolders, st);
   // Once writing stops no further events arrive, so nothing would
   // re-evaluate the persistence window and the row would sit there
@@ -3133,7 +3155,7 @@ function scheduleLiveExpiryRecheck() {
 //
 // Counted from the rows that survived, so it reflects every dimension
 // rather than just the one the server resolved.
-function _renderFilteredTally(panel, shownFiles, state) {
+function _renderFilteredTally(panel, shownFiles, state, recencyCount) {
   var existing = panel.querySelector(".tree-summary-filtered");
   if (!filterHasConstraints(state)) {
     if (existing) {
@@ -3141,13 +3163,7 @@ function _renderFilteredTally(panel, shownFiles, state) {
     }
     return;
   }
-  // The recency source counts from its entries, because the tree
-  // renderer pages at TREE_PAGE_SIZE and a DOM count would report how
-  // much has been paged in rather than how many files passed.
-  var count =
-    filesPanelUsesRecentSource() && _recentFilteredCount !== null
-      ? _recentFilteredCount
-      : shownFiles;
+  var count = recencyCount !== null ? recencyCount : shownFiles;
   var text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
   // A capped response has more matches than it sent, and only it can
   // say so — the client never saw the rest.
