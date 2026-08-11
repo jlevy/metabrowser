@@ -103,11 +103,11 @@ def test_rendered_view_uses_kpress_with_visible_error() -> None:
     src = _index_js()
     assert 'mb.fetchKpressRender(ctx, "rendered", { profile: "document" })' in src
     assert "renderKpressError" in src
-    assert "KPress render failed" in src
+    assert "Could not render this document." in src
     assert "renderMarkdownHtml(ctx.raw)" not in src
 
 
-def test_source_views_include_print_visible_truncation_warning() -> None:
+def test_source_views_include_visible_truncation_warning() -> None:
     src = _index_js()
     assert "const truncationWarning = mb.renderTextTruncationWarning(data)" in src
     assert "truncationWarning +" in src

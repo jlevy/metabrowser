@@ -283,7 +283,12 @@ const menuAged = fc.menuGroupHtml({
   select: "one",
   label: "Modified within",
   options: [
-    { value: "live", label: "Live", ageClass: "age-sec" },
+    {
+      value: "live",
+      label: "Live",
+      ageClass: "age-sec",
+      title: "Files modified in the past 90 seconds",
+    },
     { value: "1h", label: "Past hour", ageClass: "age-min" },
   ],
   value: "all",
@@ -292,6 +297,11 @@ const menuAged = fc.menuGroupHtml({
   menuId: "r",
 });
 assertContains("live takes the under-a-minute colour", menuAged, "chip-menu-item age-sec");
+assertContains(
+  "live explains its exact cutoff",
+  menuAged,
+  'title="Files modified in the past 90 seconds"',
+);
 assertContains("the hour row takes the under-an-hour colour", menuAged, "chip-menu-item age-min");
 assertContains(
   "the any row is checked at the default",

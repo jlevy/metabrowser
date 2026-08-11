@@ -528,7 +528,7 @@ to `showIgnored`.
 
 ## Resolved Follow-up
 
-**`Live` means every file touched in the past 90 seconds.** The first implementation
+**`Live` means every file modified in the past 90 seconds.** The first implementation
 used the active tracker, which admits only supported log-like files beneath `.logs` or
 `.state` directories.
 That made the control structurally empty for ordinary directories and gave a general

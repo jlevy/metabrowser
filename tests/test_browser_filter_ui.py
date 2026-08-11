@@ -624,7 +624,9 @@ def test_folders_with_no_loaded_children_are_kept_and_counted() -> None:
     assert "unloadedFolders += 1" in fn_block
     note_start = js.index("function _renderFilterNote(panel, unloadedFolders, state)")
     note_block = js[note_start : note_start + 1600]
-    assert "not expanded yet" in note_block
+    assert '"folder may" : "folders may"' in note_block
+    assert "contain additional matches." in note_block
+    assert 'Expand ${unloadedFolders === 1 ? "it" : "them"} to check.' in note_block
     assert 'note.setAttribute("role", "status")' in note_block
 
 

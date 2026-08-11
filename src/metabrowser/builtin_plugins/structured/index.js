@@ -41,7 +41,7 @@
       return mb.builtins.text.renderSource(container, ctx);
     }
     container.innerHTML =
-      '<div class="preview-empty">Source view unavailable: text plugin not loaded.</div>';
+      '<div class="preview-empty" role="alert">The source view is unavailable. Refresh the page to try again.</div>';
   }
 
   function renderTree(container, ctx) {
@@ -59,8 +59,9 @@
         if (!container.isConnected) {
           return;
         }
-        const message = err instanceof Error ? err.message : String(err);
-        container.innerHTML = `<div class="preview-empty">Failed to load: ${mb.escapeHtml(message)}</div>`;
+        console.warn("structured data load failed", err);
+        container.innerHTML =
+          '<div class="preview-empty" role="alert">Could not load structured data. Refresh the page to try again.</div>';
         return;
       }
       if (!container.isConnected) {
@@ -73,11 +74,6 @@
       if (data.parse_error || data.truncated) {
         return renderSourceFallback(container, ctx);
       }
-      if (data.parsed === null || data.parsed === undefined) {
-        container.innerHTML = '<div class="preview-empty">Empty or unparseable file.</div>';
-        return;
-      }
-
       // Wrap so the host's copy-as-YAML button frames the tree.
       // copyContent reads from a hidden <code> child; we stash the
       // canonical YAML there.

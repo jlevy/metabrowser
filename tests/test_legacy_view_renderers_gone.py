@@ -82,11 +82,11 @@ def test_agent_log_helpers_gone_from_shell() -> None:
         )
 
 
-def test_render_file_uses_unknown_view_empty_state() -> None:
-    """The fallback branch must paint 'Unknown view' rather than dispatching
-    through a function table — proves the cut is real."""
+def test_render_file_uses_unavailable_view_empty_state() -> None:
+    """The fallback branch must explain an unavailable view rather than
+    dispatching through a function table — proves the cut is real."""
     src = _src()
-    assert "Unknown view:" in src, "unknown-view empty state must be present"
+    assert "This view is unavailable." in src, "unavailable-view state must be present"
     # Negative: the fallback branch must NOT call into a function table.
     assert "VIEW_RENDERERS[v.id]" not in src
 

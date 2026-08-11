@@ -172,8 +172,8 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     assert "+d.tipSize" not in js
     assert 'data-tip-files="${nullableDataValue(node.total_files)}' in js
     assert 'data-tip-size="${nullableDataValue(node.total_size)}' in js
-    assert "Loading file count..." in js
-    assert "Loading size..." in js
+    assert "Loading file count…" in js
+    assert "Loading size…" in js
 
 
 def test_tree_tooltips_omit_duplicative_name() -> None:
@@ -410,9 +410,9 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
 
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
     fn_block = js[fn_start : fn_start + 2200]
-    assert 'childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder...")' in fn_block
+    assert 'childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…")' in fn_block
     assert 'data.tally_cache_status === "scanning"' in fn_block
-    assert 'treeLazyLoadingHtml("Folder still loading...")' in fn_block
+    assert 'treeLazyLoadingHtml("Still scanning this folder…")' in fn_block
     assert "scheduleSubtreeRetry(path, childrenEl)" in fn_block
     assert fn_block.index('data.tally_cache_status === "scanning"') < fn_block.index(
         "subtreeCache.set(path, tree)"
@@ -426,7 +426,7 @@ def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
     assert "if (!resp.ok)" in fn_block
     assert "throw new Error(`HTTP ${resp.status}`)" in fn_block
     assert "treeLazyFailureHtml(" in fn_block
-    assert "Unable to load folder (" in fn_block
+    assert "Could not load this folder. Collapse and reopen it to try again." in fn_block
     assert "Failed to load</div>" not in fn_block
 
 
@@ -633,7 +633,8 @@ def test_load_tree_renders_truncation_banner_when_status_truncated() -> None:
     assert "tree-truncation-note" in js
     assert "Bump <code>INVENTORY_MAX_FILES</code>" not in fn_block
     assert "function treeTruncationNoteHtml(maxFiles)" in js
-    assert "capped at" in js
+    assert "File list incomplete." in js
+    assert "some files and folders are not shown." in js
 
 
 def test_index_progress_completion_inserts_truncation_banner() -> None:
