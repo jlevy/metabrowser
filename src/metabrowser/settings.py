@@ -115,8 +115,25 @@ RECENT_WINDOW_SECONDS: dict[str, float | None] = {
 }
 
 RECENT_DEFAULT_WINDOW = "24h"
-RECENT_DEFAULT_LIMIT = 2_000
-RECENT_MAX_LIMIT = 2_000
+# What bounds this is not first render — it is that the client
+# re-clusters the whole result on every ``fs.change`` burst, debounced
+# to ``RECENT_RECLUSTER_DEBOUNCE_MS``. Measured in a real browser on
+# this tree (cluster + render, per burst):
+#
+#     2 000 →  10ms,  1.4MB HTML      10 000 →  44ms,  6.7MB
+#     5 000 →  18ms,  3.4MB           20 000 →  58ms, 13.4MB
+#
+# At 5 000 a burst costs under a fifth of the debounce interval, so a
+# dispatch writing a hundred files a second still leaves the main
+# thread idle most of the time; 10 000 spends nearly half of it and
+# the payload starts to matter. The cap also stopped being the thing
+# that hides a user's own work once truncation learned to drop
+# gitignored files first (see ``collect_recent_entries``) — it now
+# only bounds how much build output rides along, so headroom here
+# buys a large monorepo room for its *tracked* churn rather than more
+# ``node_modules``.
+RECENT_DEFAULT_LIMIT = 5_000
+RECENT_MAX_LIMIT = 5_000
 
 # Re-cluster the Recent panel at most this many times per
 # second when fs.change ops are flowing. Caps render thrash on

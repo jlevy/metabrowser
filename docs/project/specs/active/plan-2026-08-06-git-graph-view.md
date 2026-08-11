@@ -8,8 +8,7 @@
 
 ## Overview
 
-Metabrowser should show repository history as a third nav-panel tab beside Files and
-Recent.
+Metabrowser should show repository history as a second nav-panel tab beside Files.
 The tab renders a commit graph in the layout VS Code uses for its built-in Source
 Control Graph: one row per commit, a narrow left gutter of colored swimlanes drawn as
 SVG, then reference badges, subject, author, and relative date.
@@ -352,8 +351,8 @@ Every constraint here exists because the endpoints run on a request path:
 ### Phase 2: Git nav panel
 
 - [x] Replace the hardcoded nav tab markup with a data-driven panel registry in
-  `app.js`, preserving the current Files and Recent behavior including lazy loading and
-  the scroll shadow
+  `app.js`, preserving the current Files behavior including lazy loading and the scroll
+  shadow
 - [x] Add `git_graph.js`: the swimlane port and the per-row SVG renderer, with lane
   continuity across pages
 - [x] Add the lane, badge, and row design tokens, and the `.git-graph-*` rules ported

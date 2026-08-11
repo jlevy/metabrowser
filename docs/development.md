@@ -236,6 +236,40 @@ Track implementation work before changing code, record meaningful dependencies, 
 close issues only after validation.
 Run `tbd sync` before the final push.
 
+The tracker is a first-party package with an audited cool-off exception; see
+[supply-chain security](../SUPPLY-CHAIN-SECURITY.md) for the reviewed version and the
+rationale. Two things make an upgrade more than an `npm install -g`. Node version
+managers keep a separate global package tree per Node version, so install the same
+release into every Node version used with this repository — at minimum the manager’s
+default and the version pinned in `.node-version`. A stale copy under another Node
+version silently reverts caches and forked documents written by the newer one.
+`tbd setup --auto` also rewrites files this repository hardens deliberately:
+root-anchored hook commands, the exact pinned version in the agent skill files, the
+graceful unsupported-platform skip in the GitHub CLI helper, and the cool-off exemption
+passed to the pinned fallback invocations.
+Re-apply those after running setup and bump the version in
+`tests/test_public_hygiene.py`, which enforces them.
+Prefer upstream documents over local forks; unfork one once upstream covers the same
+guidance.
+
+## Shared Working Tree
+
+This repository is commonly worked by several agents and worktrees at once, so files can
+appear modified mid-session that the current session never touched.
+The Lefthook pre-push gate compounds this: it runs the quality and test targets over the
+**working tree**, not over the commit being pushed.
+Another session’s uncommitted file can therefore block an unrelated push, and a tree
+that verifies green can still push a commit that fails CI.
+
+- Check `git status` before committing and stage only your own hunks.
+- Never commit a file you did not write merely because it shows as modified.
+  Half of another session’s paired edit — a test without the change it covers — passes
+  locally against the newer tree and fails in CI.
+- When the gate fails, first check whether the offending file is yours.
+  A failure in another session’s work is something to raise, not to silently fix.
+- Lefthook cannot run from a git worktree created outside the repository, so pushing
+  from a clean temporary worktree is not a workaround for a dirty one.
+
 ## Pull Requests
 
 1. Start from current `main` and create a focused branch.
@@ -245,6 +279,33 @@ Run `tbd sync` before the final push.
 4. Run `make verify`.
 5. Review the diff and wheel contents for unintended files or private residue.
 6. Commit, push, open the pull request, and watch CI to completion.
+
+## Troubleshooting
+
+**`fatal: this operation must be run in a work tree`.** Check `git config core.bare`
+before suspecting worktree configuration, test pollution, or a concurrent session.
+A subprocess that runs `git init` while a repository-pinning environment variable is set
+re-initializes the surrounding repository instead of the intended directory, and writes
+`core.bare = true` into the shared configuration.
+`GIT_DIR` outranks both the working directory and `git -C`, and git hooks export it, so
+anything a hook-run test suite spawns inherits it.
+Repair with `git config core.bare false` from any worktree; it writes the shared
+configuration. The signature is distinctive: the suite passes standalone and fails only
+under `git push`, and later unrelated git commands keep failing after the hook exits.
+Code that spawns `git` must first scrub the repository-pinning variables — `GIT_DIR`,
+`GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY`,
+`GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_PREFIX`, `GIT_NAMESPACE`, and
+`GIT_CEILING_DIRECTORIES` — and a test should pin that behavior.
+
+**`npm` refuses to install.** npm 11.10 and newer enforce the `before` and
+`minimum-release-age` settings and error when a shell environment sets both.
+Pushes run `make install` through the pre-push gate, so this surfaces as a failing push
+rather than a failing install.
+Select the pinned Node version first, and unset the conflicting environment variable for
+the invocation rather than weakening the repository’s cool-off configuration.
+
+**A killed `tbd sync` blocks later runs.** It leaves a lock directory under
+`.git/tbd/locks/`. Remove it after confirming no tbd process is still running.
 
 ## Template Updates
 

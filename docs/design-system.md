@@ -214,6 +214,107 @@ A hidden button leaves the tab order, so the control becomes mouse-only.
 Every reveal trigger restores `pointer-events` along with the opacity, and keyboard
 focus is itself a reveal trigger.
 
+## Filter Controls
+
+Every filter in the app is built from one chip family, documented in the
+`── Filter controls ──` block of `static/styles.css` and rendered by
+`static/filter_controls.js`. A surface that needs a filter reaches for these rather than
+inventing a pill of its own; four near-identical pills is what this family replaced.
+
+`.chip` is the atom.
+`.chip-group` joins chips into one bordered pill with hairline dividers, so a set of
+related choices reads as a single object.
+`.chip-toggle` is a standalone boolean.
+`.chip-menu` is a chip that opens a dropdown, single- or multi-select.
+`.chip-badge` carries a count, and `.chip-clear` is the quiet reset.
+
+A `.chip-menu` composes the existing floating `.menu` surface rather than introducing a
+second menu look — the app had a single-choice `.menu` and a native `.menu-select`, and
+neither can pick several things.
+Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
+`.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
+same rule as every other floating menu: Escape or outside interaction.
+
+A dropdown declares its kind the same way a group does, and for the same reason: `one`
+gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemcheckbox`
+rows and stays open, because picking several is the point of it.
+Only one dropdown is open at a time.
+The list always leads with an any-row naming the dimension’s default (`Any type`), so
+clearing one dimension is a pick rather than a separate control — and the option list
+must not repeat that value under another name.
+
+### Groups Or Dropdowns
+
+Both exist because they fail differently as the value list grows.
+A joined `.chip-group` shows every option at once, which is the right trade for two or
+three short values; past that it eats the pane.
+A `.chip-menu` costs a click to see the options but stays one trigger wide however many
+there are, and it is the only choice when the values come from the data.
+
+The nav filter bar uses dropdowns throughout: six age windows and six size steps as
+segmented ramps left no room for anything else in a 300px pane.
+The groups stay part of the family for surfaces with fewer, shorter values.
+
+Values that come from the data are ranked by frequency and capped, and each row carries
+its tally. A menu built from the tree can then never offer a value with nothing behind
+it, and the cap cuts the long tail rather than an arbitrary alphabetical slice.
+
+A dropdown may lead with named **presets** — shorthands standing for the full set of
+values beneath them, separated from the raw list.
+A preset is checked only when every value it names is selected, so a half-covered group
+never claims to be on, and a selection that is exactly one preset shows by its name
+rather than as `.md +21`.
+
+Where a row stands for a file type, it carries that type’s icon and leaves the label
+plain.
+The icon is what identifies a type everywhere else in the app, and tinting a whole
+column of labels makes the hues compete with the selected-state mark instead of helping
+anyone scan the list.
+
+### Selection Kind Is Visible Before the Click
+
+A group declares its kind in `data-select`, and the two kinds look different:
+
+| Kind | ARIA | Selected fill |
+| --- | --- | --- |
+| `data-select="one"` — exclusive | `role="radiogroup"`, `aria-checked` | `--highlight-bg` / `--link` |
+| `data-select="many"` — additive | `role="group"`, `aria-pressed` | `--hover-bg` / `--text` |
+
+The accent fill for exclusive choices is the same treatment `.menu-seg[aria-checked]`
+uses for the theme and font pickers, so “accent means one of these” already means that
+elsewhere in the app.
+A user should never have to click a group to learn whether picking a second value
+replaces the first or adds to it.
+
+Because the stylesheet keys off those ARIA attributes, correct ARIA and correct
+appearance are the same thing here: a group with the wrong role renders wrong, not just
+inaccessibly.
+
+### One State Mechanism, With One Exception
+
+Anything carrying a filter *value* is a `<button>` with `aria-pressed` or
+`aria-checked`. No hidden checkbox inputs behind pill styling, and no reading state two
+different ways depending on which control you picked.
+
+The exception is a boolean whose *polarity* has to be legible, which takes a real
+labelled checkbox (`.filter-check`). A pressed pill reading “Gitignored” does not say
+whether pressed means those rows are shown or filtered away — the user has to click it
+to find out. “Show ignored” with a tick states its own direction, uses the control
+everyone already knows for that, and is visibly lighter than a pill sitting beside one.
+Reach for it when the label has to name the *on* state; reach for a chip when the label
+names a value.
+
+Keyboard behavior follows the kind: an exclusive group is one tab stop with arrow-key
+traversal and roving `tabindex`, while each chip in an additive group is its own tab
+stop, because each is an independent control.
+
+### Filters Say What They Do Not Know
+
+A filter that prunes rows must not imply the result is complete when it is not.
+Where a surface can only judge what it has loaded, it renders a `.filter-note` saying
+so. Missing data is never treated as a non-match: a pending size, an absent mtime, or an
+unclassified path leaves a row in place rather than making it flicker as filtered.
+
 ## File Types
 
 File-type classes map each subtype to three custom properties:
