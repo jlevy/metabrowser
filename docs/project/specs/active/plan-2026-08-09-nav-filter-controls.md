@@ -314,9 +314,13 @@ each row carrying the tree’s own file-type icon and its tally:
      ⋮ .toml     10
 ```
 
-Clear resets every dimension including the ones in the collapsed row, and the drawer’s
-open state is itself a preference, so a user who lives in type filters is not re-opening
-it every session.
+Clear resets every dimension including the ones in the collapsed row.
+
+The drawer always opens closed and its state is deliberately not persisted: it holds the
+secondary controls, so restoring it open would spend vertical space on this visit that
+was asked for on a previous one.
+The filters themselves do persist, and the badge reports them whether or not the drawer
+is showing, so nothing is hidden by starting collapsed.
 
 ### The Nav Tally
 

@@ -347,6 +347,30 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     assert "name === token" in tm_block
 
 
+def test_the_drawer_always_opens_closed() -> None:
+    """Its state is deliberately not persisted: it holds the secondary
+    controls, so restoring it open spends vertical space asked for on
+    a previous visit. The filters do persist, and the badge reports
+    them either way."""
+
+    js = _read("app.js")
+    assert "filters.drawer" not in js
+    start = js.index("function initFilterBar()")
+    block = js[start : start + 600]
+    assert "filterDrawerOpen = false;" in block
+
+
+def test_the_tally_and_its_filtered_count_read_as_one_block() -> None:
+    """The totals are what the filtered figure reads against, so the
+    rule goes under the pair rather than between them."""
+
+    css = _read("styles.css")
+    start = css.index(".tree-summary:has(+ .tree-summary-filtered)")
+    block = css[start : css.index("}", start)]
+    assert "border-bottom: none;" in block
+    assert "padding-bottom: 0;" in block
+
+
 def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     """ "How many am I looking at" is the question a filter raises every
     time, not only when a response was capped."""

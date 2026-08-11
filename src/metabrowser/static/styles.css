@@ -2315,11 +2315,18 @@ html[data-prose-font="sans"] {
    Muted, because the totals above are the constant a reader orients
    against and this is the delta from them. */
 .tree-summary-filtered {
-  padding: 0 12px 6px;
-  margin-top: -2px;
+  padding: 3px 12px 6px;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   border-bottom: 1px solid var(--border);
+}
+/* The tally and its filtered count are one block, so the rule belongs
+   under the pair rather than between them: the totals are what the
+   filtered figure reads against, and a border in between made them
+   look like two unrelated bands. */
+.tree-summary:has(+ .tree-summary-filtered) {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 .recent-truncated-note {
   padding: 8px 12px;

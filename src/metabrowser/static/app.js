@@ -2613,7 +2613,10 @@ var FILTER_TYPE_MENU_MAX = 20;
 // believed.
 const FILTER_LIVE_PERSIST_MS = 90_000;
 
-var FILTER_DRAWER_PREF = "filters.drawer";
+// Deliberately not persisted. The drawer holds the secondary controls,
+// so a session that starts with it open costs vertical space the user
+// did not ask for on this visit; the filters themselves persist, and
+// the badge reports them whether or not the drawer is showing.
 var filterDrawerOpen = false;
 // At most one dropdown is open at a time — opening a second while the
 // first is still down would leave two panels overlapping a 300px pane.
@@ -2808,10 +2811,8 @@ function initFilterBar() {
   if (!bar || !filterState || !filterControls) {
     return;
   }
-  var mb = /** @type {any} */ (window).metabrowser;
-  if (mb?.prefs) {
-    filterDrawerOpen = mb.prefs.get(FILTER_DRAWER_PREF, false) === true;
-  }
+  // Always starts closed; see filterDrawerOpen.
+  filterDrawerOpen = false;
   renderNavFilterBar();
   if (filterBarUnbind) {
     filterBarUnbind();
@@ -2833,9 +2834,6 @@ function initFilterBar() {
         var hadMenu = filterOpenMenu === "size";
         if (!pressed && hadMenu) {
           filterOpenMenu = null;
-        }
-        if (mb?.prefs) {
-          mb.prefs.set(FILTER_DRAWER_PREF, pressed);
         }
         // Mutate in place rather than re-render: a freshly built
         // element starts at its final grid track and would snap open.
