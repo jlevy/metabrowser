@@ -5,16 +5,17 @@ title: Fix Quick File convergence after reconnect during an incomplete inventory
 kind: bug
 status: closed
 priority: 1
-version: 4
+version: 8
 labels: []
 dependencies: []
-parent_id: is-01kzrtbtsh9k6p8x84rta84y4p
+parent_id: is-01kzvbhe5e49xmrq7kzjmykfjp
 created_at: 2026-08-12T08:32:26.187Z
-updated_at: 2026-08-12T09:04:54.381Z
-closed_at: 2026-08-12T09:04:54.380Z
-close_reason: Implemented with regression coverage; full make verify passed on 2026-08-12.
+updated_at: 2026-08-12T16:18:17.575Z
+closed_at: 2026-08-12T16:18:17.574Z
+close_reason: "PR #34 R1 fixed in ab7284b with full local verification, refreshed green CI and Bugbot, published disposition reply, and resolved inline thread."
 ---
+PR #34 review R1 (medium), src/metabrowser/static/catalog_feed.js:248 and src/metabrowser/static/app.js:5122: a continuity reconnect followed by a file-cap-truncated terminal walk skips onIndexComplete, so the pending authoritative membership refetch never runs and deleted paths may remain searchable. Fix the terminal truncated path without claiming complete root coverage, with a failing DOM regression. Review: https://github.com/jlevy/metabrowser/pull/34#discussion_r3768123248
 
 ## Notes
 
-EventSource opens now force a continuity refetch, invalidate an in-flight pre-reconnect bulk response, and suppress only the paired sentinel fetch. Completion after a partial reconnect payload waits for an authoritative catalog response. DOM regressions cover both reconnect during scanning and reconnect before the initial fetch lands. Full make verify passed on 2026-08-12 (914 pytest cases, 30 golden scenarios).
+PR #34 review R1 confirmed the capped terminal-state gap. The fix routes every terminal capability update through the catalog feed with its truncated flag, requests an authoritative membership repair after reconnect even when the walk stops at the file cap, and keeps capped root coverage incomplete. Continuity boundaries now downgrade coverage without discarding membership; 304 revalidation restores prior full coverage only when the cached authoritative payload was uncapped. Regressions cover capped repair, coverage downgrade, capped terminal status, and complete/truncated 304 behavior. Full make verify passed on 2026-08-12 with 915 pytest cases and 30 golden scenarios.
