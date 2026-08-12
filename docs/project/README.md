@@ -12,6 +12,7 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 
 ## Active Feature Plans
 
+- [Bounded binary byte preview](specs/active/plan-2026-08-11-binary-byte-preview.md)
 - [Opt-in trusted-local file editing](specs/active/plan-2026-07-16-trusted-local-file-editing.md)
 - [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Quick file finder and search providers](specs/active/plan-2026-07-17-scalable-file-search.md)
