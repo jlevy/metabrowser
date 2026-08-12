@@ -5,8 +5,8 @@ title: "Spec: flat single-command metab CLI (serve by default, modes as flags)"
 kind: epic
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-27-metab-flat-cli.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-07-27-metab-flat-cli.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -15,7 +15,7 @@ child_order_hints:
   - is-01kyj7cd3fgg5ya74b1d789wax
   - is-01kyj7cddqbphh2wyvb5dqq2mx
 created_at: 2026-07-27T16:43:44.919Z
-updated_at: 2026-07-27T17:09:03.024Z
+updated_at: 2026-08-12T08:42:53.839Z
 closed_at: 2026-07-27T17:09:03.024Z
 close_reason: "Flat CLI shipped: docs, changelog, and agent skill updated end-to-end; verified with make verify"
 ---

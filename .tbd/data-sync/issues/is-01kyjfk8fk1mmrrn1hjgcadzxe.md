@@ -5,12 +5,12 @@ title: "Address PR #14 senior review: skill pin/release coordination, doc drift,
 kind: task
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-27-metab-flat-cli.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-07-27-metab-flat-cli.md
 labels: []
 dependencies: []
 created_at: 2026-07-27T19:07:31.187Z
-updated_at: 2026-07-27T19:07:41.345Z
+updated_at: 2026-08-12T08:42:55.629Z
 closed_at: 2026-07-27T19:07:41.344Z
 close_reason: Implemented on claude/metab-cli-redesign-oqubpx; all four review findings addressed and make verify passes (769 tests)
 ---

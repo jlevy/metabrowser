@@ -5,7 +5,7 @@ title: Assess and publish Metabrowser v0.3.0 minor release
 kind: task
 status: in_progress
 priority: 1
-version: 24
+version: 30
 labels: []
 dependencies: []
 child_order_hints:
@@ -21,11 +21,16 @@ child_order_hints:
   - is-01kzshazdfnw7wz3h768kgbfmg
   - is-01kzsrn1678d07r42wx26b1kwh
   - is-01kzst1xpjmy6yd8kw5gyekcz9
+  - is-01kzthkwjct0arxn9pjyse720a
+  - is-01kzthkwwj2ym3cfq756kms6zk
+  - is-01kztjpwcq00gxd4p1s73zvbm9
+  - is-01kztjypg3zzwf65tkc6m31nph
+  - is-01kztk1re8jyap1fcn39p6w3nd
 created_at: 2026-08-11T16:26:50.545Z
-updated_at: 2026-08-12T01:40:40.273Z
+updated_at: 2026-08-12T09:04:49.200Z
 ---
 Review all user-visible changes since v0.2.0, triage outstanding defects for release blockers, validate the filtering/search stabilization release, prepare accurate v0.3.0 notes, run the complete release gate, publish the GitHub release, verify PyPI artifacts and public smoke tests, and confirm CI.
 
 ## Notes
 
-Release audit remains ready for v0.3.0 after additional stability fixes. Filtering, Quick File, KPress 0.3.2, design, security documentation, Agent Skill, generic file-browser documentation, and the 90-second Live definition are covered. Filter settings are transient; durable appearance settings persist. UI messages, aggregate Docs/Code/Data tallies, and Ctrl-C shutdown behavior are corrected. Default logs now suppress routine timings and lifecycle noise. Bounded SSE queue gaps emit a resynchronization marker, end affected streams, and make browsers reconnect for fresh snapshots instead of remaining silently stale. Agent-log event filters use the shared wrapping filter-chip layout, joined segmented controls remain single-row, and the complete agent-log visual layer uses accessible semantic tokens in both themes. Generic JSONL rows omit unknown badges and prefixes, and type controls only appear for multiple meaningful types. Quick File now separates placeholder guidance from status scope, progress, matches, empty results, and recovery; all counts are localized. The design system defines text roles, state language, brevity, punctuation, accessibility, and a mandatory Chrome-copy review for every changed interface surface. Symlinks are explicit non-expanded leaves with a Lucide leading icon, do not pollute file aggregates or filters, preserve served-root containment, and surface actionable link-target errors. Review follow-ups make unknown agent-log rows obey narrowed kind filters, restore wrapped-chip hover feedback, and keep initial/live empty-folder semantics consistent for symlink-only and nested-empty subtrees. Full make verify passes with 891 tests and 28 golden scenarios. PR #30 is mergeable with all five review threads resolved and every refreshed CI and Cursor Bugbot check green at 4105573. The separate watchfiles kernel-overflow limitation mb-pn95 remains deferred because the dependency does not surface notify rescan flags and requires broader reconciliation work. Release remains intentionally uncut while further fixes are reviewed.
+Final v0.3.0 readiness review covered the 93-commit delta from v0.2.0 through main, open issues and PRs, packaging/version metadata, supply-chain policy, runtime navigation/search behavior, and release documentation. Five release-review findings were fixed: Quick File reconnect convergence, tree and recent snapshot/status alignment, premature root-summary values, and stopped progress polling. Real-browser smoke passed on a 12,611-file inventory, Quick File performance stayed within bounds at 50,000 candidates, a temporary v0.3.0 tag build imported as 0.3.0, and full make verify passed on 2026-08-12 with 914 pytest cases and 30 golden scenarios plus lint, types, public hygiene, locked vulnerability audits, distributions, API check, and isolated-wheel smoke tests. The review batch is ready for PR and CI. The release remains intentionally uncut pending merge and explicit publish authorization. Known mb-087n (timing-threshold flake reproduced at v0.2.0) and mb-pn95 (watchfiles kernel-overflow API limitation) remain deferred nonblockers.
