@@ -4803,6 +4803,10 @@ function _scheduleInventoryReconnect() {
   _esBackoffMs = Math.min(_esBackoffMs * 2, _ES_BACKOFF_CAP_MS);
   _esReconnectTimer = setTimeout(() => {
     _esReconnectTimer = null;
+    // Each EventSource gets its own transport-error allowance. Keep the
+    // escalating reconnect delay until the stable timer fires, but do not let
+    // the previous source's threshold make one transient error close this one.
+    _esConsecutiveErrors = 0;
     _createInventoryEventSource();
   }, delay);
 }

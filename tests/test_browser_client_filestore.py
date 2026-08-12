@@ -114,6 +114,10 @@ def test_event_source_backoff_resets_only_after_a_stable_interval() -> None:
     assert "var delay = _esBackoffMs" in reconnect_block
     assert "_esBackoffMs * 2" in reconnect_block
     assert "_ES_BACKOFF_CAP_MS" in reconnect_block
+    assert reconnect_block.index("_esConsecutiveErrors = 0") < reconnect_block.index(
+        "_createInventoryEventSource()"
+    )
+    assert "_esBackoffMs = 2000" not in reconnect_block
 
     stable_start = js.index("function _scheduleEsStableReset()")
     stable_block = js[stable_start : stable_start + 500]
