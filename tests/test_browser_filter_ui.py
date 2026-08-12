@@ -301,6 +301,22 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     assert ".filter-drawer-toggle {" not in css
 
 
+def test_dropdown_triggers_use_the_shared_disclosure_chevron() -> None:
+    """Menu triggers and the adjacent drawer disclosure should use one
+    Lucide shape at the standard chrome glyph size, with rotation alone
+    distinguishing their direction."""
+
+    controls = _read("filter_controls.js")
+    assert "window.MetabrowserIcons?.toggle" in controls
+    assert "⌄" not in controls
+
+    css = _read("styles.css")
+    start = css.index(".chip-menu-caret {")
+    block = css[start : start + 700]
+    assert "var(--icon-glyph)" in block
+    assert "rotate(90deg)" in block
+
+
 def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
     """Use-site classes may position a button but may not recreate its control style."""
 

@@ -264,6 +264,8 @@ neither can pick several things.
 Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
 `.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
 same rule as every other floating menu: Escape or outside interaction.
+The trigger uses the shared Lucide disclosure chevron at the standard chrome glyph size,
+rotated downward; do not substitute a text caret or shrink it to fit the label.
 
 A dropdown declares its kind the same way a group does, and for the same reason: `one`
 gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemcheckbox`
