@@ -34,6 +34,25 @@ METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab ./pa
 The events and tail routes are intentionally long-lived and are excluded from ordinary
 slow-request warnings.
 
+## Navigation API Check
+
+Run the navigation scenario directly against the ASGI application:
+
+```shell
+metab ./path/to/directory --check-api
+```
+
+The command starts the normal inventory lifecycle in-process, requests the initial tree,
+enables the Live filter, clears it, waits for the index to finish, and requests the
+final tree. It does not open a browser or bind a network port.
+The normalized output includes HTTP status codes and the final row, file, byte, and
+index counts, and the command exits nonzero if a route or response contract fails.
+
+This scenario is suitable for reproducing navigation failures on a large local directory
+and for a deterministic golden test on a checked-in fixture.
+It complements focused concurrency tests, which can force a mutation at an exact
+inventory operation that a filesystem timing test cannot reproduce reliably.
+
 ## Task Snapshot
 
 Enable the debug endpoint only for local investigation:

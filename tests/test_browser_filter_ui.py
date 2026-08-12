@@ -721,10 +721,12 @@ def test_index_wide_tallies_stay_off_the_event_loop() -> None:
 
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
     start = py.index("summary = None")
-    block = py[start : start + 700]
+    block = py[start : start + 1000]
+    assert 'inventory.entries(scope="all-known")' in block
     assert "asyncio.to_thread" in block
-    assert "root_summary()" in block
+    assert "root_summary(entries=tally_entries)" in block
     assert "file_type_tallies(" in block
+    assert "entries=tally_entries" in block
 
 
 def test_reapply_is_skipped_when_nothing_is_filtered() -> None:

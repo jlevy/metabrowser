@@ -101,8 +101,11 @@ def test_tree_depth_query_is_always_bounded() -> None:
 
 def test_tree_cold_start_uses_constant_time_child_lookup() -> None:
     source = inspect.getsource(proc_browser.api_tree)
-    assert "inventory.has_direct_child(subpath)" in source
-    assert 'inventory.entries(scope="all-known")' not in source
+    cold_start = source[
+        source.index("if started_inventory:") : source.index("inv_can_serve = False")
+    ]
+    assert "inventory.has_direct_child(subpath)" in cold_start
+    assert 'inventory.entries(scope="all-known")' not in cold_start
 
 
 def test_build_gitignore_check_no_repo_returns_noop(tmp_path: Path) -> None:

@@ -27,25 +27,27 @@ $ metab --help
 
  Serving is the default: `metab .` serves the current directory and opens
  it in your browser. Select another operation with a mode flag (--walk,
- --remote, --plugins, --plugin, --doctor).
+ --check-api, --remote, --plugins, --plugin, --doctor).
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│   [root]      PATH  Directory (or file) to serve or walk. With no ROOT and   │
-│                     no mode, prints help.                                    │
+│   [root]      PATH  Root directory to serve, check, or walk; a file may be   │
+│                     served directly. With no ROOT and no mode, prints help.  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --version          Show the installed version and exit.                      │
 │ --help             Show this message and exit.                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
-│ --walk                 Walk ROOT with the inventory walker and dump the      │
-│                        result (no server).                                   │
-│ --remote         HOST  SSH into HOST, start metab there, and tunnel it to    │
-│                        localhost. Pass the remote directory with --path.     │
-│ --plugins              List every discovered plugin.                         │
-│ --plugin         NAME  Print the full resolved manifest for one plugin.      │
-│ --doctor               Validate every discovered plugin; exit non-zero on    │
-│                        any problem.                                          │
+│ --walk                   Walk ROOT with the inventory walker and dump the    │
+│                          result (no server).                                 │
+│ --check-api              Run the navigation API scenario without a browser   │
+│                          or listening port.                                  │
+│ --remote           HOST  SSH into HOST, start metab there, and tunnel it to  │
+│                          localhost. Pass the remote directory with --path.   │
+│ --plugins                List every discovered plugin.                       │
+│ --plugin           NAME  Print the full resolved manifest for one plugin.    │
+│ --doctor                 Validate every discovered plugin; exit non-zero on  │
+│                          any problem.                                        │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
 │ --path               TEXT   Serve: relative path from ROOT to select on      │
@@ -59,12 +61,12 @@ $ metab --help
 │                             passed multiple times. Combines additively with  │
 │                             the METABROWSER_PLUGINS_DIRS env var (env-var    │
 │                             dirs first, then CLI; deduped). Applies when     │
-│                             serving and to the plugin modes.                 │
+│                             serving, checking APIs, and to the plugin modes. │
 │ --log-level          LEVEL  Log verbosity: DEBUG, INFO, WARNING, ERROR,      │
 │                             CRITICAL. DEBUG traces the inventory walker      │
 │                             (rewalk targets + resolved paths). Overrides     │
-│                             METABROWSER_LOG_LEVEL. Applies when serving and  │
-│                             walking.                                         │
+│                             METABROWSER_LOG_LEVEL. Applies when serving,     │
+│                             walking, or checking APIs.                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Serve ──────────────────────────────────────────────────────────────────────╮
 │ --port        INTEGER RANGE [1<=x<=65535]  Server port. [default: 8411]      │
@@ -129,6 +131,7 @@ $ metab --help
  metab .
  metab ./path/to/directory --no-open
  metab . --walk --format json
+ metab . --check-api
  metab --remote example-host --path /srv/shared-files
  metab --plugins
 ? 0
@@ -146,25 +149,27 @@ $ metab
 
  Serving is the default: `metab .` serves the current directory and opens
  it in your browser. Select another operation with a mode flag (--walk,
- --remote, --plugins, --plugin, --doctor).
+ --check-api, --remote, --plugins, --plugin, --doctor).
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│   [root]      PATH  Directory (or file) to serve or walk. With no ROOT and   │
-│                     no mode, prints help.                                    │
+│   [root]      PATH  Root directory to serve, check, or walk; a file may be   │
+│                     served directly. With no ROOT and no mode, prints help.  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --version          Show the installed version and exit.                      │
 │ --help             Show this message and exit.                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
-│ --walk                 Walk ROOT with the inventory walker and dump the      │
-│                        result (no server).                                   │
-│ --remote         HOST  SSH into HOST, start metab there, and tunnel it to    │
-│                        localhost. Pass the remote directory with --path.     │
-│ --plugins              List every discovered plugin.                         │
-│ --plugin         NAME  Print the full resolved manifest for one plugin.      │
-│ --doctor               Validate every discovered plugin; exit non-zero on    │
-│                        any problem.                                          │
+│ --walk                   Walk ROOT with the inventory walker and dump the    │
+│                          result (no server).                                 │
+│ --check-api              Run the navigation API scenario without a browser   │
+│                          or listening port.                                  │
+│ --remote           HOST  SSH into HOST, start metab there, and tunnel it to  │
+│                          localhost. Pass the remote directory with --path.   │
+│ --plugins                List every discovered plugin.                       │
+│ --plugin           NAME  Print the full resolved manifest for one plugin.    │
+│ --doctor                 Validate every discovered plugin; exit non-zero on  │
+│                          any problem.                                        │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
 │ --path               TEXT   Serve: relative path from ROOT to select on      │
@@ -178,12 +183,12 @@ $ metab
 │                             passed multiple times. Combines additively with  │
 │                             the METABROWSER_PLUGINS_DIRS env var (env-var    │
 │                             dirs first, then CLI; deduped). Applies when     │
-│                             serving and to the plugin modes.                 │
+│                             serving, checking APIs, and to the plugin modes. │
 │ --log-level          LEVEL  Log verbosity: DEBUG, INFO, WARNING, ERROR,      │
 │                             CRITICAL. DEBUG traces the inventory walker      │
 │                             (rewalk targets + resolved paths). Overrides     │
-│                             METABROWSER_LOG_LEVEL. Applies when serving and  │
-│                             walking.                                         │
+│                             METABROWSER_LOG_LEVEL. Applies when serving,     │
+│                             walking, or checking APIs.                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Serve ──────────────────────────────────────────────────────────────────────╮
 │ --port        INTEGER RANGE [1<=x<=65535]  Server port. [default: 8411]      │
@@ -248,6 +253,7 @@ $ metab
  metab .
  metab ./path/to/directory --no-open
  metab . --walk --format json
+ metab . --check-api
  metab --remote example-host --path /srv/shared-files
  metab --plugins
 ? 0

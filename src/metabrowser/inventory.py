@@ -260,7 +260,11 @@ class InventoryIndex:
             (e.path, e.ext) for e in self._entries.values() if e.type == "file" and not e.gitignored
         ]
 
-    def root_summary(self) -> dict[str, int]:
+    def root_summary(
+        self,
+        *,
+        entries: Sequence[FsEntry] | None = None,
+    ) -> dict[str, int]:
         """Whole-index file counts and bytes, split by gitignore status.
 
         The per-directory ``total_files`` / ``total_size`` aggregates
@@ -277,8 +281,9 @@ class InventoryIndex:
         invalidation surface.
         """
 
+        snapshot = self.entries(scope="all-known") if entries is None else entries
         files = size = ignored_files = ignored_size = 0
-        for entry in self._entries.values():
+        for entry in snapshot:
             if entry.type != "file":
                 continue
             if entry.gitignored:
@@ -298,6 +303,8 @@ class InventoryIndex:
         self,
         presets: Sequence[tuple[str, Collection[str]]],
         limit: int = 200,
+        *,
+        entries: Sequence[FsEntry] | None = None,
     ) -> tuple[list[list[object]], list[list[object]]]:
         """Return extension and aggregate-preset rows in one index pass.
 
@@ -307,6 +314,7 @@ class InventoryIndex:
         at most once per preset.
         """
 
+        snapshot = self.entries(scope="all-known") if entries is None else entries
         extension_counts: dict[str, list[int]] = {}
         preset_counts: dict[str, list[int]] = {}
         normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
@@ -318,7 +326,7 @@ class InventoryIndex:
                 (extensions if normalized.startswith(".") else names).add(normalized)
             preset_counts[preset_id] = [0, 0]
             normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
-        for entry in self._entries.values():
+        for entry in snapshot:
             if entry.type != "file":
                 continue
             ignored_index = 1 if entry.gitignored else 0

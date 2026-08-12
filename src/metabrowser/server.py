@@ -1060,11 +1060,16 @@ async def api_tree(request: Request) -> JSONResponse:
     extensions = None
     type_presets = None
     if inv_can_serve and not subpath:
+        # Inventory writes are owned by the event loop. Snapshot there before
+        # handing the two O(index) tally passes to a worker; iterating the live
+        # dictionary off-loop races the still-running walker.
+        tally_entries = inventory.entries(scope="all-known")
         summary, type_tallies = await asyncio.to_thread(
             lambda: (
-                inventory.root_summary(),
+                inventory.root_summary(entries=tally_entries),
                 inventory.file_type_tallies(
-                    [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
+                    [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
+                    entries=tally_entries,
                 ),
             )
         )

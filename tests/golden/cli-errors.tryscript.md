@@ -77,6 +77,18 @@ Try 'metab --help' for help.
 ? 2
 ```
 
+## Test: API check requires ROOT
+
+```console
+$ metab --check-api 2>&1
+Usage: metab [OPTIONS] [ROOT_ARG]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ ROOT is required for --check-api; e.g. `metab . --check-api`                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+? 2
+```
+
 ## Test: plugins mode rejects ROOT
 
 ```console
