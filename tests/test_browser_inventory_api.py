@@ -205,7 +205,9 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
     The inventory walker owns mutations on the event-loop thread. This
     test double rejects a tally call that reaches into the live mapping
     from ``asyncio.to_thread``, modeling the dictionary-size race seen
-    while a large root was still scanning.
+    while a large root was still scanning. It also finishes the walk
+    while the worker runs: the response status must still describe the
+    partial snapshot so the browser schedules a final refresh.
     """
 
     class WorkerUnsafeTallies(InventoryIndex):
@@ -249,6 +251,14 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
     )
     monkeypatch.setattr(inventory_module, "get_instance", lambda: inv)
     monkeypatch.setattr(proc_browser, "get_inventory", lambda: inv)
+    original_to_thread = asyncio.to_thread
+
+    async def finish_inventory_during_tallies(function: Any, /, *args: Any, **kwargs: Any) -> Any:
+        result = await original_to_thread(function, *args, **kwargs)
+        inv._status = "done"
+        return result
+
+    monkeypatch.setattr(proc_browser.asyncio, "to_thread", finish_inventory_during_tallies)
 
     try:
         response = asyncio.run(proc_browser.api_tree(cast(Any, _FakeRequest())))

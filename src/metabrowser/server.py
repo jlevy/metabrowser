@@ -1060,6 +1060,11 @@ async def api_tree(request: Request) -> JSONResponse:
     extensions = None
     type_presets = None
     recency_tallies = None
+    # Keep the response status in the same event-loop epoch as the tree and
+    # tally snapshots. The walker can finish while the O(index) worker runs;
+    # reporting that newer "done" state beside partial tallies would make the
+    # browser stop polling before it requests the final snapshot.
+    tally_cache_status = inventory_status()
     if inv_can_serve and not subpath:
         # Inventory writes are owned by the event loop. Snapshot there before
         # handing the O(index) tally pass to a worker; iterating the live dictionary
@@ -1080,7 +1085,7 @@ async def api_tree(request: Request) -> JSONResponse:
         {
             "root": str(root_dir),
             "tree": tree,
-            "tally_cache_status": inventory_status(),
+            "tally_cache_status": tally_cache_status,
             "tally_cache_max_files": inventory.max_files(),
             # Tracked-versus-ignored split for the nav header, plus the age,
             # extension, and aggregate tallies behind the nav filters. None can be
@@ -1130,6 +1135,10 @@ async def api_recent(request: Request) -> JSONResponse:
     # cap is not spent on rows they will drop on arrival.
     include_ignored = request.query_params.get("include_ignored", "1") not in ("0", "false")
 
+    # Stay conservative if the walker finishes while collection runs. A
+    # response built from a scanning inventory must remain labeled scanning so
+    # the client schedules the completed result instead of stranding a prefix.
+    tally_cache_status = inventory_status()
     result = await asyncio.to_thread(
         collect_recent_entries,
         root=_resolved_root_dir(),
@@ -1154,7 +1163,7 @@ async def api_recent(request: Request) -> JSONResponse:
             "limit": result.limit,
             "total_matching": result.total_matching,
             "truncated": result.truncated,
-            "tally_cache_status": inventory_status(),
+            "tally_cache_status": tally_cache_status,
         }
     )
 

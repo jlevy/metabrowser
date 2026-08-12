@@ -262,6 +262,51 @@ def test_api_recent_response_envelope_shape(tmp_path: Path) -> None:
     assert mtimes == sorted(mtimes, reverse=True)
 
 
+def test_api_recent_status_describes_the_pre_worker_snapshot(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """A walk finishing during collection must leave this response scanning.
+
+    Otherwise a partial recent result can be labeled done and the browser has no
+    reason to request the final inventory snapshot.
+    """
+
+    _build_fixture(tmp_path)
+
+    async def _run() -> dict[str, Any]:
+        original_root = paths_safe._resolved_root_dir
+        paths_safe._resolved_root_dir = lambda: tmp_path  # type: ignore[assignment]
+        try:
+            await _drive_walker(tmp_path)
+            inventory = get_instance()
+            inventory._status = "scanning"
+            original_to_thread = asyncio.to_thread
+
+            async def finish_inventory_during_collection(
+                function: Any,
+                /,
+                *args: Any,
+                **kwargs: Any,
+            ) -> Any:
+                result = await original_to_thread(function, *args, **kwargs)
+                inventory._status = "done"
+                return result
+
+            monkeypatch.setattr(
+                proc_browser.asyncio,
+                "to_thread",
+                finish_inventory_during_collection,
+            )
+            response = await proc_browser.api_recent(cast(Any, _FakeRequest()))
+        finally:
+            paths_safe._resolved_root_dir = original_root  # type: ignore[assignment]
+        return json.loads(bytes(response.body))
+
+    body = asyncio.run(_run())
+    assert body["tally_cache_status"] == "scanning"
+
+
 def test_api_recent_invalid_window_returns_400(tmp_path: Path) -> None:
     _build_fixture(tmp_path)
 

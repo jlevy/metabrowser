@@ -32,14 +32,17 @@ function makeCatalog() {
   const calls = [];
   return {
     calls,
-    applyBulkSnapshot(files, complete) {
-      calls.push({ kind: "bulk", files, complete });
+    applyBulkSnapshot(files, complete, authoritative) {
+      calls.push({ kind: "bulk", files, complete, authoritative });
     },
     applyCatalogChange(payload) {
       calls.push({ kind: "change", payload });
     },
     markComplete() {
       calls.push({ kind: "markComplete" });
+    },
+    markIncomplete() {
+      calls.push({ kind: "markIncomplete" });
     },
   };
 }
@@ -81,9 +84,8 @@ async function main() {
     check("no apply before start", catalog.calls.length === 0);
 
     feed.start();
-    feed.start();
     await tick();
-    check("start is once-only", pending.length === 1);
+    check("first start begins one fetch", pending.length === 1);
 
     feed.onCatalogChange({ upserts: [{ p: "during.txt", e: ".txt" }], removes: [] });
     check("changes during fetch stay buffered", catalog.calls.length === 0);
@@ -118,6 +120,7 @@ async function main() {
     check("sentinel before first fetch does nothing", pending.length === 0);
 
     feed.start();
+    feed.onSentinelSnapshot();
     await tick();
     pending[0].resolve(jsonResponse({ complete: true, files: [] }));
     await tick();
@@ -140,12 +143,205 @@ async function main() {
     );
   }
 
+  // ── Reconnect during a fresh scan converges at completion ──────
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[0].resolve(
+      jsonResponse({ complete: true, files: [{ p: "deleted-while-away.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+
+    // A later open is a reconnect. Its first payload may be only a
+    // prefix while the restarted server scans, so it cannot remove a
+    // path that disappeared while the stream was down.
+    feed.start();
+    check(
+      "reconnect marks catalog coverage incomplete",
+      catalog.calls.some((call) => call.kind === "markIncomplete"),
+    );
+    await tick();
+    check("reconnect open refetches before its sentinel", pending.length === 2);
+    feed.onSentinelSnapshot();
+    await tick();
+    check("reconnect sentinel does not duplicate the open refetch", pending.length === 2);
+    pending[1].resolve(jsonResponse({ complete: false, files: [] }));
+    await tick();
+    await tick();
+
+    feed.onIndexComplete();
+    await tick();
+    check("completion after a partial reconnect payload refetches", pending.length === 3);
+    check(
+      "partial reconnect does not claim completion before an authoritative payload",
+      !catalog.calls.some((call) => call.kind === "markComplete"),
+    );
+
+    if (pending[2]) {
+      pending[2].resolve(jsonResponse({ complete: true, files: [] }));
+      await tick();
+      await tick();
+      const finalBulk = catalog.calls[catalog.calls.length - 1];
+      check(
+        "completion refetch applies authoritative membership",
+        finalBulk?.kind === "bulk" &&
+          finalBulk.complete === true &&
+          finalBulk.authoritative === true,
+      );
+    }
+  }
+
+  // ── A capped scan still repairs reconnect membership ──────────
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[0].resolve(
+      jsonResponse({ complete: true, files: [{ p: "deleted-while-away.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[1].resolve(jsonResponse({ complete: false, files: [] }));
+    await tick();
+    await tick();
+
+    feed.onIndexComplete(true);
+    await tick();
+    check("truncated completion repairs reconnect membership", pending.length === 3);
+    check(
+      "truncated completion never claims complete root coverage",
+      !catalog.calls.some((call) => call.kind === "markComplete"),
+    );
+
+    if (pending[2]) {
+      pending[2].resolve(jsonResponse({ complete: true, truncated: true, files: [] }));
+      await tick();
+      await tick();
+      const finalBulk = catalog.calls[catalog.calls.length - 1];
+      check(
+        "truncated completion refetch is authoritative but incomplete",
+        finalBulk?.kind === "bulk" &&
+          finalBulk.complete === false &&
+          finalBulk.authoritative === true,
+      );
+    }
+  }
+
+  // ── Reconnect invalidates the unfinished initial fetch ─────────
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+
+    // The stream reconnects before the original bulk response lands.
+    // start() must invalidate that response even though fetchedOnce is
+    // still false; waiting for the sentinel would miss this gap.
+    feed.start();
+    feed.onSentinelSnapshot();
+    pending[0].resolve(
+      jsonResponse({ complete: true, files: [{ p: "before-reconnect.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+    check(
+      "reconnect discards an unfinished initial response",
+      !catalog.calls.some(
+        (call) =>
+          call.kind === "bulk" && call.files.some((file) => file.p === "before-reconnect.txt"),
+      ),
+    );
+    check("reconnect queues a replacement for the initial fetch", pending.length === 2);
+
+    pending[1].resolve(
+      jsonResponse({ complete: true, files: [{ p: "after-reconnect.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+    check(
+      "replacement initial fetch applies",
+      catalog.calls.some(
+        (call) =>
+          call.kind === "bulk" && call.files.some((file) => file.p === "after-reconnect.txt"),
+      ),
+    );
+  }
+
+  // ── Conditional reconnect fetch preserves prior coverage ──────
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[0].resolve(jsonResponse({ complete: true, files: [] }));
+    await tick();
+    await tick();
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[1].resolve(jsonResponse({}, 304));
+    await tick();
+    await tick();
+    const reconnectCalls = catalog.calls.slice(1).map((call) => call.kind);
+    check(
+      "304 reconnect restores known complete coverage",
+      reconnectCalls.includes("markIncomplete") && reconnectCalls.includes("markComplete"),
+      reconnectCalls.join(","),
+    );
+  }
+
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[0].resolve(jsonResponse({ complete: true, truncated: true, files: [] }));
+    await tick();
+    await tick();
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[1].resolve(jsonResponse({}, 304));
+    await tick();
+    await tick();
+    check(
+      "304 reconnect keeps capped coverage incomplete",
+      !catalog.calls.some((call) => call.kind === "markComplete"),
+    );
+  }
+
   // ── Resync rebuilds from scratch ──────────────────────────────
   {
     const catalog = makeCatalog();
     const { impl, pending } = makeFetch();
     const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
     feed.start();
+    feed.onSentinelSnapshot();
     await tick();
     pending[0].resolve(jsonResponse({ complete: true, files: [] }));
     await tick();
@@ -240,6 +436,7 @@ async function main() {
     const { impl, pending } = makeFetch();
     const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
     feed.start();
+    feed.onSentinelSnapshot();
     await tick();
     pending[0].resolve(jsonResponse({ complete: true, files: [] }));
     await tick();
@@ -312,6 +509,11 @@ async function main() {
       "a truncated catalog is not reported complete",
       catalog.calls[0]?.complete === false,
       String(catalog.calls[0]?.complete),
+    );
+    feed.onIndexComplete(true);
+    check(
+      "a truncated terminal event does not mark the catalog complete",
+      !catalog.calls.some((call) => call.kind === "markComplete"),
     );
   }
 }

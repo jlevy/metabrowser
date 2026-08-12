@@ -451,6 +451,14 @@
       }
     }
 
+    /** Retain membership while a new stream re-establishes root coverage. */
+    function markIncomplete() {
+      if (catalogComplete) {
+        catalogComplete = false;
+        bumpRevision();
+      }
+    }
+
     /**
      * Remove a file or every known descendant of a directory path.
      * @param {string} path
@@ -502,6 +510,7 @@
       applyEventChange,
       clear,
       markComplete,
+      markIncomplete,
       observeEventSnapshot,
       observeInitialTree,
       observeLazyTree,
