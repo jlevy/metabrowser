@@ -746,6 +746,7 @@ async def index(_request: Request) -> HTMLResponse:
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree_expansion.js")
+    pending_tally_diagnostics_url = _static_asset_url("pending_tally_diagnostics.js")
     known_file_catalog_url = _static_asset_url("known_file_catalog.js")
     catalog_feed_url = _static_asset_url("catalog_feed.js")
     file_fuzzy_match_url = _static_asset_url("file_fuzzy_match.js")
@@ -976,6 +977,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>
+  <script src="{pending_tally_diagnostics_url}"></script>
   <script src="{known_file_catalog_url}"></script>
   <script src="{catalog_feed_url}"></script>
   <script src="{file_fuzzy_match_url}"></script>
@@ -1050,39 +1052,47 @@ async def api_tree(request: Request) -> JSONResponse:
             len(tree),
             inventory_status(),
         )
-    # Both tallies are O(index) passes. The nav re-requests this route
-    # (depth=0) while the walk converges, so running them on the loop
-    # would stall the event stream at the design-center index size for
-    # the same reason api_catalog offloads its own pass.
+    # The nav tallies need one O(index) pass. The nav re-requests this route
+    # (depth=0) while the walk converges, so running it on the loop would stall
+    # the event stream at the design-center index size for the same reason
+    # api_catalog offloads its own pass.
     summary = None
     extensions = None
     type_presets = None
+    recency_tallies = None
     if inv_can_serve and not subpath:
-        summary, type_tallies = await asyncio.to_thread(
-            lambda: (
-                inventory.root_summary(),
-                inventory.file_type_tallies(
-                    [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
-                ),
+        # Inventory writes are owned by the event loop. Snapshot there before
+        # handing the O(index) tally pass to a worker; iterating the live dictionary
+        # off-loop races the still-running walker.
+        tally_entries = inventory.entries(scope="all-known")
+        summary, extensions, type_presets, recency_tallies = await asyncio.to_thread(
+            lambda: inventory.navigation_tallies(
+                [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
+                [
+                    (window_key, seconds)
+                    for window_key, seconds in RECENT_WINDOW_SECONDS.items()
+                    if seconds is not None
+                ],
+                entries=tally_entries,
             )
         )
-        extensions, type_presets = type_tallies
     return JSONResponse(
         {
             "root": str(root_dir),
             "tree": tree,
             "tally_cache_status": inventory_status(),
             "tally_cache_max_files": inventory.max_files(),
-            # Tracked-versus-ignored split for the nav header, plus the
-            # extension and aggregate tallies behind the nav's type filter. None can
-            # be derived client-side: summing top-level children
+            # Tracked-versus-ignored split for the nav header, plus the age,
+            # extension, and aggregate tallies behind the nav filters. None can be
+            # derived client-side: summing top-level children
             # miscounts nested ignored files (see
             # InventoryIndex.root_summary), and the Quick File catalog
-            # drops gitignored entries (see file_type_tallies). Only the
+            # drops gitignored entries (see navigation_tallies). Only the
             # full-tree request needs these values.
             "summary": summary,
             "extensions": extensions,
             "type_presets": type_presets,
+            "recency_tallies": recency_tallies,
         }
     )
 

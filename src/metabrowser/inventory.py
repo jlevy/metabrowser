@@ -83,6 +83,8 @@ from metabrowser.walker import (
 LOG = logging.getLogger(__name__)
 
 _SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS = 30_000_000_000
+# Unit conversion for comparing second-based filter windows with inventory mtimes.
+_NANOSECONDS_PER_SECOND = 1_000_000_000
 
 
 IndexStatus = Literal["idle", "scanning", "done", "truncated", "failed"]
@@ -260,7 +262,11 @@ class InventoryIndex:
             (e.path, e.ext) for e in self._entries.values() if e.type == "file" and not e.gitignored
         ]
 
-    def root_summary(self) -> dict[str, int]:
+    def root_summary(
+        self,
+        *,
+        entries: Sequence[FsEntry] | None = None,
+    ) -> dict[str, int]:
         """Whole-index file counts and bytes, split by gitignore status.
 
         The per-directory ``total_files`` / ``total_size`` aggregates
@@ -270,15 +276,15 @@ class InventoryIndex:
         children cannot answer that — ignored files nested under
         tracked directories would be counted as tracked.
 
-        One pass over the entries is the honest way to get it. This runs
-        per ``/api/tree`` request (once per page load, not per
-        keystroke), so an O(entries) scan is affordable where a second
-        set of incremental accumulators would not be worth the
-        invalidation surface.
+        One pass over the entries is the honest way to get it. Navigation
+        requests use :meth:`navigation_tallies` to perform the same calculation
+        alongside filter counts; this focused method avoids doing that extra work for
+        callers that need only the summary.
         """
 
+        snapshot = self.entries(scope="all-known") if entries is None else entries
         files = size = ignored_files = ignored_size = 0
-        for entry in self._entries.values():
+        for entry in snapshot:
             if entry.type != "file":
                 continue
             if entry.gitignored:
@@ -294,21 +300,38 @@ class InventoryIndex:
             "ignored_size": ignored_size,
         }
 
-    def file_type_tallies(
+    def navigation_tallies(
         self,
         presets: Sequence[tuple[str, Collection[str]]],
+        recency_windows: Sequence[tuple[str, float]],
         limit: int = 200,
-    ) -> tuple[list[list[object]], list[list[object]]]:
-        """Return extension and aggregate-preset rows in one index pass.
+        *,
+        now_ns: int | None = None,
+        entries: Sequence[FsEntry] | None = None,
+    ) -> tuple[
+        dict[str, int],
+        list[list[object]],
+        list[list[object]],
+        list[list[object]],
+    ]:
+        """
+        Return root, file-type, and cumulative recency tallies in one index pass.
 
-        Both shapes are ``[key, tracked_files, ignored_files]``. Dotted
-        preset tokens match the indexed logical extension; other tokens
-        match a complete filename case-insensitively. A file is counted
-        at most once per preset.
+        Every row is ``[key, tracked_files, ignored_files]``. Keeping the two
+        populations separate lets the browser use the same snapshot when the user
+        changes whether gitignored files are shown.
         """
 
+        snapshot = self.entries(scope="all-known") if entries is None else entries
+        current_ns = time.time_ns() if now_ns is None else now_ns
+        recency_cutoffs = [
+            (key, current_ns - int(seconds * _NANOSECONDS_PER_SECOND))
+            for key, seconds in recency_windows
+        ]
+        files = size = ignored_files = ignored_size = 0
         extension_counts: dict[str, list[int]] = {}
         preset_counts: dict[str, list[int]] = {}
+        recency_counts: dict[str, list[int]] = {key: [0, 0] for key, _cutoff in recency_cutoffs}
         normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
         for preset_id, values in presets:
             extensions: set[str] = set()
@@ -318,10 +341,17 @@ class InventoryIndex:
                 (extensions if normalized.startswith(".") else names).add(normalized)
             preset_counts[preset_id] = [0, 0]
             normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
-        for entry in self._entries.values():
+        for entry in snapshot:
             if entry.type != "file":
                 continue
             ignored_index = 1 if entry.gitignored else 0
+            if entry.gitignored:
+                ignored_files += 1
+                ignored_size += entry.size or 0
+            else:
+                files += 1
+                size += entry.size or 0
+
             ext = entry.ext.lower()
             if ext:
                 row = extension_counts.get(ext)
@@ -335,6 +365,16 @@ class InventoryIndex:
                 if ext in preset_extensions or name in preset_names:
                     preset_counts[preset_id][ignored_index] += 1
 
+            for window_key, cutoff_ns in recency_cutoffs:
+                if entry.mtime_ns >= cutoff_ns:
+                    recency_counts[window_key][ignored_index] += 1
+
+        summary = {
+            "files": files,
+            "size": size,
+            "ignored_files": ignored_files,
+            "ignored_size": ignored_size,
+        }
         ranked = sorted(
             extension_counts.items(),
             key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
@@ -345,6 +385,29 @@ class InventoryIndex:
         preset_rows: list[list[object]] = [
             [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
         ]
+        recency_rows: list[list[object]] = [
+            [window_key, counts[0], counts[1]] for window_key, counts in recency_counts.items()
+        ]
+        return summary, extension_rows, preset_rows, recency_rows
+
+    def file_type_tallies(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        limit: int = 200,
+        *,
+        entries: Sequence[FsEntry] | None = None,
+    ) -> tuple[list[list[object]], list[list[object]]]:
+        """Return extension and aggregate-preset rows in one index pass.
+
+        Both shapes are ``[key, tracked_files, ignored_files]``. Dotted
+        preset tokens match the indexed logical extension; other tokens
+        match a complete filename case-insensitively. A file is counted
+        at most once per preset.
+        """
+
+        _summary, extension_rows, preset_rows, _recency = self.navigation_tallies(
+            presets, (), limit=limit, entries=entries
+        )
         return extension_rows, preset_rows
 
     def extension_tally(self, limit: int = 200) -> list[list[object]]:
@@ -613,6 +676,76 @@ class InventoryIndex:
 
     def subscriber_count(self) -> int:
         return len(self._subscribers)
+
+    def diagnostic_snapshot(
+        self,
+        paths: Sequence[str],
+        *,
+        sample_limit: int = 20,
+    ) -> dict[str, object]:
+        """Return bounded state for diagnosing unresolved directory totals.
+
+        The client reports only rendered paths. Pairing those with the live
+        inventory, generation, descendant aggregate, and walker state makes it
+        possible to distinguish a server-side pending directory from a stale
+        browser snapshot or a missed event-stream patch.
+        """
+
+        limit = max(0, sample_limit)
+        walker = self._walker_task
+        if walker is None:
+            walker_state = "missing"
+        elif walker.cancelled():
+            walker_state = "cancelled"
+        elif walker.done():
+            walker_state = "done"
+        else:
+            walker_state = "running"
+
+        elapsed_ms = 0
+        if self._started_at_ns:
+            elapsed_ms = (time.monotonic_ns() - self._started_at_ns) // 1_000_000
+
+        requested: list[dict[str, object]] = []
+        for path in list(paths)[:limit]:
+            entry = self._entries.get(path)
+            row: dict[str, object] = {
+                "path": path,
+                "known": entry is not None,
+                "pending": path in self._pending_dirs,
+                "generation": self._generation.get(path, 0),
+                "direct_children": self._direct_child_counts.get(path, 0),
+                "descendant_files": self._descendant_file_counts.get(path, 0),
+                "descendant_size": self._descendant_file_sizes.get(path, 0),
+                "descendant_leaves": self._descendant_leaf_counts.get(path, 0),
+            }
+            if entry is not None:
+                row.update(
+                    {
+                        "type": entry.type,
+                        "total_files": entry.total_files,
+                        "total_size": entry.total_size,
+                        "newest_mtime_ns": entry.newest_mtime_ns,
+                        "empty": entry.empty,
+                        "write_generation": (
+                            entry.write_token.generation if entry.write_token is not None else None
+                        ),
+                    }
+                )
+            requested.append(row)
+
+        return {
+            "status": self._status,
+            "elapsed_ms": elapsed_ms,
+            "files_indexed": self._files_indexed,
+            "entries": len(self._entries),
+            "pending_dirs": len(self._pending_dirs),
+            "pending_dir_sample": heapq.nsmallest(limit, self._pending_dirs),
+            "subscribers": len(self._subscribers),
+            "catalog_revision": self._catalog_revision,
+            "walker_task": walker_state,
+            "requested_paths": requested,
+        }
 
     def initial_snapshot(self, scope: str = "root-depth-2") -> FsSnapshot:
         """Build the on-connect snapshot. Tuple form (FsSnapshot

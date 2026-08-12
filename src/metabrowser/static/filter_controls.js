@@ -188,6 +188,7 @@
    */
   function menuGroupHtml(spec) {
     const many = spec.select !== "one";
+    const menuChevron = window.MetabrowserIcons?.toggle || "";
     // Single-select carries a scalar, multi-select a list; normalizing
     // to a list here keeps the row loop identical for both.
     const selected = many
@@ -297,7 +298,7 @@
       ` data-active="${selected.length > 0}"` +
       ` aria-haspopup="true" aria-expanded="${spec.open === true}"` +
       ` aria-controls="${esc(spec.menuId)}" aria-label="${esc(spec.label)}">` +
-      `${esc(summary)}<span class="chip-menu-caret" aria-hidden="true">⌄</span></button>` +
+      `${esc(summary)}<span class="chip-menu-caret" aria-hidden="true">${menuChevron}</span></button>` +
       `<span class="menu chip-menu-panel" id="${esc(spec.menuId)}" role="menu"` +
       ` aria-label="${esc(spec.label)}">${anyRow}${presetRows}${rows}</span></span>`
     );

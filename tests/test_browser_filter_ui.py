@@ -301,6 +301,22 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     assert ".filter-drawer-toggle {" not in css
 
 
+def test_dropdown_triggers_use_the_shared_disclosure_chevron() -> None:
+    """Menu triggers and the adjacent drawer disclosure should use one
+    Lucide shape at the standard chrome glyph size, with rotation alone
+    distinguishing their direction."""
+
+    controls = _read("filter_controls.js")
+    assert "window.MetabrowserIcons?.toggle" in controls
+    assert "⌄" not in controls
+
+    css = _read("styles.css")
+    start = css.index(".chip-menu-caret {")
+    block = css[start : start + 700]
+    assert "var(--icon-glyph)" in block
+    assert "rotate(90deg)" in block
+
+
 def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
     """Use-site classes may position a button but may not recreate its control style."""
 
@@ -648,6 +664,36 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     assert "presets: filterTypePresets()" in render_block
 
 
+def test_age_options_use_index_wide_tracked_and_ignored_tallies() -> None:
+    """Every fixed age choice carries the same right-aligned count as a
+    file-type row, and the count follows Show ignored."""
+
+    js = _read("app.js")
+    assert "var _recencyTally = [];" in js
+    start = js.index("function filterRecencyOptions()")
+    block = js[start : start + 1000]
+    assert "showIgnored ? row[1] + row[2] : row[1]" in block
+    assert "count:" in block
+
+    render_start = js.index("function renderNavFilterBar()")
+    render_block = js[render_start : render_start + 2200]
+    assert "options: filterRecencyOptions()" in render_block
+
+
+def test_opening_age_menu_refreshes_rolling_tallies() -> None:
+    """Age membership changes as time passes even when no filesystem event fires."""
+
+    js = _read("app.js")
+    toggle_start = js.index("onMenuToggle: (key, open) =>")
+    toggle_block = js[toggle_start : toggle_start + 500]
+    assert 'key === "recency" && open' in toggle_block
+    assert "scheduleRootSummaryRefresh();" in toggle_block
+
+    refresh_start = js.index("function scheduleRootSummaryRefresh()")
+    refresh_block = js[refresh_start : refresh_start + 2000]
+    assert "patchOpenRecencyTallyCounts();" in refresh_block
+
+
 def test_filters_reapply_when_new_rows_render() -> None:
     """Lazy subtrees and deferred pages arrive unfiltered; without a
     reapply, expanding a folder under an active filter shows all of
@@ -671,6 +717,21 @@ def test_leaving_the_recency_source_abandons_its_fetch() -> None:
     assert 'currentRecentWindow = ""' in block
 
 
+def test_leaving_recency_refetches_the_authoritative_tree() -> None:
+    """The cached first-paint tree can retain pending aggregates.
+
+    Live events patch the visible DOM, not that old wire snapshot. Restoring it
+    after a recency filter therefore reintroduced skeletons after the scan and
+    its progress polling had completed.
+    """
+
+    js = _read("app.js")
+    start = js.index("function onFilterStateChange(state)")
+    block = js[start : start + 2200]
+    assert "loadTree();" in block
+    assert "renderFilesFromTree()" not in block
+
+
 def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     """It runs repeatedly while the index warms up; rebuilding the bar
     would drop focus out of a dropdown being arrowed through."""
@@ -685,15 +746,17 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
 
 
 def test_index_wide_tallies_stay_off_the_event_loop() -> None:
-    """Two O(index) passes per request, and the nav re-requests this
-    route while the walk converges."""
+    """One O(index) pass per request, and the nav re-requests this route
+    while the walk converges."""
 
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
     start = py.index("summary = None")
-    block = py[start : start + 700]
+    block = py[start : start + 1000]
+    assert 'inventory.entries(scope="all-known")' in block
     assert "asyncio.to_thread" in block
-    assert "root_summary()" in block
-    assert "file_type_tallies(" in block
+    assert "navigation_tallies(" in block
+    assert "RECENT_WINDOW_SECONDS.items()" in block
+    assert "entries=tally_entries" in block
 
 
 def test_reapply_is_skipped_when_nothing_is_filtered() -> None:
@@ -808,6 +871,12 @@ def test_index_loads_filter_modules_before_app() -> None:
     assert 'src="/static/filter_controls.js?v=' in html
     assert html.index("/static/filter_state.js") < html.index("/static/app.js")
     assert html.index("/static/filter_controls.js") < html.index("/static/app.js")
+
+
+def test_index_loads_pending_tally_watchdog_before_app() -> None:
+    html = _render_index_html()
+    assert 'src="/static/pending_tally_diagnostics.js?v=' in html
+    assert html.index("/static/pending_tally_diagnostics.js") < html.index("/static/app.js")
 
 
 def test_dom_content_loaded_initializes_the_filter_bar() -> None:

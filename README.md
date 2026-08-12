@@ -178,12 +178,17 @@ metab --remote example-host --path /srv/shared-files
 
 # Print a machine-readable inventory without starting the web UI.
 metab ./path/to/directory --walk --format json
+
+# Check the navigation APIs without opening a browser or port.
+metab ./path/to/directory --check-api
 ```
 
 The server binds to `127.0.0.1:8411` by default and walks a bounded port range if that
 port is occupied.
 Do not change `--host` to expose a served root to an untrusted network;
 see the [security policy](SECURITY.md).
+For a stable diagnostic transcript of tree loading, Live filtering, and clearing the
+filter, see [real-time debugging](docs/realtime-debugging.md).
 
 ## Plugins
 

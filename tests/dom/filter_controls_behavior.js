@@ -8,7 +8,16 @@ const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
 
-const sandbox = { console: { warn() {} }, JSON, String, Array, Object, metabrowser: {} };
+const menuChevron = '<svg class="toggle-chevron" data-test-icon="shared-chevron"></svg>';
+const sandbox = {
+  console: { warn() {} },
+  JSON,
+  String,
+  Array,
+  Object,
+  MetabrowserIcons: { toggle: menuChevron },
+  metabrowser: {},
+};
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -197,6 +206,8 @@ const menuClosed = fc.menuGroupHtml({
 assertContains("closed menu reports its state", menuClosed, 'aria-expanded="false"');
 // The trigger has to answer "what is filtered?" without being opened.
 assertContains("no selection summarises as the any-label", menuClosed, ">Any type<");
+assertContains("menu triggers use the shared disclosure chevron", menuClosed, menuChevron);
+assertMissing("menu triggers do not use a text caret", menuClosed, "⌄");
 assertContains("the any row is checked when nothing is picked", menuClosed, "data-chip-any");
 assertContains("rows are checkbox menu items", menuClosed, 'role="menuitemcheckbox"');
 assertContains("rows carry their tally", menuClosed, '<span class="chip-menu-count">156</span>');
@@ -293,6 +304,7 @@ const menuAged = fc.menuGroupHtml({
       label: "Live",
       ageClass: "age-sec",
       title: "Files modified in the past 90 seconds",
+      count: 12,
     },
     { value: "1h", label: "Past hour", ageClass: "age-min" },
   ],
@@ -308,6 +320,11 @@ assertContains(
   'title="Files modified in the past 90 seconds"',
 );
 assertContains("the hour row takes the under-an-hour colour", menuAged, "chip-menu-item age-min");
+assertContains(
+  "age rows carry the same tally as file-type rows",
+  menuAged,
+  '<span class="chip-menu-count">12</span>',
+);
 assertContains(
   "the any row is checked at the default",
   menuOneAny,

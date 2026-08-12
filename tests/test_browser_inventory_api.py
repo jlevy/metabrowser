@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Collection, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, override
 
+from metabrowser import inventory as inventory_module
 from metabrowser import paths_safe
 from metabrowser import server as proc_browser
 from metabrowser.activity import (
@@ -29,7 +31,7 @@ from metabrowser.activity import (
     _discover_trackable_files_from_inventory,
 )
 from metabrowser.events import FsEntry
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.inventory import InventoryIndex, get_instance, reset_instance_for_tests
 from metabrowser.tree import _build_inventory_tree, inventory_has_data, inventory_status
 
 
@@ -182,9 +184,81 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
     assert body["tally_cache_status"] in ("idle", "scanning", "done", "truncated")
     assert "tree" in body
     assert [row[0] for row in body["type_presets"]] == ["docs", "code", "data"]
+    assert [row[0] for row in body["recency_tallies"]] == [
+        "live",
+        "1h",
+        "24h",
+        "7d",
+        "30d",
+    ]
     names = {row["name"] for row in body["tree"]}
     assert "README.md" in names
     assert "runs" in names
+
+
+def test_api_tree_snapshots_tallies_before_worker_thread(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """A filter-clear refresh must not iterate the live index off-loop.
+
+    The inventory walker owns mutations on the event-loop thread. This
+    test double rejects a tally call that reaches into the live mapping
+    from ``asyncio.to_thread``, modeling the dictionary-size race seen
+    while a large root was still scanning.
+    """
+
+    class WorkerUnsafeTallies(InventoryIndex):
+        @override
+        def navigation_tallies(
+            self,
+            presets: Sequence[tuple[str, Collection[str]]],
+            recency_windows: Sequence[tuple[str, float]],
+            limit: int = 200,
+            *,
+            now_ns: int | None = None,
+            entries: Sequence[FsEntry] | None = None,
+        ) -> tuple[
+            dict[str, int],
+            list[list[object]],
+            list[list[object]],
+            list[list[object]],
+        ]:
+            if entries is None:
+                raise RuntimeError("dictionary changed size during iteration")
+            return super().navigation_tallies(
+                presets,
+                recency_windows,
+                limit=limit,
+                now_ns=now_ns,
+                entries=entries,
+            )
+
+    original_root = paths_safe.ROOT_DIR
+    resolved_root = tmp_path.resolve()
+    paths_safe._set_root_dir(resolved_root)
+    inv = WorkerUnsafeTallies()
+    inv._root = resolved_root
+    inv._status = "scanning"
+    inv._entries["README.md"] = FsEntry.for_observed_file(
+        path="README.md",
+        parent="",
+        name="README.md",
+        size=6,
+        mtime_ns=1_700_000_000_000_000_000,
+    )
+    monkeypatch.setattr(inventory_module, "get_instance", lambda: inv)
+    monkeypatch.setattr(proc_browser, "get_inventory", lambda: inv)
+
+    try:
+        response = asyncio.run(proc_browser.api_tree(cast(Any, _FakeRequest())))
+    finally:
+        paths_safe._set_root_dir(original_root)
+
+    assert response.status_code == 200
+    body = json.loads(bytes(response.body))
+    assert body["summary"]["files"] == 1
+    assert body["tally_cache_status"] == "scanning"
 
 
 def test_api_tree_uses_pending_inventory_without_filesystem_fallback(

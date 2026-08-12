@@ -296,7 +296,7 @@ def test_apply_cell_patch_skips_root_entry() -> None:
     # The guard must be the first thing the function does, before the
     # data-path selector that would otherwise match nothing and fall
     # through to insertion.
-    fn_block = js[fn_start : fn_start + 600]
+    fn_block = js[fn_start : js.index("function _removeRenderedRows(path)", fn_start)]
     assert "if (!entry.path)" in fn_block
     assert fn_block.index("if (!entry.path)") < fn_block.index("escapePathForSelector(entry.path)")
 
@@ -364,8 +364,11 @@ def test_index_progress_completion_refreshes_pending_tallies() -> None:
     assert "function refreshTreeIfPendingTallies()" in js
     fn_start = js.index("function refreshTreeIfPendingTallies()")
     fn_block = js[fn_start : fn_start + 900]
-    assert 'document.querySelector(".tally-pending")' in fn_block
-    assert "await loadTree();" in fn_block
+    assert 'document.querySelector("#tab-files .tally-pending")' in fn_block
+    tree_refresh = fn_block.index("await loadTree();")
+    current_recency = fn_block.index("filterState.get().recency")
+    assert tree_refresh < current_recency
+    assert "loadRecent(recency);" in fn_block
 
     progress_start = js.index("async function refreshIndexProgress(force)")
     progress_block = js[progress_start : progress_start + 2000]
@@ -373,6 +376,26 @@ def test_index_progress_completion_refreshes_pending_tallies() -> None:
     assert progress_block.index("renderIndexProgress(meta);") < progress_block.index(
         "await refreshTreeIfPendingTallies();"
     )
+
+
+def test_pending_tally_watchdog_is_wired_to_client_and_server_logging() -> None:
+    js = _read_app_js()
+    assert "MetabrowserPendingTallyDiagnostics.create" in js
+    assert "Folder totals are still loading after ${delaySeconds} seconds" in js
+    assert 'fetch("/api/diagnostics/pending-tallies"' in js
+    assert "reconcilePendingTallyDiagnostics();" in js
+
+
+def test_pending_tally_recovery_rechecks_recency_after_tree_refresh() -> None:
+    """A filter change during the tree request must win over its old window."""
+
+    js = _read_app_js()
+    start = js.index("async function refreshAfterPendingTallyDiagnostic")
+    block = js[start : js.index("async function reportPendingTallyDiagnostic", start)]
+    tree_refresh = block.index("await loadTree();")
+    current_recency = block.index("filterState.get().recency")
+    assert tree_refresh < current_recency
+    assert "loadRecent(recency);" in block
 
 
 def test_load_tree_renders_single_file_tally() -> None:
@@ -385,11 +408,16 @@ def test_load_tree_renders_single_file_tally() -> None:
 
     js = _read_app_js()
     fn_start = js.index("async function loadTree()")
-    fn_block = js[fn_start : fn_start + 4400]
+    fn_block = js[fn_start : js.index("function treeSummaryHtml", fn_start)]
+    summary_start = js.index("function treeSummaryHtml")
+    summary_block = js[
+        summary_start : js.index("function scheduleRootSummaryRefresh", summary_start)
+    ]
     # The single tally lives in the tree-summary row.
-    assert '"tree-summary"' in fn_block
-    assert "tree-summary-count" in fn_block
-    assert "tree-summary-size" in fn_block
+    assert "treeSummaryHtml(data.summary, summaryFiles, summarySize)" in fn_block
+    assert '"tree-summary"' in summary_block
+    assert "tree-summary-count" in summary_block
+    assert "tree-summary-size" in summary_block
     # The duplicate header tally must not come back.
     assert "updateHeaderStats" not in js
     assert "header-stats" not in js

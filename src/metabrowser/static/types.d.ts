@@ -277,6 +277,24 @@ type MetabrowserTreeExpansion = {
   visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
 };
 
+type MetabrowserPendingTallyWatchdog = Readonly<{
+  dispose(): void;
+  reconcile(): void;
+}>;
+
+type MetabrowserPendingTallyDiagnosticsRuntime = Readonly<{
+  create(options: {
+    cancel?: (handle: number) => void;
+    collect(context: { elapsedMs: number; episode: number }): unknown;
+    delayMs: number;
+    hasPending(): boolean;
+    now?: () => number;
+    onError?: (error: unknown) => void;
+    report(payload: unknown): unknown | Promise<unknown>;
+    schedule?: (callback: () => void, delayMs: number) => number;
+  }): MetabrowserPendingTallyWatchdog;
+}>;
+
 type MetabrowserKnownFileCatalogWireEntry = {
   children?: Array<MetabrowserKnownFileCatalogWireEntry> | null;
   logical_ext?: string;
@@ -549,6 +567,7 @@ declare global {
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
+    MetabrowserPendingTallyDiagnostics: MetabrowserPendingTallyDiagnosticsRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
@@ -567,6 +586,8 @@ declare global {
       }>;
       INDEX_PROGRESS_POLL_MS?: number;
       INDEX_PROGRESS_UPDATE_FILES?: number;
+      PENDING_TALLY_DIAGNOSTIC_DELAY_MS?: number;
+      PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT?: number;
       RECENT_CLUSTER_PCT?: number;
       RECENT_DEFAULT_WINDOW?: string;
       RECENT_LIMIT?: number;

@@ -140,6 +140,13 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    `renderTreeNodes`, keeping the endpoint’s totals and truncation reporting.
    This includes `live`, whose 90-second cutoff comes from the same server-owned window
    mapping as the longer choices.
+   Each fixed window carries its cumulative file count in the age menu.
+   The counts come from the same authoritative inventory snapshot as the nav summary and
+   file-type tallies, with tracked and ignored values kept separate so **Show ignored**
+   changes the displayed totals without another scan.
+   Opening the age menu refreshes that snapshot because rolling-window membership can
+   change without a filesystem event; refreshed count cells update in place so focus
+   stays within the open menu.
 8. **Filter state is transient and stays out of the URL hash.** Filters answer a
    question about the current view, so each page load starts clean; they are neither
    durable user preferences nor part of a file’s address.
@@ -148,7 +155,7 @@ Defaults chosen to unblock implementation; each is cheap to change during review
 9. **Type filtering is by literal extension, offered from what the tree contains.** The
    menu lists real extensions (`.md`, `.py`, `.ts`) rather than abstract `ft-*`
    families, ranked by frequency, capped at 20, each row carrying its tally.
-   Tallies come from one server index pass (`InventoryIndex.file_type_tallies`, carried
+   Tallies come from one server index pass (`InventoryIndex.navigation_tallies`, carried
    on `/api/tree`), not from the Quick File catalog: that catalog drops gitignored
    entries by design, so a menu built from it undercounts every type the tree still
    shows while gitignored rows are visible.
@@ -312,7 +319,16 @@ the dimension’s default, so clearing one dimension is a pick rather than a sep
 control. Age and size are single-select (`menuitemradio`, closes on pick); type is
 multi-select (`menuitemcheckbox`, stays open), ranked by frequency and capped at 20,
 each row carrying the tree’s own file-type icon and its tally.
-The aggregate presets use the same right-aligned tally:
+Age rows and aggregate type presets use the same right-aligned tally:
+
+```
+   ✓   Any age
+       Live          4
+       Past hour    18
+       Past day     63
+       Past week   214
+       Past month  487
+```
 
 ```
    ✓   Any type
@@ -480,11 +496,13 @@ reading the CSS.
 
 Tracked as beads under epic `mb-pcih`:
 
-- [x] `mb-r4tq` — extension tallies now come from `InventoryIndex.file_type_tallies`
+- [x] `mb-r4tq` — extension tallies now come from `InventoryIndex.navigation_tallies`
   rather than the gitignore-filtered Quick File catalog, with tracked and ignored counts
   kept apart so the menu follows **Show ignored**
 - [x] `mb-6wuy` — Docs, Code, and Data carry index-wide tallies from the same pass,
   including extensionless preset names such as `README` and `LICENSE`
+- [x] `mb-32pi` — Live, Past hour, Past day, Past week, and Past month carry cumulative
+  index-wide tallies from that pass and use the file-type rows’ count style
 - [x] `mb-5e20` — the dropdown gained arrow-key row traversal (the gap was the behavior,
   not only its test) plus coverage
 - [x] `mb-9zrh` — superseded by `mb-g675`; what `Live` is turned out to be narrower than

@@ -34,6 +34,31 @@ METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab ./pa
 The events and tail routes are intentionally long-lived and are excluded from ordinary
 slow-request warnings.
 
+## Navigation API Check
+
+Run the navigation scenario directly against the ASGI application:
+
+```shell
+metab ./path/to/directory --check-api
+```
+
+The command starts the normal inventory lifecycle in-process, requests the initial tree,
+enables the Live filter, clears it, waits for the index to finish, and requests the
+final tree. It does not open a browser or bind a network port.
+The normalized output includes HTTP status codes, an explicit index outcome, and the
+final row, file, byte, and index counts.
+The command exits nonzero if a route or response contract fails.
+For an unusually large or slow root, extend the default 60-second wait:
+
+```shell
+metab ./path/to/directory --check-api --index-timeout 180
+```
+
+This scenario is suitable for reproducing navigation failures on a large local directory
+and for a deterministic golden test on a checked-in fixture.
+It complements focused concurrency tests, which can force a mutation at an exact
+inventory operation that a filesystem timing test cannot reproduce reliably.
+
 ## Task Snapshot
 
 Enable the debug endpoint only for local investigation:
@@ -70,6 +95,25 @@ One refresh is self-healing.
 Repeated refreshes are worth reporting with the root size, filesystem type, and
 surrounding slow-operation messages because they indicate that filesystem events are
 arriving faster than the browser stream can consume them.
+
+### Pending Folder Totals
+
+A folder count, size, or modification time that remains pending for five seconds emits
+one warning in the browser console and one correlated warning in the server log.
+The warning is reported once per unresolved episode, so a long scan does not repeat the
+same message.
+
+Use the shared diagnostic ID to compare the two records.
+The browser record includes the active filters and data source, visible pending rows,
+cached tree values, file-store values, scan progress, and event-stream state.
+The server record adds the inventory and walker status, pending-directory count,
+subscriber and connection counts, event position, and aggregate and generation state for
+a bounded sample of affected paths.
+
+When the server inventory is already complete, the browser reloads the authoritative
+tree after recording the warning.
+This safety refresh repairs a stale rendered snapshot while preserving the diagnostic
+evidence needed to find how it became stale.
 
 ## Plugin Problems
 
