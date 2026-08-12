@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ from metabrowser.cli.common import apply_log_level
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
+
+LOG = logging.getLogger(__name__)
 
 _INDEX_READY_TIMEOUT_S = 60.0
 _INDEX_READY_POLL_S = 0.05
@@ -48,6 +51,14 @@ class _Response:
 
     def json(self) -> Any:
         return json.loads(self.body)
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexResult:
+    """Terminal or failed outcome from waiting for the inventory."""
+
+    detail: str
+    completed: bool
 
 
 class _InProcessClient:
@@ -151,6 +162,12 @@ class _InProcessClient:
             # failed step instead of exposing a diagnostic traceback.
             if status_code is None:
                 raise CLIError(f"navigation API request failed for {path}") from exc
+            LOG.debug(
+                "navigation API route raised after HTTP %d path=%s",
+                status_code,
+                path,
+                exc_info=True,
+            )
         if status_code is None:
             raise CLIError(f"navigation API returned no response for {path}")
         return _Response(status_code=status_code, body=b"".join(body_parts))
@@ -209,37 +226,45 @@ def _read_json(response: Any) -> Any:
         return None
 
 
-async def _wait_for_index(client: _InProcessClient) -> bool:
+async def _wait_for_index(
+    client: _InProcessClient,
+    *,
+    timeout_s: float = _INDEX_READY_TIMEOUT_S,
+) -> _IndexResult:
     """Poll the cheap progress route until the inventory reaches a terminal state."""
 
-    deadline = time.monotonic() + _INDEX_READY_TIMEOUT_S
+    deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         response = await client.get("/api/index/progress")
         if response.status_code != 200:
-            return False
+            return _IndexResult(f"HTTP {response.status_code}", False)
         payload = _read_json(response)
         if isinstance(payload, dict):
             status = payload.get("status")
             if status in ("done", "truncated"):
-                return True
+                return _IndexResult(status, True)
             if status == "failed":
-                return False
+                return _IndexResult("failed", False)
+        else:
+            return _IndexResult("invalid progress response", False)
         await asyncio.sleep(_INDEX_READY_POLL_S)
-    return False
+    return _IndexResult(f"timeout after {timeout_s:g}s", False)
 
 
 async def _run_navigation_scenario(
     app: ASGIApp,
-) -> tuple[_Response, _Response, _Response, bool, _Response]:
+    *,
+    index_timeout_s: float = _INDEX_READY_TIMEOUT_S,
+) -> tuple[_Response, _Response, _Response, _IndexResult, _Response]:
     """Exercise the navigation routes while the background index is active."""
 
     async with _InProcessClient(app) as client:
         initial = await client.get("/api/tree", params={"depth": "2"})
         live = await client.get("/api/recent", params={"window": "live"})
         cleared = await client.get("/api/tree", params={"depth": "2"})
-        index_completed = await _wait_for_index(client)
+        index_result = await _wait_for_index(client, timeout_s=index_timeout_s)
         final = await client.get("/api/tree", params={"depth": "2"})
-    return initial, live, cleared, index_completed, final
+    return initial, live, cleared, index_result, final
 
 
 def run_api_check(
@@ -247,6 +272,7 @@ def run_api_check(
     *,
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
+    index_timeout_s: float = _INDEX_READY_TIMEOUT_S,
 ) -> None:
     """Run the browser's navigation request sequence without a browser."""
 
@@ -264,21 +290,25 @@ def run_api_check(
     from metabrowser import server
 
     server._set_root_dir(resolved)
-    initial, live, cleared, index_completed, final = asyncio.run(
-        _run_navigation_scenario(server.app)
+    initial, live, cleared, index_result, final = asyncio.run(
+        _run_navigation_scenario(server.app, index_timeout_s=index_timeout_s)
     )
 
-    steps = (
+    steps_before_index = (
         _tree_probe_step("initial tree", initial.status_code, _read_json(initial)),
         _recent_step(live.status_code, _read_json(live)),
         _tree_probe_step("cleared filter", cleared.status_code, _read_json(cleared)),
-        _tree_step("final nav", final.status_code, _read_json(final)),
     )
+    final_step = _tree_step("final nav", final.status_code, _read_json(final))
     typer.echo(f"api check: {root}")
     typer.echo("scenario: nav-live-clear")
-    for step in steps:
+    for step in steps_before_index:
         typer.echo(f"{step.label}: {step.status_code}; {step.fields}")
-    passed = index_completed and all(step.valid for step in steps)
+    typer.echo(f"index: {index_result.detail}")
+    typer.echo(f"{final_step.label}: {final_step.status_code}; {final_step.fields}")
+    passed = index_result.completed and all(
+        step.valid for step in (*steps_before_index, final_step)
+    )
     typer.echo(f"result: {'pass' if passed else 'fail'}")
     if not passed:
         raise CLIError("navigation API check failed")

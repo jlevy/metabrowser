@@ -364,8 +364,11 @@ def test_index_progress_completion_refreshes_pending_tallies() -> None:
     assert "function refreshTreeIfPendingTallies()" in js
     fn_start = js.index("function refreshTreeIfPendingTallies()")
     fn_block = js[fn_start : fn_start + 900]
-    assert 'document.querySelector(".tally-pending")' in fn_block
-    assert "await loadTree();" in fn_block
+    assert 'document.querySelector("#tab-files .tally-pending")' in fn_block
+    tree_refresh = fn_block.index("await loadTree();")
+    current_recency = fn_block.index("filterState.get().recency")
+    assert tree_refresh < current_recency
+    assert "loadRecent(recency);" in fn_block
 
     progress_start = js.index("async function refreshIndexProgress(force)")
     progress_block = js[progress_start : progress_start + 2000]

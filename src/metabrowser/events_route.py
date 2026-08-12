@@ -706,9 +706,15 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
     except ValueError:
         return JSONResponse({"error": "Invalid Content-Length"}, status_code=400)
 
-    body = await request.body()
-    if len(body) > PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES:
-        return JSONResponse({"error": "Diagnostic payload too large"}, status_code=413)
+    body_parts: list[bytes] = []
+    body_size = 0
+    async for chunk in request.stream():
+        body_size += len(chunk)
+        if body_size > PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES:
+            return JSONResponse({"error": "Diagnostic payload too large"}, status_code=413)
+        if chunk:
+            body_parts.append(chunk)
+    body = b"".join(body_parts)
     try:
         decoded = json.loads(body)
     except (UnicodeDecodeError, json.JSONDecodeError):

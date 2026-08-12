@@ -109,6 +109,11 @@ $ metab --help
 │                                                       truncation.            │
 │                                                       [default: 500000]      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ API check (--check-api) ────────────────────────────────────────────────────╮
+│ --index-timeout        SECONDS [x>=0.1]  Maximum time to wait for the        │
+│                                          inventory to finish.                │
+│                                          [default: 60.0]                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Remote (--remote) ──────────────────────────────────────────────────────────╮
 │ --base-port          INTEGER RANGE               Starting port for local +   │
 │                      [1<=x<=65535]               remote port search (walks   │
@@ -230,6 +235,11 @@ $ metab
 │ --max-files                     INTEGER RANGE [x>=1]  Max files before       │
 │                                                       truncation.            │
 │                                                       [default: 500000]      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ API check (--check-api) ────────────────────────────────────────────────────╮
+│ --index-timeout        SECONDS [x>=0.1]  Maximum time to wait for the        │
+│                                          inventory to finish.                │
+│                                          [default: 60.0]                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Remote (--remote) ──────────────────────────────────────────────────────────╮
 │ --base-port          INTEGER RANGE               Starting port for local +   │

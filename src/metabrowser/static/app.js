@@ -2071,12 +2071,19 @@ async function refreshTreeIfPendingTallies() {
   if (indexProgressCompletionRefreshInFlight) {
     return;
   }
-  if (!document.querySelector(".tally-pending")) {
+  if (!document.querySelector("#tab-files .tally-pending")) {
     return;
   }
   indexProgressCompletionRefreshInFlight = true;
   try {
     await loadTree();
+    // Match diagnostic recovery: the tree request updates the authoritative
+    // cache but deliberately does not paint over an active recency source.
+    // Re-read after the await so a filter change during the request wins.
+    var recency = filterState ? filterState.get().recency : null;
+    if (recency && recency !== "all") {
+      loadRecent(recency);
+    }
     if (currentPath) {
       setSelectedPath(currentPath);
     }

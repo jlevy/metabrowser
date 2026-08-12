@@ -80,15 +80,24 @@ class _FakeRequest:
         *,
         disconnect_after: int | None = None,
         body: bytes = b"",
+        body_chunks: list[bytes] | None = None,
     ) -> None:
         self.query_params = _FakeQuery(query or {})
         self.headers = _FakeHeaders(headers or {})
         self._is_disconnected_call_count = 0
         self._disconnect_after = disconnect_after
         self._body = body
+        self._body_chunks = body_chunks
+        self.streamed_chunks = 0
 
     async def body(self) -> bytes:
         return self._body
+
+    async def stream(self) -> AsyncIterator[bytes]:
+        chunks = self._body_chunks if self._body_chunks is not None else [self._body]
+        for chunk in chunks:
+            self.streamed_chunks += 1
+            yield chunk
 
     async def is_disconnected(self) -> bool:
         self._is_disconnected_call_count += 1
@@ -479,6 +488,17 @@ def test_pending_tally_diagnostic_rejects_oversized_payload() -> None:
     )
     response = asyncio.run(api_pending_tally_diagnostic(cast(Any, request)))
     assert response.status_code == 413
+
+
+def test_pending_tally_diagnostic_stops_reading_chunked_payload_at_limit() -> None:
+    request = _FakeRequest(
+        body_chunks=[b"a" * 40_000, b"b" * 30_000, b"must-not-be-read"],
+    )
+
+    response = asyncio.run(api_pending_tally_diagnostic(cast(Any, request)))
+
+    assert response.status_code == 413
+    assert request.streamed_chunks == 2
 
 
 def test_api_index_meta_payload_shape(tmp_path: Path) -> None:

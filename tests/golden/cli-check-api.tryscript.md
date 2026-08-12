@@ -30,6 +30,7 @@ scenario: nav-live-clear
 initial tree: 200; response=tree
 live filter: 200; files=0
 cleared filter: 200; response=tree
+index: done
 final nav: 200; rows=2; files=2; size=12; index=done
 result: pass
 ? 0

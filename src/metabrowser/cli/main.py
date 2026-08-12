@@ -42,6 +42,7 @@ _PANEL_MODES = "Modes (default: serve ROOT)"
 _PANEL_SHARED = "Shared by multiple modes (each option names its modes)"
 _PANEL_SERVE = "Serve"
 _PANEL_WALK = "Walk (--walk)"
+_PANEL_CHECK_API = "API check (--check-api)"
 _PANEL_REMOTE = "Remote (--remote)"
 _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
 
@@ -51,7 +52,7 @@ _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
 _MODE_OPTIONS: dict[str, frozenset[str]] = {
     "serve": frozenset({"path", "port", "host", "no_open", "plugins_dir", "log_level"}),
     "walk": frozenset({"fmt", "stream", "path", "detail", "max_depth", "max_files", "log_level"}),
-    "check-api": frozenset({"plugins_dir", "log_level"}),
+    "check-api": frozenset({"plugins_dir", "log_level", "index_timeout"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
@@ -80,6 +81,7 @@ _OPTION_LABELS: dict[str, str] = {
     "detail": "--detail",
     "max_depth": "--max-depth",
     "max_files": "--max-files",
+    "index_timeout": "--index-timeout",
     "base_port": "--base-port",
     "ssh_options": "--ssh-options",
     "gcp": "--gcp",
@@ -331,6 +333,15 @@ def _metab(
         help="Max files before truncation.",
         rich_help_panel=_PANEL_WALK,
     ),
+    # ── API check options ─────────────────────────────────────────
+    index_timeout: float = typer.Option(
+        60.0,
+        "--index-timeout",
+        min=0.1,
+        metavar="SECONDS",
+        help="Maximum time to wait for the inventory to finish.",
+        rich_help_panel=_PANEL_CHECK_API,
+    ),
     # ── Remote options ─────────────────────────────────────────────
     base_port: int = typer.Option(
         DEFAULT_BROWSER_PORT,
@@ -432,6 +443,7 @@ def _metab(
             _require_root(ctx, root, mode),
             plugins_dir=plugins_dir,
             log_level=log_level,
+            index_timeout_s=index_timeout,
         )
     elif remote is not None:
         _reject_root(ctx, root, mode)

@@ -45,8 +45,14 @@ metab ./path/to/directory --check-api
 The command starts the normal inventory lifecycle in-process, requests the initial tree,
 enables the Live filter, clears it, waits for the index to finish, and requests the
 final tree. It does not open a browser or bind a network port.
-The normalized output includes HTTP status codes and the final row, file, byte, and
-index counts, and the command exits nonzero if a route or response contract fails.
+The normalized output includes HTTP status codes, an explicit index outcome, and the
+final row, file, byte, and index counts.
+The command exits nonzero if a route or response contract fails.
+For an unusually large or slow root, extend the default 60-second wait:
+
+```shell
+metab ./path/to/directory --check-api --index-timeout 180
+```
 
 This scenario is suitable for reproducing navigation failures on a large local directory
 and for a deterministic golden test on a checked-in fixture.
