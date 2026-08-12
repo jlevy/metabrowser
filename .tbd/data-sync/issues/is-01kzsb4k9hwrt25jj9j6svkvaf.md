@@ -5,11 +5,13 @@ title: "Repo cache: URL-aware ROOT and serve wiring, plus --cache and --cache-pu
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01kzt6hdasbhx6maqzvtxntxj7
 created_at: 2026-08-11T21:19:59.280Z
-updated_at: 2026-08-11T21:19:59.280Z
+updated_at: 2026-08-12T05:18:55.757Z
 ---
 Detect URL on the raw ROOT string before Path resolution; strip query and fragment; reject /tree/ and /blob/ deep links with a message naming the plain repo URL. Substitute the cached path before run_serve's directory checks and report the originating URL. Background backfill after serving, never fatal. Add --cache and --cache-purge to _MODE_OPTIONS; purge reports before removing and tolerates EACCES on read-only git objects.
