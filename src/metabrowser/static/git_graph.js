@@ -28,6 +28,9 @@
 //   4. Every commit marker uses one smaller outer radius. HEAD and merge
 //      commits remain distinct through concentric shapes without taking
 //      more visual weight than an ordinary vertex.
+//   5. A root commit ends only its own lane instead of clearing every
+//      lane in flight. This is an upstream bug that a single-root
+//      repository cannot expose; it is worth reporting upstream.
 //
 // This module is pure: it fetches nothing, owns no DOM beyond the SVG
 // element it returns, and holds no state between calls. That is what
@@ -167,20 +170,27 @@
       // the first such lane is substituted: if two lanes both lead here
       // (a branch point) the extras are dropped, which is the visual
       // convergence.
-      if (commit.parent_ids.length > 0) {
-        for (const lane of inputSwimlanes) {
-          if (lane.id === commit.id) {
-            if (!firstParentAdded) {
-              outputSwimlanes.push({
-                id: commit.parent_ids[0],
-                color: labelColor(commit, refColors) ?? lane.color,
-              });
-              firstParentAdded = true;
-            }
-            continue;
+      // Divergence 5: upstream wraps this whole loop in
+      // `parentIds.length > 0`, so a root commit emits no output lanes at
+      // all and every unrelated lane still in flight disappears with it.
+      // In a single-root repository the root is last and nothing is in
+      // flight, which is why upstream does not notice. Under `--all` with
+      // grafted or subtree histories a root arrives mid-log, and the
+      // branches beside it would redraw as disconnected tips. The guard
+      // moves inward: a root commit ends its own lane and carries every
+      // other lane forward.
+      for (const lane of inputSwimlanes) {
+        if (lane.id === commit.id) {
+          if (commit.parent_ids.length > 0 && !firstParentAdded) {
+            outputSwimlanes.push({
+              id: commit.parent_ids[0],
+              color: labelColor(commit, refColors) ?? lane.color,
+            });
+            firstParentAdded = true;
           }
-          outputSwimlanes.push({ id: lane.id, color: lane.color });
+          continue;
         }
+        outputSwimlanes.push({ id: lane.id, color: lane.color });
       }
 
       // Parents with no lane yet get one appended: the commit's own lane

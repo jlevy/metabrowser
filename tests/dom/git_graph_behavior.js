@@ -187,6 +187,38 @@ function countTags(svg, tagName) {
   assertEqual("mid-page branch: base collapses them", laneIds(rows[2].outputSwimlanes), []);
 }
 
+// ── A root commit reached while another lane is in flight ────
+
+{
+  //  m        merge of two unrelated histories
+  //  a1
+  //  a0       root of the first history — b1's lane is still in flight
+  //  b1
+  //  b0       root of the second
+  //
+  // Upstream emits no output lanes at all for a root commit, which drops
+  // every unrelated lane with it. A single-root repository puts its root
+  // last, where nothing is in flight, so the bug stays invisible there.
+  const commits = [
+    commit("m", ["a1", "b1"]),
+    commit("a1", ["a0"]),
+    commit("a0", []),
+    commit("b1", ["b0"]),
+    commit("b0", []),
+  ];
+  const { rows } = graph.computeSwimlanes(commits);
+
+  assertEqual("multi-root: merge opens both lanes", laneIds(rows[0].outputSwimlanes), ["a1", "b1"]);
+  assertEqual("multi-root: first root keeps the sibling lane", laneIds(rows[2].outputSwimlanes), [
+    "b1",
+  ]);
+  // The surviving lane is what draws b1 as a continuation rather than as
+  // a disconnected tip floating below the graph.
+  assertEqual("multi-root: sibling stays connected", laneIds(rows[3].inputSwimlanes), ["b1"]);
+  assertEqual("multi-root: sibling keeps its column", graph.commitLaneIndex(rows[3]), 0);
+  assertEqual("multi-root: last root collapses", laneIds(rows[4].outputSwimlanes), []);
+}
+
 // ── Page boundary continuity ─────────────────────────────────
 
 {

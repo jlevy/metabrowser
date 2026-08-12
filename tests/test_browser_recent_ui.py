@@ -24,6 +24,20 @@ def _read_app_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("app.js").read_text()
 
 
+def _function_source(js: str, name: str) -> str:
+    """Return one top-level function's source, up to the next definition.
+
+    These assertions used a fixed character window, which made them fail
+    for the wrong reason: adding an unrelated line near the top of a
+    function pushed the asserted call past the cutoff even though the
+    behavior was intact. Nested functions are indented, so the next
+    column-zero ``function`` is the end of this one.
+    """
+    start = js.index(f"function {name}(")
+    end = js.find("\nfunction ", start + 1)
+    return js[start:] if end == -1 else js[start:end]
+
+
 def _read_styles_css() -> str:
     return proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
 
@@ -139,14 +153,14 @@ def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
 
     js = _read_app_js()
     assert "function initNavTabs()" in js
-    init_block = js[js.index("function initNavTabs()") :][:1500]
+    init_block = _function_source(js, "initNavTabs")
     assert "nav-tab-bar" in init_block
     # Files is declared here rather than discovered from the DOM, so a
     # panel can carry its own lazy first-show hook.
     assert 'registerNavPanel({ id: "files"' in init_block
     assert "activateNavPanel(panelId)" in init_block
 
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1200]
+    activate_block = _function_source(js, "activateNavPanel")
     assert "data-tab-content" in activate_block
     assert "aria-selected" in activate_block
 
@@ -164,7 +178,7 @@ def test_recent_is_not_a_registered_nav_panel() -> None:
     """
 
     js = _read_app_js()
-    init_block = js[js.index("function initNavTabs()") :][:1500]
+    init_block = _function_source(js, "initNavTabs")
     assert 'id: "recent"' not in init_block
     assert "loadRecent" not in init_block
 
@@ -177,7 +191,7 @@ def test_switching_panels_hides_the_file_filter_bar() -> None:
     otherwise show file filters above content they cannot filter."""
 
     js = _read_app_js()
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:2400]
+    activate_block = _function_source(js, "activateNavPanel")
     assert 'getElementById("nav-filter-bar")' in activate_block
     assert 'panelId === "files" ? "" : "none"' in activate_block
 
@@ -189,18 +203,18 @@ def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
     hides — leaving the scroll cue on a hidden element."""
 
     js = _read_app_js()
-    block = js[js.index("function initNavScrollShadow()") :][:1400]
+    block = _function_source(js, "initNavScrollShadow")
     assert "offsetParent !== null" in block
     # The loser is cleared, so a tab switch cannot arm two shadows.
     assert 'other?.classList.remove("scrolled")' in block
     # A tab switch fires no scroll event, so activation re-runs it.
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:2400]
+    activate_block = _function_source(js, "activateNavPanel")
     assert "navScrollShadowUpdate?.()" in activate_block
 
 
 def test_nav_panels_support_an_every_show_retry_hook() -> None:
     js = _read_app_js()
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1800]
+    activate_block = _function_source(js, "activateNavPanel")
     assert "panel?.onShow?.()" in activate_block
     assert activate_block.index("panel?.onFirstShow?.()") < activate_block.index(
         "panel?.onShow?.()"
@@ -211,7 +225,7 @@ def test_preview_shell_uses_generation_claims_across_owners() -> None:
     js = _read_app_js()
     assert "function claimPreview(owner)" in js
     assert "function isPreviewClaimCurrent(claim)" in js
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1800]
+    activate_block = _function_source(js, "activateNavPanel")
     assert "claimPreview(`nav:${panelId}`)" in activate_block
     shell_block = js[js.index("window.MetabrowserShell = Object.freeze") :][:600]
     assert "claimPreview" in shell_block

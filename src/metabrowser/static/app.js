@@ -2048,6 +2048,16 @@ function activateNavPanel(panelId) {
     return;
   }
   claimPreview(`nav:${panelId}`);
+  // Claiming invalidates any in-flight file or commit load, but the
+  // placeholder those loads already painted is still on screen and their
+  // responses can no longer replace it — leaving "Loading file…" up until
+  // some unrelated navigation redraws the pane. Retire the placeholder
+  // here. Rendered content is left alone: it is still a valid preview,
+  // and a tab switch is not a reason to throw it away.
+  const preview = document.getElementById("preview-pane");
+  if (preview?.firstElementChild?.classList.contains("loading")) {
+    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
+  }
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
     const selected = btn.dataset.tab === panelId;
     btn.classList.toggle("active", selected);
