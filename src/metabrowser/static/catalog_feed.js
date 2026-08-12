@@ -19,6 +19,7 @@
    *   authoritative?: boolean) => void} applyBulkSnapshot
    * @property {(payload: {upserts?: Array<{p: string, e: string}>, removes?: string[]}) => void} applyCatalogChange
    * @property {() => void} markComplete
+   * @property {() => void} markIncomplete
    */
 
   /**
@@ -51,6 +52,7 @@
     let suppressNextSentinelRefetch = false;
     let authoritativeRefetchPending = false;
     let lastBulkWasAuthoritative = false;
+    let lastBulkHadCompleteCoverage = false;
 
     function clearRetry() {
       if (retryHandle !== null) {
@@ -100,17 +102,22 @@
           // the stream was down. A payload built mid-walk is only a prefix and
           // must merge instead.
           const authoritative = payload.complete === true;
+          const completeCoverage = authoritative && payload.truncated !== true;
           catalog.applyBulkSnapshot(
             Array.isArray(payload.files) ? payload.files : [],
-            authoritative && payload.truncated !== true,
+            completeCoverage,
             authoritative,
           );
           lastBulkWasAuthoritative = authoritative;
+          lastBulkHadCompleteCoverage = completeCoverage;
           if (authoritative) {
             authoritativeRefetchPending = false;
           }
         } else if (lastBulkWasAuthoritative) {
           authoritativeRefetchPending = false;
+          if (lastBulkHadCompleteCoverage) {
+            catalog.markComplete();
+          }
         }
         fetchedOnce = true;
         retryAttempts = 0;
@@ -163,6 +170,7 @@
     /** Require the next accepted bulk payload to establish membership. */
     function requestContinuityRefetch() {
       authoritativeRefetchPending = true;
+      catalog.markIncomplete();
       requestRefetch();
     }
 
@@ -228,17 +236,18 @@
       pendingChanges = [];
       fetchedOnce = false;
       lastBulkWasAuthoritative = false;
+      lastBulkHadCompleteCoverage = false;
       requestContinuityRefetch();
     }
 
     /**
-     * The walker finished after an incomplete bulk fetch. On one
-     * uninterrupted stream, live ops already converged the contents
-     * and only the flag flips. After a reconnect, deletions from the
-     * gap require one finished, authoritative payload before the
-     * catalog can claim convergence.
+     * The walker reached a terminal state after an incomplete bulk
+     * fetch. After a reconnect, deletions from the gap require one
+     * terminal, authoritative payload even when the walk stopped at
+     * its file cap. Only an uncapped walk establishes full coverage.
+     * @param {boolean} [truncated=false]
      */
-    function onIndexComplete() {
+    function onIndexComplete(truncated = false) {
       if (disposed) {
         return;
       }
@@ -246,7 +255,9 @@
         requestRefetch();
         return;
       }
-      catalog.markComplete();
+      if (!truncated) {
+        catalog.markComplete();
+      }
     }
 
     function dispose() {

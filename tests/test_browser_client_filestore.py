@@ -107,6 +107,15 @@ def test_resync_event_reconnects_for_a_fresh_snapshot() -> None:
     )
 
 
+def test_truncated_index_completion_repairs_catalog_without_claiming_full_coverage() -> None:
+    js = _read_app_js()
+    start = js.index('addEventListener("capability.update"')
+    block = js[start : start + 700]
+    assert "data.index.complete === true" in block
+    assert "data.index.truncated !== true" not in block
+    assert "quickFileCatalogFeed?.onIndexComplete(data.index.truncated === true)" in block
+
+
 def test_event_source_backoff_resets_only_after_a_stable_interval() -> None:
     js = _read_app_js()
     reconnect_start = js.index("function _scheduleInventoryReconnect()")

@@ -41,6 +41,9 @@ function makeCatalog() {
     markComplete() {
       calls.push({ kind: "markComplete" });
     },
+    markIncomplete() {
+      calls.push({ kind: "markIncomplete" });
+    },
   };
 }
 
@@ -159,6 +162,10 @@ async function main() {
     // prefix while the restarted server scans, so it cannot remove a
     // path that disappeared while the stream was down.
     feed.start();
+    check(
+      "reconnect marks catalog coverage incomplete",
+      catalog.calls.some((call) => call.kind === "markIncomplete"),
+    );
     await tick();
     check("reconnect open refetches before its sentinel", pending.length === 2);
     feed.onSentinelSnapshot();
@@ -185,6 +192,50 @@ async function main() {
         "completion refetch applies authoritative membership",
         finalBulk?.kind === "bulk" &&
           finalBulk.complete === true &&
+          finalBulk.authoritative === true,
+      );
+    }
+  }
+
+  // ── A capped scan still repairs reconnect membership ──────────
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[0].resolve(
+      jsonResponse({ complete: true, files: [{ p: "deleted-while-away.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[1].resolve(jsonResponse({ complete: false, files: [] }));
+    await tick();
+    await tick();
+
+    feed.onIndexComplete(true);
+    await tick();
+    check("truncated completion repairs reconnect membership", pending.length === 3);
+    check(
+      "truncated completion never claims complete root coverage",
+      !catalog.calls.some((call) => call.kind === "markComplete"),
+    );
+
+    if (pending[2]) {
+      pending[2].resolve(jsonResponse({ complete: true, truncated: true, files: [] }));
+      await tick();
+      await tick();
+      const finalBulk = catalog.calls[catalog.calls.length - 1];
+      check(
+        "truncated completion refetch is authoritative but incomplete",
+        finalBulk?.kind === "bulk" &&
+          finalBulk.complete === false &&
           finalBulk.authoritative === true,
       );
     }
@@ -230,6 +281,57 @@ async function main() {
         (call) =>
           call.kind === "bulk" && call.files.some((file) => file.p === "after-reconnect.txt"),
       ),
+    );
+  }
+
+  // ── Conditional reconnect fetch preserves prior coverage ──────
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[0].resolve(jsonResponse({ complete: true, files: [] }));
+    await tick();
+    await tick();
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[1].resolve(jsonResponse({}, 304));
+    await tick();
+    await tick();
+    const reconnectCalls = catalog.calls.slice(1).map((call) => call.kind);
+    check(
+      "304 reconnect restores known complete coverage",
+      reconnectCalls.includes("markIncomplete") && reconnectCalls.includes("markComplete"),
+      reconnectCalls.join(","),
+    );
+  }
+
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[0].resolve(jsonResponse({ complete: true, truncated: true, files: [] }));
+    await tick();
+    await tick();
+
+    feed.start();
+    feed.onSentinelSnapshot();
+    await tick();
+    pending[1].resolve(jsonResponse({}, 304));
+    await tick();
+    await tick();
+    check(
+      "304 reconnect keeps capped coverage incomplete",
+      !catalog.calls.some((call) => call.kind === "markComplete"),
     );
   }
 
@@ -407,6 +509,11 @@ async function main() {
       "a truncated catalog is not reported complete",
       catalog.calls[0]?.complete === false,
       String(catalog.calls[0]?.complete),
+    );
+    feed.onIndexComplete(true);
+    check(
+      "a truncated terminal event does not mark the catalog complete",
+      !catalog.calls.some((call) => call.kind === "markComplete"),
     );
   }
 }

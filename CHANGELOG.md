@@ -57,8 +57,10 @@ Quick File navigation:
   batch. Removing 2,000 directories from a 100,000-entry catalog went from 1441ms to
   52ms, and stays flat as the batch grows.
 - Quick File catalog recovery now closes the last reconnect gap: if a restarted server
-  is still scanning, completion triggers one finished membership fetch before stale
-  paths can survive or the palette claims complete coverage.
+  is still scanning, its terminal state triggers one authoritative membership fetch
+  before stale paths can survive.
+  This also repairs capped inventories while keeping their root coverage labeled
+  incomplete.
 
 Document rendering:
 

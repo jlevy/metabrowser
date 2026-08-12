@@ -5116,12 +5116,10 @@ function _createInventoryEventSource() {
   inventoryEventSource.addEventListener("capability.update", (e) => {
     try {
       var data = JSON.parse(e.data);
-      // A truncated walk is "complete" in the sense that it stopped, but the
-      // files past the max-files cap were never indexed, so the catalog can
-      // never be a complete view of the root. Only an untruncated walk may
-      // promote the catalog to complete.
-      if (data.index && data.index.complete === true && data.index.truncated !== true) {
-        quickFileCatalogFeed?.onIndexComplete();
+      // Every terminal walk can repair membership lost across a reconnect.
+      // A capped walk remains incomplete for the root even after that repair.
+      if (data.index && data.index.complete === true) {
+        quickFileCatalogFeed?.onIndexComplete(data.index.truncated === true);
       }
     } catch (_e) {
       /* ignore */
