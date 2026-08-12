@@ -83,7 +83,7 @@ function makeSandbox(options) {
     "utf-8",
   );
   vm.runInContext(source, sandbox, { filename: "filter_state.js" });
-  return { state: sandbox.MetabrowserFilterState, store, events, sandbox };
+  return { state: sandbox.metabrowser.filterState, store, events, sandbox };
 }
 
 // ── Transient defaults ─────────────────────────────────────────
@@ -182,6 +182,30 @@ function makeSandbox(options) {
 
 const NOW = 1_700_000_000;
 const HOUR = 3600;
+
+{
+  const { state } = makeSandbox();
+  const link = { isSymlink: true, mtime: NOW - 5, size: 10, path: "linked.md", ext: ".md" };
+  assertTrue(
+    "a symlink remains visible with no file filter",
+    state.rowMatches(link, state.get(), NOW),
+  );
+  assertEqual(
+    "a symlink is not classified by file age",
+    state.rowMatches(link, Object.assign(state.get(), { recency: "live" }), NOW),
+    false,
+  );
+  assertEqual(
+    "a symlink is not classified by file type",
+    state.rowMatches(link, Object.assign(state.get(), { types: [".md"] }), NOW),
+    false,
+  );
+  assertEqual(
+    "a symlink is not classified by file size",
+    state.rowMatches(link, Object.assign(state.get(), { size: "100k" }), NOW),
+    false,
+  );
+}
 
 {
   const { state } = makeSandbox();

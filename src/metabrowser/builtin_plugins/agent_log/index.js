@@ -28,10 +28,18 @@
   }
   const fc = filterControls;
 
-  // ── Per-plugin filter state ─────────────────────────────────────
-  let activeKindFilters = null; // Set<string> | null
-  let logFilterUnbind = null;
+  // ── Per-view filter and raw-payload state ───────────────────────
+  const logViewStates = new WeakMap();
   let chartsRenderGeneration = 0;
+
+  function newLogViewState() {
+    return {
+      activeKindFilters: /** @type {Set<string> | null} */ (null),
+      totalKindFilters: 0,
+      unbind: /** @type {(() => void) | null} */ (null),
+      rawCache: new Map(),
+    };
+  }
 
   function kindClassToken(kind) {
     return String(kind || "unknown").replace(/[^a-z0-9_-]/gi, "-");
@@ -39,6 +47,10 @@
 
   function kindLabel(kind) {
     return String(kind || "unknown").replace(/[-_]+/g, " ");
+  }
+
+  function isUnknownKind(kind) {
+    return !kind || String(kind).toLowerCase() === "unknown";
   }
 
   function fmtDuration(s) {
@@ -63,6 +75,11 @@
     );
   }
 
+  function eventSummaryText(evt) {
+    const text = evt.summary || "";
+    return isUnknownKind(evt.kind) ? text.replace(/^\[unknown\]\s*/i, "") : text;
+  }
+
   function renderSummary(evt) {
     if (evt.summary_parts && evt.summary_parts.length > 0) {
       return evt.summary_parts
@@ -75,7 +92,7 @@
         })
         .join("");
     }
-    const text = evt.summary || "";
+    const text = eventSummaryText(evt);
     const m = text.match(/^(\[[^\]]+\])\s*(.*)/);
     if (m) {
       const rest = m[2];
@@ -89,7 +106,7 @@
     return mb.escapeHtml(text);
   }
 
-  function renderLogEvent(evt, idx) {
+  function renderLogEventHtml(evt, idx, state) {
     const kind = String(evt.kind || "unknown");
     const kindClass = `kind-${kindClassToken(kind)}${evt.is_error ? " error" : ""}`;
     let label = kindLabel(kind);
@@ -102,25 +119,34 @@
     // The per-event raw container is mounted empty; mountLogEventRaw
     // populates it lazily on first expand (see toggleEvent below).
     // Stashing evt.raw on the DOM via a data attribute would blow up
-    // the HTML for big payloads, so we keep it in a module-scope
+    // the HTML for big payloads, so the owning view keeps it in a
     // registry keyed by event idx instead.
-    _logEventRawCache.set(idx, evt.raw);
+    state.rawCache.set(idx, evt.raw);
+
+    const kindHtml = isUnknownKind(kind)
+      ? ""
+      : `<span class="log-event-kind ${kindClass}">${mb.escapeHtml(label)}</span>`;
+    const isFiltering =
+      state.activeKindFilters && state.activeKindFilters.size < state.totalKindFilters;
+    const visible = !isFiltering
+      ? true
+      : isUnknownKind(kind)
+        ? false
+        : state.activeKindFilters.has(kind);
 
     return (
       '<div class="log-event" data-idx="' +
       idx +
       '" data-kind="' +
       mb.escapeHtml(kind) +
-      '">' +
+      '"' +
+      (visible ? "" : ' style="display: none;"') +
+      ">" +
       '<div class="log-event-header" onclick="toggleEvent(this)">' +
       mb.icons.chevron +
-      '<span class="log-event-kind ' +
-      kindClass +
-      '">' +
-      mb.escapeHtml(label) +
-      "</span>" +
+      kindHtml +
       '<span class="log-event-summary" title="' +
-      mb.escapeHtml(evt.summary || "") +
+      mb.escapeHtml(eventSummaryText(evt)) +
       '">' +
       renderSummary(evt) +
       "</span>" +
@@ -132,11 +158,17 @@
     );
   }
 
-  // Module-scope cache of evt.raw payloads, indexed by event idx.
-  // toggleEvent() in the shell pulls this on first-expand and mounts
-  // an inline structured tree (if the structured plugin is present)
-  // or falls back to a flat JSON block.
-  const _logEventRawCache = new Map();
+  function stateForDescendant(element) {
+    let current = element;
+    while (current) {
+      const state = logViewStates.get(current);
+      if (state) {
+        return state;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
 
   function mountLogEventRaw(rawEl) {
     if (rawEl.dataset.mounted === "1") {
@@ -144,7 +176,7 @@
     }
     rawEl.dataset.mounted = "1";
     const idx = parseInt(rawEl.getAttribute("data-raw-idx") || "-1", 10);
-    const raw = _logEventRawCache.get(idx);
+    const raw = stateForDescendant(rawEl)?.rawCache.get(idx);
     if (raw === undefined) {
       return;
     }
@@ -189,10 +221,13 @@
   }
   window.metabrowserAgentLog.mountLogEventRaw = mountLogEventRaw;
 
-  function renderFilterBar(events) {
+  function renderFilterBar(events, state) {
     const counts = {};
     for (let i = 0; i < events.length; i++) {
-      const k = events[i].kind;
+      const k = String(events[i].kind || "unknown");
+      if (isUnknownKind(k)) {
+        continue;
+      }
       counts[k] = (counts[k] || 0) + 1;
     }
     const kindOrder = ["thinking", "text", "tool_call", "tool_result", "system", "init", "result"];
@@ -202,11 +237,14 @@
         kinds.push(k);
       }
     });
-    if (kinds.length === 0) {
+    if (kinds.length <= 1) {
+      state.activeKindFilters = null;
+      state.totalKindFilters = 0;
       return "";
     }
 
-    activeKindFilters = new Set(kinds);
+    state.activeKindFilters = new Set(kinds);
+    state.totalKindFilters = kinds.length;
 
     const options = kinds.map((kind) => ({
       value: kind,
@@ -217,6 +255,7 @@
       fc.groupHtml({
         key: "agent-event-kind",
         select: "many",
+        layout: "wrap",
         label: "Event types",
         options,
         value: kinds,
@@ -225,8 +264,8 @@
     );
   }
 
-  function toggleKindFilter(kind, root) {
-    if (!activeKindFilters) {
+  function toggleKindFilter(kind, root, state) {
+    if (!state.activeKindFilters) {
       return;
     }
     const btn = Array.from(
@@ -235,36 +274,37 @@
     if (!btn) {
       return;
     }
-    if (activeKindFilters.has(kind)) {
-      activeKindFilters.delete(kind);
+    if (state.activeKindFilters.has(kind)) {
+      state.activeKindFilters.delete(kind);
       btn.setAttribute("aria-pressed", "false");
     } else {
-      activeKindFilters.add(kind);
+      state.activeKindFilters.add(kind);
       btn.setAttribute("aria-pressed", "true");
     }
+    const isFiltering = state.activeKindFilters.size < state.totalKindFilters;
     root.querySelectorAll(".log-event[data-kind]").forEach((el) => {
       const eventKind = el.getAttribute ? el.getAttribute("data-kind") : el.dataset.kind;
-      if (eventKind !== kind) {
-        return;
-      }
-      el.style.display = activeKindFilters.has(kind) ? "" : "none";
+      const visible = isUnknownKind(eventKind)
+        ? !isFiltering
+        : state.activeKindFilters.has(eventKind);
+      el.style.display = visible ? "" : "none";
     });
   }
 
-  function bindFilterBar(container) {
+  function bindFilterBar(container, state) {
     return fc.bind(container, {
       onChange(key, value, select) {
         if (key !== "agent-event-kind" || select !== "many") {
           return;
         }
-        toggleKindFilter(value, container);
+        toggleKindFilter(value, container, state);
       },
     });
   }
 
   // ── Renderers ───────────────────────────────────────────────────
 
-  function renderLogHtml(data) {
+  function renderLogHtml(data, state) {
     const s = data.summary || {};
     let summary = '<div class="log-summary">';
     if (s.model) {
@@ -285,8 +325,8 @@
       summary += logStat("Lines skipped", `${s.lines_skipped} of ${s.lines_total} (oversized)`);
     }
     summary += "</div>";
-    const filterBar = renderFilterBar(data.events || []);
-    const events = (data.events || []).map((evt, i) => renderLogEvent(evt, i));
+    const filterBar = renderFilterBar(data.events || [], state);
+    const events = (data.events || []).map((evt, i) => renderLogEventHtml(evt, i, state));
     return summary + filterBar + events.join("");
   }
 
@@ -320,27 +360,33 @@
   }
 
   function renderLog(container, ctx) {
-    if (logFilterUnbind) {
-      logFilterUnbind();
-      logFilterUnbind = null;
-    }
-    // Drop stale per-event raw payloads from the previously rendered
-    // log; renderLogHtml repopulates them fresh below. Without this
-    // the cache grows across the whole session.
-    _logEventRawCache.clear();
+    disposeLog(container);
+    const state = newLogViewState();
+    logViewStates.set(container, state);
     mb.perf.measure("renderAgentLog:log", () => {
-      container.innerHTML = renderLogHtml(ctx.raw);
-      logFilterUnbind = bindFilterBar(container);
+      container.innerHTML = renderLogHtml(ctx.raw, state);
+      state.unbind = bindFilterBar(container, state);
     });
   }
 
-  function disposeLog() {
-    if (logFilterUnbind) {
-      logFilterUnbind();
-      logFilterUnbind = null;
+  function disposeLog(container) {
+    if (!container) {
+      return;
     }
-    activeKindFilters = null;
-    _logEventRawCache.clear();
+    const state = logViewStates.get(container);
+    if (!state) {
+      return;
+    }
+    if (state.unbind) {
+      state.unbind();
+    }
+    state.rawCache.clear();
+    logViewStates.delete(container);
+  }
+
+  function renderLogEvent(container, event, index) {
+    const state = logViewStates.get(container);
+    return state ? renderLogEventHtml(event, index, state) : "";
   }
 
   function renderRaw(container, ctx) {

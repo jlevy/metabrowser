@@ -5,9 +5,9 @@
 //
 // Three shapes, one atom:
 //   .chip                        the pill itself
-//   .chip-group[data-select=one] joined single-select (radiogroup)
-//   .chip-group[data-select=many] joined multi-select (independent
-//                                 toggles, each its own tab stop)
+//   .chip-group[data-layout=joined] single-row segmented control
+//   .chip-group[data-layout=wrap]   wrapping cluster of independent
+//                                   chips
 //   .chip-toggle                 a standalone boolean chip
 //
 // Single-select segments carry role="radio"/aria-checked and fill with
@@ -71,17 +71,20 @@
    * @typedef {{value: string, label: string, title?: string, className?: string,
    *            count?: number, icon?: string, iconClass?: string,
    *            ageClass?: string}} ChipOption
-   * @typedef {{key: string, select?: string, label: string, options: ChipOption[],
-   *            value: string | string[] | null, className?: string}} ChipGroupSpec
+   * @typedef {{key: string, select?: string, layout?: string, label: string,
+   *            options: ChipOption[], value: string | string[] | null,
+   *            className?: string}} ChipGroupSpec
    */
 
   /**
-   * One joined group. `key` rides every segment as data-chip-key so a
-   * single delegated listener can serve every group in a bar.
+   * One semantic group, rendered either as a single joined row or as a
+   * wrapping chip cluster. `key` rides every segment as data-chip-key
+   * so a single delegated listener can serve every group in a bar.
    * @param {ChipGroupSpec} spec
    */
   function groupHtml(spec) {
     const select = spec.select === "many" ? "many" : "one";
+    const layout = spec.layout === "wrap" ? "wrap" : "joined";
     const current = spec.value !== undefined ? spec.value : null;
     const segments = (spec.options || [])
       .map((opt) => {
@@ -106,7 +109,8 @@
     const role = select === "one" ? "radiogroup" : "group";
     const cls = spec.className ? ` ${esc(spec.className)}` : "";
     return (
-      `<span class="chip-group${cls}" data-select="${select}" data-chip-group="${esc(spec.key)}"` +
+      `<span class="chip-group${cls}" data-select="${select}" data-layout="${layout}"` +
+      ` data-chip-group="${esc(spec.key)}"` +
       ` role="${role}" aria-label="${esc(spec.label)}">${segments}</span>`
     );
   }

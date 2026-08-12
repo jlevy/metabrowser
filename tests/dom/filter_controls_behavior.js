@@ -80,6 +80,7 @@ const single = fc.groupHtml({
 });
 assertContains("single-select group is a radiogroup", single, 'role="radiogroup"');
 assertContains("single-select group declares its variant", single, 'data-select="one"');
+assertContains("single-row groups default to joined layout", single, 'data-layout="joined"');
 assertContains("segments are radios", single, 'role="radio"');
 assertContains(
   "the active segment is checked",
@@ -99,6 +100,7 @@ assertMissing("single-select does not use aria-pressed", single, "aria-pressed")
 const multi = fc.groupHtml({
   key: "types",
   select: "many",
+  layout: "wrap",
   label: "File type",
   options: [
     { value: "ft-md", label: "md", className: "chip-ft ft-md" },
@@ -108,6 +110,7 @@ const multi = fc.groupHtml({
 });
 assertContains("multi-select group is a plain group", multi, 'role="group"');
 assertContains("multi-select group declares its variant", multi, 'data-select="many"');
+assertContains("long multi-select groups declare wrapped layout", multi, 'data-layout="wrap"');
 assertContains("selected chips are pressed", multi, 'data-chip-value="ft-md" aria-pressed="true"');
 assertContains("unselected chips are not", multi, 'data-chip-value="ft-code" aria-pressed="false"');
 assertContains("type chips carry their file-type class", multi, 'class="chip chip-ft ft-md"');

@@ -177,6 +177,17 @@
       : fallback;
   }
 
+  /** @param {number} count @param {string} [modifier] */
+  function fileCount(count, modifier = "") {
+    const noun = count === 1 ? "file" : "files";
+    return `${count.toLocaleString()}${modifier ? ` ${modifier}` : ""} ${noun}`;
+  }
+
+  /** @param {number} count */
+  function formattedMatchCount(count) {
+    return `${count.toLocaleString()} ${count === 1 ? "match" : "matches"}`;
+  }
+
   /**
    * Create the browser-local provider. It searches one immutable catalog snapshot and
    * never reaches the network.
@@ -265,14 +276,13 @@
           score: ordered.length - index,
         });
       });
+      const searchScope = fileCount(snapshot.observedCount, snapshot.complete ? "" : "indexed");
       const statusMessage =
         results.length === 0
-          ? snapshot.complete
-            ? `No files match your search among ${snapshot.observedCount} files.`
-            : `No indexed files match your search. More files may appear as scanning continues.`
+          ? `No matches in ${searchScope}.${snapshot.complete ? "" : " Scanning continues."}`
           : snapshot.complete
-            ? `${snapshot.observedCount} files are searchable.`
-            : `${snapshot.observedCount} indexed files are searchable. More files may appear as scanning continues.`;
+            ? `${formattedMatchCount(matchCount)}.`
+            : `${formattedMatchCount(matchCount)} in ${searchScope}. Scanning continues.`;
       return Object.freeze({
         candidateCount: snapshot.observedCount,
         complete: snapshot.complete,

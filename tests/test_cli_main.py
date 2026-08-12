@@ -438,10 +438,8 @@ def test_shutdown_noise_filter_drops_expected_cancellation_only() -> None:
     assert _shutdown_noise_filter(unexpected)
 
 
-def test_force_exit_silences_uvicorn_error_logger() -> None:
-    """A first Ctrl-C shuts down gracefully with logging intact; a second
-    (force exit) abandons the lifespan, whose cancellation uvicorn reports
-    as a pre-formatted error record, so the logger goes quiet instead."""
+def test_force_exit_preserves_logger_and_exits_immediately() -> None:
+    """The second Ctrl-C exits before any later logger mutation could matter."""
 
     async def dummy_app(scope: object, receive: object, send: object) -> None: ...
 
@@ -458,7 +456,7 @@ def test_force_exit_silences_uvicorn_error_logger() -> None:
             server.handle_exit(signal.SIGINT, None)
 
         assert server.force_exit
-        assert uvicorn_logger.level == logging.CRITICAL
+        assert uvicorn_logger.level == original_level
         hard_exit.assert_called_once_with(130)
     finally:
         uvicorn_logger.setLevel(original_level)

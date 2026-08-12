@@ -86,6 +86,47 @@ def test_chip_family_uses_tokens_not_color_literals() -> None:
         assert literal not in block, f"chip family must use design tokens, found {literal!r}"
 
 
+def test_symlinks_use_the_lucide_icon_in_the_standard_leading_slot() -> None:
+    """A link replaces the ordinary file icon; it is not an extra badge."""
+
+    icons = _read("icons.js")
+    app = _read("app.js")
+    css = _read("styles.css")
+
+    assert "fileSymlink: // Lucide `file-symlink`" in icons
+    assert "ICONS.fileSymlink" in app
+    assert 'class="tree-item tree-symlink' in app
+    assert 'data-tip-type="symlink"' in app
+    assert ".tree-symlink .tree-item-icon" in css
+
+
+def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
+    """Segmented controls stay on one line. A long additive set wraps as
+    individually bounded chips without an enclosing pill, so every visible
+    shape remains an interactive target."""
+
+    css = _read("styles.css")
+    joined_start = css.index(".chip-group {")
+    joined_block = css[joined_start : css.index("}", joined_start)]
+    assert "flex-wrap: nowrap;" in joined_block
+
+    wrapped_start = css.index('.chip-group[data-layout="wrap"] {')
+    wrapped_block = css[wrapped_start : css.index("}", wrapped_start)]
+    assert "flex-wrap: wrap;" in wrapped_block
+    assert "gap: var(--chip-cluster-gap);" in wrapped_block
+    assert "border: 0;" in wrapped_block
+    assert "background: transparent;" in wrapped_block
+
+    chip_start = css.index('.chip-group[data-layout="wrap"] > .chip {')
+    chip_block = css[chip_start : css.index("}", chip_start)]
+    assert "border: 1px solid var(--viz-border);" in chip_block
+    assert "border-radius: var(--radius-pill);" in chip_block
+
+    hover_start = css.index('.chip-group[data-layout="wrap"] > .chip:hover')
+    hover_block = css[hover_start : css.index("}", hover_start)]
+    assert "background: var(--hover-bg);" in hover_block
+
+
 def test_groups_carry_the_aria_their_variant_implies() -> None:
     """Single-select is a radiogroup with aria-checked; multi-select
     is a plain group of aria-pressed toggles. Styling keys off these
@@ -118,6 +159,14 @@ def test_filter_values_are_carried_by_buttons() -> None:
         start = js.index(f"function {fn}(spec)")
         block = js[start : js.index("\n  }", start)]
         assert "<input" not in block, f"{fn} must not use inputs"
+
+
+def test_filter_control_types_expose_the_wrapping_chip_layout() -> None:
+    """Plugins must be able to select the documented chip-cluster layout
+    without escaping the public SDK type contract."""
+
+    types = _read("types.d.ts")
+    assert 'layout?: "joined" | "wrap";' in types
 
 
 def test_the_checkbox_exception_is_scoped_and_explained() -> None:
@@ -417,6 +466,8 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     assert ".md" in docs["values"]
 
     state = _read("filter_state.js")
+    assert "mb.filterState = {" in state
+    assert "MetabrowserFilterState" not in state
     tm_start = state.index("function typeMatches(pathLike, types, logicalExt)")
     tm_block = state[tm_start : tm_start + 1400]
     assert 'token.charAt(0) === "."' in tm_block
@@ -842,6 +893,7 @@ def test_live_uses_the_server_owned_ninety_second_window() -> None:
     assert "LIVE_FILE_WINDOW_S = 90.0" in settings
     assert '"live": LIVE_FILE_WINDOW_S' in settings
     assert '"RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS' in settings
+    assert '"RECENT_WINDOWS"' not in settings
 
     js = _read("app.js")
     assert "_METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS" in js

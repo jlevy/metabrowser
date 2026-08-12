@@ -366,7 +366,7 @@ async function main() {
         requestId,
         results: availableResults,
         statusMessage:
-          "5 indexed files are searchable. More files may appear as scanning continues.",
+          availableResults.length > 0 ? "5 matches in 5 indexed files. Scanning continues." : "",
         truncated: availableResults.length > 3,
       });
       // The real controller publishes one empty "searching" composition before
@@ -533,10 +533,14 @@ async function main() {
     document.activeElement === input && input.selectCalls === selectCallsBeforeReopen + 1,
   );
   check(
-    "empty query explains incomplete indexed coverage",
-    status.textContent.includes("5 indexed files") &&
-      status.textContent.includes("More files may appear"),
+    "placeholder owns the input instruction",
+    input.getAttribute("placeholder") === "Type a file name or path",
+    input.getAttribute("placeholder"),
+  );
+  equal(
+    "empty query reports scope without repeating the instruction",
     status.textContent,
+    "Search includes 5 indexed files. Scanning continues.",
   );
   palette.open();
   check(
@@ -564,7 +568,7 @@ async function main() {
   );
   check(
     "result limit stays visible",
-    status.textContent.includes("Showing only the top matches"),
+    status.textContent.includes("Showing the top matches"),
     status.textContent,
   );
 
@@ -732,6 +736,11 @@ async function main() {
   input.dispatchEvent(fakeEvent("input", { target: input }));
   await settle();
   check("a completed empty search clears the rows", listbox.children.length === 0);
+  equal(
+    "a provider without empty-result copy uses the concise fallback",
+    status.textContent,
+    "No matches.",
+  );
   availableResults = heldResults;
 
   availableResults = [searchResult("src/metabrowser/app.js", 5, [{ start: 4, end: 8 }])];
@@ -809,15 +818,19 @@ async function main() {
   input.value = "";
   input.dispatchEvent(fakeEvent("input", { target: input }));
   await settle();
-  check("the idle line reports the starting count", status.textContent.includes("5 indexed"));
+  equal(
+    "the idle line reports the starting scope",
+    status.textContent,
+    "Search includes 5 indexed files. Scanning continues.",
+  );
   const requestsBeforeIdle = requests.length;
   catalogObservedCount = 4242;
   emitCatalogChange();
   await waitMs(220);
-  check(
+  equal(
     "an idle palette refreshes its status line",
-    status.textContent.includes("4242 indexed"),
     status.textContent,
+    "Search includes 4,242 indexed files. Scanning continues.",
   );
   check("an idle palette runs no search", requests.length === requestsBeforeIdle);
   catalogObservedCount = 5;

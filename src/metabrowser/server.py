@@ -128,7 +128,7 @@ from metabrowser.tree import (
     _build_inventory_tree,
     _dir_tree,
     _find_git_root,
-    _has_any_file,
+    _has_any_leaf,
     _has_any_nongitignored,
     _has_visible_children,
     _subtree_is_all_gitignored,
@@ -280,7 +280,7 @@ __all__ = [
     "_dir_tree",
     "_discover_trackable_files",
     "_find_git_root",
-    "_has_any_file",
+    "_has_any_leaf",
     "_has_any_nongitignored",
     "_has_visible_children",
     "_parse_jsonl_file",
@@ -470,7 +470,7 @@ def _clear_browser_caches() -> None:
     _IGNORE_CACHE.clear()
     _paths_safe._ROOT_PREFIX_CACHE.clear()
     _subtree_summary.cache_clear()
-    _has_any_file.cache_clear()
+    _has_any_leaf.cache_clear()
     _has_any_nongitignored.cache_clear()
     _collect_trackable_files_cached.cache_clear()
     clear_charts_cache()
@@ -1272,11 +1272,67 @@ async def api_file(request: Request) -> JSONResponse | Response:
         return _api_file_internal_error_response(subpath, exc)
 
 
+def _file_unavailable_response(subpath: str, target: Path | None) -> JSONResponse:
+    """Explain file-path failures without weakening served-root containment."""
+
+    # Inspect the final path component without resolving it so an escaping
+    # symlink can still be identified. Resolve and validate the parent first;
+    # otherwise an absolute path, ``..``, or a symlinked parent could turn this
+    # error-classification check into a probe outside the served root.
+    requested = Path(subpath)
+    candidate: Path | None = None
+    try:
+        parent = (_paths_safe.ROOT_DIR / requested.parent).resolve()
+        root = _paths_safe.ROOT_DIR.resolve()
+        if subpath and requested.name and _paths_safe._is_within(parent, root):
+            candidate = parent / requested.name
+        is_symlink = candidate is not None and candidate.is_symlink()
+    except OSError:
+        is_symlink = False
+
+    if is_symlink:
+        if target is None:
+            detail = (
+                "This symbolic link points outside the served folder. "
+                "Serve a folder containing its target to browse it."
+            )
+        elif not target.exists():
+            detail = "The target of this symbolic link is unavailable."
+        elif target.is_dir():
+            detail = (
+                "This symbolic link points to a folder. "
+                "Open the target folder directly to browse it."
+            )
+        else:
+            detail = "The target of this symbolic link cannot be opened."
+        return JSONResponse(
+            {"summary": "Could not open this link.", "error": detail},
+            status_code=404,
+        )
+
+    if target is not None and target.is_dir():
+        return JSONResponse(
+            {
+                "summary": "Could not open this folder.",
+                "error": "Select the folder in the navigation panel to browse its contents.",
+            },
+            status_code=404,
+        )
+
+    return JSONResponse(
+        {
+            "summary": "Could not open this file.",
+            "error": "This file is no longer available.",
+        },
+        status_code=404,
+    )
+
+
 async def _api_file_impl(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
     target = _safe_path(subpath)
     if target is None or not target.is_file():
-        return JSONResponse({"error": "Not found"}, status_code=404)
+        return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext

@@ -208,8 +208,9 @@ literal and regex content search and an evidence-gated approximate-content provi
 without implying that the filename fuzzy scorer can search file contents.
 A future navigation-panel surface can select these capabilities explicitly and group
 `TextResult` values by path without changing the Phase 1 palette.
-An empty Phase 1 query shows an instruction and the observed file count rather than an
-arbitrary result ordering.
+For an empty Phase 1 query, the combobox placeholder explains what the field accepts and
+the status region reports the observed file count and catalog completeness.
+The two elements do not repeat the same instruction.
 
 The initial implementation should keep the request and result unions no larger than the
 Phase 1 code needs, but its module boundary and tests must not bind providers to dialog
@@ -326,9 +327,9 @@ Measurements, rather than candidate count alone, decide whether a Web Worker is 
 Provider orchestration follows these rules:
 
 1. The local file provider runs immediately for every non-empty filename query.
-2. Phase 1 stops there and labels zero results as “No files match your search.”
-   If the catalog is incomplete, the status says that more files may appear as scanning
-   continues.
+2. Phase 1 stops there and labels zero results as “No matches in *N* files.”
+   If the catalog is incomplete, the status identifies the indexed scope and says that
+   scanning continues.
 3. After the server filename provider exists, the controller starts it automatically
    only when the local result set is empty and the local catalog is incomplete.
 4. An explicit “Search all indexed files” action can start the server provider even when

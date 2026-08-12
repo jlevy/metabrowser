@@ -37,6 +37,8 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
+import pytest
+
 import metabrowser.inventory as inventory_module
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.events import (
@@ -435,6 +437,77 @@ def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
 
     assert inv.has_direct_child("") is True
     assert inv.has_direct_child("runs") is False
+
+
+def test_live_empty_state_tracks_subtree_leaves_separately_from_file_totals() -> None:
+    inv = InventoryIndex()
+    root = FsEntry(
+        path="",
+        parent="",
+        name="root",
+        type="dir",
+        ext="",
+        kind="dir",
+        size=0,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+        total_files=0,
+        total_size=0,
+        newest_mtime_ns=0,
+    )
+    assert inv.apply_walker_entries([root]) == 1
+    indexed_root = inv.get("")
+    assert indexed_root is not None
+    assert indexed_root.empty is True
+
+    inv.apply_live_entry(
+        FsEntry(
+            path="nested",
+            parent="",
+            name="nested",
+            type="dir",
+            ext="",
+            kind="dir",
+            size=0,
+            mtime_ns=0,
+            mtime_hash="",
+            active=False,
+            total_files=0,
+            total_size=0,
+            newest_mtime_ns=0,
+        )
+    )
+    with_empty_subfolder = inv.get("")
+    assert with_empty_subfolder is not None
+    assert with_empty_subfolder.total_files == 0
+    assert with_empty_subfolder.empty is True
+
+    inv.apply_live_entry(
+        FsEntry.for_observed_symlink(
+            path="nested/shortcut",
+            parent="nested",
+            name="shortcut",
+            size=8,
+            mtime_ns=1,
+        )
+    )
+    with_link = inv.get("")
+    assert with_link is not None
+    assert with_link.total_files == 0
+    assert with_link.empty is False
+    nested_with_link = inv.get("nested")
+    assert nested_with_link is not None
+    assert nested_with_link.empty is False
+
+    inv.remove("nested/shortcut")
+    without_link = inv.get("")
+    assert without_link is not None
+    assert without_link.total_files == 0
+    assert without_link.empty is True
+    nested_without_link = inv.get("nested")
+    assert nested_without_link is not None
+    assert nested_without_link.empty is True
 
 
 def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
@@ -977,6 +1050,46 @@ def test_inventory_slow_subscriber_gets_resync_without_blocking(tmp_path: Path) 
     assert count == 2
     assert isinstance(slow_event, FsResyncRequired)
     assert slow_event.reason == "subscriber_queue_overflow"
+
+
+def test_inventory_overflow_warning_is_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now_ns = 1
+    monkeypatch.setattr(inventory_module.time, "monotonic_ns", lambda: now_ns)
+
+    class _RecordHandler(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__(level=logging.WARNING)
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    logger = logging.getLogger("metabrowser.inventory")
+    original_level = logger.level
+    handler = _RecordHandler()
+    logger.addHandler(handler)
+
+    try:
+        logger.setLevel(logging.WARNING)
+        inv = InventoryIndex()
+        inv.subscribe(max_queue=1)
+        inv._emit(FsChange(ops=()))  # fill the queue
+        inv._emit(FsChange(ops=()))  # first overflow logs immediately
+        inv._emit(FsChange(ops=()))  # repeated overflow stays quiet
+
+        now_ns += inventory_module._SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS
+        inv._emit(FsChange(ops=()))
+    finally:
+        logger.setLevel(original_level)
+        logger.removeHandler(handler)
+
+    messages = [record.getMessage() for record in handler.records]
+    assert messages == [
+        "inventory subscriber backlog overflowed; requested resync for 1 subscriber(s)",
+        "inventory subscriber backlog overflowed; requested resync for 2 subscriber(s)",
+    ]
 
 
 def test_inventory_clear_emits_resync(tmp_path: Path) -> None:

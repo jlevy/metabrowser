@@ -308,14 +308,24 @@ async def _emit_for_path(
         except Exception:
             gitignored = False
 
-    entry = FsEntry.for_stat(
-        path=rel,
-        parent=parent_rel,
-        name=name,
-        stat=st,
-        gitignored=gitignored,
-        existing=existing,
-    )
+    if is_symlink:
+        entry = FsEntry.for_observed_symlink(
+            path=rel,
+            parent=parent_rel,
+            name=name,
+            size=st.st_size,
+            mtime_ns=st.st_mtime_ns,
+            gitignored=gitignored,
+        )
+    else:
+        entry = FsEntry.for_stat(
+            path=rel,
+            parent=parent_rel,
+            name=name,
+            stat=st,
+            gitignored=gitignored,
+            existing=existing,
+        )
     inventory.apply_live_entry(entry)
     # Drop the projection caches' entry for this path and tell
     # subscribers the derived view is stale. ``MtimeCache.read``

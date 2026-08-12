@@ -630,7 +630,7 @@ def _build_index_meta(inventory: InventoryIndex, *, suffix_limit: int = 64) -> I
                 if e.mtime_ns > newest:
                     newest = e.mtime_ns
             suffix_counter[e.ext] += 1
-        else:
+        elif e.type == "dir":
             dirs += 1
     suffixes = [
         {"ext": ext, "count": count}

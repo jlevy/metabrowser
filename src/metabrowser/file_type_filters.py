@@ -12,9 +12,11 @@ class FilterTypePreset(TypedDict):
 
 
 # A leading dot is an indexed logical extension. Any other token is a
-# complete, case-insensitive filename. Keeping this vocabulary on the
-# server lets aggregate tallies use exactly the same membership as the
-# browser, including extensionless files such as README and LICENSE.
+# complete, case-insensitive filename. These are broad navigation aids rather
+# than semantic classifiers: ambiguous extensions such as .m and .pl may cover
+# more than one language. Keeping this vocabulary on the server lets aggregate
+# tallies use exactly the same membership as the browser, including
+# extensionless files such as README and LICENSE.
 FILTER_TYPE_PRESETS: tuple[FilterTypePreset, ...] = (
     {
         "id": "docs",
@@ -28,7 +30,6 @@ FILTER_TYPE_PRESETS: tuple[FilterTypePreset, ...] = (
             ".pdf",
             ".docx",
             ".doc",
-            ".pages",
             ".rtf",
             ".odt",
             ".epub",

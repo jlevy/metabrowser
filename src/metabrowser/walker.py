@@ -26,16 +26,15 @@ Walker semantics (verified by tests in
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections import deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 from threading import Event
 
-from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry
 from metabrowser.fs_paths import is_visible
 from metabrowser.settings import (
@@ -123,27 +122,26 @@ class _ScanItem:
     / ``is_dir`` matter; size/mtime are populated via the
     aggregate-rollup path."""
 
-    __slots__ = ("abs_path", "is_dir", "mtime_ns", "name", "size")
+    __slots__ = ("abs_path", "is_dir", "is_symlink", "mtime_ns", "name", "size")
 
     def __init__(
         self,
         name: str,
         abs_path: Path,
         is_dir: bool,
+        is_symlink: bool,
         size: int,
         mtime_ns: int,
     ) -> None:
         self.name = name
         self.abs_path = abs_path
         self.is_dir = is_dir
+        self.is_symlink = is_symlink
         self.size = size
         self.mtime_ns = mtime_ns
 
 
-def _scandir_visible(
-    dirpath: Path,
-    cancel_event: Event | None = None,
-) -> list[_ScanItem]:
+def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
     """One ``os.scandir`` call, filtered to visible names, with
     one stat per file. Symlinks are not followed.
 
@@ -154,11 +152,10 @@ def _scandir_visible(
     try:
         with os.scandir(dirpath) as it:
             for raw in it:
-                if cancel_event is not None and cancel_event.is_set():
-                    break
                 if not is_visible(raw.name):
                     continue
                 try:
+                    raw_is_symlink = raw.is_symlink()
                     raw_is_dir = raw.is_dir(follow_symlinks=False)
                 except OSError:
                     continue
@@ -168,6 +165,7 @@ def _scandir_visible(
                             name=raw.name,
                             abs_path=Path(raw.path),
                             is_dir=True,
+                            is_symlink=False,
                             size=0,
                             mtime_ns=0,
                         )
@@ -182,6 +180,7 @@ def _scandir_visible(
                             name=raw.name,
                             abs_path=Path(raw.path),
                             is_dir=False,
+                            is_symlink=raw_is_symlink,
                             size=st.st_size,
                             mtime_ns=st.st_mtime_ns,
                         )
@@ -382,7 +381,7 @@ async def walk_tree(
 
         # Read directory in a worker thread; blocking call.
         try:
-            child_entries = await run_cancellable_thread(partial(_scandir_visible, abs_path))
+            child_entries = await asyncio.to_thread(_scandir_visible, abs_path)
         except OSError as exc:
             LOG.debug("walk_tree scandir failed for %s: %s", abs_path, exc)
             child_entries = []
@@ -430,6 +429,16 @@ async def walk_tree(
                     queue.appendleft((ce.abs_path, child_rel, depth + 1))
                 else:
                     queue.append((ce.abs_path, child_rel, depth + 1))
+            elif ce.is_symlink:
+                link_gi = parent_ignored or _gi(ce.abs_path, False)
+                yield FsEntry.for_observed_symlink(
+                    path=child_rel,
+                    parent=rel_path_cur,
+                    name=ce.name,
+                    size=ce.size,
+                    mtime_ns=ce.mtime_ns,
+                    gitignored=link_gi,
+                )
             else:
                 files_indexed += 1
                 # Files inherit gitignored from parent the same way dirs do.

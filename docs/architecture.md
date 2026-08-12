@@ -113,10 +113,19 @@ Producers attach generation-aware write tokens so an observation made before
 invalidation cannot overwrite newer state.
 The event stream carries snapshot, change, and resynchronization events.
 
+Inventory entries have three shapes: directories, regular files, and symbolic links.
+A symbolic link is always a typed leaf, even when its target is a directory: walkers do
+not follow it, directory child containers are never created for it, and file aggregates
+exclude it. A live upsert may replace any shape with another at the same path, so both
+the index and browser remove the old shape before installing the new one.
+
 The browser keeps a normalized file store.
 Tree panels and recent-file views subscribe to that store rather than maintaining
-independent copies. If a client falls behind the bounded event buffer, it requests a
-fresh snapshot.
+independent copies.
+If a client falls behind the bounded event buffer, it reconnects with
+exponential backoff and requests a fresh snapshot.
+Backoff resets only after the replacement connection remains stable, which prevents an
+overloaded subscriber from creating a reconnect loop.
 
 ## Where Filtering Happens
 

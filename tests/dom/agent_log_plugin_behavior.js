@@ -29,6 +29,7 @@ const dynamicChip = {
   },
 };
 const dynamicEvent = { dataset: { kind: "queue-operation" }, style: { display: "" } };
+const dynamicUnknownEvent = { dataset: { kind: "unknown" }, style: { display: "" } };
 const container = {
   innerHTML: "",
   addEventListener: (type, listener) => {
@@ -42,7 +43,7 @@ const container = {
       return [dynamicChip];
     }
     if (selector === ".log-event[data-kind]") {
-      return [dynamicEvent];
+      return [dynamicEvent, dynamicUnknownEvent];
     }
     return [];
   },
@@ -98,6 +99,7 @@ logView.render(container, {
     events: [
       { kind: hostileKind, summary: "safe", raw: {} },
       { kind: "queue-operation", summary: "queued", raw: {} },
+      { kind: "unknown", summary: "[unknown] unclassified", raw: {} },
     ],
     summary: {},
   },
@@ -111,12 +113,45 @@ const securityResult = {
   hasRawImage: container.innerHTML.includes("<img"),
   hasEscapedImage: container.innerHTML.includes("&lt;img"),
   usesSharedMultiSelect: container.innerHTML.includes('data-select="many"'),
+  usesWrappedChipCluster: container.innerHTML.includes('data-layout="wrap"'),
   dynamicStartsPressed: container.innerHTML.includes(
     'data-chip-value="queue-operation" aria-pressed="true"',
   ),
   dynamicEndsUnpressed: dynamicChip.getAttribute("aria-pressed") === "false",
   dynamicEventHidden: dynamicEvent.style.display === "none",
+  unknownEventHiddenWhenFiltering: dynamicUnknownEvent.style.display === "none",
+  mixedUnknownKindHasNoChip: !container.innerHTML.includes('data-chip-value="unknown"'),
   dynamicLabelIsReadable: container.innerHTML.includes(">queue operation (1)</button>"),
+};
+if (listeners.click) {
+  listeners.click({ target: dynamicChip });
+}
+const filterRestoreResult = {
+  unknownEventRestoredWithAllKinds: dynamicUnknownEvent.style.display === "",
+};
+
+logView.render(container, {
+  raw: {
+    events: [{ kind: "unknown", summary: "[unknown] visible value", raw: {} }],
+    summary: {},
+  },
+});
+const unknownKindResult = {
+  unknownKindLabelHidden: !container.innerHTML.includes("log-event-kind"),
+  unknownSummaryLabelHidden: !container.innerHTML.includes("[unknown]"),
+  unknownSummaryValueVisible: container.innerHTML.includes("visible value"),
+  unknownFilterHidden: !container.innerHTML.includes("agent-log-filter-bar"),
+};
+
+logView.render(container, {
+  raw: {
+    events: [{ kind: "text", summary: "[text] one event", raw: {} }],
+    summary: {},
+  },
+});
+const singleKindResult = {
+  singleKnownKindVisible: container.innerHTML.includes(">text</span>"),
+  singleKindFilterHidden: !container.innerHTML.includes("agent-log-filter-bar"),
 };
 let resolveChartFetch;
 sandbox.location = { origin: "http://127.0.0.1:8411" };
@@ -136,6 +171,9 @@ sandbox.fetch = () =>
       chartDisposeCalls,
       chartRenderCalls,
       ...securityResult,
+      ...filterRestoreResult,
+      ...unknownKindResult,
+      ...singleKindResult,
     }),
   );
 })().catch((error) => {
