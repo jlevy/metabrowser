@@ -83,6 +83,8 @@ from metabrowser.walker import (
 LOG = logging.getLogger(__name__)
 
 _SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS = 30_000_000_000
+# Unit conversion for comparing second-based filter windows with inventory mtimes.
+_NANOSECONDS_PER_SECOND = 1_000_000_000
 
 
 IndexStatus = Literal["idle", "scanning", "done", "truncated", "failed"]
@@ -274,11 +276,10 @@ class InventoryIndex:
         children cannot answer that — ignored files nested under
         tracked directories would be counted as tracked.
 
-        One pass over the entries is the honest way to get it. This runs
-        per ``/api/tree`` request (once per page load, not per
-        keystroke), so an O(entries) scan is affordable where a second
-        set of incremental accumulators would not be worth the
-        invalidation surface.
+        One pass over the entries is the honest way to get it. Navigation
+        requests use :meth:`navigation_tallies` to perform the same calculation
+        alongside filter counts; this focused method avoids doing that extra work for
+        callers that need only the summary.
         """
 
         snapshot = self.entries(scope="all-known") if entries is None else entries
@@ -299,6 +300,96 @@ class InventoryIndex:
             "ignored_size": ignored_size,
         }
 
+    def navigation_tallies(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        recency_windows: Sequence[tuple[str, float]],
+        limit: int = 200,
+        *,
+        now_ns: int | None = None,
+        entries: Sequence[FsEntry] | None = None,
+    ) -> tuple[
+        dict[str, int],
+        list[list[object]],
+        list[list[object]],
+        list[list[object]],
+    ]:
+        """
+        Return root, file-type, and cumulative recency tallies in one index pass.
+
+        Every row is ``[key, tracked_files, ignored_files]``. Keeping the two
+        populations separate lets the browser use the same snapshot when the user
+        changes whether gitignored files are shown.
+        """
+
+        snapshot = self.entries(scope="all-known") if entries is None else entries
+        current_ns = time.time_ns() if now_ns is None else now_ns
+        recency_cutoffs = [
+            (key, current_ns - int(seconds * _NANOSECONDS_PER_SECOND))
+            for key, seconds in recency_windows
+        ]
+        files = size = ignored_files = ignored_size = 0
+        extension_counts: dict[str, list[int]] = {}
+        preset_counts: dict[str, list[int]] = {}
+        recency_counts: dict[str, list[int]] = {key: [0, 0] for key, _cutoff in recency_cutoffs}
+        normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
+        for preset_id, values in presets:
+            extensions: set[str] = set()
+            names: set[str] = set()
+            for value in values:
+                normalized = value.lower()
+                (extensions if normalized.startswith(".") else names).add(normalized)
+            preset_counts[preset_id] = [0, 0]
+            normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
+        for entry in snapshot:
+            if entry.type != "file":
+                continue
+            ignored_index = 1 if entry.gitignored else 0
+            if entry.gitignored:
+                ignored_files += 1
+                ignored_size += entry.size or 0
+            else:
+                files += 1
+                size += entry.size or 0
+
+            ext = entry.ext.lower()
+            if ext:
+                row = extension_counts.get(ext)
+                if row is None:
+                    row = [0, 0]
+                    extension_counts[ext] = row
+                row[ignored_index] += 1
+
+            name = entry.name.lower()
+            for preset_id, preset_extensions, preset_names in normalized_presets:
+                if ext in preset_extensions or name in preset_names:
+                    preset_counts[preset_id][ignored_index] += 1
+
+            for window_key, cutoff_ns in recency_cutoffs:
+                if entry.mtime_ns >= cutoff_ns:
+                    recency_counts[window_key][ignored_index] += 1
+
+        summary = {
+            "files": files,
+            "size": size,
+            "ignored_files": ignored_files,
+            "ignored_size": ignored_size,
+        }
+        ranked = sorted(
+            extension_counts.items(),
+            key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+        )
+        extension_rows: list[list[object]] = [
+            [ext, counts[0], counts[1]] for ext, counts in ranked[:limit]
+        ]
+        preset_rows: list[list[object]] = [
+            [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
+        ]
+        recency_rows: list[list[object]] = [
+            [window_key, counts[0], counts[1]] for window_key, counts in recency_counts.items()
+        ]
+        return summary, extension_rows, preset_rows, recency_rows
+
     def file_type_tallies(
         self,
         presets: Sequence[tuple[str, Collection[str]]],
@@ -314,45 +405,9 @@ class InventoryIndex:
         at most once per preset.
         """
 
-        snapshot = self.entries(scope="all-known") if entries is None else entries
-        extension_counts: dict[str, list[int]] = {}
-        preset_counts: dict[str, list[int]] = {}
-        normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
-        for preset_id, values in presets:
-            extensions: set[str] = set()
-            names: set[str] = set()
-            for value in values:
-                normalized = value.lower()
-                (extensions if normalized.startswith(".") else names).add(normalized)
-            preset_counts[preset_id] = [0, 0]
-            normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
-        for entry in snapshot:
-            if entry.type != "file":
-                continue
-            ignored_index = 1 if entry.gitignored else 0
-            ext = entry.ext.lower()
-            if ext:
-                row = extension_counts.get(ext)
-                if row is None:
-                    row = [0, 0]
-                    extension_counts[ext] = row
-                row[ignored_index] += 1
-
-            name = entry.name.lower()
-            for preset_id, preset_extensions, preset_names in normalized_presets:
-                if ext in preset_extensions or name in preset_names:
-                    preset_counts[preset_id][ignored_index] += 1
-
-        ranked = sorted(
-            extension_counts.items(),
-            key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+        _summary, extension_rows, preset_rows, _recency = self.navigation_tallies(
+            presets, (), limit=limit, entries=entries
         )
-        extension_rows: list[list[object]] = [
-            [ext, counts[0], counts[1]] for ext, counts in ranked[:limit]
-        ]
-        preset_rows: list[list[object]] = [
-            [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
-        ]
         return extension_rows, preset_rows
 
     def extension_tally(self, limit: int = 200) -> list[list[object]]:

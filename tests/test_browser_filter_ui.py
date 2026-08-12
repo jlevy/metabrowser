@@ -664,6 +664,36 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     assert "presets: filterTypePresets()" in render_block
 
 
+def test_age_options_use_index_wide_tracked_and_ignored_tallies() -> None:
+    """Every fixed age choice carries the same right-aligned count as a
+    file-type row, and the count follows Show ignored."""
+
+    js = _read("app.js")
+    assert "var _recencyTally = [];" in js
+    start = js.index("function filterRecencyOptions()")
+    block = js[start : start + 1000]
+    assert "showIgnored ? row[1] + row[2] : row[1]" in block
+    assert "count:" in block
+
+    render_start = js.index("function renderNavFilterBar()")
+    render_block = js[render_start : render_start + 2200]
+    assert "options: filterRecencyOptions()" in render_block
+
+
+def test_opening_age_menu_refreshes_rolling_tallies() -> None:
+    """Age membership changes as time passes even when no filesystem event fires."""
+
+    js = _read("app.js")
+    toggle_start = js.index("onMenuToggle: (key, open) =>")
+    toggle_block = js[toggle_start : toggle_start + 500]
+    assert 'key === "recency" && open' in toggle_block
+    assert "scheduleRootSummaryRefresh();" in toggle_block
+
+    refresh_start = js.index("function scheduleRootSummaryRefresh()")
+    refresh_block = js[refresh_start : refresh_start + 2000]
+    assert "patchOpenRecencyTallyCounts();" in refresh_block
+
+
 def test_filters_reapply_when_new_rows_render() -> None:
     """Lazy subtrees and deferred pages arrive unfiltered; without a
     reapply, expanding a folder under an active filter shows all of
@@ -716,16 +746,16 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
 
 
 def test_index_wide_tallies_stay_off_the_event_loop() -> None:
-    """Two O(index) passes per request, and the nav re-requests this
-    route while the walk converges."""
+    """One O(index) pass per request, and the nav re-requests this route
+    while the walk converges."""
 
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
     start = py.index("summary = None")
     block = py[start : start + 1000]
     assert 'inventory.entries(scope="all-known")' in block
     assert "asyncio.to_thread" in block
-    assert "root_summary(entries=tally_entries)" in block
-    assert "file_type_tallies(" in block
+    assert "navigation_tallies(" in block
+    assert "RECENT_WINDOW_SECONDS.items()" in block
     assert "entries=tally_entries" in block
 
 

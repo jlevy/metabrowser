@@ -290,9 +290,10 @@ The nav filter bar uses dropdowns throughout: six age windows and six size steps
 segmented ramps left no room for anything else in a 300px pane.
 The groups stay part of the family for surfaces with fewer, shorter values.
 
-Values that come from the data are ranked by frequency and capped, and each row carries
-its tally. A menu built from the tree can then never offer a value with nothing behind
-it, and the cap cuts the long tail rather than an arbitrary alphabetical slice.
+Age and file-type rows carry right-aligned file tallies in tabular numerals.
+Fixed age windows remain in chronological order and show cumulative counts.
+Open-ended type values are ranked by frequency and capped, so the menu cuts the long
+tail rather than an arbitrary alphabetical slice.
 
 A dropdown may lead with named **presets** — shorthands standing for the full set of
 values beneath them, separated from the raw list.

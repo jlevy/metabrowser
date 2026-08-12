@@ -1052,44 +1052,47 @@ async def api_tree(request: Request) -> JSONResponse:
             len(tree),
             inventory_status(),
         )
-    # Both tallies are O(index) passes. The nav re-requests this route
-    # (depth=0) while the walk converges, so running them on the loop
-    # would stall the event stream at the design-center index size for
-    # the same reason api_catalog offloads its own pass.
+    # The nav tallies need one O(index) pass. The nav re-requests this route
+    # (depth=0) while the walk converges, so running it on the loop would stall
+    # the event stream at the design-center index size for the same reason
+    # api_catalog offloads its own pass.
     summary = None
     extensions = None
     type_presets = None
+    recency_tallies = None
     if inv_can_serve and not subpath:
         # Inventory writes are owned by the event loop. Snapshot there before
-        # handing the two O(index) tally passes to a worker; iterating the live
-        # dictionary off-loop races the still-running walker.
+        # handing the O(index) tally pass to a worker; iterating the live dictionary
+        # off-loop races the still-running walker.
         tally_entries = inventory.entries(scope="all-known")
-        summary, type_tallies = await asyncio.to_thread(
-            lambda: (
-                inventory.root_summary(entries=tally_entries),
-                inventory.file_type_tallies(
-                    [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
-                    entries=tally_entries,
-                ),
+        summary, extensions, type_presets, recency_tallies = await asyncio.to_thread(
+            lambda: inventory.navigation_tallies(
+                [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
+                [
+                    (window_key, seconds)
+                    for window_key, seconds in RECENT_WINDOW_SECONDS.items()
+                    if seconds is not None
+                ],
+                entries=tally_entries,
             )
         )
-        extensions, type_presets = type_tallies
     return JSONResponse(
         {
             "root": str(root_dir),
             "tree": tree,
             "tally_cache_status": inventory_status(),
             "tally_cache_max_files": inventory.max_files(),
-            # Tracked-versus-ignored split for the nav header, plus the
-            # extension and aggregate tallies behind the nav's type filter. None can
-            # be derived client-side: summing top-level children
+            # Tracked-versus-ignored split for the nav header, plus the age,
+            # extension, and aggregate tallies behind the nav filters. None can be
+            # derived client-side: summing top-level children
             # miscounts nested ignored files (see
             # InventoryIndex.root_summary), and the Quick File catalog
-            # drops gitignored entries (see file_type_tallies). Only the
+            # drops gitignored entries (see navigation_tallies). Only the
             # full-tree request needs these values.
             "summary": summary,
             "extensions": extensions,
             "type_presets": type_presets,
+            "recency_tallies": recency_tallies,
         }
     )
 

@@ -304,6 +304,7 @@ const menuAged = fc.menuGroupHtml({
       label: "Live",
       ageClass: "age-sec",
       title: "Files modified in the past 90 seconds",
+      count: 12,
     },
     { value: "1h", label: "Past hour", ageClass: "age-min" },
   ],
@@ -319,6 +320,11 @@ assertContains(
   'title="Files modified in the past 90 seconds"',
 );
 assertContains("the hour row takes the under-an-hour colour", menuAged, "chip-menu-item age-min");
+assertContains(
+  "age rows carry the same tally as file-type rows",
+  menuAged,
+  '<span class="chip-menu-count">12</span>',
+);
 assertContains(
   "the any row is checked at the default",
   menuOneAny,

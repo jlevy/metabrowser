@@ -833,7 +833,7 @@ async function loadTree() {
     if (data.tally_cache_status === "truncated") {
       truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
     }
-    if (updateFileTypeTallies(data)) {
+    if (updateFilterTallies(data)) {
       renderNavFilterBar();
     }
     _lastTreeRender = {
@@ -909,8 +909,12 @@ function scheduleRootSummaryRefresh() {
         // its DOM mid-poll would drop focus out of a menu the user
         // is arrowing through, and this runs repeatedly while the
         // index warms up.
-        if (updateFileTypeTallies(data) && filterOpenMenu === null) {
-          renderNavFilterBar();
+        if (updateFilterTallies(data)) {
+          if (filterOpenMenu === null) {
+            renderNavFilterBar();
+          } else {
+            patchOpenRecencyTallyCounts();
+          }
         }
         var html = treeSummaryHtml(data.summary, null, null);
         row.outerHTML = html;
@@ -2824,19 +2828,19 @@ function filterHasConstraints(state) {
   );
 }
 
-// Extension tallies come from the server's index pass (/api/tree
-// `extensions`), not from the Quick File catalog: that catalog drops
-// gitignored entries by design, so a menu built from it undercounts
-// every extension the tree still shows while gitignored rows are
-// visible. Rows arrive as [ext, tracked, ignored] already ranked, so
-// the count shown can follow the gitignored setting instead of being
-// wrong half the time.
+// Filter tallies come from the server's full-index pass, not from the
+// rendered tree or Quick File catalog. Both sources can be partial,
+// and the catalog drops gitignored entries by design. Rows arrive as
+// [key, tracked, ignored], so every count can follow the gitignored
+// setting instead of being wrong half the time.
 /** @type {Array<[string, number, number]>} */
 var _extensionTally = [];
 /** @type {Array<[string, number, number]>} */
 var _typePresetTally = [];
+/** @type {Array<[string, number, number]>} */
+var _recencyTally = [];
 
-function updateFileTypeTallies(data) {
+function updateFilterTallies(data) {
   let changed = false;
   if (Array.isArray(data.extensions)) {
     _extensionTally = data.extensions;
@@ -2846,7 +2850,40 @@ function updateFileTypeTallies(data) {
     _typePresetTally = data.type_presets;
     changed = true;
   }
+  if (Array.isArray(data.recency_tallies)) {
+    _recencyTally = data.recency_tallies;
+    changed = true;
+  }
   return changed;
+}
+
+function filterRecencyOptions() {
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const counts = new Map(
+    _recencyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
+  );
+  return FILTER_RECENCY_OPTIONS.map((option) => ({
+    ...option,
+    count: counts.get(option.value) || 0,
+  }));
+}
+
+// Age counts decay without a filesystem event. A refresh that lands while the menu
+// is open updates only its count cells, preserving focus and keyboard position.
+function patchOpenRecencyTallyCounts() {
+  if (filterOpenMenu !== "recency") {
+    return;
+  }
+  const counts = new Map(filterRecencyOptions().map((option) => [option.value, option.count]));
+  const rows = queryHtmlAll("#filter-recency-menu [data-chip-value]");
+  for (var i = 0; i < rows.length; i++) {
+    var value = rows[i].getAttribute("data-chip-value");
+    var count = value === null ? undefined : counts.get(value);
+    var countEl = rows[i].querySelector(".chip-menu-count");
+    if (typeof count === "number" && countEl) {
+      countEl.textContent = count.toLocaleString();
+    }
+  }
 }
 
 function filterTypePresets() {
@@ -2926,7 +2963,7 @@ function renderNavFilterBar() {
       key: "recency",
       select: "one",
       label: "Modified within",
-      options: FILTER_RECENCY_OPTIONS,
+      options: filterRecencyOptions(),
       value: st.recency,
       anyLabel: "Any age",
       anyValue: "all",
@@ -3070,6 +3107,9 @@ function initFilterBar() {
     onMenuToggle: (key, open) => {
       filterOpenMenu = open ? key : null;
       renderNavFilterBar();
+      if (key === "recency" && open) {
+        scheduleRootSummaryRefresh();
+      }
     },
     onMenuPreset: (key, presetId, wasOn) => {
       if (key !== "types") {

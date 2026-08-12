@@ -21,7 +21,7 @@ import asyncio
 import json
 from collections.abc import Collection, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, override
 
 from metabrowser import inventory as inventory_module
 from metabrowser import paths_safe
@@ -184,6 +184,13 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
     assert body["tally_cache_status"] in ("idle", "scanning", "done", "truncated")
     assert "tree" in body
     assert [row[0] for row in body["type_presets"]] == ["docs", "code", "data"]
+    assert [row[0] for row in body["recency_tallies"]] == [
+        "live",
+        "1h",
+        "24h",
+        "7d",
+        "30d",
+    ]
     names = {row["name"] for row in body["tree"]}
     assert "README.md" in names
     assert "runs" in names
@@ -202,25 +209,30 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
     """
 
     class WorkerUnsafeTallies(InventoryIndex):
-        def root_summary(
-            self,
-            *,
-            entries: Sequence[FsEntry] | None = None,
-        ) -> dict[str, int]:
-            if entries is None:
-                raise RuntimeError("dictionary changed size during iteration")
-            return super().root_summary(entries=entries)
-
-        def file_type_tallies(
+        @override
+        def navigation_tallies(
             self,
             presets: Sequence[tuple[str, Collection[str]]],
+            recency_windows: Sequence[tuple[str, float]],
             limit: int = 200,
             *,
+            now_ns: int | None = None,
             entries: Sequence[FsEntry] | None = None,
-        ) -> tuple[list[list[object]], list[list[object]]]:
+        ) -> tuple[
+            dict[str, int],
+            list[list[object]],
+            list[list[object]],
+            list[list[object]],
+        ]:
             if entries is None:
                 raise RuntimeError("dictionary changed size during iteration")
-            return super().file_type_tallies(presets, limit=limit, entries=entries)
+            return super().navigation_tallies(
+                presets,
+                recency_windows,
+                limit=limit,
+                now_ns=now_ns,
+                entries=entries,
+            )
 
     original_root = paths_safe.ROOT_DIR
     resolved_root = tmp_path.resolve()
