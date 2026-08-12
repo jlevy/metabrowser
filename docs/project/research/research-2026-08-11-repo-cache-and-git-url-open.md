@@ -157,14 +157,14 @@ Three strategies are eliminated by that second table:
   individually, and blame fails outright.
   Worth stating explicitly because `scalar clone` uses partial clone with sparse
   checkout by default, which is similarly hostile to a file browser.
-- **Shallow** cannot show history, and it fails in the worst possible way.
+- **Shallow** cannot show history by default, and it fails in the worst possible way.
   `git blame` on a depth-1 clone **exits 0 and returns a wrong answer**: every line is
   attributed to the single graft-boundary commit, where a full clone attributes the same
   file across 23 distinct commits.
-  A silently wrong answer is worse than an error for a history-browsing feature, and it
-  disqualifies shallow independently of any performance argument.
-  Deepening later is also not a cheap repair: `git fetch --unshallow` on the django
-  clone took 90 seconds, more than cloning it fully in one step.
+  A silently wrong answer is worse than an error for a history-browsing feature, and
+  that disqualifies shallow as a *default* regardless of any performance argument.
+  It does not disqualify it as an explicit, clearly-labelled mode — see the large-repo
+  finding below, which revisits this with better data.
 - **Plain blobless** looks good until the first blame, which took 22.9 seconds cold
   because Git fetches missing blobs one round-trip at a time.
   Warm it is 0.05 s. That first-blame cliff is a bad experience and it recurs for every
@@ -196,6 +196,69 @@ developer focused on a single repository and your repository is reasonably-sized
 best approach is to do a full clone.”* For small repos, blobless adds machinery for
 little gain. A size threshold — full clone below it, blobless above — is worth
 considering rather than applying one strategy everywhere.
+
+### What is available when: the history panel needs no backfill
+
+A natural assumption is that history browsing has to wait for the backfill to finish,
+and that the Git panel should show a loading state until it does.
+Measurement says otherwise, and the distinction is sharp enough to design around.
+
+Running the exact argument vectors the `/api/git/` endpoints use, against a *fresh*
+blobless clone of flask with no backfill:
+
+| Surface | Command | Cold |
+| --- | --- | --- |
+| History list and graph | `git log -z --format=… --decorate=full --topo-order --all` | **0.04 s** |
+| Commit detail | `git show -z --raw --numstat -M -C …` | 0.49 s (0.01 s warm) |
+| Commit detail without line counts | `git show -z --raw …` | 0.01 s |
+
+The graph reads commit objects, which a blobless clone has in full, so it is complete
+the moment the clone is.
+Only per-commit detail fetches lazily, and the reason is precise: `--numstat` counts
+changed lines and `-M -C` score rename similarity, both of which need real file content.
+Dropping to `--raw` alone stays at 0.01 s because it compares trees only.
+
+Two design consequences.
+A progress indicator belongs on the commit-detail pane, not on the Git tab, and at half
+a second cold it warrants a spinner rather than a blocked view.
+And backfill is best understood not as what makes history work, but as what removes a
+recurring half-second from one pane.
+
+One caveat observed live rather than reasoned about: a blame in a blobless clone failed
+outright with `could not fetch … from promisor remote` when the network was being
+intercepted. A blobless clone is not self-sufficient until backfill completes, which is
+an argument for running the backfill promptly rather than treating it as optional
+polish.
+
+### Large repos: progressive deepening, not all-or-nothing
+
+An earlier conclusion here was too strong.
+Shallow was dismissed partly because `git fetch --unshallow` on django took 90 seconds,
+landing entirely in the user’s way.
+That is true of unshallowing, but history does not have to be bought all at once:
+
+| Step | Time | Result |
+| --- | --- | --- |
+| `--depth=1 --single-branch --filter=blob:none` (django) | 14.6 s | 75 MB total, 14 MB `.git`, 1 commit |
+| `fetch --deepen=500` | **1.25 s** | 501 commits |
+| `fetch --deepen=2000` | 9.3 s | 2,501 commits |
+| `fetch --deepen=10000` | 4.1 s | 12,501 commits, 35 MB `.git` |
+
+Against 109 s and 294 MB for a full clone, that is a repo open and browsable in 15
+seconds, with history arriving in pages that cost seconds each.
+For a very large repository this is a better shape than either extreme, and it maps
+naturally onto a UI that deepens as the user scrolls.
+
+The blame trap still applies and constrains the mode rather than killing it.
+While `.git/shallow` exists, blame keeps exiting 0 with boundary-attributed nonsense, so
+this mode must **disable blame and mark history as truncated** rather than render a
+plausible lie. The shallow marker file makes that state trivially detectable.
+
+This is worth planning as a later phase rather than building first.
+The default path already opens django in 16.5 s, so progressive deepening is an
+optimization for genuinely large repositories, not a prerequisite.
+
+### The first screen needs trees, not blobs
 
 This ordering also matches what the tool is for.
 Metabrowser’s first screen is a file tree and a rendered file, and both need trees but
@@ -535,11 +598,27 @@ served tree and a real clone on disk that it can also grep.
 
 ## Key Insights
 
-**The fastest clone is the wrong clone.** `--depth=1` wins every clone benchmark and
-loses the feature. The useful metric is time-to-first-render followed by
-time-to-full-capability, and on that metric blobless-plus-backfill beats both full and
-shallow: it renders 2.3–6.6x sooner than a full clone and, unlike shallow, arrives at a
-complete repository without a 90-second repair step.
+**The fastest clone is the wrong default.** `--depth=1` wins every clone benchmark and
+loses blame, silently.
+The useful metric is time-to-first-render followed by time-to-full-capability, and on
+that metric blobless-plus-backfill beats both full and shallow: it renders 2.3–6.6x
+sooner than a full clone and arrives at a complete repository, where shallow arrives at
+a repository that lies about attribution.
+
+**Capability arrives in stages, and the stages are not the ones you would guess.** The
+history graph is complete the instant a blobless clone is, at 0.04 s, because it reads
+commit objects. Only per-commit detail waits on blobs, because line counts and rename
+detection need file content.
+Backfill is therefore not what makes history work; it is what removes a recurring
+half-second from one pane.
+Anything that presents the Git panel as unavailable until backfill finishes would be
+hiding a working feature.
+
+**History can be bought in pages.** `fetch --unshallow` costs 90 s on django, but
+`fetch --deepen=500` costs 1.25 s. That turns shallow from a dead end into a viable
+large-repo mode: open in 15 s, deepen as the user scrolls.
+The constraint is that blame must be disabled while `.git/shallow` exists, since a wrong
+answer that exits 0 is worse than a missing feature.
 
 **This feature’s competition is a keystroke, not an app.** GitHub Desktop cannot browse
 files at all, so it is not the bar.
@@ -569,14 +648,15 @@ composes: the walker can begin indexing while blobs are still arriving.
 
 ## Comparison Matrix
 
-| Criterion | Full clone | Blobless + backfill | Shallow (`--depth=1`) | Treeless | github.dev |
+| Criterion | Full clone | Blobless + backfill | Shallow + deepen | Treeless | github.dev |
 | --- | --- | --- | --- | --- | --- |
-| Time to first render (django) | 108.9 s | **16.5 s** | 4.6 s | — | instant |
-| Time to full history | 108.9 s | 115.8 s (backgrounded) | 94.6 s (+unshallow) | — | n/a |
-| `git blame` works | yes | yes, after backfill | **wrong, exits 0** | **no** | via API |
+| Time to first render (django) | 108.9 s | **16.5 s** | **14.6 s** | — | instant |
+| History graph available | at clone | **at clone** | truncated | — | via API |
+| Time to full history | 108.9 s | 115.8 s (backgrounded) | in 1–9 s pages | — | n/a |
+| `git blame` works | yes | yes, after backfill | **must be disabled** | **no** | via API |
 | Browsing HEAD offline | yes | yes | yes | yes | **no** |
-| Full history offline | yes | after backfill | **no** | **no** | **no** |
-| Disk, django | 294 MB | 275 MB | 14 MB | — | 0 |
+| Full history offline | yes | after backfill | only what was deepened | **no** | **no** |
+| Disk, django | 294 MB | 275 MB | **14–35 MB** | — | 0 |
 | All branches | yes | yes | **no** | yes | yes |
 
 ## Options Considered
@@ -603,23 +683,30 @@ The cache persists and is purged by an explicit command.
 - Background work introduces a state the UI must represent honestly.
 - Partial clone has long network tails when connectivity is poor.
 
-### Option B: Shallow clone, deepen on demand
+### Option B: Shallow plus progressive deepening *(recommended as a later phase, for large repos only)*
 
-**Description:** `--depth=1 --single-branch` for the fastest possible open; run
-`git fetch --unshallow` only when the user opens a history view.
+**Description:** `--depth=1 --single-branch --filter=blob:none` for the fastest open,
+then `git fetch --deepen=<n>` in pages as the user scrolls history.
+Blame is disabled and history marked truncated while `.git/shallow` exists.
 
 **Pros:**
 
-- Fastest first render and by far the smallest disk footprint.
-- Simple, and works on every Git version in circulation.
+- Fastest first render and by far the smallest footprint: django in 14.6 s and 14 MB of
+  `.git`, reaching 12,501 commits at 35 MB.
+- Deepening is incremental and cheap — 1.25 s for the first 500 commits — so history
+  arrives in pages rather than one 90 s stall.
+- Degrades honestly if the mode disables blame rather than rendering boundary-attributed
+  nonsense.
 
 **Cons:**
 
-- `git blame` exits 0 with a wrong answer before the deepen step, so a history UI built
-  on it would display fabricated attribution rather than an error.
-- The deepen step measured 90 s on django, landing entirely in the user’s way at the
-  moment they ask for history.
+- Blame is unavailable until fully unshallowed, and the failure mode if that is
+  forgotten is silent and wrong.
 - Single-branch hides branches the user may want.
+- Two axes of incompleteness at once (missing commits and missing blobs) means two
+  repair paths and more states for the UI to represent.
+- Only earns its complexity on repositories where the default path is genuinely too
+  slow, which django at 16.5 s is not.
 
 ### Option C: Throwaway clone per invocation
 
@@ -660,7 +747,10 @@ The cache persists and is purged by an explicit command.
 
 ## Recommendations
 
-Build Option A, staged, and gated behind the untrusted-content profile.
+Build Option A first and gate it behind the untrusted-content profile.
+Keep Option B as a planned later phase for large repositories rather than a competing
+default: the two compose, since both start from a partial clone and differ only in
+whether commits are also withheld.
 
 1. **Do not ship before `mb-vib1`** (capability set and `--untrusted` profile).
    Serving a stranger’s repository without it means rendering untrusted HTML in a
@@ -696,7 +786,12 @@ Build Option A, staged, and gated behind the untrusted-content profile.
 - [ ] Confirm the proposed Git floor of 2.26 against the platforms this project
   supports.
 - [ ] Validate the purge defaults (10 GiB cap, 90-day sweep) against real cache growth.
-- [ ] Decide whether a repo-size threshold should select full clone over blobless.
+- [ ] Decide whether a repo-size threshold should select full clone over blobless, and
+  what signal is cheap enough to measure before cloning.
+- [ ] Decide the trigger for large-repo mode: an explicit flag, a size threshold, or
+  both.
+- [ ] Confirm the Git panel degrades correctly against a shallow repository — history
+  marked truncated and blame disabled — before that mode is offered.
 - [ ] Write the plan spec and file the implementation beads, sequenced after `mb-vib1`.
 
 ## Methodology

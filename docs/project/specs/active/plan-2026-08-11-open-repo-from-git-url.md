@@ -48,10 +48,15 @@ Each is independently useful and none blocks the others.
 - **`owner/repo` shorthand.** Ambiguous with a relative directory, and worth its own
   decision.
 - **Checking out a specific ref.** The clone serves its default branch.
-- **Size-capped LRU eviction.** This phase ships manual purge only; an automatic policy
+- **Size-capped LRU eviction.** Phase 1 ships manual purge only; an automatic policy
   needs data on real cache growth.
 - **Fetching updates automatically.** Cached repos serve their cached state.
 - **Non-Git version control**, and any hosted or multi-user deployment.
+
+Large-repository support is *deferred, not dropped*: it is Phase 2 below, with its
+measurements and constraints already established.
+Phase 1 opens django in 16.5 s, which is good enough that optimizing further first would
+be premature.
 
 ## Background
 
@@ -106,6 +111,57 @@ If it cannot be backgrounded, a full clone is strictly better.
 Fall back to a full clone when Git is older than 2.49, when `git backfill` fails, or
 when the remote refuses a partial clone.
 The result is correct in every case and only the timing differs.
+
+### What is available when
+
+The Git panel must not be presented as unavailable while the backfill runs, because it
+is not. Measured against a fresh blobless clone with no backfill, using the exact
+argument vectors the endpoints build:
+
+| Surface | Cold | Needs |
+| --- | --- | --- |
+| File tree and file rendering | immediate | trees |
+| `/api/git/log` — history list and graph | **0.04 s** | commit objects |
+| `/api/git/commit/{rev}` — commit detail | 0.49 s, 0.01 s warm | blobs, for `--numstat` and `-M -C` |
+
+So there are three states, not two, and only the third needs any UI treatment:
+
+1. **Cloning.** Nothing is served yet; the CLI is still blocking.
+2. **Serving, backfill running.** Everything works.
+   The file tree, the history list, and the graph are all complete.
+   Per-commit detail costs an extra half-second on first view of each commit, which
+   warrants a spinner in that pane and nothing more.
+3. **Backfill complete.** The half-second disappears and the repository is
+   self-sufficient offline.
+
+A blobless clone is not usable offline until backfill finishes — a blame during a
+network outage failed with `could not fetch … from promisor remote`. That makes prompt
+backfill a requirement rather than polish, and it is why state 2 should be short rather
+than indefinite.
+
+### Phase 2: large repositories
+
+Deferred but specified now, because the measurements exist and the constraints shape
+Phase 1’s interfaces.
+
+For a repository where a 16 s open is still too slow, clone
+`--depth=1 --single-branch --filter=blob:none` and deepen in pages.
+On django that is 14.6 s to a browsable tree at 14 MB of `.git`, then
+`fetch --deepen=500` at 1.25 s for the first 500 commits and roughly 12,500 commits for
+35 MB. History arrives in seconds-long pages instead of one 90 s `--unshallow` stall.
+
+Two constraints are hard requirements of this mode:
+
+- **Blame must be disabled while `.git/shallow` exists.** A shallow blame exits 0 and
+  attributes every line to the graft-boundary commit.
+  A wrong answer that reports success is worse than an absent feature, and the marker
+  file makes the state trivially detectable.
+- **History must be marked truncated** at the boundary, so the graph does not imply the
+  repository begins there.
+
+Phase 1 should therefore avoid assuming a clone is complete.
+The sidecar already records the clone strategy, which is the natural place for a later
+phase to record depth state.
 
 ### Components
 
@@ -266,6 +322,22 @@ directories. Cloning with `core.symlinks=false` is defense in depth on top of th
 - [ ] Docs: a routing line in the Metabrowser skill, and the cache path and purge
   command in the CLI docs.
 
+### Phase 2: Large repositories
+
+Not required for the feature to work end to end.
+Start it when a repository large enough to justify it is actually in the way, and use
+the Phase 1 sidecar to record depth state.
+
+- [ ] Depth-aware clone: `--depth=1 --single-branch --filter=blob:none`, selected by an
+  explicit flag or a size threshold, recorded in the sidecar.
+- [ ] `deepen` over `run_git`, paged rather than `--unshallow`, driven by the history
+  panel reaching its loaded boundary.
+- [ ] Shallow-state capability reporting: `/api/git/` must report that blame is
+  unavailable and history is truncated while `.git/shallow` exists, and the panel must
+  honor it.
+- [ ] Confirm the graph renders a truncation boundary rather than implying the
+  repository starts there.
+
 ## Testing Strategy
 
 Network access must not be required to run the suite.
@@ -287,6 +359,9 @@ exercises the same clone and rename machinery without a remote.
   rather than blocking, proving the environment and timeout are wired.
 - **CLI surface** extends `tests/golden/cli-surface.tryscript.md` with the new modes and
   the deep-link rejection.
+- **History before backfill** is the assertion that protects the design claim: against a
+  blobless fixture clone with backfill not yet run, `/api/git/log` must return a
+  complete graph. If a future change makes the panel wait on backfill, this fails.
 - **Git panel on a cached repo** asserts the payoff end to end: a repo opened from a
   `file://` URL satisfies the served-root-is-repo-root invariant, so `/api/git/log`
   answers for it. `tests/test_git_e2e.py` already builds fixture repositories and is the
@@ -314,6 +389,16 @@ profile. The cache directory is created on first use and never written otherwise
   latter keeps all Git code in one package.
   This is worth settling with the author of `feat/git-graph-view` rather than
   unilaterally.
+- Should the Git surface become an internal plugin rather than core?
+  The open platform beads — plugin sub-router mount (`mb-xzj3`), SDK data-plane v2
+  (`mb-7uta`), event subscription (`mb-t1wt`), the repo-scoped `[[tool]]` mount point
+  (`mb-uh6p`), and notably the core bounded async subprocess runner (`mb-y1ax`) — exist
+  so a Git surface could be a plugin, but `metabrowser.git` currently sits in core with
+  its own runner. `run_git` is generic (`run_git(args, cwd=…)`) and is the natural seam:
+  promoting it to the core primitive `mb-y1ax` describes would let the Git surface sit
+  above it as an internal plugin, and would make a narrow build possible later.
+  This feature leans on that seam already, so it has a stake in the answer without
+  owning the decision.
 - Does the backfill’s long-running subprocess need a different cancellation story from
   request-scoped reads?
   `run_git` reaps children on cancellation, but a backfill outlives the request that
