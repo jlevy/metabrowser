@@ -3,9 +3,9 @@ type: is
 id: is-01kzrtbtsh9k6p8x84rta84y4p
 title: Assess and publish Metabrowser v0.3.0 minor release
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 32
+version: 34
 labels: []
 dependencies: []
 child_order_hints:
@@ -28,10 +28,12 @@ child_order_hints:
   - is-01kztk1re8jyap1fcn39p6w3nd
   - is-01kzvbhe5e49xmrq7kzjmykfjp
 created_at: 2026-08-11T16:26:50.545Z
-updated_at: 2026-08-12T16:05:28.877Z
+updated_at: 2026-08-12T16:28:49.947Z
+closed_at: 2026-08-12T16:28:49.946Z
+close_reason: Published and verified Metabrowser v0.3.0 end to end.
 ---
 Review all user-visible changes since v0.2.0, triage outstanding defects for release blockers, validate the filtering/search stabilization release, prepare accurate v0.3.0 notes, run the complete release gate, publish the GitHub release, verify PyPI artifacts and public smoke tests, and confirm CI.
 
 ## Notes
 
-Final v0.3.0 readiness review covered the 93-commit delta from v0.2.0 through main, open issues and PRs, packaging/version metadata, supply-chain policy, runtime navigation/search behavior, and release documentation. Five release-review findings were fixed: Quick File reconnect convergence, tree and recent snapshot/status alignment, premature root-summary values, and stopped progress polling. Real-browser smoke passed on a 12,611-file inventory, Quick File performance stayed within bounds at 50,000 candidates, a temporary v0.3.0 tag build imported as 0.3.0, and full make verify passed on 2026-08-12 with 914 pytest cases and 30 golden scenarios plus lint, types, public hygiene, locked vulnerability audits, distributions, API check, and isolated-wheel smoke tests. Commit ded7925 is pushed in draft PR #34; all five GitHub Actions jobs (lint, distribution, Python 3.12, 3.13, and 3.14) passed, the PR is mergeable, and it has no review comments or unresolved threads. The release remains intentionally uncut pending PR merge and explicit publish authorization. Known mb-087n (timing-threshold flake reproduced at v0.2.0) and mb-pn95 (watchfiles kernel-overflow API limitation) remain deferred nonblockers.
+Metabrowser v0.3.0 was published from merge commit 59eaf20dc15fc1326e8088ef4defad1e02872ed6 after the full review of the 93-commit delta since v0.2.0. PR #34 merged only after Cursor Bugbot identified a capped-inventory reconnect convergence defect; the fix added TDD coverage and the exact merge commit passed make verify with 915 pytest cases and 30 golden scenarios, plus formatting, lint, types, public hygiene, locked vulnerability audits, distribution inspection, API checks, and isolated-wheel smoke tests. Main CI run 31616943322 and publish run 31617191802 passed across Python 3.12, 3.13, and 3.14. GitHub release v0.3.0 targets the exact merge SHA and published through trusted publishing. PyPI metadata reports version 0.3.0, Python >=3.12,<4.0, AGPL-3.0-or-later, and the intended project URLs/classifiers. The wheel and sdist downloaded from PyPI matched SHA-256 digests 4139e2ff1b278e5f1392724dc986e95c7aab6f02f509c3b15361d667deb7c330 and 0da242e0dbf9f55b6a3218027a760b13142686ea84c1f19621c6e6cd8c490793. Fresh-cache public smoke tests passed for metabrowser@0.3.0, the metab entry point, and the metabrowser entry point. A clean npx skills install from jlevy/metabrowser produced the expected Metabrowser Agent Skill, and its uvx metabrowser@latest runner resolved publicly to 0.3.0. Known mb-087n and mb-pn95 remain deferred nonblocking follow-ups.
