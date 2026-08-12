@@ -223,9 +223,10 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
             return super().file_type_tallies(presets, limit=limit, entries=entries)
 
     original_root = paths_safe.ROOT_DIR
-    paths_safe._set_root_dir(tmp_path)
+    resolved_root = tmp_path.resolve()
+    paths_safe._set_root_dir(resolved_root)
     inv = WorkerUnsafeTallies()
-    inv._root = tmp_path
+    inv._root = resolved_root
     inv._status = "scanning"
     inv._entries["README.md"] = FsEntry.for_observed_file(
         path="README.md",

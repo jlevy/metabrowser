@@ -1958,8 +1958,11 @@ async function refreshAfterPendingTallyDiagnostic(serverDiagnostic) {
   ) {
     return;
   }
-  var recency = filesPanelUsesRecentSource() && filterState ? filterState.get().recency : null;
   await loadTree();
+  // The user can change or clear the filter while the tree request is in
+  // flight. Re-read the current window after the await so recovery never
+  // restores an obsolete recency source over the user's newer selection.
+  var recency = filterState ? filterState.get().recency : null;
   if (recency && recency !== "all") {
     loadRecent(recency);
   }

@@ -383,6 +383,18 @@ def test_pending_tally_watchdog_is_wired_to_client_and_server_logging() -> None:
     assert "reconcilePendingTallyDiagnostics();" in js
 
 
+def test_pending_tally_recovery_rechecks_recency_after_tree_refresh() -> None:
+    """A filter change during the tree request must win over its old window."""
+
+    js = _read_app_js()
+    start = js.index("async function refreshAfterPendingTallyDiagnostic")
+    block = js[start : js.index("async function reportPendingTallyDiagnostic", start)]
+    tree_refresh = block.index("await loadTree();")
+    current_recency = block.index("filterState.get().recency")
+    assert tree_refresh < current_recency
+    assert "loadRecent(recency);" in block
+
+
 def test_load_tree_renders_single_file_tally() -> None:
     """The root file count + total bytes render once, in the scrollable
     tree-summary row above the file tree. The header-stats line that
