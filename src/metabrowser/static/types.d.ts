@@ -5,7 +5,7 @@ type MetabrowserRenderContext = {
 
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
-  dispose?: () => void;
+  dispose?: (container: HTMLElement) => void;
 };
 
 type KpressAssetLoading = "classic" | "module" | "resource" | "stylesheet";
@@ -84,6 +84,21 @@ type MetabrowserFilterOption = {
 };
 
 type MetabrowserFilterSelection = string | Array<string> | null;
+
+type MetabrowserFilterSnapshot = {
+  recency: string;
+  showIgnored: boolean;
+  size: string;
+  types: Array<string> | null;
+};
+
+type MetabrowserFilterState = {
+  activeCount(): number;
+  clear(): void;
+  get(): MetabrowserFilterSnapshot;
+  set(patch: Partial<MetabrowserFilterSnapshot>): void;
+  subscribe(listener: (snapshot: MetabrowserFilterSnapshot) => void): () => void;
+};
 
 type MetabrowserFilterHandlers = {
   onChange?: (key: string, value: string, select: string) => void;
@@ -174,10 +189,10 @@ type StructuredBuiltins = {
 };
 
 type AgentLogBuiltins = {
-  disposeLog: () => void;
+  disposeLog: (container?: HTMLElement) => void;
   renderCharts: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   renderLog: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
-  renderLogEvent: (container: HTMLElement, event: unknown) => unknown;
+  renderLogEvent: (container: HTMLElement, event: unknown, index: number) => string;
   renderRaw: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
@@ -213,6 +228,7 @@ type MetabrowserSdk = {
     params: Record<string, unknown>,
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
+  filterState?: MetabrowserFilterState;
   formatSize(value: number): string;
   getRegisteredView(kind: string, view: string): MetabrowserViewSpec | undefined;
   icons: Record<string, string>;
@@ -556,7 +572,6 @@ declare global {
       RECENT_LIMIT?: number;
       RECENT_RECLUSTER_DEBOUNCE_MS?: number;
       RECENT_WINDOW_SECONDS?: Record<string, number | null>;
-      RECENT_WINDOWS?: Array<string>;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
     };
     metabrowser: MetabrowserSdk;

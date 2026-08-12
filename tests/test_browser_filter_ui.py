@@ -466,6 +466,8 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     assert ".md" in docs["values"]
 
     state = _read("filter_state.js")
+    assert "mb.filterState = {" in state
+    assert "MetabrowserFilterState" not in state
     tm_start = state.index("function typeMatches(pathLike, types, logicalExt)")
     tm_block = state[tm_start : tm_start + 1400]
     assert 'token.charAt(0) === "."' in tm_block
@@ -891,6 +893,7 @@ def test_live_uses_the_server_owned_ninety_second_window() -> None:
     assert "LIVE_FILE_WINDOW_S = 90.0" in settings
     assert '"live": LIVE_FILE_WINDOW_S' in settings
     assert '"RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS' in settings
+    assert '"RECENT_WINDOWS"' not in settings
 
     js = _read("app.js")
     assert "_METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS" in js

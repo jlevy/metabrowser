@@ -371,6 +371,14 @@ def test_walker_permission_denied_is_debug_diagnostic(tmp_path: Path, monkeypatc
     assert records[0].levelno == logging.DEBUG
 
 
+def test_walker_uses_plain_worker_threads_for_each_directory() -> None:
+    """Per-directory scans avoid cancellable-worker bookkeeping."""
+
+    source = Path(walker.__file__).read_text()
+    assert "await asyncio.to_thread(_scandir_visible, abs_path)" in source
+    assert "run_cancellable_thread" not in source
+
+
 def test_rewalk_subtree_refuses_escaping_and_ancestor_symlinks(tmp_path: Path) -> None:
     """Links that resolve outside the served root (an escaping link and
     one pointing at the root's parent) are refused with a warning, and

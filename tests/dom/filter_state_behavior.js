@@ -83,7 +83,7 @@ function makeSandbox(options) {
     "utf-8",
   );
   vm.runInContext(source, sandbox, { filename: "filter_state.js" });
-  return { state: sandbox.MetabrowserFilterState, store, events, sandbox };
+  return { state: sandbox.metabrowser.filterState, store, events, sandbox };
 }
 
 // ── Transient defaults ─────────────────────────────────────────

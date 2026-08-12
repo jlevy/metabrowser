@@ -90,14 +90,21 @@ Design system:
 
 Reliability:
 
+- Symbolic links now appear as explicit, non-expanded leaves with the standard link
+  icon. They never contribute file counts or type tallies, never graft a target directory
+  into the served tree, and report whether an unavailable target is missing, outside the
+  served root, or otherwise unreadable.
+- Live filesystem updates now replace an existing row when its path changes between a
+  file, directory, and symbolic link, including removing a former directory’s rendered
+  descendants before mounting the replacement.
 - Ctrl-C during command startup or an in-progress filesystem scan now exits quietly with
   status 130 instead of printing a traceback or waiting on a background thread.
   A second Ctrl-C remains an immediate forced exit if another operation cannot finish
   cooperatively.
 - Live updates remain correct when a large filesystem burst fills a bounded event queue.
   The server replaces the incomplete backlog with a resynchronization marker, and each
-  affected browser reconnects for a fresh inventory snapshot instead of remaining open
-  with stale state.
+  affected browser reconnects with bounded exponential backoff for a fresh inventory
+  snapshot instead of remaining open with stale state or reconnecting in a tight loop.
 - Default server output no longer reports routine lifecycle events, expected concurrent
   inventory conflicts, protected directories, or sub-threshold helper timings.
   Slow requests, long inventory scans, plugin problems, and operational failures remain

@@ -175,7 +175,7 @@ def client_settings_dict() -> dict[str, Any]:
     side from duplicating constants.
 
     Convention: keys here mirror the JS-side constant names
-    (``RECENT_LIMIT``, ``RECENT_WINDOWS``, …); the client reads
+    (``RECENT_LIMIT``, ``RECENT_WINDOW_SECONDS``, …); the client reads
     via ``window.METABROWSER_SETTINGS.RECENT_LIMIT`` etc.
     """
 
@@ -184,8 +184,6 @@ def client_settings_dict() -> dict[str, Any]:
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
         "RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS,
-        # Window keys in UI chip order. Server enforces same set.
-        "RECENT_WINDOWS": list(RECENT_WINDOW_SECONDS.keys()),
         "RECENT_CLUSTER_PCT": RECENT_CLUSTER_PCT,
         "RECENT_RECLUSTER_DEBOUNCE_MS": RECENT_RECLUSTER_DEBOUNCE_MS,
         "INDEX_PROGRESS_POLL_MS": INDEX_PROGRESS_POLL_MS,

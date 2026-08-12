@@ -306,7 +306,12 @@
     return true;
   }
 
-  /** @type {Record<string, any>} */ (window).MetabrowserFilterState = {
+  const mb = /** @type {Record<string, any>} */ (window).metabrowser;
+  if (!mb) {
+    console.error("metabrowser filter state: window.metabrowser missing — SDK not loaded");
+    return;
+  }
+  mb.filterState = {
     DEFAULTS,
     RECENCY_VALUES: RECENCY_VALUES.slice(),
     SIZE_VALUES: SIZE_VALUES.slice(),

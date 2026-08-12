@@ -82,6 +82,8 @@ from metabrowser.walker import (
 
 LOG = logging.getLogger(__name__)
 
+_SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS = 30_000_000_000
+
 
 IndexStatus = Literal["idle", "scanning", "done", "truncated", "failed"]
 
@@ -129,6 +131,8 @@ class InventoryIndex:
         self._first_render_depth = first_render_depth
         self._files_indexed = 0
         self._started_at_ns: int = 0
+        self._subscriber_overflows_since_log = 0
+        self._subscriber_overflow_last_log_ns = 0
         # Monotonic per process, bumped on every emitted
         # ``catalog.change`` and on ``clear()``. Not reset on root
         # swap so ``/api/catalog`` ETags never repeat within a
@@ -304,30 +308,31 @@ class InventoryIndex:
         """
 
         extension_counts: dict[str, list[int]] = {}
-        preset_counts = {preset_id: [0, 0] for preset_id, _values in presets}
-        normalized_presets = [
-            (
-                preset_id,
-                frozenset(value.lower() for value in values if value.startswith(".")),
-                frozenset(value.lower() for value in values if not value.startswith(".")),
-            )
-            for preset_id, values in presets
-        ]
+        preset_counts: dict[str, list[int]] = {}
+        normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
+        for preset_id, values in presets:
+            extensions: set[str] = set()
+            names: set[str] = set()
+            for value in values:
+                normalized = value.lower()
+                (extensions if normalized.startswith(".") else names).add(normalized)
+            preset_counts[preset_id] = [0, 0]
+            normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
         for entry in self._entries.values():
             if entry.type != "file":
                 continue
             ignored_index = 1 if entry.gitignored else 0
-            if entry.ext:
-                row = extension_counts.get(entry.ext)
+            ext = entry.ext.lower()
+            if ext:
+                row = extension_counts.get(ext)
                 if row is None:
                     row = [0, 0]
-                    extension_counts[entry.ext] = row
+                    extension_counts[ext] = row
                 row[ignored_index] += 1
 
             name = entry.name.lower()
-            ext = entry.ext.lower()
-            for preset_id, extensions, names in normalized_presets:
-                if ext in extensions or name in names:
+            for preset_id, preset_extensions, preset_names in normalized_presets:
+                if ext in preset_extensions or name in preset_names:
                     preset_counts[preset_id][ignored_index] += 1
 
         ranked = sorted(
@@ -1112,7 +1117,20 @@ class InventoryIndex:
                 q.put_nowait(resync)
                 overflowed += 1
         if overflowed:
-            LOG.debug("requested resync for %d full subscriber queue(s)", overflowed)
+            self._subscriber_overflows_since_log += overflowed
+            now_ns = time.monotonic_ns()
+            if (
+                self._subscriber_overflow_last_log_ns == 0
+                or now_ns - self._subscriber_overflow_last_log_ns
+                >= _SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS
+            ):
+                LOG.warning(
+                    "inventory subscriber backlog overflowed; requested resync for "
+                    "%d subscriber(s)",
+                    self._subscriber_overflows_since_log,
+                )
+                self._subscriber_overflows_since_log = 0
+                self._subscriber_overflow_last_log_ns = now_ns
         if isinstance(event, FsChange):
             companion = _derive_catalog_change(event)
             if companion is not None:

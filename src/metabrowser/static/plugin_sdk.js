@@ -18,7 +18,7 @@
 //       container's innerHTML and may attach DOM listeners, fetch data,
 //       paint charts. May return a Promise; the shell awaits it for
 //       error surfacing.
-//     dispose() [optional]
+//     dispose(container) [optional]
 //       Called when the preview pane is *replaced* — specifically when
 //       (1) a different file is opened, (2) the same file is reloaded
 //       after a file-change event, or (3) an error/loading state
@@ -294,27 +294,27 @@
   // module is absent (tests, partial harnesses).
   const filters = {
     get() {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       return fs ? fs.get() : null;
     },
     set(patch) {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       if (fs) {
         fs.set(patch);
       }
     },
     clear() {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       if (fs) {
         fs.clear();
       }
     },
     subscribe(listener) {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       return fs ? fs.subscribe(listener) : () => {};
     },
     activeCount() {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       return fs ? fs.activeCount() : 0;
     },
   };

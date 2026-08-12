@@ -37,6 +37,8 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
+import pytest
+
 import metabrowser.inventory as inventory_module
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.events import (
@@ -1048,6 +1050,46 @@ def test_inventory_slow_subscriber_gets_resync_without_blocking(tmp_path: Path) 
     assert count == 2
     assert isinstance(slow_event, FsResyncRequired)
     assert slow_event.reason == "subscriber_queue_overflow"
+
+
+def test_inventory_overflow_warning_is_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now_ns = 1
+    monkeypatch.setattr(inventory_module.time, "monotonic_ns", lambda: now_ns)
+
+    class _RecordHandler(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__(level=logging.WARNING)
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    logger = logging.getLogger("metabrowser.inventory")
+    original_level = logger.level
+    handler = _RecordHandler()
+    logger.addHandler(handler)
+
+    try:
+        logger.setLevel(logging.WARNING)
+        inv = InventoryIndex()
+        inv.subscribe(max_queue=1)
+        inv._emit(FsChange(ops=()))  # fill the queue
+        inv._emit(FsChange(ops=()))  # first overflow logs immediately
+        inv._emit(FsChange(ops=()))  # repeated overflow stays quiet
+
+        now_ns += inventory_module._SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS
+        inv._emit(FsChange(ops=()))
+    finally:
+        logger.setLevel(original_level)
+        logger.removeHandler(handler)
+
+    messages = [record.getMessage() for record in handler.records]
+    assert messages == [
+        "inventory subscriber backlog overflowed; requested resync for 1 subscriber(s)",
+        "inventory subscriber backlog overflowed; requested resync for 2 subscriber(s)",
+    ]
 
 
 def test_inventory_clear_emits_resync(tmp_path: Path) -> None:

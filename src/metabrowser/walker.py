@@ -26,16 +26,15 @@ Walker semantics (verified by tests in
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections import deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 from threading import Event
 
-from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry
 from metabrowser.fs_paths import is_visible
 from metabrowser.settings import (
@@ -142,10 +141,7 @@ class _ScanItem:
         self.mtime_ns = mtime_ns
 
 
-def _scandir_visible(
-    dirpath: Path,
-    cancel_event: Event | None = None,
-) -> list[_ScanItem]:
+def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
     """One ``os.scandir`` call, filtered to visible names, with
     one stat per file. Symlinks are not followed.
 
@@ -156,8 +152,6 @@ def _scandir_visible(
     try:
         with os.scandir(dirpath) as it:
             for raw in it:
-                if cancel_event is not None and cancel_event.is_set():
-                    break
                 if not is_visible(raw.name):
                     continue
                 try:
@@ -387,7 +381,7 @@ async def walk_tree(
 
         # Read directory in a worker thread; blocking call.
         try:
-            child_entries = await run_cancellable_thread(partial(_scandir_visible, abs_path))
+            child_entries = await asyncio.to_thread(_scandir_visible, abs_path)
         except OSError as exc:
             LOG.debug("walk_tree scandir failed for %s: %s", abs_path, exc)
             child_entries = []

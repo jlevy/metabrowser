@@ -2553,11 +2553,11 @@ function renderRecentList(data) {
 //
 // See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
 
-var filterState = /** @type {any} */ (window).MetabrowserFilterState || null;
+var filterState = /** @type {any} */ (window).metabrowser?.filterState || null;
 var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || null;
 
 // Recency is one axis from "everything" to the shortest mtime window.
-// Values match RECENT_WINDOWS and the /api/recent contract; labels are
+// Values match RECENT_WINDOW_SECONDS and the /api/recent contract; labels are
 // shortened because the whole group has to fit a 300px pane.
 // No "all" entry: the menu's any-row is that value, and listing it
 // twice would offer the same choice under two names. Labels can be
@@ -3628,7 +3628,7 @@ function disposeActivePluginViews() {
 
 function mountPluginView(container, pluginView, ctx) {
   if (typeof pluginView.dispose === "function") {
-    activePluginDisposers.push(pluginView.dispose);
+    activePluginDisposers.push(() => pluginView.dispose(container));
   }
   try {
     var maybePromise = pluginView.render(container, ctx);
@@ -4080,7 +4080,7 @@ function appendLiveEvents(path, batch) {
         var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
         if (renderEvt) {
           for (var j = 0; j < batch.events.length; j++) {
-            tail += renderEvt(batch.events[j], startIdx + j);
+            tail += renderEvt(logPane, batch.events[j], startIdx + j);
           }
         }
         logPane.insertAdjacentHTML("beforeend", tail);
@@ -4595,6 +4595,20 @@ function applyCellPatch(entry) {
         ? `.tree-symlink[data-path="${safePath}"]`
         : `.tree-file[data-path="${safePath}"]`;
   var rows = queryHtmlAll(selector);
+  var pathRows = queryHtmlAll(`.tree-item[data-path="${safePath}"]`);
+  var removingRow = Array.prototype.some.call(pathRows, (row) =>
+    row.classList.contains("tree-item-flash-out"),
+  );
+  if (pathRows.length !== rows.length || removingRow) {
+    // The watcher can observe a path changing shape (for example, a file
+    // replaced by a symlink) without an intervening remove event. A stale row
+    // with the old shape would make _insertRowSorted reject the replacement by
+    // path. Remove it synchronously, including a former folder's child rows,
+    // before taking the normal insert path. The same applies when a rapid
+    // remove/recreate reaches us while an old same-shaped row is animating out.
+    _removeRenderedRowsImmediately(entry.path);
+    rows = queryHtmlAll(selector);
+  }
   if (rows.length > 0) {
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
@@ -4706,6 +4720,24 @@ function _removeRenderedRows(path) {
   }
 }
 
+// Type replacements cannot wait for the removal animation: the new row uses
+// the same data-path and must be inserted in this event turn. This also removes
+// a former folder's rendered descendants before its replacement is mounted.
+function _removeRenderedRowsImmediately(path) {
+  var safe = escapePathForSelector(path);
+  var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (row.classList.contains("tree-folder")) {
+      var children = row.nextElementSibling;
+      if (children?.classList.contains("tree-children")) {
+        children.remove();
+      }
+    }
+    row.remove();
+  }
+}
+
 // Recency re-cluster scheduling: debounced so a burst of fs.change
 // ops doesn't render-thrash. The recency source reads from
 // ``recentBaseEntries`` (fetched from /api/recent plus a live overlay
@@ -4731,12 +4763,48 @@ function _scheduleRecentRecompute() {
 var _esConsecutiveErrors = 0;
 var _esBackoffMs = 2000;
 var _esReconnectTimer = null;
+var _esStableResetTimer = null;
 var _ES_MAX_CONSECUTIVE_ERRORS = 5;
 var _ES_BACKOFF_CAP_MS = 60000;
+var _ES_STABLE_CONNECTION_MS = 10000;
 
 function _resetEsCircuitBreaker() {
   _esConsecutiveErrors = 0;
   _esBackoffMs = 2000;
+}
+
+function _cancelEsStableReset() {
+  if (_esStableResetTimer !== null) {
+    clearTimeout(_esStableResetTimer);
+    _esStableResetTimer = null;
+  }
+}
+
+function _scheduleEsStableReset() {
+  _cancelEsStableReset();
+  _esStableResetTimer = setTimeout(() => {
+    _esStableResetTimer = null;
+    if (inventoryEventSource) {
+      _resetEsCircuitBreaker();
+    }
+  }, _ES_STABLE_CONNECTION_MS);
+}
+
+function _scheduleInventoryReconnect() {
+  _cancelEsStableReset();
+  if (inventoryEventSource) {
+    inventoryEventSource.close();
+    inventoryEventSource = null;
+  }
+  if (_esReconnectTimer !== null) {
+    return;
+  }
+  var delay = _esBackoffMs;
+  _esBackoffMs = Math.min(_esBackoffMs * 2, _ES_BACKOFF_CAP_MS);
+  _esReconnectTimer = setTimeout(() => {
+    _esReconnectTimer = null;
+    _createInventoryEventSource();
+  }, delay);
 }
 
 function _createInventoryEventSource() {
@@ -4744,10 +4812,10 @@ function _createInventoryEventSource() {
     inventoryEventSource = new EventSource("/api/events?scope=root-depth-2");
   } catch (_e) {
     inventoryEventSource = null;
+    _scheduleInventoryReconnect();
     return;
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       fileStoreApplySnapshot(data.scope, data.entries || []);
@@ -4761,7 +4829,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("fs.change", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
@@ -4771,7 +4838,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("catalog.change", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       quickFileCatalogFeed?.onCatalogChange(data);
@@ -4780,7 +4846,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("capability.update", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       // A truncated walk is "complete" in the sense that it stopped, but the
@@ -4795,7 +4860,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
-    _resetEsCircuitBreaker();
     // A resync marks a gap in the ordered delta stream. Clear derived state,
     // then replace this connection so the server sends an authoritative
     // snapshot before live updates resume.
@@ -4804,37 +4868,27 @@ function _createInventoryEventSource() {
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
-    if (inventoryEventSource) {
-      inventoryEventSource.close();
-      inventoryEventSource = null;
-    }
-    _createInventoryEventSource();
+    _scheduleInventoryReconnect();
   });
   inventoryEventSource.onopen = () => {
-    _resetEsCircuitBreaker();
+    // Do not erase accumulated failure state as soon as a socket opens. A
+    // connection that survives this interval is healthy enough to reset the
+    // exponential backoff; repeated overflow/resync cycles keep backing off.
+    _scheduleEsStableReset();
     // First open only (start() is a no-op afterwards): the bulk
     // catalog fetch begins once the stream is subscribed, so no op
     // can fall between the payload build and the subscription.
     quickFileCatalogFeed?.start();
   };
   inventoryEventSource.onerror = () => {
+    _cancelEsStableReset();
     _esConsecutiveErrors += 1;
     if (_esConsecutiveErrors >= _ES_MAX_CONSECUTIVE_ERRORS) {
       // Circuit breaker: too many consecutive errors without a
       // successful open or message. Close and recreate with
       // exponential backoff. A fresh connection gets a snapshot
       // via the existing fs.snapshot/resync flow.
-      if (inventoryEventSource) {
-        inventoryEventSource.close();
-        inventoryEventSource = null;
-      }
-      var delay = _esBackoffMs;
-      _esBackoffMs = Math.min(_esBackoffMs * 2, _ES_BACKOFF_CAP_MS);
-      _esReconnectTimer = setTimeout(() => {
-        _esReconnectTimer = null;
-        _esConsecutiveErrors = 0;
-        _createInventoryEventSource();
-      }, delay);
+      _scheduleInventoryReconnect();
     }
   };
 }

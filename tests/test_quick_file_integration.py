@@ -156,7 +156,7 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     assert resync_block.index("knownFileCatalog?.clear()") < resync_block.index("onResync")
 
     onopen_start = js.index("inventoryEventSource.onopen")
-    onopen_block = js[onopen_start : onopen_start + 500]
+    onopen_block = js[onopen_start : onopen_start + 700]
     assert "quickFileCatalogFeed?.start()" in onopen_block
 
     degraded_start = js.index("function startInventoryEventStream()")

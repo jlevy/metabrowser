@@ -74,15 +74,7 @@ def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
 
 
 class _QuietForceExitServer(uvicorn.Server):
-    """Uvicorn server that silences teardown logging once exit is forced.
-
-    A second Ctrl-C forces exit before the ASGI lifespan finishes shutting
-    down; the interpreter then cancels the pending lifespan task and the
-    cancellation is reported as a pre-formatted traceback string with no
-    ``exc_info``, which :func:`_shutdown_noise_filter` cannot match without
-    fragile text parsing. After the operator forces exit, no teardown record
-    is actionable, so drop them all at the logger level instead.
-    """
+    """Uvicorn server that exits immediately after a forced interrupt."""
 
     interrupted: bool = False
 
@@ -92,7 +84,6 @@ class _QuietForceExitServer(uvicorn.Server):
             self.interrupted = True
         super().handle_exit(sig, frame)
         if self.force_exit:
-            logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
             os._exit(INTERRUPTED_EXIT_CODE)
 
 
@@ -203,6 +194,8 @@ def run_serve(
             )
         )
         uvicorn_server.run()
+        # This flag is a protocol boolean. Do not treat foreign truthy sentinel
+        # values as proof that a signal was observed.
         if uvicorn_server.interrupted is True:
             raise typer.Exit(code=INTERRUPTED_EXIT_CODE)
     finally:
