@@ -614,6 +614,76 @@ class InventoryIndex:
     def subscriber_count(self) -> int:
         return len(self._subscribers)
 
+    def diagnostic_snapshot(
+        self,
+        paths: Sequence[str],
+        *,
+        sample_limit: int = 20,
+    ) -> dict[str, object]:
+        """Return bounded state for diagnosing unresolved directory totals.
+
+        The client reports only rendered paths. Pairing those with the live
+        inventory, generation, descendant aggregate, and walker state makes it
+        possible to distinguish a server-side pending directory from a stale
+        browser snapshot or a missed event-stream patch.
+        """
+
+        limit = max(0, sample_limit)
+        walker = self._walker_task
+        if walker is None:
+            walker_state = "missing"
+        elif walker.cancelled():
+            walker_state = "cancelled"
+        elif walker.done():
+            walker_state = "done"
+        else:
+            walker_state = "running"
+
+        elapsed_ms = 0
+        if self._started_at_ns:
+            elapsed_ms = (time.monotonic_ns() - self._started_at_ns) // 1_000_000
+
+        requested: list[dict[str, object]] = []
+        for path in list(paths)[:limit]:
+            entry = self._entries.get(path)
+            row: dict[str, object] = {
+                "path": path,
+                "known": entry is not None,
+                "pending": path in self._pending_dirs,
+                "generation": self._generation.get(path, 0),
+                "direct_children": self._direct_child_counts.get(path, 0),
+                "descendant_files": self._descendant_file_counts.get(path, 0),
+                "descendant_size": self._descendant_file_sizes.get(path, 0),
+                "descendant_leaves": self._descendant_leaf_counts.get(path, 0),
+            }
+            if entry is not None:
+                row.update(
+                    {
+                        "type": entry.type,
+                        "total_files": entry.total_files,
+                        "total_size": entry.total_size,
+                        "newest_mtime_ns": entry.newest_mtime_ns,
+                        "empty": entry.empty,
+                        "write_generation": (
+                            entry.write_token.generation if entry.write_token is not None else None
+                        ),
+                    }
+                )
+            requested.append(row)
+
+        return {
+            "status": self._status,
+            "elapsed_ms": elapsed_ms,
+            "files_indexed": self._files_indexed,
+            "entries": len(self._entries),
+            "pending_dirs": len(self._pending_dirs),
+            "pending_dir_sample": heapq.nsmallest(limit, self._pending_dirs),
+            "subscribers": len(self._subscribers),
+            "catalog_revision": self._catalog_revision,
+            "walker_task": walker_state,
+            "requested_paths": requested,
+        }
+
     def initial_snapshot(self, scope: str = "root-depth-2") -> FsSnapshot:
         """Build the on-connect snapshot. Tuple form (FsSnapshot
         wants an immutable ``entries`` field) so callers can pass

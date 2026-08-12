@@ -71,6 +71,25 @@ Repeated refreshes are worth reporting with the root size, filesystem type, and
 surrounding slow-operation messages because they indicate that filesystem events are
 arriving faster than the browser stream can consume them.
 
+### Pending Folder Totals
+
+A folder count, size, or modification time that remains pending for five seconds emits
+one warning in the browser console and one correlated warning in the server log.
+The warning is reported once per unresolved episode, so a long scan does not repeat the
+same message.
+
+Use the shared diagnostic ID to compare the two records.
+The browser record includes the active filters and data source, visible pending rows,
+cached tree values, file-store values, scan progress, and event-stream state.
+The server record adds the inventory and walker status, pending-directory count,
+subscriber and connection counts, event position, and aggregate and generation state for
+a bounded sample of affected paths.
+
+When the server inventory is already complete, the browser reloads the authoritative
+tree after recording the warning.
+This safety refresh repairs a stale rendered snapshot while preserving the diagnostic
+evidence needed to find how it became stale.
+
 ## Plugin Problems
 
 Start with the registry:

@@ -11,6 +11,8 @@ This module owns:
 * ``GET /api/index/progress`` — lightweight crawl status for the
   left-nav progress footer. Reads in-memory inventory counters
   only; never scans the tree or rebuilds suffix tallies.
+* ``POST /api/diagnostics/pending-tallies`` — bounded client/server state
+  captured when a rendered directory total remains unresolved.
 * ``GET /api/index/meta`` — bundled summary of index status,
   suffix tally, and oldest/newest mtime; ETag-cacheable. Folds
   what the search spec called ``/api/index/status`` and
@@ -64,6 +66,8 @@ from metabrowser.paths_safe import _resolved_root_dir
 from metabrowser.settings import (
     DEFAULT_EXECUTOR_WORKERS,
     INDEX_PROGRESS_UPDATE_FILES,
+    PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES,
+    PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
     SSE_BUS_INVENTORY_QUEUE_SIZE,
     SSE_HEARTBEAT_INTERVAL_S,
     SSE_PER_CONNECTION_QUEUE_SIZE,
@@ -675,6 +679,75 @@ async def api_index_progress(request: Request) -> Response:
     )
 
 
+def _pending_tally_paths(payload: dict[str, object]) -> list[str]:
+    pending = payload.get("pending")
+    if not isinstance(pending, dict):
+        return []
+    sample = pending.get("sample")
+    if not isinstance(sample, list):
+        return []
+    paths: list[str] = []
+    for item in sample[:PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT]:
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path")
+        if isinstance(path, str) and path:
+            paths.append(path)
+    return paths
+
+
+async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
+    """Correlate a client-side pending-tally warning with server state."""
+
+    content_length = request.headers.get("content-length", "")
+    try:
+        if content_length and int(content_length) > PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES:
+            return JSONResponse({"error": "Diagnostic payload too large"}, status_code=413)
+    except ValueError:
+        return JSONResponse({"error": "Invalid Content-Length"}, status_code=400)
+
+    body = await request.body()
+    if len(body) > PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES:
+        return JSONResponse({"error": "Diagnostic payload too large"}, status_code=413)
+    try:
+        decoded = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JSONResponse({"error": "Invalid diagnostic payload"}, status_code=400)
+    if not isinstance(decoded, dict):
+        return JSONResponse({"error": "Invalid diagnostic payload"}, status_code=400)
+
+    payload = cast(dict[str, object], decoded)
+    raw_id = payload.get("diagnostic_id")
+    diagnostic_id = (
+        "".join(char if char.isalnum() or char in "-_.:" else "_" for char in raw_id)[:128]
+        if isinstance(raw_id, str)
+        else "pending-tally-unknown"
+    )
+    inventory = get_inventory()
+    inventory_state = inventory.diagnostic_snapshot(
+        _pending_tally_paths(payload),
+        sample_limit=PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
+    )
+    bus = _BusSingleton.instance
+    event_state: dict[str, object] = {
+        "bus_started": bus is not None,
+        "connections": bus.connection_count() if bus is not None else 0,
+        "latest_event_id": bus.latest_id() if bus is not None else 0,
+    }
+    response_payload = {
+        "diagnostic_id": diagnostic_id,
+        "inventory": inventory_state,
+        "events": event_state,
+    }
+    LOG.warning(
+        "pending folder tallies diagnostic id=%s client=%s server=%s",
+        diagnostic_id,
+        json.dumps(payload, separators=(",", ":"), sort_keys=True),
+        json.dumps(response_payload, separators=(",", ":"), sort_keys=True),
+    )
+    return JSONResponse(response_payload)
+
+
 # Last encoded catalog body, keyed by its ETag. Holds at most one entry: the
 # revision moves on every indexed change, so older bodies are dead weight and
 # a full catalog is the largest payload the server produces.
@@ -828,6 +901,11 @@ def add_inventory_routes(app: Starlette) -> None:
             Route("/api/events", api_events),
             Route("/api/catalog", api_catalog),
             Route("/api/index/progress", api_index_progress),
+            Route(
+                "/api/diagnostics/pending-tallies",
+                api_pending_tally_diagnostic,
+                methods=["POST"],
+            ),
             Route("/api/index/meta", api_index_meta),
             Route("/api/capabilities", api_capabilities),
         ]

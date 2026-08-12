@@ -671,6 +671,21 @@ def test_leaving_the_recency_source_abandons_its_fetch() -> None:
     assert 'currentRecentWindow = ""' in block
 
 
+def test_leaving_recency_refetches_the_authoritative_tree() -> None:
+    """The cached first-paint tree can retain pending aggregates.
+
+    Live events patch the visible DOM, not that old wire snapshot. Restoring it
+    after a recency filter therefore reintroduced skeletons after the scan and
+    its progress polling had completed.
+    """
+
+    js = _read("app.js")
+    start = js.index("function onFilterStateChange(state)")
+    block = js[start : start + 2200]
+    assert "loadTree();" in block
+    assert "renderFilesFromTree()" not in block
+
+
 def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     """It runs repeatedly while the index warms up; rebuilding the bar
     would drop focus out of a dropdown being arrowed through."""
@@ -808,6 +823,12 @@ def test_index_loads_filter_modules_before_app() -> None:
     assert 'src="/static/filter_controls.js?v=' in html
     assert html.index("/static/filter_state.js") < html.index("/static/app.js")
     assert html.index("/static/filter_controls.js") < html.index("/static/app.js")
+
+
+def test_index_loads_pending_tally_watchdog_before_app() -> None:
+    html = _render_index_html()
+    assert 'src="/static/pending_tally_diagnostics.js?v=' in html
+    assert html.index("/static/pending_tally_diagnostics.js") < html.index("/static/app.js")
 
 
 def test_dom_content_loaded_initializes_the_filter_bar() -> None:
