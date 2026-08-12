@@ -13,8 +13,9 @@ Filtering and file navigation:
   The separate Recent tab is folded into this pane so every dimension composes in one
   place.
 - Age filters query the complete inventory rather than only expanded folders.
-  Capped results prioritize tracked files over ignored dependency churn, report the
-  shortfall, and continue to incorporate filesystem changes while the view is open.
+  Each age row shows its cumulative index-wide file count, refreshed when the menu
+  opens. Capped results prioritize tracked files over ignored dependency churn, report
+  the shortfall, and continue to incorporate filesystem changes while the view is open.
 - **Live** now has one general definition: every file modified in the past 90 seconds.
   The server owns that cutoff, and expired rows disappear even when no later filesystem
   event arrives. Agent-log activity remains a separate capability that supplies active
@@ -55,6 +56,9 @@ Quick File navigation:
   directory removal now costs an entry’s depth rather than the size of the removal
   batch. Removing 2,000 directories from a 100,000-entry catalog went from 1441ms to
   52ms, and stays flat as the batch grows.
+- Quick File catalog recovery now closes the last reconnect gap: if a restarted server
+  is still scanning, completion triggers one finished membership fetch before stale
+  paths can survive or the palette claims complete coverage.
 
 Document rendering:
 
@@ -105,6 +109,13 @@ Reliability:
   The server replaces the incomplete backlog with a resynchronization marker, and each
   affected browser reconnects with bounded exponential backoff for a fresh inventory
   snapshot instead of remaining open with stale state or reconnecting in a tight loop.
+- Folder totals that remain pending now produce a bounded client/server diagnostic and
+  recover through a fresh root tally.
+  The tracked/ignored split stays pending until its inventory snapshot is complete,
+  tally values and scan status stay aligned, and a filter change during recovery cannot
+  restore a stale view.
+- `metab ROOT --check-api` runs the application in-process and validates the initial,
+  filtered, cleared, and completed navigation responses without opening a browser.
 - Default server output no longer reports routine lifecycle events, expected concurrent
   inventory conflicts, protected directories, or sub-threshold helper timings.
   Slow requests, long inventory scans, plugin problems, and operational failures remain

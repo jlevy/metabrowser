@@ -5,8 +5,8 @@
 **Author:** Metabrowser maintainers
 
 **Status:** Implemented and validated in a real browser.
-Follow-ups tracked as beads under epic `mb-pcih`; the open ones are `mb-4k4d`,
-`mb-g675`, and `mb-katw`.
+Follow-ups tracked as beads under epic `mb-pcih`; the open ones are `mb-4k4d` and
+`mb-katw`.
 
 ## Overview
 
@@ -511,6 +511,14 @@ Tracked as beads under epic `mb-pcih`:
   state. Belongs to that branch, not this one.
 - [x] `mb-g675` — resolved by defining `Live` as the same 90-second recency window for
   every file and keeping agent-log activity as a separate presentation signal
+- [x] `mb-fqn3` — tree and recent responses keep scan status aligned with their
+  inventory snapshot, so a walk that finishes during off-loop work still triggers the
+  final refresh
+- [x] `mb-rdgc` — the tracked/ignored root summary remains pending while its inventory
+  snapshot is partial instead of letting concrete prefix counts override the pending
+  fallback
+- [x] `mb-2rj3` — a scanning tree response restarts the idempotent progress poll in case
+  an earlier progress request observed completion before the slower response painted
 - [ ] `mb-katw` — optionally mirror extension and size upstream, for directories large
   enough that a client-side answer is incomplete rather than merely slow
 
@@ -533,10 +541,11 @@ Implemented:
 - Unit tests (`tests/test_inventory_root_summary.py`) for the tracked/ignored split,
   including ignored files nested under tracked directories
 
-Still owed:
+Validated in a real browser:
 
-- A live-browser pass over keyboard traversal of the dropdown (arrow keys inside the
-  menu itself, as opposed to the chip groups)
+- Arrow-key traversal moves focus through dropdown rows while the menu remains open;
+  pointer selection applies the focused age and type choices, and Clear restores every
+  dimension to its default
 
 ## Rollout Plan
 

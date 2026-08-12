@@ -414,7 +414,11 @@ def test_load_tree_renders_single_file_tally() -> None:
         summary_start : js.index("function scheduleRootSummaryRefresh", summary_start)
     ]
     # The single tally lives in the tree-summary row.
-    assert "treeSummaryHtml(data.summary, summaryFiles, summarySize)" in fn_block
+    assert (
+        'var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;'
+        in fn_block
+    )
+    assert "treeSummaryHtml(stableSummary, summaryFiles, summarySize)" in fn_block
     assert '"tree-summary"' in summary_block
     assert "tree-summary-count" in summary_block
     assert "tree-summary-size" in summary_block
@@ -423,6 +427,9 @@ def test_load_tree_renders_single_file_tally() -> None:
     assert "header-stats" not in js
     # The scanning-state pending gate stays.
     assert 'data.tally_cache_status === "scanning"' in fn_block
+    scanning_start = fn_block.index('if (data.tally_cache_status === "scanning")')
+    scanning_end = fn_block.index("// Carry aggregates", scanning_start)
+    assert "startIndexProgressPolling();" in fn_block[scanning_start:scanning_end]
 
 
 def test_styles_css_has_no_duplicate_header_stats() -> None:

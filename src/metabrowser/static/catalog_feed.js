@@ -48,6 +48,9 @@
     let disposed = false;
     let started = false;
     let refetchWanted = false;
+    let suppressNextSentinelRefetch = false;
+    let authoritativeRefetchPending = false;
+    let lastBulkWasAuthoritative = false;
 
     function clearRetry() {
       if (retryHandle !== null) {
@@ -96,11 +99,18 @@
           // which is how a refetch expresses a deletion that happened while
           // the stream was down. A payload built mid-walk is only a prefix and
           // must merge instead.
+          const authoritative = payload.complete === true;
           catalog.applyBulkSnapshot(
             Array.isArray(payload.files) ? payload.files : [],
-            payload.complete === true && payload.truncated !== true,
-            payload.complete === true,
+            authoritative && payload.truncated !== true,
+            authoritative,
           );
+          lastBulkWasAuthoritative = authoritative;
+          if (authoritative) {
+            authoritativeRefetchPending = false;
+          }
+        } else if (lastBulkWasAuthoritative) {
+          authoritativeRefetchPending = false;
         }
         fetchedOnce = true;
         retryAttempts = 0;
@@ -150,16 +160,26 @@
       }
     }
 
+    /** Require the next accepted bulk payload to establish membership. */
+    function requestContinuityRefetch() {
+      authoritativeRefetchPending = true;
+      requestRefetch();
+    }
+
     /**
-     * Begin the first bulk fetch. Call once the event stream is
-     * subscribed (its first `open`), so no op can fall between the
-     * bulk payload's build point and the stream's subscribe point.
-     * Subsequent calls are no-ops: reconnect refetches go through
-     * `onSentinelSnapshot` instead, which avoids a double fetch when
-     * `open` and the sentinel snapshot arrive back to back.
+     * Call on every event-stream open. The first open begins the
+     * bulk fetch after subscription; later opens establish continuity
+     * with a fresh fetch before their sentinel arrives. Remembering
+     * that the next sentinel belongs to this open avoids a duplicate
+     * fetch while still letting an unexpected sentinel trigger repair.
      */
     function start() {
+      if (disposed) {
+        return;
+      }
+      suppressNextSentinelRefetch = true;
       if (started) {
+        requestContinuityRefetch();
         return;
       }
       started = true;
@@ -184,16 +204,20 @@
     }
 
     /**
-     * The stream delivered a fresh id=0 snapshot, meaning the
-     * connection was rebuilt and deltas may have been dropped.
-     * Refetch to restore continuity; the first snapshot after
-     * `start()` is not a continuity break.
+     * The stream delivered a fresh id=0 snapshot. A snapshot paired
+     * with `start()` belongs to the open already handled there. An
+     * unpaired snapshot means continuity changed without a reported
+     * open, so refetch defensively.
      */
     function onSentinelSnapshot() {
-      if (disposed || !fetchedOnce) {
+      if (disposed || !started) {
         return;
       }
-      requestRefetch();
+      if (suppressNextSentinelRefetch) {
+        suppressNextSentinelRefetch = false;
+        return;
+      }
+      requestContinuityRefetch();
     }
 
     /** Root swap: the catalog was cleared by the caller; rebuild it. */
@@ -203,15 +227,23 @@
       }
       pendingChanges = [];
       fetchedOnce = false;
-      requestRefetch();
+      lastBulkWasAuthoritative = false;
+      requestContinuityRefetch();
     }
 
     /**
-     * The walker finished after an incomplete bulk fetch. Live ops
-     * already converged the contents; only the flag flips.
+     * The walker finished after an incomplete bulk fetch. On one
+     * uninterrupted stream, live ops already converged the contents
+     * and only the flag flips. After a reconnect, deletions from the
+     * gap require one finished, authoritative payload before the
+     * catalog can claim convergence.
      */
     function onIndexComplete() {
       if (disposed) {
+        return;
+      }
+      if (authoritativeRefetchPending) {
+        requestRefetch();
         return;
       }
       catalog.markComplete();

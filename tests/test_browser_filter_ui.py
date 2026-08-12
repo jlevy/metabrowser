@@ -751,7 +751,8 @@ def test_index_wide_tallies_stay_off_the_event_loop() -> None:
 
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
     start = py.index("summary = None")
-    block = py[start : start + 1000]
+    end = py.index("return JSONResponse", start)
+    block = py[start:end]
     assert 'inventory.entries(scope="all-known")' in block
     assert "asyncio.to_thread" in block
     assert "navigation_tallies(" in block

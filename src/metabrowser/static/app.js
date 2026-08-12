@@ -809,6 +809,11 @@ async function loadTree() {
     if (data.tally_cache_status === "scanning") {
       summaryFiles = null;
       summarySize = null;
+      // The progress request that began before this tree fetch can observe
+      // completion and stop while this slower, conservatively labeled response
+      // is still in flight. Restarting is idempotent and guarantees one final
+      // tree refresh instead of leaving these new pending cells to the watchdog.
+      startIndexProgressPolling();
     }
     // Carry aggregates on the path link so the header tooltip handler
     // can pull them on hover without rebuilding from DOM.
@@ -821,7 +826,12 @@ async function loadTree() {
     // Summary row sits at the top of the scrollable tree listing, not
     // in the sticky header — visible on first paint, scrolls away with
     // the rest of the tree. Keeps the upper nav header clean.
-    var summaryHtml = treeSummaryHtml(data.summary, summaryFiles, summarySize);
+    // The index-wide tracked/ignored split is partial while scanning just
+    // like the visible-tree fallback. Gate the summary object itself; passing
+    // it through would make treeSummaryHtml prefer concrete partial values
+    // over the pending fallback we selected above.
+    var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;
+    var summaryHtml = treeSummaryHtml(stableSummary, summaryFiles, summarySize);
     // Cached so the recency source, which paints over the whole panel,
     // can keep the same tally row above its own filtered count.
     _lastTreeSummaryHtml = summaryHtml;
@@ -5133,9 +5143,8 @@ function _createInventoryEventSource() {
     // connection that survives this interval is healthy enough to reset the
     // exponential backoff; repeated overflow/resync cycles keep backing off.
     _scheduleEsStableReset();
-    // First open only (start() is a no-op afterwards): the bulk
-    // catalog fetch begins once the stream is subscribed, so no op
-    // can fall between the payload build and the subscription.
+    // The first open starts the bulk catalog fetch after subscription;
+    // later opens refetch to cover deltas lost while disconnected.
     quickFileCatalogFeed?.start();
   };
   inventoryEventSource.onerror = () => {

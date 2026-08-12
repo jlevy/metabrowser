@@ -12,9 +12,9 @@ Checked items below are supported today; unchecked items are planned work.
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
 - [x] Add the client-only
   [Quick File finder](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
-  over paths already observed by the browser
-- [ ] Add complete server filename and bounded full-text providers, then evaluate
-  optional persistent indexing only if measured inventory scans require it
+  over a complete live catalog of non-gitignored files
+- [ ] Add bounded server-side filename and full-text search providers, then evaluate
+  optional persistent indexing only if measured catalog sizes require it
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
 - [ ] Define a generic writer event-log backend for append-only generated files
 - [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for
