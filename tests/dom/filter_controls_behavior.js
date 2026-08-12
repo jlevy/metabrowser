@@ -8,7 +8,7 @@ const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
 
-const sandbox = { console: { warn() {} }, JSON, String, Array, Object };
+const sandbox = { console: { warn() {} }, JSON, String, Array, Object, metabrowser: {} };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -19,8 +19,10 @@ const source = fs.readFileSync(
 );
 vm.runInContext(source, sandbox, { filename: "filter_controls.js" });
 
-const fc = sandbox.MetabrowserFilterControls;
+const fc = sandbox.metabrowser.filterControls;
 const failures = [];
+
+assertEqual("filter controls join the plugin SDK", sandbox.metabrowser.filterControls, fc);
 
 function assertEqual(label, actual, expected) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -78,6 +80,7 @@ const single = fc.groupHtml({
 });
 assertContains("single-select group is a radiogroup", single, 'role="radiogroup"');
 assertContains("single-select group declares its variant", single, 'data-select="one"');
+assertContains("single-row groups default to joined layout", single, 'data-layout="joined"');
 assertContains("segments are radios", single, 'role="radio"');
 assertContains(
   "the active segment is checked",
@@ -97,6 +100,7 @@ assertMissing("single-select does not use aria-pressed", single, "aria-pressed")
 const multi = fc.groupHtml({
   key: "types",
   select: "many",
+  layout: "wrap",
   label: "File type",
   options: [
     { value: "ft-md", label: "md", className: "chip-ft ft-md" },
@@ -106,6 +110,7 @@ const multi = fc.groupHtml({
 });
 assertContains("multi-select group is a plain group", multi, 'role="group"');
 assertContains("multi-select group declares its variant", multi, 'data-select="many"');
+assertContains("long multi-select groups declare wrapped layout", multi, 'data-layout="wrap"');
 assertContains("selected chips are pressed", multi, 'data-chip-value="ft-md" aria-pressed="true"');
 assertContains("unselected chips are not", multi, 'data-chip-value="ft-code" aria-pressed="false"');
 assertContains("type chips carry their file-type class", multi, 'class="chip chip-ft ft-md"');
@@ -283,7 +288,12 @@ const menuAged = fc.menuGroupHtml({
   select: "one",
   label: "Modified within",
   options: [
-    { value: "live", label: "Live", ageClass: "age-sec" },
+    {
+      value: "live",
+      label: "Live",
+      ageClass: "age-sec",
+      title: "Files modified in the past 90 seconds",
+    },
     { value: "1h", label: "Past hour", ageClass: "age-min" },
   ],
   value: "all",
@@ -292,6 +302,11 @@ const menuAged = fc.menuGroupHtml({
   menuId: "r",
 });
 assertContains("live takes the under-a-minute colour", menuAged, "chip-menu-item age-sec");
+assertContains(
+  "live explains its exact cutoff",
+  menuAged,
+  'title="Files modified in the past 90 seconds"',
+);
 assertContains("the hour row takes the under-an-hour colour", menuAged, "chip-menu-item age-min");
 assertContains(
   "the any row is checked at the default",
@@ -302,8 +317,8 @@ assertContains(
 // ── Menu presets ───────────────────────────────────────────────
 
 const PRESETS = [
-  { id: "docs", label: "Docs", values: [".md", "readme"] },
-  { id: "code", label: "Code", values: [".py", ".ts"] },
+  { id: "docs", label: "Docs", values: [".md", "readme"], count: 34 },
+  { id: "code", label: "Code", values: [".py", ".ts"], count: 159 },
 ];
 const menuPresets = fc.menuGroupHtml({
   key: "types",
@@ -316,6 +331,11 @@ const menuPresets = fc.menuGroupHtml({
 });
 assertContains("presets render above the raw list", menuPresets, 'data-chip-preset="docs"');
 assertContains("presets are separated from the extensions", menuPresets, "menu-separator");
+assertContains(
+  "presets carry the same tally as extension rows",
+  menuPresets,
+  '<span class="chip-menu-count">34</span>',
+);
 // A half-covered group must not claim to be on.
 assertContains(
   "an unselected preset is unchecked",

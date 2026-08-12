@@ -4,18 +4,33 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-Document rendering:
-
-- KPress is upgraded to `0.3.2`, a CSS-only patch whose main fix lands squarely on this
-  repository: the content card was gated on the browser window rather than on the pane
-  it is drawn in, so every preview pane narrower than 48rem inside a wider window drew
-  the card border around the narrow band’s gutter — a hairline pressed against the text
-  and running through the disclosure chevrons.
-  Panes in that range now read full-bleed, as narrow panes are meant to.
-- The same release stops rendering code inside a table a size tier too heavy at pane
-  widths above the narrow band.
-
 ## 0.3.0
+
+Filtering and file navigation:
+
+- The Files pane gains one always-available filter bar for age, type, minimum size, and
+  gitignored visibility, with Docs, Code, and Data presets and a one-click Clear action.
+  The separate Recent tab is folded into this pane so every dimension composes in one
+  place.
+- Age filters query the complete inventory rather than only expanded folders.
+  Capped results prioritize tracked files over ignored dependency churn, report the
+  shortfall, and continue to incorporate filesystem changes while the view is open.
+- **Live** now has one general definition: every file modified in the past 90 seconds.
+  The server owns that cutoff, and expired rows disappear even when no later filesystem
+  event arrives. Agent-log activity remains a separate capability that supplies active
+  badges and live tailing for supported logs.
+- Filter controls are keyboard navigable, expose their state through ARIA, keep the
+  active value visible when the drawer is closed, and share the documented design-system
+  primitives with plugin views.
+- Agent-log event-type filters use the same additive chips, including counts and a
+  visible selected state for dynamically discovered record types.
+- Filter selections are transient view state and reset on every page load instead of
+  leaking through a host-wide browser preference.
+  Durable appearance choices such as theme and typography remain shared across
+  Metabrowser instances.
+- Recency overlays no longer grow after returning to the full tree, compound extensions
+  match consistently on streamed rows, and filtered tallies update under every
+  dimension.
 
 Quick File navigation:
 
@@ -43,10 +58,12 @@ Quick File navigation:
 
 Document rendering:
 
-- KPress is upgraded to `0.3.1`, which adds the `toc_rail` option this repository’s host
-  CSS had been standing in for.
+- KPress is upgraded through `0.3.2`. Version 0.3.1 adds the `toc_rail` option this
+  repository’s host CSS had been standing in for.
   The host reimplementation is deleted, so the reading column holds one position whether
   or not a document earns a table of contents.
+- Version 0.3.2 fixes the content-card breakpoint for a narrow preview pane inside a
+  wider browser window and restores the intended lighter code size inside wide tables.
 - KPress now owns the whole document size ramp.
   The host had collapsed graded size families onto single values, which rendered inline
   code inside a table larger than the cell around it; prose code is now 12.3px, table
@@ -70,6 +87,28 @@ Design system:
   text — file paths, parent paths, ancestor segments, and shortcut hints — in the same
   sans face as the rows they point at, leaving mono for the user’s own content.
   A contract test enforces the three named exceptions.
+
+Reliability:
+
+- Symbolic links now appear as explicit, non-expanded leaves with the standard link
+  icon. They never contribute file counts or type tallies, never graft a target directory
+  into the served tree, and report whether an unavailable target is missing, outside the
+  served root, or otherwise unreadable.
+- Live filesystem updates now replace an existing row when its path changes between a
+  file, directory, and symbolic link, including removing a former directory’s rendered
+  descendants before mounting the replacement.
+- Ctrl-C during command startup or an in-progress filesystem scan now exits quietly with
+  status 130 instead of printing a traceback or waiting on a background thread.
+  A second Ctrl-C remains an immediate forced exit if another operation cannot finish
+  cooperatively.
+- Live updates remain correct when a large filesystem burst fills a bounded event queue.
+  The server replaces the incomplete backlog with a resynchronization marker, and each
+  affected browser reconnects with bounded exponential backoff for a fresh inventory
+  snapshot instead of remaining open with stale state or reconnecting in a tight loop.
+- Default server output no longer reports routine lifecycle events, expected concurrent
+  inventory conflicts, protected directories, or sub-threshold helper timings.
+  Slow requests, long inventory scans, plugin problems, and operational failures remain
+  visible, while `--log-level debug` retains the detailed trace when needed.
 
 Security documentation:
 

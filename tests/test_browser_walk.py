@@ -21,6 +21,7 @@ from typing import Any
 
 import yaml
 
+from metabrowser import walker
 from metabrowser.inventory import InventoryIndex
 from metabrowser.walk import (
     build_tree_envelope,
@@ -71,10 +72,10 @@ _EXPECTED_ALL = """\
 walk: fixture
 status: done
 counts: files=4 dirs=4 symlinks=4
-totals: total_files=8 total_size=90
+totals: total_files=4 total_size=65
 
 entries:
-  . [dir] files=8 size=90
+  . [dir] files=4 size=65
   a.txt [file] size=10
   extra [dir] files=1 size=5
   extra/secret.txt [file] size=5
@@ -116,7 +117,7 @@ def test_walk_report_detail_levels(tmp_path: Path) -> None:
         "walk: fixture",
         "status: done",
         "counts: files=4 dirs=4 symlinks=4",
-        "totals: total_files=8 total_size=90",
+        "totals: total_files=4 total_size=65",
     ]
 
     dirs = walk_report(root, detail="dirs")
@@ -127,8 +128,7 @@ def test_walk_report_detail_levels(tmp_path: Path) -> None:
 
 
 def test_walk_counts_symlinks_separately(tmp_path: Path) -> None:
-    """``WalkResult`` separates real files from symlinks even though
-    the walker folds symlinks into its file-aggregate totals."""
+    """``WalkResult`` separates real files from symlinks."""
 
     root = _build_symlink_fixture(tmp_path)
     result = asyncio.run(walk_collect(root))
@@ -145,6 +145,26 @@ def test_walk_counts_symlinks_separately(tmp_path: Path) -> None:
     }
     # render is stable regardless of detail validity guard
     assert render_report(result, detail="summary").startswith("walk: fixture")
+
+
+def test_inventory_classifies_symlinks_without_counting_them_as_files(tmp_path: Path) -> None:
+    """Symlink leaves stay visible but never masquerade as regular files."""
+
+    root = _build_symlink_fixture(tmp_path)
+    result = asyncio.run(walk_collect(root))
+    symlinks = {row.path: row for row in result.rows if row.is_symlink}
+
+    assert set(symlinks) == {
+        "link_to_file",
+        "link_to_dir",
+        "link_escape",
+        "link_ancestor",
+    }
+    assert {row.type for row in symlinks.values()} == {"symlink"}
+
+    root_row = next(row for row in result.rows if row.path == "")
+    assert root_row.total_files == 4
+    assert root_row.total_size == 65
 
 
 # ── machine-readable dumps (the nav-panel wire data) ──────────────
@@ -203,11 +223,11 @@ _EXPECTED_TREE = [
         ],
     },
     {"name": "a.txt", "path": "a.txt", "type": "file", "size": 10, "ext": ".txt"},
-    # The four symlinks: leaf file-entries, never expanded into subtrees.
-    {"name": "link_ancestor", "path": "link_ancestor", "type": "file", "size": 2, "ext": ""},
-    {"name": "link_escape", "path": "link_escape", "type": "file", "size": 11, "ext": ""},
-    {"name": "link_to_dir", "path": "link_to_dir", "type": "file", "size": 3, "ext": ""},
-    {"name": "link_to_file", "path": "link_to_file", "type": "file", "size": 9, "ext": ""},
+    # The four symlinks: typed leaves, never expanded into subtrees.
+    {"name": "link_ancestor", "path": "link_ancestor", "type": "symlink", "size": 2},
+    {"name": "link_escape", "path": "link_escape", "type": "symlink", "size": 11},
+    {"name": "link_to_dir", "path": "link_to_dir", "type": "symlink", "size": 3},
+    {"name": "link_to_file", "path": "link_to_file", "type": "symlink", "size": 9},
 ]
 
 
@@ -251,7 +271,7 @@ def test_dump_tree_json_and_yaml_round_trip(tmp_path: Path) -> None:
 
 def test_stream_records(tmp_path: Path) -> None:
     """The streaming surface yields the root record first (named after
-    the served dir), every symlink as a leaf file record, and never a
+    the served dir), every symlink as a typed leaf record, and never a
     record describing a symlink's contents."""
 
     root = _build_symlink_fixture(tmp_path)
@@ -261,14 +281,15 @@ def test_stream_records(tmp_path: Path) -> None:
     assert first["path"] == ""
     assert first["name"] == "fixture"
     assert first["type"] == "dir"
+    assert all("empty" not in record for record in records)
 
-    # Symlinks appear exactly once each, as file records, no descendants.
+    # Symlinks appear exactly once each, as typed leaves, with no descendants.
     by_path: dict[str, list[dict[str, Any]]] = {}
     for r in records:
         by_path.setdefault(r["path"], []).append(r)
     for link in ("link_to_file", "link_to_dir", "link_escape", "link_ancestor"):
         assert link in by_path, f"missing {link}"
-        assert all(r["type"] == "file" for r in by_path[link])
+        assert all(r["type"] == "symlink" for r in by_path[link])
     assert not any(
         p.startswith(("link_to_dir/", "link_escape/", "link_ancestor/", "link_to_file/"))
         for p in by_path
@@ -317,6 +338,45 @@ class _ListHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         self.messages.append(record.getMessage())
+
+
+def test_walker_permission_denied_is_debug_diagnostic(tmp_path: Path, monkeypatch) -> None:
+    """Unreadable subtrees are expected when browsing broad system roots."""
+
+    class _RecordHandler(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__(level=logging.DEBUG)
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    def _deny(_path: Path) -> None:
+        raise PermissionError(1, "Operation not permitted", str(tmp_path))
+
+    logger = logging.getLogger("metabrowser.walker")
+    original_level = logger.level
+    handler = _RecordHandler()
+    logger.addHandler(handler)
+    monkeypatch.setattr(walker.os, "scandir", _deny)
+    try:
+        logger.setLevel(logging.DEBUG)
+        assert walker._scandir_visible(tmp_path) == []
+    finally:
+        logger.setLevel(original_level)
+        logger.removeHandler(handler)
+
+    records = [record for record in handler.records if "permission denied" in record.getMessage()]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
+
+
+def test_walker_uses_plain_worker_threads_for_each_directory() -> None:
+    """Per-directory scans avoid cancellable-worker bookkeeping."""
+
+    source = Path(walker.__file__).read_text()
+    assert "await asyncio.to_thread(_scandir_visible, abs_path)" in source
+    assert "run_cancellable_thread" not in source
 
 
 def test_rewalk_subtree_refuses_escaping_and_ancestor_symlinks(tmp_path: Path) -> None:

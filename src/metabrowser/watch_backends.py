@@ -51,6 +51,7 @@ from typing import Literal
 
 from watchfiles import Change, awatch
 
+from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry, ProjectionInvalidate
 from metabrowser.fs_paths import is_visible_segment as _is_visible_segment
 from metabrowser.inventory import InventoryIndex
@@ -292,7 +293,12 @@ async def _emit_for_path(
     # ``tree._IGNORE_CACHE``, so this is one dict lookup per event
     # past the first.
     try:
-        gi_check, git_root = await asyncio.to_thread(build_gitignore_check, root)
+        gi_check, git_root = await run_cancellable_thread(
+            lambda cancel_event: build_gitignore_check(
+                root,
+                cancel_event=cancel_event,
+            )
+        )
     except Exception:
         gi_check, git_root = None, None
     gitignored = False
@@ -302,14 +308,24 @@ async def _emit_for_path(
         except Exception:
             gitignored = False
 
-    entry = FsEntry.for_stat(
-        path=rel,
-        parent=parent_rel,
-        name=name,
-        stat=st,
-        gitignored=gitignored,
-        existing=existing,
-    )
+    if is_symlink:
+        entry = FsEntry.for_observed_symlink(
+            path=rel,
+            parent=parent_rel,
+            name=name,
+            size=st.st_size,
+            mtime_ns=st.st_mtime_ns,
+            gitignored=gitignored,
+        )
+    else:
+        entry = FsEntry.for_stat(
+            path=rel,
+            parent=parent_rel,
+            name=name,
+            stat=st,
+            gitignored=gitignored,
+            existing=existing,
+        )
     inventory.apply_live_entry(entry)
     # Drop the projection caches' entry for this path and tell
     # subscribers the derived view is stale. ``MtimeCache.read``
@@ -344,9 +360,9 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
     inventory = get_inventory()
     if mode is None:
         mode, reason = await asyncio.to_thread(select_watch_mode, root)
-        LOG.info("watcher starting at %s mode=%s reason=%s", root, mode, reason)
+        LOG.debug("watcher starting at %s mode=%s reason=%s", root, mode, reason)
     else:
-        LOG.info("watcher starting at %s mode=%s (override)", root, mode)
+        LOG.debug("watcher starting at %s mode=%s (override)", root, mode)
 
     force_polling = mode == "polling"
     poll_delay_ms = 2000 if force_polling else 50
@@ -365,7 +381,7 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
                 except Exception:
                     LOG.exception("watcher emit failed for %s", abs_path)
     except asyncio.CancelledError:
-        LOG.info("watcher cancelled")
+        LOG.debug("watcher cancelled")
         raise
 
 

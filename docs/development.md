@@ -218,7 +218,7 @@ non-public residue; see `devtools/public_hygiene.py` for the enforced rules.
 
 Keep documentation public-safe.
 Do not include private repository names, internal issue identifiers, personal absolute
-paths, credentials, customer data, or copied run artifacts.
+paths, credentials, customer data, or copied operational files.
 
 ## Issue Tracking
 

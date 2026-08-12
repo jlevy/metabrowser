@@ -23,20 +23,20 @@ uv python install 3.12
 For a one-shot run of the latest published release:
 
 ```shell
-uvx metabrowser@latest ./path/to/artifacts
+uvx metabrowser@latest ./path/to/directory
 ```
 
 Pin the release for a reproducible local, CI, or agent run:
 
 ```shell
-uvx metabrowser@0.3.0 ./path/to/artifacts
+uvx metabrowser@0.3.0 ./path/to/directory
 ```
 
 For a persistent global tool installation:
 
 ```shell
 uv tool install metabrowser
-metab ./path/to/artifacts
+metab ./path/to/directory
 ```
 
 `metab` is the standard installed command.
@@ -60,7 +60,7 @@ against its exact locks:
 
 ```shell
 make install
-uv --config-file uv.toml run --frozen metab ./path/to/artifacts
+uv --config-file uv.toml run --frozen metab ./path/to/directory
 ```
 
 The explicit repository config prevents a machine-global uv policy from changing the

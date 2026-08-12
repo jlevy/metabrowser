@@ -84,9 +84,24 @@ async function main() {
   check("local coverage remains incomplete", localBatch.complete === false);
   check("result truncation is independent", localBatch.truncated === true);
   check("provider reports observed candidate count", localBatch.candidateCount === 5);
+  equal(
+    "incomplete results report matches and scope concisely",
+    localBatch.statusMessage,
+    "4 matches in 5 indexed files. Scanning continues.",
+  );
   check("large local scans yield between chunks", yields === 2, String(yields));
   check("provider is DOM independent", !("document" in sandbox));
   check("local provider performs no search request", fetchCalls === 0, String(fetchCalls));
+  const emptyIncompleteBatch = await localProvider.search(
+    { match: "fuzzy", query: "not-present", target: "file" },
+    { requestId: 2 },
+    new AbortController().signal,
+  );
+  equal(
+    "incomplete empty results report scope without repeated instructions",
+    emptyIncompleteBatch.statusMessage,
+    "No matches in 5 indexed files. Scanning continues.",
+  );
   const alreadyAborted = new AbortController();
   alreadyAborted.abort();
   let abortName = "";
@@ -118,6 +133,14 @@ async function main() {
   check("controller state is immutable", Object.isFrozen(localState));
   unregisterLocal();
   localController.dispose();
+
+  catalog.markComplete();
+  const completeBatch = await localProvider.search(
+    { match: "fuzzy", query: "guide", target: "file" },
+    { requestId: 3 },
+    new AbortController().signal,
+  );
+  equal("one complete result uses a singular match", completeBatch.statusMessage, "1 match.");
 
   let resolveFirst;
   let firstSignal;

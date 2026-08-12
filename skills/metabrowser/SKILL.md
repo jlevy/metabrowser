@@ -1,12 +1,12 @@
 ---
 name: metabrowser
 description: >-
-  Browse local or remote directories, files, logs, JSONL streams, Markdown,
-  structured data, images, and binary metadata with Metabrowser. Use when a user
-  asks to explore artifacts, inspect live logs, open a local file browser,
-  inventory a directory, or inspect and validate Metabrowser plugins.
+  Browse local or remote directories and files with Metabrowser, including
+  Markdown, structured data, source code, images, logs, and binary metadata. Use
+  when a user asks to explore a directory, inspect a file or live log, open a local
+  file browser, inventory a directory, or inspect and validate Metabrowser plugins.
 compatibility: >-
-  Requires either a local metab command or uv (for the pinned uvx runner, which
+  Requires either a local metab command or uv (for the zero-install uvx fallback, which
   needs network access on first use).
 ---
 # Metabrowser

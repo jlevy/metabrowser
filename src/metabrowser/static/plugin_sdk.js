@@ -18,7 +18,7 @@
 //       container's innerHTML and may attach DOM listeners, fetch data,
 //       paint charts. May return a Promise; the shell awaits it for
 //       error surfacing.
-//     dispose() [optional]
+//     dispose(container) [optional]
 //       Called when the preview pane is *replaced* — specifically when
 //       (1) a different file is opened, (2) the same file is reloaded
 //       after a file-change event, or (3) an error/loading state
@@ -41,7 +41,7 @@
 //     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
 //     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
-//     renderTextTruncationWarning(data) — print-visible source truncation warning
+//     renderTextTruncationWarning(data) — visible partial-content warning
 //
 //   Navigation:
 //     openPath(path)                     — open a path in the preview pane
@@ -56,6 +56,8 @@
 //   Visual:
 //     icons.<name>                       — raw SVG strings for built-in icons
 //     icons.withClass(name, cls)         — returns SVG with extra class applied
+//     filterControls                      — shared filter markup and interaction
+//                                          helpers, installed before plugins load
 //
 //   Diagnostics:
 //     perf.measure(label, fn)            — wrap a render closure with timing logs
@@ -269,34 +271,50 @@
     }
   }
 
-  const prefs = { get: prefsGet, set: prefsSet };
+  function prefsRemove(name) {
+    if (typeof name !== "string" || !PREF_NAME_RE.test(name)) {
+      return false;
+    }
+    try {
+      const doc = global.document;
+      if (!doc || typeof doc.cookie !== "string") {
+        return false;
+      }
+      doc.cookie = `${_prefCookieName(name)}=; path=/; max-age=0; samesite=lax`;
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  const prefs = { get: prefsGet, set: prefsSet, remove: prefsRemove };
 
   // Shared filter state (static/filter_state.js). Views bind to the
   // same vocabulary the nav filter bar edits; safe no-ops when the
   // module is absent (tests, partial harnesses).
   const filters = {
     get() {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       return fs ? fs.get() : null;
     },
     set(patch) {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       if (fs) {
         fs.set(patch);
       }
     },
     clear() {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       if (fs) {
         fs.clear();
       }
     },
     subscribe(listener) {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       return fs ? fs.subscribe(listener) : () => {};
     },
     activeCount() {
-      const fs = global.MetabrowserFilterState;
+      const fs = global.metabrowser?.filterState;
       return fs ? fs.activeCount() : 0;
     },
   };
@@ -324,13 +342,12 @@
     const totalLabel = formatSize(totalBytes);
     return (
       '<div class="metabrowser-source-truncation-warning" role="status">' +
-      "<strong>Source preview truncated.</strong> " +
-      "Printed output includes only " +
+      "<strong>Content truncated.</strong> " +
+      "Showing " +
       escapeHtml(loadedLabel) +
       " of " +
       escapeHtml(totalLabel) +
-      ". " +
-      "Load the remaining text before printing a complete source PDF." +
+      ". Select Load more to continue." +
       "</div>"
     );
   }
@@ -821,7 +838,8 @@
     // otherwise the delegate falls back to clipboard.writeText.
     return (
       '<div class="content-copy-wrap">' +
-      '<button class="content-copy-btn" data-mb-copy="wrap" title="Copy content">' +
+      '<button class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' +
+      ' type="button" data-mb-copy="wrap" title="Copy content" aria-label="Copy content">' +
       ICON_COPY +
       "</button>" +
       innerHtml +

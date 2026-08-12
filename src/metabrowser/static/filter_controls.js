@@ -5,9 +5,9 @@
 //
 // Three shapes, one atom:
 //   .chip                        the pill itself
-//   .chip-group[data-select=one] joined single-select (radiogroup)
-//   .chip-group[data-select=many] joined multi-select (independent
-//                                 toggles, each its own tab stop)
+//   .chip-group[data-layout=joined] single-row segmented control
+//   .chip-group[data-layout=wrap]   wrapping cluster of independent
+//                                   chips
 //   .chip-toggle                 a standalone boolean chip
 //
 // Single-select segments carry role="radio"/aria-checked and fill with
@@ -71,17 +71,20 @@
    * @typedef {{value: string, label: string, title?: string, className?: string,
    *            count?: number, icon?: string, iconClass?: string,
    *            ageClass?: string}} ChipOption
-   * @typedef {{key: string, select?: string, label: string, options: ChipOption[],
-   *            value: string | string[] | null, className?: string}} ChipGroupSpec
+   * @typedef {{key: string, select?: string, layout?: string, label: string,
+   *            options: ChipOption[], value: string | string[] | null,
+   *            className?: string}} ChipGroupSpec
    */
 
   /**
-   * One joined group. `key` rides every segment as data-chip-key so a
-   * single delegated listener can serve every group in a bar.
+   * One semantic group, rendered either as a single joined row or as a
+   * wrapping chip cluster. `key` rides every segment as data-chip-key
+   * so a single delegated listener can serve every group in a bar.
    * @param {ChipGroupSpec} spec
    */
   function groupHtml(spec) {
     const select = spec.select === "many" ? "many" : "one";
+    const layout = spec.layout === "wrap" ? "wrap" : "joined";
     const current = spec.value !== undefined ? spec.value : null;
     const segments = (spec.options || [])
       .map((opt) => {
@@ -106,7 +109,8 @@
     const role = select === "one" ? "radiogroup" : "group";
     const cls = spec.className ? ` ${esc(spec.className)}` : "";
     return (
-      `<span class="chip-group${cls}" data-select="${select}" data-chip-group="${esc(spec.key)}"` +
+      `<span class="chip-group${cls}" data-select="${select}" data-layout="${layout}"` +
+      ` data-chip-group="${esc(spec.key)}"` +
       ` role="${role}" aria-label="${esc(spec.label)}">${segments}</span>`
     );
   }
@@ -180,7 +184,7 @@
    *          value: string[] | string | null, anyLabel: string,
    *          anyValue?: string, select?: string, open?: boolean,
    *          menuId: string,
-   *          presets?: Array<{id: string, label: string, values: string[]}>}} spec
+   *          presets?: Array<{id: string, label: string, values: string[], count?: number}>}} spec
    */
   function menuGroupHtml(spec) {
     const many = spec.select !== "one";
@@ -218,6 +222,7 @@
       .map((opt) => {
         const on = selected.indexOf(opt.value) >= 0;
         const extra = opt.className ? ` ${esc(opt.className)}` : "";
+        const title = opt.title ? ` title="${esc(opt.title)}"` : "";
         const count =
           typeof opt.count === "number"
             ? `<span class="chip-menu-count">${esc(opt.count.toLocaleString())}</span>`
@@ -237,6 +242,7 @@
         const age = opt.ageClass ? ` ${esc(opt.ageClass)}` : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +
+          `${title}` +
           ` role="${rowRole}" aria-checked="${on}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
@@ -265,12 +271,16 @@
             const on =
               preset.values.length > 0 &&
               preset.values.every((value) => selected.indexOf(value) >= 0);
+            const count =
+              typeof preset.count === "number"
+                ? `<span class="chip-menu-count">${esc(preset.count.toLocaleString())}</span>`
+                : "";
             return (
               `<button type="button" class="menu-item chip-menu-item chip-menu-preset"` +
               ` role="${rowRole}" aria-checked="${on}"` +
               ` data-chip-key="${esc(spec.key)}" data-chip-preset="${esc(preset.id)}">` +
               `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
-              `<span class="menu-item-label">${esc(preset.label)}</span></button>`
+              `<span class="menu-item-label">${esc(preset.label)}</span>${count}</button>`
             );
           })
           .join("") +
@@ -571,7 +581,7 @@
     };
   }
 
-  /** @type {Record<string, any>} */ (window).MetabrowserFilterControls = {
+  const api = {
     escapeHtml: esc,
     nextSelection,
     isSelected,
@@ -582,4 +592,9 @@
     clearHtml,
     bind,
   };
+  if (!window.metabrowser) {
+    console.error("metabrowser filter controls: window.metabrowser missing — SDK not loaded");
+    return;
+  }
+  window.metabrowser.filterControls = api;
 })();

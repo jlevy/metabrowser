@@ -21,8 +21,8 @@ surface:
   rejects only opt-in race-safety writes whose captured
   ``WriteToken`` is older than the current generation
   across invalidation races.
-* Subscriber overflow drops the slow consumer rather than
-  blocking the producer.
+* Subscriber overflow requests a bounded resync rather than
+  blocking the producer or silently losing updates.
 
 Test convention follows the broader repo pattern: sync tests that
 drive coroutines via ``asyncio.run``.
@@ -31,10 +31,13 @@ drive coroutines via ``asyncio.run``.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import replace
 from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
+
+import pytest
 
 import metabrowser.inventory as inventory_module
 from metabrowser.constants import LOGS_DIR, STATE_DIR
@@ -436,6 +439,77 @@ def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
     assert inv.has_direct_child("runs") is False
 
 
+def test_live_empty_state_tracks_subtree_leaves_separately_from_file_totals() -> None:
+    inv = InventoryIndex()
+    root = FsEntry(
+        path="",
+        parent="",
+        name="root",
+        type="dir",
+        ext="",
+        kind="dir",
+        size=0,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+        total_files=0,
+        total_size=0,
+        newest_mtime_ns=0,
+    )
+    assert inv.apply_walker_entries([root]) == 1
+    indexed_root = inv.get("")
+    assert indexed_root is not None
+    assert indexed_root.empty is True
+
+    inv.apply_live_entry(
+        FsEntry(
+            path="nested",
+            parent="",
+            name="nested",
+            type="dir",
+            ext="",
+            kind="dir",
+            size=0,
+            mtime_ns=0,
+            mtime_hash="",
+            active=False,
+            total_files=0,
+            total_size=0,
+            newest_mtime_ns=0,
+        )
+    )
+    with_empty_subfolder = inv.get("")
+    assert with_empty_subfolder is not None
+    assert with_empty_subfolder.total_files == 0
+    assert with_empty_subfolder.empty is True
+
+    inv.apply_live_entry(
+        FsEntry.for_observed_symlink(
+            path="nested/shortcut",
+            parent="nested",
+            name="shortcut",
+            size=8,
+            mtime_ns=1,
+        )
+    )
+    with_link = inv.get("")
+    assert with_link is not None
+    assert with_link.total_files == 0
+    assert with_link.empty is False
+    nested_with_link = inv.get("nested")
+    assert nested_with_link is not None
+    assert nested_with_link.empty is False
+
+    inv.remove("nested/shortcut")
+    without_link = inv.get("")
+    assert without_link is not None
+    assert without_link.total_files == 0
+    assert without_link.empty is True
+    nested_without_link = inv.get("nested")
+    assert nested_without_link is not None
+    assert nested_without_link.empty is True
+
+
 def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
@@ -618,6 +692,51 @@ def test_inventory_apply_walker_entry_drops_stale_writes() -> None:
         return "sub/x" in inv._entries
 
     assert asyncio.run(_run()) is False
+
+
+def test_inventory_stale_walker_write_is_debug_diagnostic() -> None:
+    """Expected generation races must not surface as operator warnings."""
+
+    class _RecordHandler(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__(level=logging.DEBUG)
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    logger = logging.getLogger("metabrowser.inventory")
+    original_level = logger.level
+    handler = _RecordHandler()
+    logger.addHandler(handler)
+    try:
+        logger.setLevel(logging.DEBUG)
+        inv = InventoryIndex()
+        inv._generation["sub/x"] = 5
+        inv._apply_walker_entry(
+            FsEntry(
+                path="sub/x",
+                parent="sub",
+                name="x",
+                type="file",
+                ext="",
+                kind="file",
+                size=10,
+                mtime_ns=0,
+                mtime_hash="",
+                active=False,
+                write_token=WriteToken(2),
+            )
+        )
+    finally:
+        logger.setLevel(original_level)
+        logger.removeHandler(handler)
+
+    records = [
+        record for record in handler.records if "dropped stale walker write" in record.getMessage()
+    ]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
 
 
 def test_inventory_apply_walker_entry_accepts_fresh_observation_after_invalidate() -> None:
@@ -906,26 +1025,71 @@ def test_inventory_subscribe_receives_walker_changes(tmp_path: Path) -> None:
     assert "sub1/file_b.log" in seen
 
 
-def test_inventory_slow_subscriber_dropped_not_blocking(tmp_path: Path) -> None:
+def test_inventory_slow_subscriber_gets_resync_without_blocking(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[bool, bool, int]:
+    async def _run() -> tuple[bool, bool, int, object]:
         inv = InventoryIndex()
         slow = inv.subscribe(max_queue=1)
         fast = inv.subscribe(max_queue=1024)
         # Drive emits directly: the walker batches upserts now, so a
         # tiny tree no longer guarantees N>queue events from start().
-        # The behavior under test is "_emit drops slow consumers
-        # rather than blocking the producer," which doesn't depend
-        # on the walker.
+        # The behavior under test doesn't depend on the walker.
         for _ in range(3):
             inv._emit(FsChange(ops=()))
-        return (slow in inv._subscribers, fast in inv._subscribers, inv.subscriber_count())
+        return (
+            slow in inv._subscribers,
+            fast in inv._subscribers,
+            inv.subscriber_count(),
+            slow.get_nowait(),
+        )
 
-    slow_attached, fast_attached, count = asyncio.run(_run())
-    assert slow_attached is False
+    slow_attached, fast_attached, count, slow_event = asyncio.run(_run())
+    assert slow_attached is True
     assert fast_attached is True
-    assert count == 1
+    assert count == 2
+    assert isinstance(slow_event, FsResyncRequired)
+    assert slow_event.reason == "subscriber_queue_overflow"
+
+
+def test_inventory_overflow_warning_is_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now_ns = 1
+    monkeypatch.setattr(inventory_module.time, "monotonic_ns", lambda: now_ns)
+
+    class _RecordHandler(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__(level=logging.WARNING)
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    logger = logging.getLogger("metabrowser.inventory")
+    original_level = logger.level
+    handler = _RecordHandler()
+    logger.addHandler(handler)
+
+    try:
+        logger.setLevel(logging.WARNING)
+        inv = InventoryIndex()
+        inv.subscribe(max_queue=1)
+        inv._emit(FsChange(ops=()))  # fill the queue
+        inv._emit(FsChange(ops=()))  # first overflow logs immediately
+        inv._emit(FsChange(ops=()))  # repeated overflow stays quiet
+
+        now_ns += inventory_module._SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS
+        inv._emit(FsChange(ops=()))
+    finally:
+        logger.setLevel(original_level)
+        logger.removeHandler(handler)
+
+    messages = [record.getMessage() for record in handler.records]
+    assert messages == [
+        "inventory subscriber backlog overflowed; requested resync for 1 subscriber(s)",
+        "inventory subscriber backlog overflowed; requested resync for 2 subscriber(s)",
+    ]
 
 
 def test_inventory_clear_emits_resync(tmp_path: Path) -> None:

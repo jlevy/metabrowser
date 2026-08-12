@@ -33,6 +33,7 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
 from pathlib import Path
+from threading import Event
 
 from metabrowser.events import FsEntry
 from metabrowser.fs_paths import is_visible
@@ -90,7 +91,11 @@ def depth_of(rel: str) -> int:
 # ── Gitignore checker setup ─────────────────────────────────────
 
 
-def build_gitignore_check_for(root: Path) -> Callable[[Path, bool], bool] | None:
+def build_gitignore_check_for(
+    root: Path,
+    *,
+    cancel_event: Event | None = None,
+) -> Callable[[Path, bool], bool] | None:
     """Build the gitignore checker the walker uses to populate
     ``FsEntry.gitignored``. Returns ``None`` when the served root
     isn't inside a git repo (no patterns to match), so the walker
@@ -98,7 +103,7 @@ def build_gitignore_check_for(root: Path) -> Callable[[Path, bool], bool] | None
     """
 
     try:
-        checker, git_root = build_gitignore_check(root)
+        checker, git_root = build_gitignore_check(root, cancel_event=cancel_event)
     except Exception:
         LOG.exception("walker: failed to build gitignore check for %s", root)
         return None
@@ -117,19 +122,21 @@ class _ScanItem:
     / ``is_dir`` matter; size/mtime are populated via the
     aggregate-rollup path."""
 
-    __slots__ = ("abs_path", "is_dir", "mtime_ns", "name", "size")
+    __slots__ = ("abs_path", "is_dir", "is_symlink", "mtime_ns", "name", "size")
 
     def __init__(
         self,
         name: str,
         abs_path: Path,
         is_dir: bool,
+        is_symlink: bool,
         size: int,
         mtime_ns: int,
     ) -> None:
         self.name = name
         self.abs_path = abs_path
         self.is_dir = is_dir
+        self.is_symlink = is_symlink
         self.size = size
         self.mtime_ns = mtime_ns
 
@@ -148,6 +155,7 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
                 if not is_visible(raw.name):
                     continue
                 try:
+                    raw_is_symlink = raw.is_symlink()
                     raw_is_dir = raw.is_dir(follow_symlinks=False)
                 except OSError:
                     continue
@@ -157,6 +165,7 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
                             name=raw.name,
                             abs_path=Path(raw.path),
                             is_dir=True,
+                            is_symlink=False,
                             size=0,
                             mtime_ns=0,
                         )
@@ -171,14 +180,20 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
                             name=raw.name,
                             abs_path=Path(raw.path),
                             is_dir=False,
+                            is_symlink=raw_is_symlink,
                             size=st.st_size,
                             mtime_ns=st.st_mtime_ns,
                         )
                     )
-    except (PermissionError, OSError, FileNotFoundError, NotADirectoryError) as exc:
-        # Outer scandir failure drops the entire dir's children from
-        # the inventory. Surface it so missing aggregates are
-        # traceable instead of silently null.
+    except PermissionError as exc:
+        # Broad roots commonly contain OS-protected directories. Skipping one
+        # is expected and already visible as a missing subtree in the browser.
+        LOG.debug("walker: permission denied at %s: %s", dirpath, exc)
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        # Watchers can invalidate a directory while the boot walk reaches it.
+        LOG.debug("walker: directory disappeared at %s: %s", dirpath, exc)
+    except OSError as exc:
+        # Other scandir failures can indicate storage or filesystem trouble.
         LOG.warning("walker: scandir failed at %s: %s", dirpath, exc)
     # Dirs first, then by name — matches the existing tree.py
     # convention so /api/tree responses stay stable.
@@ -414,6 +429,16 @@ async def walk_tree(
                     queue.appendleft((ce.abs_path, child_rel, depth + 1))
                 else:
                     queue.append((ce.abs_path, child_rel, depth + 1))
+            elif ce.is_symlink:
+                link_gi = parent_ignored or _gi(ce.abs_path, False)
+                yield FsEntry.for_observed_symlink(
+                    path=child_rel,
+                    parent=rel_path_cur,
+                    name=ce.name,
+                    size=ce.size,
+                    mtime_ns=ce.mtime_ns,
+                    gitignored=link_gi,
+                )
             else:
                 files_indexed += 1
                 # Files inherit gitignored from parent the same way dirs do.

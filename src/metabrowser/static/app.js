@@ -755,7 +755,8 @@ async function loadTree() {
       console.warn(`loadTree: HTTP ${resp.status}`);
       const treeEl = document.getElementById("tree-content");
       if (treeEl) {
-        treeEl.innerHTML = `<div class="preview-empty">Failed to load tree (HTTP ${resp.status})</div>`;
+        treeEl.innerHTML =
+          '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
       }
       return;
     }
@@ -790,7 +791,7 @@ async function loadTree() {
           totalSize += n.total_size;
           totalFiles += n.total_files;
         }
-      } else {
+      } else if (n.type === "file") {
         totalSize += n.size || 0;
         totalFiles += 1;
       }
@@ -832,8 +833,7 @@ async function loadTree() {
     if (data.tally_cache_status === "truncated") {
       truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
     }
-    if (Array.isArray(data.extensions)) {
-      _extensionTally = data.extensions;
+    if (updateFileTypeTallies(data)) {
       renderNavFilterBar();
     }
     _lastTreeRender = { tree: data.tree, chromeHtml: truncationHtml + summaryHtml };
@@ -896,15 +896,12 @@ function scheduleRootSummaryRefresh() {
         if (!row) {
           return;
         }
-        if (Array.isArray(data.extensions)) {
-          _extensionTally = data.extensions;
-          // Only rebuild the bar when no dropdown is open. Replacing
-          // its DOM mid-poll would drop focus out of a menu the user
-          // is arrowing through, and this runs repeatedly while the
-          // index warms up.
-          if (filterOpenMenu === null) {
-            renderNavFilterBar();
-          }
+        // Only rebuild the bar when no dropdown is open. Replacing
+        // its DOM mid-poll would drop focus out of a menu the user
+        // is arrowing through, and this runs repeatedly while the
+        // index warms up.
+        if (updateFileTypeTallies(data) && filterOpenMenu === null) {
+          renderNavFilterBar();
         }
         var html = treeSummaryHtml(data.summary, null, null);
         row.outerHTML = html;
@@ -956,13 +953,14 @@ function renderFilesFromTree() {
 }
 
 function treeTruncationNoteHtml(maxFiles) {
-  var capText = maxFiles ? formatCount(maxFiles) : "the file cap";
+  var reason = maxFiles
+    ? `Metabrowser stopped after ${formatCount(maxFiles)} files`
+    : "Metabrowser reached its file limit";
   return (
     '<div class="tree-truncation-note" role="status">' +
-    "Tree partial: capped at " +
-    capText +
-    ". " +
-    "Deep subtrees may be incomplete." +
+    "<strong>File list incomplete.</strong> " +
+    reason +
+    ", so some files and folders are not shown." +
     "</div>"
   );
 }
@@ -1121,6 +1119,21 @@ function renderTreeNodes(nodes, isRoot, options) {
         );
       }
       parts.push("</div>");
+    } else if (node.type === "symlink") {
+      var linkAge = formatAge(node.mtime);
+      parts.push(
+        `<div class="tree-item tree-symlink${mutedCls}" data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(node.name)}" data-tip-mtime="${node.mtime || 0}">`,
+        '<span class="tree-item-icon">',
+        ICONS.fileSymlink,
+        "</span>",
+        '<span class="tree-item-name">',
+        esc(node.name),
+        "</span>",
+        '<span class="tree-item-age-inline"><span class="tree-item-age">',
+        linkAge,
+        '</span><span class="tree-item-activity"></span></span>',
+        "</div>",
+      );
     } else {
       // Icon dispatch keys off the *logical* name so subtype matchers
       // (`.process.md`, `.runbook.md`, etc.) work on `foo.process.md.gz`.
@@ -1189,7 +1202,7 @@ function treeLazyLoadingHtml(message) {
     '<div class="tree-lazy-placeholder" role="status" aria-live="polite">' +
     '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
     "<span>" +
-    esc(message || "Loading folder...") +
+    esc(message || "Loading folder…") +
     "</span>" +
     "</div>"
   );
@@ -1197,14 +1210,60 @@ function treeLazyLoadingHtml(message) {
 
 function treeLazyFailureHtml(message) {
   return (
-    '<div class="tree-lazy-placeholder tree-lazy-error" role="status">' +
-    esc(message || "Unable to load folder.") +
+    '<div class="tree-lazy-placeholder tree-lazy-error" role="alert">' +
+    esc(message || "Could not load this folder.") +
     "</div>"
   );
 }
 
 function errorMessage(e) {
-  return e?.message ? e.message : String(e || "unknown error");
+  return e?.message ? e.message : String(e || "An unknown error occurred.");
+}
+
+function responseErrorDetail(body, status) {
+  var text = String(body || "").trim();
+  if (text) {
+    try {
+      var parsed = JSON.parse(text);
+      var detail = parsed?.error || parsed?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail.trim();
+      }
+    } catch (_error) {
+      // A plain-text response is already suitable for the preview message.
+    }
+    if (text.length <= 400) {
+      return text;
+    }
+  }
+  return `The request failed (HTTP ${status}).`;
+}
+
+function responseErrorSummary(body, fallback) {
+  var text = String(body || "").trim();
+  if (text) {
+    try {
+      var parsed = JSON.parse(text);
+      if (typeof parsed?.summary === "string" && parsed.summary.trim()) {
+        return parsed.summary.trim();
+      }
+    } catch (_error) {
+      // Plain-text responses use the caller's stable summary.
+    }
+  }
+  return fallback;
+}
+
+function previewErrorHtml(summary, detail) {
+  return (
+    '<div class="preview-empty preview-error" role="alert">' +
+    '<strong class="preview-error-title">' +
+    esc(summary) +
+    "</strong>" +
+    '<span class="preview-error-detail">' +
+    esc(detail) +
+    "</span></div>"
+  );
 }
 
 function subtreeIsExpanded(childrenEl) {
@@ -1256,7 +1315,7 @@ async function loadSubtree(path, childrenEl, options) {
     );
     return;
   }
-  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder...");
+  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…");
   try {
     const resp = await fetch(
       `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
@@ -1276,7 +1335,7 @@ async function loadSubtree(path, childrenEl, options) {
     var tree = data.tree;
     knownFileCatalog?.observeLazyTree(tree);
     if (tree.length === 0 && data.tally_cache_status === "scanning") {
-      childrenEl.innerHTML = treeLazyLoadingHtml("Folder still loading...");
+      childrenEl.innerHTML = treeLazyLoadingHtml("Still scanning this folder…");
       startIndexProgressPolling();
       scheduleSubtreeRetry(path, childrenEl);
       return;
@@ -1288,7 +1347,7 @@ async function loadSubtree(path, childrenEl, options) {
       () => {
         childrenEl.innerHTML = tree.length
           ? renderTreeNodes(tree, false, options)
-          : '<div class="tree-lazy-placeholder">Empty folder</div>';
+          : '<div class="tree-lazy-placeholder">This folder is empty.</div>';
       },
       { path: path, nodes: tree.length },
     );
@@ -1298,7 +1357,9 @@ async function loadSubtree(path, childrenEl, options) {
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
-    childrenEl.innerHTML = treeLazyFailureHtml(`Unable to load folder (${errorMessage(e)}).`);
+    childrenEl.innerHTML = treeLazyFailureHtml(
+      "Could not load this folder. Collapse and reopen it to try again.",
+    );
   }
 }
 
@@ -1374,14 +1435,14 @@ if (typeof window !== "undefined") {
 // visual category (this number is a size) is carried by the class.
 function _tipSize(bytes) {
   if (isPendingNumber(bytes)) {
-    return '<span class="tip-loading">Loading size...</span>';
+    return '<span class="tip-loading">Loading size…</span>';
   }
   var cls = `size ${sizeClass(bytes)}`.trim();
   return `<span class="${cls}">${formatExactSize(bytes || 0)}</span>`;
 }
 function _tipCount(n) {
   if (isPendingNumber(n)) {
-    return '<span class="tip-loading">Loading file count...</span>';
+    return '<span class="tip-loading">Loading file count…</span>';
   }
   return `<span class="count">${formatCount(n)}</span>`;
 }
@@ -1396,6 +1457,16 @@ function fileTooltipHtml(name, size, mtime, includeName) {
     '<div class="tip-detail">' +
     _tipSize(size) +
     "</div>" +
+    '<div class="tip-detail">' +
+    formatTimestamp(mtime) +
+    "</div>"
+  );
+}
+
+function symlinkTooltipHtml(name, mtime, includeName) {
+  return (
+    treeTooltipNameHtml(name, includeName) +
+    '<div class="tip-detail">Symbolic link</div>' +
     '<div class="tip-detail">' +
     formatTimestamp(mtime) +
     "</div>"
@@ -1445,6 +1516,8 @@ treePane.addEventListener(
         parseTipNumber(d.tipMtime),
         includeName,
       );
+    } else if (d.tipType === "symlink") {
+      html = symlinkTooltipHtml(d.tipName, parseTipNumber(d.tipMtime), includeName);
     } else {
       html = fileTooltipHtml(
         d.tipName,
@@ -1909,17 +1982,9 @@ function initNavScrollShadow() {
   update();
 }
 
-// Window key → seconds-back from "now". Mirror of
-// RECENT_WINDOW_SECONDS in metabrowser/settings.py; if you
-// change one, change the other (or move both behind the
-// METABROWSER_SETTINGS injection).
-var _RECENT_WINDOW_SECONDS = {
-  "1h": 60 * 60,
-  "24h": 24 * 60 * 60,
-  "7d": 7 * 24 * 60 * 60,
-  "30d": 30 * 24 * 60 * 60,
-  all: null,
-};
+// Window key → seconds-back from "now", injected from the one
+// authoritative mapping in metabrowser/settings.py.
+const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {};
 
 // Recent is a hybrid
 // of "snapshot from /api/recent" + "live FileStore overlay".
@@ -1959,6 +2024,9 @@ var recentInflight = null; // AbortController for the in-flight chip fetch
 var _GITIGNORED_DIR_PATHS = new Set();
 
 function loadRecent(windowKey) {
+  // A timer scheduled for the previous window must not repaint its
+  // cached rows while this replacement request is still loading.
+  clearRecentExpiryRecheck();
   // Lock the user's window intent synchronously so a second chip
   // click can dedup against it.
   currentRecentWindow = windowKey;
@@ -2033,7 +2101,8 @@ function fetchRecent(windowKey) {
         return;
       }
       if (results) {
-        results.innerHTML = '<div class="recent-empty">Failed to load recent files.</div>';
+        results.innerHTML =
+          '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
       }
     })
     .finally(() => {
@@ -2085,13 +2154,13 @@ function renderRecentFromBase() {
   if (!results) {
     return;
   }
+  var entries = recentEntriesFromBase({
+    window: currentRecentWindow,
+    limit: RECENT_LIMIT,
+  });
   _perf.measure(
     "renderRecent:root",
     () => {
-      var entries = recentEntriesFromBase({
-        window: currentRecentWindow,
-        limit: RECENT_LIMIT,
-      });
       if (entries.length === 0) {
         results.innerHTML = renderRecentList({ tree: [] });
         return;
@@ -2102,12 +2171,54 @@ function renderRecentFromBase() {
     },
     { items: recentBaseEntries.size },
   );
+  scheduleRecentExpiryRecheck(entries);
   // Recency is already resolved server-side; the remaining
   // dimensions still apply over these rows.
   applyTreeFilters();
   if (currentPath) {
     setSelectedPath(currentPath);
   }
+}
+
+const RECENT_EXPIRY_MIN_DELAY_MS = 250;
+const RECENT_EXPIRY_BOUNDARY_FUZZ_MS = 50;
+// Browsers store timer delays in a signed 32-bit integer. A freshly
+// touched file in the 30-day window crosses that limit, so wake once
+// at the maximum and schedule the remaining interval on that repaint.
+const RECENT_EXPIRY_MAX_DELAY_MS = 2_147_000_000;
+var recentExpiryHandle = null;
+
+function clearRecentExpiryRecheck() {
+  if (recentExpiryHandle !== null) {
+    clearTimeout(recentExpiryHandle);
+    recentExpiryHandle = null;
+  }
+}
+
+/** Repaint when the oldest visible file crosses the active window boundary. */
+function scheduleRecentExpiryRecheck(entries) {
+  clearRecentExpiryRecheck();
+  var seconds = _RECENT_WINDOW_SECONDS[currentRecentWindow];
+  if (typeof seconds !== "number" || entries.length === 0 || !filesPanelUsesRecentSource()) {
+    return;
+  }
+  var oldestMtime = entries[0].mtime || 0;
+  for (var i = 1; i < entries.length; i++) {
+    oldestMtime = Math.min(oldestMtime, entries[i].mtime || 0);
+  }
+  var due = Math.min(
+    RECENT_EXPIRY_MAX_DELAY_MS,
+    Math.max(
+      RECENT_EXPIRY_MIN_DELAY_MS,
+      (oldestMtime + seconds) * 1000 - Date.now() + RECENT_EXPIRY_BOUNDARY_FUZZ_MS,
+    ),
+  );
+  recentExpiryHandle = setTimeout(() => {
+    recentExpiryHandle = null;
+    if (filesPanelUsesRecentSource()) {
+      renderRecentFromBase();
+    }
+  }, due);
 }
 
 // Apply a live FileStore-equivalent op to the recent base. Used
@@ -2408,7 +2519,11 @@ function recentResultsHost() {
 function renderRecentList(data) {
   var tree = data.tree || [];
   if (tree.length === 0) {
-    return '<div class="recent-empty">No files modified in this window.</div>';
+    var emptyText =
+      currentRecentWindow === "live"
+        ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
+        : "No files were modified during the selected time range.";
+    return `<div class="recent-empty">${emptyText}</div>`;
   }
   // Reuse the Files-tab renderer with one mode flip: dir rows
   // show file count instead of total bytes (see comments on
@@ -2438,24 +2553,28 @@ function renderRecentList(data) {
 //
 // See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
 
-var filterState = /** @type {any} */ (window).MetabrowserFilterState || null;
-var filterControls = /** @type {any} */ (window).MetabrowserFilterControls || null;
+var filterState = /** @type {any} */ (window).metabrowser?.filterState || null;
+var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || null;
 
-// Recency is one axis from "everything" to "being written right now".
-// Values match RECENT_WINDOWS and the /api/recent contract; labels are
+// Recency is one axis from "everything" to the shortest mtime window.
+// Values match RECENT_WINDOW_SECONDS and the /api/recent contract; labels are
 // shortened because the whole group has to fit a 300px pane.
 // No "all" entry: the menu's any-row is that value, and listing it
 // twice would offer the same choice under two names. Labels can be
 // words rather than the abbreviations the segmented ramp needed,
 // because a dropdown row is not fighting five siblings for width.
 // Each row wears the freshness colour the tree gives files of that
-// age, so the menu doubles as the legend for the ramp below it. The
-// buckets line up with formatAge exactly: Live is the "<1 min" red
-// because a file being written now *is* that bucket, then each window
-// takes the colour of the bucket it tops out at — Past hour is the
-// "<1 hour" step, Past day the "<1 day" step, and so on.
+// age, so the menu doubles as the legend for the ramp below it.
+// Longer windows take the colour of the bucket they top out at. Live
+// keeps the freshest colour and spells out its exact server-owned
+// cutoff in the accessible title.
 var FILTER_RECENCY_OPTIONS = [
-  { value: "live", label: "Live", title: "Run logs being written right now", ageClass: "age-sec" },
+  {
+    value: "live",
+    label: "Live",
+    title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
+    ageClass: "age-sec",
+  },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
   { value: "24h", label: "Past day", ageClass: "age-hr" },
   { value: "7d", label: "Past week", ageClass: "age-day" },
@@ -2473,162 +2592,18 @@ var FILTER_SIZE_OPTIONS = [
   { value: "1g", label: ">1G" },
 ];
 
-// Named shorthands at the top of the type menu, each standing for the
-// full list of extensions beneath it.
-//
-// A separate vocabulary from FILE_TYPES on purpose: that list answers
-// "what icon and hue does this one file get", which is why `.json`
-// lives with the YAML family there. These answer "which broad kind of
-// work is this", which groups differently — `.json` belongs with data.
-//
-// Entries follow the filter's own convention: a leading dot is an
-// extension, anything else is a whole filename. That is what lets Docs
-// reach README and LICENSE, which carry no extension and would
-// otherwise be unfilterable.
-var FILTER_TYPE_PRESETS = [
-  {
-    id: "docs",
-    label: "Docs",
-    values: [
-      ".md",
-      ".txt",
-      ".rst",
-      ".adoc",
-      ".org",
-      ".pdf",
-      ".docx",
-      ".doc",
-      ".pages",
-      ".rtf",
-      ".odt",
-      ".epub",
-      "readme",
-      "license",
-      "licence",
-      "copying",
-      "notice",
-      "changelog",
-      "authors",
-      "contributors",
-      "contributing",
-      "codeowners",
-    ],
-  },
-  {
-    id: "code",
-    label: "Code",
-    values: [
-      ".py",
-      ".pyi",
-      ".ts",
-      ".tsx",
-      ".js",
-      ".jsx",
-      ".mjs",
-      ".cjs",
-      ".rs",
-      ".go",
-      ".java",
-      ".kt",
-      ".kts",
-      ".swift",
-      ".m",
-      ".mm",
-      ".c",
-      ".h",
-      ".cc",
-      ".cpp",
-      ".hpp",
-      ".cs",
-      ".rb",
-      ".php",
-      ".scala",
-      ".clj",
-      ".ex",
-      ".exs",
-      ".erl",
-      ".hs",
-      ".ml",
-      ".lua",
-      ".pl",
-      ".r",
-      ".jl",
-      ".dart",
-      ".vue",
-      ".svelte",
-      ".sh",
-      ".bash",
-      ".zsh",
-      ".fish",
-      ".ps1",
-      ".sql",
-      ".css",
-      ".scss",
-      ".less",
-      ".html",
-      "makefile",
-      "dockerfile",
-      "justfile",
-      "rakefile",
-      "gemfile",
-      "procfile",
-    ],
-  },
-  {
-    id: "data",
-    label: "Data",
-    values: [
-      ".json",
-      ".jsonl",
-      ".ndjson",
-      ".yaml",
-      ".yml",
-      ".toml",
-      ".ini",
-      ".cfg",
-      ".conf",
-      ".properties",
-      ".csv",
-      ".tsv",
-      ".psv",
-      ".xml",
-      ".parquet",
-      ".arrow",
-      ".avro",
-      ".orc",
-      ".feather",
-      ".proto",
-      ".graphql",
-      ".sqlite",
-      ".db",
-    ],
-  },
-];
+// Named shorthands at the top of the type menu. The server injects the
+// vocabulary so the index can count the same tokens the browser uses.
+var FILTER_TYPE_PRESETS = _METABROWSER_SETTINGS.FILTER_TYPE_PRESETS || [];
 
 // The extension menu is built from what the folder actually contains,
 // not a fixed vocabulary, so it never offers a type with nothing
 // behind it and never omits one the tree is full of.
 var FILTER_TYPE_MENU_MAX = 20;
 
-// How long a file keeps counting as "live" for the filter after the
-// last time the tracker reported it active.
-//
-// This is not cosmetic. The activity tracker polls every
-// ACTIVE_TRACKER_INTERVAL_S (5s), but the file watcher emits an upsert
-// on *every* append, and those carry whatever `active` flag the entry
-// held at that moment — false between polls. Mirroring that flag
-// straight into the filter made a file being written once a second
-// appear and vanish several times a minute.
-//
-// 90s comfortably spans the poll interval plus the tracker's own
-// quiet-poll hysteresis, so a steadily-written file stays put, while a
-// genuinely finished one still drops out promptly enough to be
-// believed.
-const FILTER_LIVE_PERSIST_MS = 90_000;
-
 // Deliberately not persisted. The drawer holds the secondary controls,
 // so a session that starts with it open costs vertical space the user
-// did not ask for on this visit; the filters themselves persist, and
+// did not ask for on this visit. Filter selections are transient too;
 // the badge reports them whether or not the drawer is showing.
 var filterDrawerOpen = false;
 // At most one dropdown is open at a time — opening a second while the
@@ -2653,6 +2628,32 @@ function filterHasConstraints(state) {
 // wrong half the time.
 /** @type {Array<[string, number, number]>} */
 var _extensionTally = [];
+/** @type {Array<[string, number, number]>} */
+var _typePresetTally = [];
+
+function updateFileTypeTallies(data) {
+  let changed = false;
+  if (Array.isArray(data.extensions)) {
+    _extensionTally = data.extensions;
+    changed = true;
+  }
+  if (Array.isArray(data.type_presets)) {
+    _typePresetTally = data.type_presets;
+    changed = true;
+  }
+  return changed;
+}
+
+function filterTypePresets() {
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const counts = new Map(
+    _typePresetTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
+  );
+  return FILTER_TYPE_PRESETS.map((preset) => ({
+    ...preset,
+    count: counts.get(preset.id) || 0,
+  }));
+}
 
 function filterTypeOptions() {
   const showIgnored = filterState ? filterState.get().showIgnored : true;
@@ -2693,15 +2694,14 @@ function filterTypeOptions() {
 
 // A recency window reads from /api/recent, which scans the whole index
 // rather than the loaded subtrees — the one thing the Recent tab did
-// that a DOM walk cannot. "live" stays on the tree source: the active
-// tracker's files are by definition inside the event scope, and
-// /api/recent has no window for them.
+// that a DOM walk cannot. This includes Live: it is the shortest
+// server-owned mtime window, not the specialized activity tracker.
 function filesPanelUsesRecentSource() {
   if (!filterState) {
     return false;
   }
   var st = filterState.get();
-  return st.recency !== "all" && st.recency !== "live";
+  return st.recency !== "all";
 }
 
 function renderNavFilterBar() {
@@ -2732,7 +2732,7 @@ function renderNavFilterBar() {
       key: "types",
       label: "File extension",
       options: filterTypeOptions(),
-      presets: FILTER_TYPE_PRESETS,
+      presets: filterTypePresets(),
       value: st.types,
       anyLabel: "Any type",
       open: filterOpenMenu === "types",
@@ -2953,6 +2953,7 @@ function onFilterStateChange(state) {
     // Empty, not a window key: a late response compares against this
     // and must never find a match.
     currentRecentWindow = "";
+    clearRecentExpiryRecheck();
     // Restore the full tree from the cached payload; only fall back to
     // a refetch when nothing has been cached yet.
     if (!renderFilesFromTree()) {
@@ -2974,47 +2975,6 @@ function onFilterStateChange(state) {
 // with no loaded children is unknown rather than excluded — the one
 // exception being recency, where the folder's own aggregate mtime
 // (newest descendant) is a definitive answer for the whole subtree.
-
-// Last time each path was reported active, so the filter can hold a
-// file steady across the gaps described at FILTER_LIVE_PERSIST_MS.
-/** @type {Map<string, number>} */
-const liveSeenAt = new Map();
-
-function noteLivePath(path) {
-  liveSeenAt.set(path, Date.now());
-}
-
-// Paths the *filter* treats as live: those active right now, plus
-// those seen active within the persistence window.
-function livePathsForFilter() {
-  var cutoff = Date.now() - FILTER_LIVE_PERSIST_MS;
-  var paths = new Set(activeFiles.keys());
-  for (const [path, seen] of liveSeenAt) {
-    if (seen < cutoff) {
-      liveSeenAt.delete(path); // bounded: entries expire as they age out
-    } else {
-      paths.add(path);
-    }
-  }
-  return paths;
-}
-
-// Is any file under this folder live? The live set holds full paths,
-// so a folder can be judged without its children being rendered — the
-// reason Live does not need the unloaded-folder escape the other
-// dimensions do.
-function hasLiveDescendant(dirPath, livePaths) {
-  if (livePaths.size === 0) {
-    return false;
-  }
-  var prefix = dirPath ? `${dirPath}/` : "";
-  for (const livePath of livePaths) {
-    if (!prefix || livePath.startsWith(prefix)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 function _childContainerFor(row) {
   var next = row.nextElementSibling;
@@ -3045,17 +3005,10 @@ function applyTreeFilters() {
   var nowSec = Date.now() / 1000;
   var keep = new Map();
   var unloadedFolders = 0;
-  // "Live" is the one dimension the client knows completely: activeFiles
-  // is the whole set of paths currently being written, straight off the
-  // event stream. Reading it beats testing for a rendered .activity-dot,
-  // which only exists on rows that happen to be painted, and it lets a
-  // folder be judged on whether a live path lies beneath it rather than
-  // being waved through as "not loaded, so unknown".
-  var liveMode = st.recency === "live";
-  var livePaths = liveMode ? livePathsForFilter() : new Set();
   for (var i = rows.length - 1; i >= 0; i--) {
     var row = rows[i];
     var isDir = row.classList.contains("tree-folder");
+    var isSymlink = row.classList.contains("tree-symlink");
     var gitignored = row.classList.contains("tree-item-gitignored");
     var path = row.dataset.path || "";
     var ok;
@@ -3071,8 +3024,8 @@ function applyTreeFilters() {
           // every file row; matching on it keeps a compound pick
           // (".min.js") agreeing with the tally that offered it.
           ext: row.dataset.ext || "",
-          live: isDir ? hasLiveDescendant(path, livePaths) : livePaths.has(path),
           isDir: isDir,
+          isSymlink: isSymlink,
         },
         st,
         nowSec,
@@ -3085,11 +3038,9 @@ function applyTreeFilters() {
         : [];
       if (kids.length > 0) {
         ok = kids.some((kid) => keep.get(kid) === true);
-      } else if (!liveMode) {
+      } else {
         // Nothing loaded under it: the filter cannot speak for this
-        // subtree, so the folder stays and gets counted. Live is the
-        // exception — the set of live paths is known in full, so an
-        // unloaded folder is a definite answer, not an unknown one.
+        // subtree, so the folder stays and gets counted.
         unloadedFolders += 1;
       }
     }
@@ -3105,7 +3056,7 @@ function applyTreeFilters() {
     var matched = !suppressed.has(el.parentElement) && keep.get(el) === true;
     el.classList.toggle("tree-item-filter-hidden", !matched);
     if (matched) {
-      if (!el.classList.contains("tree-folder")) {
+      if (!el.classList.contains("tree-folder") && !el.classList.contains("tree-symlink")) {
         shownFiles += 1;
       }
     } else {
@@ -3126,25 +3077,6 @@ function applyTreeFilters() {
     : null;
   _renderFilteredTally(panel, shownFiles, st, recencyCount);
   _renderFilterNote(panel, unloadedFolders, st);
-  // Once writing stops no further events arrive, so nothing would
-  // re-evaluate the persistence window and the row would sit there
-  // looking live forever. Wake up when the oldest sighting expires.
-  if (liveMode) {
-    scheduleLiveExpiryRecheck();
-  }
-}
-
-var _liveExpiryHandle = null;
-function scheduleLiveExpiryRecheck() {
-  if (_liveExpiryHandle || liveSeenAt.size === 0) {
-    return;
-  }
-  var oldest = Math.min(...liveSeenAt.values());
-  var due = Math.max(250, oldest + FILTER_LIVE_PERSIST_MS - Date.now() + 50);
-  _liveExpiryHandle = setTimeout(() => {
-    _liveExpiryHandle = null;
-    applyTreeFilters();
-  }, due);
 }
 
 // How many files the filter is actually showing, as a second line
@@ -3192,26 +3124,16 @@ function _renderFilteredTally(panel, shownFiles, state, recencyCount) {
 // imply completeness.
 function _renderFilterNote(panel, unloadedFolders, state) {
   var existing = panel.querySelector(".filter-note");
-  // "Live" with nothing being written is a real answer, but an empty
-  // tree looks like a broken filter. Say it in words — and name what
-  // is watched, because the tracker only follows run artifacts
-  // (BROWSER_TRACKABLE_EXTS files under .logs/ or .state/), so on a
-  // repository without them this state is permanent rather than
-  // momentary. See metabrowser/active_tracker.py:_is_trackable.
-  // Must ask the same question row visibility asked. Testing
-  // activeFiles here instead would claim nothing is being written
-  // while the persistence window is still showing rows.
-  var liveEmpty = state.recency === "live" && livePathsForFilter().size === 0;
-  if ((unloadedFolders <= 0 && !liveEmpty) || !filterHasConstraints(state)) {
+  if (unloadedFolders <= 0 || !filterHasConstraints(state)) {
     if (existing) {
       existing.remove();
     }
     return;
   }
-  var text = liveEmpty
-    ? "No run logs are being written right now."
-    : `Filtered within loaded folders. ${unloadedFolders.toLocaleString()} ` +
-      `${unloadedFolders === 1 ? "folder is" : "folders are"} not expanded yet.`;
+  var text =
+    `${unloadedFolders.toLocaleString()} collapsed ` +
+    `${unloadedFolders === 1 ? "folder may" : "folders may"} contain additional matches. ` +
+    `Expand ${unloadedFolders === 1 ? "it" : "them"} to check.`;
   if (existing) {
     existing.textContent = text;
     return;
@@ -3285,6 +3207,16 @@ function cachePut(cache, key, value, maxSize, onEvict) {
 
 var textChunkLoadInFlight = false;
 
+function showTextChunkLoadError() {
+  var warning = document.querySelector(".metabrowser-source-truncation-warning");
+  if (!warning) {
+    return;
+  }
+  warning.setAttribute("role", "alert");
+  warning.innerHTML =
+    "<strong>Could not load more content.</strong> Select Load more to try again.";
+}
+
 // Called by the generated file-header action.
 // biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 async function loadMoreCurrentText() {
@@ -3309,7 +3241,7 @@ async function loadMoreCurrentText() {
         encodeURIComponent(String(TEXT_PREVIEW_CHUNK_BYTES)),
     );
     if (!resp.ok) {
-      return;
+      throw new Error(`HTTP ${resp.status}`);
     }
     var chunk = await _perf.measureAsync(
       "apiFile:textChunkJson",
@@ -3333,6 +3265,9 @@ async function loadMoreCurrentText() {
     renderFile(cached);
   } catch (e) {
     console.warn("Failed to load text chunk", e);
+    if (currentPath === path) {
+      showTextChunkLoadError();
+    }
   } finally {
     textChunkLoadInFlight = false;
   }
@@ -3361,7 +3296,10 @@ async function selectFile(path, skipHash) {
       }
       const preview = document.getElementById("preview-pane");
       if (!preview) {
-        return { message: "The preview destination is unavailable.", status: "error" };
+        return {
+          message: "Could not display the file. Refresh the page to try again.",
+          status: "error",
+        };
       }
 
       // Three-way cache state:
@@ -3386,7 +3324,7 @@ async function selectFile(path, skipHash) {
           return;
         }
         disposeActivePluginViews();
-        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading file…</div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
       if (selectFileAbortController) {
@@ -3429,8 +3367,9 @@ async function selectFile(path, skipHash) {
             () => resp.text(),
             responsePerfMeta(resp, path),
           );
-          throw Object.assign(new Error(text || `HTTP ${resp.status}`), {
+          throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
             notFound: resp.status === 404,
+            summary: responseErrorSummary(text, "Could not open this file."),
           });
         }
         const data = await _perf.measureAsync(
@@ -3456,7 +3395,7 @@ async function selectFile(path, skipHash) {
         }
         return { status: "cancelled" };
       } catch (err) {
-        var caught = /** @type {{name?: string, notFound?: boolean}} */ (err);
+        var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
         if (caught?.name === "AbortError") {
           return { status: "cancelled" };
         }
@@ -3467,13 +3406,19 @@ async function selectFile(path, skipHash) {
             loadingIndicatorTimer = null;
           }
           disposeActivePluginViews();
-          preview.innerHTML = `<div class="preview-empty">Error: ${esc(errorMessage(err))}</div>`;
+          preview.innerHTML = previewErrorHtml(
+            caught?.summary || "Could not open this file.",
+            errorMessage(err),
+          );
         } else {
           return { status: "cancelled" };
         }
         return notFound
-          ? { message: `File no longer available: ${path}`, status: "not-found" }
-          : { message: `Could not open ${path}: ${errorMessage(err)}`, status: "error" };
+          ? { message: `${path} is no longer available.`, status: "not-found" }
+          : {
+              message: `Could not open ${path}. Check that the file still exists and is readable.`,
+              status: "error",
+            };
       }
     },
     { path: path, skip_hash: !!skipHash },
@@ -3569,7 +3514,7 @@ function renderTextPreviewControls(data) {
   var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
   if (data.content_truncated) {
     html +=
-      '<button class="file-header-action" onclick="loadMoreCurrentText()" title="Load another text chunk">Load more</button>';
+      '<button class="btn file-header-action" type="button" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
   }
   return html;
 }
@@ -3683,20 +3628,21 @@ function disposeActivePluginViews() {
 
 function mountPluginView(container, pluginView, ctx) {
   if (typeof pluginView.dispose === "function") {
-    activePluginDisposers.push(pluginView.dispose);
+    activePluginDisposers.push(() => pluginView.dispose(container));
   }
   try {
     var maybePromise = pluginView.render(container, ctx);
     if (maybePromise && typeof maybePromise.catch === "function") {
       maybePromise.catch((err) => {
+        console.error("plugin render error:", err);
         container.innerHTML =
-          '<div class="preview-empty">Plugin render error: ' +
-          esc(String(err?.message || err)) +
-          "</div>";
+          '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
       });
     }
   } catch (err) {
-    container.innerHTML = `<div class="preview-empty">Plugin render error: ${esc(errorMessage(err))}</div>`;
+    console.error("plugin render error:", err);
+    container.innerHTML =
+      '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
   }
 }
 
@@ -3719,9 +3665,9 @@ function renderFile(data) {
       html +=
         '<span class="file-header-path">' +
         esc(data.path) +
-        '<button class="file-header-copy" onclick="copyPath(this, \'' +
+        '<button class="icon-btn icon-btn-reveal file-header-copy" type="button" onclick="copyPath(this, \'' +
         esc(data.path).replace(/'/g, "\\'") +
-        '\')" title="Copy path">' +
+        '\')" title="Copy path" aria-label="Copy path">' +
         ICON_COPY +
         "</button>" +
         "</span>";
@@ -3729,7 +3675,7 @@ function renderFile(data) {
       html += sizeHtml(data.size, "file-header-size");
       html += renderTextPreviewControls(data);
       html +=
-        '<button class="file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+        '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
         (ICONS.print || "") +
         "</button>";
       html += "</div>";
@@ -3741,7 +3687,7 @@ function renderFile(data) {
       // kinds; entry-point plugins own theirs. The shell here
       // builds the empty containers; each plugin's render(container, ctx)
       // fires below once the DOM is in place. If no plugin claims a
-      // (kind, viewId) we paint an "Unknown view" empty state — never a
+      // (kind, viewId) we paint an unavailable-view message — never a
       // fallback that pulls renderers out of the shell. This is the
       // contract: every kind is a plugin.
       var views = data.views;
@@ -3755,7 +3701,7 @@ function renderFile(data) {
             html +=
               '<button class="tab-btn' +
               active +
-              '" data-tab="' +
+              '" type="button" data-tab="' +
               esc(view.id) +
               '"' +
               viewMetaAttrs(view) +
@@ -3811,9 +3757,7 @@ function renderFile(data) {
               viewMetaAttrs(view) +
               ' data-active-view="false"' +
               hidden +
-              '><div class="preview-empty">Unknown view: ' +
-              esc(view.id) +
-              "</div></div>";
+              '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
           }
         }
       } else if (data.type === "image") {
@@ -3827,22 +3771,19 @@ function renderFile(data) {
           esc(data.path) +
           '"></div>';
       } else if (data.type === "binary") {
-        html += `<div class="content-body"><div class="preview-empty">Binary file (${formatSize(data.size || 0)})</div></div>`;
+        html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
       } else if (data.type === "jsonl_too_large") {
         html +=
           '<div class="content-body"><div class="preview-empty">' +
-          "<strong>Log file too large for browser parsing</strong><br><br>" +
-          "Size: " +
+          "<strong>This JSONL file is too large to preview.</strong><br><br>" +
+          "File size: " +
           formatSize(data.size || 0) +
-          " (limit: " +
+          "<br>Preview limit: " +
           formatSize(data.max_size || 0) +
-          ")<br><br>" +
-          "View with:<br><code>tail -f " +
-          esc(data.path) +
-          "</code>" +
+          "<br><br>Open it with a tool that can stream large files." +
           "</div></div>";
       } else if (data.type === "error") {
-        html += `<div class="content-body"><div class="preview-empty">Error: ${esc(data.error)}</div></div>`;
+        html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
       }
 
       _perf.measure(
@@ -4139,7 +4080,7 @@ function appendLiveEvents(path, batch) {
         var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
         if (renderEvt) {
           for (var j = 0; j < batch.events.length; j++) {
-            tail += renderEvt(batch.events[j], startIdx + j);
+            tail += renderEvt(logPane, batch.events[j], startIdx + j);
           }
         }
         logPane.insertAdjacentHTML("beforeend", tail);
@@ -4201,10 +4142,6 @@ function fileStoreApplyChange(ops) {
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
       activeFiles.delete(op.path);
-      // Drop the persistence stamp too. A deleted file is not "recently
-      // live", and leaving it would keep its ancestor folders matching
-      // Live for up to FILTER_LIVE_PERSIST_MS after it is gone.
-      liveSeenAt.delete(op.path);
       // Remove rendered rows in every tab panel; also drops the
       // dir's `.tree-children` container so descendant rows go
       // with it. Server's bulk-remove op already lists each
@@ -4245,9 +4182,6 @@ function _mirrorActiveFromFsEntry(entry) {
   var wasActive = activeFiles.has(entry.path);
   if (entry.active) {
     activeFiles.set(entry.path, { pid_alive: pidLabel });
-    // Stamp every sighting, so the filter can ride out the gaps
-    // between tracker polls (see FILTER_LIVE_PERSIST_MS).
-    noteLivePath(entry.path);
     refreshActivityBadge(entry.path);
     // Inactive→active for the currently viewed file: switch the
     // header badge to "Live" and open the live stream if not
@@ -4332,8 +4266,8 @@ function notifyFileStoreSubscribers(evt) {
 }
 
 // Pure function: derive the patched cell HTML for a single
-// FsEntry. Returns separate dir/file shapes; applyCellPatch picks
-// the matching DOM target (.tree-folder vs .tree-file).
+// FsEntry. Returns separate directory, symlink, and file shapes;
+// applyCellPatch picks the matching DOM target.
 //
 // Directory aggregates, file updates, inserts, and removals all use this
 // path. See the realtime-debugging guide for the layer-by-layer contract.
@@ -4353,6 +4287,20 @@ function computeCellPatch(entry, options) {
       tipFiles: nullableDataValue(totalFiles),
       tipSize: nullableDataValue(totalSize),
       tipMtime: nullableDataValue(dirMtimeSec),
+    };
+  }
+  if (entry.type === "symlink") {
+    var linkMtimeSec = entry.mtime_ns ? entry.mtime_ns / 1e9 : 0;
+    return {
+      kind: "symlink",
+      sizeHtml: "",
+      ageHtml:
+        '<span class="tree-item-age">' +
+        formatAge(linkMtimeSec) +
+        '</span><span class="tree-item-activity"></span>',
+      tipSize: null,
+      tipMtime: linkMtimeSec,
+      active: false,
     };
   }
   // File entry: size + age + active class.
@@ -4427,6 +4375,30 @@ function _buildRowHtml(entry, options) {
       '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
       '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
       "</div>" +
+      "</div>"
+    );
+  }
+  if (entry.type === "symlink") {
+    var linkAge = formatAge(entry.mtime_ns ? entry.mtime_ns / 1e9 : 0);
+    return (
+      '<div class="tree-item tree-symlink' +
+      muted +
+      '" data-action="select" data-path="' +
+      esc(entry.path) +
+      '" data-tip-type="symlink" data-tip-name="' +
+      esc(name) +
+      '" data-tip-mtime="' +
+      (entry.mtime_ns || 0) / 1e9 +
+      '">' +
+      '<span class="tree-item-icon">' +
+      ICONS.fileSymlink +
+      "</span>" +
+      '<span class="tree-item-name">' +
+      esc(name) +
+      "</span>" +
+      '<span class="tree-item-age-inline"><span class="tree-item-age">' +
+      linkAge +
+      '</span><span class="tree-item-activity"></span></span>' +
       "</div>"
     );
   }
@@ -4533,10 +4505,10 @@ function _insertRowSorted(container, entry, options) {
         anchor = ch;
         break;
       }
-    } else if (ch.classList.contains("tree-file")) {
+    } else if (ch.classList.contains("tree-file") || ch.classList.contains("tree-symlink")) {
       var name2 = ch.querySelector(".tree-item-name");
       var k2 = _treeSortKey({
-        type: "file",
+        type: ch.classList.contains("tree-symlink") ? "symlink" : "file",
         name: name2 ? name2.textContent : "",
       });
       if (_treeKeyCmp(entryKey, k2) < 0) {
@@ -4572,12 +4544,11 @@ function _insertRowSorted(container, entry, options) {
   return true;
 }
 
-// Apply the patch+insert path for one fs.change op. For type=file,
-// patches existing .tree-file rows (size/age/active). For type=dir,
-// patches existing .tree-folder rows (metric chip + age + tip-*). If
+// Apply the patch+insert path for one fs.change op. File, directory,
+// and symlink entries patch their matching row shape. If
 // no row exists for the entry's path AND the entry's parent is
 // rendered + expanded in either tab panel, insert a new row in
-// sorted position so the user sees new files/dirs without a reload.
+// sorted position so the user sees new entries without a reload.
 function updateRootAggregatePresentation(entry) {
   if (entry.path || entry.type !== "dir") {
     return;
@@ -4620,8 +4591,24 @@ function applyCellPatch(entry) {
   var selector =
     entry.type === "dir"
       ? `.tree-folder[data-path="${safePath}"]`
-      : `.tree-file[data-path="${safePath}"]`;
+      : entry.type === "symlink"
+        ? `.tree-symlink[data-path="${safePath}"]`
+        : `.tree-file[data-path="${safePath}"]`;
   var rows = queryHtmlAll(selector);
+  var pathRows = queryHtmlAll(`.tree-item[data-path="${safePath}"]`);
+  var removingRow = Array.prototype.some.call(pathRows, (row) =>
+    row.classList.contains("tree-item-flash-out"),
+  );
+  if (pathRows.length !== rows.length || removingRow) {
+    // The watcher can observe a path changing shape (for example, a file
+    // replaced by a symlink) without an intervening remove event. A stale row
+    // with the old shape would make _insertRowSorted reject the replacement by
+    // path. Remove it synchronously, including a former folder's child rows,
+    // before taking the normal insert path. The same applies when a rapid
+    // remove/recreate reaches us while an old same-shaped row is animating out.
+    _removeRenderedRowsImmediately(entry.path);
+    rows = queryHtmlAll(selector);
+  }
   if (rows.length > 0) {
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
@@ -4641,18 +4628,18 @@ function applyCellPatch(entry) {
       row.dataset.tipMtime = nullableDataValue(patch.tipMtime);
       if (patch.kind === "dir") {
         row.dataset.tipFiles = patch.tipFiles;
-        // Sync the gray "empty" class. Server emits null for
-        // walker-pending dirs (don't change the class) and 0
-        // for finalized-empty (gray). Without this toggle, a
-        // dir initially painted gray during inventory startup
-        // never cleared once its real count arrived via
-        // fs.change.
+        // A zero file total does not prove emptiness because symlinks
+        // are visible leaves but intentionally excluded from aggregates.
         var totalFiles = entry.total_files;
-        if (totalFiles != null) {
-          row.classList.toggle("tree-item-empty", totalFiles === 0);
+        if (typeof entry.empty === "boolean") {
+          row.classList.toggle("tree-item-empty", entry.empty);
+        } else if (totalFiles > 0) {
+          // Positive totals remain an unambiguous fallback for events
+          // from an older server that lacks explicit empty-state metadata.
+          row.classList.toggle("tree-item-empty", false);
         }
       }
-      // Sync gitignored across dir + file rows so a flag flip
+      // Sync gitignored across every row type so a flag flip
       // (rare, but possible if .gitignore is edited) updates
       // the muted class without a full rerender.
       row.classList.toggle("tree-item-gitignored", !!entry.gitignored);
@@ -4733,6 +4720,24 @@ function _removeRenderedRows(path) {
   }
 }
 
+// Type replacements cannot wait for the removal animation: the new row uses
+// the same data-path and must be inserted in this event turn. This also removes
+// a former folder's rendered descendants before its replacement is mounted.
+function _removeRenderedRowsImmediately(path) {
+  var safe = escapePathForSelector(path);
+  var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (row.classList.contains("tree-folder")) {
+      var children = row.nextElementSibling;
+      if (children?.classList.contains("tree-children")) {
+        children.remove();
+      }
+    }
+    row.remove();
+  }
+}
+
 // Recency re-cluster scheduling: debounced so a burst of fs.change
 // ops doesn't render-thrash. The recency source reads from
 // ``recentBaseEntries`` (fetched from /api/recent plus a live overlay
@@ -4758,12 +4763,52 @@ function _scheduleRecentRecompute() {
 var _esConsecutiveErrors = 0;
 var _esBackoffMs = 2000;
 var _esReconnectTimer = null;
+var _esStableResetTimer = null;
 var _ES_MAX_CONSECUTIVE_ERRORS = 5;
 var _ES_BACKOFF_CAP_MS = 60000;
+var _ES_STABLE_CONNECTION_MS = 10000;
 
 function _resetEsCircuitBreaker() {
   _esConsecutiveErrors = 0;
   _esBackoffMs = 2000;
+}
+
+function _cancelEsStableReset() {
+  if (_esStableResetTimer !== null) {
+    clearTimeout(_esStableResetTimer);
+    _esStableResetTimer = null;
+  }
+}
+
+function _scheduleEsStableReset() {
+  _cancelEsStableReset();
+  _esStableResetTimer = setTimeout(() => {
+    _esStableResetTimer = null;
+    if (inventoryEventSource) {
+      _resetEsCircuitBreaker();
+    }
+  }, _ES_STABLE_CONNECTION_MS);
+}
+
+function _scheduleInventoryReconnect() {
+  _cancelEsStableReset();
+  if (inventoryEventSource) {
+    inventoryEventSource.close();
+    inventoryEventSource = null;
+  }
+  if (_esReconnectTimer !== null) {
+    return;
+  }
+  var delay = _esBackoffMs;
+  _esBackoffMs = Math.min(_esBackoffMs * 2, _ES_BACKOFF_CAP_MS);
+  _esReconnectTimer = setTimeout(() => {
+    _esReconnectTimer = null;
+    // Each EventSource gets its own transport-error allowance. Keep the
+    // escalating reconnect delay until the stable timer fires, but do not let
+    // the previous source's threshold make one transient error close this one.
+    _esConsecutiveErrors = 0;
+    _createInventoryEventSource();
+  }, delay);
 }
 
 function _createInventoryEventSource() {
@@ -4771,10 +4816,10 @@ function _createInventoryEventSource() {
     inventoryEventSource = new EventSource("/api/events?scope=root-depth-2");
   } catch (_e) {
     inventoryEventSource = null;
+    _scheduleInventoryReconnect();
     return;
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       fileStoreApplySnapshot(data.scope, data.entries || []);
@@ -4788,7 +4833,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("fs.change", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
@@ -4798,7 +4842,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("catalog.change", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       quickFileCatalogFeed?.onCatalogChange(data);
@@ -4807,7 +4850,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("capability.update", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       // A truncated walk is "complete" in the sense that it stopped, but the
@@ -4822,40 +4864,35 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
-    _resetEsCircuitBreaker();
-    // Server restart or root swap — drop everything; reconnect
-    // will deliver a fresh snapshot.
+    // A resync marks a gap in the ordered delta stream. Clear derived state,
+    // then replace this connection so the server sends an authoritative
+    // snapshot before live updates resume.
     knownFileCatalog?.clear();
     fileStore = new Map();
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
+    _scheduleInventoryReconnect();
   });
   inventoryEventSource.onopen = () => {
-    _resetEsCircuitBreaker();
+    // Do not erase accumulated failure state as soon as a socket opens. A
+    // connection that survives this interval is healthy enough to reset the
+    // exponential backoff; repeated overflow/resync cycles keep backing off.
+    _scheduleEsStableReset();
     // First open only (start() is a no-op afterwards): the bulk
     // catalog fetch begins once the stream is subscribed, so no op
     // can fall between the payload build and the subscription.
     quickFileCatalogFeed?.start();
   };
   inventoryEventSource.onerror = () => {
+    _cancelEsStableReset();
     _esConsecutiveErrors += 1;
     if (_esConsecutiveErrors >= _ES_MAX_CONSECUTIVE_ERRORS) {
       // Circuit breaker: too many consecutive errors without a
       // successful open or message. Close and recreate with
       // exponential backoff. A fresh connection gets a snapshot
       // via the existing fs.snapshot/resync flow.
-      if (inventoryEventSource) {
-        inventoryEventSource.close();
-        inventoryEventSource = null;
-      }
-      var delay = _esBackoffMs;
-      _esBackoffMs = Math.min(_esBackoffMs * 2, _ES_BACKOFF_CAP_MS);
-      _esReconnectTimer = setTimeout(() => {
-        _esReconnectTimer = null;
-        _esConsecutiveErrors = 0;
-        _createInventoryEventSource();
-      }, delay);
+      _scheduleInventoryReconnect();
     }
   };
 }
@@ -4952,7 +4989,10 @@ async function revealInTree(path) {
       }
     }
   }
-  var target = document.querySelector(`.tree-file[data-path="${escapePathForSelector(path)}"]`);
+  var safePath = escapePathForSelector(path);
+  var target = document.querySelector(
+    `.tree-file[data-path="${safePath}"],.tree-symlink[data-path="${safePath}"]`,
+  );
   if (!target) {
     return false;
   }
@@ -5099,9 +5139,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     selectFile(initialPath, true);
   }
   startIndexProgressPolling();
-  // The tree fetch always runs: it supplies the header path and the
-  // root aggregates even when a persisted recency filter is about to
-  // repaint the panel from /api/recent.
+  // The tree fetch always runs: it supplies the header path and root
+  // aggregates before any later recency selection repaints the panel
+  // from /api/recent.
   await loadTree();
   if (filesPanelUsesRecentSource()) {
     loadRecent(filterState.get().recency);

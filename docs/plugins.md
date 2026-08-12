@@ -218,7 +218,7 @@ mb.registerView(kind, viewId, {
   async render(container, ctx) {
     // Own the contents of container.
   },
-  dispose() {
+  dispose(container) {
     // Abort requests, remove global listeners, and destroy retained resources.
   },
 });
@@ -228,6 +228,8 @@ mb.registerView(kind, viewId, {
 Nondefault tabs mount lazily.
 `dispose` runs when the preview pane is replaced by another file, an error, or a reload.
 It does not run for an ordinary tab switch.
+The shell passes the same `container` that was supplied to `render`, so shared renderers
+can keep state per mounted view instead of using one module-wide slot.
 
 The context contains the served-root-relative `path`, selected `kind`, logical `ext`,
 size, frontmatter, body text where applicable, and the raw `/api/file` envelope.
@@ -244,6 +246,7 @@ Useful helpers include:
 - `wrapWithCopy(html)` for a standard copy-button frame;
 - `formatSize`, `formatTimestamp`, and `sizeHtml`;
 - `icons` and `icons.withClass`;
+- `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
 - `perf.measure` and `perf.measureAsync`.
 

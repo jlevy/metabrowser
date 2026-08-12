@@ -177,6 +177,17 @@
       : fallback;
   }
 
+  /** @param {number} count @param {string} [modifier] */
+  function fileCount(count, modifier = "") {
+    const noun = count === 1 ? "file" : "files";
+    return `${count.toLocaleString()}${modifier ? ` ${modifier}` : ""} ${noun}`;
+  }
+
+  /** @param {number} count */
+  function formattedMatchCount(count) {
+    return `${count.toLocaleString()} ${count === 1 ? "match" : "matches"}`;
+  }
+
   /**
    * Create the browser-local provider. It searches one immutable catalog snapshot and
    * never reaches the network.
@@ -265,12 +276,13 @@
           score: ordered.length - index,
         });
       });
-      const incompleteSuffix = snapshot.complete ? "" : " Local coverage is incomplete.";
-      const filesNoun = snapshot.complete ? "files" : "observed files";
+      const searchScope = fileCount(snapshot.observedCount, snapshot.complete ? "" : "indexed");
       const statusMessage =
         results.length === 0
-          ? `No known file matches among ${snapshot.observedCount} ${filesNoun}.${incompleteSuffix}`
-          : `${snapshot.observedCount} ${filesNoun} are searchable.${incompleteSuffix}`;
+          ? `No matches in ${searchScope}.${snapshot.complete ? "" : " Scanning continues."}`
+          : snapshot.complete
+            ? `${formattedMatchCount(matchCount)}.`
+            : `${formattedMatchCount(matchCount)} in ${searchScope}. Scanning continues.`;
       return Object.freeze({
         candidateCount: snapshot.observedCount,
         complete: snapshot.complete,

@@ -21,13 +21,36 @@
     console.error("metabrowser agent-log plugin: window.metabrowser missing — SDK not loaded");
     return;
   }
+  const filterControls = mb.filterControls;
+  if (!filterControls) {
+    console.error("metabrowser agent-log plugin: filter controls missing — host assets incomplete");
+    return;
+  }
+  const fc = filterControls;
 
-  // ── Per-plugin filter state ─────────────────────────────────────
-  let activeKindFilters = null; // Set<string> | null
+  // ── Per-view filter and raw-payload state ───────────────────────
+  const logViewStates = new WeakMap();
   let chartsRenderGeneration = 0;
+
+  function newLogViewState() {
+    return {
+      activeKindFilters: /** @type {Set<string> | null} */ (null),
+      totalKindFilters: 0,
+      unbind: /** @type {(() => void) | null} */ (null),
+      rawCache: new Map(),
+    };
+  }
 
   function kindClassToken(kind) {
     return String(kind || "unknown").replace(/[^a-z0-9_-]/gi, "-");
+  }
+
+  function kindLabel(kind) {
+    return String(kind || "unknown").replace(/[-_]+/g, " ");
+  }
+
+  function isUnknownKind(kind) {
+    return !kind || String(kind).toLowerCase() === "unknown";
   }
 
   function fmtDuration(s) {
@@ -52,6 +75,11 @@
     );
   }
 
+  function eventSummaryText(evt) {
+    const text = evt.summary || "";
+    return isUnknownKind(evt.kind) ? text.replace(/^\[unknown\]\s*/i, "") : text;
+  }
+
   function renderSummary(evt) {
     if (evt.summary_parts && evt.summary_parts.length > 0) {
       return evt.summary_parts
@@ -64,7 +92,7 @@
         })
         .join("");
     }
-    const text = evt.summary || "";
+    const text = eventSummaryText(evt);
     const m = text.match(/^(\[[^\]]+\])\s*(.*)/);
     if (m) {
       const rest = m[2];
@@ -78,38 +106,47 @@
     return mb.escapeHtml(text);
   }
 
-  function renderLogEvent(evt, idx) {
+  function renderLogEventHtml(evt, idx, state) {
     const kind = String(evt.kind || "unknown");
     const kindClass = `kind-${kindClassToken(kind)}${evt.is_error ? " error" : ""}`;
-    let kindLabel = kind.replace("_", " ");
+    let label = kindLabel(kind);
     if (kind === "tool_call") {
-      kindLabel = "→ tool call";
+      label = "→ tool call";
     } else if (kind === "tool_result") {
-      kindLabel = "← tool result";
+      label = "← tool result";
     }
 
     // The per-event raw container is mounted empty; mountLogEventRaw
     // populates it lazily on first expand (see toggleEvent below).
     // Stashing evt.raw on the DOM via a data attribute would blow up
-    // the HTML for big payloads, so we keep it in a module-scope
+    // the HTML for big payloads, so the owning view keeps it in a
     // registry keyed by event idx instead.
-    _logEventRawCache.set(idx, evt.raw);
+    state.rawCache.set(idx, evt.raw);
+
+    const kindHtml = isUnknownKind(kind)
+      ? ""
+      : `<span class="log-event-kind ${kindClass}">${mb.escapeHtml(label)}</span>`;
+    const isFiltering =
+      state.activeKindFilters && state.activeKindFilters.size < state.totalKindFilters;
+    const visible = !isFiltering
+      ? true
+      : isUnknownKind(kind)
+        ? false
+        : state.activeKindFilters.has(kind);
 
     return (
       '<div class="log-event" data-idx="' +
       idx +
       '" data-kind="' +
       mb.escapeHtml(kind) +
-      '">' +
+      '"' +
+      (visible ? "" : ' style="display: none;"') +
+      ">" +
       '<div class="log-event-header" onclick="toggleEvent(this)">' +
       mb.icons.chevron +
-      '<span class="log-event-kind ' +
-      kindClass +
-      '">' +
-      mb.escapeHtml(kindLabel) +
-      "</span>" +
+      kindHtml +
       '<span class="log-event-summary" title="' +
-      mb.escapeHtml(evt.summary || "") +
+      mb.escapeHtml(eventSummaryText(evt)) +
       '">' +
       renderSummary(evt) +
       "</span>" +
@@ -121,11 +158,17 @@
     );
   }
 
-  // Module-scope cache of evt.raw payloads, indexed by event idx.
-  // toggleEvent() in the shell pulls this on first-expand and mounts
-  // an inline structured tree (if the structured plugin is present)
-  // or falls back to a flat JSON block.
-  const _logEventRawCache = new Map();
+  function stateForDescendant(element) {
+    let current = element;
+    while (current) {
+      const state = logViewStates.get(current);
+      if (state) {
+        return state;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
 
   function mountLogEventRaw(rawEl) {
     if (rawEl.dataset.mounted === "1") {
@@ -133,7 +176,7 @@
     }
     rawEl.dataset.mounted = "1";
     const idx = parseInt(rawEl.getAttribute("data-raw-idx") || "-1", 10);
-    const raw = _logEventRawCache.get(idx);
+    const raw = stateForDescendant(rawEl)?.rawCache.get(idx);
     if (raw === undefined) {
       return;
     }
@@ -178,10 +221,13 @@
   }
   window.metabrowserAgentLog.mountLogEventRaw = mountLogEventRaw;
 
-  function renderFilterBar(events) {
+  function renderFilterBar(events, state) {
     const counts = {};
     for (let i = 0; i < events.length; i++) {
-      const k = events[i].kind;
+      const k = String(events[i].kind || "unknown");
+      if (isUnknownKind(k)) {
+        continue;
+      }
       counts[k] = (counts[k] || 0) + 1;
     }
     const kindOrder = ["thinking", "text", "tool_call", "tool_result", "system", "init", "result"];
@@ -191,76 +237,74 @@
         kinds.push(k);
       }
     });
-    if (kinds.length === 0) {
+    if (kinds.length <= 1) {
+      state.activeKindFilters = null;
+      state.totalKindFilters = 0;
       return "";
     }
 
-    activeKindFilters = new Set(kinds);
+    state.activeKindFilters = new Set(kinds);
+    state.totalKindFilters = kinds.length;
 
-    const buttons = kinds
-      .map((k) => {
-        const label = k.replace("_", " ");
-        return (
-          '<button type="button" class="filter-btn active kind-' +
-          kindClassToken(k) +
-          '" data-filter-kind="' +
-          mb.escapeHtml(k) +
-          '">' +
-          mb.escapeHtml(label) +
-          ' <span class="filter-count">(' +
-          counts[k] +
-          ")</span></button>"
-        );
-      })
-      .join("");
-    return `<div class="filter-bar">${buttons}</div>`;
+    const options = kinds.map((kind) => ({
+      value: kind,
+      label: `${kindLabel(kind)} (${counts[kind].toLocaleString()})`,
+    }));
+    return (
+      '<div class="agent-log-filter-bar">' +
+      fc.groupHtml({
+        key: "agent-event-kind",
+        select: "many",
+        layout: "wrap",
+        label: "Event types",
+        options,
+        value: kinds,
+      }) +
+      "</div>"
+    );
   }
 
-  function toggleKindFilter(kind, root) {
-    if (!activeKindFilters) {
+  function toggleKindFilter(kind, root, state) {
+    if (!state.activeKindFilters) {
       return;
     }
-    const btn = Array.from(root.querySelectorAll(".filter-btn[data-filter-kind]")).find(
-      (candidate) => candidate instanceof HTMLElement && candidate.dataset.filterKind === kind,
-    );
+    const btn = Array.from(
+      root.querySelectorAll('[data-chip-key="agent-event-kind"][data-chip-value]'),
+    ).find((candidate) => candidate.getAttribute("data-chip-value") === kind);
     if (!btn) {
       return;
     }
-    if (activeKindFilters.has(kind)) {
-      activeKindFilters.delete(kind);
-      btn.classList.remove("active");
+    if (state.activeKindFilters.has(kind)) {
+      state.activeKindFilters.delete(kind);
+      btn.setAttribute("aria-pressed", "false");
     } else {
-      activeKindFilters.add(kind);
-      btn.classList.add("active");
+      state.activeKindFilters.add(kind);
+      btn.setAttribute("aria-pressed", "true");
     }
+    const isFiltering = state.activeKindFilters.size < state.totalKindFilters;
     root.querySelectorAll(".log-event[data-kind]").forEach((el) => {
-      if (el.dataset.kind !== kind) {
-        return;
-      }
-      if (el instanceof HTMLElement) {
-        el.style.display = activeKindFilters.has(kind) ? "" : "none";
-      }
+      const eventKind = el.getAttribute ? el.getAttribute("data-kind") : el.dataset.kind;
+      const visible = isUnknownKind(eventKind)
+        ? !isFiltering
+        : state.activeKindFilters.has(eventKind);
+      el.style.display = visible ? "" : "none";
     });
   }
 
-  function bindFilterBar(container) {
-    const filterBar = container.querySelector(".filter-bar");
-    if (!filterBar) {
-      return;
-    }
-    filterBar.addEventListener("click", (event) => {
-      const target = event.target instanceof Element ? event.target : null;
-      const button = target?.closest(".filter-btn[data-filter-kind]");
-      if (!(button instanceof HTMLElement) || !filterBar.contains(button)) {
-        return;
-      }
-      toggleKindFilter(button.dataset.filterKind || "", container);
+  function bindFilterBar(container, state) {
+    return fc.bind(container, {
+      onChange(key, value, select) {
+        if (key !== "agent-event-kind" || select !== "many") {
+          return;
+        }
+        toggleKindFilter(value, container, state);
+      },
     });
   }
 
   // ── Renderers ───────────────────────────────────────────────────
 
-  function renderLogHtml(data) {
+  function renderLogHtml(data, state) {
     const s = data.summary || {};
     let summary = '<div class="log-summary">';
     if (s.model) {
@@ -281,8 +325,8 @@
       summary += logStat("Lines skipped", `${s.lines_skipped} of ${s.lines_total} (oversized)`);
     }
     summary += "</div>";
-    const filterBar = renderFilterBar(data.events || []);
-    const events = (data.events || []).map((evt, i) => renderLogEvent(evt, i));
+    const filterBar = renderFilterBar(data.events || [], state);
+    const events = (data.events || []).map((evt, i) => renderLogEventHtml(evt, i, state));
     return summary + filterBar + events.join("");
   }
 
@@ -294,16 +338,17 @@
     let trailer = "";
     const t = data.raw_truncation;
     if (t) {
+      const skipped =
+        t.lines_skipped > 0
+          ? ` ${t.lines_skipped} oversized ${t.lines_skipped === 1 ? "line was" : "lines were"} skipped.`
+          : "";
       trailer =
-        "\n\n... (raw tab truncated at " +
+        "\n\n… Raw content truncated. Showing at most " +
         mb.formatSize(t.cap_bytes) +
-        " — file is " +
+        " of " +
         mb.formatSize(t.file_bytes) +
-        ", " +
-        t.lines_total +
-        " lines, " +
-        t.lines_skipped +
-        " skipped)";
+        "." +
+        skipped;
     }
     return mb.wrapWithCopy(
       '<pre class="code-block"><code class="' +
@@ -315,14 +360,33 @@
   }
 
   function renderLog(container, ctx) {
-    // Drop stale per-event raw payloads from the previously rendered
-    // log; renderLogHtml repopulates them fresh below. Without this
-    // the cache grows across the whole session.
-    _logEventRawCache.clear();
+    disposeLog(container);
+    const state = newLogViewState();
+    logViewStates.set(container, state);
     mb.perf.measure("renderAgentLog:log", () => {
-      container.innerHTML = renderLogHtml(ctx.raw);
-      bindFilterBar(container);
+      container.innerHTML = renderLogHtml(ctx.raw, state);
+      state.unbind = bindFilterBar(container, state);
     });
+  }
+
+  function disposeLog(container) {
+    if (!container) {
+      return;
+    }
+    const state = logViewStates.get(container);
+    if (!state) {
+      return;
+    }
+    if (state.unbind) {
+      state.unbind();
+    }
+    state.rawCache.clear();
+    logViewStates.delete(container);
+  }
+
+  function renderLogEvent(container, event, index) {
+    const state = logViewStates.get(container);
+    return state ? renderLogEventHtml(event, index, state) : "";
   }
 
   function renderRaw(container, ctx) {
@@ -333,7 +397,7 @@
 
   async function renderCharts(container, ctx) {
     const generation = ++chartsRenderGeneration;
-    container.innerHTML = '<div class="charts-placeholder preview-empty">Charts loading...</div>';
+    container.innerHTML = '<div class="charts-placeholder preview-empty">Loading charts…</div>';
     const chartData = await mb.fetchPluginData("agent-log", "charts", {
       path: ctx.path,
     });
@@ -341,7 +405,7 @@
       return;
     }
     if (!window.MetabrowserCharts) {
-      throw new Error("Metabrowser chart runtime is unavailable");
+      throw new Error("Chart rendering is unavailable.");
     }
     window.MetabrowserCharts.renderPayload(container, chartData);
   }
@@ -358,6 +422,7 @@
   }
   mb.builtins.agentLog = {
     renderLog: renderLog,
+    disposeLog: disposeLog,
     renderRaw: renderRaw,
     renderCharts: renderCharts,
     // Single-event renderer exposed for the shell's SSE live-stream
@@ -366,7 +431,7 @@
     renderLogEvent: renderLogEvent,
   };
 
-  mb.registerView("agent-log", "log", { render: renderLog });
+  mb.registerView("agent-log", "log", { render: renderLog, dispose: disposeLog });
   mb.registerView("agent-log", "charts", {
     render: renderCharts,
     dispose: disposeCharts,

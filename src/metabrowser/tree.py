@@ -21,6 +21,7 @@ import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 from cachetools import TTLCache
@@ -31,6 +32,7 @@ from metabrowser.fs_paths import is_visible as _is_visible
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.ignore_filter import IgnoreMode, ignore_none, make_ignore_filter
 from metabrowser.paths_safe import _rel_path, register_root_callback
+from metabrowser.settings import SLOW_OPERATION_LOG_SECONDS
 
 LOG = logging.getLogger(__name__)
 
@@ -122,7 +124,7 @@ def _scan_marker_basename(dirpath: Path) -> str | None:
 def _invalidate_caches() -> None:
     _IGNORE_CACHE.clear()
     _subtree_summary.cache_clear()
-    _has_any_file.cache_clear()
+    _has_any_leaf.cache_clear()
     _has_any_nongitignored.cache_clear()
 
 
@@ -144,8 +146,19 @@ def _find_git_root(start: Path) -> Path | None:
     return None
 
 
-@log_calls(level="info", show_timing_only=True, if_slower_than=0.05)
-def build_gitignore_check(root: Path) -> tuple[Any, Path | None]:
+@log_calls(
+    level="info",
+    show_args=False,
+    show_return_value=False,
+    if_slower_than=SLOW_OPERATION_LOG_SECONDS,
+    include_module=False,
+    log_func=LOG.info,
+)
+def build_gitignore_check(
+    root: Path,
+    *,
+    cancel_event: Event | None = None,
+) -> tuple[Any, Path | None]:
     """Return ``(check, git_root)`` where ``check(abs_path, is_dir) -> bool``.
 
     Looks for the enclosing git repo so that patterns in ``.gitignore`` files
@@ -158,7 +171,13 @@ def build_gitignore_check(root: Path) -> tuple[Any, Path | None]:
         return cached
 
     git_root = _find_git_root(root)
-    base = make_ignore_filter(git_root, IgnoreMode.gitignore) if git_root else ignore_none
+    base = (
+        make_ignore_filter(git_root, IgnoreMode.gitignore, cancel_event=cancel_event)
+        if git_root
+        else ignore_none
+    )
+    if cancel_event is not None and cancel_event.is_set():
+        return _never_ignore, None
     if base is ignore_none or git_root is None:
         checker: Any = _never_ignore
     else:
@@ -193,7 +212,7 @@ def _dir_stats(children: list[dict[str, Any]]) -> tuple[int, int, float]:
             total_size += child.get("total_size", 0)
             child_mtime = child.get("mtime", 0)
             newest_mtime = max(newest_mtime, child_mtime)
-        else:
+        elif child["type"] == "file":
             total_files += 1
             total_size += child.get("size", 0)
             child_mtime = child.get("mtime", 0)
@@ -202,13 +221,13 @@ def _dir_stats(children: list[dict[str, Any]]) -> tuple[int, int, float]:
 
 
 def _subtree_is_empty(children: list[dict[str, Any]]) -> bool:
-    """True iff *children* describe a subtree with no files anywhere.
+    """True iff *children* contain no file or symlink leaf anywhere.
 
     Uses the per-child ``empty`` flag so this works even when children are
     lazy-load sentinels (whose ``total_files`` is always 0 as a placeholder).
     """
     for c in children:
-        if c["type"] == "file":
+        if c["type"] in {"file", "symlink"}:
             return False
         if c["type"] == "dir" and not c.get("empty", False):
             return False
@@ -309,8 +328,8 @@ def _has_any_nongitignored(
 
 
 @ttl_cache(maxsize=_SENTINEL_CACHE_MAXSIZE, ttl=_SENTINEL_CACHE_TTL)
-def _has_any_file(dirpath: Path, max_depth: int = 20) -> bool:
-    """True iff any visible file exists anywhere under ``dirpath``."""
+def _has_any_leaf(dirpath: Path, max_depth: int = 20) -> bool:
+    """True iff any visible file or symlink leaf exists under ``dirpath``."""
     if max_depth <= 0:
         return False
     try:
@@ -319,9 +338,9 @@ def _has_any_file(dirpath: Path, max_depth: int = 20) -> bool:
                 if not _is_visible(entry.name):
                     continue
                 try:
-                    if entry.is_file(follow_symlinks=False):
+                    if entry.is_symlink() or entry.is_file(follow_symlinks=False):
                         return True
-                    if entry.is_dir(follow_symlinks=False) and _has_any_file(
+                    if entry.is_dir(follow_symlinks=False) and _has_any_leaf(
                         Path(entry.path), max_depth - 1
                     ):
                         return True
@@ -372,16 +391,17 @@ def _dir_tree(
 
     # Snapshot the dir contents (with cached stat from scandir's dirent).
     try:
-        raw_entries: list[tuple[os.DirEntry[str], bool]] = []
+        raw_entries: list[tuple[os.DirEntry[str], bool, bool]] = []
         with os.scandir(dirpath) as it:
             for entry in it:
                 if not _is_visible(entry.name):
                     continue
                 try:
+                    is_symlink = entry.is_symlink()
                     is_dir = entry.is_dir(follow_symlinks=False)
                 except OSError:
                     continue
-                raw_entries.append((entry, is_dir))
+                raw_entries.append((entry, is_dir, is_symlink))
     except (PermissionError, OSError, FileNotFoundError, NotADirectoryError):
         return []
 
@@ -389,7 +409,7 @@ def _dir_tree(
     raw_entries.sort(key=lambda pair: (not pair[1], pair[0].name))
 
     entries: list[dict[str, Any]] = []
-    for entry, is_dir in raw_entries:
+    for entry, is_dir, is_symlink in raw_entries:
         item_path = Path(entry.path)
         rel = _rel_path(entry.path)
 
@@ -409,7 +429,7 @@ def _dir_tree(
                 sub_files, sub_size, newest_mtime = _subtree_summary(
                     item_path, max_depth=SENTINEL_SUMMARY_DEPTH
                 )
-                is_empty = not _has_any_file(item_path)
+                is_empty = not _has_any_leaf(item_path)
                 if (
                     not ignored
                     and not is_empty
@@ -473,6 +493,24 @@ def _dir_tree(
             if is_empty:
                 entry_dict["empty"] = True
             entries.append(entry_dict)
+        elif is_symlink:
+            try:
+                st = entry.stat(follow_symlinks=False)
+                size = st.st_size
+                mtime = st.st_mtime
+            except OSError:
+                size = 0
+                mtime = 0
+            link_dict: dict[str, Any] = {
+                "name": entry.name,
+                "path": rel,
+                "type": "symlink",
+                "size": size,
+                "mtime": mtime,
+            }
+            if ignored:
+                link_dict["gitignored"] = True
+            entries.append(link_dict)
         else:
             try:
                 st = entry.stat(follow_symlinks=False)
@@ -619,15 +657,16 @@ def _build_inventory_subtree(
                 # knows to lazy-load on click. has_children matches
                 # the shape `_dir_tree` produces for sentinels.
                 children = None
-            # Aggregate dimming flags, matching _dir_tree semantics:
-            # `empty` if subtree has zero files; `gitignored`
+            # Match _dir_tree's dimming semantics. ``empty`` requires a
+            # loaded subtree with no file or symlink leaf; ``gitignored``
             # propagates up when every visible child is ignored.
-            # ``total_files is None`` means "walker still finalizing" —
-            # don't paint gray on a missing count, only on a finalized
-            # zero. Conflating the two flashed every dir gray during
-            # the initial inventory scan; an fs.change later filling
-            # the count never cleared the class.
-            is_empty = entry.total_files == 0
+            # File totals intentionally exclude symlinks, so zero files cannot
+            # by itself prove that a directory has no visible leaf entries.
+            # At a lazy boundary, leave emptiness unknown until its children
+            # are loaded instead of dimming a link-only directory as empty.
+            is_empty = (
+                entry.total_files == 0 and children is not None and _subtree_is_empty(children)
+            )
             if children is not None and not ignored and _subtree_is_all_gitignored(children):
                 ignored = True
             # Use the inventory's actual child count for the
@@ -659,6 +698,18 @@ def _build_inventory_subtree(
             if is_empty:
                 entry_dict["empty"] = True
             out.append(entry_dict)
+        elif entry.type == "symlink":
+            ignored = parent_ignored or entry.gitignored
+            link_dict: dict[str, Any] = {
+                "name": entry.name,
+                "path": entry.path,
+                "type": "symlink",
+                "size": entry.size,
+                "mtime": entry.mtime_ns / 1_000_000_000.0 if entry.mtime_ns else 0.0,
+            }
+            if ignored:
+                link_dict["gitignored"] = True
+            out.append(link_dict)
         else:
             ignored = parent_ignored or entry.gitignored
             file_dict: dict[str, Any] = {

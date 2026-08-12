@@ -140,8 +140,8 @@ def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
 def test_load_recent_fetches_api_recent_for_full_window_coverage() -> None:
     """Recent is hybrid: chip change fetches
     ``/api/recent`` so the panel covers files outside the SSE
-    ``root-depth-2`` scope (24h/7d/30d/all used to silently
-    truncate to whatever happened to be in FileStore). Live
+    ``root-depth-2`` scope (including Live, which applies to every
+    file rather than only specialized tracker paths). New
     fs.change ops still flow through the local re-cluster path
     via the ``recentBaseEntries`` overlay."""
 
@@ -174,6 +174,13 @@ def test_recent_entries_from_base_filters_window_ext_prefix() -> None:
     assert "prefixFilter" in fn_block
     # newest-first sort on recent-flat (mtime in seconds, not ns).
     assert "(b.mtime || 0) - (a.mtime || 0)" in fn_block
+
+
+def test_recent_window_cutoffs_come_from_the_server_settings() -> None:
+    js = _read_app_js()
+    assert "const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {};" in js
+    start = js.index("const _RECENT_WINDOW_SECONDS")
+    assert '"1h": 60 * 60' not in js[start : start + 500]
 
 
 def test_recent_base_apply_op_handles_upsert_remove_move() -> None:
@@ -225,6 +232,32 @@ def test_recent_recompute_is_debounced() -> None:
     assert "setTimeout" in fn_block
     # Debounce: skip if a recompute is already pending.
     assert "_recentRecomputeHandle" in fn_block
+
+
+def test_recent_windows_repaint_when_the_oldest_file_expires() -> None:
+    """Without an expiry timer, Live could display a file forever if
+    no later filesystem event arrived to trigger another render."""
+
+    js = _read_app_js()
+    assert "function scheduleRecentExpiryRecheck(entries)" in js
+    render_start = js.index("function renderRecentFromBase()")
+    render_block = js[render_start : render_start + 1800]
+    assert "scheduleRecentExpiryRecheck(entries)" in render_block
+    assert "RECENT_EXPIRY_MAX_DELAY_MS" in js
+    schedule_start = js.index("function scheduleRecentExpiryRecheck(entries)")
+    schedule_block = js[schedule_start : schedule_start + 1200]
+    assert "var due = Math.min(" in schedule_block
+    assert "RECENT_EXPIRY_MAX_DELAY_MS" in schedule_block
+
+
+def test_loading_a_recent_window_cancels_the_previous_expiry_timer() -> None:
+    """A timer from the previous window must not repaint its cached
+    rows while the replacement request is still loading."""
+
+    js = _read_app_js()
+    start = js.index("function loadRecent(windowKey)")
+    block = js[start : start + 500]
+    assert "clearRecentExpiryRecheck();" in block
 
 
 def test_recent_recompute_called_from_fs_change_handler() -> None:
@@ -288,15 +321,14 @@ def test_load_recent_locks_window_synchronously_before_fetching() -> None:
 
 
 def test_recency_source_needs_a_window() -> None:
-    """/api/recent is the source whenever a window is set. "live"
-    stays on the tree source — the endpoint has no window for the
-    active tracker's files."""
+    """/api/recent is the source whenever any time window is set,
+    including the general 90-second Live window."""
 
     js = _read_app_js()
     fn_start = js.index("function filesPanelUsesRecentSource()")
     fn_block = js[fn_start : fn_start + 600]
     assert 'st.recency !== "all"' in fn_block
-    assert 'st.recency !== "live"' in fn_block
+    assert 'st.recency !== "live"' not in fn_block
 
 
 # ── Cross-panel selection ──────────────────────────────────────

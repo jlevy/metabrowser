@@ -97,10 +97,13 @@ single-select only, and lives in a plugin stylesheet.
 
 Defaults chosen to unblock implementation; each is cheap to change during review.
 
-1. **Recency is one dimension, not two.** Live (the active tracker’s flag) becomes the
-   leading segment of the recency group rather than a separate Current chip, because
+1. **Recency is one dimension, not two.** Live is the shortest window: every file whose
+   modification time is within the past 90 seconds.
+   It leads the recency group rather than becoming a separate Current chip, because
    “live” is the narrowest point on the same axis and “live but older than a week” is
    not a query anyone wants.
+   The specialized agent-log tracker still owns active badges and live tailing, but it
+   does not decide filter membership.
    One `recency` field replaces the treemap branch’s separate `current` and `ageWindow`.
 2. **Single-select fills with accent, multi-select fills with neutral.** A selected
    single-select segment takes `--highlight-bg` with `--link` text — the treatment
@@ -135,18 +138,19 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    corner: clicking a recency chip gives the Recent tab’s exact behavior inside the
    Files pane. The Files tree renders `/api/recent?window=`'s tree through the same
    `renderTreeNodes`, keeping the endpoint’s totals and truncation reporting.
-   `live` stays on the tree source — the endpoint has no window for the active tracker’s
-   files.
-8. **Filter state persists through `mb.prefs` and stays out of the URL hash.** Same
-   choice the treemap branch made, for the same reason: filters are a view preference,
-   not an address. Persisted state is never invisible — the badge and Clear are always
+   This includes `live`, whose 90-second cutoff comes from the same server-owned window
+   mapping as the longer choices.
+8. **Filter state is transient and stays out of the URL hash.** Filters answer a
+   question about the current view, so each page load starts clean; they are neither
+   durable user preferences nor part of a file’s address.
+   Within the page, active state is never invisible — the badge and Clear are always
    present when anything is set.
 9. **Type filtering is by literal extension, offered from what the tree contains.** The
    menu lists real extensions (`.md`, `.py`, `.ts`) rather than abstract `ft-*`
-   families, ranked by frequency, capped at 30, each row carrying its tally.
-   Tallies come from the server’s index pass (`InventoryIndex.extension_tally`, carried
+   families, ranked by frequency, capped at 20, each row carrying its tally.
+   Tallies come from one server index pass (`InventoryIndex.file_type_tallies`, carried
    on `/api/tree`), not from the Quick File catalog: that catalog drops gitignored
-   entries by design, so a menu built from it undercounts every extension the tree still
+   entries by design, so a menu built from it undercounts every type the tree still
    shows while gitignored rows are visible.
    Tracked and ignored counts stay apart on the wire so the menu reports whichever total
    matches the current **Show ignored** setting, and re-ranks on the count it is
@@ -154,8 +158,8 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    `ft-*` subtype; the label stays plain text.
    Tinting eight row labels made the hue compete with the check mark rather than help
    anyone scan, and the icon is what identifies a type everywhere else in the app.
-   The menu leads with **Docs / Code / Data** presets, each a shorthand for the full
-   extension list beneath it.
+   The menu leads with **Docs / Code / Data** presets, each a shorthand for its full
+   token set and carrying the tally for that aggregate.
    Preset entries follow one convention — a leading dot is an extension, anything else a
    whole filename — which is what lets Docs reach `README` and `LICENSE`, files that
    carry no extension and would otherwise be unfilterable.
@@ -248,8 +252,11 @@ with an `mb.filters` SDK proxy so plugin views never touch the global:
 The module owns `get`, `set(patch)`, `clear`, `subscribe`, `activeCount`, and the shared
 predicates `rowMatches`, `typeMatches`, and `sizeMatches`, so the tree and any future
 surface can never disagree about what matches.
-Persistence rides `mb.prefs` under one versioned `filters` key; every change dispatches
+State lives in memory for the page’s lifetime; every change dispatches
 `metabrowser:filter-change` alongside the subscriber callbacks.
+The module removes the obsolete `filters` preference written by development builds after
+v0.2.0, while durable appearance choices such as theme and typography continue to use
+preference storage.
 
 Missing data never rules a row out: an absent mtime or a pending size is incomplete
 information, not a non-match, and pending rows must not flicker as filtered.
@@ -303,11 +310,16 @@ Expanded, the drawer adds the two secondary controls:
 Every dropdown opens over the shared `.menu` surface and leads with an any-row naming
 the dimension’s default, so clearing one dimension is a pick rather than a separate
 control. Age and size are single-select (`menuitemradio`, closes on pick); type is
-multi-select (`menuitemcheckbox`, stays open), ranked by frequency and capped at 30,
-each row carrying the tree’s own file-type icon and its tally:
+multi-select (`menuitemcheckbox`, stays open), ranked by frequency and capped at 20,
+each row carrying the tree’s own file-type icon and its tally.
+The aggregate presets use the same right-aligned tally:
 
 ```
    ✓   Any type
+       Docs      42
+       Code     118
+       Data      27
+       ───────────
      ≡ .py      157
      ≡ .js       43
      ▤ .md       33
@@ -319,8 +331,9 @@ Clear resets every dimension including the ones in the collapsed row.
 The drawer always opens closed and its state is deliberately not persisted: it holds the
 secondary controls, so restoring it open would spend vertical space on this visit that
 was asked for on a previous one.
-The filters themselves do persist, and the badge reports them whether or not the drawer
-is showing, so nothing is hidden by starting collapsed.
+The filters also start clean on every page load.
+During the current visit, the badge reports them whether or not the drawer is showing,
+so nothing is hidden by collapsing it.
 
 ### The Nav Tally
 
@@ -387,12 +400,12 @@ Checked items are implemented and covered by tests; `make verify` passes on the 
 
 ### Phase 2: Filter State and the Bar — done
 
-- [x] `static/filter_state.js` under the strict `tsconfig.json` gate, with prefs
-  persistence, change events, `activeCount`, and the shared predicates
+- [x] `static/filter_state.js` under the strict `tsconfig.json` gate, with transient
+  state, change events, `activeCount`, and the shared predicates
 - [x] `mb.prefs` and `mb.filters` SDK surfaces with safe no-ops when absent
 - [x] The filter bar and drawer in the shell HTML, wired to the state, with the badge,
-  Clear, and persisted drawer state
-- [x] Extension dropdown built from known-file-catalog tallies, ranked and capped
+  Clear, and an initially closed drawer
+- [x] Extension dropdown built from index-wide file-type tallies, ranked and capped
 
 ### Phase 3: Applying Filters to the Tree — done
 
@@ -420,10 +433,11 @@ worth noting: none of it was visible in a passing test suite.
 - [x] Clear moved onto the filter row; a dropdown holding a value now carries the accent
 - [x] The drawer animates a grid track instead of toggling `display`, and is `inert`
   when closed
-- [x] `Live` judged folders, not just files — it had been showing 59 folders and no
-  files, many stamped days old
-- [x] `FILTER_LIVE_PERSIST_MS` (90s) holds `Live` steady across the gap between tracker
-  polls, which had made a file written once a second flicker in and out
+- [x] `Live` became one server-owned 90-second modification-time window for every file.
+  Agent logs retain their active badges and live tailing without narrowing the filter’s
+  meaning to tracker-eligible paths.
+- [x] Windowed results repaint when their oldest file expires, even if no later
+  filesystem event arrives, and long-window timers stay within the browser delay limit
 - [x] Recency truncation drops ignored files before tracked ones, and `/api/recent`
   gained `include_ignored`
 
@@ -466,16 +480,19 @@ reading the CSS.
 
 Tracked as beads under epic `mb-pcih`:
 
-- [x] `mb-r4tq` — extension tallies now come from `InventoryIndex.extension_tally`
+- [x] `mb-r4tq` — extension tallies now come from `InventoryIndex.file_type_tallies`
   rather than the gitignore-filtered Quick File catalog, with tracked and ignored counts
   kept apart so the menu follows **Show ignored**
+- [x] `mb-6wuy` — Docs, Code, and Data carry index-wide tallies from the same pass,
+  including extensionless preset names such as `README` and `LICENSE`
 - [x] `mb-5e20` — the dropdown gained arrow-key row traversal (the gap was the behavior,
   not only its test) plus coverage
 - [x] `mb-9zrh` — superseded by `mb-g675`; what `Live` is turned out to be narrower than
   that bead assumed
 - [ ] `mb-4k4d` — the folder-treemap branch rebases onto the core family and shared
   state. Belongs to that branch, not this one.
-- [ ] `mb-g675` — `Live` is not a recency window and may not belong on the age axis
+- [x] `mb-g675` — resolved by defining `Live` as the same 90-second recency window for
+  every file and keeping agent-log activity as a separate presentation signal
 - [ ] `mb-katw` — optionally mirror extension and size upstream, for directories large
   enough that a client-side answer is incomplete rather than merely slow
 
@@ -487,10 +504,10 @@ Implemented:
   single-select exclusivity, multi-select accumulation and empty-set normalization,
   `aria-pressed` / `aria-checked` correctness, roving tabindex, dropdown summarisation
   and row state, and HTML escaping
-- vm tests (`tests/dom/filter_state_behavior.js`) for `FilterState`: defaults,
-  sanitization of malformed persisted values, `activeCount`, event and subscriber
-  delivery, unsubscribe, snapshot isolation, the cumulative size floor, and extension
-  matching
+- vm tests (`tests/dom/filter_state_behavior.js`) for `FilterState`: transient defaults,
+  legacy preference cleanup, caller-value sanitization, `activeCount`, event and
+  subscriber delivery, unsubscribe, snapshot isolation, the cumulative size floor, and
+  extension matching
 - Predicate tests asserting that a missing mtime or pending size never excludes a row,
   and that a missing extension does
 - Structural tests (`tests/test_browser_filter_ui.py`) pinning the fill convention, the
@@ -516,36 +533,22 @@ gitignored control to the shared dimension.
 Its `current` + `ageWindow` pair collapses to `recency`, and its `ignored` three-state
 to `showIgnored`.
 
+## Resolved Follow-up
+
+**`Live` means every file modified in the past 90 seconds.** The first implementation
+used the active tracker, which admits only supported log-like files beneath `.logs` or
+`.state` directories.
+That made the control structurally empty for ordinary directories and gave a general
+file browser an agent-log-specific definition.
+
+The filter now reads `live` from `/api/recent` like every other recency window.
+One server setting owns the 90-second cutoff and the browser uses the injected mapping
+for its predicate, menu explanation, event overlay, and expiry timer.
+The active tracker remains valuable and separate: it marks supported logs as actively
+written and drives live tailing, without changing which recently modified files the
+filter includes.
+
 ## Open Questions
-
-**`Live` is not a recency window, and probably does not belong on this axis.** An
-earlier draft of this plan called it “roughly a 30-second window”.
-That is wrong in the way that matters.
-`active_tracker._is_trackable` admits a file only when *all* of these hold:
-
-1. it sits under a `/.logs/` or `/.state/` path segment;
-2. its extension is in `BROWSER_TRACKABLE_EXTS` (`.jsonl`, `.yaml`, …);
-3. its size/mtime fingerprint changed within `stale_after_s` (30s), plus up to
-   `ACTIVE_TRACKER_QUIET_POLLS × ACTIVE_TRACKER_INTERVAL_S` (30s) of hysteresis.
-
-Only the third is a recency test.
-The first two mean `Live` answers “which run artifact is being appended to right now”,
-not “what changed recently” — so on a repository with no agent run logs it is
-*structurally* empty rather than momentarily empty.
-Verified in a browser: appending to an ordinary file for seven seconds never marks it
-live.
-
-That mismatch caused a real bug, since fixed.
-The predicate rejected only files, so under `Live` every folder fell through and every
-unloaded folder was kept as “unknown”: the tree showed 59 folders and no files, many
-stamped days old, which reads exactly like a broken filter.
-Folders are now judged on whether a live path lies beneath them — `activeFiles` carries
-the complete set, so unlike the other dimensions there is no unseen subtree to wave
-through — and the empty case says so in words.
-
-Still open: whether a control that is empty by construction on most repositories earns a
-slot beside `Past hour`. Moving it out of the age menu and naming it for what it tracks
-would be more honest than either keeping it there or deleting it.
 
 **Does the type menu want tracked-only counts by default?** With **Show ignored** on —
 the default — the ranking is dominated by whatever a package manager put on disk (`.ts`

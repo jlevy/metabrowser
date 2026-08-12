@@ -62,8 +62,8 @@ class WriteToken:
 
 @dataclass(slots=True, frozen=True)
 class FsEntry:
-    """A single filesystem object — file or directory — as the
-    inventory tracks it.
+    """A single filesystem object — file, directory, or symlink — as
+    the inventory tracks it.
 
     Files always carry concrete ``size`` / ``mtime_ns``. Directories
     carry their immediate-child count via ``total_files`` (with the
@@ -73,8 +73,14 @@ class FsEntry:
     finalized values atomically (``dataclasses.replace``) once the
     subtree is complete.
 
+    Symlinks are typed leaves: the inventory records the link itself
+    without following its target or including it in file aggregates.
+    ``empty`` reports whether a finalized directory subtree has no file or
+    symlink leaves. It stays separate from file-only aggregates because
+    symlinks are visible leaves but not files; ``None`` means unknown.
+
     ``views`` is the ordered list of preview-pane view ids (see
-    :mod:`metabrowser.file_kinds`); empty for dirs.
+    :mod:`metabrowser.file_kinds`); empty for dirs and symlinks.
     ``labels`` is an open dict for run-state, pid-alive, errored,
     plugin badges; meaningful only for files.
 
@@ -89,7 +95,7 @@ class FsEntry:
     path: str
     parent: str
     name: str
-    type: Literal["file", "dir"]
+    type: Literal["file", "dir", "symlink"]
     ext: str
     kind: str
     size: int
@@ -102,6 +108,7 @@ class FsEntry:
     total_files: int | None = None
     total_size: int | None = None
     newest_mtime_ns: int | None = None
+    empty: bool | None = None
     gitignored: bool = False
     # walker bookkeeping (not part of the wire payload)
     write_token: WriteToken | None = None
@@ -172,6 +179,33 @@ class FsEntry:
             kind="dir",
             size=0,
             mtime_ns=0,
+            mtime_hash="",
+            active=False,
+            gitignored=gitignored,
+        )
+
+    @classmethod
+    def for_observed_symlink(
+        cls,
+        *,
+        path: str,
+        parent: str,
+        name: str,
+        size: int,
+        mtime_ns: int,
+        gitignored: bool = False,
+    ) -> FsEntry:
+        """Build a symlink leaf without treating it as a regular file."""
+
+        return cls(
+            path=path,
+            parent=parent,
+            name=name,
+            type="symlink",
+            ext="",
+            kind="symlink",
+            size=size,
+            mtime_ns=mtime_ns,
             mtime_hash="",
             active=False,
             gitignored=gitignored,
@@ -282,11 +316,12 @@ class CatalogChange:
 
 @dataclass(slots=True, frozen=True)
 class FsResyncRequired:
-    """Server-restart signal. Client drops state and re-subscribes
-    at the same scope it was previously on. NOT emitted for
-    slow-consumer disconnects — those force a per-connection close
-    and rely on EventSource auto-reconnect to drive a fresh
-    snapshot."""
+    """Ordered-stream reset signal.
+
+    The client drops derived state and reconnects at the same scope
+    so the next frame is a fresh snapshot. Producers use this for a
+    root swap or whenever bounded backpressure creates an event gap.
+    """
 
     reason: str
     type: Literal["fs.resync_required"] = "fs.resync_required"
@@ -478,15 +513,20 @@ class RingBuffer:
 
 
 def _wire_dict_factory(items: list[tuple[str, Any]]) -> dict[str, Any]:
-    """`asdict` dict factory that drops walker-internal bookkeeping.
+    """`asdict` dict factory that drops non-wire entry state.
 
     ``FsEntry.write_token`` is producer-side race-safety state, never
     part of the client contract; without this filter bare ``asdict``
     would leak it (as ``null`` or ``{"generation": N}``) into every
-    entry on the wire. Applied to every dataclass in the tree, so the
-    key is stripped wherever it appears.
+    entry on the wire. Unknown ``empty`` values are also omitted; the field
+    becomes actionable only when directory finalization supplies a boolean.
+    Applied to every dataclass in the tree.
     """
-    return {key: value for key, value in items if key != "write_token"}
+    return {
+        key: value
+        for key, value in items
+        if key != "write_token" and not (key == "empty" and value is None)
+    }
 
 
 def _event_to_dict(event: StreamEvent) -> dict[str, Any]:

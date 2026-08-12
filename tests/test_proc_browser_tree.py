@@ -8,6 +8,7 @@ mocks so pathspec behavior is exercised end-to-end.
 from __future__ import annotations
 
 import inspect
+import os
 import subprocess
 from pathlib import Path
 
@@ -37,12 +38,30 @@ def _touch(path: Path, content: str = "x") -> None:
     path.write_text(content)
 
 
+def _isolated_git_env() -> dict[str, str]:
+    """Return an environment that does not target the caller's repository."""
+    env = os.environ.copy()
+    local_names = subprocess.run(
+        ["git", "rev-parse", "--local-env-vars"],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.splitlines()
+    for name in local_names:
+        env.pop(name, None)
+    return env
+
+
 def test_subtree_is_empty_with_no_children() -> None:
     assert _subtree_is_empty([]) is True
 
 
 def test_subtree_is_empty_with_a_file() -> None:
     assert _subtree_is_empty([{"type": "file", "name": "a"}]) is False
+
+
+def test_subtree_is_not_empty_with_a_symlink() -> None:
+    assert _subtree_is_empty([{"type": "symlink", "name": "linked"}]) is False
 
 
 def test_subtree_is_empty_with_only_empty_dirs() -> None:
@@ -298,9 +317,10 @@ def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     # on a concrete case. Skip gracefully if git isn't available.
     if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
         return
+    git_env = _isolated_git_env()
     repo = tmp_path / "repo"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=git_env)
     (repo / ".gitignore").write_text("*.log\ncache/\n")
     _touch(repo / "cache" / "a.bin")
     _touch(repo / "app.log")
@@ -309,7 +329,7 @@ def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     check, _ = build_gitignore_check(repo)
 
     def git_ignored(rel: str) -> bool:
-        r = subprocess.run(["git", "check-ignore", "--quiet", rel], cwd=repo)
+        r = subprocess.run(["git", "check-ignore", "--quiet", rel], cwd=repo, env=git_env)
         return r.returncode == 0
 
     assert check(repo / "cache", is_dir=True) == git_ignored("cache")

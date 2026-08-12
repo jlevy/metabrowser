@@ -95,6 +95,45 @@ def test_event_source_registers_fs_snapshot_listener() -> None:
     assert 'addEventListener("fs.resync_required"' in fn_block
 
 
+def test_resync_event_reconnects_for_a_fresh_snapshot() -> None:
+    js = _read_app_js()
+    start = js.index('addEventListener("fs.resync_required"')
+    block = js[start : start + 900]
+    assert "_scheduleInventoryReconnect()" in block
+    assert "_resetEsCircuitBreaker()" not in block
+    assert "_createInventoryEventSource()" not in block
+    assert block.index("quickFileCatalogFeed?.onResync()") < block.index(
+        "_scheduleInventoryReconnect()"
+    )
+
+
+def test_event_source_backoff_resets_only_after_a_stable_interval() -> None:
+    js = _read_app_js()
+    reconnect_start = js.index("function _scheduleInventoryReconnect()")
+    reconnect_block = js[reconnect_start : reconnect_start + 1000]
+    assert "var delay = _esBackoffMs" in reconnect_block
+    assert "_esBackoffMs * 2" in reconnect_block
+    assert "_ES_BACKOFF_CAP_MS" in reconnect_block
+    assert reconnect_block.index("_esConsecutiveErrors = 0") < reconnect_block.index(
+        "_createInventoryEventSource()"
+    )
+    assert "_esBackoffMs = 2000" not in reconnect_block
+
+    stable_start = js.index("function _scheduleEsStableReset()")
+    stable_block = js[stable_start : stable_start + 500]
+    assert "_ES_STABLE_CONNECTION_MS" in stable_block
+    assert "_resetEsCircuitBreaker()" in stable_block
+
+    source_start = js.index("function _createInventoryEventSource()")
+    source_block = js[source_start : source_start + 4500]
+    assert "inventoryEventSource.onopen" in source_block
+    assert "_scheduleEsStableReset()" in source_block
+    for event_name in ("fs.snapshot", "fs.change", "catalog.change", "capability.update"):
+        event_start = source_block.index(f'addEventListener("{event_name}"')
+        event_block = source_block[event_start : event_start + 250]
+        assert "_resetEsCircuitBreaker()" not in event_block
+
+
 def test_event_source_handles_typeof_undefined_for_graceful_fallback() -> None:
     """When EventSource isn't supported (older browsers, some
     SSE-stripping proxies), startInventoryEventStream short-
@@ -172,8 +211,8 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     assert "+d.tipSize" not in js
     assert 'data-tip-files="${nullableDataValue(node.total_files)}' in js
     assert 'data-tip-size="${nullableDataValue(node.total_size)}' in js
-    assert "Loading file count..." in js
-    assert "Loading size..." in js
+    assert "Loading file count…" in js
+    assert "Loading size…" in js
 
 
 def test_tree_tooltips_omit_duplicative_name() -> None:
@@ -195,31 +234,30 @@ def test_tree_tooltips_omit_duplicative_name() -> None:
 def test_apply_cell_patch_targets_data_path_rows_in_dom() -> None:
     js = _read_app_js()
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 1500]
+    fn_block = js[fn_start : fn_start + 2500]
     # data-path attribute selector lookup
     assert '.tree-folder[data-path="' in fn_block
     # idempotent: only mutate when content differs
     assert "outerHTML !== patch.sizeHtml" in fn_block
 
 
-def test_apply_cell_patch_clears_empty_class_when_total_files_finalizes() -> None:
+def test_apply_cell_patch_uses_subtree_empty_state_for_empty_class() -> None:
     """A dir initially painted gray during inventory startup
     (walker-pending ``total_files=null`` historically conflated
     with ``0`` server-side) used to keep its ``tree-item-empty``
-    class even after fs.change delivered a positive count, because
-    applyCellPatch only touched chip/age/tip dataset attributes —
-    never classList. The fix syncs ``tree-item-empty`` from the
-    patched entry so a transition pending → non-empty clears the
-    gray, and pending → finalized-empty paints it."""
+    class even after fs.change delivered a positive count. File totals
+    cannot identify link-only folders, so live patches use the explicit
+    subtree-empty field and retain a positive-count fallback for older
+    event payloads."""
 
     js = _read_app_js()
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 3000]
-    # toggle keyed on the boolean (totalFiles === 0); skipped
-    # entirely when total_files is null (still scanning).
+    fn_block = js[fn_start : fn_start + 3600]
     assert 'classList.toggle("tree-item-empty"' in fn_block
-    assert "totalFiles === 0" in fn_block
-    assert "totalFiles != null" in fn_block
+    assert 'typeof entry.empty === "boolean"' in fn_block
+    assert "entry.empty" in fn_block
+    assert "totalFiles > 0" in fn_block
+    assert "totalFiles === 0" not in fn_block
 
 
 def test_apply_cell_patch_syncs_gitignored_class() -> None:
@@ -231,7 +269,7 @@ def test_apply_cell_patch_syncs_gitignored_class() -> None:
 
     js = _read_app_js()
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 3000]
+    fn_block = js[fn_start : fn_start + 3600]
     assert 'classList.toggle("tree-item-gitignored"' in fn_block
 
 
@@ -410,9 +448,9 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
 
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
     fn_block = js[fn_start : fn_start + 2200]
-    assert 'childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder...")' in fn_block
+    assert 'childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…")' in fn_block
     assert 'data.tally_cache_status === "scanning"' in fn_block
-    assert 'treeLazyLoadingHtml("Folder still loading...")' in fn_block
+    assert 'treeLazyLoadingHtml("Still scanning this folder…")' in fn_block
     assert "scheduleSubtreeRetry(path, childrenEl)" in fn_block
     assert fn_block.index('data.tally_cache_status === "scanning"') < fn_block.index(
         "subtreeCache.set(path, tree)"
@@ -426,7 +464,7 @@ def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
     assert "if (!resp.ok)" in fn_block
     assert "throw new Error(`HTTP ${resp.status}`)" in fn_block
     assert "treeLazyFailureHtml(" in fn_block
-    assert "Unable to load folder (" in fn_block
+    assert "Could not load this folder. Collapse and reopen it to try again." in fn_block
     assert "Failed to load</div>" not in fn_block
 
 
@@ -527,10 +565,10 @@ def test_mirror_active_from_fs_entry_handles_transitions() -> None:
     assert "fileNeedsRevalidate.add" in fn_block
 
 
-# ── Renderer file/dir live update path ────────────────────────
+# ── Renderer filesystem-entry live update path ────────────────
 
 
-def test_compute_cell_patch_returns_patch_for_files_not_just_dirs() -> None:
+def test_compute_cell_patch_returns_each_filesystem_row_shape() -> None:
     """Pre-fix, ``computeCellPatch`` returned ``null`` for any
     entry whose ``type !== "dir"`` — so file ops were silently
     dropped by ``applyCellPatch``. The fix routes file entries
@@ -539,14 +577,13 @@ def test_compute_cell_patch_returns_patch_for_files_not_just_dirs() -> None:
     js = _read_app_js()
     fn_start = js.index("function computeCellPatch(entry, options)")
     fn_block = js[fn_start : fn_start + 2500]
-    # The dir branch and the file branch must both return a
-    # populated patch object — the function no longer returns
-    # null for files.
+    # Each inventory type returns its own populated patch object.
     assert 'kind: "dir"' in fn_block
+    assert 'kind: "symlink"' in fn_block
     assert 'kind: "file"' in fn_block
 
 
-def test_apply_cell_patch_handles_both_tree_folder_and_tree_file_rows() -> None:
+def test_apply_cell_patch_handles_every_tree_row_type() -> None:
     """Pre-fix, ``applyCellPatch`` only looked up
     ``.tree-folder[data-path=…]``. The fix picks the right
     selector by entry.type so existing file rows update on touch."""
@@ -555,8 +592,30 @@ def test_apply_cell_patch_handles_both_tree_folder_and_tree_file_rows() -> None:
     fn_start = js.index("function applyCellPatch(entry)")
     fn_block = js[fn_start : fn_start + 3000]
     assert ".tree-folder[data-path=" in fn_block
+    assert ".tree-symlink[data-path=" in fn_block
     assert ".tree-file[data-path=" in fn_block
     assert "computeCellPatch(entry, treeRenderOptionsForElement(row))" in fn_block
+
+
+def test_apply_cell_patch_replaces_a_stale_differently_typed_row() -> None:
+    """A watcher may report file-to-link replacement as one upsert.
+
+    The old row must leave synchronously so path de-duplication cannot reject
+    the replacement. Former folders also lose their rendered child container.
+    """
+
+    js = _read_app_js()
+    fn_start = js.index("function applyCellPatch(entry)")
+    fn_block = js[fn_start : fn_start + 1800]
+    assert 'queryHtmlAll(`.tree-item[data-path="${safePath}"]`)' in fn_block
+    assert "pathRows.length !== rows.length || removingRow" in fn_block
+    assert "_removeRenderedRowsImmediately(entry.path)" in fn_block
+
+    remove_start = js.index("function _removeRenderedRowsImmediately(path)")
+    remove_block = js[remove_start : remove_start + 800]
+    assert "tree-folder" in remove_block
+    assert "tree-children" in remove_block
+    assert "row.remove()" in remove_block
 
 
 def test_apply_cell_patch_inserts_new_rows_under_expanded_parent() -> None:
@@ -633,7 +692,8 @@ def test_load_tree_renders_truncation_banner_when_status_truncated() -> None:
     assert "tree-truncation-note" in js
     assert "Bump <code>INVENTORY_MAX_FILES</code>" not in fn_block
     assert "function treeTruncationNoteHtml(maxFiles)" in js
-    assert "capped at" in js
+    assert "File list incomplete." in js
+    assert "some files and folders are not shown." in js
 
 
 def test_index_progress_completion_inserts_truncation_banner() -> None:

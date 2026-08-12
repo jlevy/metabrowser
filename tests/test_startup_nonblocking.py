@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
+from threading import Event
 
 from metabrowser import inventory as inventory_module
 from metabrowser.inventory import InventoryIndex
@@ -15,9 +16,13 @@ def test_inventory_start_offloads_gitignore_build(monkeypatch, tmp_path: Path) -
     synchronous setup step must not stall the event loop.
     """
 
-    def slow_gitignore_build(_root: Path):
+    def slow_gitignore_build(
+        _root: Path,
+        *,
+        cancel_event: Event | None = None,
+    ) -> None:
+        del cancel_event
         time.sleep(0.2)
-        return
 
     monkeypatch.setattr(inventory_module, "_build_gitignore_check_for", slow_gitignore_build)
 

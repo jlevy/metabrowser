@@ -1,13 +1,13 @@
 # Design System
 
 Metabrowser’s interface is an information-dense developer tool.
-Its design system prioritizes readable artifacts, stable spatial relationships,
+Its design system prioritizes readable file contents, stable spatial relationships,
 keyboard-sized controls, and consistent status cues over decorative chrome.
 
 ## Principles
 
-1. **The artifact is primary.** Navigation and controls stay compact so the preview
-   receives most of the viewport.
+1. **The file is primary.** Navigation and controls stay compact so the preview receives
+   most of the viewport.
 2. **Color has one meaning.** Status, file type, chart threshold, and selection colors
    come from tokens instead of local literals.
 3. **Text remains selectable.** Use real text and DOM structure for labels and data;
@@ -58,8 +58,9 @@ timestamps stay sans and use `--tabular-numerals`.
 
 The authoritative rule, the current list of deliberate exceptions, and the reasoning for
 each live in the `── Typography roles ──` block of `static/styles.css`, next to the
-tokens they govern. `tests/test_chrome_typography.py` enforces that list, so a new
-monospaced use site fails the build until it is classified.
+tokens they govern. `tests/test_chrome_typography.py` enforces that list across the host
+and plugin stylesheets, so a new monospace use site fails the build until it is
+classified.
 
 ### Keyboard Keys
 
@@ -168,6 +169,26 @@ Keep these roles distinct:
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
 
+## Control Families
+
+Every button belongs to one role-specific primitive:
+
+| Role | Primitive |
+| --- | --- |
+| Labelled action | `.btn` |
+| Icon-only action | `.icon-btn` |
+| Filter value or filter menu | `.chip` and its variants |
+| Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
+| Tab | `.tab-btn` |
+
+These primitives share the type scale, radii, semantic colors, focus treatment, and
+motion tokens, while their shapes communicate different interaction roles.
+A use-site class may add positioning, visibility, or domain state, but it must carry the
+primitive class in the markup and must not recreate the primitive’s border, fill,
+typography, or focus rules.
+Every non-submit button declares `type="button"`, and every icon-only button has an
+accessible action name.
+
 ## Icons and Icon Buttons
 
 Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
@@ -221,9 +242,18 @@ Every filter in the app is built from one chip family, documented in the
 `static/filter_controls.js`. A surface that needs a filter reaches for these rather than
 inventing a pill of its own; four near-identical pills is what this family replaced.
 
+Core and plugin views use the same renderer and interaction code.
+Plugins reach it through `window.metabrowser.filterControls`; they may use a plugin
+stylesheet to position the resulting control, but selected-state styling remains in the
+host chip primitive.
+Do not handwrite chip markup or add kind-specific selected colors.
+If the shared renderer cannot express a filter, extend it and its behavior tests.
+
 `.chip` is the atom.
-`.chip-group` joins chips into one bordered pill with hairline dividers, so a set of
-related choices reads as a single object.
+`.chip-group[data-layout="joined"]` joins a short, single-row set into one bordered pill
+with hairline dividers.
+`.chip-group[data-layout="wrap"]` lays out a longer set as independently bordered pills
+with consistent gaps, so the set can wrap without drawing one frame around several rows.
 `.chip-toggle` is a standalone boolean.
 `.chip-menu` is a chip that opens a dropdown, single- or multi-select.
 `.chip-badge` carries a count, and `.chip-clear` is the quiet reset.
@@ -246,10 +276,13 @@ must not repeat that value under another name.
 ### Groups Or Dropdowns
 
 Both exist because they fail differently as the value list grows.
-A joined `.chip-group` shows every option at once, which is the right trade for two or
-three short values; past that it eats the pane.
+A `.chip-group` shows every option at once, which is the right trade for a bounded set
+on a surface where scanning all values matters.
+Short sets use the joined layout.
+Sets that can exceed one line, such as agent-log event types, use the wrapping
+chip-cluster layout; segmented controls never wrap.
 A `.chip-menu` costs a click to see the options but stays one trigger wide however many
-there are, and it is the only choice when the values come from the data.
+there are, so use it when the set is unbounded or the pane cannot afford the full group.
 
 The nav filter bar uses dropdowns throughout: six age windows and six size steps as
 segmented ramps left no room for anything else in a 300px pane.
@@ -412,6 +445,81 @@ Never put `user-select: none` on a container whose descendants include content.
 Do not set `user-select: none` on a broad container because its children are mostly
 interactive.
 
+## Interface Copy
+
+Product chrome includes navigation, controls, dialogs, tooltips, status regions, empty
+states, errors, and plugin-owned controls around file content.
+Its text is part of the component contract and receives the same review as behavior,
+layout, typography, and color.
+
+### One Role Per Element
+
+Adjacent text elements must not repeat the same information.
+
+| Element | Purpose | Avoid |
+| --- | --- | --- |
+| Label | Identify a control, field, or region | Instructions and status |
+| Placeholder | Show the input’s accepted content or format | Essential labels and repeated instructions |
+| Hint | Explain a non-obvious interaction or shortcut | Restating the label or visible action |
+| Status | Report scope, progress, outcome, or recovery | Repeating the placeholder or control label |
+| Empty state | Explain what is absent and whether the state is final | Blank panels and false finality during loading |
+| Error | State what failed and, when useful, the next action | Stack traces, implementation terms, and generic failure text |
+| Tooltip | Add supplementary context | Information available nowhere else |
+
+If removing a sentence loses no information because an adjacent label, control, or
+visual state already communicates it, remove the sentence.
+
+### State Language
+
+Use a consistent progression:
+
+- Idle text reports scope or availability.
+- Active work uses a progressive verb and a Unicode ellipsis, such as “Searching 283
+  files…”
+- Completion reports a result, count, or explicit empty state.
+- A recoverable failure says what could not be completed and gives one relevant next
+  step.
+
+Do not announce success when the resulting state is already obvious.
+Do not use a print-specific, plugin-specific, or implementation-specific explanation for
+an effect that applies to the whole view.
+
+### Style
+
+- Use sentence case and the terms already used by the surrounding interface.
+- Prefer one short sentence.
+  Add a second only for recovery or material incomplete state.
+- Remove filler such as “currently,” “simply,” “just,” and “successfully.”
+  Use “only” when it changes the meaning.
+- Use exact counts and cutoffs when known.
+  Format counts for the user’s locale and use the correct singular or plural form.
+- Control labels and placeholders have no terminal punctuation.
+  Status, empty, and error sentences use terminal punctuation; active progress ends in
+  an ellipsis.
+- Describe user-visible effects, not payloads, providers, caches, exceptions, or other
+  implementation details.
+
+### Accessibility
+
+Visible labels remain the source of accessible names; a placeholder is not a label.
+A live-region message must make sense when announced without nearby visual context and
+must not repeat an instruction the user has already heard.
+Delay transient progress text when work normally completes before it can be read.
+Essential guidance remains persistent and does not exist only in a tooltip, color, or
+animation.
+
+### Chrome Copy Review
+
+Every change to product chrome includes a copy review of the changed component and its
+adjacent text. Review idle, loading, success, empty, partial, truncated, and failure
+states that the component supports.
+Confirm that each text element has one role, terminology and state language are
+consistent, recovery advice is actionable, and no sentence duplicates visible
+information. Exercise narrow layouts and keyboard or assistive-technology announcements
+where the copy can wrap, truncate, or update dynamically.
+Behavior tests should protect meaningful state distinctions and recovery guidance
+without freezing incidental wording throughout the codebase.
+
 ## Accessibility Checklist
 
 - Every interactive element is reachable and operable by keyboard.
@@ -428,9 +536,10 @@ When adding a component or plugin view:
 
 1. Identify the existing primitive and tokens it can reuse.
 2. Test narrow and wide panes, long paths, empty data, malformed data, and large data.
-3. Check light theme, dark theme, keyboard focus, reduced motion, and print output.
-4. Verify lazy mount and disposal behavior.
-5. Run Biome, TypeScript check-JS, and the relevant browser-side tests.
+3. Review all chrome copy and adjacent text across supported states.
+4. Check light theme, dark theme, keyboard focus, reduced motion, and print output.
+5. Verify lazy mount and disposal behavior.
+6. Run Biome, TypeScript check-JS, and the relevant browser-side tests.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

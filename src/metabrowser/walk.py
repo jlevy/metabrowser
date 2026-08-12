@@ -30,6 +30,7 @@ from typing import Any
 
 import yaml
 
+from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry
 from metabrowser.inventory import (
     DEFAULT_FIRST_RENDER_DEPTH,
@@ -52,12 +53,10 @@ FORMATS: tuple[str, ...] = ("text", "json", "yaml")
 
 @dataclass(frozen=True)
 class WalkRow:
-    """One rendered entry: the walker's view plus a symlink flag the
-    walker itself doesn't carry (it scans ``follow_symlinks=False`` so
-    a symlink-to-dir lands as a leaf ``file`` entry)."""
+    """One rendered entry plus the symlink's raw target for diagnostics."""
 
     path: str
-    type: str  # "file" | "dir"
+    type: str  # "file" | "dir" | "symlink"
     is_symlink: bool
     symlink_target: str  # raw readlink value, "" when not a symlink
     gitignored: bool
@@ -101,7 +100,12 @@ async def walk_collect(
     expanded subtree.
     """
 
-    gi_check = await asyncio.to_thread(build_gitignore_check_for, root)
+    gi_check = await run_cancellable_thread(
+        lambda cancel_event: build_gitignore_check_for(
+            root,
+            cancel_event=cancel_event,
+        )
+    )
     # ``walk_tree`` yields dirs twice (placeholder then finalized); keep
     # the last write per path so dir rows carry real aggregates.
     latest: dict[str, FsEntry] = {}
@@ -233,7 +237,11 @@ def walk_report(
 
 def _entry_to_dict(entry: FsEntry) -> dict[str, Any]:
     """An ``FsEntry`` as a plain dict — the streaming wire record."""
-    return asdict(entry)
+    record = asdict(entry)
+    # Subtree emptiness is inventory-derived live metadata. The raw walker
+    # stream cannot know it and keeps its established record schema.
+    record.pop("empty", None)
+    return record
 
 
 def _to_yaml(data: Any) -> str:
@@ -308,7 +316,12 @@ async def stream_entries(
     """Yield each walker record in walk order — the streaming surface
     (mirrors the server's ``fs.change`` upserts)."""
 
-    gi_check = await asyncio.to_thread(build_gitignore_check_for, root)
+    gi_check = await run_cancellable_thread(
+        lambda cancel_event: build_gitignore_check_for(
+            root,
+            cancel_event=cancel_event,
+        )
+    )
     async for entry in walk_tree(
         root,
         max_depth=max_depth,

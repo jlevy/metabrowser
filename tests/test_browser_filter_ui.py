@@ -14,9 +14,12 @@ tests/dom/filter_state_behavior.js.
 from __future__ import annotations
 
 import asyncio
+import re
+from pathlib import Path
 from typing import Any, cast
 
 from metabrowser import server as proc_browser
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 
 
 def _read(name: str) -> str:
@@ -83,6 +86,47 @@ def test_chip_family_uses_tokens_not_color_literals() -> None:
         assert literal not in block, f"chip family must use design tokens, found {literal!r}"
 
 
+def test_symlinks_use_the_lucide_icon_in_the_standard_leading_slot() -> None:
+    """A link replaces the ordinary file icon; it is not an extra badge."""
+
+    icons = _read("icons.js")
+    app = _read("app.js")
+    css = _read("styles.css")
+
+    assert "fileSymlink: // Lucide `file-symlink`" in icons
+    assert "ICONS.fileSymlink" in app
+    assert 'class="tree-item tree-symlink' in app
+    assert 'data-tip-type="symlink"' in app
+    assert ".tree-symlink .tree-item-icon" in css
+
+
+def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
+    """Segmented controls stay on one line. A long additive set wraps as
+    individually bounded chips without an enclosing pill, so every visible
+    shape remains an interactive target."""
+
+    css = _read("styles.css")
+    joined_start = css.index(".chip-group {")
+    joined_block = css[joined_start : css.index("}", joined_start)]
+    assert "flex-wrap: nowrap;" in joined_block
+
+    wrapped_start = css.index('.chip-group[data-layout="wrap"] {')
+    wrapped_block = css[wrapped_start : css.index("}", wrapped_start)]
+    assert "flex-wrap: wrap;" in wrapped_block
+    assert "gap: var(--chip-cluster-gap);" in wrapped_block
+    assert "border: 0;" in wrapped_block
+    assert "background: transparent;" in wrapped_block
+
+    chip_start = css.index('.chip-group[data-layout="wrap"] > .chip {')
+    chip_block = css[chip_start : css.index("}", chip_start)]
+    assert "border: 1px solid var(--viz-border);" in chip_block
+    assert "border-radius: var(--radius-pill);" in chip_block
+
+    hover_start = css.index('.chip-group[data-layout="wrap"] > .chip:hover')
+    hover_block = css[hover_start : css.index("}", hover_start)]
+    assert "background: var(--hover-bg);" in hover_block
+
+
 def test_groups_carry_the_aria_their_variant_implies() -> None:
     """Single-select is a radiogroup with aria-checked; multi-select
     is a plain group of aria-pressed toggles. Styling keys off these
@@ -115,6 +159,14 @@ def test_filter_values_are_carried_by_buttons() -> None:
         start = js.index(f"function {fn}(spec)")
         block = js[start : js.index("\n  }", start)]
         assert "<input" not in block, f"{fn} must not use inputs"
+
+
+def test_filter_control_types_expose_the_wrapping_chip_layout() -> None:
+    """Plugins must be able to select the documented chip-cluster layout
+    without escaping the public SDK type contract."""
+
+    types = _read("types.d.ts")
+    assert 'layout?: "joined" | "wrap";' in types
 
 
 def test_the_checkbox_exception_is_scoped_and_explained() -> None:
@@ -249,6 +301,74 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     assert ".filter-drawer-toggle {" not in css
 
 
+def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
+    """Use-site classes may position a button but may not recreate its control style."""
+
+    server = Path(proc_browser.__file__).read_text()
+    app = _read("app.js")
+    sdk = _read("plugin_sdk.js")
+    controls = _read("filter_controls.js")
+
+    assert 'class="icon-btn settings-btn"' in server
+    assert 'class="icon-btn icon-btn-reveal file-header-copy"' in app
+    assert 'class="icon-btn file-header-icon file-header-print"' in app
+    assert 'class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' in sdk
+    assert 'class="icon-btn${cls}"' in controls
+
+    css = _read("styles.css")
+    primitive = css[css.index("/* ── Icon buttons") : css.index("/* ── Settings toggle")]
+    assert "\n.icon-btn {" in primitive
+    for private_class in (
+        "settings-btn",
+        "file-header-icon",
+        "file-header-copy",
+        "content-copy-btn",
+    ):
+        assert f"\n.{private_class}," not in primitive
+        assert f"\n.{private_class} {{" not in primitive
+
+
+def test_plain_text_actions_use_the_shared_button_primitive() -> None:
+    app = _read("app.js")
+    css = _read("styles.css")
+
+    assert 'class="btn file-header-action"' in app
+    assert 'class="btn file-header-action" type="button"' in app
+    assert ".btn {" in css
+    assert ".btn:focus-visible {" in css
+
+
+def test_every_core_button_declares_non_submit_behavior() -> None:
+    html = _render_index_html()
+    for tag in re.findall(r"<button\b[^>]*>", html):
+        assert 'type="button"' in tag
+
+    for name in ("app.js", "filter_controls.js", "plugin_sdk.js"):
+        source = _read(name)
+        for match in re.finditer(r"<button\b", source):
+            nearby_markup = source[match.start() : match.start() + 320]
+            assert 'type="button"' in nearby_markup, f"{name}: {nearby_markup!r}"
+
+
+def test_filter_surfaces_have_no_private_button_family() -> None:
+    """Filter values come from filter_controls.js, never private button markup."""
+
+    builtin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins"
+    sources = [_read("app.js"), _read("styles.css")]
+    sources.extend(path.read_text() for path in builtin_root.glob("*/index.js"))
+    sources.extend(path.read_text() for path in builtin_root.glob("*/styles.css"))
+    combined = "\n".join(sources)
+
+    for legacy_token in ("filter-btn", "data-filter-kind", 'class="filter-bar"'):
+        assert legacy_token not in combined
+
+    design = (
+        proc_browser.STATIC_DIR.parent.parent.parent / "docs" / "design-system.md"
+    ).read_text()
+    assert "`window.metabrowser.filterControls`" in design
+    assert "Do not handwrite chip markup" in design
+
+
 def test_menu_rows_use_type_icons_rather_than_tinted_labels() -> None:
     """The icon identifies the type everywhere else in the app; eight
     tinted row labels would compete with the check mark instead of
@@ -268,11 +388,12 @@ def test_menu_rows_use_type_icons_rather_than_tinted_labels() -> None:
 
 
 def test_recency_is_one_dimension_including_live() -> None:
-    """Live is the narrowest point on the recency axis, not a second
-    boolean; "live but older than a week" is not a query."""
+    """Live is the narrowest recency window, not a specialized
+    tracker flag or a second boolean dimension."""
 
     js = _read("filter_state.js")
-    assert 'const RECENCY_VALUES = ["all", "live", "1h", "24h", "7d", "30d"]' in js
+    assert "const RECENCY_VALUES = Object.keys(RECENCY_SECONDS);" in js
+    assert 's.recency === "live"' not in js
     assert "current:" not in js
     assert "ageWindow" not in js
 
@@ -328,19 +449,25 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     get" (which is why .json sits with YAML there), these answer "which
     kind of work is this"."""
 
+    labels = [preset["label"] for preset in FILTER_TYPE_PRESETS]
+    assert labels == ["Docs", "Code", "Data"]
+
+    settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()
+    assert '"FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS' in settings
+
     js = _read("app.js")
-    start = js.index("var FILTER_TYPE_PRESETS = [")
-    block = js[start : js.index("\n];", start)]
-    for label in ('"Docs"', '"Code"', '"Data"'):
-        assert label in block
+    assert "var FILTER_TYPE_PRESETS = _METABROWSER_SETTINGS.FILTER_TYPE_PRESETS || [];" in js
 
     # The convention: leading dot is an extension, anything else a
     # whole filename. Docs reaches README and LICENSE only because of it.
-    assert '"readme"' in block
-    assert '"license"' in block
-    assert '".md"' in block
+    docs = next(preset for preset in FILTER_TYPE_PRESETS if preset["id"] == "docs")
+    assert "readme" in docs["values"]
+    assert "license" in docs["values"]
+    assert ".md" in docs["values"]
 
     state = _read("filter_state.js")
+    assert "mb.filterState = {" in state
+    assert "MetabrowserFilterState" not in state
     tm_start = state.index("function typeMatches(pathLike, types, logicalExt)")
     tm_block = state[tm_start : tm_start + 1400]
     assert 'token.charAt(0) === "."' in tm_block
@@ -350,8 +477,8 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
 def test_the_drawer_always_opens_closed() -> None:
     """Its state is deliberately not persisted: it holds the secondary
     controls, so restoring it open spends vertical space asked for on
-    a previous visit. The filters do persist, and the badge reports
-    them either way."""
+    a previous visit. Active filters are transient, and the badge
+    reports them while the drawer is closed."""
 
     js = _read("app.js")
     assert "filters.drawer" not in js
@@ -505,6 +632,22 @@ def test_the_extension_list_is_hard_capped() -> None:
     assert "kept.push(" not in block
 
 
+def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
+    """The aggregate rows must answer the same question as selecting
+    them, including extensionless filenames and Show ignored."""
+
+    js = _read("app.js")
+    assert "var _typePresetTally = [];" in js
+    start = js.index("function filterTypePresets()")
+    block = js[start : start + 1000]
+    assert "showIgnored ? row[1] + row[2] : row[1]" in block
+    assert "count:" in block
+
+    render_start = js.index("function renderNavFilterBar()")
+    render_block = js[render_start : render_start + 2200]
+    assert "presets: filterTypePresets()" in render_block
+
+
 def test_filters_reapply_when_new_rows_render() -> None:
     """Lazy subtrees and deferred pages arrive unfiltered; without a
     reapply, expanding a folder under an active filter shows all of
@@ -550,7 +693,7 @@ def test_index_wide_tallies_stay_off_the_event_loop() -> None:
     block = py[start : start + 700]
     assert "asyncio.to_thread" in block
     assert "root_summary()" in block
-    assert "extension_tally()" in block
+    assert "file_type_tallies(" in block
 
 
 def test_reapply_is_skipped_when_nothing_is_filtered() -> None:
@@ -581,11 +724,12 @@ def test_compound_extensions_match_what_the_menu_counted() -> None:
     assert '"ext": entry.ext,' in recent
 
 
-def test_filter_state_persists_through_prefs_and_emits_change() -> None:
+def test_filter_state_is_transient_and_emits_change() -> None:
     js = _read("filter_state.js")
-    assert 'const PREF_KEY = "filters"' in js
+    assert 'const LEGACY_PREF_KEY = "filters"' in js
     assert '"metabrowser:filter-change"' in js
-    assert "mb?.prefs" in js
+    assert "p.remove(LEGACY_PREF_KEY)" in js
+    assert "p.set(LEGACY_PREF_KEY" not in js
 
 
 def test_sdk_exposes_prefs_and_filters() -> None:
@@ -593,6 +737,7 @@ def test_sdk_exposes_prefs_and_filters() -> None:
     documented SDK rather than reaching for the global."""
 
     js = _read("plugin_sdk.js")
+    assert "remove: prefsRemove" in js
     assert "prefs: prefs," in js
     assert "filters: filters," in js
 
@@ -621,7 +766,9 @@ def test_folders_with_no_loaded_children_are_kept_and_counted() -> None:
     assert "unloadedFolders += 1" in fn_block
     note_start = js.index("function _renderFilterNote(panel, unloadedFolders, state)")
     note_block = js[note_start : note_start + 1600]
-    assert "not expanded yet" in note_block
+    assert '"folder may" : "folders may"' in note_block
+    assert "contain additional matches." in note_block
+    assert 'Expand ${unloadedFolders === 1 ? "it" : "them"} to check.' in note_block
     assert 'note.setAttribute("role", "status")' in note_block
 
 
@@ -670,19 +817,29 @@ def test_dom_content_loaded_initializes_the_filter_bar() -> None:
     assert "initFilterBar();" in handler_block
 
 
-def test_nav_filter_bar_does_not_share_the_plugin_filter_bar_name() -> None:
-    """The agent-log plugin already owned `.filter-bar`, and its
-    `margin: 8px 0 12px` leaked into the navigation column — 20px of
-    dead space above the tally that no nav rule asked for. Distinct
-    names are what keep the two apart."""
+def test_agent_log_uses_the_shared_additive_chip_family() -> None:
+    """Event kinds are additive values, including kinds discovered at run time.
+
+    The shared chip contract makes every selected state visible through the same
+    ``aria-pressed`` selector instead of relying on a fixed list of kind colors.
+    """
 
     css = _read("styles.css")
+    plugin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "agent_log"
+    plugin = (plugin_root / "index.js").read_text()
+    plugin_css = (plugin_root / "styles.css").read_text()
+
     assert ".nav-filter-bar {" in css
-    # The plugin's rule keeps the old name and its margin.
-    plugin_start = css.index("/* ── Event filter bar ")
-    plugin_block = css[plugin_start : plugin_start + 500]
-    assert ".filter-bar {" in plugin_block
-    assert "margin: 8px 0 12px 0;" in plugin_block
+    assert "mb.filterControls" in plugin
+    assert "fc.groupHtml" in plugin
+    assert 'select: "many"' in plugin
+    assert 'label: "Event types"' in plugin
+    assert 'class="agent-log-filter-bar"' in plugin
+    assert "filter-btn" not in plugin
+    assert ".filter-bar" not in plugin
+    assert ".filter-btn" not in css
+    assert ".agent-log-filter-bar" in plugin_css
+    assert "margin: 8px 0 12px;" in plugin_css
 
     # The nav bar sets no margin of its own, so nothing can leak back.
     nav_start = css.index(".nav-filter-bar {")
@@ -728,27 +885,25 @@ def test_recency_fetch_carries_the_gitignored_setting() -> None:
     assert "ignoredChanged" in block
 
 
-def test_live_survives_the_gap_between_tracker_polls() -> None:
-    """The tracker polls every 5s but the watcher emits an upsert per
-    append, carrying a stale `active: false` in between. Mirroring
-    that straight into the filter made a file being written once a
-    second flicker in and out of the tree."""
+def test_live_uses_the_server_owned_ninety_second_window() -> None:
+    """Every file uses one cutoff. Agent logs retain their active badge
+    and tailing behavior, but the filter does not use that tracker."""
+
+    settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()
+    assert "LIVE_FILE_WINDOW_S = 90.0" in settings
+    assert '"live": LIVE_FILE_WINDOW_S' in settings
+    assert '"RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS' in settings
+    assert '"RECENT_WINDOWS"' not in settings
 
     js = _read("app.js")
-    assert "const FILTER_LIVE_PERSIST_MS = 90_000;" in js
-    # The filter reads a persisted set, not activeFiles directly.
-    apply_start = js.index("function applyTreeFilters()")
-    apply_block = js[apply_start : apply_start + 3000]
-    assert "livePathsForFilter()" in apply_block
-    assert "activeFiles.has(" not in apply_block
-    # Writing stops, no more events arrive; something has to re-check.
-    assert "function scheduleLiveExpiryRecheck()" in js
+    assert "_METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS" in js
+    assert "FILTER_LIVE_PERSIST_MS" not in js
+    assert "livePathsForFilter" not in js
 
 
 def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
-    """Live is the under-a-minute red because a file being written now
-    is that bucket; each window then takes the colour of the bucket it
-    tops out at."""
+    """Live uses the freshest color; each longer window takes the
+    color of the age bucket it tops out at."""
 
     js = _read("app.js")
     start = js.index("var FILTER_RECENCY_OPTIONS = [")
@@ -760,8 +915,9 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
         ('"7d"', "age-day"),
         ('"30d"', "age-wk"),
     ):
-        line = next(ln for ln in block.splitlines() if value in ln)
-        assert f'ageClass: "{age}"' in line, f"{value} should wear {age}"
+        value_start = block.index(f"value: {value}")
+        option = block[value_start : value_start + 240]
+        assert f'ageClass: "{age}"' in option, f"{value} should wear {age}"
 
     # Scoped to the menu: the tree's ramp is contrast-audited.
     css = _read("styles.css")
