@@ -82,10 +82,12 @@ work finishes, and gives every contribution an independent loading, error, recov
 abort, and disposal boundary.
 A panel never reaches into sibling DOM or private shell state.
 The composer also renders every panel label as the same visible `h2` and aligns host
-content to the responsive Markdown text column.
-In Overview, the Markdown mount keeps its document semantics and TOC but drops its outer
-prose-card border, shadow, and horizontal padding, making File types and README flat
-sibling sections. Directly opened Markdown retains the ordinary card presentation.
+content to the responsive Markdown document boundary.
+In Overview, the Markdown mount keeps its ordinary document semantics, TOC, and card.
+The card retains its border and shadow at regular and wide document bands, then follows
+KPress’s standard borderless narrow layout.
+File types remains a flat chrome section; its edges follow the README card when present
+and the README prose edge when the card collapses.
 
 Core supplies only generic contribution-registry, resource-context, request, formatter,
 and view-state primitives.

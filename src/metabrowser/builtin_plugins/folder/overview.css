@@ -1,9 +1,14 @@
 .folder-overview-host {
   --folder-overview-document-gutter: 1rem;
-  --folder-overview-narrow-document-gutter: 0.5rem;
+  --folder-overview-narrow-document-gutter: 1.25rem;
   --folder-overview-wide-toc-width: 15rem;
   --folder-overview-wide-toc-gap: 3rem;
   --folder-overview-wide-prose-inset: 2.5rem;
+  --folder-overview-wide-card-width: calc(
+    var(--kpress-measure) +
+    2 *
+    var(--folder-overview-wide-prose-inset)
+  );
 
   container-type: inline-size;
 }
@@ -44,18 +49,6 @@
   margin-inline: auto;
 }
 
-/* Overview uses KPress's prose column as its horizontal alignment line.
-   The document renderer keeps its normal responsive TOC, but the prose
-   itself is flat so File types, section headings, and README text share
-   one measure rather than aligning to card chrome. */
-.folder-overview-panel-document .metabrowser-kpress-host .kpress-long-text.kpress-prose {
-  margin-inline: auto;
-  max-width: min(100%, var(--kpress-measure));
-  padding: 0;
-  border: none;
-  box-shadow: none;
-}
-
 .folder-overview-loading {
   min-height: 44px;
   background: var(--tally-skeleton-bg);
@@ -82,18 +75,13 @@
   .folder-overview-panel-surface > .folder-overview-panel-heading,
   .folder-overview-panel-surface > .folder-overview-panel-body,
   .folder-overview-panel-document > .folder-overview-panel-heading {
-    width: var(--kpress-measure);
+    width: var(--folder-overview-wide-card-width);
     margin-inline-start: calc(
       var(--folder-overview-document-gutter) +
       var(--folder-overview-wide-toc-width) +
-      var(--folder-overview-wide-toc-gap) +
-      var(--folder-overview-wide-prose-inset)
+      var(--folder-overview-wide-toc-gap)
     );
     margin-inline-end: auto;
-  }
-
-  .folder-overview-panel-document .metabrowser-kpress-host .kpress-long-text.kpress-prose {
-    margin-inline: var(--folder-overview-wide-prose-inset);
   }
 }
 

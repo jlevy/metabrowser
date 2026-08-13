@@ -28,7 +28,7 @@ def test_folder_overview_composer() -> None:
     assert "folder overview OK" in result.stdout
 
 
-def test_folder_overview_uses_the_flat_markdown_text_measure() -> None:
+def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     css = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
         encoding="utf-8"
     )
@@ -37,6 +37,8 @@ def test_folder_overview_uses_the_flat_markdown_text_measure() -> None:
     assert "var(--kpress-measure)" in css
     assert "@container (max-width: 47.99rem)" in css
     assert "@container (min-width: 75rem)" in css
-    assert ".kpress-long-text.kpress-prose" in css
-    assert "border: none" in css
-    assert "box-shadow: none" in css
+    assert "--folder-overview-narrow-document-gutter: 1.25rem" in css
+    assert "--folder-overview-wide-card-width" in css
+    assert ".kpress-long-text" not in css
+    assert "border: none" not in css
+    assert "box-shadow: none" not in css

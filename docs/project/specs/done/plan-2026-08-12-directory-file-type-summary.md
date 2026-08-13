@@ -75,8 +75,8 @@ Opening `README.md` itself continues to show only the ordinary Markdown file vie
 - Reuse `/api/rollup`, `ext_tallies`, `watchRollup`, and the existing inventory event
   stream, with a bounded tally-only response
 - Keep partial, truncated, empty, zero-byte, and failed states honest
-- Keep File types and README compact, always-expanded, prose-width sections with the
-  same visible heading hierarchy and no disclosure preference
+- Keep File types and README compact, always-expanded, document-aligned sections with
+  the same visible heading hierarchy and no disclosure preference
 
 ## Non-Goals
 
@@ -231,12 +231,14 @@ The data selection must account for both dimensions before the UI is trustworthy
     Fills are decorative, do not become tab stops, and are hidden from the accessibility
     tree. Color is never the only path to the data.
     Type labels are bold scan anchors.
-14. **Overview supports surface and document presentations.** The composer aligns every
-    contribution to the responsive Markdown text column and supplies one shared section
-    heading. Surface panels are flat rather than boxed; Overview also removes README’s
-    outer prose-card border, shadow, and padding so its text shares that exact measure.
-    At the wide document band, the TOC keeps its own rail while File types and both
-    section headings align with README text.
+14. **Overview supports surface and document presentations.** The composer supplies one
+    shared section heading while preserving each presentation’s role.
+    Surface panels are flat chrome rather than boxed; README retains the ordinary
+    Markdown document card at regular and wide bands and follows KPress’s standard
+    borderless narrow layout.
+    File types and both section headings align to the card’s outer edges while it exists
+    and to the README prose edge after the card collapses.
+    At the wide document band, the TOC keeps its own rail.
 15. **Printing is declared per panel.** File types carries the same no-print contract as
     other host controls.
     README is printable, so printing Overview prints the ordinary rendered document
@@ -281,7 +283,8 @@ Files is intentionally not in this tree.
 A listing changes the whole working mode and belongs beside Overview and Treemap.
 A README or License explains the same folder and belongs inside Overview.
 
-A populated Overview appears as two flat, aligned sections:
+A populated Overview appears as one flat chrome section followed by one document
+section:
 
 ```text
 FILE TYPES
@@ -497,11 +500,12 @@ Labels, counts, and status copy remain in the host sans face.
 
 ### Responsive Layout
 
-The panel follows the README text measure and uses container queries against the preview
-pane, not window media queries.
-Overview removes README’s outer card boundary and horizontal padding; at every
-responsive layer the section headings, File types body, and Markdown text share the same
-left and right edges.
+The panel follows the responsive README document geometry and uses container queries
+against the preview pane, not window media queries.
+At regular and wide bands, the section headings and File types body share the README
+card’s left and right edges.
+At the narrow band, KPress removes the card and those elements follow the Markdown text
+edges instead.
 
 - At ordinary widths, the fixed-layout semantic table has `Type`, `Files`, and `Size`
   columns. Each metric keeps its tally and percentage right-aligned around a flexible
@@ -545,17 +549,19 @@ A future Files listing would use the same manifest and `registerView` path as Tr
 not the panel registry.
 
 The Overview composer owns one responsive grid and vertical rhythm for all
-contributions. Surface bodies, shared headings, and document text share the same prose
-measure. At KPress’s wide band, the README’s TOC occupies only the document row while
-summary content aligns with the text column above it.
-At narrower bands, the panels and document stack in the existing single-column flow.
+contributions. Surface bodies and shared headings follow the document card’s outer
+measure at regular and wide bands.
+At KPress’s wide band, the README’s TOC occupies only the document row while summary
+content aligns with the card above it.
+At the narrow band, KPress removes the card and the panels align to the prose edge in
+the existing single-column flow.
 
 The README contribution mounts the shared Markdown document primitive directly into a
 document-presentation region.
 Frontmatter and diagnostics remain inside the normal KPress prose flow under their
 existing contract, while File types keeps its host sans typography.
-Overview suppresses the prose card’s border, shadow, and horizontal padding; an
-explicitly opened Markdown file retains them.
+Overview preserves the prose card’s ordinary responsive presentation, including its
+border, shadow, padding, and narrow-band collapse.
 The Markdown primitive owns KPress DOM and grid knowledge; the Overview composer and
 folder plugin do not copy selectors or reach into private shell globals.
 
@@ -1307,9 +1313,10 @@ No folder layout selector belongs in core styles.
 
 #### Folder plugin styles
 
-- `overview.css` owns the shared visible headings, Markdown-text measure, vertical panel
-  stack, flat surface/document presentation, local error, loading slot, print exclusion,
-  and wide-band alignment with README’s text beside its TOC.
+- `overview.css` owns the shared visible headings, responsive document-edge alignment,
+  vertical panel stack, flat surface presentation, local error, loading slot, print
+  exclusion, and wide/narrow bands.
+  It does not override KPress document-card styling.
 - `file_type_summary.css` owns the metadata row, fixed table columns, row groups,
   repeated 8-pixel tracks, metric gutters, numeric alignment, narrow-width contraction,
   skeletons, status, and reduced-motion behavior.
@@ -1546,14 +1553,19 @@ Confirm that the panel reads as directory chrome, the README remains visually pr
 the two metric columns can be compared without consulting color alone, their headers
 align with the tracks, percentages read as track endpoints, and ignored-state changes do
 not trigger a new rollup request.
+At regular and wide widths, confirm that README retains the ordinary Markdown card and
+that File types aligns to its outer edges.
+Below the card breakpoint, confirm that the card disappears and both sections align to
+the README prose edge.
 Confirm that a completely empty folder still reads as a deliberate, finished Overview
 rather than an unpainted preview.
 
 ## Risks and Mitigations
 
-- **The panel competes with the README.** It stays compact, flat, and inside the shared
-  text measure. The common heading hierarchy separates the two sections without adding a
-  second card or interaction.
+- **The panel competes with the README.** It stays compact and flat inside the
+  responsive document boundary.
+  The ordinary README card and common heading hierarchy separate the two sections
+  without adding a File types card or interaction.
 - **Byte ranking hides count-heavy types.** The server selects categories using the
   maximum of both metrics and both ignored-file populations.
 - **Ignored dependencies dominate.** The panel follows the existing Show ignored state,
@@ -1612,6 +1624,9 @@ root behave differently from nested folders.
 - File types is always present in the summary band; a direct-child README is a
   conditional document panel below the summary band and uses the ordinary rendered
   Markdown presentation
+- README keeps the ordinary Markdown card at regular and wide widths and its standard
+  borderless layout at narrow widths; File types stays flat and aligns to the card or
+  prose edge for the active band
 - An explicitly opened README has no directory summary
 - The panel shows a fixed Type/Files/Size table grouped under Documentation, Code, Data,
   and Other from the same extension vocabulary used by navigation, omitting empty groups
