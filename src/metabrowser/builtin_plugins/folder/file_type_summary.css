@@ -2,23 +2,20 @@
   font-family: var(--font-sans);
 }
 
-.file-type-summary-meta {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 10px;
-}
-
-.file-type-summary-table thead {
-  color: var(--label-color);
-  font-size: var(--label-font-size);
-  font-weight: var(--label-font-weight);
-  letter-spacing: var(--label-letter-spacing);
-  text-transform: var(--label-text-transform);
-}
-
-.file-type-summary-total,
 .file-type-summary-table td {
   font-variant-numeric: var(--tabular-numerals);
+}
+
+.file-type-summary .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .file-type-summary-body {
@@ -53,22 +50,6 @@
   text-align: left;
 }
 
-.file-type-summary-table thead th:nth-child(2) {
-  padding-left: calc(
-    var(--file-type-summary-metric-padding) +
-    var(--file-type-summary-value-width) +
-    var(--file-type-summary-metric-gap)
-  );
-}
-
-.file-type-summary-table thead th:nth-child(3) {
-  padding-left: calc(
-    var(--file-type-summary-size-padding) +
-    var(--file-type-summary-value-width) +
-    var(--file-type-summary-metric-gap)
-  );
-}
-
 .file-type-summary-type {
   overflow-wrap: anywhere;
   font-weight: var(--weight-bold);
@@ -85,15 +66,6 @@
   font-weight: var(--label-font-weight);
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
-}
-
-.file-type-summary-table tfoot {
-  border-top: 1px solid var(--border);
-}
-
-.file-type-summary-total-row th,
-.file-type-summary-total-row td {
-  padding-top: 9px;
 }
 
 .file-type-summary-ignored-row th,

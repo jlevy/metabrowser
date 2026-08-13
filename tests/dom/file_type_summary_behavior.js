@@ -165,12 +165,11 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   const originalPyRow = handle.rows.get(".py").tr;
   const originalPyFileFill = handle.rows.get(".py").fileFill;
   check("summary uses a flat section body", handle.root.tagName === "DIV");
-  check("summary has a metadata row", handle.root.children[0] === handle.meta);
-  check("summary body follows metadata", handle.root.children[1] === handle.body);
   check(
-    "metadata only reports the total",
-    handle.meta.children.length === 1 && handle.meta.children[0] === handle.total,
+    "summary has no standalone metadata row",
+    handle.root.children.length === 1 && handle.root.children[0] === handle.body,
   );
+  check("visual table headers are removed", handle.table.children[1].className === "sr-only");
   check("aggregate bars removed", handle.body.querySelector(".file-type-summary-bars") === null);
   check(
     "groups have a fixed order",
@@ -191,11 +190,16 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     handle.groups.get("other").body.children[1].dataset.typeKey === ".bin",
   );
   check("color circles removed", handle.body.querySelector(".file-type-summary-mark") === null);
-  check("total row follows groups", handle.table.children.at(-1) === handle.totalRow.body);
+  check("Totals group precedes the breakdown", handle.table.children[2] === handle.totalRow.body);
   check(
-    "ignored row sits immediately above Total",
-    handle.totalRow.body.children[0] === handle.ignoredRow.tr &&
-      handle.totalRow.body.children[1] === handle.totalRow.tr,
+    "Total precedes Ignored",
+    handle.totalRow.body.children[1] === handle.totalRow.tr &&
+      handle.totalRow.body.children[2] === handle.ignoredRow.tr,
+  );
+  check(
+    "Totals group has a semantic heading",
+    handle.totalRow.body.children[0].children[0].textContent === "Totals" &&
+      handle.totalRow.body.children[0].children[0].scope === "rowgroup",
   );
   check("ignored row names the subset", handle.ignoredRow.label.textContent === "Ignored");
   check(
@@ -241,9 +245,8 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   check("row values patched", handle.rows.get(".py").fileValue.textContent === "75 files");
   check("row Files bar scaled", handle.rows.get(".py").fileFill.style.width === "75%");
   check("row Size bar scaled", handle.rows.get(".py").byteFill.style.width === "25%");
-  check("total metadata patched", handle.total.textContent === "120 files · 200 B");
   check(
-    "footer totals patched",
+    "top totals patched",
     handle.totalRow.fileValue.textContent === "120 files" &&
       handle.totalRow.byteValue.textContent === "200 B",
   );

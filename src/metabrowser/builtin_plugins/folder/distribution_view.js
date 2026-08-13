@@ -35,7 +35,7 @@ function createMetricCell(metric) {
 }
 
 /** @param {string} className @param {string} label */
-function createFooterRow(className, label) {
+function createMetricRow(className, label) {
   const tr = document.createElement("tr");
   tr.className = className;
   const rowLabel = document.createElement("th");
@@ -57,20 +57,29 @@ function createFooterRow(className, label) {
   };
 }
 
+/** @param {string} className @param {string} label */
+function createGroupBody(className, label) {
+  const body = document.createElement("tbody");
+  body.className = className;
+  const headingRow = document.createElement("tr");
+  headingRow.className = "file-type-summary-group-row";
+  const heading = document.createElement("th");
+  heading.scope = "rowgroup";
+  heading.colSpan = 3;
+  heading.textContent = label;
+  headingRow.append(heading);
+  body.append(headingRow);
+  return body;
+}
+
 /** @param {HTMLElement} container @param {SummaryModel} model @param {Palette} palette */
 export function mountDistributionView(container, model, palette) {
   const root = document.createElement("div");
   root.className = "file-type-summary";
-  const meta = element(root, "file-type-summary-meta");
-  const total = document.createElement("span");
-  total.className = "file-type-summary-total";
-  meta.append(total);
   const body = element(root, "file-type-summary-body");
   const handle = {
     container,
     root,
-    meta,
-    total,
     body,
     palette,
     /** @type {Map<string, SummaryRowHandle>} */
@@ -78,7 +87,7 @@ export function mountDistributionView(container, model, palette) {
     /** @type {Map<FileTypeCategory, SummaryGroupHandle>} */
     groups: new Map(),
     table: /** @type {HTMLTableElement | null} */ (null),
-    ignoredRow: /** @type {SummaryFooterRowHandle | null} */ (null),
+    ignoredRow: /** @type {SummaryMetricRowHandle | null} */ (null),
     totalRow: /** @type {SummaryTotalHandle | null} */ (null),
     status: /** @type {HTMLElement | null} */ (null),
     mode: "",
@@ -90,7 +99,6 @@ export function mountDistributionView(container, model, palette) {
 
 /** @param {DistributionHandle} handle @param {SummaryModel} model */
 export function updateDistributionView(handle, model) {
-  handle.total.textContent = `${"filesText" in model ? model.filesText : "0 files"} · ${"bytesText" in model ? model.bytesText : "0 B"}`;
   if (model.state === "pending") {
     resetBody(handle, "pending");
     const skeleton = element(handle.body, "file-type-summary-skeleton");
@@ -116,7 +124,7 @@ export function updateDistributionView(handle, model) {
 
   ensureDistributionBody(handle);
   updateRows(handle, model.rows);
-  updateFooterRows(handle, model);
+  updateTotalRows(handle, model);
   if (!handle.status) {
     return;
   }
@@ -160,6 +168,7 @@ function ensureDistributionBody(handle) {
     columns.append(column);
   }
   const thead = document.createElement("thead");
+  thead.className = "sr-only";
   const headerRow = document.createElement("tr");
   for (const label of ["Type", "Files", "Size"]) {
     const header = document.createElement("th");
@@ -169,16 +178,16 @@ function ensureDistributionBody(handle) {
   }
   thead.append(headerRow);
   table.append(columns, thead);
-  const totalBody = document.createElement("tfoot");
-  const ignored = createFooterRow("file-type-summary-ignored-row", "Ignored");
-  const total = createFooterRow("file-type-summary-total-row", "Total");
-  totalBody.append(ignored.tr, total.tr);
-  table.append(totalBody);
+  const totalsBody = createGroupBody("file-type-summary-group file-type-summary-totals", "Totals");
+  const total = createMetricRow("file-type-summary-total-row", "Total");
+  const ignored = createMetricRow("file-type-summary-ignored-row", "Ignored");
+  totalsBody.append(total.tr, ignored.tr);
+  table.append(totalsBody);
   handle.body.append(table);
   handle.table = table;
   handle.ignoredRow = ignored;
   handle.totalRow = {
-    body: totalBody,
+    body: totalsBody,
     ...total,
   };
   handle.status = element(handle.body, "file-type-summary-status");
@@ -186,7 +195,7 @@ function ensureDistributionBody(handle) {
 }
 
 /** @param {DistributionHandle} handle @param {SummaryModel} model */
-function updateFooterRows(handle, model) {
+function updateTotalRows(handle, model) {
   const ignored = handle.ignoredRow;
   const total = handle.totalRow;
   if (!ignored || !total || !handle.table) {
@@ -212,7 +221,6 @@ function updateFooterRows(handle, model) {
   total.byteFill.className = "file-type-summary-fill mb-distribution-other";
   total.byteFill.style.width = bytesPopulated ? "100%" : "0%";
   total.bytePercent.textContent = bytesPopulated ? "100%" : "0%";
-  handle.table.append(total.body);
 }
 
 /** @param {DistributionHandle} handle @param {FileTypeCategory} category */
@@ -221,17 +229,8 @@ function ensureGroup(handle, category) {
   if (group || !handle.table) {
     return group;
   }
-  const body = document.createElement("tbody");
-  body.className = "file-type-summary-group";
+  const body = createGroupBody("file-type-summary-group", CATEGORY_LABELS[category]);
   body.dataset.category = category;
-  const headingRow = document.createElement("tr");
-  headingRow.className = "file-type-summary-group-row";
-  const heading = document.createElement("th");
-  heading.scope = "rowgroup";
-  heading.colSpan = 3;
-  heading.textContent = CATEGORY_LABELS[category];
-  headingRow.append(heading);
-  body.append(headingRow);
   group = { body };
   handle.groups.set(category, group);
   handle.table.append(body);
@@ -316,6 +315,6 @@ function updateRows(handle, rows) {
 /** @typedef {{state: "pending" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
-/** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryFooterRowHandle */
-/** @typedef {SummaryFooterRowHandle & {body: HTMLTableSectionElement}} SummaryTotalHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, meta: HTMLElement, total: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, ignoredRow: SummaryFooterRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryMetricRowHandle */
+/** @typedef {SummaryMetricRowHandle & {body: HTMLTableSectionElement}} SummaryTotalHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, ignoredRow: SummaryMetricRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */

@@ -421,14 +421,19 @@ The aggregate tail is labelled **Remaining types** so it is not confused with th
 itself. A group heading is shown only when it has rows and carries no subtotal.
 Type labels use the bold design-system weight as the row’s scan anchor.
 
-Footer rows are separate from those presentation groups and use the neutral distribution
-color. When ignored files are included, an **Ignored** row reports that exact subset and
-its share of the selected population immediately above **Total**. The row is absent when
-ignored files are excluded, so a separate scope notice is unnecessary.
-The final Total row’s exact values equal the selected population, and both tracks fill
-to 100%. When the population has files but zero bytes, the Size total remains `0 B`,
+A **Totals** group appears before the presentation groups and uses the neutral
+distribution color. **Total** comes first: its exact values equal the selected
+population, and both populated tracks fill to 100%. When ignored files are included, an
+**Ignored** row follows with that exact subset and its share of the selected population.
+The Ignored row is absent when ignored files are excluded, so a separate scope notice is
+unnecessary. When the population has files but zero bytes, the Size total remains `0 B`,
 `0%`, and an unfilled neutral track rather than implying a share of an empty byte
 population.
+
+Visual Type, Files, and Size column labels are unnecessary when every metric cell keeps
+the same value-track-percentage grammar.
+The semantic table retains screen-reader-only column headers so assistive technology
+receives the relationships that sighted users get from alignment.
 
 Zero totals do not produce a colored fill, division artifact, or header-only table.
 If one metric is zero while another is not, the zero metric uses the neutral track and
@@ -513,10 +518,9 @@ and empty-state chrome stay off paper.
 The print action is absent when no mounted contribution is printable.
 
 An empty folder is still a completed Overview.
-File types remains visible with `0 files · 0 B` and the message **No files to
-summarize.** It renders no empty bars, percentages, or table and does not manufacture a
-“No README” document panel.
-Loading, partial, empty, and failed states must remain visually and semantically
+File types remains visible with the message **No files to summarize.** It renders no
+empty bars, percentages, table, standalone tally, or synthetic “No README” document
+panel. Loading, partial, empty, and failed states must remain visually and semantically
 distinct.
 
 Floating menus and tooltips use the shared surface, border, radius, and shadow tokens.

@@ -208,8 +208,8 @@ The data selection must account for both dimensions before the UI is trustworthy
    control that reorders the table adds work without adding a new answer.
 10. **Show ignored is the one shared filter that changes the summary.** When it is on,
     the panel uses all-file columns; when it is off, it uses unignored columns.
-    When ignored files are included, a neutral **Ignored** footer row reports their
-    exact file and byte tallies immediately above Total.
+    When ignored files are included, a neutral **Ignored** row reports their exact file
+    and byte tallies immediately after Total in the leading Totals group.
     When ignored files are excluded, the row is absent and Total reports the unignored
     population. Recency, type, and size filters do not change the directory composition
     summary: applying `.py` and making the panel report 100% `.py` would destroy its
@@ -217,7 +217,7 @@ The data selection must account for both dimensions before the UI is trustworthy
 11. **Overview sections are always expanded.** File types and README are compact enough
     to remain visible, so neither carries a disclosure control or persistence key.
     The composer renders both labels with the same prominent uppercase section-heading
-    treatment, while total files and bytes remain metadata inside File types.
+    treatment, while the table’s leading Totals group carries total files and bytes.
 12. **Category colors belong to aggregate visualizations.** The tree’s existing `ft-*`
     colors identify broad rendering subtypes; several exact extensions intentionally
     share one tree color.
@@ -259,10 +259,10 @@ The data selection must account for both dimensions before the UI is trustworthy
     Empty groups are omitted, group headings carry no subtotal, and rows keep
     deterministic server order within a group.
     The rollup tail is labelled **Remaining types** so it is distinct from the group.
-19. **The table closes with ignored context and the selected population.** When ignored
-    files are included, a neutral Ignored row reports the exact all-minus-unignored file
-    and byte deltas and their shares of the selected population.
-    A semantic Total row then repeats the exact selected file and byte totals.
+19. **The table opens with the selected population and ignored context.** A semantic
+    Total row first reports the exact selected file and byte totals.
+    When ignored files are included, a neutral Ignored row follows with the exact
+    all-minus-unignored file and byte deltas and their shares of that population.
     Its two neutral tracks are filled to 100%; a zero-byte population truthfully uses
     `0 B`, `0%`, and no Size fill.
 
@@ -293,9 +293,9 @@ section:
 ```text
 FILE TYPES
 ──────────────────────────────────────────────────────────────
-                                           1,250 files · 33.3 MB
-
-Type                    Files                         Size
+TOTALS
+Total    1,250 files ███████ 100%      33.3 MB ████████████ 100%
+Ignored    75 files █          6%       15 MB █████           45%
 DOCUMENTATION
 .md        23 files █       1.8%      400 KB █             1.2%
 CODE
@@ -306,8 +306,6 @@ DATA
 OTHER
 .bin        1 file  ▏       <0.1%      512 KB █             1.5%
 Remaining types …
-Ignored    75 files █          6%       15 MB █████           45%
-Total    1,250 files ███████ 100%      33.3 MB ████████████ 100%
 
 README
 ──────────────────────────────────────────────────────────────
@@ -323,20 +321,17 @@ Each metric column uses an 8-pixel track and existing type-scale and spacing tok
 The track height is a named Aggregate distributions component token rather than a
 use-site literal.
 
-The File types section contains two metadata roles and no repeated sentence:
-
-- the shared uppercase **File types** section heading
-- total file count and byte size in tabular numerals
-
-The table itself makes scope explicit: when ignored files are included, its neutral
-Ignored row appears immediately above Total; when they are excluded, that row is absent.
+The shared uppercase **File types** section heading is the only content above the table.
+The Totals group leads with Total and then, when ignored files are included, its neutral
+Ignored row. No standalone tally or visible Type/Files/Size header repeats what the
+aligned columns already communicate.
+Screen-reader-only column headers preserve the semantic table relationships.
 
 An empty folder keeps the same first panel and no synthetic document panel:
 
 ```text
 FILE TYPES
 ──────────────────────────────────────────────────────────────
-                                            0 files · 0 B
 No files to summarize.
 ```
 
@@ -514,15 +509,16 @@ card’s left and right edges.
 At the narrow band, KPress removes the card and those elements follow the Markdown text
 edges instead.
 
-- At ordinary widths, the fixed-layout semantic table has `Type`, `Files`, and `Size`
-  columns. Each metric keeps its tally and percentage right-aligned around a flexible
-  track, and the Size column has a deliberate gutter from Files.
+- At ordinary widths, the fixed-layout semantic table keeps Type, Files, and Size as
+  aligned semantic columns without visible column labels.
+  Each metric keeps its tally and percentage right-aligned around a flexible track, and
+  the Size column has a deliberate gutter from Files.
 - At narrow widths, the same three columns remain so rows can still be compared.
   Metric tracks contract before exact tallies or percentages disappear, and the
   inter-column gutter narrows without collapsing.
 - Long or synthetic type labels wrap within the first column; they never widen the
   preview or create a nested scroll owner.
-- Scope and total metadata may wrap without widening the shared text column.
+- Total and Ignored rows use the same responsive columns as the breakdown.
 
 ### Loading, Empty, Partial, and Failure States
 
@@ -543,8 +539,8 @@ Progress and completion copy use the design system’s state language.
 Routine live count changes are not announced.
 The transition from loading or scanning to a terminal state uses one polite status
 announcement. Empty is terminal data, not missing UI: Overview and the File types header
-remain mounted, the total reads `0 files · 0 B`, and no README panel appears unless a
-README actually exists.
+remain mounted, the explicit empty message replaces the table, and no README panel
+appears unless a README actually exists.
 
 ### Overview Composition and Markdown Layout
 
@@ -1214,11 +1210,11 @@ This file is pure and has no DOM, fetch, preference, or global access.
 
 #### `src/metabrowser/builtin_plugins/folder/distribution_view.js` — new
 
-- `mountDistributionView(container, model, palette)` builds the metadata row and
-  semantic Type/Files/Size table once.
+- `mountDistributionView(container, model, palette)` builds the semantic Type/Files/Size
+  table once, with screen-reader-only column headers and a leading Totals row group.
 - `updateDistributionView(handle, model)` keys DOM rows by extension key, updates text
   and fill widths in place, moves rows under Documentation/Code/Data/Other row-group
-  bodies, updates the neutral Ignored and Total footer rows, and removes stale rows or
+  bodies, updates the leading neutral Total and Ignored rows, and removes stale rows or
   empty groups without replacing retained elements.
 - Each metric cell owns a right-aligned tally, an `aria-hidden` track and fill, and a
   right-aligned percentage.
@@ -1329,9 +1325,9 @@ No folder layout selector belongs in core styles.
   vertical panel stack, flat surface presentation, local error, loading slot, print
   exclusion, and wide/narrow bands.
   It does not override KPress document-card styling.
-- `file_type_summary.css` owns the metadata row, fixed table columns, row groups,
-  repeated 8-pixel tracks, metric gutters, numeric alignment, narrow-width contraction,
-  skeletons, status, and reduced-motion behavior.
+- `file_type_summary.css` owns the fixed table columns, row groups, repeated 8-pixel
+  tracks, metric gutters, numeric alignment, narrow-width contraction, skeletons,
+  status, and reduced-motion behavior.
 - Existing `styles.css` remains Treemap-specific.
 - Every value comes from an existing token or one of the new documented distribution
   tokens; no category color literal appears in plugin CSS.
@@ -1539,10 +1535,10 @@ types meet only in the final composition, avoiding a long serial implementation 
   pluralization, byte-unit boundaries, maximum-share ordering,
   Documentation/Code/Data/Other classification from shared presets, stable color slots,
   Other-last behavior, and malformed rows.
-- DOM tests assert Documentation/Code/Data/Other row-group order, the same slot class on
-  both metric fills, real table headers, exact adjacent values, the neutral Total
-  footer, the conditional neutral Ignored row, the zero-byte total state, hidden
-  decorative tracks, flat section structure, and escaped labels.
+- DOM tests assert that Totals precedes Documentation/Code/Data/Other, Total precedes
+  the conditional Ignored row, both metric fills share one slot class, semantic column
+  headers are visually hidden, exact adjacent values remain, the zero-byte total stays
+  truthful, decorative tracks are hidden, and labels are escaped.
 - Lifecycle tests assert one active watch, no hidden-view refresh, abort and listener
   cleanup on disposal, Retry recovery, and focus preservation during keyed updates.
 - Filter tests assert that **Show ignored** changes the selected integer columns while
@@ -1552,9 +1548,9 @@ types meet only in the final composition, avoiding a long serial implementation 
   does not get File types.
   README output must match the ordinary rendered Markdown mount, README-less Overview
   must avoid a fake document, and print must include only printable contributions.
-- Empty-folder tests assert that Overview and File types remain present with
-  `0 files · 0 B`, “No files to summarize.”, no bars or table, no arithmetic artifacts,
-  no fake README, and no confusion with loading or failure.
+- Empty-folder tests assert that Overview and File types remain present with “No files
+  to summarize.”, no standalone tally, bars, table, arithmetic artifacts, fake README,
+  or confusion with loading or failure.
 
 ### Real-Browser Review
 
@@ -1562,9 +1558,9 @@ Use directories representing one type, ten types, more than ten types, thousands
 files, one dominant binary, ignored dependency trees, no README, a long README TOC, and
 an empty directory. Review ordinary and narrow preview widths in both themes.
 Confirm that the panel reads as directory chrome, the README remains visually primary,
-the two metric columns can be compared without consulting color alone, their headers
-align with the tracks, percentages read as track endpoints, and ignored-state changes do
-not trigger a new rollup request.
+the two metric columns can be compared without consulting color alone, totals lead the
+breakdown, percentages read as track endpoints, and ignored-state changes do not trigger
+a new rollup request.
 At regular and wide widths, confirm that README retains the ordinary Markdown card and
 that File types aligns to its outer edges.
 Below the card breakpoint, confirm that the card disappears and both sections align to
@@ -1581,8 +1577,8 @@ rather than an unpainted preview.
 - **Byte ranking hides count-heavy types.** The server selects categories using the
   maximum of both metrics and both ignored-file populations.
 - **Ignored dependencies dominate.** The panel follows the existing Show ignored state,
-  makes its scope explicit through an exact footer row, and already has both populations
-  on the wire.
+  makes its scope explicit through an exact leading row, and already has both
+  populations on the wire.
 - **Colors drift during live updates.** The mounted view reserves slots for its lifetime
   and updates keyed rows rather than rebuilding rank-colored markup.
 - **Arbitrary extensions exhaust the palette.** The visible named set is capped at ten
@@ -1648,12 +1644,11 @@ root behave differently from nested folders.
   file percentage, formatted bytes, a total-normalized byte fill, and byte percentage
 - Files and Size use the same row color; no separate circle, aggregate bar, or legend is
   needed
-- When ignored files are included, a neutral Ignored row immediately above Total reports
-  their exact Files and Size values and shares; it is absent when ignored files are
-  excluded
-- A neutral Total row repeats the selected population’s exact Files and Size values;
-  each populated metric fills its track to 100%, while a zero-byte population remains at
-  `0 B`, `0%`, and no fill
+- A leading Totals group begins with a neutral Total row that reports the selected
+  population’s exact Files and Size values; each populated metric fills its track to
+  100%, while a zero-byte population remains at `0 B`, `0%`, and no fill
+- When ignored files are included, a neutral Ignored row follows Total and reports their
+  exact Files and Size values and shares; it is absent when ignored files are excluded
 - A count-heavy type and a byte-heavy type both survive the top-ten bound
 - No extension is a named group, and compound extensions use their canonical indexed
   type
@@ -1661,8 +1656,8 @@ root behave differently from nested folders.
   other filters do not collapse the composition
 - Scanning, truncation, empty, zero-byte, and failure states are distinguishable and
   truthful
-- A complete empty folder still renders Overview and File types with `0 files · 0 B` and
-  “No files to summarize.”, but no bars, table, percentages, or fake README panel
+- A complete empty folder still renders Overview and File types with “No files to
+  summarize.”, but no standalone tally, bars, table, percentages, or fake README panel
 - The panel updates from inventory changes, retains category colors and keyed DOM, and
   disposes every watcher and listener on view replacement
 - The layout works at narrow and wide preview widths in light and dark themes, remains
