@@ -3,9 +3,9 @@ type: is
 id: is-01kzwkvevmw18dyvwjnxnyv58a
 title: Reconcile the folder-view foundation
 kind: task
-status: closed
+status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-12-directory-file-type-summary.md
 labels:
   - implementation
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kzwkwgrrdww56y99n5gsz65c
 parent_id: is-01kzwg302q9172bvjc543whcte
 created_at: 2026-08-13T03:50:00.307Z
-updated_at: 2026-08-13T04:12:20.820Z
+updated_at: 2026-08-13T05:11:39.294Z
 closed_at: 2026-08-13T04:12:20.819Z
 close_reason: Ported and reconciled the rollup, folder envelope/routing, SDK watcher, Treemap plugin, packaging, and focused foundation tests onto current main while preserving quick-file and current filter behavior.
 ---
