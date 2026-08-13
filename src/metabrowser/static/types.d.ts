@@ -631,6 +631,46 @@ type MetabrowserKeyboardShortcutsRuntime = Readonly<{
   validateCommand(command: MetabrowserShortcutCommand): boolean;
 }>;
 
+type MetabrowserModalController = Readonly<{
+  body: HTMLElement;
+  close(options?: { restoreFocus?: boolean }): void;
+  closeButton: HTMLButtonElement;
+  control: MetabrowserShortcutControlBinding;
+  dialog: HTMLElement;
+  dispose(): void;
+  element: HTMLElement;
+  footer: HTMLElement;
+  isOpen(): boolean;
+  open(trigger?: HTMLElement | null): void;
+  title: HTMLElement;
+}>;
+
+type MetabrowserOverlayRuntime = Readonly<{
+  captureBackgroundState(
+    document: Document,
+    portal: HTMLElement,
+  ): Array<{ element: HTMLElement; inert: boolean }>;
+  createDialogShell(options: {
+    className?: string;
+    document: Document;
+    title: string;
+  }): Omit<MetabrowserModalController, "close" | "control" | "dispose" | "isOpen" | "open">;
+  createModal(options: {
+    className?: string;
+    closeCommandId: string;
+    document?: Document;
+    initialFocus?: HTMLElement | (() => HTMLElement | null);
+    onClose?(): void;
+    onOpen?(): void;
+    resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
+    scope: string;
+    shortcuts: MetabrowserShortcutRegistry;
+    title: string;
+  }): MetabrowserModalController;
+  focusableElements(root: HTMLElement): Array<HTMLElement>;
+  restoreBackgroundState(records: ReadonlyArray<{ element: HTMLElement; inert: boolean }>): void;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -662,6 +702,7 @@ declare global {
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserKeyboardShortcuts: MetabrowserKeyboardShortcutsRuntime;
+    MetabrowserOverlay: MetabrowserOverlayRuntime;
     MetabrowserPendingTallyDiagnostics: MetabrowserPendingTallyDiagnosticsRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;

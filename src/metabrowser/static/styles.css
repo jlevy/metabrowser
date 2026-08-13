@@ -409,6 +409,14 @@
   --highlight-bg: color-mix(in srgb, var(--link) 10%, transparent);
   --highlight-bar: var(--link);
   --modal-scrim: color-mix(in srgb, var(--text) 28%, transparent);
+  --modal-inline-margin: 16px;
+  --modal-block-margin: max(24px, 8vh);
+  --modal-max-width: 640px;
+  --modal-max-height: min(80vh, 720px);
+  --modal-header-padding: 8px 12px;
+  --modal-header-gap: 12px;
+  --modal-body-padding: 12px;
+  --modal-footer-padding: 8px 12px;
 
   /* Code block backgrounds */
   --code-bg: hsl(210 29% 97%);
@@ -1434,6 +1442,23 @@ html.theme-anim .menu {
   text-transform: var(--kbd-text-transform);
   line-height: 1.5;
   vertical-align: baseline;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shortcut-binding-separator {
+  margin-inline: 3px;
+  color: var(--muted);
 }
 
 /* ── Main layout ─────────────────────────────────────────────── */
@@ -3206,6 +3231,64 @@ pre.code-block code.hljs {
   opacity: 1;
 }
 
+/* ── Modal dialog — shared blocking overlay primitive ───────────
+   Consumers supply content and dimensions. This primitive owns the
+   raised surface, fixed scrim, labelled header, scrolling body, and
+   fixed footer shared by every modal. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--modal-block-margin) var(--modal-inline-margin) var(--modal-inline-margin);
+  background: var(--modal-scrim);
+}
+.modal-overlay[hidden] {
+  display: none;
+}
+.modal-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(var(--modal-max-width), calc(100vw - 2 * var(--modal-inline-margin)));
+  max-height: var(--modal-max-height);
+  overflow: hidden;
+  color: var(--text);
+  background: var(--viz-surface-raised);
+  border: 1px solid var(--viz-border-strong);
+  border-radius: var(--radius-chrome);
+  box-shadow: var(--shadow-lg);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--modal-header-gap);
+  padding: var(--modal-header-padding);
+  border-bottom: 1px solid var(--border);
+}
+.modal-title {
+  color: var(--label-color);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
+}
+.modal-close {
+  flex: none;
+}
+.modal-body {
+  min-height: 0;
+  padding: var(--modal-body-padding);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.modal-footer {
+  padding: var(--modal-footer-padding);
+  border-top: 1px solid var(--border);
+}
+
 /* ── Quick-file palette ─────────────────────────────────────────
    A body-level modal surface so tree and preview replacement cannot
    discard its state. Search work and selection state stay in the
@@ -3724,6 +3807,7 @@ pre.code-block code.hljs {
   .file-header-print,
   .settings-toggle,
   .custom-tooltip,
+  .modal-overlay,
   .search-palette-overlay,
   .index-progress,
   .loading,
