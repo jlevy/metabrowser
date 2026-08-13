@@ -247,6 +247,10 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     "Total values have no unconditional bold override",
     !styles.includes(".file-type-summary-total-row .file-type-summary-value"),
   );
+  check(
+    "metric value columns keep count labels clear of bars at every breakpoint",
+    (styles.match(/--file-type-summary-value-width: 76px;/g) ?? []).length === 2,
+  );
 
   const updated = {
     ...first,

@@ -33,7 +33,7 @@
   --file-type-summary-metric-gap: 6px;
   --file-type-summary-metric-padding: 18px;
   --file-type-summary-size-padding: 30px;
-  --file-type-summary-value-width: 68px;
+  --file-type-summary-value-width: 76px;
 
   table-layout: fixed;
   width: 100%;
@@ -129,7 +129,7 @@
     --file-type-summary-metric-gap: 3px;
     --file-type-summary-metric-padding: 6px;
     --file-type-summary-size-padding: 10px;
-    --file-type-summary-value-width: 58px;
+    --file-type-summary-value-width: 76px;
   }
 
   .file-type-summary-type-column {
