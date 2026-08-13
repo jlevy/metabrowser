@@ -6,8 +6,8 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 
 ## Principles
 
-1. **The file is primary.** Navigation and controls stay compact so the preview receives
-   most of the viewport.
+1. **The selected item is primary.** Navigation and controls stay compact so a file’s
+   contents or a folder’s Overview receives most of the viewport.
 2. **Color has one meaning.** Status, file type, chart threshold, and selection colors
    come from tokens instead of local literals.
 3. **Text remains selectable.** Use real text and DOM structure for labels and data;
@@ -24,6 +24,7 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 - base surfaces, text, borders, links, and shadows;
 - semantic status colors;
 - file-type foreground, background, and border triplets;
+- aggregate-distribution category, track, and neutral-tail colors;
 - chart colors and annotation states;
 - component dimensions, radii, typography, and motion.
 
@@ -370,16 +371,110 @@ a file.
 Add new file types through the declarative matcher and token triplet.
 Do not add filename-specific CSS selectors.
 
+### Aggregate Distributions
+
+The active
+[Folder Overview plan](project/specs/active/plan-2026-08-12-directory-file-type-summary.md)
+introduces the first instance of this component contract.
+An aggregate distribution relates exact categories across one or more compact stacked
+bars and an adjacent value table.
+It is distinct from the broad `ft-*` identity system: several exact extensions may
+intentionally share one file icon, while adjacent `.py`, `.pyi`, and `.md` segments
+still need distinguishable marks.
+
+The component uses a bounded light/dark categorical palette, a neutral **Other** token,
+a track token, and named track-height and segment-gap tokens.
+Consumers select palette classes; they do not copy color literals or set theme colors
+inline. Inline unitless weights are allowed because they encode data rather than theme.
+
+When several bars compare different metrics over the same population, they use the same
+category set, order, and color map.
+Categories keep their assigned slot for the mounted folder even when live updates change
+rank, and Other stays last and neutral.
+A related visualization, such as a type-grouped Treemap for that folder, reuses the same
+mounted mapping when both views exist.
+
+The bars are a glanceable summary, not the source of exact values.
+The semantic table names every category and reports absolute values and percentages;
+each row repeats a small decorative color mark.
+Bar segments do not become tab stops or add duplicate tooltips.
+Each bar has one concise accessible description, visual segments are hidden from the
+accessibility tree, and labels never rely on color or place text on a category fill.
+
+Zero totals do not produce a colored segment, division artifact, or header-only table.
+If one metric is zero while another is not, the zero metric uses the neutral track and
+the populated metric remains meaningful.
+If the whole population is empty, the parent surface renders its explicit empty state
+instead of the distribution body.
+
 ## Panels and Tabs
 
 The preview pane has one scroll owner.
 Views should not introduce nested full-height scroll containers unless the content
 itself requires independent horizontal or virtual scrolling.
 
+### Folder Views Are Tabs
+
+The active Folder Overview plan applies these rules as folder views land.
+A tab changes the primary way the selected item is inspected.
+For folders, **Overview** is the default tab and **Treemap** is a peer visualization.
+A future **Files** listing also belongs at this level because it replaces the primary
+working surface; it is not an Overview panel.
+
 Tab renderers receive a dedicated container and own its contents.
 Default views mount immediately; hidden views mount on first activation.
 A loading state should preserve the tab’s dimensions and communicate whether the work is
 local parsing or an HTTP request.
+
+### Folder Overview Is a Panel Stack
+
+Overview is one vertically ordered composition surface, not a fixed page template.
+Its panel registry lets a capability contribute a region without knowing which other
+regions are installed:
+
+- **File types** is the required summary panel for every folder.
+- **README** is a content panel only when a direct-child README exists.
+- License and other future panels use the same contribution contract and appear only
+  when applicable.
+
+The Overview composer owns panel order, measure, gaps, responsive stacking, loading,
+failure isolation, and disposal.
+Panels own only their data and internal rendering.
+They must not query sibling DOM, reserve ad hoc margins for another panel, or create a
+second preview scroll owner.
+Named placement bands establish broad order; stable panel IDs break ties, so
+asynchronous resolution and plugin load timing never rearrange the page.
+
+Every contribution is a labelled semantic section and uses one of two presentations:
+
+- A **surface panel** receives the standard host border, radius, padding, heading, and
+  chrome typography. File types uses this presentation.
+- A **document panel** supplies its normal rendered-document surface.
+  README therefore looks exactly like an ordinarily rendered Markdown file, including
+  its prose card, metadata, diagnostics, TOC, breakpoints, and print behavior.
+  Overview does not add a second heading or frame around it.
+
+“Panel” describes composition and lifecycle, not a requirement to draw the same box
+around unlike content.
+Surface and document panels align to the same document measure and use the shared stack
+gap. At wide Markdown breakpoints, a document TOC begins on its document row; summary
+panels above it do not acquire an empty TOC rail.
+
+Panel availability is independent.
+A missing README removes only that region, and one failed optional panel gets a local
+error without replacing Overview or its siblings.
+Transient failures offer Retry; invalid or permanent failures provide the applicable
+corrective action instead of a control that cannot help.
+Printing includes only contributions that declare themselves printable; host summaries
+and empty-state chrome stay off paper.
+The print action is absent when no mounted contribution is printable.
+
+An empty folder is still a completed Overview.
+File types remains visible with `0 files · 0 B` and the message **No files to
+summarize.** It renders no empty bars, percentages, or table and does not manufacture a
+“No README” document panel.
+Loading, partial, empty, and failed states must remain visually and semantically
+distinct.
 
 Floating menus and tooltips use the shared surface, border, radius, and shadow tokens.
 They must remain within the viewport and close on Escape or outside interaction.

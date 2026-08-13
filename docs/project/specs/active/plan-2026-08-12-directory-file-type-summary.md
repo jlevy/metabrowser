@@ -1,0 +1,830 @@
+# Feature: Folder Overview Panels and File-Type Summary
+
+**Date:** 2026-08-12
+
+**Author:** Metabrowser maintainers
+
+**Status:** Draft
+
+## Overview
+
+Metabrowser should make every folder a useful destination, not merely a container that
+redirects to a README or one specialized visualization.
+Selecting a folder opens an **Overview** tab composed from independent, ordered panels.
+The built-in **File types** panel is always present, a direct-child README contributes a
+document panel when one exists, and future capabilities such as License can contribute
+their own panels without rewriting Overview.
+
+The File types panel adopts the compact composition grammar that makes GitHub’s
+repository language panel useful, but describes the files Metabrowser actually indexes
+rather than inferring programming languages.
+It renders two thin stacked bars over one shared set of logical file types:
+
+- **Files** shows each type’s share of the indexed file count
+- **Size** shows each type’s share of indexed bytes
+
+One structured table below the bars reports both absolute values and both percentages:
+
+```text
+.py     150 files (12%)      10 MB (30%)
+.md      63 files (5%)        1 MB (3%)
+```
+
+The bars, legend marks, and rows use the same category order and colors, so the user can
+compare how a type’s prevalence changes between count and size without learning two
+encodings. The panel consumes the folder rollup’s extension tallies and live refresh
+path. It starts no second filesystem crawl.
+An empty folder still has Overview and File types; the panel shows a concise empty state
+instead of zero-length bars or a blank surface.
+
+Overview is one folder-level view, not a replacement for the view model.
+Treemap remains a peer tab, and a future Files listing would also be a peer tab because
+it changes the folder’s primary mode.
+README, License, and similar summaries are Overview panels because they form one
+scannable account of the selected folder.
+Opening `README.md` itself continues to show only the ordinary Markdown file view.
+
+## Goals
+
+- Make count-heavy and byte-heavy file types visible at the same time
+- Use Metabrowser’s indexed logical file types, including documents, data, images,
+  source, archives, and extensionless files
+- Preserve GitHub’s useful visual grammar: a compact stacked bar, stable category
+  colors, a neutral Other segment, and a nearby text legend
+- Fit the summary into Metabrowser’s panel, typography, color-token, filter, lifecycle,
+  light-theme, dark-theme, and print contracts
+- Establish one supported, deterministic folder Overview panel registry so built-in and
+  installed plugins can add independently available panels without coupling to sibling
+  panels or private shell state
+- Make the served root and every selected nested directory follow the same Overview
+  contract
+- Keep top-level folder modes distinct from Overview content: Overview and Treemap are
+  peers now, and a future Files listing can join them without becoming an Overview panel
+- Reuse `/api/rollup`, `ext_tallies`, `watchRollup`, and the existing inventory event
+  stream, with a bounded tally-only response
+- Keep partial, truncated, empty, zero-byte, and failed states honest
+- Keep the panel’s detail optional without adding another Settings-menu preference: the
+  panel stays present, but its expanded-by-default disclosure state persists through
+  `mb.prefs`
+
+## Non-Goals
+
+- Programming-language detection, GitHub Linguist compatibility, MIME sniffing, or
+  content inspection
+- Linguist-style generated, vendored, documentation, or language-detectability rules;
+  Metabrowser uses its existing inventory and ignored-path semantics
+- Allocated disk blocks or decompressed content size; Size uses the inventory’s existing
+  `st_size` value
+- Replacing the Treemap or duplicating its hierarchy, age, and spatial controls
+- Implementing the future Files tab, a License panel, or a general-purpose dashboard
+  layout in this release
+- Making an explicitly opened README file depend on its parent directory’s rollup
+- Clicking a type row to search, navigate, or mutate the global type filter in the first
+  release
+- A user-selectable sort control, arbitrary metrics, or one bar per filter dimension
+- A root-only shell special case while directory views are unavailable
+
+## Background
+
+### What GitHub Gets Right
+
+Reviewed against GitHub’s repository UI on 2026-08-12. GitHub’s current repository
+sidebar uses an 8-pixel stacked bar with a 2-pixel gap, clipped ends, stable language
+colors, and a compact wrapped legend.
+Each segment carries an accessible language-and-percentage label.
+The visible percentages are based on bytes, not file count; GitHub’s language API
+likewise reports the number of bytes attributed to each language.
+
+The useful pattern is the correspondence among bar segment, color mark, label, and
+percentage. The language classifier and its exclusions are not the pattern Metabrowser
+needs. Metabrowser browses arbitrary local trees, so `.md`, `.jsonl`, `.png`, and an
+unknown extension belong in the same summary as `.py`.
+
+GitHub can place the summary in a repository sidebar because its page already reserves
+that rail. Metabrowser already combines a 300-pixel navigator with KPress’s optional
+document TOC, so copying the placement would create a cramped third column.
+The familiar grammar belongs in the preview’s document measure instead.
+
+Two changes make the pattern more useful for a file browser:
+
+1. Count and byte share get separate bars because they answer different questions.
+2. The rows retain absolute counts and sizes, so the visualization never hides the
+   underlying quantities.
+
+### Existing Metabrowser Seams
+
+The folder-view work in the draft pull request already defines the needed data and live
+lifecycle:
+
+- `InventoryIndex.rollup` computes subtree totals plus `ext_tallies` rows containing
+  all-file and unignored file counts and byte totals
+- `/api/rollup` bounds depth, children, total emitted nodes, and extension rows while
+  reporting scanning and truncation state
+- `mb.watchRollup` fetches once, refreshes after relevant inventory events, supports an
+  active-view gate, and provides disposal
+- the folder plugin owns directory views and already delegates a direct-child README to
+  the built-in Markdown renderer
+- `mb.filters` owns the shared **Show ignored** state
+
+The WIP folder plugin currently hard-codes README as one folder view.
+The current main branch still opens a root README as a file because that work has not
+merged. This plan targets the folder-view contract, replaces the hard-coded composition
+with an Overview panel registry, and does not add a temporary root-only implementation
+to the shell.
+
+The existing rollup chooses extension rows by byte rank.
+That is sufficient for one size-based chart but not for two metrics: a type represented
+by thousands of tiny files can be important in the Files bar and absent from a
+byte-ranked top set.
+The data selection must account for both dimensions before the UI is trustworthy.
+
+## Design
+
+### Resolved Decisions
+
+1. **Folder views and Overview panels solve different problems.** Overview and Treemap
+   are peer folder tabs.
+   A future Files listing is another peer tab because it is a primary mode, not a
+   summary card. README, File types, and a future License summary are panels inside
+   Overview.
+2. **Every folder has Overview, and Overview is the default.** The served root and a
+   selected nested folder follow the same rule.
+   Overview does not depend on README, rollup completion, or nonempty contents.
+3. **Overview is an ordered panel registry, not a hard-coded template.** Built-in and
+   installed plugins register self-contained contributions through a supported SDK
+   surface. The composer owns availability, ordering, layout, loading, failure isolation,
+   and disposal; a panel does not query or position its siblings.
+4. **File types is the one required panel.** It is always present, expanded by default,
+   and independently collapsible.
+   A complete folder with no indexed regular files renders “No files to summarize.”
+   with no bars, percentages, table, or README-shaped placeholder.
+   Pending inventory never masquerades as this empty state.
+5. **README is conditional and visually ordinary.** A direct-child README contributes a
+   document-presentation panel only when it exists.
+   Its content, metadata, diagnostics, TOC, responsive behavior, and print output come
+   from the same built-in rendered Markdown mount used for an explicitly opened Markdown
+   file. Overview adds no second README heading or decorative wrapper.
+   An explicitly selected README remains an ordinary Markdown file view with no
+   directory summary.
+6. **The population is the selected folder’s indexed subtree.** That matches GitHub’s
+   repository-level usefulness and the existing rollup, rather than counting only direct
+   children. Within that population, file type means the same `FsEntry.ext` key as the
+   type filter: lower-case leading-dot extensions such as `.py` and `.md`, including
+   canonical compound tails such as `.tar.gz`. It does not unwrap compressed files or
+   infer from contents.
+   Dotfiles and other extensionless names join **No extension**. Directories and
+   symlinks do not contribute to file or byte totals.
+7. **Both bars use one category set, order, and color map.** Segment widths change with
+   the metric, but a type never changes order or color between bars.
+   Rows use that same order.
+   `Other` is always last and neutral.
+8. **Category selection protects both metrics and both ignored-file scopes.** The server
+   scores each type by its greatest share across all-file count, all-file bytes,
+   unignored count, and unignored bytes.
+   It keeps the top ten scores and aggregates the remainder into Other.
+   A type that matters in any rendered state therefore cannot be hidden merely because
+   another metric selected the rows.
+   The browser omits a named row only when both of its active-scope values are zero; its
+   palette slot remains reserved if the ignored-file scope later makes it visible.
+9. **There is no sort toggle.** Rows retain the server’s deterministic maximum-share
+   order defined below.
+   A control that reorders one bar independently would break cross-bar comparison; a
+   control that reorders both adds work without adding a new answer.
+10. **Show ignored is the one shared filter that changes the summary.** When it is on,
+    the panel uses all-file columns; when it is off, it uses unignored columns.
+    The scope text says **Including ignored** or **Ignored excluded** when ignored files
+    exist. Recency, type, and size filters do not change the directory composition
+    summary: applying `.py` and making the panel report 100% `.py` would destroy its
+    purpose.
+11. **The panel is expanded by default and collapsible.** Its disclosure state persists
+    across roots under the versioned preference `folder.fileTypeSummary.open`. A
+    collapsed panel keeps a one-line header with total files and bytes, so hiding the
+    detail does not create an unexplained blank above the README.
+12. **Category colors belong to aggregate visualizations.** The tree’s existing `ft-*`
+    colors identify broad rendering subtypes; several exact extensions intentionally
+    share one tree color.
+    Adjacent stacked-bar segments need distinct categorical colors, so the design system
+    gains a bounded distribution palette.
+    A folder-view session assigns displayed logical types to distinct slots and retains
+    those assignments across live updates.
+    The file-type-grouped Treemap uses the same map when both views are mounted.
+    Labels remain plain text, and Other uses a neutral token.
+13. **The bars are visual summaries; the table is authoritative.** Bars do not become
+    tab stops or carry tooltips that duplicate the rows.
+    Each bar has one accessible text alternative, and the semantic table supplies every
+    exact value. Color is never the only path to the data.
+14. **Overview supports surface and document presentations.** The composer aligns every
+    contribution to the document measure and gives surface panels the shared panel
+    chrome. A document panel owns its normal content surface so README does not get a
+    double border. At the wide document band, the TOC starts beside the README row below
+    the File types panel rather than beside unrelated statistics.
+15. **Printing is declared per panel.** File types carries the same no-print contract as
+    other host controls.
+    README is printable, so printing Overview prints the ordinary rendered document
+    without the summary or empty panel slots.
+16. **Known partial data is useful but labelled.** During scanning, the panel renders
+    percentages over indexed-so-far data and shows a quiet progressive status.
+    On terminal truncation it retains a persistent scope warning.
+    It never turns a pending rollup into an empty directory.
+17. **One watch belongs to each mounted summary.** It uses `watchRollup` with the view’s
+    active gate, aborts in-flight work on disposal, and updates keyed rows in place.
+    Hidden lazy views do not keep polling, and updates do not replace the focused
+    disclosure control.
+
+### Information Architecture
+
+Folder tabs select the primary way of looking at the selected folder:
+
+```text
+OVERVIEW   TREEMAP   [FILES, future]
+```
+
+Overview composes a vertical stack of contributions:
+
+```text
+Overview
+├── File types                         always
+├── README                             when a direct child exists
+└── License and other plugin panels    future, when applicable
+```
+
+Files is intentionally not in this tree.
+A listing changes the whole working mode and belongs beside Overview and Treemap.
+A README or License explains the same folder and belongs inside Overview.
+
+A populated Overview appears as:
+
+```text
+┌ FILE TYPES     1,250 files · 33.3 MB                    ▴ ┐
+│ Files  ████████████████████████▉▉▉▉▉░░░░                 │
+│ Size   ███████████████▉▉▉▉▉▉▉▉▉▉▉▉▉▉░░░                 │
+│                                                            │
+│ Type                 Files                     Size         │
+│ ● .py          150 files (12%)            10 MB (30%)      │
+│ ● .md           63 files (5%)               1 MB (3%)      │
+│ ● Other         23 files (1.8%)          400 KB (1.2%)     │
+└────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────┐
+│ # Directory README title                                   │
+│                                                            │
+│ README content…                                            │
+└────────────────────────────────────────────────────────────┘
+```
+
+The drawing shows structure, not exact color or dimensions.
+The lower region is the ordinary KPress rendered-document surface, not a new generic
+README card or a nested File types panel.
+The implementation uses two 8-pixel tracks, a 2-pixel track-colored separation between
+segments, the app’s panel border, and existing type-scale and spacing tokens.
+The track height and segment gap become named Aggregate distributions component tokens
+rather than use-site literals.
+
+The header contains four roles and no repeated sentence:
+
+- the small-caps label **File types**
+- optional muted scope text when ignored files exist
+- total file count and byte size in tabular numerals
+- the disclosure mark and accessible expanded state
+
+An empty folder keeps the same first panel and no synthetic document panel:
+
+```text
+┌ FILE TYPES                               0 files · 0 B  ▴ ┐
+│ No files to summarize.                                    │
+└────────────────────────────────────────────────────────────┘
+```
+
+It does not render zero-width colored segments, a header-only table, `NaN%`, or “No
+README” copy. The empty state remains inside the stable panel surface so an empty folder
+does not look like a failed or unfinished preview.
+
+### Folder Overview Panel Contract
+
+The browser SDK adds `registerFolderOverviewPanel(panelId, spec)` alongside the existing
+top-level `registerView(kindId, viewId, spec)` registry.
+The two registries are not interchangeable: the view registry owns tabs and lazy tab
+mounting, while the Overview registry owns regions inside the one
+`("folder", "overview")` view.
+
+Each panel descriptor supplies:
+
+- a stable, plugin-qualified `panelId` and accessible `label`
+- `placement` as `summary`, `content`, or `supplemental`; the composer sorts by that
+  fixed band and then by `panelId`, never by script-load timing
+- `presentation` as `surface` for standard host panel chrome or `document` when the
+  mounted renderer already owns its content surface
+- `resolve(ctx, { signal })`, which may return panel data, a promise of panel data, or
+  `null` when the panel does not apply; all asynchronous work must be bounded and
+  abortable
+- `mount(container, ctx, data)`, which may return an instance-specific disposer
+- `printable`, which defaults to false
+
+Registration validates unknown placement and presentation values and rejects duplicate
+IDs. The composer resolves contributions independently, reserves their deterministic
+order while pending, and mounts each result into its own labelled `<section>`. A null
+result removes only that slot.
+A failed resolver or renderer receives a compact, panel-scoped error.
+Transient failures offer Retry; invalid or permanent failures show an applicable
+corrective action.
+Network and server failures use the shell’s normal classification, and
+plugin errors may declare whether they are retryable while preserving their cause.
+The failure does not replace Overview or unmount a sibling.
+Folder replacement aborts pending resolution and runs every mounted disposer exactly
+once.
+
+File types registers in the `summary` band, always resolves, uses `surface`, and is not
+printable.
+README registers in the `content` band, resolves only when the folder envelope
+has `readme_path`, uses `document`, and is printable.
+A future License panel can register in `supplemental` without either panel knowing it
+exists. Folder inventory changes re-resolve availability through the same keyed
+lifecycle, so adding or removing a README can add or remove that panel without
+navigating away.
+
+The composer reports aggregate print eligibility to the shell.
+Overview offers Print only while at least one mounted panel is printable; an empty or
+README-less folder does not offer an action that would produce a blank page.
+
+The Markdown built-in gains an instance-safe rendered-document mount that returns its
+own TOC disposer. Both the ordinary Markdown view and the README Overview contribution
+call that mount.
+This replaces the current singleton TOC cleanup seam and guarantees that
+composed Markdown keeps the same content, diagnostics, breakpoints, theme, and print
+behavior without the folder plugin copying KPress DOM selectors.
+
+### Tallies and Percentages
+
+The rollup wire row remains compatible with the folder-view work:
+
+```text
+[extension_key, all_files, all_bytes, unignored_files, unignored_bytes]
+```
+
+The browser normalizes it immediately into a typed object.
+It never indexes array positions throughout rendering code.
+The server retains `(none)` as the no-extension key and the empty string as the Other
+sentinel. The normalization boundary maps those distinct wire values to **No extension**
+and **Other**; presentation code never guesses from falsiness.
+
+For the active ignored-file scope:
+
+```text
+file_percent = type_files / total_files
+byte_percent = type_bytes / total_bytes
+```
+
+Percentages are calculated from integer totals before display rounding.
+Formatting uses the user’s locale with at most one decimal place:
+
+- exact zero is `0%`
+- a positive value below `0.1%` is `<0.1%`
+- values at or above `0.1%` use up to one decimal place
+
+Displayed percentages do not need to sum to exactly 100% after rounding.
+The Other row ensures the underlying integer totals do sum to the directory totals.
+
+Segments use their unrounded integer count or byte value as a flex weight after the
+fixed gaps are subtracted from the track.
+They do not use rounded percentage widths or a minimum width that would exaggerate small
+categories. Subpixel categories remain available through their row.
+
+The SDK’s existing `formatSize` and an additive SDK count formatter own absolute
+formatting and singular/plural copy.
+Before reuse here, the shared byte formatter gains GB, TB, and PB bands while preserving
+its existing B, KB, and MB output; a directory total must not degrade into thousands of
+MB. The Size column keeps the existing byte-count color treatment; percentages use muted
+text.
+
+### Category Selection and Other
+
+For each type, calculate four comparable shares using their respective population
+totals:
+
+```text
+score = max(
+  all_file_share,
+  all_byte_share,
+  unignored_file_share,
+  unignored_byte_share,
+)
+```
+
+A share with a zero population total is zero.
+For deterministic tie-breaking, define `byte_score` as the greater all/unignored byte
+share and `file_score` as the greater all/unignored file share.
+
+The top ten types by descending `score`, `byte_score`, `file_score`, then normalized key
+become named rows. Every omitted type contributes to one Other row in all four integer
+columns. **No extension** is a normal named type and can enter the top ten; it is not
+Other. The browser omits an all-zero Other row in the active scope.
+
+This selection happens before serialization so the response stays bounded.
+The selection must be covered with a fixture where one extension dominates bytes and a
+different extension dominates count.
+Byte-only ranking is not an acceptable approximation.
+
+### Distribution Color Contract
+
+Add twelve light/dark categorical tokens plus a neutral Other token under a documented
+**Aggregate distributions** section in the design system.
+Consumers address palette slots through classes, never literal colors or inline color
+custom properties. Inline unitless flex weights remain permitted because they encode
+data, not theme.
+
+The folder summary maintains an `extension_key -> palette_slot` map:
+
+- existing displayed types keep their slot across live updates
+- a new type takes the next unused slot from a deterministic key-derived starting point
+- a removed type’s slot stays reserved for the mounted view so its return does not
+  recolor the panel
+- navigating to a different directory starts a new mapping
+- Other always uses the neutral token
+
+The palette assignment is scoped to one directory comparison.
+This guarantees distinct visible segments without pretending an open-ended extension
+vocabulary has a universal color standard.
+When the type-grouped Treemap and Overview coexist for a directory, they share the map.
+
+Every segment is separated by the track color, every row repeats a small color mark, and
+the adjacent text names the type.
+Similar colors or color-vision differences do not remove information.
+
+The Aggregate distributions contract documents this mark as a deliberate alternative to
+the broad file-type icon used in navigation and filters.
+Here the mark’s job is to join one exact-extension row to its bar segments; a broad icon
+shared by several extensions cannot provide that link.
+Labels, counts, and status copy remain in the host sans face.
+
+### Responsive Layout
+
+The panel follows the README prose measure and uses container queries against the
+preview pane, not window media queries.
+
+- At ordinary widths, the semantic table has `Type`, `Files`, and `Size` columns;
+  numeric columns align right.
+- At narrow widths, each type becomes a two-line grid row: the type spans the row and
+  Files and Size sit below it.
+  The bars keep their labels and full remaining width.
+- Long or synthetic type labels wrap within the first column; they never widen the
+  preview or create a nested scroll owner.
+- The collapsed header may wrap its totals, but the disclosure remains a full-size
+  target.
+
+### Loading, Empty, Partial, and Failure States
+
+The panel supports these states explicitly:
+
+| State | Presentation |
+| --- | --- |
+| Initial request | Header and two neutral skeleton tracks; delayed text says “Loading file types…” only when the request remains visible |
+| Scanning with rows | Render current rows and say “Scanning… percentages cover files indexed so far.” |
+| Complete | Remove progress copy; bars and rows are final for the current inventory snapshot |
+| Truncated | Keep rows and a persistent warning with indexed and configured-cap counts |
+| Empty complete folder | “No files to summarize.” inside the File types panel, with no bars, percentages, or table |
+| Active scope has only ignored files | “No included files. Show ignored to include N files.” rather than claiming the folder itself is empty |
+| All files are zero bytes | Render the Files bar normally; Size shows a neutral zero track and `0 B` values |
+| Request failure | “Could not load file types.” with Retry for a transient failure or the relevant corrective action for a permanent one; the live watch remains able to recover |
+
+Progress and completion copy use the design system’s state language.
+Routine live count changes are not announced.
+The transition from loading or scanning to a terminal state uses one polite status
+announcement. Empty is terminal data, not missing UI: Overview and the File types header
+remain mounted, the total reads `0 files · 0 B`, and no README panel appears unless a
+README actually exists.
+
+### Overview Composition and Markdown Layout
+
+The folder manifest advertises `overview` first and labels it **Overview**. The folder
+plugin registers one Overview composer as that view, then registers File types and
+README as ordinary panel contributions.
+Treemap remains a lazily mounted top-level view.
+A future Files listing would use the same manifest and `registerView` path as Treemap,
+not the panel registry.
+
+The Overview composer owns one responsive grid and vertical rhythm for all
+contributions. Surface panels and document panels share the same outer document measure.
+At KPress’s wide band, the README’s TOC occupies only the document row; summary panels
+span or align with the prose column above it.
+At narrower bands, the panels and document stack in the existing single-column flow.
+
+The README contribution mounts the shared Markdown document primitive directly into a
+document-presentation region.
+Frontmatter and diagnostics remain inside the normal KPress prose card under their
+existing contract, while File types keeps its host panel border and sans typography.
+The Markdown primitive owns KPress DOM and grid knowledge; the Overview composer and
+folder plugin do not copy selectors or reach into private shell globals.
+
+When README is absent, its resolver returns null and the composer renders the remaining
+panels in the same centered measure.
+It does not instantiate an empty KPress document, show a “No README” card, or change the
+selected tab.
+An empty folder therefore has one deliberate File types surface rather than
+a blank preview.
+
+The shell’s existing live folder-envelope refresh publishes updated context through one
+supported SDK subscription.
+Overview re-runs panel resolvers when direct-child facts can change, reusing that
+refresh rather than starting one fetch per panel.
+The File types panel continues to use its rollup watch for aggregate updates.
+Changing folders disposes the folder-context subscription, every panel resolver, summary
+watch, filter subscription, Retry handler, and Markdown TOC instance.
+Switching between Overview and Treemap follows the existing lazy view lifecycle.
+
+### Accessibility and Interaction
+
+- The disclosure uses a native `<details>` and `<summary>` contract or an equivalent
+  button with `aria-expanded`; its full header is keyboard operable.
+- Each bar is a labelled figure whose concise accessible description identifies the
+  metric and points to the exact values in the following File types table.
+  Individual visual segments are hidden from the accessibility tree to avoid repeating
+  that table.
+- The table has real headers and no interactive rows in version one.
+- Category marks are decorative because the type text names every row.
+- Counts use locale formatting, correct singular/plural copy, and tabular numerals.
+- Focus is not moved during scan or live updates.
+- `prefers-reduced-motion` disables segment-width interpolation; all data updates
+  immediately.
+- Light and dark palette tokens are reviewed as marks on their actual track and panel
+  surfaces. No text is placed on a category color.
+
+## API Changes
+
+No new endpoint or filesystem pass is required.
+
+Add these browser SDK contracts:
+
+- `registerFolderOverviewPanel(panelId, spec)` validates and registers the descriptor
+  defined above; it is additive to `registerView`, not a special view identifier
+- `listFolderOverviewPanels()` returns descriptors in deterministic placement and ID
+  order for the built-in Overview composer
+- `subscribeFolderContext(path, onUpdate)` exposes the shell’s multiplexed live folder
+  envelope refresh and returns an unsubscribe function; it does not start a second
+  refresh request per subscriber
+- `setViewPrintState(container, state)` lets a composite renderer publish aggregate
+  printability, profile, and runtime without editing private preview attributes
+- the Markdown built-in exposes an instance-safe rendered-document mount returning a
+  disposer, and the existing ordinary Markdown renderer delegates to it
+
+The folder envelope retains `readme_path`. Overview treats that field as discovery data,
+not an instruction to hard-code README into the composer.
+Installed panels may use their own bounded data hooks from `resolve`; core does not gain
+plugin-specific License or metadata fields merely to support the panel registry.
+
+Extend the folder rollup contract as follows:
+
+- allow `depth=0` and `top=0` on `/api/rollup`; the response retains the root totals and
+  `ext_tallies` but emits no child nodes
+- accept `ext_rank=dual` and select named extension tallies by the four-share score
+  rather than bytes alone; the existing default remains byte-ranked until every in-tree
+  consumer adopts the dual ranking
+- retain the current compact row shape and explicit Other sentinel
+- retain both all-file and unignored columns in one response so **Show ignored** changes
+  presentation without a refetch
+- retain `index_status`, `indexed_files`, `max_files`, and `truncated`
+- expose the shell’s count formatter through the SDK alongside `formatSize`, and make
+  the shell and SDK share one byte formatter with bounded GB, TB, and PB output, so
+  folder plugins do not duplicate locale, unit, or pluralization rules
+
+`mb.fetchRollup` and `mb.watchRollup` accept the zero-depth options without replacing
+their existing defaults.
+The summary requests ten named types.
+The browser module gives that product limit and the palette size named constants rather
+than repeating numeric literals.
+Treemap callers may keep their current depth and node budgets while adopting the same
+dual-metric tally ranking.
+
+The browser adds a strict module responsible for:
+
+- validating and normalizing tally rows
+- choosing active all/unignored values
+- calculating shares and display strings
+- maintaining category slots across updates
+- rendering and updating the summary markup
+- mounting, retrying, subscribing, and disposing through explicit methods
+
+A separate strict Overview-composer module owns panel registration validation,
+deterministic resolution and mounting, presentation classes, independent errors, print
+eligibility, context refresh, and disposal.
+The File types renderer does not contain README, KPress, or future-panel branches.
+
+The module uses supported SDK helpers for rollups, filters, preferences, formatting, and
+folder-view lifecycle.
+It does not access private `app.js` state.
+
+## Backward Compatibility
+
+- **Internal code types, methods, and function signatures: DO NOT MAINTAIN.** Do not
+  retain deprecated internal wrappers while refactoring the WIP folder plugin.
+  Keep the rollup row normalization boundary explicit.
+- **Plugin SDK: KEEP DEPRECATED.** Preserve existing `fetchRollup` and `watchRollup`
+  options and response fields.
+  The Overview panel registry, folder-context subscription, zero-depth support, and
+  instance-safe Markdown mount are additive; this plan deprecates no existing SDK
+  member. Existing `registerView` registrations remain top-level tabs and never become
+  Overview panels implicitly.
+- **Server API: KEEP DEPRECATED.** Preserve `/api/rollup` field names and compact tally
+  rows. The dual-metric ranking is opt-in until every in-tree consumer adopts it; then it
+  may become the documented default in the same release.
+- **File formats: N/A.**
+- **Database schemas: N/A.**
+
+## Implementation Plan
+
+### Phase 1: Folder Overview Platform
+
+- [ ] Rebase or land the folder envelope, rollup route, SDK watcher, and folder plugin
+  prerequisites from the folder-view work
+- [ ] Replace the conditional folder README view with an always-present Overview view,
+  make Overview the default, and keep Treemap as a peer top-level view
+- [ ] Add the validated Overview panel registry, named placement bands, composer,
+  independent resolver and mount lifecycles, Retry isolation, and print eligibility
+- [ ] Publish the shell’s multiplexed folder-envelope refresh through the SDK so panel
+  availability can update without parallel folder fetches
+- [ ] Refactor rendered Markdown to an instance-safe mount and contribute README as a
+  conditional document panel with the exact ordinary Markdown presentation
+- [ ] Add registry and composer tests using a synthetic third panel so extensibility is
+  demonstrated rather than inferred from File types and README alone
+- [ ] Document the shipped panel registration and composite print-state APIs in the
+  plugin authoring guide when they become available
+- [x] Record folder views, Overview panel composition, panel presentation variants, and
+  aggregate distributions in the main architecture and design-system documents
+
+### Phase 2: Dual-Metric Rollup and Summary Primitive
+
+- [ ] Extend rollup bounds to allow a root-and-tallies response with no emitted children
+- [ ] Implement four-share type selection, stable Other totals, and all/unignored parity
+- [ ] Add typed wire validation and fixtures for byte-heavy, count-heavy, ignored-heavy,
+  extensionless, compound-extension, zero-byte, scanning, and truncated cases
+- [ ] Add aggregate-distribution tokens and the exact-type category resolver, and route
+  type-grouped folder visualizations through it
+- [ ] Implement the strict summary module with percentage formatting, keyed updates,
+  collapse persistence, Retry, active gating, disposal, and a stable empty state with no
+  zero-width bars or empty table
+
+### Phase 3: Integration and Browser Validation
+
+- [ ] Register File types as the required summary panel and README as a conditional
+  document panel; keep their data, errors, rendering, and disposal independent
+- [ ] Render the same measured Overview stack with a README, without one, and for a
+  completely empty folder
+- [ ] Synchronize **Show ignored**, retain directory-wide behavior for the other filter
+  dimensions, and expose scope copy only when it carries information
+- [ ] Validate live file and README addition and removal, type change, scan completion,
+  truncation, folder navigation, lazy tab activation, and view replacement
+- [ ] Validate wide and narrow panes, light and dark themes, reduced motion, keyboard
+  and screen-reader structure, and print output in a real browser
+- [ ] Run `make verify` and review the built wheel for the new folder assets
+
+## Testing Strategy
+
+### Server and Inventory
+
+- One fixture makes `.bin` dominate bytes and `.txt` dominate count; both must survive
+  the named-row cap.
+- Separate fixtures make a type significant only in the all-file population and only in
+  the unignored population; toggling scope must not turn either into an unreported type.
+- Other’s four integer columns must equal the omitted rows exactly.
+- Logical extension tests cover case normalization, canonical compound names, dotfiles,
+  extensionless files, and no symlink contribution.
+- Route tests pin zero-depth bounds, safe-path rejection, pending index behavior,
+  terminal truncation metadata, and bounded response size.
+
+### Browser Module and DOM
+
+- Registry tests cover descriptor validation, duplicate IDs, fixed placement ordering,
+  stable ID tie-breaking, a null optional resolver, asynchronous out-of-order
+  resolution, transient Retry, permanent errors without Retry, abort, and exactly-once
+  disposal.
+- Composer tests use File types, README, and a synthetic third contribution to prove
+  that adding a panel does not require an Overview template branch.
+  They distinguish a future top-level Files view from an Overview contribution.
+- Pure tests cover percent formatting boundaries, zero denominators, count
+  pluralization, byte-unit boundaries, maximum-share ordering, stable color slots,
+  Other-last behavior, and malformed rows.
+- DOM tests assert identical category order and slot classes across both bars and the
+  table, real table headers, accessible bar alternatives, disclosure persistence, and
+  escaped labels.
+- Lifecycle tests assert one active watch, no hidden-view refresh, abort and listener
+  cleanup on disposal, Retry recovery, and focus preservation during keyed updates.
+- Filter tests assert that **Show ignored** changes the selected integer columns while
+  recency, type, and size filters leave the composition unchanged.
+- Composition tests assert that folder Overview gets File types above the README
+  document, the wide-band TOC starts on the README row, and directly opened Markdown
+  does not get File types.
+  README output must match the ordinary rendered Markdown mount, README-less Overview
+  must avoid a fake document, and print must include only printable contributions.
+- Empty-folder tests assert that Overview and File types remain present with
+  `0 files · 0 B`, “No files to summarize.”, no bars or table, no arithmetic artifacts,
+  no fake README, and no confusion with loading or failure.
+
+### Real-Browser Review
+
+Use directories representing one type, ten types, more than ten types, thousands of tiny
+files, one dominant binary, ignored dependency trees, no README, a long README TOC, and
+an empty directory. Review ordinary and narrow preview widths in both themes.
+Confirm that the panel reads as directory chrome, the README remains visually primary,
+the two bars can be compared without consulting color alone, and ignored-state changes
+do not trigger a new rollup request.
+Confirm that a completely empty folder still reads as a deliberate, finished Overview
+rather than an unpainted preview.
+
+## Risks and Mitigations
+
+- **The panel competes with the README.** It stays compact, collapsible, inside the
+  document measure, and remembers collapse state.
+  It has no shadow or oversized heading.
+- **Byte ranking hides count-heavy types.** The server selects categories using the
+  maximum of both metrics and both ignored-file populations.
+- **Ignored dependencies dominate.** The panel follows the existing Show ignored state,
+  makes its scope explicit, and already has both populations on the wire.
+- **Colors drift during live updates.** The mounted view reserves slots for its lifetime
+  and updates keyed rows rather than rebuilding rank-colored markup.
+- **Arbitrary extensions exhaust the palette.** The visible named set is capped at ten
+  against twelve slots; the unbounded tail is one neutral Other row.
+- **The summary duplicates the Treemap.** Overview answers composition with exact
+  totals; Treemap answers spatial hierarchy and navigation.
+  They share data and type colors but not controls or layout.
+- **Panel timing produces layout jumps or accidental ordering.** Named placement bands
+  and stable IDs determine slots before asynchronous resolution completes; script-load
+  order never does.
+- **One panel failure blanks the folder.** Resolver and renderer errors are caught at
+  the panel boundary, recovery affects only that contribution, and sibling lifecycles
+  continue.
+- **KPress DOM changes break composition.** One instance-safe Markdown mount contains
+  the selector and TOC knowledge and has parity tests.
+  The folder plugin calls it rather than querying KPress internals.
+- **Partial scans look final.** Scanning and truncation remain visible beside the data,
+  and pending never renders as empty.
+
+## Rollout Plan
+
+Land this with the folder-view work or immediately after its rebase onto current main.
+The panel platform, File types contribution, and README contribution ship as one folder
+Overview contract. Do not ship a root-only README decorator or a hard-coded two-panel
+template as an intermediate state.
+
+The rollout is additive to the rollup endpoint and folder plugin.
+Existing file views, explicit README deep links, and print behavior remain unchanged.
+The first visit opens the panel; a user who collapses it keeps that preference across
+served roots. No data migration is required.
+
+The Overview-default and panel-registry decisions supersede the WIP folder plan’s
+Treemap-default and conditional-README-tab decisions.
+Record that change in the folder plan when the two branches are reconciled so there is
+one final folder-view contract.
+
+## Open Questions
+
+No product decision blocks implementation.
+Real-browser review should still tune spacing and density, but not the information
+architecture: Overview remains the default, File types remains present, README remains
+conditional, and future Files remains a peer view.
+If an expanded summary feels too prominent in a sparse or empty folder, reduce its
+visual weight; do not hide the panel, add a Settings-menu toggle, or make the served
+root behave differently from nested folders.
+
+## Acceptance Criteria
+
+- A selected folder opens the Overview tab; Treemap remains a peer tab and the folder
+  view contract can add a future Files peer without treating it as a panel
+- Overview uses a public, deterministic, failure-isolated panel registry rather than a
+  hard-coded File types and README template
+- File types is always present in the summary band; a direct-child README is a
+  conditional document panel below the summary band and uses the ordinary rendered
+  Markdown presentation
+- An explicitly opened README has no directory summary
+- The panel shows Files and Size bars with the same named types, order, colors, and
+  neutral Other segment
+- Each row shows logical type, absolute file count, file percentage, formatted bytes,
+  and byte percentage
+- A count-heavy type and a byte-heavy type both survive the top-ten bound
+- No extension is a named group, and compound extensions use their canonical indexed
+  type
+- Show ignored switches the panel between the two rollup populations without refetching;
+  other filters do not collapse the composition
+- Scanning, truncation, empty, zero-byte, and failure states are distinguishable and
+  truthful
+- A complete empty folder still renders Overview and File types with `0 files · 0 B` and
+  “No files to summarize.”, but no bars, table, percentages, or fake README panel
+- The panel updates from inventory changes, retains category colors and disclosure
+  focus, and disposes every watcher and listener on view replacement
+- The layout works at narrow and wide preview widths in light and dark themes, remains
+  usable without color or motion, and does not print with the README
+- The implementation performs no second filesystem crawl and stays within the existing
+  rollup response and node budgets
+- `make verify` passes
+
+## References
+
+- [GitHub repository language panel](https://github.com/jlevy/metabrowser)
+- [GitHub Linguist](https://github.com/github-linguist/linguist)
+- [GitHub GraphQL language-byte contract](https://docs.github.com/en/graphql/reference/objects#languageedge)
+- [Design system](../../../design-system.md)
+- [Architecture](../../../architecture.md)
+- [Filter controls and fine-grained navigation filtering](plan-2026-08-09-nav-filter-controls.md)
+- [Folder views, Treemap, and unified filtering](https://github.com/jlevy/metabrowser/pull/23)
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

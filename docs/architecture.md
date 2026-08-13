@@ -45,6 +45,64 @@ Replacing the preview pane disposes mounted plugin views.
 Switching tabs does not: their DOM and captured state remain available until a different
 file replaces the pane.
 
+## Planned Folder Views and Overview Composition
+
+The folder-view work extends the same request and registry flow to directories.
+`/api/file` returns `kind: "folder"`, an ordered set of top-level folder view
+descriptors, folder aggregates, and bounded direct-child discovery facts such as
+`readme_path`. The served root and selected nested folders use the same envelope and
+rendering path.
+
+Folder information is divided by interaction level:
+
+```text
+folder
+├── Overview                         default top-level view
+│   ├── File types                   always-present summary panel
+│   ├── README                       conditional document panel
+│   └── License and other panels     future plugin contributions
+├── Treemap                          peer top-level view
+└── Files                            future peer top-level view
+```
+
+Top-level views answer “which mode am I using?”
+and continue to use manifests plus the `(kind, view)` renderer registry.
+Overview panels answer “which useful facts apply to this folder?”
+and use a separate public panel registry.
+A future Files listing belongs beside Overview and Treemap; it does not become a large
+panel inside Overview.
+
+The built-in folder plugin owns the Overview composer, but not a hard-coded list of
+panels. Built-in and installed plugins register stable panel IDs with a named placement
+band, accessible label, surface or document presentation, bounded resolver, instance
+mount, disposer, and print eligibility.
+The composer validates descriptors, establishes deterministic order before asynchronous
+work finishes, and gives every contribution an independent loading, error, recovery,
+abort, and disposal boundary.
+A panel never reaches into sibling DOM or private shell state.
+
+Core supplies only the generic lifecycle and SDK registry.
+A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
+File types is a built-in folder panel backed by the existing inventory rollup.
+README is another contribution whose resolver checks the folder envelope and whose
+renderer delegates to the instance-safe built-in Markdown mount.
+Using the same mount keeps Overview’s README structurally and behaviorally aligned with
+the ordinary rendered Markdown view instead of creating a second Markdown rendering
+path.
+
+The folder-view shell refreshes a selected folder envelope for live aggregate header
+data. That one multiplexed refresh is exposed through a supported subscription so
+Overview can re-resolve panel availability when direct-child facts change without
+starting one folder request per panel.
+Aggregate panels retain their own bounded watchers when their data plane differs, and
+every subscription ends when the selected path is replaced.
+
+Overview exists even when no optional panel applies.
+File types remains mounted for a complete empty folder and renders an explicit
+zero-total state without bars, a table, or a synthetic README region.
+Pending inventory remains a progress state, so an incomplete scan cannot be mistaken for
+an empty folder.
+
 ## Plugin Boundary
 
 Core knows only generic capabilities and built-in file kinds.
@@ -73,7 +131,9 @@ Inventory walking, ignore-file parsing, and watcher setup run without blocking t
 loop’s first response.
 
 When a URL names an initial file, `/api/file` begins independently of tree indexing.
-Without a hash, the server may seed a root `README.md` preview.
+Without a hash, the current shell may seed a root `README.md` preview.
+The folder-view contract replaces that special case with the root folder’s default
+Overview while keeping an explicitly selected README as an ordinary file view.
 Inventory endpoints return current partial state plus progress metadata instead of
 waiting for a complete walk.
 
@@ -198,6 +258,7 @@ route stack.
 - [Security policy and content trust model](../SECURITY.md)
 - [Plugin authoring](plugins.md)
 - [Design system](design-system.md)
+- [Folder Overview panels and file-type summary](project/specs/active/plan-2026-08-12-directory-file-type-summary.md)
 - [End-to-end testing](e2e-testing.md)
 - [Real-time debugging](realtime-debugging.md)
 - [Development](development.md)
