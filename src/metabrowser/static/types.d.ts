@@ -701,6 +701,32 @@ type MetabrowserKeyboardHelpRuntime = Readonly<{
   ): void;
 }>;
 
+type MetabrowserTreeKeyboardApi = Readonly<{
+  dispose(): void;
+  focusedRow(): HTMLElement | null;
+  prepareForMutation(): void;
+  setAnchor(row: HTMLElement, focus?: boolean): HTMLElement | null;
+  setSelectedPath(path: string | null | undefined): void;
+  synchronize(): Array<HTMLElement>;
+  visibleRows(): Array<HTMLElement>;
+}>;
+
+type MetabrowserTreeKeyboardRuntime = Readonly<{
+  create(options: {
+    activate(
+      row: HTMLElement,
+    ): HTMLElement | null | undefined | Promise<HTMLElement | null | undefined>;
+    container: HTMLElement;
+    document?: Document;
+    setFolderExpanded(row: HTMLElement, expanded: boolean): void | Promise<void>;
+    shortcuts: MetabrowserShortcutRegistry;
+  }): MetabrowserTreeKeyboardApi;
+  firstChildRow(row: HTMLElement): HTMLElement | null;
+  parentRow(row: HTMLElement): HTMLElement | null;
+  readVisibleRows(container: HTMLElement): Array<HTMLElement>;
+  rowIdentity(row: HTMLElement): string;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -739,6 +765,7 @@ declare global {
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
+    MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserTooltip?: {
       hide(): void;
       move(event: MouseEvent): void;
