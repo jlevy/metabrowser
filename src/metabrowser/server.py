@@ -956,7 +956,8 @@ async def index(_request: Request) -> HTMLResponse:
           <div class="loading"><div class="spinner"></div>Loading files…</div>
         </div>
       </div>
-      <div class="nav-shortcut-hints" id="nav-shortcut-hints" hidden></div>
+      <div class="nav-shortcut-hints" id="nav-shortcut-hints"
+           aria-label="Keyboard shortcuts" hidden></div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>

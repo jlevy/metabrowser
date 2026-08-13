@@ -520,6 +520,38 @@ def test_inserted_rows_clear_lazy_placeholder() -> None:
     assert "el.remove()" in fn_block
 
 
+def test_snapshot_entries_already_in_a_deferred_page_stay_deferred() -> None:
+    js = _read_app_js()
+    helper_start = js.index("function _updateDeferredTreePageEntry(container, entry)")
+    helper_block = js[helper_start : helper_start + 1000]
+    assert "_deferredTreePageForContainer(container)" in helper_block
+    assert "node.path === entry.path" in helper_block
+    assert "deferred.page.nodes[index]" in helper_block
+    assert "current.type !== entry.type" in helper_block
+    assert "deferred.page.nodes.splice(index, 1)" in helper_block
+    assert "_synchronizeDeferredTreePage(deferred.pageId, deferred.page)" in helper_block
+
+    insert_start = js.index("function _insertRowSorted(container, entry, options)")
+    insert_block = js[insert_start : insert_start + 900]
+    assert "_updateDeferredTreePageEntry(container, entry)" in insert_block
+    assert insert_block.index("_updateDeferredTreePageEntry") < insert_block.index(
+        "treeKeyboard?.prepareForMutation()"
+    )
+
+
+def test_live_removals_update_deferred_pages_before_mounting() -> None:
+    js = _read_app_js()
+    change_start = js.index("function fileStoreApplyChange(ops)")
+    change_block = js[change_start : change_start + 1600]
+    assert "_removeDeferredTreePageEntries(op.path)" in change_block
+
+    remove_start = js.index("function _removeDeferredTreePageEntries(path)")
+    remove_block = js[remove_start : remove_start + 1200]
+    assert "page.nodes.filter" in remove_block
+    assert "_synchronizeDeferredTreePage(pageId, page)" in remove_block
+    assert "pendingTreePages.delete(pageId)" in js
+
+
 def test_index_progress_updates_by_file_count_bucket() -> None:
     js = _read_app_js()
     assert "INDEX_PROGRESS_UPDATE_FILES" in js

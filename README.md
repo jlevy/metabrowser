@@ -78,6 +78,15 @@ read Markdown docs.
 - **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every
   non-gitignored file under the root, then jump straight to it by name or path fragment.
 
+- **Built-in keyboard Help.** Press `?` or use the visible Help control for a concise
+  explanation, the project link, and the complete shortcut list.
+  A persistent hint strip keeps Help and Quick File discoverable and adds contextual
+  commands while you work in the file tree.
+
+- **Accessible file-tree navigation.** Move through the tree with the arrow keys, jump
+  with Home and End, and activate folders, files, or pagination with Enter or Space.
+  Focus, selection, expansion, and dynamic tree updates stay synchronized.
+
 - **A fast, framework-free frontend.** Metabrowser ships direct CSS and JavaScript with
   no browser framework.
   Rendering is quick even for large files and customization is straightforward.

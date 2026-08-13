@@ -101,6 +101,13 @@ def test_every_tree_mutation_path_synchronizes_focus() -> None:
     assert "treeKeyboard?.synchronize()" in source
 
 
+def test_animated_removal_retains_its_focus_repair_snapshot() -> None:
+    source = _app()
+    remove = _function(source, "_removeRenderedRows", 2800)
+    assert "var removalMutation = treeKeyboard?.prepareForMutation();" in remove
+    assert "treeKeyboard?.synchronize(removalMutation);" in remove
+
+
 def test_tree_focus_ring_is_token_based_and_preview_has_no_tree_listener() -> None:
     css = proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
     start = css.index(".tree-item:focus-visible")

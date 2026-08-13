@@ -4611,6 +4611,7 @@ function fileStoreApplyChange(ops) {
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
       activeFiles.delete(op.path);
+      _removeDeferredTreePageEntries(op.path);
       // Remove rendered rows in every tab panel; also drops the
       // dir's `.tree-children` container so descendant rows go
       // with it. Server's bulk-remove op already lists each
@@ -4986,10 +4987,94 @@ function _findChildContainerFor(parentRel, panelEl) {
   return children;
 }
 
+function _deferredTreePageForContainer(container) {
+  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
+  if (!sentinel) {
+    return null;
+  }
+  var pageId = sentinel.dataset.pageId;
+  var page = pendingTreePages.get(pageId);
+  return page ? { pageId: pageId, page: page, sentinel: sentinel } : null;
+}
+
+// Snapshot and change events include entries already held by a deferred page.
+// Refresh that pending copy instead of mounting it ahead of its sentinel.
+function _updateDeferredTreePageEntry(container, entry) {
+  var deferred = _deferredTreePageForContainer(container);
+  if (!deferred) {
+    return false;
+  }
+  var index = deferred.page.nodes.findIndex((node) => node.path === entry.path);
+  if (index < 0) {
+    return false;
+  }
+  var current = deferred.page.nodes[index];
+  if (current.type !== entry.type) {
+    deferred.page.nodes.splice(index, 1);
+    _synchronizeDeferredTreePage(deferred.pageId, deferred.page);
+    return false;
+  }
+  deferred.page.nodes[index] = { ...current, ...entry };
+  return true;
+}
+
+function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
+  var sentinel = /** @type {HTMLElement | null} */ (
+    document.querySelector(`.tree-page-more[data-page-id="${escapePathForSelector(pageId)}"]`)
+  );
+  if (!sentinel) {
+    return;
+  }
+  var container = sentinel.parentElement;
+  if (!container) {
+    return;
+  }
+  var rows = /** @type {HTMLElement[]} */ (
+    Array.from(container.querySelectorAll(":scope > .tree-item:not(.tree-page-more)"))
+  );
+  var setSize = Math.max(rows.length + page.nodes.length, Number(page.options.setSize) || 0);
+  page.options.setSize = setSize;
+  for (var index = 0; index < rows.length; index++) {
+    rows[index].dataset.treePosition = String(index + 1);
+    rows[index].dataset.treeSetSize = String(setSize);
+  }
+  if (page.nodes.length === 0) {
+    var sentinelMutation = mutationSnapshot || treeKeyboard?.prepareForMutation();
+    sentinel.remove();
+    pendingTreePages.delete(pageId);
+    treeKeyboard?.synchronize(sentinelMutation);
+    return;
+  }
+  sentinel.dataset.treePosition = String(rows.length + 1);
+  sentinel.dataset.treeSetSize = String(setSize);
+  var labelId = sentinel.getAttribute("aria-labelledby") || "";
+  var label = document.getElementById(labelId);
+  if (label) {
+    label.textContent = `Show ${page.nodes.length} more (${setSize} total)`;
+  }
+  treeKeyboard?.synchronize(mutationSnapshot);
+}
+
+function _removeDeferredTreePageEntries(path) {
+  var prefix = `${path}/`;
+  for (var [pageId, page] of pendingTreePages) {
+    var originalLength = page.nodes.length;
+    page.nodes = page.nodes.filter((node) => node.path !== path && !node.path.startsWith(prefix));
+    var removed = originalLength - page.nodes.length;
+    if (removed === 0) {
+      continue;
+    }
+    var previousSetSize = Number(page.options.setSize) || originalLength;
+    page.options.setSize = Math.max(page.nodes.length, previousSetSize - removed);
+    _synchronizeDeferredTreePage(pageId, page);
+  }
+}
+
 // Insert a new row into a child container at sorted position.
 // Containers may include a `.tree-page-more` sentinel at the end
-// (when the initial render hit TREE_PAGE_SIZE); inserts go before
-// it so the sort order isn't broken by new arrivals at the cap.
+// (when the initial render hit TREE_PAGE_SIZE). Entries already in
+// that deferred page stay deferred; genuinely new arrivals go before
+// the sentinel so they remain visible without a reload.
 // Idempotent: if a row with this data-path already exists in the
 // container, do nothing (the patch path will handle updates).
 //
@@ -5003,6 +5088,10 @@ function _insertRowSorted(container, entry, options) {
   if (existing) {
     return false;
   }
+  if (_updateDeferredTreePageEntry(container, entry)) {
+    return false;
+  }
+  var deferredPage = _deferredTreePageForContainer(container);
   treeKeyboard?.prepareForMutation();
   container.querySelectorAll(":scope > .tree-lazy-placeholder").forEach((el) => {
     el.remove();
@@ -5072,6 +5161,10 @@ function _insertRowSorted(container, entry, options) {
   var mounted = /** @type {HTMLElement[]} */ (
     Array.from(container.querySelectorAll(":scope > .tree-item"))
   );
+  if (deferredPage) {
+    _synchronizeDeferredTreePage(deferredPage.pageId, deferredPage.page);
+    return true;
+  }
   var declaredSetSize = mounted.reduce(
     (largest, row) => Math.max(largest, Number(row.dataset.treeSetSize) || 0),
     mounted.length,
@@ -5253,7 +5346,7 @@ function applyCellPatch(entry) {
 // arrive on the wire, and a collapsing tree-children container
 // reads as confusing motion).
 function _removeRenderedRows(path) {
-  treeKeyboard?.prepareForMutation();
+  var removalMutation = treeKeyboard?.prepareForMutation();
   var safe = escapePathForSelector(path);
   var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
   for (var i = 0; i < rows.length; i++) {
@@ -5281,8 +5374,15 @@ function _removeRenderedRows(path) {
           if (target instanceof Element) {
             var parent = target.parentElement;
             var previousSetSize = Number(target.getAttribute("aria-setsize")) || 0;
+            var deferredPage = parent ? _deferredTreePageForContainer(parent) : null;
             target.remove();
-            if (parent) {
+            if (deferredPage) {
+              deferredPage.page.options.setSize = Math.max(
+                deferredPage.page.nodes.length,
+                previousSetSize - 1,
+              );
+              _synchronizeDeferredTreePage(deferredPage.pageId, deferredPage.page, removalMutation);
+            } else if (parent) {
               var rows = /** @type {HTMLElement[]} */ (
                 Array.from(parent.querySelectorAll(":scope > .tree-item"))
               );
@@ -5291,8 +5391,8 @@ function _removeRenderedRows(path) {
                 rows[j].dataset.treePosition = String(j + 1);
                 rows[j].dataset.treeSetSize = String(nextSetSize);
               }
+              treeKeyboard?.synchronize(removalMutation);
             }
-            treeKeyboard?.synchronize();
           }
         }
       },

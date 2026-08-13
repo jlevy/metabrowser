@@ -4,6 +4,22 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Keyboard discovery and navigation:
+
+- Press `?` or use the visible Help control to open a concise product description, the
+  project link, and the complete shortcut list, all generated from the same binding
+  registry that dispatches commands.
+- The navigation footer now keeps Help and Quick File hints visible above indexing
+  progress and adds situational tree commands when a tree row has focus.
+- The file tree now follows the conventional accessible keyboard model: arrow keys,
+  Home, End, Enter, and Space move, expand, collapse, and activate rows while preserving
+  native scrolling in the preview pane.
+- Live inventory events now refresh deferred tree pages without mounting their rows
+  early, so activating a pagination row cannot duplicate files and removals cannot
+  resurrect a stale deferred entry.
+- Help and Quick File now share the same modal, key-presentation, focus-restoration, and
+  dismissal primitives for consistent pointer and keyboard behavior.
+
 ## 0.3.0
 
 Filtering and file navigation:

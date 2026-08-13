@@ -69,6 +69,12 @@ def test_index_template_renders_only_the_files_panel() -> None:
 
 def test_index_template_renders_index_progress_footer() -> None:
     html = _render_index_html()
+    hints = html.index('id="nav-shortcut-hints"')
+    progress = html.index('id="index-progress"')
+    hint_tag = html[hints : html.index(">", hints)]
+    assert hints < progress
+    assert 'aria-label="Keyboard shortcuts"' in hint_tag
+    assert "aria-live" not in hint_tag
     assert 'id="index-progress"' in html
     assert 'class="index-progress-spinner"' in html
     assert 'aria-live="polite"' in html
@@ -77,11 +83,41 @@ def test_index_template_renders_index_progress_footer() -> None:
 def test_index_template_versions_core_static_assets() -> None:
     html = _render_index_html()
     assert 'href="/static/styles.css?v=' in html
-    assert 'src="/static/plugin_sdk.js?v=' in html
-    assert 'src="/static/icons.js?v=' in html
-    assert 'src="/static/tree_expansion.js?v=' in html
-    assert 'src="/static/app.js?v=' in html
-    assert html.index("/static/tree_expansion.js") < html.index("/static/app.js")
+    assets = (
+        "/static/plugin_sdk.js",
+        "/static/icons.js",
+        "/static/tree_expansion.js",
+        "/static/known_file_catalog.js",
+        "/static/catalog_feed.js",
+        "/static/file_fuzzy_match.js",
+        "/static/search_controller.js",
+        "/static/keyboard_shortcuts.js",
+        "/static/overlay_layer.js",
+        "/static/keyboard_help.js",
+        "/static/tree_keyboard_navigation.js",
+        "/static/search_palette.js",
+        "/static/app.js",
+    )
+    positions = []
+    for asset in assets:
+        assert f'src="{asset}?v=' in html
+        positions.append(html.index(asset))
+    assert positions == sorted(positions)
+
+
+def test_files_panel_owns_one_generated_tree_with_concise_row_names() -> None:
+    html = _render_index_html()
+    js = _read_app_js()
+    tab_start = html.index('id="tab-files"')
+    tab_tag = html[tab_start : html.index(">", tab_start)]
+    assert 'role="tree"' not in tab_tag
+    assert 'role="tree" aria-label="Files"' in js
+    assert "return isRoot ? treeRootHtml(content) : content;" in js
+    assert 'role="group"' in js
+    assert "aria-labelledby" in js
+    assert "data-tree-level" in js
+    assert "data-tree-position" in js
+    assert "data-tree-set-size" in js
 
 
 # ── DOM contract: every JS-referenced id present in HTML ───────

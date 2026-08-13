@@ -701,13 +701,20 @@ type MetabrowserKeyboardHelpRuntime = Readonly<{
   ): void;
 }>;
 
+type MetabrowserTreeMutationSnapshot = Readonly<{
+  anchor: string | null;
+  hadFocus: boolean;
+  parent: string | null;
+  siblings: Array<string>;
+}>;
+
 type MetabrowserTreeKeyboardApi = Readonly<{
   dispose(): void;
   focusedRow(): HTMLElement | null;
-  prepareForMutation(): void;
+  prepareForMutation(): MetabrowserTreeMutationSnapshot;
   setAnchor(row: HTMLElement, focus?: boolean): HTMLElement | null;
   setSelectedPath(path: string | null | undefined): void;
-  synchronize(): Array<HTMLElement>;
+  synchronize(snapshot?: MetabrowserTreeMutationSnapshot | null): Array<HTMLElement>;
   visibleRows(): Array<HTMLElement>;
 }>;
 

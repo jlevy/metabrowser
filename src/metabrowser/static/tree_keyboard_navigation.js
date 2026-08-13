@@ -1,6 +1,14 @@
 // Accessible roving focus and command handling for Metabrowser file trees.
 
 (() => {
+  /**
+   * @typedef {object} TreeMutationSnapshot
+   * @property {string | null} anchor
+   * @property {boolean} hadFocus
+   * @property {string | null} parent
+   * @property {string[]} siblings
+   */
+
   /** @param {Element | null} element @param {string} role */
   function hasRole(element, role) {
     return element?.getAttribute("role") === role;
@@ -142,7 +150,7 @@
     let selectedPath = null;
     /** @type {(() => void) | null} */
     let deactivateScope = null;
-    /** @type {null | {anchor: string | null, parent: string | null, siblings: string[], hadFocus: boolean}} */
+    /** @type {TreeMutationSnapshot | null} */
     let mutation = null;
     let disposed = false;
 
@@ -214,7 +222,7 @@
 
     function prepareForMutation() {
       if (mutation) {
-        return;
+        return mutation;
       }
       const anchor = focusedRow();
       const parent = anchor ? parentRow(anchor) : null;
@@ -237,6 +245,7 @@
         parent: parent ? rowIdentity(parent) : null,
         siblings: fallback,
       };
+      return mutation;
     }
 
     function fallbackFromPreviousSnapshot() {
@@ -268,16 +277,17 @@
      * falling back to the selected or first visible row.
      * @param {{parent: string | null, siblings: string[]}} previousFallback
      * @param {boolean} hadFocusedRow
+     * @param {TreeMutationSnapshot | null} mutationSnapshot
      */
-    function repairAnchor(previousFallback, hadFocusedRow) {
+    function repairAnchor(previousFallback, hadFocusedRow, mutationSnapshot) {
       let anchor = anchorIdentity ? rowByIdentity(container, anchorIdentity) : null;
       if (!anchor || !visible.includes(anchor)) {
-        const candidates = mutation?.siblings || previousFallback.siblings;
+        const candidates = mutationSnapshot?.siblings || previousFallback.siblings;
         anchor =
           candidates
             .map((identity) => rowByIdentity(container, identity))
             .find((row) => (row ? visible.includes(row) : false)) || null;
-        const parentIdentity = mutation?.parent || previousFallback.parent;
+        const parentIdentity = mutationSnapshot?.parent || previousFallback.parent;
         anchor = anchor || (parentIdentity ? rowByIdentity(container, parentIdentity) : null);
         if (anchor && !visible.includes(anchor)) {
           anchor = null;
@@ -293,7 +303,7 @@
           null;
       }
       if (anchor) {
-        const shouldRepairFocus = Boolean(mutation?.hadFocus || hadFocusedRow);
+        const shouldRepairFocus = Boolean(mutationSnapshot?.hadFocus || hadFocusedRow);
         setAnchor(anchor, shouldRepairFocus && hostDocument.activeElement !== anchor);
       } else {
         anchorIdentity = null;
@@ -301,7 +311,8 @@
       return anchor;
     }
 
-    function synchronize() {
+    /** @param {TreeMutationSnapshot | null} [mutationSnapshot] */
+    function synchronize(mutationSnapshot = mutation) {
       const roots = /** @type {HTMLElement[]} */ (
         Array.from(container.querySelectorAll('[role="tree"]'))
       );
@@ -311,8 +322,10 @@
       const previousFallback = fallbackFromPreviousSnapshot();
       const hadFocusedRow = Boolean(treeRowFromTarget(container, hostDocument.activeElement));
       visible = readVisibleRows(container);
-      repairAnchor(previousFallback, hadFocusedRow);
-      mutation = null;
+      repairAnchor(previousFallback, hadFocusedRow, mutationSnapshot);
+      if (mutation === mutationSnapshot) {
+        mutation = null;
+      }
       return visible.slice();
     }
 

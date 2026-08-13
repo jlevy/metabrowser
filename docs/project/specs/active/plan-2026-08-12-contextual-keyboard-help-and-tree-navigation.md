@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Ready for implementation
+**Status:** Implemented and validated
 
 ## Overview
 
@@ -810,41 +810,41 @@ plugins.
 
 ### Phase 1: Registry, Help, and Shared Hints
 
-- [ ] Write failing Node DOM tests for shortcut matching, scope precedence, editable
+- [x] Write failing Node DOM tests for shortcut matching, scope precedence, editable
   guards, duplicate detection, descriptor-copy validation, handled-event semantics,
   subscriptions, and disposal
-- [ ] Write binding-presentation contract tests for every canonical key, alternative and
+- [x] Write binding-presentation contract tests for every canonical key, alternative and
   future-chord grammar, spoken names, valid and deliberately omitted ARIA serialization,
   and identical rendering across Help, nav, Quick File, and menu hints
-- [ ] Implement the strict shortcut registry, binding formatter and renderer, ordered
+- [x] Implement the strict shortcut registry, binding formatter and renderer, ordered
   group registry, and one document dispatcher
-- [ ] Reuse or extract the shared modal slice specified by the menu and overlay plan,
+- [x] Reuse or extract the shared modal slice specified by the menu and overlay plan,
   integrating Escape through the shortcut registry and adding inert-background restore
-- [ ] Implement the Help dialog with the approved description, GitHub link, generated
+- [x] Implement the Help dialog with the approved description, GitHub link, generated
   shortcut groups, shared dialog anatomy, focus restoration, and disposal
-- [ ] Add the persistent nav hint host above index progress and render Help and Quick
+- [x] Add the persistent nav hint host above index progress and render Help and Quick
   File from registry data
-- [ ] Migrate Quick File open keys, modal scope, Escape, result-navigation commands, and
+- [x] Migrate Quick File open keys, modal scope, Escape, result-navigation commands, and
   hint rows through the same dialog, registry, and binding primitives without changing
   its search behavior
-- [ ] Add static-asset ordering and package-data checks for every new module
-- [ ] Review the finished markup, copy, styles, and tests against every applicable
+- [x] Add static-asset ordering and package-data checks for every new module
+- [x] Review the finished markup, copy, styles, and tests against every applicable
   [design-system](../../../design-system.md) keyboard, Help, overlay, and accessibility
   rule; do not accept local exceptions without documenting them there
 
 ### Phase 2: Tree Keyboard Navigation
 
-- [ ] Write failing DOM tests for ARIA structure, roving focus, each tree key, focus
+- [x] Write failing DOM tests for ARIA structure, roving focus, each tree key, focus
   versus selection, and unhandled preview/editable keys
-- [ ] Add semantic root, group, tree-item, expanded, selected, level, and tabindex
+- [x] Add semantic root, group, tree-item, expanded, selected, level, and tabindex
   attributes to root, recent, lazy, paged, and live-update rendering paths
-- [ ] Implement synchronized visible-row navigation and existing-action callbacks
-- [ ] Preserve or repair the roving anchor across filtering, source replacement, lazy
+- [x] Implement synchronized visible-row navigation and existing-action callbacks
+- [x] Preserve or repair the roving anchor across filtering, source replacement, lazy
   loads, pagination, insertion, removal, and type replacement
-- [ ] Add focus-visible styling and contextual tree hints from the registry
-- [ ] Validate pointer behavior, keyboard behavior, narrow navigation panes, light and
+- [x] Add focus-visible styling and contextual tree hints from the registry
+- [x] Validate pointer behavior, keyboard behavior, narrow navigation panes, light and
   dark themes, 200% zoom, reduced motion, and screen-reader naming in a real browser
-- [ ] Run `make verify` as the required handoff gate
+- [x] Run `make verify` as the required handoff gate
 
 ## Testing Strategy
 

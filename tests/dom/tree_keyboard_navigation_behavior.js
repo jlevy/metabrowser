@@ -434,9 +434,12 @@ children.style.display = "block";
 navigator.synchronize();
 first.focus();
 container.dispatch("focusin", { target: first });
-navigator.prepareForMutation();
-first.remove();
+const removalMutation = navigator.prepareForMutation();
+// An aggregate update can synchronize while the row's exit animation is
+// running. The removal retains its own snapshot for the eventual DOM change.
 navigator.synchronize();
+first.remove();
+navigator.synchronize(removalMutation);
 check(
   "removal repairs focus to the nearest sibling",
   document.activeElement === second,

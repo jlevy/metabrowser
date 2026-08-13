@@ -42,6 +42,10 @@ def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
         "/static/catalog_feed.js",
         "/static/file_fuzzy_match.js",
         "/static/search_controller.js",
+        "/static/keyboard_shortcuts.js",
+        "/static/overlay_layer.js",
+        "/static/keyboard_help.js",
+        "/static/tree_keyboard_navigation.js",
         "/static/search_palette.js",
         "/static/app.js",
     )
@@ -90,6 +94,19 @@ def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
     assert "OPEN_KEYS" not in palette
     assert "HINT_GROUPS" not in palette
     assert 'hostDocument.addEventListener("keydown"' not in palette
+
+
+def test_registry_is_the_only_application_shortcut_dispatcher() -> None:
+    registry = proc_browser.STATIC_DIR.joinpath("keyboard_shortcuts.js").read_text()
+    assert registry.count('hostDocument.addEventListener("keydown"') == 1
+    for filename in (
+        "keyboard_help.js",
+        "overlay_layer.js",
+        "search_palette.js",
+        "tree_keyboard_navigation.js",
+    ):
+        source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
+        assert 'hostDocument.addEventListener("keydown"' not in source
 
 
 def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
