@@ -119,8 +119,11 @@ Treemap and File types acquire leases from the same per-directory category-palet
 File cells key the lease by their logical extension, folder cells by `dominant_ext`, and
 remainder cells by the neutral Other key.
 This shares extension identity without coupling either renderer to sibling DOM. Visible
-byte and file values route through the public SDK formatters, and cell activation routes
-through `mb.openPath`.
+byte and file values route through the public SDK formatters.
+File cells use ordinary `mb.openPath` navigation; folder and parent navigation pass
+Treemap as the optional preferred destination view.
+The shell activates that view only when the destination declares it and otherwise uses
+the destination’s default.
 
 The folder-view shell refreshes a selected folder envelope for live aggregate header
 data. That one multiplexed refresh is exposed through a supported subscription so
@@ -160,7 +163,9 @@ Plugins own:
 
 The stable browser-side boundary is the `window.metabrowser` API. Plugins should not
 reach into variables or functions defined privately by `app.js`. Cross-view navigation
-uses `openPath`, and plugin HTTP calls use `fetchPluginData`.
+uses `openPath`; its optional `viewId` preserves a working mode when the destination
+offers that view without changing path or history semantics.
+Plugin HTTP calls use `fetchPluginData`.
 
 ## Startup and First Paint
 

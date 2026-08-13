@@ -3532,7 +3532,7 @@ var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function selectFile(path, skipHistory) {
+async function selectFile(path, skipHistory, preferredViewId) {
   return _perf.measureAsync(
     "selectFile",
     async () => {
@@ -3559,7 +3559,7 @@ async function selectFile(path, skipHistory) {
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
         commitRoute(path, cached.kind === "folder", skipHistory);
-        renderFile(cached);
+        renderFile(cached, preferredViewId);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
       }
@@ -3607,7 +3607,7 @@ async function selectFile(path, skipHistory) {
               loadingIndicatorTimer = null;
             }
             commitRoute(path, cached.kind === "folder", skipHistory);
-            renderFile(cached);
+            renderFile(cached, preferredViewId);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
           }
@@ -3646,7 +3646,7 @@ async function selectFile(path, skipHistory) {
             loadingIndicatorTimer = null;
           }
           commitRoute(path, data.kind === "folder", skipHistory);
-          renderFile(data);
+          renderFile(data, preferredViewId);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
         }
@@ -3679,7 +3679,7 @@ async function selectFile(path, skipHistory) {
             };
       }
     },
-    { path: path, skip_history: !!skipHistory },
+    { path: path, preferred_view: preferredViewId || "", skip_history: !!skipHistory },
   );
 }
 
@@ -4033,7 +4033,7 @@ function mountPluginView(container, pluginView, ctx) {
   }
 }
 
-function renderFile(data) {
+function renderFile(data, preferredViewId) {
   return _perf.measure(
     `renderFile:${data.kind || data.type || "?"}`,
     () => {
@@ -4087,13 +4087,22 @@ function renderFile(data) {
       // fallback that pulls renderers out of the shell. This is the
       // contract: every kind is a plugin.
       var views = data.views;
+      var initialActiveView = null;
+      if (views?.length) {
+        // Plugin navigation can preserve a working mode across resources.
+        // An unavailable preference falls through to the server default.
+        initialActiveView =
+          views.find((view) => view.id === preferredViewId) ||
+          views.find((view) => view.default) ||
+          views[0];
+      }
       var pluginRenders = [];
       if (views && views.length > 0) {
         if (views.length > 1) {
           html += '<div class="tab-bar">';
           for (let i = 0; i < views.length; i++) {
             const view = views[i];
-            var active = view.default ? " active" : "";
+            var active = view.id === initialActiveView?.id ? " active" : "";
             html +=
               '<button class="tab-btn' +
               active +
@@ -4116,7 +4125,7 @@ function renderFile(data) {
           // container_class can be set per-view in the plugin manifest as
           // [[view]].container_class; defaults to "content-body".
           var containerClass = view.container_class || "content-body";
-          var hidden = view.default ? "" : ' style="display:none;"';
+          var hidden = view.id === initialActiveView?.id ? "" : ' style="display:none;"';
           var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
           if (noPadding && !hidden) {
             hidden = ` style="${noPadding}"`;
@@ -4189,10 +4198,8 @@ function renderFile(data) {
         },
         filePerfMeta(data, { html_chars: html.length }),
       );
-      var defaultActiveView = null;
-      if (views?.length) {
-        defaultActiveView = views.find((v) => v.default) || views[0];
-        setActivePreviewView(defaultActiveView.id, preview);
+      if (initialActiveView) {
+        setActivePreviewView(initialActiveView.id, preview);
       } else {
         setActivePreviewView(null, preview);
       }
@@ -4221,7 +4228,7 @@ function renderFile(data) {
           var mount = ((target, pluginView) => () => {
             mountPluginView(target, pluginView, ctx);
           })(container, pr.view);
-          if (defaultActiveView && pr.tabId === defaultActiveView.id) {
+          if (initialActiveView && pr.tabId === initialActiveView.id) {
             mount();
           } else {
             container._metabrowserMount = mount;
@@ -5448,15 +5455,17 @@ async function revealInTree(path) {
 }
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function navigateToPath(path, skipHistory) {
+async function navigateToPath(path, skipHistory, preferredViewId) {
   // selectFile owns the route write (commitRoute) once the response
   // identifies file vs folder. skipHistory is set by history-driven
   // callers (popstate, hashchange, init) whose entries already exist;
   // user-initiated callers (breadcrumbs, treemap cells, plugin
-  // openPath) leave it unset so route changes push entries.
+  // openPath) leave it unset so route changes push entries. A plugin
+  // may also prefer one of the destination's declared views; rendering
+  // falls back to the ordinary default if that view is unavailable.
   if (path === "" || path === "/") {
     setSelectedPath(null);
-    return selectFile("", skipHistory);
+    return selectFile("", skipHistory, preferredViewId);
   }
   var route = splitHashRoute(path);
   var normalized = route.path.replace(/\/+$/, "");
@@ -5464,7 +5473,7 @@ async function navigateToPath(path, skipHistory) {
   // route) may not resolve to a DOM node, but the preview should still
   // open — selectFile handles files and folders alike.
   await revealInTree(normalized);
-  return selectFile(normalized, skipHistory);
+  return selectFile(normalized, skipHistory, preferredViewId);
 }
 
 // Compose the application-lifetime quick-file modules at the shell boundary.
@@ -5550,8 +5559,9 @@ window.addEventListener("metabrowser:open-path", (event) => {
     return;
   }
   var path = event.detail?.path;
+  var viewId = typeof event.detail?.viewId === "string" ? event.detail.viewId : undefined;
   if (typeof path === "string" && path) {
-    navigateToPath(path);
+    navigateToPath(path, undefined, viewId);
   }
 });
 

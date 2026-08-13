@@ -498,6 +498,13 @@ allowed to overlap child cells.
 The accessible name preserves the cell name, kind, and visible value; the tooltip
 retains the complete name, counts, bytes, and modification time.
 
+Treemap navigation preserves the user’s spatial context.
+Activating a folder cell opens that folder with Treemap selected, and Backspace opens
+the parent with Treemap selected.
+Activating a file cell opens the file’s ordinary default view.
+This uses the public navigation preference rather than simulating a tab click; an
+unavailable preferred view falls back to the destination’s declared default.
+
 ## Panels and Tabs
 
 The preview pane has one scroll owner.

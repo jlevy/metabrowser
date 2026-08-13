@@ -275,6 +275,14 @@ The data selection must account for both dimensions before the UI is trustworthy
     Names and values scale continuously from cell geometry within documented bounds,
     nested folder headers reserve that scaled height, and visible values use the shared
     byte and file-count formatters.
+21. **Treemap folder navigation stays in Treemap.** Activating a directory cell, or
+    moving to its parent with Backspace, opens the destination folder with Treemap
+    selected. File cells retain ordinary file-view navigation.
+    The public `openPath` option carries this preferred view through cached and fetched
+    paths; the shell falls back to the destination’s declared default when the
+    preference is unavailable.
+    General tree, breadcrumb, and direct-link navigation still opens a folder’s default
+    Overview, and the URL remains a path route rather than encoding transient tab state.
 
 ### Information Architecture
 
@@ -1285,8 +1293,9 @@ The Treemap implementation stays split by responsibility:
 - `treemap_model.js` owns the two-field preference contract and legacy-state
   normalization as pure functions.
 - `treemap.js` owns shared-control markup and binding, file-type palette classes,
-  formatter-backed labels and status, resize handling, keyboard and pointer behavior,
-  tooltip lifecycle, rollup watch, view-state subscription, and one instance disposer.
+  formatter-backed labels and status, resize handling, view-preserving folder
+  navigation, keyboard and pointer behavior, tooltip lifecycle, rollup watch, view-state
+  subscription, and one instance disposer.
 - Replace `offsetParent` plus `IntersectionObserver` activity inference with
   `mb.viewState`.
 - Hierarchical file and folder cells request the shared category-palette lease; existing
@@ -1638,8 +1647,10 @@ root behave differently from nested folders.
 
 ## Acceptance Criteria
 
-- A selected folder opens the Overview tab; Treemap remains a peer tab and the folder
-  view contract can add a future Files peer without treating it as a panel
+- A folder selected through general navigation opens Overview; a folder selected inside
+  Treemap keeps Treemap active.
+  Treemap remains a peer tab, and the folder view contract can add a future Files peer
+  without treating it as a panel
 - Overview uses a public, deterministic, failure-isolated panel registry rather than a
   hard-coded File types and README template
 - File types is always present in the summary band; a direct-child README is a

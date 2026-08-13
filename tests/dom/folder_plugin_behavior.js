@@ -131,22 +131,23 @@ const envelope = {
   root: "/tmp/x",
   path: "",
   index_status: "done",
-  indexed_files: 3,
+  indexed_files: 4,
   max_files: 500000,
   truncated: false,
   ext_tallies: [
     [".py", 2, 900, 2, 900],
     [".md", 1, 100, 0, 0],
+    [".txt", 1, 50, 1, 50],
   ],
   node: {
     name: "root",
     path: "",
     type: "dir",
     state: "complete",
-    total_files: 3,
-    total_size: 1000,
-    unignored_files: 2,
-    unignored_size: 900,
+    total_files: 4,
+    total_size: 1050,
+    unignored_files: 3,
+    unignored_size: 950,
     mtime: 1700000000,
     gitignored: false,
     dominant_ext: ".py",
@@ -177,6 +178,20 @@ const envelope = {
         mtime: 1700000000,
         ext: ".md",
         gitignored: true,
+      },
+      {
+        name: "docs",
+        path: "docs",
+        type: "dir",
+        state: "complete",
+        total_files: 1,
+        total_size: 50,
+        unignored_files: 1,
+        unignored_size: 50,
+        mtime: 1700000000,
+        dominant_ext: ".txt",
+        gitignored: false,
+        children: [],
       },
     ],
   },
@@ -233,6 +248,17 @@ vm.runInContext(
 
 const mb = sandbox.metabrowser;
 check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
+const openPathEvents = [];
+sandbox.addEventListener("metabrowser:open-path", (event) => {
+  openPathEvents.push(event.detail);
+});
+let invalidViewRejected = false;
+try {
+  mb.openPath("docs", { viewId: "" });
+} catch (error) {
+  invalidViewRejected = error.message.includes("options.viewId");
+}
+check("openPath rejects an empty preferred view", invalidViewRejected);
 
 // ── Treemap view: toolbar, cells, refresh, toggle, dispose ──────
 (async () => {
@@ -317,9 +343,32 @@ check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
   );
   check(
     "status line totals",
-    container.status.textContent.includes("3 files"),
+    container.status.textContent.includes("4 files"),
     container.status.textContent,
   );
+
+  const folderIndexMatch = container.viewport.innerHTML.match(
+    /data-tm-index="(\d+)" aria-label="docs \(folder,/,
+  );
+  check("folder cell is actionable", !!folderIndexMatch, container.viewport.innerHTML);
+  const cellClick = container.viewport.listeners.click?.[0];
+  check("cell click handler bound", typeof cellClick === "function");
+  if (cellClick && folderIndexMatch) {
+    const folderTarget = {
+      dataset: { tmIndex: folderIndexMatch[1] },
+      closest(selector) {
+        return selector === "[data-tm-index]" ? folderTarget : null;
+      },
+    };
+    cellClick({ target: folderTarget });
+    check(
+      "folder cell keeps Treemap active",
+      openPathEvents.length === 1 &&
+        openPathEvents[0].path === "docs" &&
+        openPathEvents[0].viewId === "treemap",
+      JSON.stringify(openPathEvents),
+    );
+  }
 
   // Viewport height is measured, not the CSS calc: innerHeight 1000
   // minus rect.top 120 minus the 64px bottom reserve.
@@ -394,7 +443,7 @@ check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
     check(
       "Files metric keeps useful formatted bytes on file leaves",
       container.viewport.innerHTML.includes("600 B") &&
-        container.status.textContent.includes("3 files"),
+        container.status.textContent.includes("4 files"),
       container.viewport.innerHTML,
     );
   }
@@ -413,7 +462,7 @@ check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
     check(
       "unchecked ignored scope removes ignored cells and updates totals",
       !container.viewport.innerHTML.includes("c.md") &&
-        container.status.textContent.includes("2 files") &&
+        container.status.textContent.includes("3 files") &&
         container.status.textContent.includes("ignored hidden"),
       container.status.textContent,
     );

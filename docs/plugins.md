@@ -274,8 +274,10 @@ Build DOM elements, attach listeners, and keep cleanup handles in the renderer c
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
-- `openPath(path)` asks the shell to navigate without reaching into private `app.js`
-  functions.
+- `openPath(path, options?)` asks the shell to navigate without reaching into private
+  `app.js` functions. Pass `{ viewId }` to prefer a view declared by the destination; the
+  shell uses the destination’s default when that view is unavailable.
+  The preference is transient and does not change the path route.
 
 Folder aggregate views can use these bounded inventory helpers:
 

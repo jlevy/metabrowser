@@ -44,7 +44,7 @@
 //     renderTextTruncationWarning(data) — visible partial-content warning
 //
 //   Navigation:
-//     openPath(path)                     — open a path in the preview pane
+//     openPath(path, {viewId?})          — open a path, optionally preferring a view
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
@@ -196,12 +196,21 @@
     return data;
   }
 
-  function openPath(path) {
+  /**
+   * Request shell navigation, preferring a destination view when it exists.
+   */
+  function openPath(path, options) {
     if (typeof path !== "string" || !path) {
       throw new Error("openPath: path must be a non-empty string");
     }
+    const viewId = options?.viewId;
+    if (viewId !== undefined && (typeof viewId !== "string" || !viewId)) {
+      throw new Error("openPath: options.viewId must be a non-empty string");
+    }
     global.dispatchEvent(
-      new global.CustomEvent("metabrowser:open-path", { detail: { path: path } }),
+      new global.CustomEvent("metabrowser:open-path", {
+        detail: { path: path, viewId: viewId },
+      }),
     );
   }
 

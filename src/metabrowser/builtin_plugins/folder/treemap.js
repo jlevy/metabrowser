@@ -34,6 +34,7 @@ export function registerTreemap(mb, palettePool) {
    * its own port and therefore its own localStorage origin). */
   const PREF_KEY = "folder.treemap";
   const LEGACY_STORAGE_KEY = "metabrowser.folder.treemap";
+  const TREEMAP_VIEW_ID = "treemap";
   /** Minimum paint thresholds; type size itself comes from cell geometry. */
   const LABEL_MIN_W = 56;
   const LABEL_MIN_H = 16;
@@ -403,7 +404,7 @@ export function registerTreemap(mb, palettePool) {
     /** @param {Record<string, any>} cell */
     function activateCell(cell) {
       if (cell.kind === "dir" && cell.path !== ctx.path) {
-        mb.openPath(cell.path);
+        mb.openPath(cell.path, { viewId: TREEMAP_VIEW_ID });
       } else if (cell.kind === "file") {
         mb.openPath(cell.path);
       }
@@ -463,7 +464,7 @@ export function registerTreemap(mb, palettePool) {
         e.preventDefault();
       } else if (key === "Backspace") {
         if (ctx.path) {
-          mb.openPath(parentPath(ctx.path) || "/");
+          mb.openPath(parentPath(ctx.path) || "/", { viewId: TREEMAP_VIEW_ID });
         }
         e.preventDefault();
       }
@@ -561,5 +562,5 @@ export function registerTreemap(mb, palettePool) {
     return Object.freeze({ dispose });
   }
 
-  mb.registerView("folder", "treemap", { render: renderTreemap });
+  mb.registerView("folder", TREEMAP_VIEW_ID, { render: renderTreemap });
 }

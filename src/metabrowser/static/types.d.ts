@@ -9,6 +9,11 @@ type MetabrowserViewSpec = {
   dispose?: (container: HTMLElement) => void;
 };
 
+type MetabrowserOpenPathOptions = {
+  /** Activate this view when the destination declares it; otherwise use its default. */
+  viewId?: string;
+};
+
 type KpressAssetLoading = "classic" | "module" | "resource" | "stylesheet";
 
 type KpressAssetManifestEntry = {
@@ -446,7 +451,7 @@ type MetabrowserSdk = {
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
-  openPath(path: string): void;
+  openPath(path: string, options?: MetabrowserOpenPathOptions): void;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
   setViewPrintState(
