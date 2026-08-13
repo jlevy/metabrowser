@@ -537,6 +537,100 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
   }): MetabrowserSearchPaletteApi;
 }>;
 
+type MetabrowserModifierPolicy = "allow" | "forbid" | "require";
+
+type MetabrowserShortcutBinding = Readonly<{
+  key: string;
+  modifiers?: Partial<Record<"alt" | "control" | "meta" | "shift", MetabrowserModifierPolicy>>;
+}>;
+
+type MetabrowserBindingPresentation = Readonly<{
+  ariaKeyshortcuts: string;
+  spoken: string;
+  visible: ReadonlyArray<
+    Readonly<{ keys: ReadonlyArray<string>; separators: ReadonlyArray<string> }>
+  >;
+}>;
+
+type MetabrowserShortcutControlBinding = Readonly<{
+  connect(element: HTMLElement): () => void;
+}>;
+
+type MetabrowserShortcutCommand = Readonly<{
+  allowInEditable?: boolean;
+  available?(context: Record<string, unknown>): boolean;
+  bindings: ReadonlyArray<MetabrowserShortcutBinding>;
+  control?: MetabrowserShortcutControlBinding;
+  copy: Readonly<{ action: string; description: string; hint: string }>;
+  group: string;
+  handler(context: Record<string, unknown>): boolean;
+  id: string;
+  order: number;
+  repeat?: boolean;
+  scope: string;
+  surfaces: Readonly<Record<string, "active" | "always">>;
+}>;
+
+type MetabrowserShortcutPresentation = Readonly<{
+  bindings: MetabrowserBindingPresentation;
+  control?: MetabrowserShortcutControlBinding;
+  copy: Readonly<{ action: string; description: string; hint: string }>;
+  commandIds: ReadonlyArray<string>;
+  group: string;
+  id: string;
+  scope: string;
+  surfaces: Readonly<Record<string, "active" | "always">>;
+}>;
+
+type MetabrowserShortcutGroupPresentation = Readonly<{
+  commands: ReadonlyArray<MetabrowserShortcutPresentation>;
+  context: string;
+  id: string;
+  label: string;
+}>;
+
+type MetabrowserShortcutRegistry = Readonly<{
+  activateScope(scope: string, options?: { exclusive?: boolean }): () => void;
+  appendBinding(container: HTMLElement, presentation: MetabrowserBindingPresentation): void;
+  dispose(): void;
+  describeBindings(
+    bindings: ReadonlyArray<MetabrowserShortcutBinding>,
+  ): MetabrowserBindingPresentation;
+  invoke(commandId: string, context?: Record<string, unknown>): boolean;
+  present(commandId: string): MetabrowserShortcutPresentation | null;
+  register(command: MetabrowserShortcutCommand): () => void;
+  snapshot(
+    surface: string,
+    options?: { includeInactive?: boolean },
+  ): ReadonlyArray<MetabrowserShortcutGroupPresentation>;
+  subscribe(
+    listener: (event: Readonly<{ commandId?: string; kind: string; scope?: string }>) => void,
+  ): () => void;
+}>;
+
+type MetabrowserKeyboardShortcutsRuntime = Readonly<{
+  GROUP_DEFINITIONS: Readonly<
+    Record<string, Readonly<{ context: string; label: string; order: number }>>
+  >;
+  KEY_DEFINITIONS: Readonly<
+    Record<string, Readonly<{ aria: string; spoken: string; visible: string }>>
+  >;
+  appendBinding(
+    document: Document,
+    container: HTMLElement,
+    presentation: MetabrowserBindingPresentation,
+  ): void;
+  bindingSignature(binding: MetabrowserShortcutBinding): string;
+  create(options?: { document?: Document }): MetabrowserShortcutRegistry;
+  describeBindings(
+    bindings: ReadonlyArray<MetabrowserShortcutBinding>,
+  ): MetabrowserBindingPresentation;
+  eventMatchesBinding(event: KeyboardEvent, binding: MetabrowserShortcutBinding): boolean;
+  isEditableTarget(target: EventTarget | null): boolean;
+  normalizeBinding(binding: MetabrowserShortcutBinding): MetabrowserShortcutBinding;
+  validateCommand(command: MetabrowserShortcutCommand): boolean;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -567,6 +661,7 @@ declare global {
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
+    MetabrowserKeyboardShortcuts: MetabrowserKeyboardShortcutsRuntime;
     MetabrowserPendingTallyDiagnostics: MetabrowserPendingTallyDiagnosticsRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
