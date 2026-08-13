@@ -5,7 +5,7 @@ title: Folder views and treemap overview
 kind: epic
 status: open
 priority: 1
-version: 33
+version: 34
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
 labels: []
 dependencies: []
@@ -41,7 +41,8 @@ child_order_hints:
   - is-01kzy2391qr2r6mbjc2hhwytyc
   - is-01kzy239k2j0nnk1h87mrxkg9p
   - is-01kzy23a0qde2cbnfhrfdjtp2y
+  - is-01kzy5v3ztmm470nec8b1ae7rn
 created_at: 2026-07-20T06:21:20.085Z
-updated_at: 2026-08-13T17:18:11.990Z
+updated_at: 2026-08-13T18:23:37.977Z
 ---
 Implementation epic for the folder views and treemap overview spec. Phases: (1) folder views framework, (2) rollup data plane, (3) treemap view. Children carry per-file scope; the spec's Design section is the authority.
