@@ -108,6 +108,22 @@ def test_animated_removal_retains_its_focus_repair_snapshot() -> None:
     assert "treeKeyboard?.synchronize(removalMutation);" in remove
 
 
+def test_recursive_collapse_batches_tree_synchronization() -> None:
+    source = _app()
+    collapse = _function(source, "collapseAllDescendants", 700)
+    assert "setFolderExpanded(folder, false, { synchronize: false });" in collapse
+    assert "treeKeyboard?.synchronize()" not in collapse
+
+    toggle = _function(source, "toggleTreeFolder", 1200)
+    recursive_collapse = toggle[
+        toggle.index("if (options.recursive && expanded)") : toggle.index(
+            "} else if (options.recursive)"
+        )
+    ]
+    assert "setFolderExpanded(row, false, { synchronize: false });" in recursive_collapse
+    assert toggle.count("treeKeyboard?.synchronize();") == 1
+
+
 def test_tree_focus_ring_is_token_based_and_preview_has_no_tree_listener() -> None:
     css = proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
     start = css.index(".tree-item:focus-visible")

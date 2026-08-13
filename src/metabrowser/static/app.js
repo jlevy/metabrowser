@@ -1854,12 +1854,13 @@ function collapseAllDescendants(container) {
   container.querySelectorAll(".tree-children").forEach((ch) => {
     var folder = ch.previousElementSibling;
     if (folder?.classList.contains("tree-folder")) {
-      setFolderExpanded(folder, false);
+      setFolderExpanded(folder, false, { synchronize: false });
     }
   });
 }
 
-function setFolderExpanded(row, expanded) {
+function setFolderExpanded(row, expanded, options) {
+  options = options || {};
   var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
   if (
     !row.classList.contains("tree-folder") ||
@@ -1872,7 +1873,9 @@ function setFolderExpanded(row, expanded) {
   row.classList.toggle("expanded", expanded);
   row.classList.toggle("collapsed", !expanded);
   row.setAttribute("aria-expanded", String(expanded));
-  treeKeyboard?.synchronize();
+  if (options.synchronize !== false) {
+    treeKeyboard?.synchronize();
+  }
   if (expanded && children.querySelector(":scope > .tree-lazy-placeholder")) {
     return loadSubtree(row.dataset.path, children).then(() => {
       treeKeyboard?.synchronize();
@@ -1889,7 +1892,7 @@ async function toggleTreeFolder(row, options) {
   }
   if (options.recursive && expanded) {
     collapseAllDescendants(children);
-    setFolderExpanded(row, false);
+    setFolderExpanded(row, false, { synchronize: false });
   } else if (options.recursive) {
     await setFolderExpanded(row, true);
     await expandAllDescendants(children);
@@ -5023,6 +5026,7 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
     document.querySelector(`.tree-page-more[data-page-id="${escapePathForSelector(pageId)}"]`)
   );
   if (!sentinel) {
+    pendingTreePages.delete(pageId);
     return;
   }
   var container = sentinel.parentElement;
@@ -5413,6 +5417,9 @@ function _removeRenderedRowsImmediately(path) {
     if (row.classList.contains("tree-folder")) {
       var children = row.nextElementSibling;
       if (children?.classList.contains("tree-children")) {
+        children.querySelectorAll(".tree-page-more[data-page-id]").forEach((sentinel) => {
+          pendingTreePages.delete(/** @type {HTMLElement} */ (sentinel).dataset.pageId);
+        });
         children.remove();
       }
     }

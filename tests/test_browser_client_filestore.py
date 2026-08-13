@@ -552,6 +552,20 @@ def test_live_removals_update_deferred_pages_before_mounting() -> None:
     assert "pendingTreePages.delete(pageId)" in js
 
 
+def test_type_replacement_discards_deferred_pages_in_removed_subtree() -> None:
+    js = _read_app_js()
+    sync_start = js.index("function _synchronizeDeferredTreePage(pageId, page")
+    sync_block = js[sync_start : sync_start + 500]
+    assert "if (!sentinel)" in sync_block
+    assert "pendingTreePages.delete(pageId)" in sync_block
+
+    remove_start = js.index("function _removeRenderedRowsImmediately(path)")
+    remove_block = js[remove_start : remove_start + 1200]
+    assert 'querySelectorAll(".tree-page-more[data-page-id]")' in remove_block
+    assert "pendingTreePages.delete" in remove_block
+    assert remove_block.index("pendingTreePages.delete") < remove_block.index("children.remove()")
+
+
 def test_index_progress_updates_by_file_count_bucket() -> None:
     js = _read_app_js()
     assert "INDEX_PROGRESS_UPDATE_FILES" in js
