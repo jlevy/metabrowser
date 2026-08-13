@@ -28,8 +28,6 @@ const LAYOUT_DEFAULTS = {
   /** Directory cells narrower/shorter than this never nest children. */
   nestMinW: 72,
   nestMinH: 48,
-  /** Reserved label strip at the top of a nested directory cell (px). */
-  headerPx: 16,
   /** Inner padding between a directory cell border and its children (px). */
   padPx: 2,
 };
@@ -39,13 +37,15 @@ const TYPOGRAPHY_DEFAULTS = Object.freeze({
   labelMaxPx: 24,
   valueMinPx: 10,
   valueMaxPx: 18,
+  /** Floor for the label strip derived by `cellTypography`; not a layout override. */
+  headerMinPx: 16,
   basisMinPx: 24,
   basisMaxPx: 360,
 });
 
 /**
  * @typedef {{x: number, y: number, w: number, h: number}} Rect
- * @typedef {{value: number} & Record<string, any>} WeightedItem
+ * @typedef {{value: number, bytes?: number, count?: number} & Record<string, any>} WeightedItem
  */
 
 /** @param {number} value @param {number} min @param {number} max */
@@ -77,7 +77,7 @@ function cellTypography(rect) {
   return Object.freeze({
     labelPx,
     valuePx,
-    headerPx: Math.max(LAYOUT_DEFAULTS.headerPx, Math.ceil(labelPx * 1.2 + 4)),
+    headerPx: Math.max(TYPOGRAPHY_DEFAULTS.headerMinPx, Math.ceil(labelPx * 1.2 + 4)),
   });
 }
 
@@ -222,7 +222,7 @@ function restValue(rest, opts) {
  * @param {number} capacity  max rects to emit, including the remainder
  * @param {number} minPx
  * @returns {{placed: {item: WeightedItem, x: number, y: number, w: number, h: number}[],
- *   remainder: {x: number, y: number, w: number, h: number, value: number, count: number} | null}}
+ *   remainder: {x: number, y: number, w: number, h: number, value: number, count: number, bytes: number} | null}}
  */
 function packLevel(items, rect, capacity, minPx) {
   /** @type {{item: WeightedItem, x: number, y: number, w: number, h: number}[]} */
@@ -232,12 +232,14 @@ function packLevel(items, rect, capacity, minPx) {
   }
   let remainderValue = 0;
   let remainderCount = 0;
+  let remainderBytes = 0;
   /** @type {WeightedItem[]} */
   let survivors = [];
   for (const it of items) {
     if (it.rest) {
       remainderValue += it.value;
       remainderCount += Number(it.count) || 0;
+      remainderBytes += Number(it.bytes) || 0;
     } else if (it.value > 0) {
       survivors.push(it);
     }
@@ -248,14 +250,14 @@ function packLevel(items, rect, capacity, minPx) {
     for (const it of cut) {
       remainderValue += it.value;
       remainderCount += Number(it.count) || 0;
+      remainderBytes += Number(it.bytes) || 0;
     }
     survivors = kept;
   };
 
   // Capacity pass: reserve one slot for the remainder when anything
   // must fold into it.
-  const needsRemainderSlot = () => remainderValue > 0 || false;
-  let limit = capacity - (needsRemainderSlot() ? 1 : 0);
+  let limit = capacity - (remainderValue > 0 ? 1 : 0);
   if (survivors.length > limit) {
     limit = Math.max(0, capacity - 1);
     foldCut(survivors.slice(0, limit), survivors.slice(limit));
@@ -266,7 +268,7 @@ function packLevel(items, rect, capacity, minPx) {
     /** @type {WeightedItem[]} */
     const withRemainder = survivors.slice();
     if (remainderValue > 0) {
-      withRemainder.push({ value: remainderValue, rest: true });
+      withRemainder.push({ value: remainderValue, bytes: remainderBytes, rest: true });
     }
     withRemainder.sort((a, b) => b.value - a.value);
     return squarify(withRemainder, rect);
@@ -285,7 +287,7 @@ function packLevel(items, rect, capacity, minPx) {
     placed = layoutOnce();
   }
 
-  /** @type {{x: number, y: number, w: number, h: number, value: number, count: number} | null} */
+  /** @type {{x: number, y: number, w: number, h: number, value: number, count: number, bytes: number} | null} */
   let remainder = null;
   /** @type {{item: WeightedItem, x: number, y: number, w: number, h: number}[]} */
   const emitted = [];
@@ -298,6 +300,7 @@ function packLevel(items, rect, capacity, minPx) {
         h: p.h,
         value: remainderValue,
         count: remainderCount,
+        bytes: remainderBytes,
       };
     } else {
       emitted.push(p);
@@ -341,6 +344,12 @@ function layoutTree(rootNode, viewport, options) {
       if (value > 0) {
         items.push({
           value,
+          bytes:
+            child.type === "dir"
+              ? excludeIgnored
+                ? child.unignored_size
+                : child.total_size
+              : child.size,
           count:
             child.type === "dir" ? (excludeIgnored ? child.unignored_files : child.total_files) : 1,
           node: child,
@@ -351,6 +360,7 @@ function layoutTree(rootNode, viewport, options) {
     if (restVal > 0) {
       items.push({
         value: restVal,
+        bytes: excludeIgnored ? dirNode.rest.unignored_size : dirNode.rest.size,
         count: excludeIgnored ? dirNode.rest.unignored_files : dirNode.rest.files,
         rest: true,
       });
@@ -413,7 +423,7 @@ function layoutTree(rootNode, viewport, options) {
         depth,
         value: packed.remainder.value,
         files: packed.remainder.count,
-        bytes: opts.metric === "size" ? packed.remainder.value : 0,
+        bytes: packed.remainder.bytes,
         ...typography,
       });
     }

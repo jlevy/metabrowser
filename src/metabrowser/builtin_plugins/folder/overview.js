@@ -62,7 +62,7 @@ export function publishPrintState(container, records, mb) {
  * @param {PanelRegistry} registry
  */
 export function mountOverview(container, initialContext, mb, registry) {
-  container.innerHTML = "";
+  container.replaceChildren();
   const stack = document.createElement("div");
   stack.className = "folder-overview-stack";
   container.append(stack);
@@ -74,8 +74,10 @@ export function mountOverview(container, initialContext, mb, registry) {
   /** @type {Array<PanelRecord>} */
   const records = registry.listPanels().map((descriptor) => {
     const elements = createPanelSlot(descriptor);
-    elements.body.innerHTML =
-      '<div class="folder-overview-loading mb-delayed-loading" aria-hidden="true"></div>';
+    const loading = document.createElement("div");
+    loading.className = "folder-overview-loading mb-delayed-loading";
+    loading.setAttribute("aria-hidden", "true");
+    elements.body.append(loading);
     stack.append(elements.slot);
     return {
       descriptor,

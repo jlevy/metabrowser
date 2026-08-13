@@ -62,17 +62,17 @@ class _SubtreeAggregate:
 
 def build_rollup(
     entries: Mapping[str, FsEntry],
+    children_by_parent: Mapping[str, Sequence[FsEntry]],
     root_path: str,
     options: RollupOptions,
     ancestor_gitignored: bool,
 ) -> RollupResult | None:
-    """Build a bounded node tree and exact extension tallies without filesystem I/O."""
+    """Build a bounded node tree from a snapshot and its reusable child index."""
 
     root_entry = entries.get(root_path)
     if root_entry is None or root_entry.type != "dir":
         return None
 
-    children_by_parent = _group_children(entries)
     aggregates: dict[str, _SubtreeAggregate] = {}
     root_ignored = ancestor_gitignored or root_entry.gitignored
     root_aggregate = _aggregate_subtree(
@@ -95,13 +95,15 @@ def build_rollup(
     }
 
 
-def _group_children(entries: Mapping[str, FsEntry]) -> dict[str, list[FsEntry]]:
-    children_by_parent: dict[str, list[FsEntry]] = {}
+def group_rollup_children(entries: Mapping[str, FsEntry]) -> dict[str, tuple[FsEntry, ...]]:
+    """Index immutable child sequences for repeated subtree rollups."""
+
+    grouped: dict[str, list[FsEntry]] = {}
     for entry in entries.values():
         if entry.path == entry.parent:
             continue
-        children_by_parent.setdefault(entry.parent, []).append(entry)
-    return children_by_parent
+        grouped.setdefault(entry.parent, []).append(entry)
+    return {parent: tuple(children) for parent, children in grouped.items()}
 
 
 def _aggregate_subtree(
@@ -297,15 +299,20 @@ def _extension_scores(aggregate: _SubtreeAggregate, key: str) -> tuple[float, fl
     return max(file_score, byte_score), byte_score, file_score
 
 
+def _all_extension_keys(aggregate: _SubtreeAggregate) -> set[str]:
+    keys = set(aggregate.ext_files)
+    keys.update(aggregate.ext_bytes)
+    keys.update(aggregate.ext_files_unignored)
+    keys.update(aggregate.ext_bytes_unignored)
+    return keys
+
+
 def _select_extension_keys(
     aggregate: _SubtreeAggregate,
     limit: int,
     rank_mode: RollupRank,
 ) -> list[str]:
-    keys = set(aggregate.ext_files)
-    keys.update(aggregate.ext_bytes)
-    keys.update(aggregate.ext_files_unignored)
-    keys.update(aggregate.ext_bytes_unignored)
+    keys = _all_extension_keys(aggregate)
     if rank_mode == "dual":
         ordered = sorted(
             keys,
@@ -340,11 +347,7 @@ def _serialize_extension_tallies(
         )
         for key in selected_keys
     ]
-    all_keys = set(aggregate.ext_files)
-    all_keys.update(aggregate.ext_bytes)
-    all_keys.update(aggregate.ext_files_unignored)
-    all_keys.update(aggregate.ext_bytes_unignored)
-    omitted = all_keys - selected
+    omitted = _all_extension_keys(aggregate) - selected
     if omitted:
         rows.append(
             (
@@ -364,4 +367,5 @@ __all__ = [
     "RollupOptions",
     "RollupRank",
     "build_rollup",
+    "group_rollup_children",
 ]

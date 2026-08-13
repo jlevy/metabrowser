@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -67,6 +68,33 @@ def test_rollup_route_envelope_and_wire_shape(tmp_path: Path) -> None:
     assert node["total_files"] == 2
     assert isinstance(body["ext_tallies"], list)
     assert body["ext_tallies"][0][0] in (".py", ".md")
+
+
+def test_rollup_route_runs_aggregation_off_the_event_loop(tmp_path: Path, monkeypatch) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "one.py").write_text("x")
+
+    async def scenario() -> None:
+        inventory = get_inventory()
+        inventory.start(tmp_path)
+        await inventory.wait_until_done(10)
+        event_loop_thread = threading.get_ident()
+        worker_threads: list[int] = []
+        original_rollup = inventory.rollup
+
+        def recording_rollup(*args: Any, **kwargs: Any) -> Any:
+            worker_threads.append(threading.get_ident())
+            return original_rollup(*args, **kwargs)
+
+        monkeypatch.setattr(inventory, "rollup", recording_rollup)
+        request = Mock(spec=["query_params", "headers"])
+        request.query_params = _FakeQuery({"path": ""})
+        request.headers = {}
+        response = await server.api_rollup(request)
+        assert response.status_code == 200
+        assert worker_threads and worker_threads[0] != event_loop_thread
+
+    asyncio.run(scenario())
 
 
 def test_rollup_route_404s(tmp_path: Path) -> None:

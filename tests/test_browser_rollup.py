@@ -18,6 +18,7 @@ from typing import Any
 
 from watchfiles import Change
 
+from metabrowser import inventory as inventory_module
 from metabrowser.events import FsChange, FsEntry, FsUpsert
 from metabrowser.inventory import InventoryIndex
 from metabrowser.watch_backends import _emit_for_path
@@ -131,6 +132,38 @@ def test_rollup_none_for_files_and_unknown_paths(tmp_path: Path) -> None:
     index = _build_index(tmp_path)
     assert index.rollup("file.txt", depth=2, top=10, ext_top=4) is None
     assert index.rollup("missing", depth=2, top=10, ext_top=4) is None
+
+
+def test_rollup_reuses_child_index_until_inventory_changes(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "leaf").mkdir()
+    (tmp_path / "leaf" / "one.txt").write_text("one")
+    index = _build_index(tmp_path)
+    group_calls = 0
+    original_group = inventory_module.group_rollup_children
+
+    def recording_group(entries):
+        nonlocal group_calls
+        group_calls += 1
+        return original_group(entries)
+
+    monkeypatch.setattr(inventory_module, "group_rollup_children", recording_group)
+    first = index.rollup("leaf", depth=1, top=10, ext_top=4)
+    second = index.rollup("leaf", depth=1, top=10, ext_top=4)
+    assert first == second
+    assert group_calls == 1
+
+    added = FsEntry.for_observed_file(
+        path="leaf/two.md",
+        parent="leaf",
+        name="two.md",
+        size=3,
+        mtime_ns=1_700_000_000_000_000_000,
+    )
+    index.apply_live_entry(added)
+    refreshed = index.rollup("leaf", depth=1, top=10, ext_top=4)
+    assert refreshed is not None
+    assert refreshed["node"]["total_files"] == 2
+    assert group_calls == 2
 
 
 def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> None:

@@ -333,6 +333,27 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   );
 
   view.updateDistributionView(handle, {
+    ...updated,
+    indexFailed: true,
+    scanning: false,
+  });
+  check(
+    "failed index has terminal status copy",
+    handle.status.textContent ===
+      "Indexing failed; percentages cover files indexed before the failure.",
+    handle.status.textContent,
+  );
+
+  view.updateDistributionView(handle, {
+    state: "failed",
+    rows: [],
+  });
+  check(
+    "failed index without totals replaces the loading skeleton",
+    handle.body.children[0].textContent === "Indexing failed; no file summary is available.",
+  );
+
+  view.updateDistributionView(handle, {
     state: "empty",
     rows: [],
     filesText: "0 files",

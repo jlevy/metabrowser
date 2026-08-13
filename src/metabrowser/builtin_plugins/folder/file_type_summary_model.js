@@ -145,7 +145,15 @@ export function buildFileTypeSummaryModel(
   classifyCategory = () => "other",
 ) {
   if (!envelope?.totals) {
-    return Object.freeze({ state: /** @type {const} */ ("pending"), rows: [], files: 0, bytes: 0 });
+    const failed = envelope?.indexStatus === "failed";
+    return Object.freeze({
+      state: /** @type {"pending" | "failed"} */ (failed ? "failed" : "pending"),
+      rows: [],
+      files: 0,
+      bytes: 0,
+      scanning: envelope?.indexStatus === "scanning",
+      indexFailed: failed,
+    });
   }
   const population = selectPopulation(envelope, showIgnored);
   if (!population) {
@@ -171,7 +179,7 @@ export function buildFileTypeSummaryModel(
       });
     })
     .filter((row) => row.files !== 0 || row.bytes !== 0)
-    .sort((left, right) => (left.key === OTHER_KEY ? 1 : right.key === OTHER_KEY ? -1 : 0));
+    .sort((left, right) => Number(left.key === OTHER_KEY) - Number(right.key === OTHER_KEY));
 
   const base = {
     rows,
@@ -197,7 +205,8 @@ export function buildFileTypeSummaryModel(
     ignoredFileShare: percentShare(population.ignoredFiles, population.allFiles),
     ignoredByteShare: percentShare(population.ignoredBytes, population.allBytes),
     showIgnored,
-    scanning: envelope.indexStatus !== "done" && envelope.indexStatus !== "complete",
+    scanning: envelope.indexStatus === "scanning",
+    indexFailed: envelope.indexStatus === "failed",
     indexedFiles: envelope.indexedFiles,
     maxFiles: envelope.maxFiles,
   };

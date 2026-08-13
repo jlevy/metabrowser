@@ -30,31 +30,53 @@ export function assignSlot(session, key, slotCount) {
   return fallback;
 }
 
+/** @param {{assignments: Map<string, number>, reserved: Set<number>, consumers: Map<number, Set<string>>}} session @param {number} slotCount */
+function reconcileSession(session, slotCount) {
+  const liveKeys = new Set();
+  for (const consumerKeys of session.consumers.values()) {
+    for (const key of consumerKeys) {
+      liveKeys.add(key);
+    }
+  }
+  for (const key of session.assignments.keys()) {
+    if (!liveKeys.has(key)) {
+      session.assignments.delete(key);
+    }
+  }
+  session.reserved.clear();
+  for (const slot of session.assignments.values()) {
+    session.reserved.add(slot);
+  }
+  for (const key of liveKeys) {
+    assignSlot(session, key, slotCount);
+  }
+}
+
 /** @param {number} slotCount */
 export function createCategoryPalettePool(slotCount) {
   if (!Number.isInteger(slotCount) || slotCount < 1) {
     throw new TypeError("palette slot count must be a positive integer");
   }
-  /** @type {Map<string, {assignments: Map<string, number>, reserved: Set<number>, refs: number}>} */
+  /** @type {Map<string, {assignments: Map<string, number>, reserved: Set<number>, consumers: Map<number, Set<string>>, refs: number}>} */
   const sessions = new Map();
+  let consumerSequence = 0;
   return Object.freeze({
     /** @param {string} path */
     acquire(path) {
       let session = sessions.get(path);
       if (!session) {
-        session = { assignments: new Map(), reserved: new Set(), refs: 0 };
+        session = { assignments: new Map(), reserved: new Set(), consumers: new Map(), refs: 0 };
         sessions.set(path, session);
       }
       session.refs += 1;
+      const consumerId = ++consumerSequence;
+      session.consumers.set(consumerId, new Set());
       let released = false;
       return Object.freeze({
         /** @param {Array<string>} keys */
         sync(keys) {
-          for (const key of keys) {
-            if (key !== OTHER_KEY) {
-              assignSlot(session, key, slotCount);
-            }
-          }
+          session.consumers.set(consumerId, new Set(keys.filter((key) => key !== OTHER_KEY)));
+          reconcileSession(session, slotCount);
         },
         /** @param {string} key */
         slotFor(key) {
@@ -72,8 +94,11 @@ export function createCategoryPalettePool(slotCount) {
           }
           released = true;
           session.refs -= 1;
+          session.consumers.delete(consumerId);
           if (session.refs === 0) {
             sessions.delete(path);
+          } else {
+            reconcileSession(session, slotCount);
           }
         },
       });

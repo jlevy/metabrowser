@@ -95,6 +95,34 @@ async function importSource(relative) {
     "scope switches locally",
     modelModule.buildFileTypeSummaryModel(normalized, false, formatters).rows[0].files === 145,
   );
+  const withRemainder = modelModule.normalizeRollupEnvelope({
+    ...raw,
+    ext_tallies: [
+      ["", 1, 1, 1, 1],
+      [".py", 150, 10000000, 145, 9500000],
+      [".md", 6, 999999, 4, 499999],
+    ],
+  });
+  check(
+    "remainder row sorts last with a reflexive comparator",
+    modelModule
+      .buildFileTypeSummaryModel(withRemainder, true, formatters)
+      .rows.map((row) => row.key)
+      .join(",") === ".py,.md,",
+  );
+  const failed = modelModule.normalizeRollupEnvelope({ ...raw, index_status: "failed" });
+  const failedModel = modelModule.buildFileTypeSummaryModel(failed, true, formatters);
+  check("failed index is terminal", failedModel.scanning === false);
+  check("failed index has a distinct flag", failedModel.indexFailed === true);
+  const failedWithoutTotals = modelModule.normalizeRollupEnvelope({
+    ...raw,
+    index_status: "failed",
+    node: null,
+  });
+  check(
+    "failed index without totals is not a pending skeleton",
+    modelModule.buildFileTypeSummaryModel(failedWithoutTotals, true, formatters).state === "failed",
+  );
   check("percent zero", modelModule.formatPercent(0, 0, new Intl.NumberFormat()) === "0%");
   check(
     "percent tiny",
@@ -131,6 +159,26 @@ async function importSource(relative) {
   const pySlot = first.slotFor(".py");
   first.sync([".md"]);
   check("palette reservation stable", first.slotFor(".py") === pySlot);
+  const churn = paletteModule.createCategoryPalettePool(2).acquire("churn");
+  churn.sync(["a", "b"]);
+  const releasedSlot = churn.slotFor("a");
+  churn.sync(["b"]);
+  churn.sync(["b", "c"]);
+  check("palette reclaims slots for removed keys", churn.slotFor("c") === releasedSlot);
+  churn.release();
+  const sharedPool = paletteModule.createCategoryPalettePool(3);
+  const overviewPalette = sharedPool.acquire("shared");
+  const treemapPalette = sharedPool.acquire("shared");
+  overviewPalette.sync([".py", ".md"]);
+  const sharedPySlot = overviewPalette.slotFor(".py");
+  treemapPalette.sync([".py", ".json"]);
+  overviewPalette.sync([".md"]);
+  check(
+    "palette retains keys used by another view",
+    treemapPalette.slotFor(".py") === sharedPySlot,
+  );
+  overviewPalette.release();
+  treemapPalette.release();
   check("other neutral", first.classFor("") === "mb-distribution-other");
   const second = pool.acquire("src");
   check("cross-view palette", second.slotFor(".py") === pySlot);

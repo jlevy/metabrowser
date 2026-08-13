@@ -1019,7 +1019,6 @@ async def index(_request: Request) -> HTMLResponse:
     return HTMLResponse(html)
 
 
-@log_async_calls()
 async def _ensure_inventory_serving(subpath: str) -> bool:
     """Start the inventory walker if needed, wait briefly on a cold
     start, and report whether the index can serve *subpath*.
@@ -1053,6 +1052,7 @@ async def _ensure_inventory_serving(subpath: str) -> bool:
     return True if not subpath else inventory.get(subpath) is not None
 
 
+@log_async_calls()
 async def api_tree(request: Request) -> JSONResponse:
     subpath = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
@@ -1144,6 +1144,7 @@ async def api_tree(request: Request) -> JSONResponse:
     )
 
 
+@log_async_calls(if_slower_than=0.1)
 async def api_rollup(request: Request) -> JSONResponse:
     """Bounded treemap rollup for a directory subtree.
 
@@ -1151,8 +1152,10 @@ async def api_rollup(request: Request) -> JSONResponse:
     ROLLUP_* settings bounds. `node` is null while the index cannot
     serve the path yet (cold start); the client renders that as a
     pending treemap and refreshes off `/api/events` activity. Totals
-    always cover the full subtree; `depth` bounds only the emitted
-    nodes.
+    always cover the full subtree. Depth truncation is represented by
+    `children: null` without a rest bucket; node-budget truncation can
+    retain emitted `children` alongside a `rest` bucket for their
+    omitted siblings.
     """
 
     subpath = request.query_params.get("path", "")
@@ -1182,17 +1185,16 @@ async def api_rollup(request: Request) -> JSONResponse:
 
     inventory = get_inventory()
     inv_can_serve = await _ensure_inventory_serving(subpath)
-    result = (
-        inventory.rollup(
+    result = None
+    if inv_can_serve:
+        result = await asyncio.to_thread(
+            inventory.rollup,
             subpath,
             depth=depth,
             top=top,
             ext_top=ext_top,
             ext_rank=ext_rank,
         )
-        if inv_can_serve
-        else None
-    )
     return JSONResponse(
         {
             "root": str(_resolved_root_dir()),
@@ -1379,7 +1381,6 @@ def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONRespo
     )
 
 
-@log_async_calls(if_slower_than=0.1)
 async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
     """Directory envelope for `/api/file`: the folder analog of a file response.
 
@@ -1426,6 +1427,7 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
     return JSONResponse(payload, headers={"cache-control": "no-store"})
 
 
+@log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
     try:

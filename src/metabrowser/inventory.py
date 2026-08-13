@@ -44,8 +44,9 @@ from __future__ import annotations
 import asyncio
 import heapq
 import logging
+import threading
 import time
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Literal
@@ -69,7 +70,9 @@ from metabrowser.inventory_rollup import (
     RollupOptions,
     RollupRank,
     build_rollup,
+    group_rollup_children,
 )
+from metabrowser.settings import ROLLUP_MAX_NODES
 from metabrowser.walker import (
     DEFAULT_FIRST_RENDER_DEPTH,
     DEFAULT_MAX_DEPTH,
@@ -121,6 +124,16 @@ class InventoryIndex:
     ) -> None:
         self._root: Path | None = None
         self._entries: dict[str, FsEntry] = {}
+        self._rollup_cache_lock = threading.Lock()
+        self._rollup_generation = 0
+        self._rollup_cache: (
+            tuple[
+                int,
+                dict[str, FsEntry],
+                dict[str, tuple[FsEntry, ...]],
+            ]
+            | None
+        ) = None
         self._direct_child_counts: dict[str, int] = {}
         self._child_mtime_heaps: dict[str, list[tuple[int, str]]] = {}
         self._recorded_child_mtimes: dict[str, tuple[str, int]] = {}
@@ -179,7 +192,10 @@ class InventoryIndex:
         if self._walker_task is not None and not self._walker_task.done():
             self._walker_task.cancel()
         self._walker_task = None
-        self._entries.clear()
+        with self._rollup_cache_lock:
+            self._entries.clear()
+            self._rollup_generation += 1
+            self._rollup_cache = None
         self._direct_child_counts.clear()
         self._child_mtime_heaps.clear()
         self._recorded_child_mtimes.clear()
@@ -448,8 +464,6 @@ class InventoryIndex:
     ) -> RollupResult | None:
         """Return the bounded rollup for an indexed directory."""
 
-        from metabrowser.settings import ROLLUP_MAX_NODES
-
         options = RollupOptions(
             depth=depth,
             top=top,
@@ -457,14 +471,52 @@ class InventoryIndex:
             ext_rank=ext_rank,
             max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
         )
+        entries, children_by_parent = self._rollup_snapshot()
         return build_rollup(
-            self._entries,
+            entries,
+            children_by_parent,
             path,
             options,
-            ancestor_gitignored=self._ancestor_gitignored(path),
+            ancestor_gitignored=self._ancestor_gitignored(path, entries),
         )
 
-    def _ancestor_gitignored(self, path: str) -> bool:
+    def _rollup_snapshot(
+        self,
+    ) -> tuple[dict[str, FsEntry], dict[str, tuple[FsEntry, ...]]]:
+        """Return one immutable-by-convention snapshot per inventory generation."""
+
+        with self._rollup_cache_lock:
+            cached = self._rollup_cache
+            if cached is not None and cached[0] == self._rollup_generation:
+                return cached[1], cached[2]
+            generation = self._rollup_generation
+            entries = dict(self._entries)
+
+        children_by_parent = group_rollup_children(entries)
+        with self._rollup_cache_lock:
+            if generation == self._rollup_generation:
+                self._rollup_cache = (generation, entries, children_by_parent)
+        return entries, children_by_parent
+
+    def _replace_index_entry(self, entry: FsEntry) -> None:
+        """Store an entry and invalidate cached rollup topology atomically."""
+
+        with self._rollup_cache_lock:
+            self._entries[entry.path] = entry
+            self._rollup_generation += 1
+            self._rollup_cache = None
+
+    def _pop_index_entry(self, path: str) -> FsEntry | None:
+        """Remove an entry and invalidate cached rollup topology atomically."""
+
+        with self._rollup_cache_lock:
+            entry = self._entries.pop(path, None)
+            if entry is not None:
+                self._rollup_generation += 1
+                self._rollup_cache = None
+            return entry
+
+    def _ancestor_gitignored(self, path: str, entries: Mapping[str, FsEntry]) -> bool:
         """Whether any strict ancestor of *path* carries the gitignore flag."""
 
         if not path:
@@ -473,7 +525,7 @@ class InventoryIndex:
         prefix = ""
         for segment in segments[:-1]:
             prefix = f"{prefix}/{segment}" if prefix else segment
-            ancestor = self._entries.get(prefix)
+            ancestor = entries.get(prefix)
             if ancestor is not None and ancestor.gitignored:
                 return True
         return False
@@ -666,7 +718,7 @@ class InventoryIndex:
         removed_files = [entry for entry in removed_entries if entry.type == "file"]
         outer_parent = target.parent
         for cur in removed:
-            entry = self._entries.pop(cur, None)
+            entry = self._pop_index_entry(cur)
             if entry is not None:
                 if entry.type in ("file", "symlink"):
                     self._adjust_descendant_leaf_aggregates(
@@ -937,7 +989,7 @@ class InventoryIndex:
                 mtime_ns=newest_mtime,
                 write_token=WriteToken(self._generation.get(path, 0)),
             )
-            self._entries[path] = repaired
+            self._replace_index_entry(repaired)
             self._pending_dirs.discard(path)
             self._record_child_mtime(repaired)
             repaired_count += 1
@@ -1066,7 +1118,7 @@ class InventoryIndex:
             self._add_direct_child(entry)
         if entry.type == "dir" and entry.total_files is not None:
             entry = replace(entry, empty=self._descendant_leaf_counts.get(entry.path, 0) == 0)
-        self._entries[entry.path] = entry
+        self._replace_index_entry(entry)
         if entry.type == "dir" and entry.total_files is None:
             self._pending_dirs.add(entry.path)
         else:
@@ -1123,7 +1175,7 @@ class InventoryIndex:
                     empty=self._descendant_leaf_counts.get(cursor, 0) == 0,
                     write_token=WriteToken(self._generation.get(cursor, 0)),
                 )
-                self._entries[cursor] = updated
+                self._replace_index_entry(updated)
                 self._record_child_mtime(updated)
                 updates.append(updated)
             if cursor == "":

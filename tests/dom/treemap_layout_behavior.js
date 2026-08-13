@@ -33,6 +33,10 @@ if (!layout) {
   console.error("MetabrowserTreemapLayout global missing");
   process.exit(1);
 }
+check(
+  "fluid header height is derived rather than a layout override",
+  !("headerPx" in layout.LAYOUT_DEFAULTS),
+);
 
 function check(name, cond, detail) {
   if (!cond) {
@@ -238,6 +242,24 @@ function fileNode(name, pathStr, size, extras) {
     "cap remainder present",
     capped.some((c) => c.kind === "rest" && c.value > 0),
     "no remainder after cap",
+  );
+
+  const fileMetricRoot = dirNode("root", "", {
+    total_files: 12,
+    total_size: 1200,
+    children: [fileNode("kept.py", "kept.py", 200)],
+    rest: { dirs: 0, files: 11, size: 1000, unignored_files: 11, unignored_size: 1000 },
+  });
+  const byFiles = layout.layoutTree(
+    fileMetricRoot,
+    { w: 300, h: 200 },
+    { metric: "files", minCellPx: 0 },
+  );
+  const fileRemainder = byFiles.find((cell) => cell.kind === "rest");
+  check(
+    "file-metric remainder retains its true byte magnitude",
+    fileRemainder && fileRemainder.bytes === 1000,
+    JSON.stringify(fileRemainder),
   );
 }
 
