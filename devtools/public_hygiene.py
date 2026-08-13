@@ -10,7 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GIT_CHECK_IGNORE_TIMEOUT_SECONDS = 30
 SKIP_PARTS = {".git", ".venv", "dist", "node_modules", "__pycache__"}
-SKIP_ROOTS = (ROOT / ".tbd" / "docs",)
+SKIP_ROOTS = (
+    ROOT / ".tbd" / "docs",
+    # Machine-generated issue exports used by tbd sync-failure recovery.
+    ROOT / ".tbd" / "workspaces",
+)
 COMMON_DOC_FOOTER = "This document follows common-doc-guidelines.md."
 COMMON_DOC_EXEMPT_ROOTS = (
     ROOT / ".agents" / "skills",

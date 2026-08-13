@@ -25,6 +25,7 @@ function makeElement() {
     innerHTML: "",
     listeners: {},
     attributes: {},
+    dataset: {},
     style: {},
     addEventListener(type, fn) {
       el.listeners[type] = el.listeners[type] || [];
@@ -174,32 +175,46 @@ sandbox.fetch = async (url) => {
 
 vm.createContext(sandbox);
 for (const relative of [
+  "src/metabrowser/static/request_error.js",
+  "src/metabrowser/static/formatters.js",
+  "src/metabrowser/static/inventory_scope.js",
+  "src/metabrowser/static/resource_context.js",
+  "src/metabrowser/static/view_state.js",
   "src/metabrowser/static/plugin_sdk.js",
-  "src/metabrowser/builtin_plugins/folder/treemap_layout.js",
-  "src/metabrowser/builtin_plugins/markdown/index.js",
-  "src/metabrowser/builtin_plugins/folder/index.js",
 ]) {
   const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
   vm.runInContext(source, sandbox, { filename: relative });
 }
+const moduleSources = [
+  "src/metabrowser/builtin_plugins/folder/treemap_layout.js",
+  "src/metabrowser/builtin_plugins/folder/treemap_model.js",
+];
+for (const relative of moduleSources) {
+  const source = fs
+    .readFileSync(path.join(repoRoot, relative), "utf8")
+    .replace(/^export \{.*\};$/gm, "")
+    .replace(/^export\s+/gm, "");
+  vm.runInContext(source, sandbox, { filename: relative });
+}
+const treemapSource = fs
+  .readFileSync(path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/treemap.js"), "utf8")
+  .replace(/^import .*;$/gm, "")
+  .replace("export function registerTreemap", "function registerTreemap");
+vm.runInContext(treemapSource, sandbox, { filename: "treemap.js" });
+vm.runInContext(
+  `registerTreemap(metabrowser, {
+    acquire() {
+      return {
+        sync() {}, release() {},
+        classFor(key) { return key ? "mb-distribution-slot-1" : "mb-distribution-other"; }
+      };
+    }
+  });`,
+  sandbox,
+);
 
 const mb = sandbox.metabrowser;
 check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
-check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
-
-// ── README view: explicit empty state without a readme_path ─────
-{
-  const container = makeElement();
-  mb.getRegisteredView("folder", "readme").render(container, {
-    path: "sub",
-    raw: { readme_path: "" },
-  });
-  check(
-    "readme empty state",
-    container.innerHTML.includes("No README in this folder"),
-    container.innerHTML,
-  );
-}
 
 // ── Treemap view: toolbar, cells, refresh, toggle, dispose ──────
 (async () => {
@@ -223,7 +238,12 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   });
 
   const view = mb.getRegisteredView("folder", "treemap");
-  view.render(container, { path: "", kind: "folder", raw: { readme_path: "README.md" } });
+  sandbox.MetabrowserViewState.setActive(container, true);
+  const mounted = view.render(container, {
+    path: "",
+    kind: "folder",
+    raw: { readme_path: "README.md" },
+  });
   check("toolbar rendered", container.innerHTML.includes("tm-toolbar"), "no toolbar");
   check(
     "toggle groups present",
@@ -329,7 +349,7 @@ check("readme view registered", !!mb.getRegisteredView("folder", "readme"));
   // Dispose detaches the inventory-change and window-resize listeners.
   const listenerCount = (windowListeners["metabrowser:inventory-change"] || []).length;
   const resizeCount = (windowListeners.resize || []).length;
-  view.dispose();
+  mounted.dispose();
   const afterDispose = (windowListeners["metabrowser:inventory-change"] || []).length;
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;

@@ -50,6 +50,16 @@ sandbox.copyContent = () => {
 };
 vm.createContext(sandbox);
 
+for (const filename of [
+  "request_error.js",
+  "formatters.js",
+  "inventory_scope.js",
+  "resource_context.js",
+  "view_state.js",
+]) {
+  const source = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8");
+  vm.runInContext(source, sandbox, { filename });
+}
 const sdkSource = fs.readFileSync(
   path.join(repoRoot, "src/metabrowser/static/plugin_sdk.js"),
   "utf-8",

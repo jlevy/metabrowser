@@ -293,6 +293,25 @@
   --panel-header-bg: var(--sidebar-bg);
   --panel-cell-padding: 0.35rem 0.6rem;
 
+  /* Aggregate distributions — exact-category marks used to join stacked
+     bars to semantic rows. Text never sits on these colors. */
+  --mb-distribution-category-1: hsl(211 70% 48%);
+  --mb-distribution-category-2: hsl(142 58% 38%);
+  --mb-distribution-category-3: hsl(28 80% 48%);
+  --mb-distribution-category-4: hsl(275 55% 54%);
+  --mb-distribution-category-5: hsl(350 66% 54%);
+  --mb-distribution-category-6: hsl(186 65% 38%);
+  --mb-distribution-category-7: hsl(48 82% 43%);
+  --mb-distribution-category-8: hsl(235 58% 61%);
+  --mb-distribution-category-9: hsl(101 46% 43%);
+  --mb-distribution-category-10: hsl(15 72% 56%);
+  --mb-distribution-category-11: hsl(315 48% 52%);
+  --mb-distribution-category-12: hsl(166 52% 35%);
+  --mb-distribution-other: var(--muted);
+  --mb-distribution-track: var(--viz-surface-sunken);
+  --mb-distribution-track-height: 8px;
+  --mb-distribution-segment-gap: 2px;
+
   /* Icons — one glyph size for every icon in the chrome, whether it is a
      button (gear, printer, copy), a file-type mark in a row, or a menu
      row's leading mark, so icons stay interchangeable wherever they
@@ -908,6 +927,18 @@
   --scrollbar-thumb-hover: hsl(220 10% 46%);
   --tally-skeleton-bg: hsl(220 10% 31%);
   --row-flash-bg: hsl(45 75% 28%);
+  --mb-distribution-category-1: hsl(211 78% 67%);
+  --mb-distribution-category-2: hsl(142 55% 60%);
+  --mb-distribution-category-3: hsl(28 82% 66%);
+  --mb-distribution-category-4: hsl(275 67% 72%);
+  --mb-distribution-category-5: hsl(350 72% 70%);
+  --mb-distribution-category-6: hsl(186 62% 59%);
+  --mb-distribution-category-7: hsl(48 80% 63%);
+  --mb-distribution-category-8: hsl(235 68% 76%);
+  --mb-distribution-category-9: hsl(101 48% 61%);
+  --mb-distribution-category-10: hsl(15 78% 70%);
+  --mb-distribution-category-11: hsl(315 55% 70%);
+  --mb-distribution-category-12: hsl(166 54% 58%);
 
   --viz-text: var(--text);
   --viz-text-muted: hsl(215 12% 68%);
@@ -961,6 +992,46 @@
   --ft-csv-border: hsl(41 25% 30%);
   --chart-grid: hsl(220 13% 24%);
   --chart-label-text: var(--viz-text-meta);
+}
+
+.mb-distribution-slot-1 {
+  --mb-distribution-color: var(--mb-distribution-category-1);
+}
+.mb-distribution-slot-2 {
+  --mb-distribution-color: var(--mb-distribution-category-2);
+}
+.mb-distribution-slot-3 {
+  --mb-distribution-color: var(--mb-distribution-category-3);
+}
+.mb-distribution-slot-4 {
+  --mb-distribution-color: var(--mb-distribution-category-4);
+}
+.mb-distribution-slot-5 {
+  --mb-distribution-color: var(--mb-distribution-category-5);
+}
+.mb-distribution-slot-6 {
+  --mb-distribution-color: var(--mb-distribution-category-6);
+}
+.mb-distribution-slot-7 {
+  --mb-distribution-color: var(--mb-distribution-category-7);
+}
+.mb-distribution-slot-8 {
+  --mb-distribution-color: var(--mb-distribution-category-8);
+}
+.mb-distribution-slot-9 {
+  --mb-distribution-color: var(--mb-distribution-category-9);
+}
+.mb-distribution-slot-10 {
+  --mb-distribution-color: var(--mb-distribution-category-10);
+}
+.mb-distribution-slot-11 {
+  --mb-distribution-color: var(--mb-distribution-category-11);
+}
+.mb-distribution-slot-12 {
+  --mb-distribution-color: var(--mb-distribution-category-12);
+}
+.mb-distribution-other {
+  --mb-distribution-color: var(--mb-distribution-other);
 }
 
 * {

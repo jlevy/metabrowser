@@ -423,17 +423,16 @@ def test_styles_css_drops_the_superseded_recent_chip() -> None:
     assert ".recent-controls" not in css
 
 
-# ── findRootReadme follows the tab refactor ─────────────────
+# ── Default folder route ─────────────────────────────────────
 
 
-def test_find_root_readme_targets_tab_files_panel() -> None:
-    """The selector must match files inside #tab-files, not the
-    old #tree-content > selector that broke after the tab refactor."""
-
+def test_no_hash_opens_the_root_folder_overview() -> None:
+    """The stable root route replaces shell-side README discovery."""
     js = _read_app_js()
-    fn_start = js.index("function findRootReadme()")
-    fn_block = js[fn_start : fn_start + 800]
-    assert "#tab-files > .tree-item.tree-file" in fn_block
+    assert "function findRootReadme()" not in js
+    assert 'var initialPath = hashRoute ? hashParts.path : "";' in js
+    assert "var initialIsDir = hashRoute ? hashParts.isDir : true;" in js
+    assert "selectFile(initialPath, true);" in js
 
 
 # ── DOMContentLoaded wiring ─────────────────────────────────

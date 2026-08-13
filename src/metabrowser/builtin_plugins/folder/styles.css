@@ -203,12 +203,11 @@
   background: var(--viz-surface);
 }
 
-/* File-type fills reuse the ft-* token triplets applied by
-   mb.fileTypeClass; the cell reads the custom properties the class
-   sets rather than naming per-type tokens here. */
+/* Type-grouped fills share the mounted folder distribution palette
+   with the Overview summary. */
 .tm-type-fill {
-  background: var(--ft-bg, var(--viz-surface));
-  border-color: var(--ft-border, var(--viz-border-subtle));
+  background: var(--mb-distribution-color, var(--viz-surface));
+  border-color: var(--mb-distribution-color, var(--viz-border-subtle));
 }
 
 .tm-ignored {

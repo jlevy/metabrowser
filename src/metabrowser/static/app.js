@@ -3604,7 +3604,7 @@ async function selectFile(path, skipHistory) {
           return;
         }
         disposeActivePluginViews();
-        stopFolderHeaderRefresh();
+        stopFolderHeaderSubscription();
         preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading file…</div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
@@ -3693,7 +3693,7 @@ async function selectFile(path, skipHistory) {
             loadingIndicatorTimer = null;
           }
           disposeActivePluginViews();
-          stopFolderHeaderRefresh();
+          stopFolderHeaderSubscription();
           preview.innerHTML = previewErrorHtml(
             caught?.summary || "Could not open this file.",
             errorMessage(err),
@@ -3766,6 +3766,9 @@ function renderFolderHeader(data) {
     upButton +
     `<span class="file-header-path folder-breadcrumb">${rootCrumb}${crumbs.join('<span class="folder-crumb-sep">/</span>')}</span>` +
     summary +
+    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+    (ICONS.print || "") +
+    "</button>" +
     "</div>"
   );
 }
@@ -3793,89 +3796,32 @@ function folderHeaderSummaryHtml(dirInfo) {
 // trigger a debounced envelope refetch that patches the summary strip
 // in place — the server envelope stays the single authority.
 
-/** @type {{path: string, timer: number | null, listener: (e: Event) => void} | null} */
-var activeFolderHeaderRefresh = null;
+/** @type {(() => void) | null} */
+var activeFolderHeaderSubscription = null;
 
-function stopFolderHeaderRefresh() {
-  if (!activeFolderHeaderRefresh) {
+function stopFolderHeaderSubscription() {
+  if (!activeFolderHeaderSubscription) {
     return;
   }
-  window.removeEventListener("metabrowser:inventory-change", activeFolderHeaderRefresh.listener);
-  if (activeFolderHeaderRefresh.timer) {
-    clearTimeout(activeFolderHeaderRefresh.timer);
-  }
-  activeFolderHeaderRefresh = null;
+  activeFolderHeaderSubscription();
+  activeFolderHeaderSubscription = null;
 }
 
-// Change-relevance predicate shared with the SDK's watchRollup: the
-// change is the folder itself, inside it, or an ancestor (ancestor
-// upserts are how deep changes surface at the depth-2 event scope).
-function pathsTouchFolder(changedPaths, folderPath) {
-  if (!Array.isArray(changedPaths)) {
-    return true; // snapshot / resync
+function startFolderHeaderSubscription(path) {
+  stopFolderHeaderSubscription();
+  var folderContext = window.metabrowser?.folderContext;
+  if (!folderContext) {
+    return;
   }
-  for (var i = 0; i < changedPaths.length; i++) {
-    var changed = changedPaths[i];
-    if (typeof changed !== "string") {
-      continue;
+  activeFolderHeaderSubscription = folderContext.subscribe(path, (data) => {
+    if (currentPath !== path || data?.kind !== "folder") {
+      return;
     }
-    if (
-      changed === folderPath ||
-      folderPath === "" ||
-      changed === "" ||
-      changed.startsWith(`${folderPath}/`) ||
-      folderPath.startsWith(`${changed}/`)
-    ) {
-      return true;
+    var summaryEl = document.querySelector("#preview-pane .folder-header-summary");
+    if (summaryEl) {
+      summaryEl.innerHTML = folderHeaderSummaryHtml(data.dir || {});
     }
-  }
-  return false;
-}
-
-function startFolderHeaderRefresh(path) {
-  stopFolderHeaderRefresh();
-  var debounceMs = _METABROWSER_SETTINGS.ROLLUP_WATCH_DEBOUNCE_MS || 1000;
-  /** @type {{path: string, timer: number | null, listener: (e: Event) => void}} */
-  var refresher = {
-    path: path,
-    timer: null,
-    listener: (evt) => {
-      var detail = evt instanceof CustomEvent && evt.detail ? evt.detail : {};
-      if (!pathsTouchFolder(detail.paths, path)) {
-        return;
-      }
-      if (refresher.timer) {
-        clearTimeout(refresher.timer);
-      }
-      refresher.timer = setTimeout(async () => {
-        refresher.timer = null;
-        if (activeFolderHeaderRefresh !== refresher || currentPath !== path) {
-          return;
-        }
-        try {
-          var resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
-          if (!resp.ok) {
-            return;
-          }
-          var data = await resp.json();
-          if (activeFolderHeaderRefresh !== refresher || currentPath !== path) {
-            return;
-          }
-          if (data.kind !== "folder") {
-            return;
-          }
-          var summaryEl = document.querySelector("#preview-pane .folder-header-summary");
-          if (summaryEl) {
-            summaryEl.innerHTML = folderHeaderSummaryHtml(data.dir || {});
-          }
-        } catch (_err) {
-          // Transient refresh failure; the next change retries.
-        }
-      }, debounceMs);
-    },
-  };
-  window.addEventListener("metabrowser:inventory-change", refresher.listener);
-  activeFolderHeaderRefresh = refresher;
+  });
 }
 
 // Build badges based on file kind (data-driven)
@@ -4008,7 +3954,11 @@ function setActivePreviewView(tabId, preview) {
   for (var i = 0; i < tabContents.length; i++) {
     var c = tabContents[i];
     var isActive = !!tabId && c.dataset.tabContent === tabId;
-    c.dataset.activeView = isActive ? "true" : "false";
+    if (window.MetabrowserViewState) {
+      window.MetabrowserViewState.setActive(c, isActive);
+    } else {
+      c.dataset.activeView = isActive ? "true" : "false";
+    }
     if (isActive) {
       active = c;
     }
@@ -4047,12 +3997,17 @@ if (typeof window !== "undefined") {
   window.printActiveView = printActiveView;
 }
 
+document.addEventListener("metabrowser:view-print-state", () => {
+  var preview = document.getElementById("preview-pane");
+  if (preview?.dataset.activeView) {
+    setActivePreviewView(preview.dataset.activeView, preview);
+  }
+});
+
 var activePluginDisposers = [];
 
 function disposeActivePluginViews() {
-  if (!activePluginDisposers.length) {
-    return;
-  }
+  stopFolderHeaderSubscription();
   var disposers = activePluginDisposers;
   activePluginDisposers = [];
   for (var i = 0; i < disposers.length; i++) {
@@ -4065,18 +4020,42 @@ function disposeActivePluginViews() {
 }
 
 function mountPluginView(container, pluginView, ctx) {
-  if (typeof pluginView.dispose === "function") {
-    activePluginDisposers.push(() => pluginView.dispose(container));
-  }
+  /** @type {{disposed: boolean, handle: {dispose: () => void} | null}} */
+  var record = { disposed: false, handle: null };
+  activePluginDisposers.push(() => {
+    if (record.disposed) {
+      return;
+    }
+    record.disposed = true;
+    if (typeof record.handle?.dispose === "function") {
+      record.handle.dispose();
+    }
+    if (typeof pluginView.dispose === "function") {
+      pluginView.dispose(container);
+    }
+  });
   try {
     var maybePromise = pluginView.render(container, ctx);
-    if (maybePromise && typeof maybePromise.catch === "function") {
-      maybePromise.catch((err) => {
+    Promise.resolve(maybePromise).then(
+      (handle) => {
+        if (!handle || typeof handle.dispose !== "function") {
+          return;
+        }
+        if (record.disposed) {
+          handle.dispose();
+        } else {
+          record.handle = handle;
+        }
+      },
+      (err) => {
+        if (record.disposed) {
+          return;
+        }
         console.error("plugin render error:", err);
         container.innerHTML =
           '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
-      });
-    }
+      },
+    );
   } catch (err) {
     console.error("plugin render error:", err);
     container.innerHTML =
@@ -4102,9 +4081,10 @@ function renderFile(data) {
       let html = "";
       if (data.kind === "folder") {
         html = renderFolderHeader(data);
-        startFolderHeaderRefresh(data.path);
+        window.metabrowser?.folderContext?.seed(data.path, data);
+        startFolderHeaderSubscription(data.path);
       } else {
-        stopFolderHeaderRefresh();
+        stopFolderHeaderSubscription();
       }
       if (data.kind !== "folder") {
         var badges = renderBadges(data);
@@ -5462,35 +5442,6 @@ function commitRoute(path, isDir, skipHistory) {
   lastWrittenRoute = { path: path, isDir: isDir };
 }
 
-function serverInitialPath() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  var path = window.METABROWSER_INITIAL_PATH || "";
-  return typeof path === "string" ? path.replace(/\/+$/, "") : "";
-}
-
-// Top-level README (case-insensitive). Returns its path or "" if absent.
-// Auto-navigates on first load when no hash is set, so a worktree with
-// a root readme never opens to the empty "select a file" pane. Scoped
-// to direct children of the tree root: never auto-navs to a README in
-// some nested subdirectory.
-function findRootReadme() {
-  // Files are direct children of the Files panel; Recent is its sibling.
-  var rootFiles = queryHtmlAll("#tab-files > .tree-item.tree-file");
-  for (var i = 0; i < rootFiles.length; i++) {
-    var path = rootFiles[i].dataset.path;
-    if (!path) {
-      continue;
-    }
-    var base = path.split("/").pop();
-    if (base && /^readme\.md$/i.test(base)) {
-      return path;
-    }
-  }
-  return "";
-}
-
 // Expand tree folders along ``path`` (loading lazy subtrees as needed)
 // and mark the target row selected. Returns true if the row exists.
 // Pair with selectFile() for the body; init() kicks off both legs in
@@ -5613,8 +5564,7 @@ function handleRouteChange(event) {
     // means Back reached the initial pre-navigation entry: restore the
     // landing view instead of leaving the stale preview in place.
     if (event.type === "popstate" && lastWrittenRoute) {
-      var fallback = serverInitialPath();
-      navigateToPath(fallback ? fallback : "/", true);
+      navigateToPath("/", true);
     }
     return;
   }
@@ -5685,9 +5635,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // tree because it queries DOM the renderer just produced.
   var hashRoute = parseHashRoute();
   var hashParts = splitHashRoute(hashRoute);
-  var initialPath = hashRoute ? hashParts.path : serverInitialPath();
-  var initialIsDir = hashRoute ? hashParts.isDir : false;
-  if (initialPath || initialIsDir) {
+  var initialPath = hashRoute ? hashParts.path : "";
+  var initialIsDir = hashRoute ? hashParts.isDir : true;
+  if (hashRoute || initialIsDir) {
     selectFile(initialPath, true);
   }
   startIndexProgressPolling();
@@ -5701,17 +5651,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   initPaneResize("tree-resize", ".tree-pane", 180, null);
   if (initialPath) {
     revealInTree(initialPath);
-  } else if (!initialIsDir) {
-    var readme = findRootReadme();
-    if (readme) {
-      // The landing README is not a user navigation — keep the URL
-      // clean, as it was before the palette shared this path.
-      navigateToPath(readme, true);
-    } else {
-      // No hash, no server-seeded file, no root README: land on the
-      // root folder view (treemap) instead of the empty pane.
-      selectFile("", true);
-    }
   }
   // /api/events is the single source for tree decoration and
   // active-file badges; ActiveFileTracker emits fs.change ops

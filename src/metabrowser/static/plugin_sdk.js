@@ -384,6 +384,7 @@
       depth: settings.ROLLUP_DEFAULT_DEPTH,
       top: settings.ROLLUP_DEFAULT_TOP,
       ext_top: settings.ROLLUP_DEFAULT_EXT_TOP,
+      ext_rank: settings.ROLLUP_DEFAULT_EXT_RANK || "bytes",
       debounceMs: settings.ROLLUP_WATCH_DEBOUNCE_MS || ROLLUP_FALLBACK_DEBOUNCE_MS,
     };
   }
@@ -399,7 +400,7 @@
     const options = opts && typeof opts === "object" ? opts : {};
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
-    for (const key of ["depth", "top", "ext_top"]) {
+    for (const key of ["depth", "top", "ext_top", "ext_rank"]) {
       const value = options[key] !== undefined ? options[key] : defaults[key];
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));
@@ -407,33 +408,12 @@
     }
     const resp = await fetch(url.toString(), { signal: options.signal });
     if (!resp.ok) {
-      throw new Error(`fetchRollup ${path || "<root>"}: ${resp.status}`);
+      throw new global.MetabrowserRequestErrors.RequestError("Could not load folder totals.", {
+        operation: "fetchRollup",
+        status: resp.status,
+      });
     }
     return resp.json();
-  }
-
-  function _pathsIntersectScope(changedPaths, scopePath) {
-    // A change matters when it is the scope itself, inside it, or an
-    // ancestor of it — ancestor aggregate upserts are how deep changes
-    // surface at the shell's depth-2 event scope.
-    if (!Array.isArray(changedPaths)) {
-      return true; // snapshot / resync: treat as "anything changed"
-    }
-    for (const changed of changedPaths) {
-      if (typeof changed !== "string") {
-        continue;
-      }
-      if (
-        changed === scopePath ||
-        scopePath === "" ||
-        changed === "" ||
-        changed.startsWith(`${scopePath}/`) ||
-        scopePath.startsWith(`${changed}/`)
-      ) {
-        return true;
-      }
-    }
-    return false;
   }
 
   function watchRollup(path, opts, onUpdate) {
@@ -451,80 +431,19 @@
       throw new Error("watchRollup: onUpdate callback is required");
     }
     const options = opts && typeof opts === "object" ? opts : {};
-    const debounceMs =
-      typeof options.debounceMs === "number" ? options.debounceMs : _rollupSettings().debounceMs;
-    let disposed = false;
-    let timer = null;
-    let controller = null;
-    let stale = false;
-
-    async function refresh() {
-      if (disposed) {
-        return;
-      }
-      stale = false;
-      if (controller) {
-        controller.abort();
-      }
-      controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-      try {
-        const envelope = await fetchRollup(
-          path,
-          Object.assign({}, options, { signal: controller ? controller.signal : undefined }),
-        );
-        if (!disposed) {
-          onUpdate(envelope);
-        }
-      } catch (err) {
-        const isAbort = err instanceof Error && err.name === "AbortError";
-        if (!disposed && !isAbort) {
-          console.warn("watchRollup refresh failed:", err);
-        }
-      }
-    }
-
-    function onInventoryChange(event) {
-      if (disposed) {
-        return;
-      }
-      const detail = event?.detail ? event.detail : {};
-      if (!_pathsIntersectScope(detail.paths, path)) {
-        return;
-      }
-      if (timer) {
-        clearTimeout(timer);
-      }
-      timer = setTimeout(() => {
-        timer = null;
-        if (typeof options.active === "function" && !options.active()) {
-          // Hidden view: remember that data went stale, spend nothing.
-          stale = true;
-          return;
-        }
-        refresh();
-      }, debounceMs);
-    }
-
-    global.addEventListener("metabrowser:inventory-change", onInventoryChange);
-    refresh();
-    return {
-      refresh: refresh,
-      stale() {
-        return stale;
+    return global.MetabrowserInventoryScope.createInventoryWatch(
+      path,
+      {
+        active: options.active,
+        debounceMs:
+          typeof options.debounceMs === "number"
+            ? options.debounceMs
+            : _rollupSettings().debounceMs,
+        fetch: (signal) => fetchRollup(path, Object.assign({}, options, { signal })),
+        onError: options.onError || ((err) => console.warn("watchRollup refresh failed:", err)),
       },
-      dispose() {
-        disposed = true;
-        global.removeEventListener("metabrowser:inventory-change", onInventoryChange);
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        if (controller) {
-          controller.abort();
-          controller = null;
-        }
-      },
-    };
+      onUpdate,
+    );
   }
 
   // Shell-surface proxies — same pattern as `icons`: plugins reach the
@@ -861,6 +780,13 @@
       previous.abort();
     }
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const externalSignal = options?.signal;
+    const abortFromExternal = () => controller?.abort();
+    if (externalSignal?.aborted) {
+      controller?.abort();
+    } else {
+      externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
+    }
     if (controller) {
       _kpressInflight.set(dedupKey, controller);
     }
@@ -872,6 +798,7 @@
         signal: controller ? controller.signal : undefined,
       });
     } finally {
+      externalSignal?.removeEventListener("abort", abortFromExternal);
       if (controller && _kpressInflight.get(dedupKey) === controller) {
         _kpressInflight.delete(dedupKey);
       }
@@ -996,16 +923,15 @@
   }
 
   function formatSize(bytes) {
-    // Match the convention used everywhere else in the shell so plugin
-    // displays line up visually.
-    const n = Number(bytes) || 0;
-    if (n < 1024) {
-      return `${n} B`;
-    }
-    if (n < 1024 * 1024) {
-      return `${(n / 1024).toFixed(1)} KB`;
-    }
-    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    return global.MetabrowserFormatters.formatBytes(Number(bytes) || 0);
+  }
+
+  function formatInteger(value) {
+    return global.MetabrowserFormatters.formatInteger(Number(value) || 0);
+  }
+
+  function formatFileCount(value) {
+    return global.MetabrowserFormatters.formatFileCount(Number(value) || 0);
   }
 
   function formatTimestamp(secondsSinceEpoch) {
@@ -1211,6 +1137,30 @@
     }
   }
 
+  async function fetchFolderEnvelope(path, signal) {
+    const url = new URL("/api/file", global.location.origin);
+    url.searchParams.set("path", path);
+    const response = await fetch(url.toString(), { signal });
+    if (!response.ok) {
+      throw new global.MetabrowserRequestErrors.RequestError("Could not refresh this folder.", {
+        operation: "fetchFolderEnvelope",
+        status: response.status,
+      });
+    }
+    return response.json();
+  }
+
+  const folderContext = global.MetabrowserResourceContext.createResourceContextStore({
+    debounceMs: _rollupSettings().debounceMs,
+    fetchEnvelope: fetchFolderEnvelope,
+    pathsIntersect: global.MetabrowserInventoryScope.pathsIntersectScope,
+  });
+
+  const viewState = Object.freeze({
+    isActive: global.MetabrowserViewState.isActive,
+    subscribeActive: global.MetabrowserViewState.subscribeActive,
+  });
+
   global.metabrowser = {
     builtins: {},
     registerView: registerView,
@@ -1222,6 +1172,10 @@
     fetchJsonl: fetchJsonl,
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
+    errors: global.MetabrowserRequestErrors,
+    folderContext: folderContext,
+    viewState: viewState,
+    setViewPrintState: global.MetabrowserViewState.setPrintState,
     ageBucket: ageBucket,
     ageLabelHtml: ageLabelHtml,
     tooltip: tooltip,
@@ -1234,6 +1188,8 @@
     formatKpressError: formatKpressError,
     chart: chart,
     formatSize: formatSize,
+    formatInteger: formatInteger,
+    formatFileCount: formatFileCount,
     formatTimestamp: formatTimestamp,
     sizeHtml: sizeHtml,
     isLargeTextPreview: isLargeTextPreview,

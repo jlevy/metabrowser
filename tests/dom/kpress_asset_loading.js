@@ -175,6 +175,16 @@ sandbox.globalThis = sandbox;
 
 vm.createContext(sandbox);
 
+for (const filename of [
+  "request_error.js",
+  "formatters.js",
+  "inventory_scope.js",
+  "resource_context.js",
+  "view_state.js",
+]) {
+  const dependencyPath = path.join(repoRoot, "src", "metabrowser", "static", filename);
+  vm.runInContext(fs.readFileSync(dependencyPath, "utf-8"), sandbox, { filename });
+}
 const sdkPath = path.join(repoRoot, "src", "metabrowser", "static", "plugin_sdk.js");
 vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
   filename: "plugin_sdk.js",

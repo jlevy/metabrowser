@@ -667,9 +667,10 @@ def test_sse_tail_closes_on_file_disappearance(tmp_path: Path) -> None:
 
 
 def test_markdown_plugin_has_no_duplicate_client_renderer() -> None:
-    plugin_js = (
-        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown" / "index.js"
-    ).read_text()
+    plugin_dir = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown"
+    plugin_js = "\n".join(
+        (plugin_dir / name).read_text() for name in ("index.js", "rendered.js", "source.js")
+    )
     assert "DOMPurify" not in plugin_js
     assert "marked.parse(" not in plugin_js
     assert "fetchKpressRender" in plugin_js

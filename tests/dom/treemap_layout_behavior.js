@@ -17,10 +17,15 @@ const sandbox = { console, Math, performance };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-const source = fs.readFileSync(
-  path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/treemap_layout.js"),
-  "utf8",
-);
+const source = fs
+  .readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/treemap_layout.js"),
+    "utf8",
+  )
+  .replace(/^export \{.*\};$/gm, "")
+  .concat(
+    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, squarify, packLevel, layoutTree, worstAspect };",
+  );
 vm.runInContext(source, sandbox, { filename: "treemap_layout.js" });
 
 const layout = sandbox.MetabrowserTreemapLayout;

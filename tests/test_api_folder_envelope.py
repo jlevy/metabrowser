@@ -50,9 +50,9 @@ def test_directory_returns_folder_envelope(tmp_path: Path) -> None:
     assert body["path"] == "sub"
     assert body["name"] == "sub"
     view_ids = [v["id"] for v in body["views"]]
-    assert view_ids == ["treemap", "readme"]
+    assert view_ids == ["overview", "treemap"]
     defaults = [v["id"] for v in body["views"] if v.get("default")]
-    assert defaults == ["treemap"]
+    assert defaults == ["overview"]
     assert response.headers["cache-control"] == "no-store"
 
 

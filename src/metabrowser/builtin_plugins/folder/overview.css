@@ -1,0 +1,54 @@
+.folder-overview-host {
+  container-type: inline-size;
+}
+
+.folder-overview-stack {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+}
+
+.folder-overview-panel-surface {
+  box-sizing: border-box;
+  width: min(100%, var(--kpress-measure));
+  margin-inline: auto;
+  border: var(--panel-border);
+  border-radius: var(--radius-document);
+  background: var(--bg);
+}
+
+.folder-overview-panel-document {
+  width: 100%;
+  min-width: 0;
+}
+
+.folder-overview-panel-document .folder-overview-panel-body {
+  min-width: 0;
+}
+
+.folder-overview-loading {
+  min-height: 44px;
+  background: var(--tally-skeleton-bg);
+  opacity: 0.5;
+}
+
+.folder-overview-panel-error {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  color: var(--muted);
+}
+
+@media print {
+  .folder-overview-panel-surface,
+  .folder-overview-panel-error,
+  .folder-overview-loading {
+    display: none;
+  }
+
+  .folder-overview-stack {
+    display: block;
+    width: auto;
+  }
+}

@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
-MARKDOWN_PLUGIN_JS = _ROOT / "src" / "metabrowser" / "builtin_plugins" / "markdown" / "index.js"
+MARKDOWN_PLUGIN_JS = _ROOT / "src" / "metabrowser" / "builtin_plugins" / "markdown" / "rendered.js"
 STYLES_CSS = _ROOT / "src" / "metabrowser" / "static" / "styles.css"
 
 _META_CLASS = "metabrowser-doc-meta"

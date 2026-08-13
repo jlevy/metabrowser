@@ -92,6 +92,7 @@ from metabrowser.file_kinds import (
     register_file_kind_detector,
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.folder_discovery import discover_folder
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -115,6 +116,7 @@ from metabrowser.paths_safe import (
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
 from metabrowser.settings import (
+    FOLDER_DISCOVERY_MAX_ENTRIES,
     RECENT_WINDOW_SECONDS,
     ROLLUP_DEFAULT_DEPTH,
     ROLLUP_DEFAULT_EXT_RANK,
@@ -726,40 +728,6 @@ def _initial_path_html() -> str:
     return f'<span class="path"><span class="path-base">{html_escape(root_str)}</span></span>'
 
 
-def _find_dir_readme(dir_path: Path) -> str:
-    """Return the basename of a direct-child README.md (any case), or "".
-
-    One bounded directory listing; no recursion, and no probing of
-    guessed spellings — on a case-insensitive filesystem a probe for
-    ``README.md`` would match ``ReadMe.MD`` and return a name that does
-    not exist on disk. The listing yields real child names; preferred
-    spellings only break ties when several casings coexist. Shared by
-    the startup seed (`_initial_file_path`) and the folder envelope
-    (`_api_folder_envelope`).
-    """
-
-    try:
-        candidates = [
-            child.name
-            for child in dir_path.iterdir()
-            if child.name.lower() == "readme.md" and child.is_file()
-        ]
-    except OSError:
-        return ""
-    if not candidates:
-        return ""
-    for preferred in ("README.md", "readme.md", "Readme.md"):
-        if preferred in candidates:
-            return preferred
-    return min(candidates)
-
-
-def _initial_file_path() -> str:
-    """Return a cheap first-preview file path, without walking the tree."""
-
-    return _find_dir_readme(_paths_safe.ROOT_DIR.resolve())
-
-
 def _static_asset_url(rel_path: str) -> str:
     """Return a local static URL with an mtime-based cache buster."""
 
@@ -787,9 +755,14 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
-    initial_file_path = _initial_file_path()
     styles_url = _static_asset_url("styles.css")
     theme_state_url = _static_asset_url("theme_state.js")
+    request_error_url = _static_asset_url("request_error.js")
+    formatters_url = _static_asset_url("formatters.js")
+    inventory_scope_url = _static_asset_url("inventory_scope.js")
+    contribution_registry_url = _static_asset_url("contribution_registry.js")
+    resource_context_url = _static_asset_url("resource_context.js")
+    view_state_url = _static_asset_url("view_state.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
     filter_controls_url = _static_asset_url("filter_controls.js")
@@ -810,8 +783,7 @@ async def index(_request: Request) -> HTMLResponse:
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
     settings_block = (
-        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};"
-        f"window.METABROWSER_INITIAL_PATH={_json.dumps(initial_file_path)};</script>"
+        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
@@ -1021,6 +993,12 @@ async def index(_request: Request) -> HTMLResponse:
   {perf_block}
   {settings_block}
   <script src="{theme_state_url}"></script>
+  <script src="{request_error_url}"></script>
+  <script src="{formatters_url}"></script>
+  <script src="{inventory_scope_url}"></script>
+  <script src="{contribution_registry_url}"></script>
+  <script src="{resource_context_url}"></script>
+  <script src="{view_state_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{filter_state_url}"></script>
   <script src="{filter_controls_url}"></script>
@@ -1409,15 +1387,23 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
     so `renderFile` routes folders through the same tab pipeline. The
     `dir` block carries the inventory aggregates (null while the walker
     is still finalizing, matching the tree wire contract) and
-    `readme_path` names a direct-child README for the README view.
+    `readme_path` names a direct-child README for Overview panel discovery.
     Served no-store: the envelope is tiny and its aggregates change
     while a scan is running.
     """
 
     inventory = get_inventory()
     entry = inventory.get(subpath)
-    readme_name = await asyncio.to_thread(_find_dir_readme, target)
-    readme_path = f"{subpath}/{readme_name}" if subpath and readme_name else readme_name
+    discovery = await asyncio.to_thread(
+        discover_folder,
+        target,
+        max_entries=FOLDER_DISCOVERY_MAX_ENTRIES,
+    )
+    readme_path = (
+        f"{subpath}/{discovery.readme_name}"
+        if subpath and discovery.readme_name
+        else discovery.readme_name
+    )
     total_files = entry.total_files if entry is not None else None
     total_size = entry.total_size if entry is not None else None
     newest_ns = entry.newest_mtime_ns if entry is not None else None
@@ -1435,6 +1421,7 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
             "state": "pending" if total_files is None else "complete",
         },
         "readme_path": readme_path,
+        "readme_search_truncated": discovery.readme_search_truncated,
     }
     return JSONResponse(payload, headers={"cache-control": "no-store"})
 

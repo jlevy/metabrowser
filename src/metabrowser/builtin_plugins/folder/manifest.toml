@@ -2,7 +2,7 @@
 name = "folder"
 display_name = "Folder"
 version = "0.0.1"
-extra_scripts = ["treemap_layout.js"]
+extra_styles = ["overview.css", "file_type_summary.css"]
 
 # `folder` is the directory kind. A manifest [[kind]] predicate cannot
 # express "the path is a directory" — the kind assignment happens in
@@ -11,16 +11,13 @@ extra_scripts = ["treemap_layout.js"]
 
 [[view]]
 kind = "folder"
-id = "treemap"
-label = "Treemap"
+id = "overview"
+label = "Overview"
 default = true
-container_class = "content-body folder-treemap-host"
+container_class = "content-body folder-overview-host"
 
 [[view]]
 kind = "folder"
-id = "readme"
-label = "README"
-container_class = "content-body metabrowser-kpress-host md-body"
-printable = true
-print_profile = "document"
-render_runtime = "kpress"
+id = "treemap"
+label = "Treemap"
+container_class = "content-body folder-treemap-host"
