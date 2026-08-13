@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from metabrowser.events import FsEntry
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.inventory import InventoryIndex
 
@@ -154,6 +155,56 @@ def test_file_type_tallies_match_preset_filter_semantics(tmp_path: Path) -> None
         "code": (1, 1),
         "data": (0, 1),
     }
+
+
+def test_navigation_tallies_count_each_recency_window_from_one_snapshot() -> None:
+    now_ns = 10_000_000_000_000
+    second_ns = 1_000_000_000
+    entries = [
+        FsEntry.for_observed_file(
+            path="live.py",
+            parent="",
+            name="live.py",
+            size=1,
+            mtime_ns=now_ns - 10 * second_ns,
+        ),
+        FsEntry.for_observed_file(
+            path="hour-boundary.py",
+            parent="",
+            name="hour-boundary.py",
+            size=1,
+            mtime_ns=now_ns - 3_600 * second_ns,
+        ),
+        FsEntry.for_observed_file(
+            path="ignored.log",
+            parent="",
+            name="ignored.log",
+            size=1,
+            mtime_ns=now_ns - 1_800 * second_ns,
+            gitignored=True,
+        ),
+        FsEntry.for_observed_file(
+            path="older.md",
+            parent="",
+            name="older.md",
+            size=1,
+            mtime_ns=now_ns - 7_200 * second_ns,
+        ),
+    ]
+
+    index = InventoryIndex()
+    _summary, _extensions, _presets, recency = index.navigation_tallies(
+        [],
+        [("live", 90.0), ("1h", 3_600.0), ("24h", 86_400.0)],
+        now_ns=now_ns,
+        entries=entries,
+    )
+
+    assert recency == [
+        ["live", 1, 0],
+        ["1h", 2, 1],
+        ["24h", 3, 1],
+    ]
 
 
 def test_root_summary_is_zero_for_an_empty_root(tmp_path: Path) -> None:

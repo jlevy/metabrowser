@@ -139,7 +139,7 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
 def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     """The complete-coverage feed rides the existing stream: deltas
     via ``catalog.change``, refetch on the sentinel snapshot and on
-    resync, completeness via ``capability.update``, and the bulk
+    resync, terminal coverage via ``capability.update``, and the bulk
     fetch starting only once the stream is subscribed (first open;
     the no-EventSource degradation path starts it directly)."""
 
@@ -155,11 +155,13 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 
     capability_start = js.index('addEventListener("capability.update"')
     capability_block = js[capability_start : capability_start + 900]
-    assert "quickFileCatalogFeed?.onIndexComplete()" in capability_block
+    assert "quickFileCatalogFeed?.onIndexComplete(data.index.truncated === true)" in (
+        capability_block
+    )
     assert "data.index.complete === true" in capability_block
-    # A capped walk is complete for the index but never for the root, so it
-    # must not promote the catalog to complete (senior review R10).
-    assert "data.index.truncated !== true" in capability_block
+    # A capped walk is terminal and must repair membership, but the callback
+    # receives its truncated state so it cannot promote root coverage.
+    assert "data.index.truncated !== true" not in capability_block
 
     resync_start = js.index('addEventListener("fs.resync_required"')
     resync_block = js[resync_start : resync_start + 700]

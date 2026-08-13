@@ -46,6 +46,7 @@ from metabrowser.events_route import (
     api_capabilities,
     api_index_meta,
     api_index_progress,
+    api_pending_tally_diagnostic,
     get_or_create_bus,
     parse_sse_frames,
     reset_bus_for_tests,
@@ -78,11 +79,25 @@ class _FakeRequest:
         headers: dict[str, str] | None = None,
         *,
         disconnect_after: int | None = None,
+        body: bytes = b"",
+        body_chunks: list[bytes] | None = None,
     ) -> None:
         self.query_params = _FakeQuery(query or {})
         self.headers = _FakeHeaders(headers or {})
         self._is_disconnected_call_count = 0
         self._disconnect_after = disconnect_after
+        self._body = body
+        self._body_chunks = body_chunks
+        self.streamed_chunks = 0
+
+    async def body(self) -> bytes:
+        return self._body
+
+    async def stream(self) -> AsyncIterator[bytes]:
+        chunks = self._body_chunks if self._body_chunks is not None else [self._body]
+        for chunk in chunks:
+            self.streamed_chunks += 1
+            yield chunk
 
     async def is_disconnected(self) -> bool:
         self._is_disconnected_call_count += 1
@@ -415,6 +430,75 @@ def test_api_index_progress_does_not_304_while_active(tmp_path: Path) -> None:
     assert etag
     assert status == 200
     assert '"active":true' in body
+
+
+def test_pending_tally_diagnostic_correlates_client_and_inventory_state(
+    tmp_path: Path,
+    caplog: Any,
+) -> None:
+    _build_tree(tmp_path)
+
+    async def _run() -> dict[str, Any]:
+        await _drive_walker(tmp_path)
+        payload = {
+            "diagnostic_id": "pending-tally-test-1",
+            "elapsed_ms": 5_100,
+            "pending": {"sample": [{"path": "sub1"}]},
+        }
+        request = _FakeRequest(
+            headers={"Content-Type": "application/json"},
+            body=json.dumps(payload).encode(),
+        )
+        response = await api_pending_tally_diagnostic(cast(Any, request))
+        return json.loads(bytes(response.body))
+
+    with caplog.at_level("WARNING", logger="metabrowser.events_route"):
+        body = asyncio.run(_run())
+
+    assert body["diagnostic_id"] == "pending-tally-test-1"
+    assert body["inventory"]["status"] == "done"
+    assert body["inventory"]["walker_task"] == "done"
+    assert body["inventory"]["requested_paths"] == [
+        {
+            "path": "sub1",
+            "known": True,
+            "pending": False,
+            "generation": 0,
+            "direct_children": 1,
+            "descendant_files": 1,
+            "descendant_size": 100,
+            "descendant_leaves": 1,
+            "type": "dir",
+            "total_files": 1,
+            "total_size": 100,
+            "newest_mtime_ns": body["inventory"]["requested_paths"][0]["newest_mtime_ns"],
+            "empty": False,
+            "write_generation": 0,
+        }
+    ]
+    assert "pending-tally-test-1" in caplog.text
+    assert '"elapsed_ms":5100' in caplog.text
+    assert '"status":"done"' in caplog.text
+
+
+def test_pending_tally_diagnostic_rejects_oversized_payload() -> None:
+    request = _FakeRequest(
+        headers={"Content-Length": "70000"},
+        body=b"{}",
+    )
+    response = asyncio.run(api_pending_tally_diagnostic(cast(Any, request)))
+    assert response.status_code == 413
+
+
+def test_pending_tally_diagnostic_stops_reading_chunked_payload_at_limit() -> None:
+    request = _FakeRequest(
+        body_chunks=[b"a" * 40_000, b"b" * 30_000, b"must-not-be-read"],
+    )
+
+    response = asyncio.run(api_pending_tally_diagnostic(cast(Any, request)))
+
+    assert response.status_code == 413
+    assert request.streamed_chunks == 2
 
 
 def test_api_index_meta_payload_shape(tmp_path: Path) -> None:

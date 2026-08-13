@@ -47,10 +47,11 @@ def test_wheel_smoke_commands_select_repository_config_and_validate_versions() -
 
     commands = [call.args[0] for call in run.call_args_list]
     expected_prefix = ["uv", "--config-file", str(ROOT / "uv.toml"), "run"]
-    assert len(commands) == 6
+    assert len(commands) == 7
     assert all(command[:4] == expected_prefix for command in commands)
     assert [command[-2:] for command in commands if command[-1] == "--version"] == [
         ["metab", "--version"],
         ["metabrowser", "--version"],
     ]
+    assert commands[-1][-2:] == [str(ROOT / "tests" / "manual-fixtures"), "--check-api"]
     assert all(call.kwargs["cwd"] == ROOT for call in run.call_args_list)

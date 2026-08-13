@@ -208,6 +208,19 @@ def _smoke_install(wheel: Path) -> None:
     ]
     subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
 
+    api_check_command = [
+        *uv_command,
+        "run",
+        "--isolated",
+        "--no-project",
+        "--with",
+        str(wheel),
+        "metab",
+        str(ROOT / "tests" / "manual-fixtures"),
+        "--check-api",
+    ]
+    subprocess.run(api_check_command, cwd=ROOT, env=env, check=True)
+
 
 def main() -> int:
     wheel = _single_wheel()

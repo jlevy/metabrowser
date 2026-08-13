@@ -809,6 +809,11 @@ async function loadTree() {
     if (data.tally_cache_status === "scanning") {
       summaryFiles = null;
       summarySize = null;
+      // The progress request that began before this tree fetch can observe
+      // completion and stop while this slower, conservatively labeled response
+      // is still in flight. Restarting is idempotent and guarantees one final
+      // tree refresh instead of leaving these new pending cells to the watchdog.
+      startIndexProgressPolling();
     }
     // Carry aggregates on the path link so the header tooltip handler
     // can pull them on hover without rebuilding from DOM.
@@ -821,7 +826,12 @@ async function loadTree() {
     // Summary row sits at the top of the scrollable tree listing, not
     // in the sticky header — visible on first paint, scrolls away with
     // the rest of the tree. Keeps the upper nav header clean.
-    var summaryHtml = treeSummaryHtml(data.summary, summaryFiles, summarySize);
+    // The index-wide tracked/ignored split is partial while scanning just
+    // like the visible-tree fallback. Gate the summary object itself; passing
+    // it through would make treeSummaryHtml prefer concrete partial values
+    // over the pending fallback we selected above.
+    var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;
+    var summaryHtml = treeSummaryHtml(stableSummary, summaryFiles, summarySize);
     // Cached so the recency source, which paints over the whole panel,
     // can keep the same tally row above its own filtered count.
     _lastTreeSummaryHtml = summaryHtml;
@@ -833,11 +843,20 @@ async function loadTree() {
     if (data.tally_cache_status === "truncated") {
       truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
     }
-    if (updateFileTypeTallies(data)) {
+    if (updateFilterTallies(data)) {
       renderNavFilterBar();
     }
-    _lastTreeRender = { tree: data.tree, chromeHtml: truncationHtml + summaryHtml };
-    renderFilesFromTree();
+    _lastTreeRender = {
+      tree: data.tree,
+      chromeHtml: truncationHtml + summaryHtml,
+      tallyCacheStatus: data.tally_cache_status,
+    };
+    // A recency request may have started while this tree request was in
+    // flight. Keep the authoritative cache current without painting over the
+    // newer source selection.
+    if (!filesPanelUsesRecentSource()) {
+      renderFilesFromTree();
+    }
   });
 }
 
@@ -900,8 +919,12 @@ function scheduleRootSummaryRefresh() {
         // its DOM mid-poll would drop focus out of a menu the user
         // is arrowing through, and this runs repeatedly while the
         // index warms up.
-        if (updateFileTypeTallies(data) && filterOpenMenu === null) {
-          renderNavFilterBar();
+        if (updateFilterTallies(data)) {
+          if (filterOpenMenu === null) {
+            renderNavFilterBar();
+          } else {
+            patchOpenRecencyTallyCounts();
+          }
         }
         var html = treeSummaryHtml(data.summary, null, null);
         row.outerHTML = html;
@@ -949,6 +972,7 @@ function renderFilesFromTree() {
     { nodes: snapshot.tree ? snapshot.tree.length : 0 },
   );
   applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
   return true;
 }
 
@@ -1354,6 +1378,7 @@ async function loadSubtree(path, childrenEl, options) {
     // Newly rendered children carry no filter classes yet, so without
     // this an expand under an active filter reveals the whole folder.
     applyTreeFilters();
+    reconcilePendingTallyDiagnostics();
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
@@ -1697,6 +1722,7 @@ treePane.addEventListener("click", (e) => {
       pageRow.outerHTML = renderTreeNodes(nextBatch, false, page.options);
       // Same reason as loadSubtree: a deferred page arrives unfiltered.
       applyTreeFilters();
+      reconcilePendingTallyDiagnostics();
     }
     return;
   }
@@ -1788,6 +1814,10 @@ const RECENT_RECLUSTER_DEBOUNCE_MS = _METABROWSER_SETTINGS.RECENT_RECLUSTER_DEBO
 const RECENT_CLUSTER_PCT = _METABROWSER_SETTINGS.RECENT_CLUSTER_PCT || 0.05;
 const INDEX_PROGRESS_POLL_MS = _METABROWSER_SETTINGS.INDEX_PROGRESS_POLL_MS || 1000;
 const INDEX_PROGRESS_UPDATE_FILES = _METABROWSER_SETTINGS.INDEX_PROGRESS_UPDATE_FILES || 1024;
+const PENDING_TALLY_DIAGNOSTIC_DELAY_MS =
+  _METABROWSER_SETTINGS.PENDING_TALLY_DIAGNOSTIC_DELAY_MS || 5000;
+const PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT =
+  _METABROWSER_SETTINGS.PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT || 20;
 var currentRecentWindow = _METABROWSER_SETTINGS.RECENT_DEFAULT_WINDOW || "24h";
 var recentEverLoaded = false;
 
@@ -1798,6 +1828,194 @@ var indexProgressTimer = null;
 var indexProgressInFlight = false;
 var indexProgressLastRendered = null;
 var indexProgressCompletionRefreshInFlight = false;
+var pendingTallyDiagnosticSequence = 0;
+
+function compactTallyEntry(entry) {
+  if (!entry) {
+    return null;
+  }
+  return {
+    type: entry.type || null,
+    total_files: entry.total_files === undefined ? null : entry.total_files,
+    total_size: entry.total_size === undefined ? null : entry.total_size,
+    size: entry.size === undefined ? null : entry.size,
+    mtime: entry.mtime === undefined ? null : entry.mtime,
+    mtime_ns: entry.mtime_ns === undefined ? null : entry.mtime_ns,
+    newest_mtime_ns: entry.newest_mtime_ns === undefined ? null : entry.newest_mtime_ns,
+    empty: entry.empty === undefined ? null : entry.empty,
+    gitignored: !!entry.gitignored,
+  };
+}
+
+function cachedTallyEntries(paths) {
+  var wanted = new Set(paths);
+  var found = new Map();
+  var stack = _lastTreeRender?.tree ? Array.from(_lastTreeRender.tree) : [];
+  while (stack.length > 0 && wanted.size > 0) {
+    var node = stack.pop();
+    if (!node) {
+      continue;
+    }
+    if (wanted.has(node.path)) {
+      found.set(node.path, compactTallyEntry(node));
+      wanted.delete(node.path);
+    }
+    if (Array.isArray(node.children)) {
+      for (var i = 0; i < node.children.length; i++) {
+        stack.push(node.children[i]);
+      }
+    }
+  }
+  return found;
+}
+
+function collectPendingTallyDiagnostic(context) {
+  var cells = Array.from(queryHtmlAll("#tab-files .tally-pending"));
+  var fieldCounts = { age: 0, count: 0, other: 0, size: 0 };
+  var rowsByPath = new Map();
+  var visibleCells = 0;
+  var withoutPath = 0;
+  for (var i = 0; i < cells.length; i++) {
+    var cell = cells[i];
+    if (cell.classList.contains("size")) {
+      fieldCounts.size += 1;
+    } else if (cell.classList.contains("count")) {
+      fieldCounts.count += 1;
+    } else if (cell.classList.contains("tally-pending-narrow")) {
+      fieldCounts.age += 1;
+    } else {
+      fieldCounts.other += 1;
+    }
+    var row = /** @type {HTMLElement | null} */ (cell.closest(".tree-item"));
+    var hidden = !!row?.classList.contains("tree-item-filter-hidden");
+    if (!hidden) {
+      visibleCells += 1;
+    }
+    if (!row?.dataset.path) {
+      withoutPath += 1;
+      continue;
+    }
+    var path = row.dataset.path;
+    if (!rowsByPath.has(path)) {
+      rowsByPath.set(path, {
+        path,
+        hidden,
+        row_type: row.classList.contains("tree-folder")
+          ? "dir"
+          : row.classList.contains("tree-symlink")
+            ? "symlink"
+            : "file",
+        dom: {
+          tip_files: row.dataset.tipFiles ?? null,
+          tip_mtime: row.dataset.tipMtime ?? null,
+          tip_size: row.dataset.tipSize ?? null,
+        },
+      });
+    }
+  }
+
+  var allPaths = Array.from(rowsByPath.keys());
+  var sampledPaths = allPaths.slice(0, PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT);
+  var cachedEntries = cachedTallyEntries(sampledPaths);
+  var samples = sampledPaths.map((path) => {
+    var sample = rowsByPath.get(path);
+    sample.file_store = compactTallyEntry(fileStore?.get?.(path));
+    sample.cached_tree = cachedEntries.get(path) || null;
+    return sample;
+  });
+  var filter = filterState?.get ? filterState.get() : null;
+  var readyState = inventoryEventSource?.readyState;
+  return {
+    diagnostic_id: `pending-tally-${Date.now()}-${++pendingTallyDiagnosticSequence}`,
+    kind: "pending-folder-tallies",
+    captured_at: new Date().toISOString(),
+    elapsed_ms: context.elapsedMs,
+    episode: context.episode,
+    current_path: currentPath,
+    source: filesPanelUsesRecentSource() ? "recent" : "tree",
+    filter: filter,
+    pending: {
+      cells: cells.length,
+      visible_cells: visibleCells,
+      paths: allPaths.length,
+      without_path: withoutPath,
+      fields: fieldCounts,
+      sample: samples,
+      sample_truncated: allPaths.length > samples.length,
+    },
+    cached_tree: {
+      root_nodes: _lastTreeRender?.tree?.length || 0,
+      tally_cache_status: _lastTreeRender?.tallyCacheStatus || null,
+    },
+    progress: {
+      in_flight: indexProgressInFlight,
+      polling: indexProgressTimer !== null,
+      completion_refresh_in_flight: indexProgressCompletionRefreshInFlight,
+      last_rendered: indexProgressLastRendered,
+    },
+    event_stream: {
+      ready_state: typeof readyState === "number" ? readyState : null,
+      consecutive_errors: _esConsecutiveErrors,
+      reconnect_scheduled: _esReconnectTimer !== null,
+      reconnect_backoff_ms: _esBackoffMs,
+      file_store_entries: fileStore?.size || 0,
+    },
+    document_visibility: document.visibilityState || null,
+  };
+}
+
+async function refreshAfterPendingTallyDiagnostic(serverDiagnostic) {
+  var status = serverDiagnostic?.inventory?.status;
+  if (
+    (status !== "done" && status !== "truncated") ||
+    !document.querySelector("#tab-files .tally-pending")
+  ) {
+    return;
+  }
+  await loadTree();
+  // The user can change or clear the filter while the tree request is in
+  // flight. Re-read the current window after the await so recovery never
+  // restores an obsolete recency source over the user's newer selection.
+  var recency = filterState ? filterState.get().recency : null;
+  if (recency && recency !== "all") {
+    loadRecent(recency);
+  }
+}
+
+async function reportPendingTallyDiagnostic(payload) {
+  var delaySeconds = PENDING_TALLY_DIAGNOSTIC_DELAY_MS / 1000;
+  console.warn(`Folder totals are still loading after ${delaySeconds} seconds`, payload);
+  try {
+    var resp = await fetch("/api/diagnostics/pending-tallies", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      console.warn(`Could not record pending folder totals on the server: HTTP ${resp.status}`);
+      return;
+    }
+    var serverDiagnostic = await resp.json();
+    console.warn("Server state for pending folder totals", serverDiagnostic);
+    await refreshAfterPendingTallyDiagnostic(serverDiagnostic);
+  } catch (error) {
+    console.warn("Could not record pending folder totals on the server", error);
+  }
+}
+
+var pendingTallyWatchdog = window.MetabrowserPendingTallyDiagnostics.create({
+  delayMs: PENDING_TALLY_DIAGNOSTIC_DELAY_MS,
+  hasPending: () => !!document.querySelector("#tab-files .tally-pending"),
+  collect: collectPendingTallyDiagnostic,
+  report: reportPendingTallyDiagnostic,
+  onError: (error) => console.warn("Could not collect pending folder total diagnostics", error),
+});
+
+function reconcilePendingTallyDiagnostics() {
+  pendingTallyWatchdog?.reconcile();
+}
+
+window.addEventListener("pagehide", () => pendingTallyWatchdog.dispose(), { once: true });
 
 function indexProgressIsActive(meta) {
   return !!meta && meta.status === "scanning";
@@ -1863,12 +2081,19 @@ async function refreshTreeIfPendingTallies() {
   if (indexProgressCompletionRefreshInFlight) {
     return;
   }
-  if (!document.querySelector(".tally-pending")) {
+  if (!document.querySelector("#tab-files .tally-pending")) {
     return;
   }
   indexProgressCompletionRefreshInFlight = true;
   try {
     await loadTree();
+    // Match diagnostic recovery: the tree request updates the authoritative
+    // cache but deliberately does not paint over an active recency source.
+    // Re-read after the await so a filter change during the request wins.
+    var recency = filterState ? filterState.get().recency : null;
+    if (recency && recency !== "all") {
+      loadRecent(recency);
+    }
     if (currentPath) {
       setSelectedPath(currentPath);
     }
@@ -2383,6 +2608,7 @@ function renderRecentFromBase() {
   if (currentPath) {
     setSelectedPath(currentPath);
   }
+  reconcilePendingTallyDiagnostics();
 }
 
 const RECENT_EXPIRY_MIN_DELAY_MS = 250;
@@ -2824,19 +3050,19 @@ function filterHasConstraints(state) {
   );
 }
 
-// Extension tallies come from the server's index pass (/api/tree
-// `extensions`), not from the Quick File catalog: that catalog drops
-// gitignored entries by design, so a menu built from it undercounts
-// every extension the tree still shows while gitignored rows are
-// visible. Rows arrive as [ext, tracked, ignored] already ranked, so
-// the count shown can follow the gitignored setting instead of being
-// wrong half the time.
+// Filter tallies come from the server's full-index pass, not from the
+// rendered tree or Quick File catalog. Both sources can be partial,
+// and the catalog drops gitignored entries by design. Rows arrive as
+// [key, tracked, ignored], so every count can follow the gitignored
+// setting instead of being wrong half the time.
 /** @type {Array<[string, number, number]>} */
 var _extensionTally = [];
 /** @type {Array<[string, number, number]>} */
 var _typePresetTally = [];
+/** @type {Array<[string, number, number]>} */
+var _recencyTally = [];
 
-function updateFileTypeTallies(data) {
+function updateFilterTallies(data) {
   let changed = false;
   if (Array.isArray(data.extensions)) {
     _extensionTally = data.extensions;
@@ -2846,7 +3072,40 @@ function updateFileTypeTallies(data) {
     _typePresetTally = data.type_presets;
     changed = true;
   }
+  if (Array.isArray(data.recency_tallies)) {
+    _recencyTally = data.recency_tallies;
+    changed = true;
+  }
   return changed;
+}
+
+function filterRecencyOptions() {
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const counts = new Map(
+    _recencyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
+  );
+  return FILTER_RECENCY_OPTIONS.map((option) => ({
+    ...option,
+    count: counts.get(option.value) || 0,
+  }));
+}
+
+// Age counts decay without a filesystem event. A refresh that lands while the menu
+// is open updates only its count cells, preserving focus and keyboard position.
+function patchOpenRecencyTallyCounts() {
+  if (filterOpenMenu !== "recency") {
+    return;
+  }
+  const counts = new Map(filterRecencyOptions().map((option) => [option.value, option.count]));
+  const rows = queryHtmlAll("#filter-recency-menu [data-chip-value]");
+  for (var i = 0; i < rows.length; i++) {
+    var value = rows[i].getAttribute("data-chip-value");
+    var count = value === null ? undefined : counts.get(value);
+    var countEl = rows[i].querySelector(".chip-menu-count");
+    if (typeof count === "number" && countEl) {
+      countEl.textContent = count.toLocaleString();
+    }
+  }
 }
 
 function filterTypePresets() {
@@ -2926,7 +3185,7 @@ function renderNavFilterBar() {
       key: "recency",
       select: "one",
       label: "Modified within",
-      options: FILTER_RECENCY_OPTIONS,
+      options: filterRecencyOptions(),
       value: st.recency,
       anyLabel: "Any age",
       anyValue: "all",
@@ -3070,6 +3329,9 @@ function initFilterBar() {
     onMenuToggle: (key, open) => {
       filterOpenMenu = open ? key : null;
       renderNavFilterBar();
+      if (key === "recency" && open) {
+        scheduleRootSummaryRefresh();
+      }
     },
     onMenuPreset: (key, presetId, wasOn) => {
       if (key !== "types") {
@@ -3159,11 +3421,10 @@ function onFilterStateChange(state) {
     // and must never find a match.
     currentRecentWindow = "";
     clearRecentExpiryRecheck();
-    // Restore the full tree from the cached payload; only fall back to
-    // a refetch when nothing has been cached yet.
-    if (!renderFilesFromTree()) {
-      loadTree();
-    }
+    // Refetch the authoritative tree. The first-paint cache can still carry
+    // pending aggregates even after live events patched the visible DOM; using
+    // it here reintroduced skeleton cells after progress polling had stopped.
+    loadTree();
     return;
   }
   applyTreeFilters();
@@ -4799,6 +5060,7 @@ function applyCellPatch(entry) {
   // (re)connect. Keep it in the store; just don't render it.
   if (!entry.path) {
     updateRootAggregatePresentation(entry);
+    reconcilePendingTallyDiagnostics();
     return;
   }
   var safePath = escapePathForSelector(entry.path);
@@ -4860,6 +5122,7 @@ function applyCellPatch(entry) {
       // mtime and active can both flip a row's filter verdict.
       scheduleFilterReapply();
     }
+    reconcilePendingTallyDiagnostics();
     return;
   }
   // No row exists — try to insert one in each panel where the
@@ -4883,6 +5146,7 @@ function applyCellPatch(entry) {
   // A freshly inserted row carries no filter classes yet; without this
   // a new file would show up regardless of the active filter.
   scheduleFilterReapply();
+  reconcilePendingTallyDiagnostics();
 }
 
 // Remove all rendered rows (in any tab panel) for *path*. For
@@ -5066,12 +5330,10 @@ function _createInventoryEventSource() {
   inventoryEventSource.addEventListener("capability.update", (e) => {
     try {
       var data = JSON.parse(e.data);
-      // A truncated walk is "complete" in the sense that it stopped, but the
-      // files past the max-files cap were never indexed, so the catalog can
-      // never be a complete view of the root. Only an untruncated walk may
-      // promote the catalog to complete.
-      if (data.index && data.index.complete === true && data.index.truncated !== true) {
-        quickFileCatalogFeed?.onIndexComplete();
+      // Every terminal walk can repair membership lost across a reconnect.
+      // A capped walk remains incomplete for the root even after that repair.
+      if (data.index && data.index.complete === true) {
+        quickFileCatalogFeed?.onIndexComplete(data.index.truncated === true);
       }
     } catch (_e) {
       /* ignore */
@@ -5093,9 +5355,8 @@ function _createInventoryEventSource() {
     // connection that survives this interval is healthy enough to reset the
     // exponential backoff; repeated overflow/resync cycles keep backing off.
     _scheduleEsStableReset();
-    // First open only (start() is a no-op afterwards): the bulk
-    // catalog fetch begins once the stream is subscribed, so no op
-    // can fall between the payload build and the subscription.
+    // The first open starts the bulk catalog fetch after subscription;
+    // later opens refetch to cover deltas lost while disconnected.
     quickFileCatalogFeed?.start();
   };
   inventoryEventSource.onerror = () => {

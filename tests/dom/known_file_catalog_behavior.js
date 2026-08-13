@@ -163,6 +163,12 @@ check(
   "markComplete flips completeness without data",
   incompleteCatalog.snapshot().complete === true,
 );
+incompleteCatalog.markIncomplete();
+check(
+  "markIncomplete resets coverage without discarding membership",
+  incompleteCatalog.snapshot().complete === false &&
+    incompleteCatalog.snapshot().files.some((file) => file.path === "a.txt"),
+);
 incompleteCatalog.clear();
 check("clear resets completeness", incompleteCatalog.snapshot().complete === false);
 

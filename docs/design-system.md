@@ -264,6 +264,8 @@ neither can pick several things.
 Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
 `.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
 same rule as every other floating menu: Escape or outside interaction.
+The trigger uses the shared Lucide disclosure chevron at the standard chrome glyph size,
+rotated downward; do not substitute a text caret or shrink it to fit the label.
 
 A dropdown declares its kind the same way a group does, and for the same reason: `one`
 gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemcheckbox`
@@ -288,9 +290,10 @@ The nav filter bar uses dropdowns throughout: six age windows and six size steps
 segmented ramps left no room for anything else in a 300px pane.
 The groups stay part of the family for surfaces with fewer, shorter values.
 
-Values that come from the data are ranked by frequency and capped, and each row carries
-its tally. A menu built from the tree can then never offer a value with nothing behind
-it, and the cap cuts the long tail rather than an arbitrary alphabetical slice.
+Age and file-type rows carry right-aligned file tallies in tabular numerals.
+Fixed age windows remain in chronological order and show cumulative counts.
+Open-ended type values are ranked by frequency and capped, so the menu cuts the long
+tail rather than an arbitrary alphabetical slice.
 
 A dropdown may lead with named **presets** — shorthands standing for the full set of
 values beneath them, separated from the raw list.

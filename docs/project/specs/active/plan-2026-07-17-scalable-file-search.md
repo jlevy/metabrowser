@@ -1,18 +1,18 @@
 # Feature: Quick File Finder and Search Providers
 
-**Date:** 2026-07-17 (last updated 2026-08-08)
+**Date:** 2026-07-17 (last updated 2026-08-12)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Phase 1 implemented and validated; Phase 2 redefined as the client-complete
-catalog feed (decision `mb-ci04`); Phases 3 and 4 planned
+**Status:** Phases 1 and 2 implemented and validated; Phase 2 was redefined as the
+client-complete catalog feed (decision `mb-ci04`); Phases 3 and 4 planned
 
 ## Overview
 
-Metabrowser should open a keyboard-first file finder when the user presses `/`. The
-finder fuzzy-matches every file path the browser already knows and opens the selected
-file through the existing navigation path.
-This first phase is client-only: opening the finder or typing a query does not make a
+Metabrowser opens a keyboard-first file finder when the user presses `/` or `T`. The
+finder fuzzy-matches every non-gitignored file under the served root and opens the
+selected file through the existing navigation path.
+Matching remains client-side: opening the finder or typing a query makes no per-query
 server request.
 
 The browser intentionally knows less than the server inventory.
@@ -26,21 +26,22 @@ server-side full-text provider plugs into the same runtime without changing it.
 
 ## Goals
 
-- Open a quick file finder with `/` unless focus is in an input, editor, select, or
-  content-editable surface
-- Fuzzy-match file basenames and served-root-relative paths already observed by the
-  browser, with basename matches weighted above parent-path matches
-- Search every observed file admitted by the inventory, independent of Current, Recent,
-  type, and gitignored filter presentation
+- Open a quick file finder with `/` or `T` unless focus is in an input, editor, select,
+  or content-editable surface
+- Fuzzy-match complete-catalog file basenames and served-root-relative paths, with
+  basename matches weighted above parent-path matches
+- Search every non-gitignored file admitted by the inventory, independent of navigation
+  age, type, size, and gitignored filter presentation
 - Navigate the result list with the keyboard and open the selected file with the
   existing `navigateToPath` behavior
-- Keep one minimal client catalog of paths observed through the Files tree, lazy subtree
-  responses, Recent responses, and live inventory events
-- Report how many files are locally searchable and whether that catalog is complete
+- Keep one minimal client catalog seeded by browser observations, completed by one
+  gzipped bulk payload, and maintained by live inventory events
+- Report how many files are searchable and whether the inventory is still scanning or
+  stopped at its cap
 - Define one DOM-independent search runtime and provider contract that can serve the
   palette and a future persistent navigation-panel search box
-- Add complete server-side filename search only when the local catalog cannot answer the
-  query, without transferring the full inventory to the browser
+- Add bounded server-side filename search only if measured catalog size or latency makes
+  the client-complete design unsuitable
 - Add explicit full-text search as a later server-backed mode with bounded work,
   cancellation, and honest truncation
 - Keep startup, initial tree rendering, and direct-file preview independent of search
@@ -48,7 +49,7 @@ server-side full-text provider plugs into the same runtime without changing it.
 
 ## Non-Goals
 
-- Loading all 500,000 possible inventory entries into the browser at startup
+- Loading the rich 16-field inventory entry shape into the browser for search
 - Running full-text search automatically for every filename query that has no match
 - Persisting the finder query or coupling it to the navigation filters
 - Replacing the Files tree with search results
@@ -59,8 +60,8 @@ server-side full-text provider plugs into the same runtime without changing it.
 
 ## Current State
 
-The browser now implements the client-only Quick File phase over the existing server and
-navigation prerequisites.
+The browser now implements the complete-catalog Quick File phases over the existing
+inventory and navigation prerequisites.
 
 | Capability | Current State | Consequence |
 | --- | --- | --- |
@@ -69,9 +70,10 @@ navigation prerequisites.
 | Lazy navigation | `/api/tree` returns the initial tree and lazy subtree responses; direct children are mounted in pages of 200 | Files encountered through navigation are known to the browser even though they are not added to `FileStore` |
 | Recent files | `/api/recent` returns up to 2,000 files from the all-known inventory into `recentBaseEntries` | Recent files are another useful bounded candidate source |
 | Navigation | `navigateToPath` reveals a tree row when possible and calls `selectFile` even when the row is unmounted | Finder selection can reuse existing preview and route behavior |
-| Live updates | Scoped `fs.change` operations update shallow `FileStore` entries | Locally known deep entries can become stale because their changes are outside the event scope |
-| Client search | A slash-key palette, known-file catalog, fuzzy matcher, and DOM-independent provider runtime search observed paths without a search request | Phase 1 provides fast navigation but honestly reports partial coverage |
-| Server search | No filename or content search route exists | Phases 2 and 3 can add bounded providers without changing the palette or local matcher |
+| Live updates | Scoped `fs.change` operations update shallow `FileStore` entries, while minimal `catalog.change` events pass through every scope | Deep filename coverage remains live without expanding the tree |
+| Client search | A `/`- and `T`-key palette, complete known-file catalog, fuzzy matcher, and DOM-independent provider runtime search locally without a query request | Quick File is fast and reports scanning or capped coverage honestly |
+| Catalog feed | `/api/catalog` transfers minimal `{p, e}` rows once; events and authoritative reconnect fetches maintain membership | The client covers every indexed non-gitignored filename and retires deletions across gaps |
+| Server search | No filename-query or content-search route exists | Deferred bounded providers can reuse the palette and local matcher if measurements justify them |
 
 The earlier design treated keyword search as a filtered tree and as a shared filter
 dimension.
@@ -412,11 +414,15 @@ changes, no second `EventSource`, and no separate resync story.
 **Convergence without a consistency token.** The client opens the event stream first,
 buffers `catalog.change` events, fetches `/api/catalog`, applies the bulk, then replays
 the buffer. Ops are idempotent by path, so overlap between the snapshot and buffered
-deltas converges. The catalog refetches only when delta continuity is lost: the sentinel
-`fs.snapshot` that follows an event-stream reconnect, and `fs.resync_required`. Walker
-completion needs no refetch — at `all-known`, live ops converge the data — but it does
-flip the completeness flag, so the walker emits the already-defined `capability.update`
-event when the walk finishes.
+deltas converges.
+The catalog refetches when delta continuity is lost: every event-stream
+reopen and `fs.resync_required`. The sentinel paired with an open does not duplicate
+that fetch; an unpaired sentinel still repairs defensively.
+On one uninterrupted stream, walker completion only flips the completeness flag because
+live ops already converged the data.
+If a reconnect fetch landed mid-walk, it could not prove which files were deleted during
+the gap, so the completion event triggers one finished, authoritative membership fetch
+before the catalog claims convergence.
 
 The client keeps its observation seams (initial tree, lazy subtrees, recent,
 navigation): they provide coverage before the first fetch resolves and when
@@ -510,7 +516,8 @@ results hierarchical.
 - [x] Give the known-file catalog a bulk-apply path, a `catalog.change` apply path, a
   real completeness state, and a revision-memoized snapshot
 - [x] Add the catalog feed module owning connect-then-fetch ordering, delta buffering
-  and replay, and sentinel/resync refetch triggers
+  and replay, reopen/resync refetch triggers, and a final authoritative fetch when a
+  reconnect payload landed mid-walk
 - [x] Wire the feed into the event-stream handlers and update palette and provider
   status wording for the complete case
 - [ ] Measure payload size, transfer time, and scan latency at the inventory cap
@@ -643,8 +650,9 @@ retained scope.
 - Route-test malformed and oversized queries, containment, ignore policy, aborts,
   concurrent inventory changes, stale revisions, timeouts, and independent truncation
   fields
-- Real-browser-test opening `/`, fuzzy selection of an unmounted file, a zero-local
-  fallback, full-text mode switching, and location reveal
+- Real-browser-test opening `/` and `T`, fuzzy selection and location reveal for an
+  unmounted file, keyboard movement and dismissal, and honest complete-catalog status;
+  test zero-local fallback and full-text mode switching with their later phases
 - Record server work, client input delay, payload size, and mounted result count against
   public synthetic large-tree and large-text fixtures
 
@@ -653,7 +661,7 @@ retained scope.
 | Risk | Mitigation |
 | --- | --- |
 | Users mistake local results for the full root | Show the indexed count and explain that more files may appear while scanning continues |
-| A deep known file is renamed or removed outside the event scope | Treat navigation as authoritative, remove stale not-found hits, and add revision-backed server search in Phase 2 |
+| A deep file changes while the browser stream is disconnected | Pass complete catalog deltas through every stream scope and require one finished membership refetch after a reconnect gap |
 | Fuzzy scoring blocks typing as the observed catalog grows | Bound displayed results, cancel obsolete searches, scan in yielding chunks, and add a Worker only after measurement |
 | Server results reorder the highlighted local row | Preserve selection by result identity and use deterministic provider priority and tie-breaking |
 | Automatic full-text fallback surprises users or scans large roots | Offer an explicit content-search action rather than starting content work automatically |
@@ -662,16 +670,16 @@ retained scope.
 
 ## Rollout Plan
 
-Phase 1 is a client-only enhancement over paths the browser has already received.
-It adds no server route, startup fetch, dependency, or complete-inventory transfer.
-It adds no public SDK method, persisted preference, or wire-format compatibility
-requirement. Phase 2 makes filename coverage complete when necessary.
+Phases 1 and 2 ship together in v0.3.0. Search stays client-side and bounded, while one
+minimal startup catalog payload plus live deltas makes filename coverage complete over
+the non-gitignored inventory.
+The feed adds no public SDK method, persisted preference, or per-query request.
 Phase 3 adds content search as an explicit mode after its engine and resource budgets
 are measured.
 
 ## Phase 1 Spike Findings
 
-Phase 1 is ready for interactive testing as a client-only navigation spike:
+Phase 1 was validated as a client-only navigation spike:
 
 - `/` opens one modal Quick File surface; filename and path input uses the documented
   ordered-subsequence rank vector and opens through normal preview navigation
@@ -719,8 +727,8 @@ Still open, deliberate or evidence-gated:
 
 ## Open Questions
 
-- What local-result threshold should start the server provider after the initial
-  zero-result policy has real usage data?
+- Which measured catalog size, transfer, or query-latency threshold should activate the
+  bounded server filename provider?
 - Which query-latency and input-delay budgets should trigger a secondary filename index
   or Web Worker?
 - Which full-text engine satisfies offline installation, cancellation, remote-root,

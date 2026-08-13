@@ -67,6 +67,9 @@ uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_c
 # surface change, then review the diff.
 make golden-update
 
+# Exercise the full navigation API scenario in-process.
+uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --check-api
+
 # Start the development server with the manual browser corpus.
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
@@ -74,16 +77,22 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 The quality, test, audit, and build targets install both locked environments before
 running. Make keeps these stages ordered even when invoked with parallel jobs.
 
+`tests/golden/cli-check-api.tryscript.md` pins a normalized transcript of the same
+navigation sequence against a small fixture.
+A focused concurrency regression test forces inventory mutation at the summary boundary;
+the golden then checks that the application lifecycle, routes, response envelopes, and
+CLI reporting remain connected.
+
 `make lint` applies the ordinary auto-fixes and then runs supply-chain and
 public-hygiene checks.
 `make verify` is the handoff standard before a pull request or release.
 It also audits both locked dependency graphs.
 Its artifact gate rejects local environments, build trees, and repository-only metadata
 before an isolated wheel smoke test exercises the installed `metab` command and
-`metabrowser` compatibility alias, packaged assets, built-in plugin discovery, and
-KPress rendering. The installed wheel must also pass `metab --doctor`, so the release
-gate validates the user-facing plugin diagnostics rather than only importing plugin
-internals.
+`metabrowser` compatibility alias, packaged assets, built-in plugin discovery, KPress
+rendering, and the in-process navigation API check.
+The installed wheel must also pass `metab --doctor`, so the release gate validates the
+user-facing plugin diagnostics rather than only importing plugin internals.
 
 ## Dependencies
 
