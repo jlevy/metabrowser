@@ -70,11 +70,26 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
     assert "getFileIcon" in init_block
     assert "openFile" in init_block
     assert "onNotFound" in init_block
+    assert "overlay: window.MetabrowserOverlay" in init_block
+    assert "resolveFocusFallback: resolveApplicationFocusFallback" in init_block
+    assert "shortcuts: shortcutRegistry" in init_block
 
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
     assert loaded_block.index("initQuickFileFinder();") < loaded_block.index("selectFile(")
     assert loaded_block.count("initQuickFileFinder();") == 1
+
+
+def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
+    palette = proc_browser.STATIC_DIR.joinpath("search_palette.js").read_text()
+    assert "function registerCommands()" in palette
+    assert "function renderShortcutHints()" in palette
+    assert "options.overlay.createModal" in palette
+    assert 'id: "quick-file.open"' in palette
+    assert 'id: "quick-file.close"' in palette
+    assert "OPEN_KEYS" not in palette
+    assert "HINT_GROUPS" not in palette
+    assert 'hostDocument.addEventListener("keydown"' not in palette
 
 
 def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:

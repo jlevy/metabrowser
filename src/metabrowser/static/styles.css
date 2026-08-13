@@ -421,6 +421,8 @@
   --help-section-gap: 16px;
   --help-row-gap: 12px;
   --help-binding-width: 108px;
+  --search-palette-width: 640px;
+  --search-palette-max-height: min(70vh, 640px);
 
   /* Code block backgrounds */
   --code-bg: hsl(210 29% 97%);
@@ -3392,37 +3394,17 @@ pre.code-block code.hljs {
    discard its state. Search work and selection state stay in the
    injected controller; this block owns only the bounded result DOM. */
 .search-palette-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: max(48px, 10vh) 16px 16px;
-  background: var(--modal-scrim);
-}
-.search-palette-overlay[hidden] {
-  display: none;
+  --modal-block-margin: max(48px, 10vh);
 }
 .search-palette-dialog {
+  width: min(var(--search-palette-width), calc(100vw - 2 * var(--modal-inline-margin)));
+  max-height: var(--search-palette-max-height);
+}
+.search-palette-body {
   display: flex;
   flex-direction: column;
-  width: min(640px, calc(100vw - 32px));
-  max-height: min(70vh, 640px);
+  padding: 0;
   overflow: hidden;
-  color: var(--text);
-  background: var(--viz-surface-raised);
-  border: 1px solid var(--viz-border-strong);
-  border-radius: var(--radius-chrome);
-  box-shadow: var(--shadow-lg);
-}
-.search-palette-title {
-  padding: 8px 12px 4px;
-  color: var(--label-color);
-  font-size: var(--label-font-size);
-  font-weight: var(--label-font-weight);
-  letter-spacing: var(--label-letter-spacing);
-  text-transform: var(--label-text-transform);
 }
 /* The query is a band of the dialog, not a control floating inside it.
    Every other row here — title, results, status, hint — runs edge to edge on

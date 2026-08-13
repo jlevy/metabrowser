@@ -21,6 +21,7 @@ STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "metabrowser" / "stat
 AGENT_LOG_STYLES_CSS = STATIC_DIR.parent / "builtin_plugins" / "agent_log" / "styles.css"
 STYLE_FILES = (STATIC_DIR / "styles.css", AGENT_LOG_STYLES_CSS)
 SEARCH_PALETTE_JS = STATIC_DIR / "search_palette.js"
+KEYBOARD_SHORTCUTS_JS = STATIC_DIR / "keyboard_shortcuts.js"
 
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
@@ -145,12 +146,20 @@ def test_palette_filename_and_parent_path_share_one_size() -> None:
 
 
 def test_palette_hint_renders_keys_through_the_kbd_component() -> None:
-    source = SEARCH_PALETTE_JS.read_text()
-    assert '"kbd"' in source, "The palette hint should build kbd elements, not a plain string"
+    palette_source = SEARCH_PALETTE_JS.read_text()
+    shortcut_source = KEYBOARD_SHORTCUTS_JS.read_text()
+    assert 'createElement("kbd")' in shortcut_source
+    assert "options.shortcuts.appendBinding" in palette_source
+    assert 'createElement("kbd")' not in palette_source
     # The old monospaced hint string is gone.
-    assert "↑↓ choose · Enter open · Esc close" not in source
+    assert "↑↓ choose · Enter open · Esc close" not in palette_source
 
 
 def test_both_open_keys_are_advertised_in_the_hint() -> None:
     source = SEARCH_PALETTE_JS.read_text()
-    assert "OPEN_KEYS" in source, "The open-key set should be one named constant"
+    command_start = source.index('id: "quick-file.open"')
+    command = source[source.rfind("options.shortcuts.register", 0, command_start) : command_start]
+    assert 'bindings: [{ key: "t" }, { key: "/" }]' in command
+    assert (
+        'surfaces: { help: "always", nav: "always" }' in source[command_start : command_start + 300]
+    )

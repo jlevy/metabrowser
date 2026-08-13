@@ -5340,6 +5340,13 @@ function disposeKeyboardInfrastructure() {
     document.removeEventListener("focusin", applicationFocusListener);
     applicationFocusListener = null;
   }
+  quickFilePalette?.dispose();
+  quickFilePalette = null;
+  quickFileCatalogFeed?.dispose();
+  quickFileCatalogFeed = null;
+  quickFileSearchController?.dispose();
+  quickFileSearchController = null;
+  knownFileCatalog = null;
   keyboardHelp?.dispose();
   keyboardHelp = null;
   shortcutRegistry?.dispose();
@@ -5357,7 +5364,9 @@ function initQuickFileFinder() {
     !window.MetabrowserKnownFileCatalog ||
     !window.MetabrowserFileFuzzyMatch ||
     !window.MetabrowserSearch ||
-    !window.MetabrowserSearchPalette
+    !window.MetabrowserSearchPalette ||
+    !shortcutRegistry ||
+    !window.MetabrowserOverlay
   ) {
     console.warn("Quick File dependencies are unavailable");
     return;
@@ -5383,6 +5392,7 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
     // live deltas — so an open search re-runs instead of keeping the result
     // set it happened to get first.
@@ -5398,6 +5408,8 @@ function initQuickFileFinder() {
       boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
       return navigateToPath(path);
     },
+    resolveFocusFallback: resolveApplicationFocusFallback,
+    shortcuts: shortcutRegistry,
   });
 }
 

@@ -517,7 +517,7 @@ type MetabrowserSearchPaletteApi = Readonly<{
   dispose(): void;
   element: HTMLElement;
   isOpen(): boolean;
-  open(): void;
+  open(trigger?: HTMLElement | null): void;
 }>;
 
 type MetabrowserSearchPaletteRuntime = Readonly<{
@@ -529,6 +529,9 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
+    overlay: MetabrowserOverlayRuntime;
+    resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
+    shortcuts: MetabrowserShortcutRegistry;
     /**
      * Observe catalog growth so an open search converges instead of keeping
      * the coverage it had when the query ran. Returns an unsubscribe function.
