@@ -534,7 +534,7 @@ Overview is one vertically ordered composition surface, not a fixed page templat
 Its panel registry lets a capability contribute a region without knowing which other
 regions are installed:
 
-- **File types** is the required summary panel for every folder.
+- **Files** is the required file-type summary panel for every folder.
 - **README** is a content panel only when a direct-child README exists.
 - License and other future panels use the same contribution contract and appear only
   when applicable.
@@ -553,11 +553,13 @@ panel body. These headings use the tab bar’s uppercase, bold, tracked sans-ser
 at the body-text size, followed by a neutral separator.
 They are structural labels, not controls, so they have no hover, active-tab underline,
 disclosure mark, or collapsed state.
+The **Files** heading labels the file-type summary; its stable internal panel ID remains
+`folder.file-types`.
 
 Panel bodies use one of two presentations:
 
 - A **surface panel** receives a flat host-rendered body and chrome typography.
-  File types uses this presentation without a surrounding card.
+  The Files summary uses this presentation without a surrounding card.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
   its metadata, diagnostics, TOC, breakpoints, and print behavior.

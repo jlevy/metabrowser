@@ -49,6 +49,23 @@ class Element {
 global.document = { createElement: (tag) => new Element(tag) };
 
 (async () => {
+  const fileTypeSummarySource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/file_type_summary.js"),
+      "utf8",
+    )
+    .replace(/^import[\s\S]*?from\s+"[^"]+";\n/gm, "")
+    .replace(/^export\s+/gm, "");
+  const createFileTypeSummaryPanel = new Function(
+    `${fileTypeSummarySource}\nreturn createFileTypeSummaryPanel;`,
+  )();
+  const fileTypeSummaryPanel = createFileTypeSummaryPanel({}, {});
+  check(
+    "built-in file-type summary uses Files heading",
+    fileTypeSummaryPanel.label === "Files",
+    fileTypeSummaryPanel.label,
+  );
+
   const source = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/overview.js"),
     "utf8",
@@ -95,7 +112,7 @@ global.document = { createElement: (tag) => new Element(tag) };
   const descriptors = [
     {
       id: "folder.file-types",
-      label: "File types",
+      label: "Files",
       placement: "summary",
       presentation: "surface",
       required: true,
@@ -152,8 +169,7 @@ global.document = { createElement: (tag) => new Element(tag) };
   );
   check(
     "panels receive visible headings",
-    stack.children.map((slot) => slot.children[0].textContent).join(",") ===
-      "File types,README,License",
+    stack.children.map((slot) => slot.children[0].textContent).join(",") === "Files,README,License",
   );
   check(
     "panel headings use a shared semantic level",

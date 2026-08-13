@@ -168,8 +168,9 @@ The data selection must account for both dimensions before the UI is trustworthy
    installed plugins register self-contained contributions through a supported SDK
    surface. The composer owns availability, ordering, layout, loading, failure isolation,
    and disposal; a panel does not query or position its siblings.
-4. **File types is the one required panel.** It is always present as an always-expanded
-   section and has no independent disclosure.
+4. **The required file-type panel is headed Files.** Its stable registry ID remains
+   `folder.file-types`; it is always present as an always-expanded section and has no
+   independent disclosure.
    A complete folder with no indexed regular files renders “No files to summarize.”
    with no bars, percentages, table, or README-shaped placeholder.
    Pending inventory never masquerades as this empty state.
@@ -299,12 +300,12 @@ Overview composes a vertical stack of contributions:
 
 ```text
 Overview
-├── File types                         always
+├── Files                              file-type summary, always
 ├── README                             when a direct child exists
 └── License and other plugin panels    future, when applicable
 ```
 
-Files is intentionally not in this tree.
+The future Files listing is intentionally not in this tree.
 A listing changes the whole working mode and belongs beside Overview and Treemap.
 A README or License explains the same folder and belongs inside Overview.
 
@@ -312,7 +313,7 @@ A populated Overview appears as one flat chrome section followed by one document
 section:
 
 ```text
-FILE TYPES
+FILES
 ──────────────────────────────────────────────────────────────
 TOTALS
 Total    1,250 files ███████ 100%      33.3 MB ████████████ 100%
@@ -342,7 +343,7 @@ Each metric column uses an 8-pixel track and existing type-scale and spacing tok
 The track height is a named Aggregate distributions component token rather than a
 use-site literal.
 
-The shared uppercase **File types** section heading is the only content above the table.
+The shared uppercase **Files** section heading is the only content above the table.
 The Totals group leads with Total and then, when ignored files are included, its neutral
 Ignored row. No standalone tally or visible Type/Files/Size header repeats what the
 aligned columns already communicate.
@@ -351,7 +352,7 @@ Screen-reader-only column headers preserve the semantic table relationships.
 An empty folder keeps the same first panel and no synthetic document panel:
 
 ```text
-FILE TYPES
+FILES
 ──────────────────────────────────────────────────────────────
 No files to summarize.
 ```

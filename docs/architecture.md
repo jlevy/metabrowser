@@ -58,11 +58,11 @@ Folder information is divided by interaction level:
 ```text
 folder
 ├── Overview                         default top-level view
-│   ├── File types                   always-present summary panel
+│   ├── Files                        always-present file-type summary panel
 │   ├── README                       conditional document panel
 │   └── License and other panels     future plugin contributions
 ├── Treemap                          peer top-level view
-└── Files                            future peer top-level view
+└── Files listing                    future peer top-level view
 ```
 
 Top-level views answer “which mode am I using?”
@@ -86,17 +86,18 @@ content to the responsive Markdown document boundary.
 In Overview, the Markdown mount keeps its ordinary document semantics, TOC, and card.
 The card retains its border and shadow at regular and wide document bands, then follows
 KPress’s standard borderless narrow layout.
-File types remains a flat chrome section; its edges follow the README card when present
-and the README prose edge when the card collapses.
+The Files summary remains a flat chrome section; its edges follow the README card when
+present and the README prose edge when the card collapses.
 
 Core supplies only generic contribution-registry, resource-context, request, formatter,
 and view-state primitives.
 The folder plugin supplies the folder-panel schema and registry facade.
 A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
-File types is a built-in folder panel backed by the existing inventory rollup.
-Its semantic comparison table groups logical extensions as Documentation, Code, Data, or
-Other using the same preset vocabulary as navigation, without adding group totals or
-another server aggregation.
+The visible **Files** heading belongs to the built-in file-type summary identified by
+the stable `folder.file-types` panel ID. The panel is backed by the existing inventory
+rollup. Its semantic comparison table groups logical extensions as Documentation, Code,
+Data, or Other using the same preset vocabulary as navigation, without adding group
+totals or another server aggregation.
 Each row renders count and byte shares as independently normalized inline bars beside
 their exact values. A Totals group leads with the neutral selected-population Total row
 and, when ignored files are included, follows it with the exact neutral Ignored subset.

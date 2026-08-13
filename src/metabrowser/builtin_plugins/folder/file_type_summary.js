@@ -111,7 +111,7 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
 /** @param {MetabrowserPublicSdk} mb @param {SummaryPalettePool} palettePool */
 export function createFileTypeSummaryPanel(mb, palettePool) {
   return Object.freeze({
-    label: "File types",
+    label: "Files",
     placement: /** @type {const} */ ("summary"),
     presentation: /** @type {const} */ ("surface"),
     required: true,
