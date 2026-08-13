@@ -9,7 +9,7 @@ client-complete catalog feed (decision `mb-ci04`); Phases 3 and 4 planned
 
 ## Overview
 
-Metabrowser opens a keyboard-first file finder when the user presses `/` or `T`. The
+Metabrowser opens a keyboard-first file finder when the user presses `T` or `/`. The
 finder fuzzy-matches every non-gitignored file under the served root and opens the
 selected file through the existing navigation path.
 Matching remains client-side: opening the finder or typing a query makes no per-query
@@ -26,7 +26,7 @@ server-side full-text provider plugs into the same runtime without changing it.
 
 ## Goals
 
-- Open a quick file finder with `/` or `T` unless focus is in an input, editor, select,
+- Open a quick file finder with `T` or `/` unless focus is in an input, editor, select,
   or content-editable surface
 - Fuzzy-match complete-catalog file basenames and served-root-relative paths, with
   basename matches weighted above parent-path matches
@@ -71,7 +71,7 @@ inventory and navigation prerequisites.
 | Recent files | `/api/recent` returns up to 2,000 files from the all-known inventory into `recentBaseEntries` | Recent files are another useful bounded candidate source |
 | Navigation | `navigateToPath` reveals a tree row when possible and calls `selectFile` even when the row is unmounted | Finder selection can reuse existing preview and route behavior |
 | Live updates | Scoped `fs.change` operations update shallow `FileStore` entries, while minimal `catalog.change` events pass through every scope | Deep filename coverage remains live without expanding the tree |
-| Client search | A `/`- and `T`-key palette, complete known-file catalog, fuzzy matcher, and DOM-independent provider runtime search locally without a query request | Quick File is fast and reports scanning or capped coverage honestly |
+| Client search | A palette opened by `T` or `/`, complete known-file catalog, fuzzy matcher, and DOM-independent provider runtime search locally without a query request | Quick File is fast and reports scanning or capped coverage honestly |
 | Catalog feed | `/api/catalog` transfers minimal `{p, e}` rows once; events and authoritative reconnect fetches maintain membership | The client covers every indexed non-gitignored filename and retires deletions across gaps |
 | Server search | No filename-query or content-search route exists | Deferred bounded providers can reuse the palette and local matcher if measurements justify them |
 
@@ -348,7 +348,13 @@ content modes continuously, while the palette stays specialized for navigation.
 
 ### Keyboard and Accessibility Contract
 
-- `/` opens the finder with an empty query and prevents the browser’s quick-find action
+The shared dispatcher, canonical key presentation, Help copy, hints, and modal shell are
+owned by the
+[contextual keyboard Help and tree-navigation plan](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md).
+The rules below remain the Quick File interaction contract that migration must preserve.
+
+- `T` or `/` opens the finder with an empty query; `/` prevents the browser’s quick-find
+  action
 - the global handler ignores events already prevented, modifier chords, composition, and
   editable targets; pressing `/` inside the finder inserts the character normally
 - `ArrowDown`, `ArrowUp`, `Home`, and `End` change the active result
@@ -650,7 +656,7 @@ retained scope.
 - Route-test malformed and oversized queries, containment, ignore policy, aborts,
   concurrent inventory changes, stale revisions, timeouts, and independent truncation
   fields
-- Real-browser-test opening `/` and `T`, fuzzy selection and location reveal for an
+- Real-browser-test opening `T` and `/`, fuzzy selection and location reveal for an
   unmounted file, keyboard movement and dismissal, and honest complete-catalog status;
   test zero-local fallback and full-text mode switching with their later phases
 - Record server work, client input delay, payload size, and mounted result count against
@@ -666,7 +672,7 @@ retained scope.
 | Server results reorder the highlighted local row | Preserve selection by result identity and use deterministic provider priority and tie-breaking |
 | Automatic full-text fallback surprises users or scans large roots | Offer an explicit content-search action rather than starting content work automatically |
 | One endpoint accumulates incompatible result shapes | Keep `/api/search/files`, `/api/search/text`, and `/api/filter/tree` separate behind one UI provider contract |
-| `/` interferes with document editing or browser behavior | Ignore editable, composing, modified, and already-handled events; cover every guard in DOM and real-browser tests |
+| A printable Quick File shortcut interferes with document editing or browser behavior | Ignore editable, composing, modified, and already-handled events; cover every guard in DOM and real-browser tests |
 
 ## Rollout Plan
 
@@ -681,8 +687,8 @@ are measured.
 
 Phase 1 was validated as a client-only navigation spike:
 
-- `/` opens one modal Quick File surface; filename and path input uses the documented
-  ordered-subsequence rank vector and opens through normal preview navigation
+- `T` or `/` opens one modal Quick File surface; filename and path input uses the
+  documented ordered-subsequence rank vector and opens through normal preview navigation
 - the catalog includes files learned from initial and lazy trees, Recent responses,
   inventory events, and successful direct navigation, regardless of mounted tree rows
 - search retains at most 100 results, cancels obsolete work, yields during large scans,
@@ -740,7 +746,7 @@ Still open, deliberate or evidence-gated:
 
 ## Phase 1 Acceptance Criteria
 
-- `/` opens one finder and does not fire from editable, composing, modified, or
+- `T` or `/` opens one finder and does not fire from editable, composing, modified, or
   already-handled keyboard events
 - Typing fuzzy-matches every file observed from tree, lazy subtree, Recent, event, and
   successful navigation sources without making a search request

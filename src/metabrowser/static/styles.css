@@ -182,7 +182,10 @@
 
      Keys are always ALL CAPS — ENTER, ESC, T — including single
      letters, so a key never reads as a word. Arrow glyphs (↑ ↓) have no
-     case and pass through unchanged.
+     case and pass through unchanged. The visible, spoken, and ARIA
+     vocabulary for semantic keys lives in docs/design-system.md and is
+     emitted by the shared shortcut binding formatter; use sites do not
+     choose abbreviations or glyphs.
 
      The border is deliberately thin and low-contrast: a key is a quiet
      inline mark inside hint text, not a button. Both themes inherit
@@ -1404,12 +1407,15 @@ html.theme-anim .menu {
 
      Press <kbd class="kbd">T</kbd> to search
 
-   Write the key in its natural case in markup — the caps treatment is
-   presentational, so the accessible name a screen reader announces
-   stays whatever the markup says. Keys stand alone as marks; do not
-   nest one inside a <code> or restyle it per surface. For a sequence,
-   emit separate keys and let the surrounding text carry any joining
-   word, so each key keeps its own border. */
+   Write an isolated key in its natural case in markup — the caps
+   treatment is presentational, so the accessible name a screen reader
+   announces stays whatever the markup says. Keys stand alone as marks;
+   do not nest one inside a <code> or restyle it per surface.
+
+   Dynamic shortcut surfaces use the shared binding renderer. It emits
+   one .kbd per physical key, an unambiguous visual separator, and one
+   expanded spoken phrase for aliases or chords; callers never assemble
+   those pieces themselves. */
 
 .kbd {
   display: inline-flex;

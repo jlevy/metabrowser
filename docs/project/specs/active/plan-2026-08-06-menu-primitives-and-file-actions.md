@@ -91,7 +91,10 @@ The `.icon-btn` primitive covers the trigger side.
 Every menu opener is an icon button, and that primitive already treats hover, keyboard
 focus, and “my menu is open” as one visual state — so a generic opener needs no new CSS,
 only something to drive that state.
-`.kbd` covers keyboard hints inside a menu row.
+The shared shortcut binding formatter from the
+[contextual keyboard plan](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
+renders canonical `.kbd` markup, abbreviations, separators, spoken names, and
+valid-or-omitted `aria-keyshortcuts` decisions inside a menu row.
 
 ### What is missing
 
@@ -224,14 +227,19 @@ keys off.
 Arbitration is deliberately minimal, not a stack: at most one anchored overlay and one
 modal at a time; opening an anchored overlay closes any other anchored overlay and
 leaves a modal alone.
-One module-owned document `keydown` listener routes Escape to the topmost open surface,
-replacing the palette’s and the settings menu’s private, never-removed document
-listeners rather than becoming a third.
+The shortcut registry from the
+[contextual keyboard plan](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
+owns the one document-level application `keydown` listener.
+Each open surface registers its close command in the appropriate active scope and
+disposes it on close, so Escape reaches the topmost eligible surface without the overlay
+layer becoming another dispatcher.
+This replaces the palette’s and settings menu’s private document listeners.
 
-The same module exposes a modal variant: scrim at `--z-modal`, `role="dialog"` with
-`aria-modal="true"`, focus capture and restore, and a minimal Tab wrap over the dialog’s
-focusable descendants that a consumer may override — the palette keeps its stricter
-input-pinned Tab behavior.
+The same module exposes a modal variant using the design system’s shared dialog anatomy:
+scrim at `--z-modal`, labelled `role="dialog"` with `aria-modal="true"`, visible Close
+control, bounded body, background inertness, focus capture and restore, and a minimal
+Tab wrap over the dialog’s focusable descendants that a consumer may override — the
+palette keeps its stricter input-pinned Tab behavior.
 `search_palette.js` is ported onto it in the same phase, so the app keeps exactly one
 modal implementation and the palette’s tested behavior becomes the shared behavior
 rather than a second copy.
@@ -246,8 +254,10 @@ Renders a resolved action list into `.menu` markup — `.menu-item` rows with
 mounts it through `MetabrowserOverlay`. This is the first real use site for
 `.menu-item`.
 
-It owns the keyboard model: `ArrowDown` and `ArrowUp` with wrap, `Home` and `End`,
-`Enter` and `Space` to invoke, and `Escape` to close and return focus to the trigger.
+It owns the focused-widget keyboard model on the menu root: `ArrowDown` and `ArrowUp`
+with wrap, `Home` and `End`, and `Enter` and `Space` to invoke.
+The overlay scope registers `Escape` with the shared dispatcher to close and return
+focus to the trigger.
 Pointer hover and keyboard roving drive one shared active state, the way the palette’s
 option list already works.
 `role="menu"` and `role="menuitem"` are set here, not by callers.
@@ -269,7 +279,8 @@ carry filenames. Icons are the only markup accepted, and only from the `ICONS` r
 
 Two CSS additions are needed, both consuming existing tokens: `.menu-item.destructive`
 using `--status-error` for the label and icon, and a `.menu-item-hint` slot on the
-trailing edge for a keyboard shortcut rendered with the existing `.kbd` component.
+trailing edge for a keyboard shortcut rendered through the shared formatter and `.kbd`
+component.
 
 #### Browser: `static/action_registry.js` → `window.MetabrowserActions`
 
@@ -455,8 +466,8 @@ drive-by-write path.
 
 - [ ] Add `overlay_layer.js` with point and element anchoring, flip-and-clamp
   containment, the anchored dismissal contract, focus save and restore with the
-  detached-element fallback, the shared Escape router, single-open arbitration, and
-  disposal
+  detached-element fallback, registry-scoped Escape integration, single-open
+  arbitration, inert-background restoration for modals, and disposal
 - [ ] Add the modal variant and port `search_palette.js` onto it, deleting the palette’s
   private overlay, scrim, focus, and dismissal code (sequence this after the in-flight
   quick-file palette branch lands, so the port rebases once, not continuously)
@@ -465,6 +476,9 @@ drive-by-write path.
   rows, ARIA roles, text-node labels, and grouping
 - [ ] Add the menu and edit CSS from existing tokens: `.menu-item.destructive`,
   `.menu-item-hint`, the inline-edit input class, and the row menu-open target state
+- [ ] Render every `.menu-item-hint` through the shared binding formatter so menu hints
+  use the same key abbreviations, grammar, spoken names, and ARIA serialization policy
+  as Help and navigation hints
 - [ ] Add `action_registry.js` with context resolution and capability-aware enablement
 - [ ] Add `inline_edit.js` with selection, commit, cancel, validation, pending, error,
   re-mount across re-renders, and restore
@@ -477,10 +491,9 @@ drive-by-write path.
   trigger button and deleting the scoped `display` CSS and the gear’s private document
   listeners
 - [ ] Add Node DOM tests for each module and register them under `tests/`
-- [ ] Add a “Menus, Overlays, and In-Place Editing” section to the
-  [design system](../../../design-system.md), alongside the icon-button section, so the
-  placement, content, and command layers are documented where the surface layer already
-  is
+- [ ] Review the finished overlay, menu, dialog, key-hint, and in-place-editing work
+  against the [design system](../../../design-system.md); extend that durable contract
+  only when the implementation introduces a genuinely shared primitive or exception
 
 ### Phase 2: Gated Rename and Trash
 
@@ -499,6 +512,7 @@ drive-by-write path.
 - [ ] Wire rename to `inline_edit.js` and trash to a confirmation on the shared modal
   shell, and register `F2` and `Delete` through the shared shortcut registry against the
   same focused-row action descriptors; menu hints still render through `.menu-item-hint`
+  and the shared binding formatter
 - [ ] Document the capability, the quarantine trash semantics, and the trusted-local
   warning
 
@@ -513,10 +527,13 @@ scripts driving an injected document, run from a thin pytest wrapper:
   an anchored surface; the opening interaction never dismisses its own surface;
   scrolling inside a scrollable surface does not dismiss it; a second open closes the
   first; an anchored overlay leaves a modal alone; focus returns to the trigger, with
-  the detached-trigger fallback; `dispose()` leaves no listeners or nodes;
+  the detached-trigger fallback; Escape routes through the shortcut registry rather than
+  a second document listener; modal close and `dispose()` restore prior inert state and
+  leave no registrations, listeners, or nodes;
 - keyboard: arrow wrap, Home and End, disabled rows focusable, announced with their
   reason, and never invocable; invoking closes the menu and restores focus *before* the
-  action runs; Escape returns focus;
+  action runs; Escape returns focus; key hints use the canonical binding renderer and
+  spoken form;
 - registry: enablement and disabled reasons under both capability states, grouping and
   separator placement, and the empty-context path that opens no menu;
 - inline edit: stem-only preselection, commit, cancel, Escape-then-blur does not commit,
@@ -556,15 +573,18 @@ not a public-facing server, and loopback binding alone does not make mutation sa
 - Should the registry be exposed through `window.metabrowser` in a later phase, and if
   so does a plugin-contributed action need its own capability declaration in the
   manifest?
-- When the nav pane grows the full ARIA tree role model (`role="tree"`, `aria-expanded`,
-  `aria-level`), should it land with the unified-filtering work that already touches
-  tree navigation, or on its own?
 
 ## Acceptance Criteria
 
 - One module owns anchored placement, and the tooltip, the palette, and the new menu all
   route through it; no second implementation of flip-and-clamp, scrim, focus restore, or
   outside-dismissal remains in the codebase
+- The shortcut registry is the only document-level application key dispatcher; overlays
+  register scoped Escape commands and remove them on every close and disposal path
+- Menus, Help, navigation hints, and Quick File use the same canonical key formatter,
+  `.kbd` renderer, separators, spoken names, and valid-or-omitted ARIA serialization
+- Modal consumers use the shared labelled dialog anatomy, inert-background state, focus
+  containment and restoration, semantic tokens, and visible Close control
 - A menu can be opened at a pointer coordinate or anchored to any element, in any pane —
   including over the transformed preview pane — with one line at the call site and no
   new CSS

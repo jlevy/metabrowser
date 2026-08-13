@@ -16,10 +16,10 @@ and the file tree cannot receive keyboard focus at all.
 This plan introduces one internal shortcut registry that is the source of truth for
 dispatch, the full Help dialog, and compact contextual hints.
 A persistent hint strip at the bottom of the navigation pane always advertises `?` for
-Help and `/` or `T` for Quick File.
-When focus is in the file tree, the strip adds the keys that are actually available
-there. The index-progress row remains in the same footer stack immediately below the
-hints.
+Help and `T` or `/` for Quick File.
+When focus is in the file tree, the strip adds the selected high-value commands that are
+actually available there.
+The index-progress row remains in the same footer stack immediately below the hints.
 
 The same work gives the file tree complete, conventional keyboard navigation.
 Arrow keys traverse or open the tree only while a tree row has focus.
@@ -33,6 +33,9 @@ there.
   supported application shortcut
 - Define each shortcut once and derive dispatch, Help rows, and contextual hints from
   the same descriptor
+- Apply the [design-system](../../../design-system.md) contracts for canonical key
+  names, shortcut grammar, Help copy, modal anatomy, tokens, focus, and overlay
+  lifecycle on every surface
 - Always show the Help and Quick File hints at the bottom of the navigation pane
 - Add situational tree-navigation hints only while those commands are available
 - Make every rendered file-tree row reachable and operable with a conventional ARIA tree
@@ -108,7 +111,7 @@ rather than adding another roving-tabindex implementation.
 1. **`?` opens Help.** Matching uses `KeyboardEvent.key === "?"`, so the normal
    Shift+slash gesture works across layouts that produce that character.
    Ctrl, Alt, and Meta combinations are never claimed.
-2. **Quick File keeps both aliases.** Plain `/` and unmodified `T` open the same finder.
+2. **Quick File keeps both aliases.** Unmodified `T` and plain `/` open the same finder.
    The displayed keycap is uppercase by convention, but the binding is the unmodified
    letter: Shift+T is not claimed, while Caps Lock reporting `T` with no Shift remains
    accepted as it is today.
@@ -137,7 +140,7 @@ rather than adding another roving-tabindex implementation.
 | Context | Keys | Behavior |
 | --- | --- | --- |
 | Anywhere outside editable content | `?` | Open Help |
-| Anywhere outside editable content | `/`, `T` | Open Quick File |
+| Anywhere outside editable content | `T`, `/` | Open Quick File |
 | File tree | `ArrowUp`, `ArrowDown` | Focus the previous or next visible tree row |
 | File tree | `ArrowLeft` | Collapse an expanded folder; otherwise focus its parent |
 | File tree | `ArrowRight` | Expand a collapsed folder; otherwise focus its first visible child |
@@ -153,6 +156,88 @@ Tab and Shift+Tab keep their ordinary browser meaning except inside a modal, whe
 shared modal controller contains focus.
 They are not advertised as Metabrowser shortcuts.
 
+### Approved Groups and Command Copy
+
+Group identifiers resolve to this exact ordered copy:
+
+| Group ID | Help heading | Context sentence |
+| --- | --- | --- |
+| `anywhere` | Anywhere | Available outside text fields. |
+| `navigation` | Navigation | Available while a file-tree row has focus. |
+| `quick-file` | Quick File | Available while Quick File is open. |
+| `help` | Help | Available while Help is open. |
+
+Command descriptors own the following copy.
+The key column shows formatter output, not strings stored by the command.
+An em dash means the command appears in full Help but is not selected for a compact hint
+surface.
+
+| Command ID | Group | Keys | Label | Help description | Compact hint |
+| --- | --- | --- | --- | --- | --- |
+| `help.open` | `anywhere` | `?` | Help | Open Help for a description of Metabrowser and all keyboard shortcuts. | Help |
+| `quick-file.open` | `anywhere` | `T` or `/` | Quick File | Find and open a file from the current folder. | Quick File |
+| `tree.previous` | `navigation` | `↑` | Previous item | Move focus to the previous visible item in the file tree. | Move |
+| `tree.next` | `navigation` | `↓` | Next item | Move focus to the next visible item in the file tree. | Move |
+| `tree.parent-or-collapse` | `navigation` | `←` | Parent or collapse | Collapse the focused folder or move focus to its parent item. | Navigate folders |
+| `tree.child-or-expand` | `navigation` | `→` | Child or expand | Expand the focused folder or move focus to its first visible child. | Navigate folders |
+| `tree.first` | `navigation` | `Home` | First item | Move focus to the first visible item in the file tree. | — |
+| `tree.last` | `navigation` | `End` | Last item | Move focus to the last visible item in the file tree. | — |
+| `tree.activate` | `navigation` | `Enter` or `Space` | Open or toggle | Open the focused file, toggle the focused folder, or show the next page. | Open or toggle |
+| `quick-file.previous` | `quick-file` | `↑` | Previous result | Move to the previous Quick File result. | Move |
+| `quick-file.next` | `quick-file` | `↓` | Next result | Move to the next Quick File result. | Move |
+| `quick-file.first` | `quick-file` | `Home` | First result | Move to the first mounted Quick File result. | — |
+| `quick-file.last` | `quick-file` | `End` | Last result | Move to the last mounted Quick File result. | — |
+| `quick-file.activate` | `quick-file` | `Enter` | Open result | Open the active Quick File result. | Open |
+| `quick-file.close` | `quick-file` | `Esc` | Close Quick File | Close Quick File and restore focus to the previous control. | Close |
+| `help.close` | `help` | `?` or `Esc` | Close Help | Close Help and restore focus to the previous control. | — |
+
+### Design-System Contract
+
+This feature is the first complete consumer of the design system’s
+[keyboard-command](../../../design-system.md#keyboard-commands-and-help) and
+[overlay](../../../design-system.md#overlays-menus-and-dialogs) contracts.
+The contracts are implementation requirements, not visual guidance.
+
+| Concern | Single owner | Required consumers |
+| --- | --- | --- |
+| Event matching and scope | Shortcut registry | Global commands, Help, Quick File, tree commands, future menu commands |
+| Key names and binding grammar | Shared binding formatter | Help, nav hints, Quick File hints, menu hints, `aria-keyshortcuts` |
+| Command and context copy | Command and group descriptors | Help, compact hints, visible triggers |
+| Portal, modal state, focus, Escape, inert background, and disposal | Shared overlay controller integrated with the registry | Help, Quick File, menus, future dialogs |
+| Keycap and floating-surface presentation | `.kbd`, dialog/menu primitives, and semantic tokens | Every rendered instance in core and plugins |
+
+The binding formatter maps semantic keys to canonical keycap and spoken forms plus an
+ARIA form when the physical shortcut is representable accurately.
+For this release the visible vocabulary is `?`, `/`, `T`, `↑`, `↓`, `←`, `→`, `Home`,
+`End`, `Enter`, `Space`, and `Esc`; the spoken form expands symbols and abbreviations.
+Because `?` and `/` are matched as produced characters, their physical chords vary by
+keyboard layout and are omitted from `aria-keyshortcuts`; the layout-stable `T` alias is
+advertised for Quick File.
+Alternatives use the word “or,” so Quick File is shown as `T` or `/`, never as adjacent
+keycaps or with a slash used as a separator.
+Keycaps use `.kbd`; call sites neither write display labels nor apply key styling.
+
+Every Help-visible descriptor supplies a sentence-case label and a complete,
+active-voice description.
+Every compact-hint descriptor supplies a one-to-three-word sentence-case hint without
+terminal punctuation.
+The copy does not repeat its keys.
+Group identifiers resolve through one ordered group registry, which owns the group title
+and its context sentence.
+
+Help uses the shared modal-dialog anatomy even though its surface is compact: labelled
+header, visible Close control, bounded scrolling body, modal semantics, inert
+background, focus containment and restoration, and token-only presentation.
+“Popover” describes its visual size only and is not its role.
+The Help implementation introduces no local surface colors, type sizes, shadows, radii,
+z-index values, key abbreviations, or focus rules.
+
+Conformance is protected at the data, DOM, and browser levels.
+Descriptor tests reject incomplete copy and unknown keys; renderer tests exercise the
+same sample bindings across Help, nav, Quick File, and menu-hint output; overlay tests
+cover every open and close path; and the real-browser pass covers focus, zoom, narrow
+widths, both themes, reduced motion, and spoken names.
+
 ### Shortcut Registry
 
 A new strict module, `static/keyboard_shortcuts.js`, exposes an internal frozen factory
@@ -164,12 +249,16 @@ Each command descriptor contains both behavior and presentation metadata:
 ```js
 {
   id: "quick-file.open",
-  label: "Quick File",
-  group: "Anywhere",
+  group: "anywhere",
   scope: "global",
+  copy: {
+    label: "Quick File",
+    description: "Find and open a file from the current folder.",
+    hint: "Quick File",
+  },
   bindings: [
-    { key: "t", display: "T", shift: false },
-    { key: "/", display: "/", shift: false },
+    { key: "t", modifiers: { shift: "forbid", ctrl: "forbid", alt: "forbid", meta: "forbid" } },
+    { key: "/", modifiers: { shift: "forbid", ctrl: "forbid", alt: "forbid", meta: "forbid" } },
   ],
   surfaces: { help: true, navHint: "always" },
   allowInEditable: false,
@@ -181,7 +270,12 @@ Each command descriptor contains both behavior and presentation metadata:
 }
 ```
 
-The registry owns four operations:
+`group` is an identifier, not display copy.
+An ordered group registry supplies “Anywhere” and the context sentence used by Help.
+The formatter maps `key` and `modifiers` to the canonical visible, spoken, and ARIA
+forms; a binding cannot carry a caller-authored display label.
+
+The controller provides these operations:
 
 - `register(command)` adds one descriptor and returns a disposer;
 - `activateScope(scope, {exclusive})` puts a context above lower-priority contexts and
@@ -189,7 +283,12 @@ The registry owns four operations:
 - `snapshot(surface, {includeInactive})` returns immutable, ordered presentation data
   for Help or a hint surface;
 - `subscribe(listener)` reports registration and active-scope changes so chrome can
-  repaint without polling.
+  repaint without polling;
+- `describeBindings(bindings)` returns keycap labels, one expanded spoken phrase, and an
+  `aria-keyshortcuts` serialization only for accurately representable physical bindings;
+  and
+- `appendBinding(parent, description)` emits the one accessible `.kbd` DOM structure
+  shared by Help, nav, Quick File, and menu hints.
 
 `dispose()` removes the document listener, all registered commands, and all
 subscriptions. Components retain and call their registration and scope disposers when
@@ -214,6 +313,14 @@ It evaluates active scopes from highest to lowest.
 Only a handler that reports the event handled causes `preventDefault()` and propagation
 to stop. An inactive or unavailable command leaves the browser event untouched.
 
+The overlay controller does not add a second document-level Escape listener.
+Opening a surface activates its registry scope and registers the surface’s close
+command; closing or disposal removes both registrations.
+An anchored popup inside a modal has the highest active scope, so the first Escape
+closes that popup and the next can close the modal.
+Focused widget roots may still own their conventional arrow, Home, End, Enter, Space,
+and Tab behavior; those local listeners are not application-wide shortcut dispatchers.
+
 Matching uses `event.key`, not physical `event.code`, because the command is the
 character the user produced.
 Each descriptor declares its modifier policy explicitly; there is no blanket Shift
@@ -224,26 +331,35 @@ query target; printable global commands do not inherit that exception.
 Presentation surfaces never copy key labels or command names.
 The full Help list asks for all commands marked for Help, including inactive contextual
 commands. The nav hint strip asks for commands whose hint policy is `always` plus
-commands in the currently active scope.
-Quick File uses the same presentation helper for its local hint row, retiring
-`HINT_GROUPS`.
+commands explicitly marked for compact hints in the currently active scope.
+Home and End remain in full Help but are intentionally omitted from the constrained nav
+strip. Quick File uses the same presentation helper for its local hint row, retiring
+`HINT_GROUPS`. Descriptors that share a compact hint are coalesced only by the snapshot
+helper, so the tree can show `↑` or `↓` with “Move” without introducing a second
+grouping table.
 
 ### Help Dialog
 
-Help is a compact modal popover portaled to `document.body`. It uses the shared modal
-surface rather than the native Popover API because it contains several focusable
-controls and needs the same focus, Escape, scrim, and disposal contract as Quick File.
+Help is a compact modal dialog portaled to `document.body`. It uses the shared dialog
+primitive rather than the native Popover API because it contains focusable controls and
+needs the same focus, Escape, scrim, inert-background, and disposal contract as Quick
+File.
 
 The persistent `? Help` item in the nav hint strip is a real button and is the pointer
-trigger. The adjacent `/` or `T` Quick File item is a button too.
-Both expose `aria-keyshortcuts`; no one has to know a shortcut before discovering either
-command.
-Opening captures the previous focus; closing by Escape, the Close button, or the
-scrim restores it when the element is still connected.
+trigger. The adjacent `T` or `/` Quick File item is a button too.
+The Quick File button exposes formatter-derived `aria-keyshortcuts="T"`. The
+character-matched punctuation aliases remain visible and spoken but do not guess a
+layout-specific physical chord for ARIA. No one has to know a shortcut before
+discovering either command.
+Opening captures the previous focus; closing by Escape, the Close button, or the scrim
+restores it when the element is still connected.
 
-The dialog has a labelled title, `aria-modal="true"`, a visible Close button, and a
-bounded scrolling body for short viewports.
-It contains:
+The dialog uses the shared header, title, visible Close control, scrolling body, and
+optional-footer anatomy.
+It has a labelled title, `aria-modal="true"`, a bounded body for short viewports, and no
+local surface tokens.
+Background application content is inert until every close or disposal path restores its
+prior state. It contains:
 
 1. **What Metabrowser does.** Initial copy:
 
@@ -254,11 +370,13 @@ It contains:
 
 2. **Project link.** “Metabrowser on GitHub” points to
    `https://github.com/jlevy/metabrowser`, opens in a new tab, and uses
-   `rel="noopener noreferrer"`.
+   `rel="noopener noreferrer"`. Its accessible description says that it opens in a new
+   tab.
 
 3. **Keyboard shortcuts.** Registry-derived groups for Anywhere, Navigation, Quick File,
-   and Help. Contextual groups say when they apply; an inactive context is not presented
-   as disabled.
+   and Help. Every row uses the shared binding renderer and descriptor copy.
+   Contextual groups say when they apply; an inactive context is not presented as
+   disabled.
 
 The description is intentionally short and links to the project instead of copying
 installation, security, or plugin documentation into an in-app surface.
@@ -271,16 +389,18 @@ The index template gains `#nav-shortcut-hints` immediately before `#index-progre
 ┌─────────────────────────────────────────┐
 │ …scrolling file tree…                   │
 ├─────────────────────────────────────────┤
-│ [?] Help   [T] [/] Quick File           │  always
-│ [↑][↓] move  [←][→] tree               │  while a tree row has focus
-│ [Enter][Space] open or toggle           │
+│ [?] Help   [T] or [/] Quick File        │  always
+│ [↑] or [↓] Move                         │  while a tree row has focus
+│ [←] or [→] Navigate folders             │
+│ [Enter] or [Space] Open or toggle       │
 ├─────────────────────────────────────────┤
 │ ◌ Scanning 8,192 files…                 │  only while indexing
 └─────────────────────────────────────────┘
 ```
 
-The illustration is a content model, not fixed copy.
-Actual labels come from the registry.
+The illustration is a content model, not independent copy.
+Actual labels, grouping, key abbreviations, separators, spoken names, and any valid
+`aria-keyshortcuts` values come from registry snapshots and the shared binding renderer.
 The strip uses the existing `.kbd` component and design tokens, wraps at narrow widths,
 and never causes horizontal scrolling.
 The persistent row remains one quiet band; contextual groups may wrap to a second line.
@@ -369,14 +489,14 @@ controls.
 
 | Component | Responsibility |
 | --- | --- |
-| `static/keyboard_shortcuts.js` | Registry, scope arbitration, event matching, immutable presentation snapshots, disposal |
-| `static/keyboard_help.js` | Registry-derived Help dialog and nav/Quick File hint rendering |
+| `static/keyboard_shortcuts.js` | Registry, scope arbitration, event matching, descriptor validation, canonical binding formatting and rendering, immutable presentation snapshots, disposal |
+| `static/keyboard_help.js` | Registry-derived Help dialog and nav hint rendering through shared dialog and binding primitives |
 | `static/tree_keyboard_navigation.js` | Tree semantics, roving focus, visible-row traversal, activation callbacks |
-| Shared `static/overlay_layer.js` | Modal portal, focus containment and restoration, Escape, scrim dismissal |
+| Shared `static/overlay_layer.js` | Modal portal, inert background, focus containment and restoration, registry-scoped Escape, scrim dismissal |
 | `static/search_palette.js` | Search-specific state and results; registers its commands and consumes shared hints |
 | `static/app.js` | Composition root, existing tree actions, synchronization calls, selection and source changes |
 | `server.py` index template | Help trigger host, hint-strip host, script ordering |
-| `static/styles.css` | Token-based Help, focus, and hint-strip presentation |
+| `static/styles.css` | Shared dialog anatomy plus token-based Help, focus, keycap, and hint-strip presentation |
 
 Every new factory accepts an injected `document` for DOM tests and returns a disposer.
 The index loads the registry and overlay modules before consumers and loads `app.js`
@@ -395,16 +515,26 @@ plugins.
 ### Phase 1: Registry, Help, and Shared Hints
 
 - [ ] Write failing Node DOM tests for shortcut matching, scope precedence, editable
-  guards, duplicate detection, handled-event semantics, subscriptions, and disposal
-- [ ] Implement the strict shortcut registry and one document dispatcher
-- [ ] Reuse or extract the shared modal slice specified by the menu and overlay plan
+  guards, duplicate detection, descriptor-copy validation, handled-event semantics,
+  subscriptions, and disposal
+- [ ] Write binding-presentation contract tests for every canonical key, alternative and
+  future-chord grammar, spoken names, valid and deliberately omitted ARIA serialization,
+  and identical rendering across Help, nav, Quick File, and menu hints
+- [ ] Implement the strict shortcut registry, binding formatter and renderer, ordered
+  group registry, and one document dispatcher
+- [ ] Reuse or extract the shared modal slice specified by the menu and overlay plan,
+  integrating Escape through the shortcut registry and adding inert-background restore
 - [ ] Implement the Help dialog with the approved description, GitHub link, generated
-  shortcut groups, focus restoration, and disposal
+  shortcut groups, shared dialog anatomy, focus restoration, and disposal
 - [ ] Add the persistent nav hint host above index progress and render Help and Quick
   File from registry data
 - [ ] Migrate Quick File open keys, modal scope, Escape, result-navigation commands, and
-  hint rows without changing its search behavior
+  hint rows through the same dialog, registry, and binding primitives without changing
+  its search behavior
 - [ ] Add static-asset ordering and package-data checks for every new module
+- [ ] Review the finished markup, copy, styles, and tests against every applicable
+  [design-system](../../../design-system.md) keyboard, Help, overlay, and accessibility
+  rule; do not accept local exceptions without documenting them there
 
 ### Phase 2: Tree Keyboard Navigation
 
@@ -417,7 +547,7 @@ plugins.
   loads, pagination, insertion, removal, and type replacement
 - [ ] Add focus-visible styling and contextual tree hints from the registry
 - [ ] Validate pointer behavior, keyboard behavior, narrow navigation panes, light and
-  dark themes, and screen-reader naming in a real browser
+  dark themes, 200% zoom, reduced motion, and screen-reader naming in a real browser
 - [ ] Run `make verify` as the required handoff gate
 
 ## Testing Strategy
@@ -430,19 +560,41 @@ plugins.
 - modal scope wins over tree scope, which wins over global scope;
 - repeat is accepted for tree movement and rejected for open/toggle commands;
 - duplicate bindings in one scope fail deterministically;
+- unknown semantic keys and Help or hint descriptors with incomplete copy fail
+  deterministically;
 - an unhandled command does not prevent browser behavior;
-- registrations, subscriptions, active scopes, and the document listener dispose.
+- registrations, subscriptions, active scopes, and the document listener dispose;
+- every canonical key has the specified visible and spoken form plus the correct valid
+  or omitted ARIA form; and
+- alternatives render with “or,” while a chord renders with “plus” in its spoken form.
 
 ### Help and Hints
 
 - Help opens from both `?` and the visible button, mounts once, and restores focus;
-- title, dialog semantics, description, GitHub URL, link safety attributes, and Close
-  control are present;
+- title, shared dialog anatomy, modal semantics, inert background, approved description,
+  GitHub URL, new-tab description, link safety attributes, and Close control are
+  present;
 - Help rows and nav hints are derived from registry snapshots;
-- Help and Quick File hints always render through `.kbd`;
+- Help, nav, Quick File, and menu-hint sample bindings produce the same canonical `.kbd`
+  structure and spoken phrase;
+- shortcut controls receive formatter-derived `aria-keyshortcuts` only for accurately
+  representable physical bindings while retaining their action label as the accessible
+  name;
 - tree hints appear on tree focus and disappear when focus leaves;
 - hint updates are not live-announced, while index progress remains polite;
-- narrow widths wrap without covering or shrinking progress text.
+- compact hints use descriptor copy without key-name repetition or slash-as-“or”
+  abbreviations; and
+- narrow widths and 200% zoom wrap without covering the Close control or progress text.
+
+### Overlay Integration
+
+- the registry remains the only document-level application-shortcut dispatcher;
+- Escape closes the topmost anchored popup before its containing modal;
+- Escape, Close, and scrim paths restore focus and remove scope registrations;
+- disposal restores pre-existing trigger and inert state and leaves no portal, scrim,
+  listener, observer, or registration; and
+- light and dark surfaces use shared semantic tokens, and reduced motion does not change
+  content, focus order, or dismissal behavior.
 
 ### Tree Navigation
 
@@ -473,13 +625,22 @@ errors.
 - The nav footer always shows Help and Quick File, with contextual tree hints only when
   a tree row has focus
 - The hint strip remains above index progress and does not alter progress announcements
-- The registry is the only source for the commands and labels shown in Help or hints
+- The registry and its group descriptors are the only source for commands, context, and
+  copy shown in Help or hints
+- One formatter and renderer supply every visible key name, binding separator, spoken
+  phrase, and valid-or-omitted `aria-keyshortcuts` decision; no surface-specific
+  abbreviation map remains
+- Help and Quick File use the shared dialog anatomy, semantic tokens, modal focus,
+  inert-background, Escape, and disposal contracts; no Help-only overlay lifecycle
+  exists
 - Every visible tree row is keyboard reachable through one roving Tab stop
 - Folder, leaf, lazy, paginated, filtered, recent, and live-update rows preserve the
   specified keyboard and focus behavior
 - Main-pane arrows and scrolling keys retain native browser behavior
 - Quick File retains its current functionality and no global shortcut fires in editable
   content
+- Help, hints, and popups satisfy the design-system copy and overlay review at narrow
+  width, 200% zoom, light and dark themes, reduced motion, and keyboard-only operation
 - All new modules are strict, disposable, packaged in the wheel, and covered by DOM
   tests; `make verify` passes
 
