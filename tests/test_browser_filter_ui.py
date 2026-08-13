@@ -76,6 +76,23 @@ def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
     assert ".tm-seg" not in plugin_css
 
 
+def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
+    """A nested folder and its descendants are flattened siblings.
+
+    Hover may adjust the folder fill, but changing its stacking level would
+    paint the folder over every descendant rectangle inside it.
+    """
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    plugin_css = (folder_root / "styles.css").read_text()
+    hover_start = plugin_css.index(".tm-cell:hover {")
+    hover_block = plugin_css[hover_start : plugin_css.index("}", hover_start)]
+
+    assert "filter: brightness(" in hover_block
+    assert "z-index" not in hover_block
+    assert "display:" not in hover_block
+
+
 def test_single_and_multi_select_use_different_fills() -> None:
     """The fill split is the only cue that tells a user which kind of
     group they are looking at before clicking, so it is load-bearing:

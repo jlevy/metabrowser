@@ -304,6 +304,21 @@ export function registerTreemap(mb, palettePool) {
     const viewport = /** @type {HTMLElement} */ (container.querySelector(".tm-viewport"));
     const status = /** @type {HTMLElement} */ (container.querySelector(".tm-status"));
 
+    /** Keep the shared exclusive-control semantics in step with the
+     * controller state. filterControls.bind delegates state ownership
+     * to the consumer, so relayout must update both the visible fill
+     * and the radiogroup's roving tabindex. */
+    function syncToolbarState() {
+      const metricChips = container.querySelectorAll(
+        '[data-chip-group="metric"] [data-chip-value]',
+      );
+      for (const chip of metricChips) {
+        const selected = chip.getAttribute("data-chip-value") === state.metric;
+        chip.setAttribute("aria-checked", String(selected));
+        chip.setAttribute("tabindex", selected ? "0" : "-1");
+      }
+    }
+
     /** Measure the height actually available below the viewport's top
      * edge and pin it as an inline style (clamped to the bounds
      * above). Skips silently where layout metrics are unavailable
@@ -329,6 +344,7 @@ export function registerTreemap(mb, palettePool) {
       if (disposed || !viewport) {
         return;
       }
+      syncToolbarState();
       const rect = viewport.getBoundingClientRect();
       const node = envelope ? envelope.node : null;
       status.textContent = statusHtml(envelope, state);

@@ -508,6 +508,9 @@ Modification age remains available in the tooltip; it does not compete with file
 a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base
 color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
+Hover changes only the hovered cell’s surface and border.
+It never changes stacking or display: nested folder containers and their descendant
+rectangles are flattened siblings, so raising a container would cover its children.
 
 Cell typography grows continuously with usable rectangle geometry.
 The scale combines the short side with the square root of area, which lets a genuinely

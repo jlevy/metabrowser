@@ -265,6 +265,23 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   const container = makeElement();
   container.viewport = makeElement();
   container.status = makeElement();
+  const metricChips = ["size", "files"].map((value) => {
+    const attributes = {
+      "aria-checked": value === "size" ? "true" : "false",
+      "data-chip-value": value,
+      tabindex: value === "size" ? "0" : "-1",
+    };
+    return {
+      getAttribute(name) {
+        return attributes[name] ?? null;
+      },
+      setAttribute(name, next) {
+        attributes[name] = String(next);
+      },
+    };
+  });
+  container.querySelectorAll = (selector) =>
+    selector === '[data-chip-group="metric"] [data-chip-value]' ? metricChips : [];
   container.viewport.textContent = "";
   Object.defineProperty(container.viewport, "textContent", {
     set() {},
@@ -404,6 +421,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
 
   // Metric and ignored-scope changes relayout without refetching.
   const before = fetchCalls.length;
+  const sizeMetricHtml = container.viewport.innerHTML;
   const toolbarClick = container.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
   const clickMetric = (value) => {
@@ -440,6 +458,19 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   if (toolbarClick) {
     clickMetric("files");
     check("metric toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
+    check(
+      "metric toggle changes cell geometry",
+      container.viewport.innerHTML !== sizeMetricHtml,
+      "Bytes and Files produced identical markup",
+    );
+    check(
+      "metric chooser reflects the active metric",
+      metricChips[0].getAttribute("aria-checked") === "false" &&
+        metricChips[0].getAttribute("tabindex") === "-1" &&
+        metricChips[1].getAttribute("aria-checked") === "true" &&
+        metricChips[1].getAttribute("tabindex") === "0",
+      JSON.stringify(metricChips.map((chip) => chip.getAttribute("aria-checked"))),
+    );
     check(
       "Files metric keeps useful formatted bytes on file leaves",
       container.viewport.innerHTML.includes("600 B") &&

@@ -114,6 +114,8 @@ disclosures, use the same trailing-chevron design, and begin closed.
 Treemap consumes the same bounded rollup as a peer view but has one fixed spatial model:
 `treemap_layout.js` packs directory children, recurses only into sufficiently large
 folder cells, and conserves any culled or capped tail in a neutral remainder cell.
+The renderer flattens parent and descendant rectangles into positioned siblings;
+geometry expresses containment, while hover leaves their paint order unchanged.
 Its pure model persists only the Bytes/Files metric and the boolean ignored-file scope;
 the controller renders those through the shared segmented-control and labelled-checkbox
 primitives. The scope selects total or unignored rollup weights without another fetch.
