@@ -127,6 +127,9 @@ File cells key the lease by their logical extension, folder cells by `dominant_e
 remainder cells by the neutral Other key.
 This shares extension identity without coupling either renderer to sibling DOM. Visible
 byte and file values route through the public SDK formatters.
+File cells and exact extension rows also resolve their icon and subtype class through
+the public `fileTypeIcon()` SDK helper, the same matcher used by navigation.
+The shared `.file-identity-icon` primitive owns their geometry and subtype color.
 File cells use ordinary `mb.openPath` navigation; folder and parent navigation pass
 Treemap as the optional preferred destination view.
 The shell activates that view only when the destination declares it and otherwise uses

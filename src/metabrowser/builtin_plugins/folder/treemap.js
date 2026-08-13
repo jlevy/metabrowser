@@ -198,8 +198,13 @@ export function registerTreemap(mb, palettePool) {
     const titleAttrs = titleInteractive
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
       : "";
+    const visibleName = cell.kind === "dir" ? `${cell.name}/` : cell.name;
+    const fileIcon = showLabel && cell.kind === "file" ? mb.fileTypeIcon(cell.name) : null;
+    const fileIconHtml = fileIcon?.svg
+      ? `<span class="file-identity-icon tm-cell-file-icon ${mb.escapeHtml(fileIcon.className)}" aria-hidden="true">${fileIcon.svg}</span>`
+      : "";
     const label = showLabel
-      ? `<span class="tm-cell-title"${titleAttrs}><span class="tm-cell-label">${mb.escapeHtml(cell.name)}</span>${
+      ? `<span class="tm-cell-title"${titleAttrs}>${fileIconHtml}<span class="tm-cell-label">${mb.escapeHtml(visibleName)}</span>${
           showInlineSub
             ? `<span class="tm-cell-sub tm-cell-sub-inline">${mb.escapeHtml(sub)}</span>`
             : ""

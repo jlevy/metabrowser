@@ -229,7 +229,21 @@ const treemapSource = fs
   .readFileSync(path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/treemap.js"), "utf8")
   .replace(/^import .*;$/gm, "")
   .replace("export function registerTreemap", "function registerTreemap");
+const treemapStyles = fs.readFileSync(
+  path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/styles.css"),
+  "utf8",
+);
 vm.runInContext(treemapSource, sandbox, { filename: "treemap.js" });
+const fileIconCalls = [];
+sandbox.MetabrowserFileTypes = {
+  iconFor(name) {
+    fileIconCalls.push(name);
+    return {
+      svg: `<svg data-file-icon="${name}"></svg>`,
+      cls: name.endsWith(".md") ? "ft-md" : "ft-code",
+    };
+  },
+};
 vm.runInContext(
   `registerTreemap(metabrowser, {
     acquire() {
@@ -333,6 +347,26 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     container.viewport.innerHTML.includes("tm-cell") &&
       container.viewport.innerHTML.includes("a.py"),
     container.viewport.innerHTML.slice(0, 200),
+  );
+  check(
+    "folder labels carry a trailing slash without changing the accessible name",
+    container.viewport.innerHTML.includes('<span class="tm-cell-label">docs/</span>') &&
+      container.viewport.innerHTML.includes('aria-label="docs (folder,'),
+    container.viewport.innerHTML,
+  );
+  check(
+    "file cells use the shared file identity icon",
+    container.viewport.innerHTML.includes("file-identity-icon tm-cell-file-icon ft-code") &&
+      container.viewport.innerHTML.includes('data-file-icon="a.py"') &&
+      fileIconCalls.includes("a.py"),
+    container.viewport.innerHTML,
+  );
+  check(
+    "Treemap hover is one whole-cell treatment",
+    !treemapStyles.includes('.tm-cell-title[role="button"]:hover') &&
+      !treemapStyles.includes("border-color: var(--viz-border-strong)") &&
+      treemapStyles.includes("filter: brightness(1.06)"),
+    treemapStyles,
   );
   check(
     "type fill always uses the shared palette",

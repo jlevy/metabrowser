@@ -76,8 +76,9 @@ function createGroupBody(className, label) {
  * @param {SummaryModel} model
  * @param {Palette} palette
  * @param {MetricClasses} metricClasses
+ * @param {FileTypeIconResolver} fileTypeIcon
  */
-export function mountDistributionView(container, model, palette, metricClasses) {
+export function mountDistributionView(container, model, palette, metricClasses, fileTypeIcon) {
   const root = document.createElement("div");
   root.className = "file-type-summary";
   const body = element(root, "file-type-summary-body");
@@ -87,6 +88,7 @@ export function mountDistributionView(container, model, palette, metricClasses) 
     body,
     palette,
     metricClasses,
+    fileTypeIcon,
     /** @type {Map<string, SummaryRowHandle>} */
     rows: new Map(),
     /** @type {Map<FileTypeCategory, SummaryGroupHandle>} */
@@ -318,13 +320,19 @@ function updateRows(handle, rows) {
         const type = document.createElement("th");
         type.scope = "row";
         type.className = "file-type-summary-type";
+        const typeContent = document.createElement("span");
+        typeContent.className = "file-type-summary-type-content";
+        const icon = document.createElement("span");
+        icon.setAttribute("aria-hidden", "true");
         const label = document.createElement("span");
-        type.append(label);
+        typeContent.append(icon, label);
+        type.append(typeContent);
         const files = createMetricCell("files");
         const bytes = createMetricCell("bytes");
         tr.append(type, files.cell, bytes.cell);
         rowHandle = {
           tr,
+          icon,
           label,
           fileValue: files.value,
           fileFill: files.fill,
@@ -336,6 +344,13 @@ function updateRows(handle, rows) {
         handle.rows.set(row.key, rowHandle);
       }
       const colorClass = handle.palette.classFor(row.key);
+      const hasExactExtension = row.key.startsWith(".");
+      const fileIcon = hasExactExtension ? handle.fileTypeIcon(`x${row.key}`) : null;
+      rowHandle.icon.hidden = !fileIcon?.svg;
+      rowHandle.icon.className = fileIcon
+        ? `file-identity-icon ${fileIcon.className}`.trim()
+        : "file-identity-icon";
+      rowHandle.icon.innerHTML = fileIcon?.svg ?? "";
       rowHandle.label.textContent = row.label;
       updateMetricValue(
         rowHandle.fileValue,
@@ -378,9 +393,10 @@ function updateRows(handle, rows) {
 /** @typedef {{key: string, label: string, category: FileTypeCategory, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string}} Palette */
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
+/** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
 /** @typedef {{state: "pending" | "failed" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
-/** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
+/** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryMetricRowHandle */
 /** @typedef {SummaryMetricRowHandle & {body: HTMLTableSectionElement}} SummaryTotalHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, ignoredRow: SummaryMetricRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, ignoredRow: SummaryMetricRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */

@@ -1835,6 +1835,23 @@ html[data-prose-font="sans"] {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
 }
+
+/* File identity is one icon primitive in navigation and plugin chrome.
+   The resolver supplies the canonical SVG and optional ft-* subtype;
+   this alignment box supplies the common geometry and base tone. */
+.file-identity-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.file-identity-icon svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
 /* Compression overlay — reuses the existing 16x16 envelope as the
    positioning anchor and tucks a small badge into the bottom-right.
    The 14x14 SVG leaves 1px slack each side, so a 9px badge sits
@@ -2008,17 +2025,17 @@ html[data-prose-font="sans"] {
   --ft-border: var(--ft-csv-border);
 }
 
-/* Icon-color consumer — any tree-item-icon with an ft-<name> class
-   reads the subtype's --ft-color automatically. */
-.tree-item-icon.ft-md,
-.tree-item-icon.ft-md-runbook,
-.tree-item-icon.ft-md-template,
-.tree-item-icon.ft-text,
-.tree-item-icon.ft-yaml,
-.tree-item-icon.ft-config,
-.tree-item-icon.ft-jsonl,
-.tree-item-icon.ft-code,
-.tree-item-icon.ft-csv {
+/* Icon-color consumer — every shared file identity with an ft-<name>
+   class reads the subtype's --ft-color automatically. */
+.file-identity-icon.ft-md,
+.file-identity-icon.ft-md-runbook,
+.file-identity-icon.ft-md-template,
+.file-identity-icon.ft-text,
+.file-identity-icon.ft-yaml,
+.file-identity-icon.ft-config,
+.file-identity-icon.ft-jsonl,
+.file-identity-icon.ft-code,
+.file-identity-icon.ft-csv {
   color: var(--ft-color);
 }
 /* `.icon-state` is a folder variant (logs/state dirs), not a file-type. */

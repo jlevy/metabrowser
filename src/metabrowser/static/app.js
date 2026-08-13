@@ -1157,7 +1157,7 @@ function renderTreeNodes(nodes, isRoot, options) {
       var fi = getFileIcon(getLogicalName(node));
       var fileAge = formatAge(node.mtime);
       var compressed = !!node.compressed;
-      var iconCls = `tree-item-icon ${fi.cls}${compressed ? " is-compressed" : ""}`;
+      var iconCls = `tree-item-icon file-identity-icon ${fi.cls}${compressed ? " is-compressed" : ""}`;
       var compressionName = node.compression || "compressed";
       var compressionGlyph = compressionName === "gzip" ? "G" : "Z";
       var compressionBadge = compressed
@@ -4857,7 +4857,7 @@ function _buildRowHtml(entry, options) {
     // suffix while the rendered ones are judged on the index's.
     (entry.ext ? `" data-ext="${esc(entry.ext)}` : "") +
     '">' +
-    '<span class="tree-item-icon ' +
+    '<span class="tree-item-icon file-identity-icon ' +
     fi.cls +
     '">' +
     fi.svg +

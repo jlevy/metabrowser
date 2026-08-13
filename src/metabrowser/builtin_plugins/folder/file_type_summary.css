@@ -55,6 +55,13 @@
   font-weight: var(--weight-bold);
 }
 
+.file-type-summary-type-content {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
 .file-type-summary-group:not(:first-of-type) .file-type-summary-group-row th {
   padding-top: 14px;
 }

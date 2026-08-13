@@ -242,6 +242,12 @@ Never inline a pixel size at a use site.
 Where an icon reserves a column in a row of text, the alignment box around it is 16px —
 one step wider than the glyph, so the mark sits optically centered.
 
+Files and exact file extensions use the `.file-identity-icon` alignment-box primitive.
+Resolve its host-owned SVG and subtype class with `window.metabrowser.fileTypeIcon()`;
+do not copy the filename matcher, SVG, or `ft-*` mapping into a component.
+The navigation tree, plugin views, and aggregate rows therefore change together when a
+file type is added.
+
 There is one deliberate exception, `.menu-seg svg` in the segmented theme and font
 choosers, where the glyph *is* the segment’s label rather than a mark beside text and so
 carries the weight of a word.
@@ -459,6 +465,10 @@ row falls under Other.
 The aggregate tail is labelled **Remaining types** so it is not confused with the group
 itself. A group heading is shown only when it has rows and carries no subtotal.
 Type labels use the bold design-system weight as the row’s scan anchor.
+Each exact extension row leads with the shared file-identity icon resolved from a
+synthetic filename, so it matches navigation without weakening the extension label.
+Aggregate rows such as Total, Ignored, Remaining types, and No extension stay text-only
+because they do not identify one file type.
 Every exact Files value uses the shared `.count` and `.count-large` convention, and
 every exact Size value uses `.size` and `.size-large`. The stronger weight therefore
 appears at the same count and byte thresholds as the navigation panel, including on
@@ -508,7 +518,9 @@ Modification age remains available in the tooltip; it does not compete with file
 a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base
 color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
-Hover changes only the hovered cell’s surface and border.
+Hover brightens the composed cell, including its type-derived surface and border, so
+their contrast and hue relationship remain intact.
+There is no separate label hover surface.
 It never changes stacking or display: nested folder containers and their descendant
 rectangles are flattened siblings, so raising a container would cover its children.
 
@@ -527,6 +539,9 @@ information; aggregate folders and remainder cells report the selected metric.
 Values use the shared byte and file-count formatters.
 A label or value that cannot fit is omitted rather than shrunk below its lower bound or
 allowed to overlap child cells.
+Visible folder labels end in `/`, while file labels carry the same file-identity icon as
+the navigation tree.
+The slash is a visual kind cue and is not added to the folder’s accessible name or path.
 The accessible name preserves the cell name, kind, and visible value; the tooltip
 retains the complete name, counts, bytes, and modification time.
 

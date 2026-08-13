@@ -62,7 +62,6 @@
 
 .tm-cell:hover {
   filter: brightness(1.06);
-  border-color: var(--viz-border-strong);
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so
@@ -86,17 +85,14 @@
   min-width: 0;
 }
 
-/* A nested directory's label strip is the cell's button (the body is
-   covered by child cells); give the strip its own affordance. */
+/* A nested directory's label strip is the cell's button because the
+   body is covered by child cells. The whole cell remains the only
+   hover surface. */
 .tm-cell-title[role="button"] {
   cursor: pointer;
   padding: 0 3px;
   margin-left: -3px;
   border-radius: 3px;
-}
-
-.tm-cell-title[role="button"]:hover {
-  background: var(--hover-bg);
 }
 
 .tm-cell-title[role="button"]:focus-visible {
@@ -107,6 +103,10 @@
 
 .tm-nested {
   cursor: default;
+}
+
+.tm-cell-file-icon {
+  align-self: center;
 }
 
 .tm-cell-label {

@@ -486,6 +486,25 @@
     return "";
   }
 
+  function fileTypeIcon(path) {
+    if (global.MetabrowserFileTypes && typeof global.MetabrowserFileTypes.iconFor === "function") {
+      const icon = global.MetabrowserFileTypes.iconFor(path);
+      if (icon && typeof icon === "object") {
+        return {
+          svg: typeof icon.svg === "string" ? icon.svg : "",
+          className: typeof icon.cls === "string" ? icon.cls : "",
+        };
+      }
+    }
+    return {
+      svg:
+        global.MetabrowserIcons && typeof global.MetabrowserIcons.file === "string"
+          ? global.MetabrowserIcons.file
+          : "",
+      className: "",
+    };
+  }
+
   function formatKpressError(payload, status) {
     const body = payload && typeof payload === "object" ? payload : {};
     const base = body.error || "KPress render failed";
@@ -1190,6 +1209,7 @@
     ageLabelHtml: ageLabelHtml,
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
+    fileTypeIcon: fileTypeIcon,
     openPath: openPath,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,

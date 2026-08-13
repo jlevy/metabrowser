@@ -230,7 +230,8 @@ The data selection must account for both dimensions before the UI is trustworthy
     those assignments across live updates.
     The hierarchical Treemap colors files by exact extension and folders by dominant
     extension using the same map when both views are mounted.
-    Labels remain plain text, and Other uses a neutral token.
+    Exact extension rows lead with the shared broad-type file icon while their labels
+    remain plain text; aggregate rows stay text-only, and Other uses a neutral token.
 13. **The table is both visual summary and exact source.** Every Files and Size cell
     contains a right-aligned absolute value, a left-to-right proportional track, and a
     right-aligned percentage.
@@ -281,6 +282,10 @@ The data selection must account for both dimensions before the UI is trustworthy
     Names and values scale continuously from cell geometry within documented bounds,
     nested folder headers reserve that scaled height, and visible values use the shared
     byte and file-count formatters.
+    File labels lead with the navigation tree’s shared file icon, and visible folder
+    labels end in `/` without changing their path or accessible name.
+    Hover brightens the composed type-derived surface and border together, with no local
+    label patch, border-hue replacement, stacking change, or hidden descendants.
 21. **Treemap folder navigation stays in Treemap.** Activating a directory cell, or
     moving to its parent with Backspace, opens the destination folder with Treemap
     selected. File cells retain ordinary file-view navigation.
@@ -1310,7 +1315,8 @@ The Treemap implementation stays split by responsibility:
 - Replace `offsetParent` plus `IntersectionObserver` activity inference with
   `mb.viewState`.
 - Hierarchical file and folder cells request the shared category-palette lease; existing
-  broad `ft-*` icons remain appropriate outside exact-type aggregate marks.
+  broad `ft-*` icons remain appropriate for file identity while exact-type fills use the
+  distribution palette.
 
 Do not combine these modules back into folder `index.js`.
 
@@ -1522,6 +1528,8 @@ types meet only in the final composition, avoiding a long serial implementation 
   states, and Show ignored switching.
 - [x] Add the path-scoped palette pool and route both File types and hierarchical
   Treemap marks through it.
+- [x] Expose the navigation-owned file icon through the public SDK and use its shared
+  alignment primitive in exact extension rows, Treemap file labels, and navigation.
 - [x] Split the WIP Treemap into layout, model, and controller modules and adopt the
   supported active-view lifecycle.
 - [x] Register File types as the required first summary panel and validate Overview with
@@ -1678,6 +1686,8 @@ root behave differently from nested folders.
   file percentage, formatted bytes, a total-normalized byte fill, and byte percentage
 - Files and Size use the same row color; no separate circle, aggregate bar, or legend is
   needed
+- Exact extension rows and Treemap file labels use the same shared file icon as
+  navigation; Total, Ignored, No extension, and Remaining types stay text-only
 - A leading Totals group begins with a neutral Total row that reports the selected
   population’s exact Files and Size values; each populated metric fills its track to
   100%, while a zero-byte population remains at `0 B`, `0%`, and no fill

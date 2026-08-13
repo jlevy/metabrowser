@@ -145,6 +145,10 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     countClass: (value) => (value >= 50 ? "count-large" : ""),
     sizeClass: (value) => (value > 50 ? "size-large" : ""),
   };
+  const fileTypeIcon = (name) => ({
+    className: name === "x.md" ? "ft-md" : "ft-code",
+    svg: `<svg data-file-icon="${name}"></svg>`,
+  });
   const first = {
     state: "populated",
     files: 100,
@@ -168,7 +172,7 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     ],
   };
   const container = new Element("div");
-  const handle = view.mountDistributionView(container, first, palette, metricClasses);
+  const handle = view.mountDistributionView(container, first, palette, metricClasses, fileTypeIcon);
   const originalBody = handle.body;
   const originalPyRow = handle.rows.get(".py").tr;
   const originalPyFileFill = handle.rows.get(".py").fileFill;
@@ -198,6 +202,16 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     handle.groups.get("other").body.children[1].dataset.typeKey === ".bin",
   );
   check("color circles removed", handle.body.querySelector(".file-type-summary-mark") === null);
+  check(
+    "exact extension rows use the shared file identity icon",
+    handle.rows.get(".md").icon.className === "file-identity-icon ft-md" &&
+      handle.rows.get(".md").icon.innerHTML === '<svg data-file-icon="x.md"></svg>' &&
+      handle.rows.get(".md").icon.attributes["aria-hidden"] === "true",
+  );
+  check(
+    "aggregate rows remain text-only",
+    handle.totalRow.label.children.length === 0 && handle.ignoredRow.label.children.length === 0,
+  );
   check("Totals group precedes the breakdown", handle.table.children[2] === handle.totalRow.body);
   check(
     "Total precedes Ignored",
@@ -304,11 +318,22 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
 
   view.updateDistributionView(handle, {
     ...updated,
-    rows: [row(".bad", '<img src=x onerror="pwned">', "other", 100, 100, "100%", "100%")],
+    rows: [
+      row(".bad", '<img src=x onerror="pwned">', "other", 100, 100, "100%", "100%"),
+      row("(none)", "No extension", "other", 0, 0, "0%", "0%"),
+      row("", "Remaining types", "other", 0, 0, "0%", "0%"),
+    ],
   });
   check(
     "labels use text content",
     handle.rows.get(".bad").label.textContent === '<img src=x onerror="pwned">',
+  );
+  check(
+    "non-extension breakdown rows remain text-only",
+    handle.rows.get("(none)").icon.hidden === true &&
+      handle.rows.get("(none)").icon.innerHTML === "" &&
+      handle.rows.get("").icon.hidden === true &&
+      handle.rows.get("").icon.innerHTML === "",
   );
   check(
     "removed rows leave the DOM map",

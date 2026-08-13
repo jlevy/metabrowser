@@ -57,6 +57,14 @@ def test_sdk_exports_icons_proxy() -> None:
     assert "MetabrowserIcons" in src
 
 
+def test_sdk_exports_file_type_icon_proxy() -> None:
+    src = _sdk_source()
+    assert "fileTypeIcon: fileTypeIcon" in src
+    assert "function fileTypeIcon" in src
+    assert "MetabrowserFileTypes.iconFor" in src
+    assert 'typeof icon.cls === "string"' in src
+
+
 def test_sdk_exports_perf_measure() -> None:
     src = _sdk_source()
     assert "perf: perf" in src

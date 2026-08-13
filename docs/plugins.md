@@ -255,6 +255,8 @@ Useful helpers include:
 - `formatSize`, `formatInteger`, `formatFileCount`, `formatTimestamp`, and `sizeHtml`;
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
+- `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
+  `fileTypeIcon(pathOrName)` for its host-owned SVG plus `className`;
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
@@ -268,6 +270,10 @@ release both Chart.js resources and the theme subscription.
 
 Avoid inline event-handler strings when possible.
 Build DOM elements, attach listeners, and keep cleanup handles in the renderer closure.
+When a view displays a file or exact extension, place the result of `fileTypeIcon()` in
+the shared `.file-identity-icon` alignment box and mark it decorative.
+The returned SVG is trusted host chrome; never pass user-provided markup through this
+path.
 
 ### Data and Navigation
 

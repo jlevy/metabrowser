@@ -34,7 +34,7 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     countClass: mb.countClass,
     sizeClass: mb.sizeClass,
   };
-  const view = mountDistributionView(container, model, palette, metricClasses);
+  const view = mountDistributionView(container, model, palette, metricClasses, mb.fileTypeIcon);
 
   function render() {
     model = buildFileTypeSummaryModel(envelope, showIgnored, formatters, classifyCategory);

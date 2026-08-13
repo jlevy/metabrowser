@@ -361,6 +361,11 @@ type FolderOverviewRegistry = Readonly<{
 
 type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
 
+type MetabrowserFileTypeIcon = Readonly<{
+  className: string;
+  svg: string;
+}>;
+
 type MetabrowserTreemapCell = {
   kind: string;
   name: string;
@@ -417,6 +422,7 @@ type MetabrowserSdk = {
   escapeHtml(value: string): string;
   fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
   fileTypeClass(path: string): string;
+  fileTypeIcon(path: string): MetabrowserFileTypeIcon;
   formatTimestamp(secondsSinceEpoch: number): string;
   prefs: {
     get<T>(name: string, fallback: T): T;
@@ -794,7 +800,7 @@ declare global {
     };
     MetabrowserFileTypes?: {
       classFor(path: string): string;
-      iconFor(path: string): unknown;
+      iconFor(path: string): { cls: string; svg: string };
     };
     MetabrowserCatalogFeed: MetabrowserCatalogFeedRuntime;
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
