@@ -11,7 +11,6 @@ records the query-cost budget (spec: <=150 ms at 100k entries).
 from __future__ import annotations
 
 import asyncio
-import subprocess
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -28,11 +27,7 @@ from metabrowser.wire_models import RollupDirNode, RollupResult, validate_rollup
 def _build_index(root: Path, *, gitignore: str | None = None) -> InventoryIndex:
     if gitignore is not None:
         (root / ".gitignore").write_text(gitignore)
-        subprocess.run(
-            ["git", "init", "-q", str(root)],
-            check=True,
-            capture_output=True,
-        )
+        (root / ".git").mkdir()
     index = InventoryIndex()
 
     async def run() -> None:
