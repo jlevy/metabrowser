@@ -1,29 +1,59 @@
 .folder-overview-host {
+  --folder-overview-document-gutter: 1rem;
+  --folder-overview-narrow-document-gutter: 0.5rem;
+  --folder-overview-wide-toc-width: 15rem;
+  --folder-overview-wide-toc-gap: 3rem;
+  --folder-overview-wide-prose-inset: 2.5rem;
+
   container-type: inline-size;
 }
 
 .folder-overview-stack {
   display: grid;
-  gap: 16px;
+  gap: 28px;
   width: 100%;
 }
 
-.folder-overview-panel-surface {
+.folder-overview-panel {
   box-sizing: border-box;
-  width: min(100%, var(--kpress-measure));
-  margin-inline: auto;
-  border: var(--panel-border);
-  border-radius: var(--radius-document);
-  background: var(--bg);
-}
-
-.folder-overview-panel-document {
   width: 100%;
   min-width: 0;
 }
 
-.folder-overview-panel-document .folder-overview-panel-body {
+.folder-overview-panel-heading {
+  margin: 0 0 14px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: 1.25;
+  text-transform: var(--label-text-transform);
+}
+
+.folder-overview-panel-body {
   min-width: 0;
+}
+
+.folder-overview-panel-surface > .folder-overview-panel-heading,
+.folder-overview-panel-surface > .folder-overview-panel-body,
+.folder-overview-panel-document > .folder-overview-panel-heading {
+  width: min(calc(100% - 2 * var(--folder-overview-document-gutter)), var(--kpress-measure));
+  margin-inline: auto;
+}
+
+/* Overview uses KPress's prose column as its horizontal alignment line.
+   The document renderer keeps its normal responsive TOC, but the prose
+   itself is flat so File types, section headings, and README text share
+   one measure rather than aligning to card chrome. */
+.folder-overview-panel-document .metabrowser-kpress-host .kpress-long-text.kpress-prose {
+  margin-inline: auto;
+  max-width: min(100%, var(--kpress-measure));
+  padding: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .folder-overview-loading {
@@ -38,6 +68,33 @@
   align-items: center;
   padding: 12px;
   color: var(--muted);
+}
+
+@container (max-width: 47.99rem) {
+  .folder-overview-panel-surface > .folder-overview-panel-heading,
+  .folder-overview-panel-surface > .folder-overview-panel-body,
+  .folder-overview-panel-document > .folder-overview-panel-heading {
+    width: calc(100% - 2 * var(--folder-overview-narrow-document-gutter));
+  }
+}
+
+@container (min-width: 75rem) {
+  .folder-overview-panel-surface > .folder-overview-panel-heading,
+  .folder-overview-panel-surface > .folder-overview-panel-body,
+  .folder-overview-panel-document > .folder-overview-panel-heading {
+    width: var(--kpress-measure);
+    margin-inline-start: calc(
+      var(--folder-overview-document-gutter) +
+      var(--folder-overview-wide-toc-width) +
+      var(--folder-overview-wide-toc-gap) +
+      var(--folder-overview-wide-prose-inset)
+    );
+    margin-inline-end: auto;
+  }
+
+  .folder-overview-panel-document .metabrowser-kpress-host .kpress-long-text.kpress-prose {
+    margin-inline: var(--folder-overview-wide-prose-inset);
+  }
 }
 
 @media print {

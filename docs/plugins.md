@@ -331,8 +331,11 @@ const unregister = mb.folderOverview.registerPanel("hello.license", {
 Panel IDs must be plugin-qualified.
 `placement` is `summary`, `content`, or `supplemental`; fixed placement order and then
 the panel ID determine layout.
-`presentation` is `surface` for standard panel chrome or `document` when the renderer
-owns its normal document surface.
+`presentation` is `surface` for a flat host-rendered panel body or `document` when the
+renderer owns its normal document surface.
+The Overview composer supplies the same visible section heading and responsive
+Markdown-text alignment for both presentations; panel mounts must not repeat that
+heading or add an Overview-level disclosure.
 Set `required: true` only when returning null is a contract error.
 A resolver returns `{key, data}` or null; matching keys preserve a mounted panel and
 call its optional `update(ctx, data)` method.

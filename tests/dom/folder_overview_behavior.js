@@ -148,8 +148,17 @@ global.document = { createElement: (tag) => new Element(tag) };
     stack.children.map((slot) => slot.dataset.panelId).join(",") ===
       "folder.file-types,folder.readme,example.license",
   );
+  check(
+    "panels receive visible headings",
+    stack.children.map((slot) => slot.children[0].textContent).join(",") ===
+      "File types,README,License",
+  );
+  check(
+    "panel headings use a shared semantic level",
+    stack.children.every((slot) => slot.children[0].tagName === "H2"),
+  );
   check("optional panel hidden", stack.children[1].hidden === true);
-  check("synthetic panel mounted", stack.children[2].children[0].innerHTML === "MIT");
+  check("synthetic panel mounted", stack.children[2].children[1].innerHTML === "MIT");
   check(
     "print aggregation",
     printStates.some((state) => state.printable === true),
@@ -172,7 +181,7 @@ global.document = { createElement: (tag) => new Element(tag) };
   check("failed update disposes old mount", disposeCount === 1, String(disposeCount));
   check(
     "failed update renders panel error",
-    stack.children[0].children[0].children[0].attributes.role === "alert",
+    stack.children[0].children[1].children[0].attributes.role === "alert",
   );
 
   handle.dispose();

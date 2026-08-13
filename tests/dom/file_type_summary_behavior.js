@@ -145,7 +145,9 @@ function row(key, label, files, bytes, filePercent, bytePercent) {
   const originalBody = handle.body;
   const originalPyRow = handle.rows.get(".py").tr;
   const originalPySegment = handle.bars.get("files").segments.get(".py");
-  global.document.activeElement = handle.summary;
+  check("summary uses a flat section body", handle.root.tagName === "DIV");
+  check("summary has a metadata row", handle.root.children[0] === handle.meta);
+  check("summary body follows metadata", handle.root.children[1] === handle.body);
 
   const updated = {
     ...first,
@@ -165,7 +167,7 @@ function row(key, label, files, bytes, filePercent, bytePercent) {
     handle.tableBody.children.map((child) => child.dataset.typeKey).join(",") === ".md,.py",
   );
   check("row values patched", handle.rows.get(".py").fileValue.textContent === "8 files");
-  check("disclosure focus preserved", global.document.activeElement === handle.summary);
+  check("total metadata patched", handle.total.textContent === "12 files · 120 B");
   check(
     "paired bars retain the same keys",
     [...handle.bars.get("files").segments.keys()].join(",") ===

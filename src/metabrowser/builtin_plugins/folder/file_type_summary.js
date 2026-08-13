@@ -1,11 +1,6 @@
-import {
-  disposeDistributionView,
-  mountDistributionView,
-  updateDistributionView,
-} from "./distribution_view.js";
+import { mountDistributionView, updateDistributionView } from "./distribution_view.js";
 import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file_type_summary_model.js";
 
-const PREF_KEY = "folder.fileTypeSummary.open";
 /** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} SummaryPalette */
 /** @typedef {{acquire: (path: string) => SummaryPalette}} SummaryPalettePool */
 
@@ -29,16 +24,6 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
   };
   let model = buildFileTypeSummaryModel(null, showIgnored, formatters);
   const view = mountDistributionView(container, model, palette);
-  view.details.open = mb.prefs.get(PREF_KEY, /** @type {boolean} */ (true));
-  const handleDisclosure = () => mb.prefs.set(PREF_KEY, view.details.open);
-  let disclosureTimer = 0;
-  const handleDisclosureActivation = () => {
-    window.clearTimeout(disclosureTimer);
-    disclosureTimer = window.setTimeout(handleDisclosure, 0);
-  };
-  view.disclosureListener = handleDisclosure;
-  view.details.addEventListener("toggle", handleDisclosure);
-  view.summary.addEventListener("click", handleDisclosureActivation);
 
   function render() {
     model = buildFileTypeSummaryModel(envelope, showIgnored, formatters);
@@ -107,9 +92,6 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     watch.dispose();
     unsubscribeFilters();
     unsubscribeActive();
-    window.clearTimeout(disclosureTimer);
-    view.summary.removeEventListener("click", handleDisclosureActivation);
-    disposeDistributionView(view);
     palette.release();
   }
   return Object.freeze({ dispose });

@@ -453,20 +453,33 @@ second preview scroll owner.
 Named placement bands establish broad order; stable panel IDs break ties, so
 asynchronous resolution and plugin load timing never rearrange the page.
 
-Every contribution is a labelled semantic section and uses one of two presentations:
+Every contribution is a labelled semantic section.
+The composer renders the label as a visible, prose-width section heading above the panel
+body.
+These headings use the tab bar’s uppercase, bold, tracked sans-serif grammar at the
+body-text size, followed by a neutral separator.
+They are structural labels, not controls, so they have no hover, active-tab underline,
+disclosure mark, or collapsed state.
 
-- A **surface panel** receives the standard host border, radius, padding, heading, and
-  chrome typography. File types uses this presentation.
+Panel bodies use one of two presentations:
+
+- A **surface panel** receives a flat host-rendered body and chrome typography.
+  File types uses this presentation without a surrounding card.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
-  its prose card, metadata, diagnostics, TOC, breakpoints, and print behavior.
-  Overview does not add a second heading or frame around it.
+  its metadata, diagnostics, TOC, breakpoints, and print behavior.
+  Overview adds the shared section heading and flattens the outer prose card border,
+  shadow, and padding; opening README directly retains the ordinary document card.
 
 “Panel” describes composition and lifecycle, not a requirement to draw the same box
 around unlike content.
-Surface and document panels align to the same document measure and use the shared stack
-gap. At wide Markdown breakpoints, a document TOC begins on its document row; summary
-panels above it do not acquire an empty TOC rail.
+Surface content, section headings, and document text use the same responsive Markdown
+prose width and shared stack gap.
+At wide Markdown breakpoints, the TOC keeps its own rail while every section aligns to
+the README text column.
+At narrower breakpoints, the alignment follows the text edge after KPress reduces its
+document gutter. The Overview composer mirrors those pinned KPress breakpoints so the
+rule remains exact rather than approximating the card width.
 
 Panel availability is independent.
 A missing README removes only that region, and one failed optional panel gets a local

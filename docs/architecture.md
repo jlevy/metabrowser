@@ -81,6 +81,11 @@ The composer validates descriptors, establishes deterministic order before async
 work finishes, and gives every contribution an independent loading, error, recovery,
 abort, and disposal boundary.
 A panel never reaches into sibling DOM or private shell state.
+The composer also renders every panel label as the same visible `h2` and aligns host
+content to the responsive Markdown text column.
+In Overview, the Markdown mount keeps its document semantics and TOC but drops its outer
+prose-card border, shadow, and horizontal padding, making File types and README flat
+sibling sections. Directly opened Markdown retains the ordinary card presentation.
 
 Core supplies only generic contribution-registry, resource-context, request, formatter,
 and view-state primitives.

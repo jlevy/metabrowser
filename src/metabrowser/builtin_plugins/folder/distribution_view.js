@@ -35,24 +35,21 @@ export function renderDistributionBar(metric, rows, palette) {
 
 /** @param {HTMLElement} container @param {SummaryModel} model @param {Palette} palette */
 export function mountDistributionView(container, model, palette) {
-  const details = document.createElement("details");
-  details.className = "file-type-summary";
-  details.open = true;
-  const summary = document.createElement("summary");
-  summary.className = "file-type-summary-header";
-  const title = document.createElement("span");
-  title.className = "file-type-summary-title";
-  title.textContent = "File types";
+  const root = document.createElement("div");
+  root.className = "file-type-summary";
+  const meta = element(root, "file-type-summary-meta");
   const scope = document.createElement("span");
   scope.className = "file-type-summary-scope";
   const total = document.createElement("span");
   total.className = "file-type-summary-total";
-  summary.append(title, scope, total);
-  const body = element(details, "file-type-summary-body");
+  meta.append(scope, total);
+  const body = element(root, "file-type-summary-body");
   const handle = {
     container,
-    details,
-    summary,
+    root,
+    meta,
+    scope,
+    total,
     body,
     palette,
     /** @type {Map<string, SummaryRowHandle>} */
@@ -62,29 +59,21 @@ export function mountDistributionView(container, model, palette) {
     tableBody: /** @type {HTMLTableSectionElement | null} */ (null),
     status: /** @type {HTMLElement | null} */ (null),
     mode: "",
-    disclosureListener: /** @type {(() => void) | null} */ (null),
   };
-  details.prepend(summary);
-  container.append(details);
+  container.append(root);
   updateDistributionView(handle, model);
   return handle;
 }
 
 /** @param {DistributionHandle} handle @param {SummaryModel} model */
 export function updateDistributionView(handle, model) {
-  const total = handle.summary.querySelector(".file-type-summary-total");
-  if (total) {
-    total.textContent = `${"filesText" in model ? model.filesText : "0 files"} · ${"bytesText" in model ? model.bytesText : "0 B"}`;
-  }
-  const scope = handle.summary.querySelector(".file-type-summary-scope");
-  if (scope) {
-    scope.textContent =
-      "hasIgnored" in model && model.hasIgnored
-        ? model.showIgnored
-          ? "Including ignored"
-          : "Ignored excluded"
-        : "";
-  }
+  handle.total.textContent = `${"filesText" in model ? model.filesText : "0 files"} · ${"bytesText" in model ? model.bytesText : "0 B"}`;
+  handle.scope.textContent =
+    "hasIgnored" in model && model.hasIgnored
+      ? model.showIgnored
+        ? "Including ignored"
+        : "Ignored excluded"
+      : "";
   if (model.state === "pending") {
     resetBody(handle, "pending");
     const skeleton = element(handle.body, "file-type-summary-skeleton");
@@ -251,16 +240,9 @@ function updateRows(handle, rows) {
   }
 }
 
-/** @param {DistributionHandle} handle */
-export function disposeDistributionView(handle) {
-  if (handle.disclosureListener) {
-    handle.details.removeEventListener("toggle", handle.disclosureListener);
-    handle.disclosureListener = null;
-  }
-}
 /** @typedef {{key: string, label: string, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string}} Palette */
 /** @typedef {{state: "pending" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, filesText?: string, allFilesText?: string, bytesText?: string, hasIgnored?: boolean, showIgnored?: boolean, scanning?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{figure: HTMLElement, track: HTMLElement, segments: Map<string, HTMLElement>}} DistributionBarHandle */
 /** @typedef {{tr: HTMLTableRowElement, mark: HTMLElement, label: HTMLElement, fileValue: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, details: HTMLDetailsElement, disclosureListener: (() => void) | null, palette: Palette, rows: Map<string, SummaryRowHandle>, bars: Map<"files" | "bytes", DistributionBarHandle>, tableBody: HTMLTableSectionElement | null, status: HTMLElement | null, mode: string, summary: HTMLElement}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, meta: HTMLElement, scope: HTMLElement, total: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, bars: Map<"files" | "bytes", DistributionBarHandle>, tableBody: HTMLTableSectionElement | null, status: HTMLElement | null, mode: string}} DistributionHandle */

@@ -11,9 +11,12 @@ export function createPanelSlot(descriptor) {
   slot.dataset.panelId = descriptor.id;
   slot.setAttribute("aria-label", descriptor.label);
   slot.hidden = false;
+  const heading = document.createElement("h2");
+  heading.className = "folder-overview-panel-heading";
+  heading.textContent = descriptor.label;
   const body = document.createElement("div");
   body.className = "folder-overview-panel-body";
-  slot.append(body);
+  slot.append(heading, body);
   return { body, slot };
 }
 

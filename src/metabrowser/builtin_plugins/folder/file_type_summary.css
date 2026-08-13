@@ -2,18 +2,14 @@
   font-family: var(--font-sans);
 }
 
-.file-type-summary-header {
+.file-type-summary-meta {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  min-height: var(--icon-btn-size);
-  padding: 8px 12px;
-  cursor: pointer;
-  user-select: none;
+  margin-bottom: 10px;
 }
 
-.file-type-summary-title,
 .file-type-summary-table thead {
   color: var(--label-color);
   font-size: var(--label-font-size);
@@ -23,6 +19,7 @@
 }
 
 .file-type-summary-scope {
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
@@ -35,7 +32,6 @@
 .file-type-summary-body {
   display: grid;
   gap: 12px;
-  padding: 2px 12px 12px;
 }
 
 .file-type-summary-bars {
@@ -117,14 +113,6 @@
 }
 
 @container (max-width: 460px) {
-  .file-type-summary-header {
-    grid-template-columns: 1fr auto;
-  }
-
-  .file-type-summary-scope {
-    grid-column: 1 / -1;
-  }
-
   .file-type-summary-table thead {
     position: absolute;
     width: 1px;
