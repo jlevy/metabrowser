@@ -1,23 +1,48 @@
 /** @typedef {{key: string, data: unknown} | null} PanelResolution */
 /** @typedef {{dispose: () => void, update?: (context: {path?: string, raw?: unknown}, data: unknown) => void | Promise<void>}} PanelHandle */
 /** @typedef {{id: string, label: string, placement: "summary" | "content" | "supplemental", presentation: "surface" | "document", printable?: boolean, required?: boolean, classifyError?: (error: unknown) => {message: string, retryable: boolean}, resolve: (context: {path?: string, raw?: unknown}, options: {signal: AbortSignal}) => PanelResolution | Promise<PanelResolution>, mount: (container: HTMLElement, context: {path?: string, raw?: unknown}, data: unknown, options: {signal?: AbortSignal}) => void | PanelHandle | Promise<void | PanelHandle>}} PanelDescriptor */
-/** @typedef {{descriptor: PanelDescriptor, slot: HTMLElement, body: HTMLElement, generation: number, resolveController: AbortController | null, mountController: AbortController | null, handle: PanelHandle | null, key: string | null, retry: (() => void) | null, mounted: boolean}} PanelRecord */
+/** @typedef {{descriptor: PanelDescriptor, slot: HTMLElement, body: HTMLElement, disposeDisclosure: () => void, generation: number, resolveController: AbortController | null, mountController: AbortController | null, handle: PanelHandle | null, key: string | null, retry: (() => void) | null, mounted: boolean}} PanelRecord */
 /** @typedef {{listPanels: () => ReadonlyArray<PanelDescriptor>}} PanelRegistry */
+
+let panelSlotSequence = 0;
 
 /** @param {PanelDescriptor} descriptor */
 export function createPanelSlot(descriptor) {
+  const slotSequence = ++panelSlotSequence;
+  const idStem = descriptor.id.replace(/[^a-zA-Z0-9_-]/g, "-");
   const slot = document.createElement("section");
   slot.className = `folder-overview-panel folder-overview-panel-${descriptor.presentation}`;
   slot.dataset.panelId = descriptor.id;
-  slot.setAttribute("aria-label", descriptor.label);
   slot.hidden = false;
   const heading = document.createElement("h2");
   heading.className = "folder-overview-panel-heading";
-  heading.textContent = descriptor.label;
+  const toggle = document.createElement("button");
+  toggle.className = "folder-overview-panel-toggle section-disclosure-trigger";
+  toggle.type = "button";
+  toggle.textContent = descriptor.label;
+  const toggleId = `folder-overview-panel-toggle-${slotSequence}-${idStem}`;
+  const bodyId = `folder-overview-panel-body-${slotSequence}-${idStem}`;
+  toggle.setAttribute("id", toggleId);
+  toggle.setAttribute("aria-controls", bodyId);
+  toggle.setAttribute("aria-expanded", "true");
+  slot.setAttribute("aria-labelledby", toggleId);
   const body = document.createElement("div");
   body.className = "folder-overview-panel-body";
+  body.setAttribute("id", bodyId);
+  let expanded = true;
+  const toggleDisclosure = () => {
+    expanded = !expanded;
+    toggle.setAttribute("aria-expanded", String(expanded));
+    body.classList.toggle("folder-overview-panel-body-collapsed", !expanded);
+  };
+  toggle.addEventListener("click", toggleDisclosure);
+  heading.append(toggle);
   slot.append(heading, body);
-  return { body, slot };
+  return {
+    body,
+    slot,
+    disposeDisclosure: () => toggle.removeEventListener("click", toggleDisclosure),
+  };
 }
 
 /** @param {HTMLElement} container @param {Array<PanelRecord>} records @param {MetabrowserPublicSdk} mb */
@@ -56,6 +81,7 @@ export function mountOverview(container, initialContext, mb, registry) {
       descriptor,
       slot: elements.slot,
       body: elements.body,
+      disposeDisclosure: elements.disposeDisclosure,
       generation: 0,
       resolveController: null,
       mountController: null,
@@ -226,6 +252,7 @@ export function mountOverview(container, initialContext, mb, registry) {
         record.resolveController?.abort();
         record.retry?.();
         disposeMount(record);
+        record.disposeDisclosure();
       }
       mb.setViewPrintState(container, { printable: false, profile: "plain" });
     },

@@ -20,7 +20,7 @@ export function renderKpressDiagnosticsHtml(diagnostics, escapeHtml) {
         .join("");
     })
     .join("");
-  return `<details class="kpress-frontmatter metabrowser-kpress-diagnostics kpress-no-print"><summary>Diagnostics</summary><dl>${rows}</dl></details>`;
+  return `<details class="kpress-frontmatter metabrowser-kpress-diagnostics kpress-no-print"><summary class="section-disclosure-trigger">Diagnostics</summary><dl>${rows}</dl></details>`;
 }
 
 /** @param {Array<unknown>} diagnostics @param {MetabrowserPublicSdk} mb */

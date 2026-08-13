@@ -83,6 +83,9 @@ abort, and disposal boundary.
 A panel never reaches into sibling DOM or private shell state.
 The composer also renders every panel label as the same visible `h2` and aligns host
 content to the responsive Markdown document boundary.
+Each `h2` contains the shared trailing-chevron disclosure button.
+Panels begin expanded; toggling a heading changes only body visibility, so live rollup
+watches, rendered Markdown state, TOC state, and keyed panel mounts remain intact.
 In Overview, the Markdown mount keeps its ordinary document semantics, TOC, and card.
 The card retains its border and shadow at regular and wide document bands, then follows
 KPress’s standard borderless narrow layout.
@@ -105,7 +108,8 @@ README is another contribution whose resolver checks the folder envelope and who
 renderer delegates to the instance-safe built-in Markdown mount.
 Using the same mount keeps Overview’s README structurally and behaviorally aligned with
 the ordinary rendered Markdown view instead of creating a second Markdown rendering
-path.
+path. Inside either Markdown mount, Frontmatter and Diagnostics remain native `details`
+disclosures, use the same trailing-chevron design, and begin closed.
 
 Treemap consumes the same bounded rollup as a peer view but has one fixed spatial model:
 `treemap_layout.js` packs directory children, recurses only into sufficiently large

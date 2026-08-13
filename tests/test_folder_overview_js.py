@@ -42,3 +42,16 @@ def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     assert ".kpress-long-text" not in css
     assert "border: none" not in css
     assert "box-shadow: none" not in css
+
+
+def test_folder_overview_uses_the_shared_section_disclosure() -> None:
+    overview_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
+        encoding="utf-8"
+    )
+    core_css = (REPO_ROOT / "src/metabrowser/static/styles.css").read_text(encoding="utf-8")
+
+    assert ".folder-overview-panel-toggle" in overview_css
+    assert ".section-disclosure-trigger::after" in core_css
+    assert '.section-disclosure-trigger[aria-expanded="true"]::after' in core_css
+    assert "var(--section-disclosure-chevron-color)" in core_css
+    assert "var(--section-disclosure-chevron-size)" in core_css

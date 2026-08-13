@@ -181,6 +181,7 @@ Every button belongs to one role-specific primitive:
 | Filter value or filter menu | `.chip` and its variants |
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
+| Collapsible section title | `.section-disclosure-trigger` |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
 motion tokens, while their shapes communicate different interaction roles.
@@ -203,6 +204,30 @@ Its direction and the child container’s visibility derive from the same expand
 so they cannot drift.
 Shift-activation applies the same open or close direction recursively, while still
 selecting the folder and opening Overview.
+
+### Section Disclosure Headers
+
+Use the section-disclosure primitive when a labelled section may hide its body without
+changing the selected file, folder, or top-level view.
+Folder Overview panels use a button inside their visible `h2`; rendered-document
+metadata keeps native `details` and `summary` semantics.
+Both forms place the same gray Lucide chevron immediately after the title with
+`--section-disclosure-chevron-gap`. The mark uses `--section-disclosure-chevron-size` in
+`em`, so it remains proportional to the unchanged local heading typography at every type
+tier. It points right when collapsed and rotates down when expanded.
+
+The title and chevron form one focusable target.
+A button trigger declares `type="button"`, `aria-expanded`, and `aria-controls`; its
+section uses `aria-labelledby` to preserve the visible heading as the accessible name.
+Collapsing an already mounted section hides its body without remounting or disposing its
+renderer. Overview panels start expanded on each mount.
+Markdown Frontmatter and Diagnostics disclosures start collapsed through the absence of
+the native `open` attribute.
+These defaults are not saved as user preferences.
+
+This pattern does not replace the navigation-tree disclosure.
+The tree keeps its leading chevron because that mark communicates hierarchy and shares
+one activation target with folder navigation.
 
 ## Icons and Icon Buttons
 
@@ -551,10 +576,12 @@ Every contribution is a labelled semantic section.
 The composer renders the label as a visible, document-aligned section heading above the
 panel body. These headings use the tab bar’s uppercase, bold, tracked sans-serif grammar
 at the body-text size, followed by a neutral separator.
-They are structural labels, not controls, so they have no hover, active-tab underline,
-disclosure mark, or collapsed state.
-The **Files** heading labels the file-type summary; its stable internal panel ID remains
-`folder.file-types`.
+Each heading contains the shared section-disclosure trigger, with its gray trailing
+chevron and unchanged heading typography.
+Overview contributions start expanded and collapse in place without disposing their
+mounted contents.
+The **Files** heading labels the file-type summary; its stable internal
+panel ID remains `folder.file-types`.
 
 Panel bodies use one of two presentations:
 

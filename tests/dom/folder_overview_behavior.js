@@ -19,6 +19,17 @@ class Element {
     this.attributes = {};
     this.listeners = {};
     this._innerHTML = "";
+    this.classList = {
+      toggle: (token, force) => {
+        const tokens = new Set(this.className.split(/\s+/).filter(Boolean));
+        if (force) {
+          tokens.add(token);
+        } else {
+          tokens.delete(token);
+        }
+        this.className = [...tokens].join(" ");
+      },
+    };
   }
   append(...children) {
     this.children.push(...children);
@@ -169,17 +180,55 @@ global.document = { createElement: (tag) => new Element(tag) };
   );
   check(
     "panels receive visible headings",
-    stack.children.map((slot) => slot.children[0].textContent).join(",") === "Files,README,License",
+    stack.children.map((slot) => slot.children[0].children[0].textContent).join(",") ===
+      "Files,README,License",
   );
   check(
     "panel headings use a shared semantic level",
     stack.children.every((slot) => slot.children[0].tagName === "H2"),
+  );
+  check(
+    "panel headings expose disclosure buttons",
+    stack.children.every((slot) => {
+      const button = slot.children[0].children[0];
+      return (
+        button.tagName === "BUTTON" &&
+        button.className.includes("section-disclosure-trigger") &&
+        button.attributes["aria-expanded"] === "true" &&
+        button.attributes["aria-controls"] === slot.children[1].attributes.id &&
+        slot.attributes["aria-labelledby"] === button.attributes.id
+      );
+    }),
   );
   check("optional panel hidden", stack.children[1].hidden === true);
   check("synthetic panel mounted", stack.children[2].children[1].innerHTML === "MIT");
   check(
     "print aggregation",
     printStates.some((state) => state.printable === true),
+  );
+
+  const filesToggle = stack.children[0].children[0].children[0];
+  const filesBody = stack.children[0].children[1];
+  filesToggle.listeners.click();
+  check(
+    "overview panels collapse",
+    filesBody.className.includes("folder-overview-panel-body-collapsed"),
+  );
+  check(
+    "collapsed state is announced",
+    filesToggle.attributes["aria-expanded"] === "false",
+    filesToggle.attributes["aria-expanded"],
+  );
+  check("collapse preserves the mounted panel", disposeCount === 0, String(disposeCount));
+  filesToggle.listeners.click();
+  check(
+    "overview panels reopen",
+    !filesBody.className.includes("folder-overview-panel-body-collapsed"),
+  );
+  check(
+    "expanded state is announced",
+    filesToggle.attributes["aria-expanded"] === "true",
+    filesToggle.attributes["aria-expanded"],
   );
 
   contextListener({ ...envelope, readme_search_truncated: true });
@@ -208,6 +257,10 @@ global.document = { createElement: (tag) => new Element(tag) };
   handle.dispose();
   check("handles disposed exactly once", disposeCount === 2, String(disposeCount));
   check("subscriptions disposed", contextListener === null && activeListener === null);
+  check(
+    "disclosure listeners disposed",
+    stack.children.every((slot) => !slot.children[0].children[0].listeners.click),
+  );
 
   if (failures.length) {
     console.error(`folder overview FAILURES:\n- ${failures.join("\n- ")}`);

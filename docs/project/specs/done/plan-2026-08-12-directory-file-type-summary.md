@@ -75,8 +75,8 @@ Opening `README.md` itself continues to show only the ordinary Markdown file vie
 - Reuse `/api/rollup`, `ext_tallies`, `watchRollup`, and the existing inventory event
   stream, with a bounded tally-only response
 - Keep partial, truncated, empty, zero-byte, and failed states honest
-- Keep File types and README compact, always-expanded, document-aligned sections with
-  the same visible heading hierarchy and no disclosure preference
+- Keep File types and README compact, document-aligned sections with the same visible
+  heading hierarchy and shared, initially expanded disclosure behavior
 
 ## Non-Goals
 
@@ -169,8 +169,8 @@ The data selection must account for both dimensions before the UI is trustworthy
    surface. The composer owns availability, ordering, layout, loading, failure isolation,
    and disposal; a panel does not query or position its siblings.
 4. **The required file-type panel is headed Files.** Its stable registry ID remains
-   `folder.file-types`; it is always present as an always-expanded section and has no
-   independent disclosure.
+   `folder.file-types`; it is always present as an initially expanded section with the
+   shared Overview disclosure.
    A complete folder with no indexed regular files renders “No files to summarize.”
    with no bars, percentages, table, or README-shaped placeholder.
    Pending inventory never masquerades as this empty state.
@@ -215,10 +215,12 @@ The data selection must account for both dimensions before the UI is trustworthy
     population. Recency, type, and size filters do not change the directory composition
     summary: applying `.py` and making the panel report 100% `.py` would destroy its
     purpose.
-11. **Overview sections are always expanded.** File types and README are compact enough
-    to remain visible, so neither carries a disclosure control or persistence key.
-    The composer renders both labels with the same prominent uppercase section-heading
-    treatment, while the table’s leading Totals group carries total files and bytes.
+11. **Overview sections start expanded and remain independently collapsible.** The
+    composer renders Files and README labels with the same prominent uppercase
+    section-heading treatment and one shared trailing-chevron disclosure control.
+    Collapsing a section hides its mounted body without disposing its renderer, and the
+    state is not persisted across Overview mounts.
+    The table’s leading Totals group carries total files and bytes.
 12. **Category colors belong to aggregate visualizations.** The tree’s existing `ft-*`
     colors identify broad rendering subtypes; several exact extensions intentionally
     share one tree color.
@@ -609,8 +611,12 @@ Switching between Overview and Treemap follows the existing lazy view lifecycle.
 
 ### Accessibility and Interaction
 
-- File types and README are labelled semantic sections with visible `h2` headings; they
-  introduce no inert disclosure affordance or extra keyboard stop.
+- File types and README are labelled semantic sections with visible `h2` headings.
+  Each heading contains one button with `aria-expanded`, `aria-controls`, and the shared
+  trailing chevron; both start expanded.
+- Collapsing an Overview panel hides its body without disposing or remounting it.
+  Frontmatter and Diagnostics retain native `details` semantics, use the same trailing
+  chevron, and start collapsed.
 - The table has real column and row-group headers and no interactive rows in version
   one. Exact values and percentages remain ordinary readable text.
 - Individual visual fills are hidden from the accessibility tree because the adjacent
@@ -1347,9 +1353,9 @@ No folder layout selector belongs in core styles.
 
 #### Folder plugin styles
 
-- `overview.css` owns the shared visible headings, responsive document-edge alignment,
-  vertical panel stack, flat surface presentation, local error, loading slot, print
-  exclusion, and wide/narrow bands.
+- `overview.css` owns the shared visible headings, disclosure-button reset and focus
+  treatment, responsive document-edge alignment, vertical panel stack, flat surface
+  presentation, local error, loading slot, print exclusion, and wide/narrow bands.
   It does not override KPress document-card styling.
 - `file_type_summary.css` owns the fixed table columns, row groups, repeated 8-pixel
   tracks, metric gutters, numeric alignment, narrow-width contraction, skeletons,

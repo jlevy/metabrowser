@@ -284,6 +284,13 @@
   --label-text-transform: uppercase;
   --label-color: var(--muted);
 
+  /* Section disclosures place one quiet chevron immediately after the title.
+     The em-sized glyph follows the surrounding heading rather than creating a
+     second icon tier. Folder-tree chevrons remain a separate leading control. */
+  --section-disclosure-chevron-color: var(--muted);
+  --section-disclosure-chevron-gap: 0.35em;
+  --section-disclosure-chevron-size: 0.85em;
+
   /* "Panel" envelope — the bordered, rounded frame shared by markdown
      tables and frontmatter blocks (and any future similar surface).
      Putting these on :root keeps the visual treatment consistent across
@@ -1158,6 +1165,33 @@ body {
 .btn:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
+}
+/* ── Section disclosures — shared trailing-chevron primitive ─────
+   Section titles keep their local typography and put a quiet, em-sized
+   chevron immediately after the text. The trigger owns aria-expanded;
+   folder-tree rows intentionally keep their separate leading chevron. */
+.section-disclosure-trigger {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--section-disclosure-chevron-gap);
+}
+
+.section-disclosure-trigger::after,
+.metabrowser-kpress-host .kpress details > summary::after {
+  background-color: var(--section-disclosure-chevron-color);
+  content: "";
+  flex: none;
+  height: var(--section-disclosure-chevron-size);
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transition: transform var(--transition-fast);
+  width: var(--section-disclosure-chevron-size);
+}
+
+.section-disclosure-trigger[aria-expanded="true"]::after,
+.metabrowser-kpress-host .kpress details[open] > summary::after {
+  transform: rotate(90deg);
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -2833,13 +2867,9 @@ html[data-prose-font="sans"] {
 .metabrowser-kpress-host .metabrowser-doc-meta > details {
   border: 0;
 }
-/* Hang the disclosure chevron in the card's gutter so the label starts on the
-   prose edge, flush with the keys of the list it opens. The offset is the
-   marker itself: KPress draws it at 0.85em with a 0.4rem gap (document.css
-   `.kpress summary`), and it stays well inside the card's narrowest inline
-   padding (1.5rem below the 768px card breakpoint). */
+/* Preamble disclosures align their title with the prose edge. Their shared
+   trailing chevron follows the title instead of hanging in the card gutter. */
 .metabrowser-kpress-host .metabrowser-doc-meta > details > summary {
-  margin-inline-start: calc(-0.85em - 0.4rem);
   padding-inline: 0;
 }
 .metabrowser-kpress-host .metabrowser-doc-meta > details[open] > summary {
@@ -2935,6 +2965,14 @@ html[data-prose-font="sans"] {
   letter-spacing: var(--label-letter-spacing);
   line-height: normal;
   text-transform: var(--label-text-transform);
+  gap: var(--section-disclosure-chevron-gap);
+}
+/* KPress supplies the same Lucide mark before its standalone summaries.
+   Embedded documents use the host section-disclosure placement after the
+   title while retaining native details/summary interaction. */
+.metabrowser-kpress-host .kpress details > summary::before {
+  content: none;
+  display: none;
 }
 .metabrowser-kpress-host .kpress details > summary:hover {
   color: var(--text);
@@ -3868,10 +3906,12 @@ pre.code-block code.hljs {
   .tree-item-flash-out {
     animation-duration: 1ms;
   }
-  /* The drawer and its chevron still change state, just without the
-     travel. */
+  /* Drawers and disclosure chevrons still change state, just without
+     the travel. */
   .filter-drawer,
-  .filter-drawer-toggle svg {
+  .filter-drawer-toggle svg,
+  .section-disclosure-trigger::after,
+  .metabrowser-kpress-host .kpress details > summary::after {
     transition-duration: 1ms;
   }
   /* The bar's row-gap tracks the drawer, so it has to stop travelling

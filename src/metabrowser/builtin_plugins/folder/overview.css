@@ -38,8 +38,29 @@
   text-transform: var(--label-text-transform);
 }
 
+.folder-overview-panel-toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.folder-overview-panel-toggle:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
 .folder-overview-panel-body {
   min-width: 0;
+}
+
+.folder-overview-panel-body-collapsed {
+  display: none;
 }
 
 .folder-overview-panel-surface > .folder-overview-panel-heading,
@@ -95,5 +116,9 @@
   .folder-overview-stack {
     display: block;
     width: auto;
+  }
+
+  .folder-overview-panel-body-collapsed {
+    display: block;
   }
 }
