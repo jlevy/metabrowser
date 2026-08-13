@@ -49,7 +49,8 @@ export function mountOverview(container, initialContext, mb, registry) {
   /** @type {Array<PanelRecord>} */
   const records = registry.listPanels().map((descriptor) => {
     const elements = createPanelSlot(descriptor);
-    elements.body.innerHTML = '<div class="folder-overview-loading" aria-hidden="true"></div>';
+    elements.body.innerHTML =
+      '<div class="folder-overview-loading mb-delayed-loading" aria-hidden="true"></div>';
     stack.append(elements.slot);
     return {
       descriptor,

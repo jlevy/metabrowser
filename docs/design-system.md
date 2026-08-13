@@ -585,6 +585,17 @@ Avoid looping animation except for active progress indicators.
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
 
+Transient loading chrome has a 30ms quiet period through the shared
+`.mb-delayed-loading` utility.
+The placeholder reserves its final layout immediately but stays invisible long enough
+for synchronous work and fast local requests to replace it before paint.
+Apply this utility to view- and panel-level loading placeholders; do not add independent
+timers at each renderer.
+
+The shell separately retains the previous preview during a fast file-envelope request.
+Ready content always wins immediately: do not add a minimum spinner duration, crossfade,
+or transition that delays usable content merely to complete an animation.
+
 ### Progress Spinners Stay Neutral
 
 Loading and progress spinners use the shared neutral-gray track and accent tokens.

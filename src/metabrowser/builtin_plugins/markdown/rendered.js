@@ -102,7 +102,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   };
 
   container.classList.add("metabrowser-kpress-host");
-  container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading document…</div>';
+  container.innerHTML =
+    '<div class="loading mb-delayed-loading"><div class="spinner"></div>Loading document…</div>';
   async function render() {
     try {
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {

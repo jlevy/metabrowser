@@ -3574,7 +3574,8 @@ async function selectFile(path, skipHistory) {
         }
         disposeActivePluginViews();
         stopFolderHeaderSubscription();
-        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading file…</div>';
+        preview.innerHTML =
+          '<div class="loading mb-delayed-loading"><div class="spinner"></div>Loading file…</div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
       if (selectFileAbortController) {

@@ -355,6 +355,10 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+  /* Transient loading chrome stays quiet through work that finishes within
+     roughly two frames. The placeholder still reserves its layout while
+     hidden, so revealing it later cannot move ready content. */
+  --loading-state-delay: 30ms;
   /* Theme crossfade — applied to the major page surfaces so flipping
      light↔dark glides instead of snapping. Gated behind html.theme-anim
      (added by app.js one frame after first paint) so it never fires on
@@ -3553,6 +3557,16 @@ pre.code-block code.hljs {
 }
 
 /* ── Loading ─────────────────────────────────────────────────── */
+
+.mb-delayed-loading {
+  visibility: hidden;
+  animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
+}
+@keyframes mb-delayed-loading-reveal {
+  to {
+    visibility: visible;
+  }
+}
 
 .loading {
   display: flex;

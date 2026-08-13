@@ -371,7 +371,7 @@ export function registerTreemap(mb, palettePool) {
       if (!node || rect.width < 10 || rect.height < 10) {
         viewport.innerHTML = envelope
           ? ""
-          : '<div class="tm-loading"><div class="spinner"></div></div>';
+          : '<div class="tm-loading mb-delayed-loading"><div class="spinner"></div></div>';
         return;
       }
       cells = layoutTree(
