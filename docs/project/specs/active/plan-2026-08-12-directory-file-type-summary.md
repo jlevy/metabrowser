@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** In progress
 
 ## Overview
 
@@ -1391,7 +1391,7 @@ types meet only in the final composition, avoiding a long serial implementation 
 
 ### Phase 0: Reconcile the Folder-View Foundation
 
-- [ ] Port the three baseline slices from `feat/folder-treemap` onto current `main`
+- [x] Port the three baseline slices from `feat/folder-treemap` onto current `main`
   while preserving newer shell behavior.
 - [ ] Move WIP code directly into the target modules; do not land the hard-coded README
   tab or monolithic folder plugin as an intermediate public contract.
@@ -1399,12 +1399,12 @@ types meet only in the final composition, avoiding a long serial implementation 
 
 ### Phase 1: Stabilize the Server Data Plane
 
-- [ ] Extract `inventory_rollup.py` and make `InventoryIndex.rollup` a thin delegate.
-- [ ] Add zero-depth/top bounds, opt-in dual ranking, exact Other arithmetic, and full
+- [x] Extract `inventory_rollup.py` and make `InventoryIndex.rollup` a thin delegate.
+- [x] Add zero-depth/top bounds, opt-in dual ranking, exact Other arithmetic, and full
   wire validators.
 - [ ] Add bounded README discovery and make the folder envelope always advertise
   Overview and Treemap.
-- [ ] Lock byte-heavy, count-heavy, ignored-only, extensionless, compound-extension,
+- [x] Lock byte-heavy, count-heavy, ignored-only, extensionless, compound-extension,
   zero-byte, cold, scanning, truncated, and empty fixtures before browser work.
 
 ### Phase 2: Add Strict Reusable Browser Primitives

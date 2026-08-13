@@ -173,14 +173,14 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
     js = _read_app_js()
     select_file = js[
-        js.index("async function selectFile(path, skipHash)") : js.index("// ── File rendering")
+        js.index("async function selectFile(path, skipHistory)") : js.index("// ── File rendering")
     ]
     for status in ("opened", "not-found", "error", "cancelled"):
         assert f'status: "{status}"' in select_file
     assert "resp.status === 404" in select_file
 
     navigate = js[
-        js.index("async function navigateToPath(path, skipHash)") : js.index(
+        js.index("async function navigateToPath(path, skipHistory)") : js.index(
             "function initQuickFileFinder()"
         )
     ]

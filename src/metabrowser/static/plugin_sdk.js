@@ -487,7 +487,7 @@
       if (disposed) {
         return;
       }
-      const detail = event && event.detail ? event.detail : {};
+      const detail = event?.detail ? event.detail : {};
       if (!_pathsIntersectScope(detail.paths, path)) {
         return;
       }

@@ -3743,7 +3743,7 @@ function renderFolderHeader(data) {
   var path = typeof data.path === "string" ? data.path : "";
   var segments = path ? path.split("/") : [];
   var rootCrumb =
-    '<button class="folder-crumb folder-crumb-root" data-nav-dir="" title="Served root">/</button>';
+    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" title="Served root">/</button>';
   var crumbs = [];
   var prefix = "";
   for (var i = 0; i < segments.length; i++) {
@@ -3752,14 +3752,14 @@ function renderFolderHeader(data) {
     crumbs.push(
       isLast
         ? `<span class="folder-crumb folder-crumb-current">${esc(segments[i])}</span>`
-        : `<button class="folder-crumb" data-nav-dir="${esc(prefix)}">${esc(segments[i])}</button>`,
+        : `<button type="button" class="folder-crumb" data-nav-dir="${esc(prefix)}">${esc(segments[i])}</button>`,
     );
   }
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
   var upButton =
     parent === null
-      ? '<button class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" disabled>↑</button>'
-      : `<button class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" data-nav-dir="${esc(parent)}">↑</button>`;
+      ? '<button type="button" class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" disabled>↑</button>'
+      : `<button type="button" class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" data-nav-dir="${esc(parent)}">↑</button>`;
   var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
   return (
     '<div class="file-header folder-header">' +

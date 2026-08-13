@@ -22,7 +22,7 @@ from watchfiles import Change
 from metabrowser.events import FsChange, FsEntry, FsUpsert
 from metabrowser.inventory import InventoryIndex
 from metabrowser.watch_backends import _emit_for_path
-from metabrowser.wire_models import validate_rollup_node
+from metabrowser.wire_models import RollupDirNode, RollupResult, validate_rollup_node
 
 
 def _build_index(root: Path, *, gitignore: str | None = None) -> InventoryIndex:
@@ -63,6 +63,7 @@ def test_rollup_totals_and_gitignore_variants(tmp_path: Path) -> None:
     assert node["unignored_size"] == 175
     assert node["state"] == "complete"
 
+    assert node["children"] is not None
     by_name = {child["name"]: child for child in node["children"]}
     assert by_name["build"]["gitignored"] is True
     assert by_name["build"]["unignored_size"] == 0
@@ -70,9 +71,9 @@ def test_rollup_totals_and_gitignore_variants(tmp_path: Path) -> None:
     assert by_name["src"]["dominant_ext"] == ".py"
 
     tallies = {row[0]: row for row in result["ext_tallies"]}
-    assert tallies[".bin"][1:] == [1, 1000, 0, 0]
-    assert tallies[".py"][1:] == [2, 150, 2, 150]
-    assert tallies[".md"][1:] == [1, 25, 1, 25]
+    assert tallies[".bin"][1:] == (1, 1000, 0, 0)
+    assert tallies[".py"][1:] == (2, 150, 2, 150)
+    assert tallies[".md"][1:] == (1, 25, 1, 25)
 
 
 def test_rollup_scoped_to_subtree_with_inherited_ignore(tmp_path: Path) -> None:
@@ -103,9 +104,11 @@ def test_rollup_top_n_rest_bucket_and_ordering(tmp_path: Path) -> None:
     assert result is not None
     node = result["node"]
     validate_rollup_node(node)
+    assert node["children"] is not None
     names = [child["name"] for child in node["children"]]
     assert names == ["f0.txt", "f1.txt", "f2.txt"]  # largest bytes first
-    rest = node["rest"]
+    rest = node.get("rest")
+    assert rest is not None
     assert rest["files"] == 3
     assert rest["size"] == 70 + 60 + 50
     assert node["total_files"] == 6
@@ -121,6 +124,7 @@ def test_rollup_depth_sentinel_keeps_full_totals(tmp_path: Path) -> None:
     assert result is not None
     node = result["node"]
     validate_rollup_node(node)
+    assert node["children"] is not None
     a_node = node["children"][0]
     assert a_node["name"] == "a"
     assert a_node["children"] is None  # past depth
@@ -147,7 +151,7 @@ def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> N
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "a.py").write_text("x" * 100)
 
-    async def run() -> tuple[dict[str, Any], set[str], dict[str, Any], dict[str, Any]]:
+    async def run() -> tuple[RollupResult, set[str], RollupResult, RollupResult]:
         index = InventoryIndex()
         index.start(tmp_path)
         await index.wait_until_done(10)
@@ -194,10 +198,11 @@ def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> N
     node = after_add["node"]
     validate_rollup_node(node)
     assert (node["total_files"], node["total_size"]) == (2, 600)
+    assert node["children"] is not None
     src_node = next(child for child in node["children"] if child["name"] == "src")
     assert src_node["total_size"] == 600
     tallies = {row[0]: row for row in after_add["ext_tallies"]}
-    assert tallies[".csv"][1:] == [1, 500, 1, 500]
+    assert tallies[".csv"][1:] == (1, 500, 1, 500)
 
     node = after_delete["node"]
     validate_rollup_node(node)
@@ -205,7 +210,7 @@ def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> N
     assert ".csv" not in {row[0] for row in after_delete["ext_tallies"]}
 
 
-def _count_nodes(node: dict[str, Any]) -> int:
+def _count_nodes(node: RollupDirNode | dict[str, Any]) -> int:
     children = node.get("children") or []
     return 1 + sum(_count_nodes(child) for child in children)
 
@@ -267,7 +272,7 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
 
     # The cut is visible, never silent: budget-exhausted directories
     # carry the children:null lazy sentinel and/or a rest bucket.
-    def _has_cut_marker(n: dict[str, Any]) -> bool:
+    def _has_cut_marker(n: RollupDirNode | dict[str, Any]) -> bool:
         if n.get("children") is None or "rest" in n:
             return True
         return any(

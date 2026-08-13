@@ -98,6 +98,27 @@ def test_rollup_route_clamps_params(tmp_path: Path) -> None:
     assert all(row[0] == "" for row in body["ext_tallies"])
 
 
+def test_rollup_route_supports_summary_only_dual_rank(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    for index in range(20):
+        (tmp_path / f"tiny-{index}.txt").write_text("x")
+    (tmp_path / "large.bin").write_text("x" * 10_000)
+
+    body = _rollup_after_walk(
+        tmp_path,
+        {"path": "", "depth": "0", "top": "0", "ext_top": "2", "ext_rank": "dual"},
+    )
+    assert body["node"]["children"] is None
+    assert [row[0] for row in body["ext_tallies"]] == [".bin", ".txt"]
+
+
+def test_rollup_route_rejects_unknown_rank(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    body, response = _rollup({"path": "", "ext_rank": "popularity"})
+    assert response.status_code == 400
+    assert body == {"error": "Unknown ext_rank: 'popularity'"}
+
+
 def test_rollup_route_cold_index_returns_null_node(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     nested = tmp_path / "nested"

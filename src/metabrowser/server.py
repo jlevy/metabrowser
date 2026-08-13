@@ -98,6 +98,7 @@ from metabrowser.gz_io import (
     ArtifactPath,
 )
 from metabrowser.inventory import get_instance as get_inventory
+from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
@@ -116,6 +117,7 @@ from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
 from metabrowser.settings import (
     RECENT_WINDOW_SECONDS,
     ROLLUP_DEFAULT_DEPTH,
+    ROLLUP_DEFAULT_EXT_RANK,
     ROLLUP_DEFAULT_EXT_TOP,
     ROLLUP_DEFAULT_TOP,
     ROLLUP_MAX_DEPTH,
@@ -446,6 +448,30 @@ def _query_int(request: Request, name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _query_bounded_int(
+    request: Request,
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    return max(minimum, min(_query_int(request, name, default), maximum))
+
+
+def _query_choice(
+    request: Request,
+    name: str,
+    default: str,
+    allowed: frozenset[str],
+) -> str:
+    raw = request.query_params.get(name, "")
+    value = default if raw == "" else raw
+    if value not in allowed:
+        raise ValueError(f"Unknown {name}: {value!r}")
+    return value
 
 
 def _read_artifact_text_chunk(
@@ -1156,16 +1182,38 @@ async def api_rollup(request: Request) -> JSONResponse:
     if target is None or not target.is_dir():
         return JSONResponse({"error": "Not found"}, status_code=404)
 
-    depth = max(1, min(_query_int(request, "depth", ROLLUP_DEFAULT_DEPTH), ROLLUP_MAX_DEPTH))
-    top = max(1, min(_query_int(request, "top", ROLLUP_DEFAULT_TOP), ROLLUP_MAX_TOP))
-    ext_top = max(
-        0, min(_query_int(request, "ext_top", ROLLUP_DEFAULT_EXT_TOP), ROLLUP_MAX_EXT_TOP)
+    depth = _query_bounded_int(
+        request, "depth", ROLLUP_DEFAULT_DEPTH, minimum=0, maximum=ROLLUP_MAX_DEPTH
     )
+    top = _query_bounded_int(request, "top", ROLLUP_DEFAULT_TOP, minimum=0, maximum=ROLLUP_MAX_TOP)
+    ext_top = _query_bounded_int(
+        request, "ext_top", ROLLUP_DEFAULT_EXT_TOP, minimum=0, maximum=ROLLUP_MAX_EXT_TOP
+    )
+    try:
+        ext_rank = cast(
+            RollupRank,
+            _query_choice(
+                request,
+                "ext_rank",
+                ROLLUP_DEFAULT_EXT_RANK,
+                frozenset({"bytes", "dual"}),
+            ),
+        )
+    except ValueError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
 
     inventory = get_inventory()
     inv_can_serve = await _ensure_inventory_serving(subpath)
     result = (
-        inventory.rollup(subpath, depth=depth, top=top, ext_top=ext_top) if inv_can_serve else None
+        inventory.rollup(
+            subpath,
+            depth=depth,
+            top=top,
+            ext_top=ext_top,
+            ext_rank=ext_rank,
+        )
+        if inv_can_serve
+        else None
     )
     return JSONResponse(
         {
