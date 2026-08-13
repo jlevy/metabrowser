@@ -137,8 +137,33 @@ async function importSource(relative) {
   first.release();
   second.release();
 
-  const state = treemapModel.sanitizeTreemapState({ metric: "files", grouping: "bad" });
-  check("treemap state validates", state.metric === "files" && state.grouping === "folder");
+  const state = treemapModel.sanitizeTreemapState({
+    metric: "files",
+    grouping: "type",
+    color: "age",
+    ignored: "hidden",
+  });
+  check(
+    "treemap state keeps only the metric and boolean ignore scope",
+    state.metric === "files" &&
+      state.includeIgnored === true &&
+      Object.keys(state).join(",") === "metric,includeIgnored",
+    JSON.stringify(state),
+  );
+  check(
+    "every legacy ignored mode resets to the checked default",
+    treemapModel.sanitizeTreemapState({ ignored: "dimmed" }).includeIgnored === true &&
+      treemapModel.sanitizeTreemapState({ ignored: "shown" }).includeIgnored === true &&
+      treemapModel.sanitizeTreemapState({ ignored: "hidden" }).includeIgnored === true,
+  );
+  check(
+    "the new ignored boolean persists",
+    treemapModel.sanitizeTreemapState({ includeIgnored: false }).includeIgnored === false,
+  );
+  check(
+    "ignored is included by default",
+    treemapModel.sanitizeTreemapState(null).includeIgnored === true,
+  );
   check("treemap parent path", treemapModel.parentPath("a/b") === "a");
 
   if (failures.length) {

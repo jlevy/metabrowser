@@ -1,8 +1,8 @@
 // Geometry checks for the folder plugin's treemap layout module.
 //
 // Pure-function tests: squarified area conservation, bounds
-// containment, aspect quality, culling + rest synthesis, type-grouping
-// mode, and a timed 800-cell layout against the spec budget (16 ms,
+// containment, aspect quality, culling + rest synthesis, fluid cell
+// typography, and a timed 800-cell layout against the spec budget (16 ms,
 // asserted with slack for CI jitter; the measured value is printed for
 // the budget record).
 
@@ -22,9 +22,9 @@ const source = fs
     path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/treemap_layout.js"),
     "utf8",
   )
-  .replace(/^export \{.*\};$/gm, "")
+  .replace(/^export\s*\{[^}]*\};$/gm, "")
   .concat(
-    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, squarify, packLevel, layoutTree, worstAspect };",
+    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, cellTypography, squarify, packLevel, layoutTree, worstAspect };",
   );
 vm.runInContext(source, sandbox, { filename: "treemap_layout.js" });
 
@@ -137,7 +137,8 @@ function fileNode(name, pathStr, size, extras) {
       "child escapes parent rect",
     );
   }
-  // hidden mode uses unignored values: gitignored file drops out.
+  // Excluding ignored files uses unignored values: the gitignored
+  // leaf drops out and the remaining cell fills the map.
   const rootHidden = dirNode("root", "", {
     total_size: 1000,
     unignored_size: 400,
@@ -149,57 +150,56 @@ function fileNode(name, pathStr, size, extras) {
   const hiddenCells = layout.layoutTree(
     rootHidden,
     { w: 200, h: 100 },
-    { metric: "size", ignored: "hidden" },
+    { metric: "size", includeIgnored: false },
   );
   check(
-    "hidden drops gitignored",
+    "unchecked ignored scope drops gitignored",
     !hiddenCells.some((c) => c.path === "ignored.log"),
     JSON.stringify(hiddenCells.map((c) => c.path)),
   );
 }
 
-// ── layoutTree: type grouping from ext tallies ──────────────────
+// ── Fluid typography: continuous, bounded, and geometry-aware ───
 {
-  const root = dirNode("root", "");
-  const cells = layout.layoutTree(
-    root,
-    { w: 300, h: 200 },
-    {
-      grouping: "type",
-      metric: "size",
-      extTallies: [
-        [".py", 10, 6000, 10, 6000],
-        [".md", 5, 3000, 5, 3000],
-        ["", 2, 1000, 2, 1000],
-      ],
-    },
-  );
-  check("type cells", cells.length === 3, `${cells.length}`);
+  const tiny = layout.cellTypography({ w: 40, h: 20 });
+  const medium = layout.cellTypography({ w: 180, h: 100 });
+  const large = layout.cellTypography({ w: 900, h: 600 });
   check(
-    "type kinds",
-    cells.filter((c) => c.kind === "ext").length === 2 &&
-      cells.filter((c) => c.kind === "rest").length === 1,
-    cells.map((c) => c.kind).join(","),
-  );
-  const other = cells.find((c) => c.kind === "rest");
-  check("rest ext labeled", !!other && other.name === "other", JSON.stringify(other));
-  const typeTotal = cells.reduce((s, c) => s + c.value, 0);
-  check("type value conservation", typeTotal === 6000 + 3000 + 1000, `${typeTotal}`);
-  // files metric with hidden variant reads columns 3.
-  const filesCells = layout.layoutTree(
-    root,
-    { w: 300, h: 200 },
-    {
-      grouping: "type",
-      metric: "files",
-      ignored: "hidden",
-      extTallies: [[".py", 10, 6000, 4, 2000]],
-    },
+    "label size grows continuously with usable cell geometry",
+    tiny.labelPx < medium.labelPx && medium.labelPx < large.labelPx,
+    `${tiny.labelPx}/${medium.labelPx}/${large.labelPx}`,
   );
   check(
-    "type files metric",
-    filesCells[0] && filesCells[0].value === 4,
-    JSON.stringify(filesCells),
+    "value size grows with the label",
+    tiny.valuePx < medium.valuePx && medium.valuePx < large.valuePx,
+    `${tiny.valuePx}/${medium.valuePx}/${large.valuePx}`,
+  );
+  check(
+    "font sizes stay within the documented bounds",
+    tiny.labelPx === 11 && large.labelPx === 24 && tiny.valuePx === 10 && large.valuePx === 18,
+    JSON.stringify({ tiny, large }),
+  );
+  check(
+    "a narrow sliver cannot claim large type from area alone",
+    layout.cellTypography({ w: 1000, h: 18 }).labelPx === tiny.labelPx,
+  );
+
+  const nestedRoot = dirNode("root", "", {
+    total_size: 1000,
+    children: [
+      dirNode("large", "large", {
+        total_size: 1000,
+        children: [fileNode("inside.py", "large/inside.py", 1000)],
+      }),
+    ],
+  });
+  const nested = layout.layoutTree(nestedRoot, { w: 900, h: 600 }, { metric: "size" });
+  const folder = nested.find((cell) => cell.path === "large");
+  const child = nested.find((cell) => cell.path === "large/inside.py");
+  check(
+    "nested children start below the fluid folder header",
+    folder && child && child.y >= folder.y + folder.headerPx,
+    JSON.stringify({ folder, child }),
   );
 }
 

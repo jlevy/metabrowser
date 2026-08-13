@@ -417,8 +417,8 @@ When several metric columns compare the same population, they use the same categ
 row order, and color map.
 Categories keep their assigned slot for the mounted folder even when live updates change
 rank, and Other stays last and neutral.
-A related visualization, such as a type-grouped Treemap for that folder, reuses the same
-mounted mapping when both views exist.
+A related visualization, such as the extension-colored Treemap for that folder, reuses
+the same mounted mapping when both views exist.
 
 The semantic table is the visual summary and the source of exact values.
 Every row names its category and reports absolute values and percentages; the colored
@@ -454,6 +454,49 @@ If one metric is zero while another is not, the zero metric uses the neutral tra
 the populated metric remains meaningful.
 If the whole population is empty, the parent surface renders its explicit empty state
 instead of the distribution body.
+
+### Folder Treemap
+
+Treemap is the hierarchy complement to File types, not a second composition summary.
+It always lays out the bounded directory tree as folders and files; it does not offer a
+Folders/Types grouping choice.
+File types already answers which extensions make up the population, while Treemap
+answers where space or file count sits and keeps folder and file cells navigable.
+
+The toolbar contains two controls from the shared filter-control family:
+
+- A joined, exclusive **Bytes / Files** group chooses the cell-area metric.
+- A labelled **Show ignored** checkbox chooses scope and starts checked.
+  Checked includes gitignored cells and dims them; unchecked removes them and switches
+  folder, remainder, and status values to the rollup’s unignored totals.
+
+There is no separate color selector.
+Every file uses its exact extension’s mounted distribution slot, every folder uses its
+dominant extension’s slot, and remainder cells use the neutral Other slot.
+The File types panel and Treemap acquire the same per-folder palette session, so an
+extension keeps the same color across both views.
+Modification age remains available in the tooltip; it does not compete with file type as
+a second cell-color vocabulary.
+Treemap derives a theme-aware surface wash and stronger border from that shared base
+color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
+
+Cell typography grows continuously with usable rectangle geometry.
+The scale combines the short side with the square root of area, which lets a genuinely
+large box grow while preventing a long, thin sliver from claiming display type.
+Folder/file labels stay between 11px and 24px; value labels stay between 10px and 18px.
+Geometry-derived inline custom properties are allowed here because they encode layout
+data, just as inline bar widths encode percentages; theme colors still come only from
+tokens and shared utility classes.
+
+Large nested folders place their formatted aggregate value in the reserved header row.
+Non-nested cells place the value below the name when both lines fit.
+File leaves keep their formatted byte size in either area mode because “1 file” adds no
+information; aggregate folders and remainder cells report the selected metric.
+Values use the shared byte and file-count formatters.
+A label or value that cannot fit is omitted rather than shrunk below its lower bound or
+allowed to overlap child cells.
+The accessible name preserves the cell name, kind, and visible value; the tooltip
+retains the complete name, counts, bytes, and modification time.
 
 ## Panels and Tabs
 

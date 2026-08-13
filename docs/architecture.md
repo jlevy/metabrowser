@@ -106,6 +106,22 @@ Using the same mount keeps Overview’s README structurally and behaviorally ali
 the ordinary rendered Markdown view instead of creating a second Markdown rendering
 path.
 
+Treemap consumes the same bounded rollup as a peer view but has one fixed spatial model:
+`treemap_layout.js` packs directory children, recurses only into sufficiently large
+folder cells, and conserves any culled or capped tail in a neutral remainder cell.
+Its pure model persists only the Bytes/Files metric and the boolean ignored-file scope;
+the controller renders those through the shared segmented-control and labelled-checkbox
+primitives. The scope selects total or unignored rollup weights without another fetch.
+Layout geometry also derives bounded label and value sizes and reserves the resulting
+folder-header height before nesting children.
+
+Treemap and File types acquire leases from the same per-directory category-palette pool.
+File cells key the lease by their logical extension, folder cells by `dominant_ext`, and
+remainder cells by the neutral Other key.
+This shares extension identity without coupling either renderer to sibling DOM. Visible
+byte and file values route through the public SDK formatters, and cell activation routes
+through `mb.openPath`.
+
 The folder-view shell refreshes a selected folder envelope for live aggregate header
 data. That one multiplexed refresh is exposed through a supported subscription so
 Overview can re-resolve panel availability when direct-child facts change without

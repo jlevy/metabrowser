@@ -1,14 +1,13 @@
 // Folder Treemap view controller.
 //
 // The `folder` kind is assigned by the server's api_file is_dir branch
-// (see manifest.toml for why there is no [[kind]] rule). Owns two views:
+// (see manifest.toml for why there is no [[kind]] rule). Owns one view:
 //
-//   ("folder", "treemap") — squarified treemap of the subtree from
-//       /api/rollup via mb.watchRollup: joined toggle groups for
-//       metric / grouping / color plus a three-state gitignored
-//       control, hover tooltip, click-to-zoom (zoom is navigation:
-//       cells open through mb.openPath), keyboard support, pending
-//       and truncated presentations.
+//   ("folder", "treemap") — squarified folder/file hierarchy from
+//       /api/rollup via mb.watchRollup: a Bytes/Files metric choice,
+//       a default-on ignored-file checkbox, shared file-type colors,
+//       fluid cell typography, hover tooltip, click navigation,
+//       keyboard support, pending and truncated presentations.
 //
 // Geometry comes from treemap_layout.js, toggle state
 // persists through mb.prefs (host-only cookies, shared across per-root
@@ -20,21 +19,24 @@ import { parentPath, sanitizeTreemapState } from "./treemap_model.js";
 
 /** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
+/** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
 
 /** @param {MetabrowserPublicSdk} mb @param {TreemapPalettePool} palettePool */
 export function registerTreemap(mb, palettePool) {
+  const controls = mb.filterControls;
+  if (!controls) {
+    throw new Error("metabrowser folder plugin: filter controls are unavailable");
+  }
+  const filterControls = controls;
   /** Persisted toggle state (one preference key; absent or invalid
    * fields fall to defaults). Stored through mb.prefs so the choice
    * survives across Metabrowser instances (each served root runs on
    * its own port and therefore its own localStorage origin). */
   const PREF_KEY = "folder.treemap";
   const LEGACY_STORAGE_KEY = "metabrowser.folder.treemap";
-  /** Label paint thresholds: name needs LABEL_MIN, the size sub-label SUB_MIN. */
+  /** Minimum paint thresholds; type size itself comes from cell geometry. */
   const LABEL_MIN_W = 56;
   const LABEL_MIN_H = 16;
-  const SUB_MIN_H = 30;
-  /** Minimum cell width before the age chip joins the name row. */
-  const AGE_MIN_W = 88;
   /** Viewport height bounds: the map fills the space between its own
    * top edge and the window bottom (minus the status line and pane
    * padding), so wrapped toolbars or long breadcrumbs never push it
@@ -44,6 +46,7 @@ export function registerTreemap(mb, palettePool) {
   const VIEWPORT_MAX_H = 900;
   const VIEWPORT_BOTTOM_RESERVE = 64;
 
+  /** @returns {TreemapState} */
   function loadState() {
     const stored = mb.prefs.get(PREF_KEY, null);
     if (stored !== null) {
@@ -65,20 +68,14 @@ export function registerTreemap(mb, palettePool) {
     return sanitizeTreemapState(null);
   }
 
-  /** @param {Record<string, string>} state */
+  /** @param {TreemapState} state */
   function saveState(state) {
     mb.prefs.set(PREF_KEY, sanitizeTreemapState(state));
   }
 
-  /** @param {number | null | undefined} mtimeSec @returns {string} */
-  function ageFillClass(mtimeSec) {
-    const bucket = mb.ageBucket(mtimeSec);
-    return bucket ? `tm-age-${bucket}` : "tm-age-none";
-  }
-
   /**
    * File-type class for a cell: real path for files, a synthetic name
-   * carrying the dominant extension for directories and ext cells.
+   * carrying the dominant extension for directories.
    * @param {Record<string, any>} cell
    * @param {{classFor: (key: string) => string}} palette
    * @returns {string}
@@ -88,15 +85,10 @@ export function registerTreemap(mb, palettePool) {
     return palette.classFor(key);
   }
 
-  /** @param {Record<string, any>} cell @param {Record<string, string>} state @param {{classFor: (key: string) => string}} palette */
+  /** @param {Record<string, any>} cell @param {TreemapState} state @param {{classFor: (key: string) => string}} palette */
   function cellClasses(cell, state, palette) {
-    const cls = ["tm-cell", `tm-${cell.kind}`];
-    if (state.color === "age") {
-      cls.push(ageFillClass(cell.mtime));
-    } else {
-      cls.push("tm-type-fill", typeFillClass(cell, palette));
-    }
-    if (cell.gitignored && state.ignored === "dimmed") {
+    const cls = ["tm-cell", `tm-${cell.kind}`, "tm-type-fill", typeFillClass(cell, palette)];
+    if (cell.gitignored && state.includeIgnored) {
       cls.push("tm-ignored");
     }
     if (cell.state === "pending") {
@@ -109,34 +101,33 @@ export function registerTreemap(mb, palettePool) {
   }
 
   /**
-   * Value phrase for a cell under the active metric: byte sizes in
-   * Bytes mode, "N files" in Files mode (a file cell keeps its real
-   * byte size in either mode — "1 file" carries no information).
+   * Value phrase for a cell: aggregate cells follow the active metric;
+   * file leaves retain their more useful byte size in both modes.
    * @param {Record<string, any>} cell
-   * @param {Record<string, string>} state
+   * @param {TreemapState} state
    * @returns {string}
    */
   function cellValueText(cell, state) {
+    // One file is already obvious from a leaf rectangle. Its byte size
+    // remains useful in either area mode; folders and remainder cells
+    // report the active metric because their count is aggregate data.
     if (cell.kind === "file") {
       return mb.formatSize(cell.bytes ?? cell.value);
     }
     if (state.metric === "files") {
-      return `${cell.files ?? cell.value} files`;
+      return mb.formatFileCount(cell.files ?? cell.value);
     }
-    return mb.formatSize(cell.kind === "ext" ? cell.bytes : cell.value);
+    return mb.formatSize(cell.bytes ?? cell.value);
   }
 
   /**
    * @param {Record<string, any>} cell
-   * @param {Record<string, string>} state
+   * @param {TreemapState} state
    * @returns {string}
    */
   function cellAriaLabel(cell, state) {
     if (cell.kind === "rest") {
-      return `${cell.files || 0} more items, ${cellValueText(cell, state)}`;
-    }
-    if (cell.kind === "ext") {
-      return `${cell.name}: ${cell.files} files, ${mb.formatSize(cell.bytes)}`;
+      return `${mb.formatFileCount(cell.files || 0)} represented by the remainder, ${cellValueText(cell, state)}`;
     }
     const what = cell.kind === "dir" ? "folder" : "file";
     return `${cell.name} (${what}, ${cellValueText(cell, state)})`;
@@ -147,83 +138,55 @@ export function registerTreemap(mb, palettePool) {
     return cell.kind === "dir" || cell.kind === "file";
   }
 
-  /**
-   * One toolbar segment control.
-   * @param {string} key state key
-   * @param {[string, string][]} options [value, label] pairs
-   * @param {string} active
-   */
-  function segmentHtml(key, options, active) {
-    const buttons = options
-      .map(
-        ([value, label]) =>
-          `<button type="button" data-tm-key="${key}" data-tm-value="${value}"` +
-          ` aria-pressed="${value === active}">${label}</button>`,
-      )
-      .join("");
-    return `<span class="tm-seg" role="group">${buttons}</span>`;
-  }
-
-  /** @param {Record<string, string>} state */
+  /** @param {TreemapState} state */
   function toolbarHtml(state) {
     return (
       '<div class="tm-toolbar">' +
-      segmentHtml(
-        "metric",
-        [
-          ["size", "Bytes"],
-          ["files", "Files"],
+      filterControls.groupHtml({
+        key: "metric",
+        select: "one",
+        layout: "joined",
+        label: "Treemap area",
+        options: [
+          { value: "size", label: "Bytes" },
+          { value: "files", label: "Files" },
         ],
-        state.metric,
-      ) +
-      segmentHtml(
-        "grouping",
-        [
-          ["folder", "Folders"],
-          ["type", "Types"],
-        ],
-        state.grouping,
-      ) +
-      segmentHtml(
-        "color",
-        [
-          ["type", "Type"],
-          ["age", "Age"],
-        ],
-        state.color,
-      ) +
-      segmentHtml(
-        "ignored",
-        [
-          ["shown", "Ignored: shown"],
-          ["dimmed", "Dimmed"],
-          ["hidden", "Hidden"],
-        ],
-        state.ignored,
-      ) +
+        value: state.metric,
+      }) +
+      filterControls.checkHtml({
+        key: "includeIgnored",
+        label: "Show ignored",
+        checked: state.includeIgnored,
+        title: "Include gitignored files, dimmed",
+        className: "tm-ignored-check",
+      }) +
       "</div>"
     );
   }
 
   /**
    * @param {Record<string, any>} cell
-   * @param {Record<string, string>} state
+   * @param {TreemapState} state
    * @param {number} index
    * @param {TreemapPalette} palette
    */
   function cellHtml(cell, state, index, palette) {
     const style =
       `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
-      `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px`;
-    const showLabel = cell.w >= LABEL_MIN_W && cell.h >= LABEL_MIN_H;
+      `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px;` +
+      `--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px`;
+    const labelLineHeight = cell.labelPx * 1.2;
+    const valueLineHeight = cell.valuePx * 1.2;
+    const showLabel = cell.w >= LABEL_MIN_W && cell.h >= Math.max(LABEL_MIN_H, labelLineHeight + 2);
     // Nested parents suppress the sublabel: the reserved header strip
     // is one line tall, and a second line would overlap child cells.
-    const showSub = showLabel && cell.h >= SUB_MIN_H && cell.kind !== "rest" && !cell.nested;
+    const showStackedSub =
+      showLabel &&
+      cell.h >= labelLineHeight + valueLineHeight + 6 &&
+      cell.kind !== "rest" &&
+      !cell.nested;
+    const showInlineSub = showLabel && cell.nested && cell.kind === "dir" && cell.w >= 140;
     const sub = cellValueText(cell, state);
-    // The header's colored age chip rides next to the name (dir and
-    // file cells only — ext/rest cells have no meaningful mtime).
-    const ageHtml =
-      showLabel && cell.w >= AGE_MIN_W && cellIsActionable(cell) ? mb.ageLabelHtml(cell.mtime) : "";
     const aria = mb.escapeHtml(cellAriaLabel(cell, state));
     const actionable = cellIsActionable(cell);
     // A nested directory cell contains its children's cells, so the
@@ -236,8 +199,10 @@ export function registerTreemap(mb, palettePool) {
       : "";
     const label = showLabel
       ? `<span class="tm-cell-title"${titleAttrs}><span class="tm-cell-label">${mb.escapeHtml(cell.name)}</span>${
-          ageHtml ? `<span class="tm-cell-age">${ageHtml}</span>` : ""
-        }</span>${showSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : ""}`
+          showInlineSub
+            ? `<span class="tm-cell-sub tm-cell-sub-inline">${mb.escapeHtml(sub)}</span>`
+            : ""
+        }</span>${showStackedSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : ""}`
       : "";
     const outerInteractive = actionable && !titleInteractive;
     const outerAttrs = outerInteractive
@@ -251,11 +216,10 @@ export function registerTreemap(mb, palettePool) {
   }
 
   /**
-   * Footer caption. In hidden-gitignored mode the map lays out from
-   * the unignored_* weights, so the caption must quote those figures —
-   * totals that disagree with the picture read as a bug.
+   * Footer caption. When ignored files are excluded the map lays out
+   * from unignored_* weights, so the caption quotes the same figures.
    * @param {Record<string, any> | null} envelope
-   * @param {Record<string, string>} state
+   * @param {TreemapState} state
    * @returns {string}
    */
   function statusHtml(envelope, state) {
@@ -266,42 +230,41 @@ export function registerTreemap(mb, palettePool) {
     if (!node) {
       return "Indexing… the treemap fills in as the scan completes.";
     }
-    const hideIgnored = state.ignored === "hidden";
-    const files = hideIgnored ? node.unignored_files : node.total_files;
-    const size = hideIgnored ? node.unignored_size : node.total_size;
-    const parts = [`${files} files`, mb.formatSize(size), `scan: ${envelope.index_status}`];
-    if (hideIgnored) {
-      parts.push("gitignored hidden");
+    const excludeIgnored = !state.includeIgnored;
+    const files = excludeIgnored ? node.unignored_files : node.total_files;
+    const size = excludeIgnored ? node.unignored_size : node.total_size;
+    const parts = [
+      mb.formatFileCount(files),
+      mb.formatSize(size),
+      `scan: ${envelope.index_status}`,
+    ];
+    if (excludeIgnored) {
+      parts.push("ignored hidden");
     }
     if (node.state === "pending") {
       parts.push("this folder is still being scanned");
     }
     if (envelope.truncated) {
-      parts.push(`index capped at ${envelope.max_files} files — totals are lower bounds`);
+      parts.push(
+        `index capped at ${mb.formatFileCount(envelope.max_files)} — totals are lower bounds`,
+      );
     }
     return parts.join(" · ");
   }
 
   /**
    * @param {Record<string, any>} cell
-   * @param {Record<string, string>} state
+   * @param {TreemapState} state
    * @returns {string}
    */
   function tooltipHtml(cell, state) {
     const rows = [];
-    if (cell.kind === "ext") {
-      rows.push(`<strong>${mb.escapeHtml(cell.name)}</strong>`);
-      rows.push(`${cell.files} files · ${mb.formatSize(cell.bytes)}`);
-    } else if (cell.kind === "rest") {
-      rows.push(`<strong>${cell.files || 0} more items</strong>`);
-      rows.push(mb.formatSize(cell.value));
+    if (cell.kind === "rest") {
+      rows.push(`<strong>${mb.formatFileCount(cell.files || 0)} in the remainder</strong>`);
+      rows.push(cellValueText(cell, state));
     } else {
       rows.push(`<strong>${mb.escapeHtml(cell.path || cell.name)}</strong>`);
-      rows.push(
-        state.metric === "files" && cell.kind === "dir"
-          ? `${cell.value} files`
-          : mb.formatSize(cell.value),
-      );
+      rows.push(`${mb.formatFileCount(cell.files || 0)} · ${mb.formatSize(cell.bytes || 0)}`);
       if (typeof cell.mtime === "number" && cell.mtime > 0) {
         rows.push(`modified ${mb.formatTimestamp(cell.mtime)}`);
       }
@@ -379,9 +342,7 @@ export function registerTreemap(mb, palettePool) {
         { w: rect.width, h: rect.height },
         {
           metric: state.metric,
-          grouping: state.grouping,
-          ignored: state.ignored,
-          extTallies: envelope ? envelope.ext_tallies : [],
+          includeIgnored: state.includeIgnored,
         },
       );
       const html = cells.map((cell, i) => cellHtml(cell, state, i, palette)).join("");
@@ -508,27 +469,28 @@ export function registerTreemap(mb, palettePool) {
       }
     });
 
-    container.addEventListener("click", (e) => {
-      const btn = /** @type {HTMLElement | null} */ (
-        /** @type {Element} */ (e.target).closest("[data-tm-key]")
-      );
-      if (!btn) {
-        return;
-      }
-      const key = btn.dataset.tmKey || "";
-      const value = btn.dataset.tmValue || "";
-      if (!key || !value || state[key] === value) {
-        return;
-      }
-      state[key] = value;
-      saveState(state);
-      const group = btn.parentElement;
-      if (group) {
-        group.querySelectorAll("button").forEach((b) => {
-          b.setAttribute("aria-pressed", String(b === btn));
-        });
-      }
-      relayout();
+    const unbindControls = filterControls.bind(container, {
+      onChange(key, value, select) {
+        if (
+          key !== "metric" ||
+          select !== "one" ||
+          (value !== "size" && value !== "files") ||
+          state.metric === value
+        ) {
+          return;
+        }
+        state.metric = value;
+        saveState(state);
+        relayout();
+      },
+      onToggle(key, checked) {
+        if (key !== "includeIgnored" || state.includeIgnored === checked) {
+          return;
+        }
+        state.includeIgnored = checked;
+        saveState(state);
+        relayout();
+      },
     });
 
     sizeViewport();
@@ -593,6 +555,7 @@ export function registerTreemap(mb, palettePool) {
         resizeObserver.disconnect();
       }
       mb.tooltip.hide();
+      unbindControls();
       palette.release();
     };
     return Object.freeze({ dispose });

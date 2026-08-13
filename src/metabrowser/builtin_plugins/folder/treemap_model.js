@@ -1,32 +1,33 @@
-/** @type {Readonly<Record<string, string>>} */
+/** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
+
+/** @type {Readonly<TreemapState>} */
 export const DEFAULT_TREEMAP_STATE = Object.freeze({
   metric: "size",
-  grouping: "folder",
-  color: "type",
-  ignored: "dimmed",
+  includeIgnored: true,
 });
 
-/** @type {Readonly<Record<string, ReadonlyArray<string>>>} */
-const VALID_STATE_VALUES = Object.freeze({
-  metric: Object.freeze(["size", "files"]),
-  grouping: Object.freeze(["folder", "type"]),
-  color: Object.freeze(["type", "age"]),
-  ignored: Object.freeze(["shown", "dimmed", "hidden"]),
-});
-
-/** @param {unknown} raw */
+/**
+ * Normalize the two controls the streamlined Treemap still exposes.
+ * Old preferences are intentionally read once here. Their three-state
+ * ignored setting has no exact equivalent, so the redesigned control
+ * starts from its requested checked default; an explicit new boolean
+ * is preserved. Obsolete grouping and color keys are discarded on the
+ * next save.
+ *
+ * @param {unknown} raw
+ * @returns {TreemapState}
+ */
 export function sanitizeTreemapState(raw) {
-  /** @type {Record<string, string>} */
-  const state = { ...DEFAULT_TREEMAP_STATE };
-  if (raw && typeof raw === "object") {
-    for (const key of Object.keys(VALID_STATE_VALUES)) {
-      const value = /** @type {Record<string, unknown>} */ (raw)[key];
-      if (typeof value === "string" && VALID_STATE_VALUES[key].includes(value)) {
-        state[key] = value;
-      }
-    }
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_TREEMAP_STATE };
   }
-  return state;
+  const saved = /** @type {Record<string, unknown>} */ (raw);
+  const metric = saved.metric === "files" ? "files" : "size";
+  let includeIgnored = DEFAULT_TREEMAP_STATE.includeIgnored;
+  if (typeof saved.includeIgnored === "boolean") {
+    includeIgnored = saved.includeIgnored;
+  }
+  return { metric, includeIgnored };
 }
 
 /** @param {string} path */

@@ -31,6 +31,16 @@ function makeElement() {
       el.listeners[type] = el.listeners[type] || [];
       el.listeners[type].push(fn);
     },
+    removeEventListener(type, fn) {
+      const listeners = el.listeners[type] || [];
+      const index = listeners.indexOf(fn);
+      if (index !== -1) {
+        listeners.splice(index, 1);
+      }
+    },
+    contains() {
+      return true;
+    },
     querySelector(selector) {
       if (selector === ".tm-viewport") {
         return el.viewport;
@@ -39,6 +49,9 @@ function makeElement() {
         return el.status;
       }
       return null;
+    },
+    querySelectorAll() {
+      return [];
     },
     getBoundingClientRect: () => ({ width: 800, height: 600, top: 120 }),
     setAttribute(k, v) {
@@ -123,7 +136,7 @@ const envelope = {
   truncated: false,
   ext_tallies: [
     [".py", 2, 900, 2, 900],
-    [".md", 1, 100, 1, 100],
+    [".md", 1, 100, 0, 0],
   ],
   node: {
     name: "root",
@@ -132,8 +145,8 @@ const envelope = {
     state: "complete",
     total_files: 3,
     total_size: 1000,
-    unignored_files: 3,
-    unignored_size: 1000,
+    unignored_files: 2,
+    unignored_size: 900,
     mtime: 1700000000,
     gitignored: false,
     dominant_ext: ".py",
@@ -163,7 +176,7 @@ const envelope = {
         size: 100,
         mtime: 1700000000,
         ext: ".md",
-        gitignored: false,
+        gitignored: true,
       },
     ],
   },
@@ -181,6 +194,7 @@ for (const relative of [
   "src/metabrowser/static/resource_context.js",
   "src/metabrowser/static/view_state.js",
   "src/metabrowser/static/plugin_sdk.js",
+  "src/metabrowser/static/filter_controls.js",
 ]) {
   const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
   vm.runInContext(source, sandbox, { filename: relative });
@@ -192,7 +206,7 @@ const moduleSources = [
 for (const relative of moduleSources) {
   const source = fs
     .readFileSync(path.join(repoRoot, relative), "utf8")
-    .replace(/^export \{.*\};$/gm, "")
+    .replace(/^export\s*\{[^}]*\};$/gm, "")
     .replace(/^export\s+/gm, "");
   vm.runInContext(source, sandbox, { filename: relative });
 }
@@ -206,7 +220,11 @@ vm.runInContext(
     acquire() {
       return {
         sync() {}, release() {},
-        classFor(key) { return key ? "mb-distribution-slot-1" : "mb-distribution-other"; }
+        classFor(key) {
+          if (key === ".py") return "mb-distribution-slot-7";
+          if (key === ".md") return "mb-distribution-slot-3";
+          return key ? "mb-distribution-slot-1" : "mb-distribution-other";
+        }
       };
     }
   });`,
@@ -245,12 +263,22 @@ check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
     raw: { readme_path: "README.md" },
   });
   check("toolbar rendered", container.innerHTML.includes("tm-toolbar"), "no toolbar");
+  check("metric chooser present", container.innerHTML.includes('data-chip-key="metric"'));
   check(
-    "toggle groups present",
-    ["metric", "grouping", "color", "ignored"].every((k) =>
-      container.innerHTML.includes(`data-tm-key="${k}"`),
-    ),
-    "missing toggle group",
+    "obsolete grouping and color choices absent",
+    !container.innerHTML.includes('data-chip-key="grouping"') &&
+      !container.innerHTML.includes('data-chip-key="color"') &&
+      !container.innerHTML.includes(">Folders<") &&
+      !container.innerHTML.includes(">Types<") &&
+      !container.innerHTML.includes(">Age<"),
+    container.innerHTML,
+  );
+  check(
+    "ignored scope is a checked checkbox",
+    container.innerHTML.includes('type="checkbox"') &&
+      container.innerHTML.includes('data-chip-check="includeIgnored" checked') &&
+      container.innerHTML.includes("Show ignored"),
+    container.innerHTML,
   );
 
   // Initial watchRollup fetch resolves through several microtasks; a
@@ -264,15 +292,28 @@ check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
     container.viewport.innerHTML.slice(0, 200),
   );
   check(
-    "type fill is the default",
-    container.viewport.innerHTML.includes("tm-type-fill"),
-    "no ft class on initial render",
+    "type fill always uses the shared palette",
+    container.viewport.innerHTML.includes("tm-type-fill") &&
+      container.viewport.innerHTML.includes("mb-distribution-slot-7") &&
+      container.viewport.innerHTML.includes("mb-distribution-slot-3"),
+    container.viewport.innerHTML,
   );
   check(
-    "age chip beside the name",
-    container.viewport.innerHTML.includes("tm-cell-age") &&
-      container.viewport.innerHTML.includes('class="age-old"'),
-    "no colored age label in cells",
+    "cell values use the common byte formatter",
+    container.viewport.innerHTML.includes("600 B"),
+    container.viewport.innerHTML,
+  );
+  check(
+    "cell typography is data-driven",
+    container.viewport.innerHTML.includes("--tm-label-size:") &&
+      container.viewport.innerHTML.includes("--tm-value-size:"),
+    container.viewport.innerHTML.slice(0, 300),
+  );
+  check(
+    "obsolete age coloring is absent",
+    !container.viewport.innerHTML.includes("tm-cell-age") &&
+      !container.viewport.innerHTML.includes("tm-age-"),
+    container.viewport.innerHTML,
   );
   check(
     "status line totals",
@@ -312,38 +353,71 @@ check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
   await new Promise((resolve) => setImmediate(resolve));
   check("refresh refetched", fetchCalls.length === 2, `${fetchCalls.length} fetches`);
 
-  // Toggle click relayouts without refetching.
+  // Metric and ignored-scope changes relayout without refetching.
   const before = fetchCalls.length;
   const toolbarClick = container.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
-  const clickToggle = (key, value) => {
-    const btn = {
-      dataset: { tmKey: key, tmValue: value },
-      parentElement: { querySelectorAll: () => [] },
-      closest() {
-        return btn;
+  const clickMetric = (value) => {
+    const group = {
+      getAttribute(name) {
+        return name === "data-select" ? "one" : null;
       },
     };
-    toolbarClick({ target: { closest: () => btn } });
+    const button = {
+      getAttribute(name) {
+        if (name === "data-chip-key") {
+          return "metric";
+        }
+        if (name === "data-chip-value") {
+          return value;
+        }
+        if (name === "aria-checked") {
+          return "false";
+        }
+        return null;
+      },
+      closest(selector) {
+        if (selector === "[data-chip-key]") {
+          return button;
+        }
+        if (selector === ".chip-group") {
+          return group;
+        }
+        return null;
+      },
+    };
+    toolbarClick({ target: button });
   };
   if (toolbarClick) {
-    clickToggle("color", "age");
-    check("toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
+    clickMetric("files");
+    check("metric toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
-      "age fill applied after toggle",
-      container.viewport.innerHTML.includes("tm-age-"),
-      "no age fill class after color toggle",
+      "Files metric keeps useful formatted bytes on file leaves",
+      container.viewport.innerHTML.includes("600 B") &&
+        container.status.textContent.includes("3 files"),
+      container.viewport.innerHTML,
     );
-    // Hidden gitignored mode: the caption must quote the unignored
-    // figures and say the gitignored entries are hidden, matching the
-    // weights the layout switched to.
-    clickToggle("ignored", "hidden");
+  }
+
+  const toolbarChange = container.listeners.change?.[0];
+  check("ignored checkbox handler bound", typeof toolbarChange === "function");
+  if (toolbarChange) {
+    toolbarChange({
+      target: {
+        checked: false,
+        getAttribute(name) {
+          return name === "data-chip-check" ? "includeIgnored" : null;
+        },
+      },
+    });
     check(
-      "hidden mode status disclosure",
-      container.status.textContent.includes("gitignored hidden"),
+      "unchecked ignored scope removes ignored cells and updates totals",
+      !container.viewport.innerHTML.includes("c.md") &&
+        container.status.textContent.includes("2 files") &&
+        container.status.textContent.includes("ignored hidden"),
       container.status.textContent,
     );
-    clickToggle("ignored", "dimmed");
+    check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
   }
 
   // Dispose detaches the inventory-change and window-resize listeners.

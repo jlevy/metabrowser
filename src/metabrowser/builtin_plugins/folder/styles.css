@@ -1,6 +1,6 @@
 /* Folder plugin — treemap view styles.
-   Every color references a design token on :root (host tokens plus the
-   --file-age-fill-* ramp core styles.css defines); no literals. */
+   Every color references host tokens or the shared distribution palette;
+   no local color literals. */
 
 /* The host keeps content-body's normal padding so the treemap sits on
    the page like a figure with margins rather than bleeding edge to
@@ -15,44 +15,10 @@
 .tm-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   margin: 0 0 10px;
   max-width: var(--tm-max-width);
-}
-
-.tm-seg {
-  display: inline-flex;
-  border: 1px solid var(--viz-border);
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  background: var(--viz-surface);
-}
-
-.tm-seg button {
-  font: inherit;
-  font-size: 12px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 2px 10px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.tm-seg button + button {
-  border-left: 1px solid var(--viz-border-subtle);
-}
-
-.tm-seg button[aria-pressed="true"] {
-  background: var(--hover-bg);
-  color: var(--text);
-  font-weight: var(--weight-medium);
-}
-
-.tm-seg button:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
 }
 
 .tm-viewport {
@@ -78,6 +44,8 @@
 }
 
 .tm-cell {
+  --tm-label-size: var(--ui-small-font-size);
+  --tm-value-size: var(--ui-small-font-size);
   position: absolute;
   box-sizing: border-box;
   display: flex;
@@ -99,8 +67,7 @@
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so
-   it stays >= 3:1 against ANY cell wash (the saturated recent-age
-   fills sit too close to the accent for a bare ring). */
+   it stays distinct from every categorical cell wash. */
 .tm-cell:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: -2px;
@@ -110,10 +77,6 @@
 
 .tm-dir {
   border-color: var(--viz-border);
-}
-
-.tm-nested {
-  background: transparent;
 }
 
 .tm-cell-title {
@@ -148,8 +111,9 @@
 }
 
 .tm-cell-label {
-  font-size: 11px;
-  line-height: 14px;
+  min-width: 0;
+  font-size: var(--tm-label-size);
+  line-height: 1.2;
   font-weight: var(--weight-medium);
   color: var(--viz-text);
   white-space: nowrap;
@@ -158,56 +122,39 @@
   user-select: text;
 }
 
-/* The colored age chip beside the name reuses the shared age-* text
-   tokens, so a cell and its tree row always agree about freshness. */
-.tm-cell-age {
-  font-size: 10px;
-  line-height: 14px;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-  user-select: text;
-}
-
 .tm-cell-sub {
-  font-size: 10px;
-  line-height: 12px;
-  /* Full-strength text faded via opacity, not the muted token: the
-     muted color dips under AA on the tinted washes; opacity keeps the
-     hierarchy while the blend stays >= 4.5:1 on every fill. */
+  margin-top: 1px;
+  font-size: var(--tm-value-size);
+  line-height: 1.2;
+  /* Keep the value subordinate without switching hue families on the
+     categorical wash. */
   color: var(--viz-text);
   opacity: 0.8;
   font-variant-numeric: tabular-nums;
   user-select: text;
 }
 
-/* Age ramp fills (tokens in core styles.css, light + dark). */
-.tm-age-sec {
-  background: var(--file-age-fill-sec);
-}
-.tm-age-min {
-  background: var(--file-age-fill-min);
-}
-.tm-age-hr {
-  background: var(--file-age-fill-hr);
-}
-.tm-age-day {
-  background: var(--file-age-fill-day);
-}
-.tm-age-wk {
-  background: var(--file-age-fill-wk);
-}
-.tm-age-old {
-  background: var(--file-age-fill-old);
-}
-.tm-age-none {
-  background: var(--viz-surface);
+.tm-cell-sub-inline {
+  flex-shrink: 0;
+  margin-top: 0;
 }
 
-/* Type-grouped fills share the mounted folder distribution palette
-   with the Overview summary. */
+/* Every folder/file fill shares the mounted extension palette with
+   the File Types Overview. Directory cells use their dominant type;
+   the remainder uses the neutral Other slot. The base hue is mixed
+   into the current surface so chrome text stays readable in both
+   themes while the Overview bars retain the full-strength swatch. */
 .tm-type-fill {
-  background: var(--mb-distribution-color, var(--viz-surface));
-  border-color: var(--mb-distribution-color, var(--viz-border-subtle));
+  background: color-mix(
+    in srgb,
+    var(--mb-distribution-color, var(--viz-border)) 34%,
+    var(--viz-surface)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--mb-distribution-color, var(--viz-border)) 74%,
+    var(--viz-border)
+  );
 }
 
 .tm-ignored {
@@ -215,7 +162,6 @@
 }
 
 .tm-rest {
-  background: var(--hover-bg);
   color: var(--muted);
   align-items: center;
   justify-content: center;

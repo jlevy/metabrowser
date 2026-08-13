@@ -225,7 +225,8 @@ The data selection must account for both dimensions before the UI is trustworthy
     bounded distribution palette.
     A folder-view session assigns displayed logical types to distinct slots and retains
     those assignments across live updates.
-    The file-type-grouped Treemap uses the same map when both views are mounted.
+    The hierarchical Treemap colors files by exact extension and folders by dominant
+    extension using the same map when both views are mounted.
     Labels remain plain text, and Other uses a neutral token.
 13. **The table is both visual summary and exact source.** Every Files and Size cell
     contains a right-aligned absolute value, a left-to-right proportional track, and a
@@ -265,6 +266,15 @@ The data selection must account for both dimensions before the UI is trustworthy
     all-minus-unignored file and byte deltas and their shares of that population.
     Its two neutral tracks are filled to 100%; a zero-byte population truthfully uses
     `0 B`, `0%`, and no Size fill.
+20. **Treemap is the hierarchy view, with one metric and one scope choice.** It always
+    lays out folders and files; the File types panel replaces the former type-grouping
+    mode, and extension color replaces the former age-color mode.
+    A Bytes/Files segmented control chooses area.
+    A default-checked Show ignored checkbox includes and dims ignored cells; unchecking
+    it removes them and uses unignored rollup totals.
+    Names and values scale continuously from cell geometry within documented bounds,
+    nested folder headers reserve that scaled height, and visible values use the shared
+    byte and file-count formatters.
 
 ### Information Architecture
 
@@ -492,7 +502,8 @@ The folder summary maintains an `extension_key -> palette_slot` map:
 The palette assignment is scoped to one directory comparison.
 This guarantees distinct visible fills without pretending an open-ended extension
 vocabulary has a universal color standard.
-When the type-grouped Treemap and Overview coexist for a directory, they share the map.
+When Treemap and Overview coexist for a directory, their extension-colored marks share
+the map.
 
 Every row places the same color directly in its Files and Size tracks, while adjacent
 text names the type and gives exact values and percentages.
@@ -1265,20 +1276,21 @@ Overview and Treemap both acquire the same pool exported by folder `index.js`.
 
 #### Treemap modules
 
-The WIP Treemap behavior is retained but its final implementation is split:
+The Treemap implementation stays split by responsibility:
 
-- `treemap_layout.js` exports `squarify`, `focusTransform`, `projectRect`, `layoutTree`,
+- `treemap_layout.js` exports `squarify`, `packLevel`, `cellTypography`, `layoutTree`,
   and `worstAspect`; it has no global registration or DOM access.
-- `treemap_model.js` owns preference normalization, legacy ignored migration, subtree
-  scoping, node visibility, weight selection, filter dimming, cell labels, and status
-  copy as pure functions.
-- `treemap.js` owns toolbar DOM, camera transitions, resize handling, keyboard and
-  pointer behavior, tooltip lifecycle, rollup watch, filter/view-state subscriptions,
-  and one instance disposer.
+  It owns hierarchy-only packing, remainder conservation, ignored-scope weight
+  selection, bounded recursion, and fluid type geometry.
+- `treemap_model.js` owns the two-field preference contract and legacy-state
+  normalization as pure functions.
+- `treemap.js` owns shared-control markup and binding, file-type palette classes,
+  formatter-backed labels and status, resize handling, keyboard and pointer behavior,
+  tooltip lifecycle, rollup watch, view-state subscription, and one instance disposer.
 - Replace `offsetParent` plus `IntersectionObserver` activity inference with
   `mb.viewState`.
-- Type-grouped cell classes request the shared category-palette lease; existing broad
-  `ft-*` icons remain appropriate outside exact-type aggregate marks.
+- Hierarchical file and folder cells request the shared category-palette lease; existing
+  broad `ft-*` icons remain appropriate outside exact-type aggregate marks.
 
 Do not combine these modules back into folder `index.js`.
 
@@ -1488,7 +1500,7 @@ types meet only in the final composition, avoiding a long serial implementation 
 
 - [x] Add the pure File types model, paired distribution view, controller, exact empty
   states, and Show ignored switching.
-- [x] Add the path-scoped palette pool and route both File types and type-grouped
+- [x] Add the path-scoped palette pool and route both File types and hierarchical
   Treemap marks through it.
 - [x] Split the WIP Treemap into layout, model, and controller modules and adopt the
   supported active-view lifecycle.

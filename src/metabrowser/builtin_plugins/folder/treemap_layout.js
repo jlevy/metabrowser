@@ -7,9 +7,9 @@
 // side of the free rectangle, accepting an item into the current row
 // only while it improves the row's worst aspect ratio.
 //
-// `layoutTree` walks a /api/rollup node tree (or the envelope
-// ext_tallies in type-grouping mode) and returns a flat array of
-// positioned cells. Bounds: cells below `minCellPx` in either
+// `layoutTree` walks a /api/rollup node tree and returns a flat array
+// of positioned folder and file cells. Bounds: cells below
+// `minCellPx` in either
 // dimension merge into their parent's rest cell, and nesting stops
 // once `maxCells` cells exist, so pathological trees cannot flood the
 // DOM.
@@ -34,10 +34,52 @@ const LAYOUT_DEFAULTS = {
   padPx: 2,
 };
 
+const TYPOGRAPHY_DEFAULTS = Object.freeze({
+  labelMinPx: 11,
+  labelMaxPx: 24,
+  valueMinPx: 10,
+  valueMaxPx: 18,
+  basisMinPx: 24,
+  basisMaxPx: 360,
+});
+
 /**
  * @typedef {{x: number, y: number, w: number, h: number}} Rect
  * @typedef {{value: number} & Record<string, any>} WeightedItem
  */
+
+/** @param {number} value @param {number} min @param {number} max */
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Fluid type scale derived from the rectangle itself. The short side
+ * prevents a wide sliver from receiving oversized text, while the
+ * area term lets genuinely large cells grow smoothly. Values are
+ * rounded only for stable inline CSS and remain continuous between
+ * the documented bounds.
+ *
+ * @param {{w: number, h: number}} rect
+ */
+function cellTypography(rect) {
+  const width = Math.max(0, Number(rect.w) || 0);
+  const height = Math.max(0, Number(rect.h) || 0);
+  const shortSide = Math.min(width, height);
+  const areaBasis = Math.sqrt(width * height) * 0.7;
+  const basis = Math.min(shortSide, areaBasis);
+  const span = TYPOGRAPHY_DEFAULTS.basisMaxPx - TYPOGRAPHY_DEFAULTS.basisMinPx;
+  const progress = clamp((basis - TYPOGRAPHY_DEFAULTS.basisMinPx) / span, 0, 1);
+  /** @param {number} min @param {number} max */
+  const interpolate = (min, max) => Number((min + (max - min) * progress).toFixed(2));
+  const labelPx = interpolate(TYPOGRAPHY_DEFAULTS.labelMinPx, TYPOGRAPHY_DEFAULTS.labelMaxPx);
+  const valuePx = interpolate(TYPOGRAPHY_DEFAULTS.valueMinPx, TYPOGRAPHY_DEFAULTS.valueMaxPx);
+  return Object.freeze({
+    labelPx,
+    valuePx,
+    headerPx: Math.max(LAYOUT_DEFAULTS.headerPx, Math.ceil(labelPx * 1.2 + 4)),
+  });
+}
 
 /**
  * Worst aspect ratio of a row of areas laid along `side`.
@@ -139,14 +181,14 @@ function squarify(items, rect) {
  * @returns {number}
  */
 function nodeValue(node, opts) {
-  const hidden = opts.ignored === "hidden";
+  const excludeIgnored = opts.includeIgnored === false;
   if (node.type === "dir") {
     if (opts.metric === "files") {
-      return hidden ? node.unignored_files : node.total_files;
+      return excludeIgnored ? node.unignored_files : node.total_files;
     }
-    return hidden ? node.unignored_size : node.total_size;
+    return excludeIgnored ? node.unignored_size : node.total_size;
   }
-  if (hidden && node.gitignored) {
+  if (excludeIgnored && node.gitignored) {
     return 0;
   }
   return opts.metric === "files" ? 1 : node.size;
@@ -159,11 +201,11 @@ function nodeValue(node, opts) {
  * @returns {number}
  */
 function restValue(rest, opts) {
-  const hidden = opts.ignored === "hidden";
+  const excludeIgnored = opts.includeIgnored === false;
   if (opts.metric === "files") {
-    return hidden ? rest.unignored_files : rest.files;
+    return excludeIgnored ? rest.unignored_files : rest.files;
   }
-  return hidden ? rest.unignored_size : rest.size;
+  return excludeIgnored ? rest.unignored_size : rest.size;
 }
 
 /**
@@ -265,13 +307,12 @@ function packLevel(items, rect, capacity, minPx) {
 }
 
 /**
- * Flatten a rollup tree (or ext tallies) into positioned cells.
+ * Flatten a rollup tree into positioned folder and file cells.
  *
  * @param {Record<string, any>} rootNode  /api/rollup `node`
  * @param {{w: number, h: number}} viewport
  * @param {Record<string, any>} options   layout + view options:
- *   metric "size"|"files", grouping "folder"|"type",
- *   ignored "shown"|"dimmed"|"hidden", extTallies (type grouping),
+ *   metric "size"|"files", includeIgnored boolean,
  *   plus any LAYOUT_DEFAULTS override.
  * @returns {Record<string, any>[]} cells with x/y/w/h/kind/depth/…
  */
@@ -280,62 +321,6 @@ function layoutTree(rootNode, viewport, options) {
   /** @type {Record<string, any>[]} */
   const cells = [];
   if (!rootNode || viewport.w <= 0 || viewport.h <= 0) {
-    return cells;
-  }
-
-  if (opts.grouping === "type") {
-    const tallies = Array.isArray(opts.extTallies) ? opts.extTallies : [];
-    const hidden = opts.ignored === "hidden";
-    const items = tallies
-      .map((row) => ({
-        value: opts.metric === "files" ? (hidden ? row[3] : row[1]) : hidden ? row[4] : row[2],
-        count: hidden ? row[3] : row[1],
-        // The server's remainder tally row (ext "") seeds the rest cell.
-        rest: row[0] === "",
-        ext: row[0],
-        files: hidden ? row[3] : row[1],
-        bytes: hidden ? row[4] : row[2],
-      }))
-      .filter((it) => it.value > 0)
-      .sort((a, b) => b.value - a.value);
-    const packedTypes = packLevel(
-      items,
-      { x: 0, y: 0, w: viewport.w, h: viewport.h },
-      opts.maxCells,
-      opts.minCellPx,
-    );
-    for (const p of packedTypes.placed) {
-      cells.push({
-        kind: "ext",
-        name: p.item.ext,
-        ext: p.item.ext,
-        path: "",
-        x: p.x,
-        y: p.y,
-        w: p.w,
-        h: p.h,
-        depth: 0,
-        value: p.item.value,
-        files: p.item.files,
-        bytes: p.item.bytes,
-      });
-    }
-    if (packedTypes.remainder) {
-      cells.push({
-        kind: "rest",
-        name: "other",
-        ext: "",
-        path: "",
-        x: packedTypes.remainder.x,
-        y: packedTypes.remainder.y,
-        w: packedTypes.remainder.w,
-        h: packedTypes.remainder.h,
-        depth: 0,
-        value: packedTypes.remainder.value,
-        files: packedTypes.remainder.count,
-        bytes: packedTypes.remainder.value,
-      });
-    }
     return cells;
   }
 
@@ -350,13 +335,14 @@ function layoutTree(rootNode, viewport, options) {
     const children = Array.isArray(dirNode.children) ? dirNode.children : [];
     /** @type {WeightedItem[]} */
     const items = [];
-    const hidden = opts.ignored === "hidden";
+    const excludeIgnored = opts.includeIgnored === false;
     for (const child of children) {
       const value = nodeValue(child, opts);
       if (value > 0) {
         items.push({
           value,
-          count: child.type === "dir" ? (hidden ? child.unignored_files : child.total_files) : 1,
+          count:
+            child.type === "dir" ? (excludeIgnored ? child.unignored_files : child.total_files) : 1,
           node: child,
         });
       }
@@ -365,7 +351,7 @@ function layoutTree(rootNode, viewport, options) {
     if (restVal > 0) {
       items.push({
         value: restVal,
-        count: hidden ? dirNode.rest.unignored_files : dirNode.rest.files,
+        count: excludeIgnored ? dirNode.rest.unignored_files : dirNode.rest.files,
         rest: true,
       });
     }
@@ -376,6 +362,7 @@ function layoutTree(rootNode, viewport, options) {
     const nestable = [];
     for (const p of packed.placed) {
       const node = p.item.node;
+      const typography = cellTypography(p);
       const cell = {
         kind: node.type,
         name: node.name,
@@ -388,12 +375,18 @@ function layoutTree(rootNode, viewport, options) {
         value: p.item.value,
         // Real magnitudes regardless of the active metric, so labels
         // can always show true bytes/counts.
-        bytes: node.type === "dir" ? (hidden ? node.unignored_size : node.total_size) : node.size,
+        bytes:
+          node.type === "dir"
+            ? excludeIgnored
+              ? node.unignored_size
+              : node.total_size
+            : node.size,
         files: p.item.count,
         mtime: node.mtime,
         ext: node.type === "dir" ? node.dominant_ext : node.ext,
         gitignored: !!node.gitignored,
         state: node.state,
+        ...typography,
       };
       cells.push(cell);
       if (
@@ -408,6 +401,7 @@ function layoutTree(rootNode, viewport, options) {
       }
     }
     if (packed.remainder) {
+      const typography = cellTypography(packed.remainder);
       cells.push({
         kind: "rest",
         name: "…",
@@ -419,15 +413,17 @@ function layoutTree(rootNode, viewport, options) {
         depth,
         value: packed.remainder.value,
         files: packed.remainder.count,
+        bytes: opts.metric === "size" ? packed.remainder.value : 0,
+        ...typography,
       });
     }
 
     for (const entry of nestable) {
       const inner = {
         x: entry.cell.x + opts.padPx,
-        y: entry.cell.y + opts.headerPx,
+        y: entry.cell.y + entry.cell.headerPx,
         w: entry.cell.w - 2 * opts.padPx,
-        h: entry.cell.h - opts.headerPx - opts.padPx,
+        h: entry.cell.h - entry.cell.headerPx - opts.padPx,
       };
       if (inner.w >= opts.minCellPx && inner.h >= opts.minCellPx) {
         entry.cell.nested = true;
@@ -440,4 +436,12 @@ function layoutTree(rootNode, viewport, options) {
   return cells;
 }
 
-export { LAYOUT_DEFAULTS, layoutTree, packLevel, squarify, worstAspect };
+export {
+  cellTypography,
+  LAYOUT_DEFAULTS,
+  layoutTree,
+  packLevel,
+  squarify,
+  TYPOGRAPHY_DEFAULTS,
+  worstAspect,
+};
