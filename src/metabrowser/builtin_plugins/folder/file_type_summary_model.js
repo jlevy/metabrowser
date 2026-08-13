@@ -146,8 +146,11 @@ export function buildFileTypeSummaryModel(
 ) {
   if (!envelope?.totals) {
     const failed = envelope?.indexStatus === "failed";
+    const unavailable = envelope?.indexStatus === "done" || envelope?.indexStatus === "truncated";
     return Object.freeze({
-      state: /** @type {"pending" | "failed"} */ (failed ? "failed" : "pending"),
+      state: /** @type {"pending" | "failed" | "unavailable"} */ (
+        failed ? "failed" : unavailable ? "unavailable" : "pending"
+      ),
       rows: [],
       files: 0,
       bytes: 0,

@@ -467,10 +467,12 @@ itself. A group heading is shown only when it has rows and carries no subtotal.
 Type labels use the bold design-system weight as the row’s scan anchor.
 Each exact extension row leads with the shared file-identity icon resolved from a
 synthetic filename, so it matches navigation without weakening the extension label.
-Aggregate rows such as Total, Ignored, Remaining types, and No extension stay text-only
-because they do not identify one file type.
-Every exact Files value uses the shared `.count` and `.count-large` convention, and
-every exact Size value uses `.size` and `.size-large`. The stronger weight therefore
+**No extension** and **Remaining types** use the same generic blank-page icon as an
+unknown extension such as `.bin`, so every type-breakdown row keeps the same identity
+slot.
+Total and Ignored stay text-only because they describe populations rather than file
+types. Every exact Files value uses the shared `.count` and `.count-large` convention,
+and every exact Size value uses `.size` and `.size-large`. The stronger weight therefore
 appears at the same count and byte thresholds as the navigation panel, including on
 Total and Ignored; a row role never forces a different numeric weight.
 

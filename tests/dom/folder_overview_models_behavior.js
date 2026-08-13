@@ -123,6 +123,16 @@ async function importSource(relative) {
     "failed index without totals is not a pending skeleton",
     modelModule.buildFileTypeSummaryModel(failedWithoutTotals, true, formatters).state === "failed",
   );
+  const completedWithoutTotals = modelModule.normalizeRollupEnvelope({
+    ...raw,
+    index_status: "done",
+    node: null,
+  });
+  check(
+    "completed index miss is not a pending skeleton",
+    modelModule.buildFileTypeSummaryModel(completedWithoutTotals, true, formatters).state ===
+      "unavailable",
+  );
   check("percent zero", modelModule.formatPercent(0, 0, new Intl.NumberFormat()) === "0%");
   check(
     "percent tiny",

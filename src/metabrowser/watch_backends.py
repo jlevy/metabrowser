@@ -233,20 +233,6 @@ async def _emit_for_path(
     # repaired from the current inventory instead of overwriting this event.
     inventory.invalidate(rel)
 
-    if change_type == Change.deleted:
-        existing = inventory.get(rel)
-        if existing is None:
-            LOG.debug("watcher: delete-noop (not in index) rel=%s", rel)
-            return
-        # Real remove + emit an FsRemove op so subscribers can drop
-        # the row(s) — the SPA, the bus's ring buffer, and any
-        # downstream consumer. ``inventory.remove`` walks
-        # descendants under a deleted directory and emits one batch
-        # covering every path removed.
-        inventory.remove(rel)
-        LOG.debug("watcher: delete remove rel=%s", rel)
-        return
-
     # Created / modified: stat and update the FsEntry. ``lstat`` so a
     # symlink is described by the link itself, not its target — the
     # boot walker uses ``follow_symlinks=False`` and records symlinks
@@ -254,14 +240,24 @@ async def _emit_for_path(
     # boot tree (and, for a symlinked directory, trigger a rewalk that
     # grafts the link target's whole subtree under the link path).
     p = Path(abs_path)
+    existing = inventory.get(rel)
     try:
         st = await asyncio.to_thread(os.lstat, p)
+    except FileNotFoundError as exc:
+        if existing is None:
+            LOG.debug("watcher: absent-noop rel=%s change=%s err=%s", rel, change_type.name, exc)
+            return
+        # Watch backends may coalesce a remove/recreate burst into stale or
+        # out-of-order labels. The filesystem is authoritative at handling
+        # time, so an absent path is a removal regardless of its event label.
+        inventory.remove(rel)
+        LOG.debug("watcher: absent remove rel=%s change=%s", rel, change_type.name)
+        return
     except OSError as exc:
         LOG.debug("watcher: stat-failed rel=%s err=%s", rel, exc)
         return
 
     is_symlink = stat_module.S_ISLNK(st.st_mode)
-    existing = inventory.get(rel)
     # For non-symlinks the threaded lstat above already describes the entry
     # itself, so reuse its mode instead of a second synchronous ``is_dir``
     # stat on the event loop.
@@ -274,6 +270,11 @@ async def _emit_for_path(
         # containment and refuses to follow symlinks, so a link that
         # slips past the ``is_symlink`` check above (e.g. a symlinked
         # *ancestor* of ``rel``) still can't escape the served root.
+        if change_type == Change.deleted and existing is not None:
+            # A delete label for a directory that currently exists means the
+            # directory was replaced. Drop the old descendants before the
+            # rewalk so files from the previous incarnation cannot survive.
+            inventory.remove(rel)
         await inventory.rewalk_subtree(rel)
         LOG.debug("watcher: dir rewalk rel=%s", rel)
         return

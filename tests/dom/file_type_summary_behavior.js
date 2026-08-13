@@ -145,10 +145,13 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     countClass: (value) => (value >= 50 ? "count-large" : ""),
     sizeClass: (value) => (value > 50 ? "size-large" : ""),
   };
-  const fileTypeIcon = (name) => ({
-    className: name === "x.md" ? "ft-md" : "ft-code",
-    svg: `<svg data-file-icon="${name}"></svg>`,
-  });
+  const fileTypeIcon = (name) =>
+    name === "file" || name === "x.bin"
+      ? { className: "", svg: '<svg data-file-icon="generic"></svg>' }
+      : {
+          className: name === "x.md" ? "ft-md" : "ft-code",
+          svg: `<svg data-file-icon="${name}"></svg>`,
+        };
   const first = {
     state: "populated",
     files: 100,
@@ -207,6 +210,11 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     handle.rows.get(".md").icon.className === "file-identity-icon ft-md" &&
       handle.rows.get(".md").icon.innerHTML === '<svg data-file-icon="x.md"></svg>' &&
       handle.rows.get(".md").icon.attributes["aria-hidden"] === "true",
+  );
+  check(
+    "unknown extensions use the shared generic file icon",
+    handle.rows.get(".bin").icon.className === "file-identity-icon" &&
+      handle.rows.get(".bin").icon.innerHTML === '<svg data-file-icon="generic"></svg>',
   );
   check(
     "aggregate rows remain text-only",
@@ -329,11 +337,13 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     handle.rows.get(".bad").label.textContent === '<img src=x onerror="pwned">',
   );
   check(
-    "non-extension breakdown rows remain text-only",
-    handle.rows.get("(none)").icon.hidden === true &&
-      handle.rows.get("(none)").icon.innerHTML === "" &&
-      handle.rows.get("").icon.hidden === true &&
-      handle.rows.get("").icon.innerHTML === "",
+    "non-extension breakdown rows use the generic file icon",
+    handle.rows.get("(none)").icon.hidden === false &&
+      handle.rows.get("(none)").icon.className === "file-identity-icon" &&
+      handle.rows.get("(none)").icon.innerHTML === '<svg data-file-icon="generic"></svg>' &&
+      handle.rows.get("").icon.hidden === false &&
+      handle.rows.get("").icon.className === "file-identity-icon" &&
+      handle.rows.get("").icon.innerHTML === '<svg data-file-icon="generic"></svg>',
   );
   check(
     "removed rows leave the DOM map",
@@ -380,6 +390,15 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   check(
     "failed index without totals replaces the loading skeleton",
     handle.body.children[0].textContent === "Indexing failed; no file summary is available.",
+  );
+
+  view.updateDistributionView(handle, {
+    state: "unavailable",
+    rows: [],
+  });
+  check(
+    "completed index miss replaces the loading skeleton",
+    handle.body.children[0].textContent === "This folder is not in the current file index.",
   );
 
   view.updateDistributionView(handle, {

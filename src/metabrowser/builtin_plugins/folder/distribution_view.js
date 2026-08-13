@@ -123,6 +123,12 @@ export function updateDistributionView(handle, model) {
     failure.textContent = "Indexing failed; no file summary is available.";
     return;
   }
+  if (model.state === "unavailable") {
+    resetBody(handle, "unavailable");
+    const unavailable = element(handle.body, "file-type-summary-empty");
+    unavailable.textContent = "This folder is not in the current file index.";
+    return;
+  }
   if (model.state === "empty") {
     resetBody(handle, "empty");
     const empty = element(handle.body, "file-type-summary-empty");
@@ -344,13 +350,11 @@ function updateRows(handle, rows) {
         handle.rows.set(row.key, rowHandle);
       }
       const colorClass = handle.palette.classFor(row.key);
-      const hasExactExtension = row.key.startsWith(".");
-      const fileIcon = hasExactExtension ? handle.fileTypeIcon(`x${row.key}`) : null;
-      rowHandle.icon.hidden = !fileIcon?.svg;
-      rowHandle.icon.className = fileIcon
-        ? `file-identity-icon ${fileIcon.className}`.trim()
-        : "file-identity-icon";
-      rowHandle.icon.innerHTML = fileIcon?.svg ?? "";
+      const iconPath = row.key.startsWith(".") ? `x${row.key}` : "file";
+      const fileIcon = handle.fileTypeIcon(iconPath);
+      rowHandle.icon.hidden = !fileIcon.svg;
+      rowHandle.icon.className = `file-identity-icon ${fileIcon.className}`.trim();
+      rowHandle.icon.innerHTML = fileIcon.svg;
       rowHandle.label.textContent = row.label;
       updateMetricValue(
         rowHandle.fileValue,
@@ -394,7 +398,7 @@ function updateRows(handle, rows) {
 /** @typedef {{classFor: (key: string) => string}} Palette */
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
-/** @typedef {{state: "pending" | "failed" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
+/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryMetricRowHandle */

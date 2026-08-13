@@ -174,6 +174,9 @@ The data selection must account for both dimensions before the UI is trustworthy
    A complete folder with no indexed regular files renders “No files to summarize.”
    with no bars, percentages, table, or README-shaped placeholder.
    Pending inventory never masquerades as this empty state.
+   A completed inventory that cannot serve an existing path renders “This folder is not
+   in the current file index.”
+   rather than leaving a loading skeleton visible.
 5. **README is conditional and visually ordinary.** A direct-child README contributes a
    document-presentation panel only when it exists.
    Its content, metadata, diagnostics, TOC, responsive behavior, and print output come
@@ -231,7 +234,8 @@ The data selection must account for both dimensions before the UI is trustworthy
     The hierarchical Treemap colors files by exact extension and folders by dominant
     extension using the same map when both views are mounted.
     Exact extension rows lead with the shared broad-type file icon while their labels
-    remain plain text; aggregate rows stay text-only, and Other uses a neutral token.
+    remain plain text. No extension and Remaining types use the generic blank-page file
+    icon; Total and Ignored stay text-only, and Other uses a neutral token.
 13. **The table is both visual summary and exact source.** Every Files and Size cell
     contains a right-aligned absolute value, a left-to-right proportional track, and a
     right-aligned percentage.
@@ -559,6 +563,7 @@ The panel supports these states explicitly:
 | Initial request | Header and two neutral skeleton tracks; delayed text says “Loading file types…” only when the request remains visible |
 | Scanning with rows | Render current rows and say “Scanning… percentages cover files indexed so far.” |
 | Complete | Remove progress copy; table rows and fills are final for the current inventory snapshot |
+| Complete index miss | “This folder is not in the current file index.” rather than a persistent loading skeleton |
 | Truncated | Keep rows and a persistent warning with indexed and configured-cap counts |
 | Empty complete folder | “No files to summarize.” inside the File types panel, with no bars, percentages, or table |
 | Active scope has only ignored files | “No included files. Show ignored to include N files.” rather than claiming the folder itself is empty |
@@ -892,6 +897,18 @@ records emitted-node and serialized-payload bounds.
 The method is synchronous and contains no `await`, so the event loop cannot mutate the
 index during one call.
 Do not add an O(N) defensive copy merely to simulate concurrency that cannot interleave.
+
+#### `src/metabrowser/watch_backends.py`
+
+- `_emit_for_path(inventory, root, abs_path, change_type)` treats `lstat` at handling
+  time as authoritative because watcher backends may coalesce or reorder rapid
+  remove-and-recreate events.
+- An absent current path removes any indexed entry regardless of the event label.
+  A current directory is rewalked regardless of the label; when a stale delete names a
+  recreated directory, the old indexed subtree is removed first so obsolete descendants
+  cannot survive the rewalk.
+- Every reconciliation continues to use `InventoryIndex.remove`, `rewalk_subtree`, and
+  `apply_live_entry`, preserving aggregate updates and inventory-change events.
 
 #### `src/metabrowser/folder_discovery.py` — new
 
@@ -1233,7 +1250,8 @@ This file is pure and has no DOM, fetch, preference, or global access.
   Other as the safe fallback.
 - `buildFileTypeSummaryModel(envelope, showIgnored, formatters, classifyCategory)`
   returns one discriminated model for `pending`, `populated`, `empty`, `ignored-only`,
-  `zero-bytes`, or `truncated`.
+  `zero-bytes`, `truncated`, `failed`, or `unavailable`. `unavailable` is a completed or
+  truncated envelope with no root node, distinct from a cold pending index.
 - Populated rows preserve server order, drop only active-scope double-zero named rows,
   keep Other last, and carry a presentation group, total-normalized percentage widths,
   and formatted counts, sizes, and shares.
@@ -1250,6 +1268,11 @@ This file is pure and has no DOM, fetch, preference, or global access.
   and fill widths in place, moves rows under Documentation/Code/Data/Other row-group
   bodies, updates the leading neutral Total and Ignored rows, and removes stale rows or
   empty groups without replacing retained elements.
+- Empty, failed, and unavailable models replace the table with their terminal message.
+- Each type row resolves a shared file-identity icon.
+  Exact extensions use a synthetic filename; No extension and Remaining types use the
+  generic filename fallback.
+  Total and Ignored remain plain population labels.
 - Each metric cell owns a right-aligned tally, an `aria-hidden` track and fill, and a
   right-aligned percentage.
   Files and Size reuse the row’s palette class, while their exact tallies use the public
@@ -1687,7 +1710,8 @@ root behave differently from nested folders.
 - Files and Size use the same row color; no separate circle, aggregate bar, or legend is
   needed
 - Exact extension rows and Treemap file labels use the same shared file icon as
-  navigation; Total, Ignored, No extension, and Remaining types stay text-only
+  navigation; No extension and Remaining types use the generic blank-page fallback,
+  while Total and Ignored stay text-only
 - A leading Totals group begins with a neutral Total row that reports the selected
   population’s exact Files and Size values; each populated metric fills its track to
   100%, while a zero-byte population remains at `0 B`, `0%`, and no fill
@@ -1698,8 +1722,8 @@ root behave differently from nested folders.
   type
 - Show ignored switches the panel between the two rollup populations without refetching;
   other filters do not collapse the composition
-- Scanning, truncation, empty, zero-byte, and failure states are distinguishable and
-  truthful
+- Scanning, truncation, empty, completed-index-miss, zero-byte, and failure states are
+  distinguishable and truthful
 - A complete empty folder still renders Overview and File types with “No files to
   summarize.”, but no standalone tally, bars, table, percentages, or fake README panel
 - The panel updates from inventory changes, retains category colors and keyed DOM, and
