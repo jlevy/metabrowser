@@ -5,20 +5,23 @@ title: Contextual keyboard help and tree navigation
 kind: epic
 status: open
 priority: 1
-version: 10
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies: []
 child_order_hints:
   - is-01kzwhmd0dc6x7zp924mx1jrb6
+  - is-01kzwmp3cfc54f78nzrzdnbn5v
+  - is-01kzwmpf6yhydjd4btqdz0gpd4
+  - is-01kzwmp9d6mgn76qgtpxvb70qz
   - is-01kzwhmdc3jqvad5w25pdww804
   - is-01kzwhmdrhp7q8g25hh0rrz7yh
   - is-01kzwhme4gyzm3akfkd83vh2sw
 created_at: 2026-08-13T03:11:11.425Z
-updated_at: 2026-08-13T03:58:04.339Z
+updated_at: 2026-08-13T04:05:43.149Z
 ---
 Implement the active plan for one shortcut registry, a ? Help dialog, persistent and contextual nav hints, Quick File consolidation, and complete accessible file-tree keyboard navigation. Apply the durable design-system contracts for canonical key names, binding grammar, help copy, modal anatomy, semantic tokens, overlay lifecycle, and native main-pane behavior uniformly across every surface.
 
 ## Notes
 
-Specification drafted, reviewed, and published in draft PR #35 (https://github.com/jlevy/metabrowser/pull/35) from codex/help-keyboard-shortcuts. Commit aee1139 established one scope-aware registry for dispatch and presentation, an accessible ? Help modal with the public GitHub link, persistent clickable Help and Quick File hints above index progress, contextual tree hints, complete ARIA tree navigation, focus repair across every render path, Quick File migration, and preservation of native preview scrolling. Commit 9c915a3 codified the durable key vocabulary and binding grammar, exact command and Help copy, layout-correct physical-key ARIA policy, overlay taxonomy, shared dialog anatomy, single-dispatcher Escape ownership, inert and focus lifecycle, token constraints, and cross-surface conformance tests across the design system and related active plans. Full make verify passed with 915 pytest cases and 30 golden scenarios. GitHub Actions run 31665448873 passed lint, distribution, and Python 3.12/3.13/3.14. Implementation remains open in the epic’s four dependency-ordered child beads.
+Specification and durable design-system contracts are published in draft PR #35. Commits aee1139 and 9c915a3 established the behavior, exact copy, key vocabulary, physical-key ARIA policy, overlay lifecycle, and conformance requirements. The 2026-08-12 implementation-map pass traced the current source and tests and added exact files, named functions, render-path hooks, test seams, distribution updates, and dependency order to the active spec. The epic now has seven dependency-ordered implementation beads: registry, modal, Help/chrome, Quick File migration, pure tree navigator, app render integration, and end-to-end validation. The prior full make verify and GitHub Actions run 31665448873 passed; implementation remains open.
