@@ -5,7 +5,7 @@ title: Implement folder Overview panels and dual file-type summary
 kind: epic
 status: closed
 priority: 1
-version: 19
+version: 20
 spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels:
   - folder-overview
@@ -24,8 +24,9 @@ child_order_hints:
   - is-01kzwkyd569xvj3ak0edyfv8pm
   - is-01kzwyse2ag672nwnasd2rvq38
   - is-01kzx0eym6ynrqvk9c6h2z1gn0
+  - is-01kzy6th25xazbwyf8xqmn5j89
 created_at: 2026-08-13T02:44:13.014Z
-updated_at: 2026-08-13T07:30:21.955Z
+updated_at: 2026-08-13T18:40:47.172Z
 closed_at: 2026-08-13T06:16:42.477Z
 close_reason: All ten implementation beads are complete; Folder Overview, dual-metric File types, README composition, shared Treemap colors, documentation, packaging, browser review, and full validation are complete.
 ---
