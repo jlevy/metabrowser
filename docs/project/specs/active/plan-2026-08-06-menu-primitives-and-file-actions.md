@@ -230,8 +230,9 @@ leaves a modal alone.
 The shortcut registry from the
 [contextual keyboard plan](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
 owns the one document-level application `keydown` listener.
-Each open surface registers its close command in the appropriate active scope and
-disposes it on close, so Escape reaches the topmost eligible surface without the overlay
+A surface component registers its close command for its lifetime.
+Opening activates the appropriate scope, closing removes that activation, and disposal
+removes the command, so Escape reaches the topmost eligible surface without the overlay
 layer becoming another dispatcher.
 This replaces the palette’s and settings menu’s private document listeners.
 
@@ -256,8 +257,8 @@ mounts it through `MetabrowserOverlay`. This is the first real use site for
 
 It owns the focused-widget keyboard model on the menu root: `ArrowDown` and `ArrowUp`
 with wrap, `Home` and `End`, and `Enter` and `Space` to invoke.
-The overlay scope registers `Escape` with the shared dispatcher to close and return
-focus to the trigger.
+The component-lifetime `Escape` descriptor becomes available when the overlay activates
+its scope and closes the menu with focus returned to the trigger.
 Pointer hover and keyboard roving drive one shared active state, the way the palette’s
 option list already works.
 `role="menu"` and `role="menuitem"` are set here, not by callers.
@@ -579,8 +580,9 @@ not a public-facing server, and loopback binding alone does not make mutation sa
 - One module owns anchored placement, and the tooltip, the palette, and the new menu all
   route through it; no second implementation of flip-and-clamp, scrim, focus restore, or
   outside-dismissal remains in the codebase
-- The shortcut registry is the only document-level application key dispatcher; overlays
-  register scoped Escape commands and remove them on every close and disposal path
+- The shortcut registry is the only document-level application key dispatcher; overlay
+  components register scoped Escape commands for their lifetime, deactivate them on
+  close, and remove them on disposal
 - Menus, Help, navigation hints, and Quick File use the same canonical key formatter,
   `.kbd` renderer, separators, spoken names, and valid-or-omitted ARIA serialization
 - Modal consumers use the shared labelled dialog anatomy, inert-background state, focus

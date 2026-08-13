@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft; ready for implementation review
+**Status:** Ready for implementation
 
 ## Overview
 
@@ -261,10 +261,11 @@ Each command descriptor contains both behavior and presentation metadata:
     { key: "/", modifiers: { shift: "forbid", ctrl: "forbid", alt: "forbid", meta: "forbid" } },
   ],
   surfaces: { help: true, navHint: "always" },
+  control: quickFileDialog.control,
   allowInEditable: false,
   allowRepeat: false,
-  run: () => {
-    openQuickFile();
+  run: (context) => {
+    openQuickFile(context.trigger);
     return true;
   },
 }
@@ -280,10 +281,16 @@ The controller provides these operations:
 - `register(command)` adds one descriptor and returns a disposer;
 - `activateScope(scope, {exclusive})` puts a context above lower-priority contexts and
   returns a disposer that removes exactly that activation;
+- `invoke(commandId, context)` runs the named command through the same active-scope and
+  availability checks used by keyboard dispatch and carries an optional pointer trigger
+  to the handler, so visible buttons neither bypass the command system nor depend on
+  click-to-focus browser behavior;
+- `present(commandId)` returns the immutable copy, binding description, shortcut ARIA,
+  and optional control binding for one command regardless of active scope;
 - `snapshot(surface, {includeInactive})` returns immutable, ordered presentation data
   for Help or a hint surface;
-- `subscribe(listener)` reports registration and active-scope changes so chrome can
-  repaint without polling;
+- `subscribe(listener)` reports a structured registration or active-scope change so
+  chrome can update without polling or rebuilding unaffected controls;
 - `describeBindings(bindings)` returns keycap labels, one expanded spoken phrase, and an
   `aria-keyshortcuts` serialization only for accurately representable physical bindings;
   and
@@ -314,8 +321,10 @@ Only a handler that reports the event handled causes `preventDefault()` and prop
 to stop. An inactive or unavailable command leaves the browser event untouched.
 
 The overlay controller does not add a second document-level Escape listener.
-Opening a surface activates its registry scope and registers the surface’s close
-command; closing or disposal removes both registrations.
+A surface component registers its close descriptor for its lifetime so full Help can
+include it while the surface is closed.
+Opening activates its registry scope; closing removes that activation, and disposal
+removes both the activation and descriptor.
 An anchored popup inside a modal has the highest active scope, so the first Escape
 closes that popup and the next can close the modal.
 Focused widget roots may still own their conventional arrow, Home, End, Enter, Space,
@@ -421,11 +430,19 @@ reaching into private fetch state.
 The rendered structure follows the ARIA tree pattern:
 
 - one dedicated row wrapper has `role="tree"` and an accessible name;
-- each file, folder, symbolic link, and pagination action has `role="treeitem"` and an
-  `aria-level`;
-- folder child containers have `role="group"`;
-- folders expose `aria-expanded`, updated at the same time as their visible state;
-- the currently previewed leaf exposes `aria-selected="true"`;
+- each file, folder, symbolic link, and pagination action has `role="treeitem"`,
+  `aria-level`, `aria-posinset`, and `aria-setsize`;
+- each treeitem is labelled by its visible filename, folder name, or pagination action;
+  age, size, and count metadata do not become part of the node’s accessible name;
+- non-empty and lazy folder child containers have `role="group"` and an ID referenced by
+  the owning folder treeitem’s `aria-owns`, preserving the current adjacent-sibling DOM
+  while establishing the required parent relationship in the accessibility tree;
+- folders with known or potential children expose `aria-expanded`, updated at the same
+  time as their visible state; known-empty folders are end nodes and omit both
+  `aria-expanded` and `aria-owns`;
+- selectable file and symbolic-link leaves expose `aria-selected`, with only the
+  currently previewed leaf set to `true`; folders and pagination actions omit selection
+  state;
 - exactly one visible item has `tabindex="0"`; other items have `tabindex="-1"`.
 
 Summary, truncation, empty, loading, and error rows stay outside the tree wrapper or use
@@ -501,6 +518,285 @@ controls.
 Every new factory accepts an injected `document` for DOM tests and returns a disposer.
 The index loads the registry and overlay modules before consumers and loads `app.js`
 last as it does today.
+
+### File and Function Map
+
+The names and seams below are the implementation contract.
+If implementation exposes a conflict, update this plan and the owning bead before
+introducing a parallel helper or moving behavior across a boundary.
+
+#### `static/keyboard_shortcuts.js`
+
+This new strict module exposes `window.MetabrowserKeyboardShortcuts` and contains no
+application-specific DOM.
+
+- `KEY_DEFINITIONS` maps each supported semantic key to its event key, visible keycap,
+  spoken name, and physical-key ARIA token or deliberate omission.
+- `GROUP_DEFINITIONS` owns the fixed group order, Help headings, and context sentences.
+- `normalizeBinding(binding)` validates keys and modifier policies and returns the
+  normalized frozen value used everywhere else.
+- `bindingSignature(binding)` produces the scope-local duplicate-detection key.
+- `eventMatchesBinding(event, binding)` applies exact key and modifier policy without
+  mutating the event.
+- `isEditableTarget(target)` is the single input, textarea, select, and contenteditable
+  guard used by printable global commands.
+- `validateCommand(command)` rejects unknown groups and keys, duplicate IDs, missing
+  Help or hint copy, and ambiguous surface or control bindings before registration.
+- `describeBindings(bindings)` produces ordered keycaps, visible separators, one spoken
+  phrase, and an `ariaKeyshortcuts` value only when every advertised physical shortcut
+  is accurate.
+- `appendBinding(parent, description)` emits the shared `.kbd`, separator, and
+  screen-reader text structure without accepting caller-authored key labels.
+- `create({document})` installs the one capture-phase document dispatcher and returns
+  frozen `register`, `activateScope`, `invoke`, `present`, `snapshot`, `subscribe`,
+  `describeBindings`, `appendBinding`, and `dispose` operations.
+
+`snapshot()` sorts by group order and explicit command order, filters by active scope
+unless `includeInactive` is true, and coalesces adjacent compact hints by group and hint
+copy.
+It carries any frozen surface-owned control binding into the immutable presentation
+item. Registration order cannot change Help order.
+`invoke(commandId, context)` returns false rather than running an inactive or
+unavailable command and passes `context.trigger` to a handler only after those checks.
+Only a true result from `invoke()` or the keyboard handler consumes an event.
+
+#### `static/overlay_layer.js`
+
+This new strict module exposes `window.MetabrowserOverlay`. This feature lands the modal
+slice; point and element anchoring remain in the menu-and-actions plan.
+
+- `focusableElements(root)` returns the current Tab order for focus containment.
+- `captureBackgroundState(document, portal)` records the prior `inert` state of every
+  body child outside the portal; `restoreBackgroundState(records)` restores those exact
+  values on every close and disposal path.
+- `createDialogShell({document, title, className})` builds the shared scrim, labelled
+  dialog, header, title, visible Close button, scrolling body, and optional footer.
+- `createModal({document, shortcuts, scope, closeCommandId, title, className, initialFocus, resolveFocusFallback})`
+  owns one body portal, previous-focus capture, Tab containment, scrim dismissal,
+  exclusive scope activation, focus restoration, single-modal arbitration, and disposal.
+  The close descriptor must already be registered; the visible Close button and scrim
+  call `shortcuts.invoke(closeCommandId)` and the button gets its action name and
+  representable `aria-keyshortcuts` value from `shortcuts.present(closeCommandId)`. Its
+  frozen `control` binding connects a trigger’s `aria-haspopup`, `aria-controls`, and
+  `aria-expanded` state to the modal and restores the trigger’s exact prior state when
+  disconnected.
+
+The returned controller exposes `element`, `dialog`, `body`, `footer`, `control`,
+`open(trigger)`, `close({restoreFocus})`, `isOpen()`, and `dispose()`. It adds no
+document-level keydown listener; the close descriptor is registered through the shortcut
+registry. Closing focuses the connected opening trigger first, then the consumer’s
+connected fallback; it never guesses an unrelated control inside the generic overlay
+layer. The dialog root may own its local Tab handler because Tab containment is widget
+behavior, not an application shortcut.
+
+#### `static/keyboard_help.js`
+
+This new strict module exposes `window.MetabrowserKeyboardHelp`.
+
+- `renderHelpGroups(body, snapshot)` rebuilds the ordered group headings, context
+  sentences, command labels, descriptions, and shared binding structures from a Help
+  snapshot.
+- `reconcileHintStrip(host, snapshot, invoke)` preserves actionable Help and Quick File
+  button nodes by command ID while adding or removing non-actionable contextual tree
+  hints. It connects each button to the snapshot’s surface-owned control binding, calls
+  `shortcuts.invoke(commandId, {trigger: button})`, and derives its shortcut
+  presentation through the registry.
+  The button’s accessible name remains the command label rather than including its
+  keycap.
+- `create({document, shortcuts, overlay, hintHost, resolveFocusFallback})` registers
+  `help.close`, creates the shared modal against that command, then registers
+  `help.open` with the modal’s control binding.
+  It renders the approved description and safe GitHub link, subscribes both surfaces to
+  registry changes, and returns `open`, `close`, and `dispose`.
+
+Help renders all Help-visible commands with `includeInactive: true`; registration
+changes rebuild those rows, while scope-only changes reconcile the nav strip.
+The nav snapshot retains hints marked `always` even behind an exclusive inert modal and
+adds contextual hints only from active scopes.
+Keyed reconciliation never detaches the button that opened a modal, so focus restoration
+returns to that exact control.
+The hint host is never live-announced.
+Disposing removes both command registrations, the registry subscription, and the modal
+portal.
+
+#### `static/search_palette.js`
+
+The existing `create(options)` keeps search, listbox, status, and stale-result behavior,
+but gains required `shortcuts` and `overlay` inputs.
+
+- Remove `OPEN_KEYS`, `HINT_GROUPS`, `hintGroup()`, `isEditableTarget()`,
+  `handleGlobalKeydown()`, and the palette-owned document listener.
+- Add `registerCommands()` for `quick-file.open`, movement, first, last, activate, and
+  close descriptors. Result commands opt into the editable query target; the printable
+  global aliases do not.
+- Add `renderShortcutHints()` using the active Quick File snapshot and
+  `appendBinding()`, with no local labels or key strings.
+- Keep `handleInputKeydown()` only for the palette-specific pinned-Tab behavior;
+  composition and every advertised command route through the registry.
+- Replace direct overlay construction and the local `open()` and `close()` focus
+  lifecycle with `MetabrowserOverlay.createModal()`. Palette open and close hooks still
+  reset search state, cancel work, and select the query.
+  Forward the injected `resolveFocusFallback` callback for a tree or preview node
+  replaced while Quick File is open.
+  Register `quick-file.close` before constructing the modal, then attach the modal
+  control binding to `quick-file.open`; Close, scrim, and Escape consequently call the
+  same handler.
+- Extend `dispose()` to remove command registrations and the hint subscription before
+  disposing the modal.
+
+The returned palette API remains `open`, `close`, `isOpen`, `element`, and `dispose`, so
+`app.js` and existing callers do not acquire a second migration.
+
+#### `static/tree_keyboard_navigation.js`
+
+This new strict module exposes `window.MetabrowserTreeKeyboardNavigation` and receives
+existing application actions as callbacks.
+
+- `rowIdentity(row)` returns a durable `kind:path` identity or the pagination row’s
+  generated page identity.
+- `readVisibleRows(root)` builds the flattened mounted order while excluding filtered
+  rows, collapsed descendants, placeholders, and rows being removed.
+- `parentRow(row)` and `firstChildRow(row)` resolve structural movement from treeitem
+  and group relationships rather than path parsing.
+- `setAnchor(row, {focus, scroll})` maintains exactly one visible `tabindex="0"`,
+  updates the durable anchor, and optionally moves focus and scrolls the row into view.
+- `repairAnchor(previousSnapshot, nextRows)` chooses the same identity, nearest visible
+  sibling, rendered parent, or first row in that order.
+- `prepareForMutation()` captures the visible snapshot and whether focus is currently in
+  the tree before an `innerHTML`, `outerHTML`, insertion, or removal path runs.
+- `synchronize()` refreshes roles, owned-group relationships, level, position, set size,
+  selected and expanded state, the visible snapshot, and the roving anchor.
+  Repeated invalidations coalesce; a key command forces a refresh only while dirty.
+- `registerCommands()` installs all navigation descriptors in the `tree` scope and
+  delegates toggle, open, and pagination behavior through injected callbacks.
+- `create({document, host, shortcuts, getSelectedPath, setFolderExpanded, activateRow})`
+  owns delegated focus and pointer synchronization, activates the tree scope only while
+  a treeitem has focus, and returns `prepareForMutation`, `synchronize`,
+  `setSelectedPath`, `focusedRow`, and `dispose`.
+
+Movement commands allow key repeat.
+Activation does not.
+Arrow-only movement changes focus but never calls `activateRow`.
+
+#### `static/app.js`
+
+`app.js` remains the composition and data-rendering shell.
+It does not implement key matching or walk the visible tree for each key.
+
+- Add application-lifetime `shortcutRegistry`, `keyboardHelp`, and `treeKeyboard`
+  handles. `initKeyboardInfrastructure()` constructs them before `initQuickFileFinder()`;
+  the Help subscription allows later Quick File and tree registrations to appear without
+  initialization-order coupling.
+- Add `resolveApplicationFocusFallback(previous)` to re-resolve a replaced tree row
+  through `treeKeyboard.focusedRow()`, return `#preview-pane` for replaced preview
+  content, or return null.
+  Pass it to Help and Quick File; the overlay layer remains independent of application
+  selectors.
+- Add `treeRootHtml(content)` to wrap only navigable rows in
+  `<div class="tree-root" role="tree" aria-label="Files">`. Summary, truncation,
+  loading, error, and filter-note rows stay outside this root.
+- Add `treeDomId(prefix, identity)` and
+  `treeItemAttributes({kind, path, level, position, setSize, expanded, selected, pageId, ownedGroupId, labelId})`;
+  call them from both `renderTreeNodes()` and `_buildRowHtml()` so root, recent, lazy,
+  paginated, and live-inserted rows cannot drift in ARIA shape.
+  Each row’s `aria-labelledby` targets the visible name or pagination-action element,
+  while group and label IDs use the same safe deterministic encoder.
+- Extend `renderTreeNodes(nodes, isRoot, options)` with `options.level`,
+  `options.positionOffset`, and `options.setSize`; emit ID-bearing `role="group"`
+  containers owned through each folder’s `aria-owns`, and emit pagination as a treeitem
+  with a generated identity, level, position, and set size.
+  Preserve the position offset in `pendingTreePages` so newly mounted batches continue
+  the branch numbering.
+- Add `treeRootForPanel(panel)` and `treeLevelForContainer(container)`. Update
+  `findRootReadme()`, `_findChildContainerFor()`, and root insertion selectors for the
+  new wrapper instead of adding one-off descendant selectors.
+- Extract the delegated click body into `setFolderExpanded(row, expanded)`,
+  `toggleTreeFolder(row, {recursive})`, `mountNextTreePage(row)`, and
+  `activateTreeRow(row)`. Pointer clicks and navigator callbacks call these same
+  functions; folder state updates class, display, and `aria-expanded` together.
+  Pagination activation returns the first newly mounted row so synchronization keeps
+  focus on newly revealed content instead of jumping backward.
+  Expansion is a no-op for a known-empty folder, which remains an ARIA end node.
+- Call `treeKeyboard.prepareForMutation()` before replacement or removal and
+  `treeKeyboard.synchronize()` after `renderFilesFromTree()`, `renderRecentFromBase()`,
+  `loadSubtree()`, pagination, and live insertion or type replacement.
+  Schedule a synchronization after animated removal completes.
+- Call `treeKeyboard.synchronize()` at both exits of `applyTreeFilters()`, after folder
+  expansion or collapse, and after `revealInTree()`. Call
+  `treeKeyboard.setSelectedPath(path)` from `setSelectedPath()` so `.selected` and
+  `aria-selected` change in one application turn.
+- Pass the shared registry and overlay factory into `MetabrowserSearchPalette.create()`.
+  `initQuickFileFinder()` otherwise keeps the current catalog, search-provider,
+  revalidation, and navigation wiring.
+
+No listener or callback is added to `.preview-pane`; native arrows, Home, End, Page Up,
+Page Down, and Space therefore remain unhandled.
+
+#### `server.py`, `types.d.ts`, and `styles.css`
+
+`server.py:index()` adds cache-busted URLs for `keyboard_shortcuts.js`,
+`overlay_layer.js`, `keyboard_help.js`, and `tree_keyboard_navigation.js`. It emits them
+in that dependency order before `search_palette.js` and `app.js`. The template adds an
+empty `#nav-shortcut-hints` region with an accessible label immediately before
+`#index-progress`; the progress live region remains unchanged.
+
+`static/types.d.ts` declares the internal registry, presentation snapshot, modal, Help,
+and tree-navigator globals used across strict modules.
+None is added to `window.metabrowser` or the plugin SDK types.
+
+`static/styles.css` adds shared `.modal-overlay`, `.dialog`, `.dialog-header`,
+`.dialog-title`, `.dialog-close`, `.dialog-body`, and `.dialog-footer` primitives; Quick
+File selectors become consumer modifiers of those primitives.
+It also adds token-only Help, nav-hint, and `.tree-item:focus-visible` rules, responsive
+wrapping, bounded dialog scrolling, and reduced-motion behavior.
+New selectors introduce no literal colors, shadows, radii, z-indexes, or type sizes.
+
+#### Test and Distribution Files
+
+- `tests/dom/keyboard_shortcuts_behavior.js` covers validation, matching, priority,
+  editable and composition guards, repeat policy, invocation, single-command and
+  snapshot presentation, subscription, and disposal.
+- `tests/dom/overlay_layer_behavior.js` covers modal arbitration, anatomy, inert-state
+  restoration, control binding and trigger-state restoration, Tab containment, every
+  close path through one descriptor, detached-focus fallback, registry scope disposal,
+  and portal cleanup.
+- `tests/dom/keyboard_help_behavior.js` covers exact copy, safe project link, Help
+  groups, keyed persistent and contextual hints, trigger preservation, pointer
+  invocation, valid-or-omitted ARIA, and subscription disposal.
+- `tests/dom/tree_keyboard_navigation_behavior.js` covers every tree key, visible-order
+  rules, concise accessible names, owned group relationships, declared level and set
+  metadata, focus versus selection, known-empty end nodes, pagination, lazy children,
+  render repair, scope activation, and native unhandled keys.
+- `tests/dom/search_palette_behavior.js` replaces local-key and local-overlay assertions
+  with injected registry and modal assertions while retaining every search, stale-row,
+  catalog-growth, cancellation, and result-opening regression.
+- `tests/test_browser_keyboard_js.py` runs the four new Node behavior suites under the
+  existing subprocess convention.
+- `tests/test_quick_file_integration.py` asserts the full script dependency order, one
+  document dispatcher, injected palette dependencies, and absence of Quick File’s old
+  global listener and hint table.
+- `tests/test_browser_recent_ui.py` asserts the hint host is immediately above progress,
+  the progress region remains polite, and navigable content has one dedicated tree
+  wrapper.
+- `tests/test_browser_filter_ui.py` and `tests/test_browser_v2.py` update structural
+  expectations affected by the tree wrapper and assert synchronization at each render
+  path.
+- `devtools/check_distribution.py` requires all four new static modules in the wheel;
+  the isolated-wheel smoke test confirms they are importlib resources.
+- `README.md` adds `?` Help, the persistent hint strip, and tree navigation to the
+  existing Quick File section after behavior is implemented.
+  `CHANGELOG.md` records the same user-visible behavior under Unreleased without listing
+  internal modules.
+
+### Dependency Order
+
+1. Land the registry, group definitions, formatter, renderer, and behavior tests.
+2. Land the modal slice of the overlay layer against the registry.
+3. Build Help and the persistent hint strip; migrate Quick File in parallel with the
+   pure tree navigator once their shared prerequisites exist.
+4. Integrate tree semantics and synchronization through every `app.js` render path.
+5. Run cross-surface DOM, HTML, distribution, and real-browser validation; update the
+   README and pass `make verify`.
 
 ### API Changes
 
@@ -671,6 +967,7 @@ The registry leaves room for them without implementing their policy now.
 - [Design system](../../../design-system.md)
 - [End-to-end testing](../../../e2e-testing.md)
 - [Metabrowser on GitHub](https://github.com/jlevy/metabrowser)
+- [WAI-ARIA Authoring Practices tree view pattern](https://www.w3.org/WAI/ARIA/apg/patterns/treeview/)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

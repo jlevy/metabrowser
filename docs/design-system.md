@@ -274,6 +274,16 @@ Every presented command declares:
 - a compact hint of one to three words when the full label will not fit; and
 - the surfaces where it appears and when those surfaces may show it.
 
+A command rendered as a control that opens a managed surface also supplies a control
+binding from that surface.
+The binding connects a rendered trigger to its stable controlled-element ID, popup role
+when applicable, and current expanded state, then restores any prior state when
+disconnected.
+The registry snapshot carries the binding to the renderer; a call site does
+not hand-author `aria-controls`, `aria-haspopup`, or `aria-expanded`. Pointer invocation
+carries the trigger element to the command so an overlay can restore focus even in
+browsers that do not focus a clicked button.
+
 The key formatter, not the descriptor, supplies visible abbreviations and glyphs.
 The registry rejects duplicate normalized bindings within one scope and incomplete copy
 for any requested surface.
@@ -534,8 +544,12 @@ At most one anchored popup and one modal are open; an anchored popup inside the 
 modal may coexist with it, and Escape closes the topmost eligible surface first.
 
 The shortcut registry owns the one document-level application keydown listener.
-An open overlay registers its Escape action in the appropriate active scope and removes
-that registration when it closes.
+An overlay component registers its Escape action for the component’s lifetime.
+Opening activates the command’s scope, closing removes that exact activation, and
+component disposal removes the command registration.
+The visible Close control, scrim, and Escape binding invoke that same command; its
+descriptor supplies the Close control’s accessible action name and any representable
+`aria-keyshortcuts` value.
 Widget roots may handle their own roving-focus keys, and a modal root may contain Tab,
 but neither installs another document-level shortcut dispatcher.
 
