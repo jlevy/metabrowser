@@ -5,13 +5,13 @@ title: "Menu and overlay primitives: anchored placement, action menu, action reg
 kind: feature
 status: open
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzctbjy7z530930gzmvakxws
 created_at: 2026-08-07T00:35:42.550Z
-updated_at: 2026-08-07T00:52:49.754Z
+updated_at: 2026-08-13T03:13:19.713Z
 ---
-Phase 1 of the menu-primitives plan (see spec). Extract one anchored-overlay primitive: point and element anchors, flip-and-clamp with max-height internal scroll, anchored dismissal contract (opening event immune; internal scroll never dismisses), focus save/restore with detached-element fallback, one shared document Escape router, single-open arbitration (one anchored + one modal, no stack), disposal; body-portal is required correctness (preview-pane transform creates a fixed-position containing block). Modal variant with minimal Tab wrap; port search_palette.js onto it AFTER the quick-file branch lands; move positionTooltip clamping onto the shared helper. action_menu.js: roving focus, focusable disabled rows with reasons (APG), no typeahead, invoke closes menu and restores focus BEFORE running the action. action_registry.js: path is durable identity, element re-resolved at run time, empty context opens no menu, actions own their error UX. inline_edit.js: stem-only preselect, Escape-marks-cancel-before-blur, re-mounts across innerHTML re-renders, closes with status if row vanished. Minimal roving-tabindex focus order for rendered tree rows. One contextmenu handler serves pointer+keyboard; right-click never changes selection or fetches preview. Register real rename/trash descriptors (disabled with reasons = the Phase 1 deliverable). Port settings gear; delete its scoped display CSS and private listeners. Node DOM tests per module; design-system doc section.
+Phase 1 of the menu-primitives plan. Implement the shared anchored/modal overlay layer, action menu, contextual action registry, and inline editor; port Quick File, tooltip placement, and settings onto the shared overlay; register disabled rename/trash actions as the first context-menu consumers; and add strict DOM tests and design-system documentation. Coordinate the modal foundation with keyboard-help bead mb-zxi0. Reuse the complete tree focus/navigation contract from mb-67ru and do not add a competing minimal roving-tabindex handler.
