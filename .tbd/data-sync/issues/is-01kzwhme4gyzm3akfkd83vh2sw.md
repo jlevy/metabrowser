@@ -3,14 +3,16 @@ type: is
 id: is-01kzwhme4gyzm3akfkd83vh2sw
 title: Validate keyboard Help and navigation end to end
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies: []
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T03:11:13.039Z
-updated_at: 2026-08-13T06:30:45.226Z
+updated_at: 2026-08-13T07:01:30.835Z
+closed_at: 2026-08-13T07:01:30.835Z
+close_reason: Completed DOM, HTML, package, distribution, documentation, real-browser, public-hygiene, audit, and full verification gates. make verify passes 933 pytest tests and 30 golden scenarios.
 ---
 Validate the complete feature at DOM, HTML, package, and real-browser levels. Add tests/test_browser_keyboard_js.py for the new Node suites; expand tests/test_quick_file_integration.py and tests/test_browser_recent_ui.py for full script order, one dispatcher, injected dependencies, old-listener/table removal, hint-host placement, unchanged polite progress, and the dedicated owned-group tree wrapper with concise names and level/position/set metadata. Update devtools/check_distribution.py so all four modules are required resources in wheel and sdist smoke checks. Use public manual fixtures to check exact Help/link/copy and cross-surface bindings, valid-or-omitted physical-key ARIA, control bindings, modal inert/focus lifecycle and detached fallback, contextual availability, lazy/paged/live focus repair, native preview scrolling, narrow panes, 200% zoom, both themes, reduced motion, keyboard-only operation, and console cleanliness. Update README.md and CHANGELOG.md with ? Help, persistent hints, and tree navigation; run public hygiene and make verify.
