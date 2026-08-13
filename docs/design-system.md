@@ -6,8 +6,8 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 
 ## Principles
 
-1. **The file is primary.** Navigation and controls stay compact so the preview receives
-   most of the viewport.
+1. **The selected item is primary.** Navigation and controls stay compact so a file’s
+   contents or a folder’s Overview receives most of the viewport.
 2. **Color has one meaning.** Status, file type, chart threshold, and selection colors
    come from tokens instead of local literals.
 3. **Text remains selectable.** Use real text and DOM structure for labels and data;
@@ -24,6 +24,7 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 - base surfaces, text, borders, links, and shadows;
 - semantic status colors;
 - file-type foreground, background, and border triplets;
+- aggregate-distribution category, track, and neutral-tail colors;
 - chart colors and annotation states;
 - component dimensions, radii, typography, and motion.
 
@@ -180,6 +181,7 @@ Every button belongs to one role-specific primitive:
 | Filter value or filter menu | `.chip` and its variants |
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
+| Collapsible section title | `.section-disclosure-trigger` |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
 motion tokens, while their shapes communicate different interaction roles.
@@ -188,6 +190,44 @@ primitive class in the markup and must not recreate the primitive’s border, fi
 typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
+
+### Navigation Tree Folders
+
+A folder row is one activation target, including its chevron, name, and metadata.
+Activating it selects the folder, opens its default **Overview** view, and toggles its
+immediate children. Activating an already open folder collapses its children without
+clearing the folder selection or replacing Overview.
+
+The chevron is a state indicator within that target, not a second action with separate
+navigation semantics.
+Its direction and the child container’s visibility derive from the same expanded state
+so they cannot drift.
+Shift-activation applies the same open or close direction recursively, while still
+selecting the folder and opening Overview.
+
+### Section Disclosure Headers
+
+Use the section-disclosure primitive when a labelled section may hide its body without
+changing the selected file, folder, or top-level view.
+Folder Overview panels use a button inside their visible `h2`; rendered-document
+metadata keeps native `details` and `summary` semantics.
+Both forms place the same gray Lucide chevron immediately after the title with
+`--section-disclosure-chevron-gap`. The mark uses `--section-disclosure-chevron-size` in
+`em`, so it remains proportional to the unchanged local heading typography at every type
+tier. It points right when collapsed and rotates down when expanded.
+
+The title and chevron form one focusable target.
+A button trigger declares `type="button"`, `aria-expanded`, and `aria-controls`; its
+section uses `aria-labelledby` to preserve the visible heading as the accessible name.
+Collapsing an already mounted section hides its body without remounting or disposing its
+renderer. Overview panels start expanded on each mount.
+Markdown Frontmatter and Diagnostics disclosures start collapsed through the absence of
+the native `open` attribute.
+These defaults are not saved as user preferences.
+
+This pattern does not replace the navigation-tree disclosure.
+The tree keeps its leading chevron because that mark communicates hierarchy and shares
+one activation target with folder navigation.
 
 ## Icons and Icon Buttons
 
@@ -201,6 +241,12 @@ mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
 Where an icon reserves a column in a row of text, the alignment box around it is 16px —
 one step wider than the glyph, so the mark sits optically centered.
+
+Files and exact file extensions use the `.file-identity-icon` alignment-box primitive.
+Resolve its host-owned SVG and subtype class with `window.metabrowser.fileTypeIcon()`;
+do not copy the filename matcher, SVG, or `ft-*` mapping into a component.
+The navigation tree, plugin views, and aggregate rows therefore change together when a
+file type is added.
 
 There is one deliberate exception, `.menu-seg svg` in the segmented theme and font
 choosers, where the glyph *is* the segment’s label rather than a mark beside text and so
@@ -370,16 +416,229 @@ a file.
 Add new file types through the declarative matcher and token triplet.
 Do not add filename-specific CSS selectors.
 
+### Aggregate Distributions
+
+The shipped
+[Folder Overview plan](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
+defines the first instance of this component contract.
+An aggregate comparison relates exact categories across repeated metric columns in one
+semantic table. Each metric cell presents an absolute value, a track normalized to that
+metric’s population total, and a percentage.
+This keeps many categories vertically scannable and makes skew between metrics visible
+on the same row. It is distinct from the broad `ft-*` identity system: several exact
+extensions may intentionally share one file icon, while adjacent `.py`, `.pyi`, and
+`.md` row fills still need distinguishable colors.
+
+The component uses a bounded light/dark categorical palette, a neutral **Other** token,
+a track token, and a named track-height token.
+Consumers select palette classes; they do not copy color literals or set theme colors
+inline. Inline percentage widths are allowed because they encode data rather than theme.
+
+The token family is `--mb-distribution-category-1` through
+`--mb-distribution-category-12`, plus `--mb-distribution-other`,
+`--mb-distribution-track`, `--mb-distribution-track-height`, and
+`--mb-distribution-segment-gap`. The segment-gap token remains available to consumers
+that place categorical segments beside one another.
+Shared `.mb-distribution-slot-*` and `.mb-distribution-other` utility classes map those
+tokens to a component color variable.
+Core owns these tokens and utilities; the folder plugin owns File types and Treemap
+layout selectors.
+
+When several metric columns compare the same population, they use the same category set,
+row order, and color map.
+Categories keep their assigned slot for the mounted folder even when live updates change
+rank, and Other stays last and neutral.
+A related visualization, such as the extension-colored Treemap for that folder, reuses
+the same mounted mapping when both views exist.
+
+The semantic table is the visual summary and the source of exact values.
+Every row names its category and reports absolute values and percentages; the colored
+fills need no separate circle or legend.
+Fills do not become tab stops or add duplicate tooltips and are hidden from the
+accessibility tree. Labels never rely on color or place text on a category fill.
+
+File types uses non-aggregating `DOCUMENTATION`, `CODE`, `DATA`, and `OTHER` row groups.
+Membership comes from the complete shared navigation-preset vocabulary, so one extension
+definition classifies both surfaces.
+Compound extensions inherit a recognized suffix, and every unrecognized or rollup-tail
+row falls under Other.
+The aggregate tail is labelled **Remaining types** so it is not confused with the group
+itself. A group heading is shown only when it has rows and carries no subtotal.
+Type labels use the bold design-system weight as the row’s scan anchor.
+Each exact extension row leads with the shared file-identity icon resolved from a
+synthetic filename, so it matches navigation without weakening the extension label.
+**No extension** and **Remaining types** use the same generic blank-page icon as an
+unknown extension such as `.bin`, so every type-breakdown row keeps the same identity
+slot.
+Total and Ignored stay text-only because they describe populations rather than file
+types. Every exact Files value uses the shared `.count` and `.count-large` convention,
+and every exact Size value uses `.size` and `.size-large`. The stronger weight therefore
+appears at the same count and byte thresholds as the navigation panel, including on
+Total and Ignored; a row role never forces a different numeric weight.
+
+A **Totals** group appears before the presentation groups and uses the neutral
+distribution color. **Total** comes first: its exact values equal the selected
+population, and both populated tracks fill to 100%. When ignored files are included, an
+**Ignored** row follows with that exact subset and its share of the selected population.
+The Ignored row is absent when ignored files are excluded, so a separate scope notice is
+unnecessary. When the population has files but zero bytes, the Size total remains `0 B`,
+`0%`, and an unfilled neutral track rather than implying a share of an empty byte
+population.
+
+Visual Type, Files, and Size column labels are unnecessary when every metric cell keeps
+the same value-track-percentage grammar.
+The semantic table retains screen-reader-only column headers so assistive technology
+receives the relationships that sighted users get from alignment.
+
+Zero totals do not produce a colored fill, division artifact, or header-only table.
+If one metric is zero while another is not, the zero metric uses the neutral track and
+the populated metric remains meaningful.
+If the whole population is empty, the parent surface renders its explicit empty state
+instead of the distribution body.
+
+### Folder Treemap
+
+Treemap is the hierarchy complement to File types, not a second composition summary.
+It always lays out the bounded directory tree as folders and files; it does not offer a
+Folders/Types grouping choice.
+File types already answers which extensions make up the population, while Treemap
+answers where space or file count sits and keeps folder and file cells navigable.
+
+The toolbar contains two controls from the shared filter-control family:
+
+- A joined, exclusive **Bytes / Files** group chooses the cell-area metric.
+- A labelled **Show ignored** checkbox chooses scope and starts checked.
+  Checked includes gitignored cells and dims them; unchecked removes them and switches
+  folder, remainder, and status values to the rollup’s unignored totals.
+
+There is no separate color selector.
+Every file uses its exact extension’s mounted distribution slot, every folder uses its
+dominant extension’s slot, and remainder cells use the neutral Other slot.
+The File types panel and Treemap acquire the same per-folder palette session, so an
+extension keeps the same color across both views.
+Modification age remains available in the tooltip; it does not compete with file type as
+a second cell-color vocabulary.
+Treemap derives a theme-aware surface wash and stronger border from that shared base
+color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
+Hover brightens the composed cell, including its type-derived surface and border, so
+their contrast and hue relationship remain intact.
+There is no separate label hover surface.
+It never changes stacking or display: nested folder containers and their descendant
+rectangles are flattened siblings, so raising a container would cover its children.
+
+Cell typography grows continuously with usable rectangle geometry.
+The scale combines the short side with the square root of area, which lets a genuinely
+large box grow while preventing a long, thin sliver from claiming display type.
+Folder/file labels stay between 11px and 24px; value labels stay between 10px and 18px.
+Geometry-derived inline custom properties are allowed here because they encode layout
+data, just as inline bar widths encode percentages; theme colors still come only from
+tokens and shared utility classes.
+
+Large nested folders place their formatted aggregate value in the reserved header row.
+Non-nested cells place the value below the name when both lines fit.
+File leaves keep their formatted byte size in either area mode because “1 file” adds no
+information; aggregate folders and remainder cells report the selected metric.
+Values use the shared byte and file-count formatters.
+A label or value that cannot fit is omitted rather than shrunk below its lower bound or
+allowed to overlap child cells.
+Visible folder labels end in `/`, while file labels carry the same file-identity icon as
+the navigation tree.
+The slash is a visual kind cue and is not added to the folder’s accessible name or path.
+The accessible name preserves the cell name, kind, and visible value; the tooltip
+retains the complete name, counts, bytes, and modification time.
+
+Treemap navigation preserves the user’s spatial context.
+Activating a folder cell opens that folder with Treemap selected, and Backspace opens
+the parent with Treemap selected.
+Activating a file cell opens the file’s ordinary default view.
+This uses the public navigation preference rather than simulating a tab click; an
+unavailable preferred view falls back to the destination’s declared default.
+
 ## Panels and Tabs
 
 The preview pane has one scroll owner.
 Views should not introduce nested full-height scroll containers unless the content
 itself requires independent horizontal or virtual scrolling.
 
+### Folder Views Are Tabs
+
+The Folder Overview applies these rules to every served directory.
+A tab changes the primary way the selected item is inspected.
+For folders, **Overview** is the default tab and **Treemap** is a peer visualization.
+A future **Files** listing also belongs at this level because it replaces the primary
+working surface; it is not an Overview panel.
+
 Tab renderers receive a dedicated container and own its contents.
 Default views mount immediately; hidden views mount on first activation.
 A loading state should preserve the tab’s dimensions and communicate whether the work is
 local parsing or an HTTP request.
+
+### Folder Overview Is a Panel Stack
+
+Overview is one vertically ordered composition surface, not a fixed page template.
+Its panel registry lets a capability contribute a region without knowing which other
+regions are installed:
+
+- **Files** is the required file-type summary panel for every folder.
+- **README** is a content panel only when a direct-child README exists.
+- License and other future panels use the same contribution contract and appear only
+  when applicable.
+
+The Overview composer owns panel order, measure, gaps, responsive stacking, loading,
+failure isolation, and disposal.
+Panels own only their data and internal rendering.
+They must not query sibling DOM, reserve ad hoc margins for another panel, or create a
+second preview scroll owner.
+Named placement bands establish broad order; stable panel IDs break ties, so
+asynchronous resolution and plugin load timing never rearrange the page.
+
+Every contribution is a labelled semantic section.
+The composer renders the label as a visible, document-aligned section heading above the
+panel body. These headings use the tab bar’s uppercase, bold, tracked sans-serif grammar
+at the body-text size, followed by a neutral separator.
+Each heading contains the shared section-disclosure trigger, with its gray trailing
+chevron and unchanged heading typography.
+Overview contributions start expanded and collapse in place without disposing their
+mounted contents.
+The **Files** heading labels the file-type summary; its stable internal
+panel ID remains `folder.file-types`.
+
+Panel bodies use one of two presentations:
+
+- A **surface panel** receives a flat host-rendered body and chrome typography.
+  The Files summary uses this presentation without a surrounding card.
+- A **document panel** supplies its normal rendered-document surface.
+  README therefore looks exactly like an ordinarily rendered Markdown file, including
+  its metadata, diagnostics, TOC, breakpoints, and print behavior.
+  Overview adds the shared section heading but does not override the document card.
+  The card keeps its standard border and shadow at regular and wide document bands, then
+  becomes borderless through KPress’s own narrow breakpoint.
+
+“Panel” describes composition and lifecycle, not a requirement to draw the same box
+around unlike content.
+Surface content, section headings, and document content use one responsive alignment
+contract and shared stack gap.
+At regular and wide Markdown breakpoints, flat surface panels and section headings align
+to the README card’s outer edges; the TOC keeps its own rail in the wide band.
+Below the card breakpoint, KPress removes the card boundary and the alignment follows
+the README prose edge.
+The Overview composer mirrors those pinned KPress breakpoints so the rule remains exact
+rather than approximating the document geometry.
+
+Panel availability is independent.
+A missing README removes only that region, and one failed optional panel gets a local
+error without replacing Overview or its siblings.
+Transient failures offer Retry; invalid or permanent failures provide the applicable
+corrective action instead of a control that cannot help.
+Printing includes only contributions that declare themselves printable; host summaries
+and empty-state chrome stay off paper.
+The print action is absent when no mounted contribution is printable.
+
+An empty folder is still a completed Overview.
+File types remains visible with the message **No files to summarize.** It renders no
+empty bars, percentages, table, standalone tally, or synthetic “No README” document
+panel. Loading, partial, empty, and failed states must remain visually and semantically
+distinct.
 
 Floating menus and tooltips use the shared surface, border, radius, and shadow tokens.
 They must remain within the viewport and close on Escape or outside interaction.
@@ -428,6 +687,17 @@ Avoid looping animation except for active progress indicators.
 
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
+
+Transient loading chrome has a 30ms quiet period through the shared
+`.mb-delayed-loading` utility.
+The placeholder reserves its final layout immediately but stays invisible long enough
+for synchronous work and fast local requests to replace it before paint.
+Apply this utility to view- and panel-level loading placeholders; do not add independent
+timers at each renderer.
+
+The shell separately retains the previous preview during a fast file-envelope request.
+Ready content always wins immediately: do not add a minimum spinner duration, crossfade,
+or transition that delays usable content merely to complete an animation.
 
 ### Progress Spinners Stay Neutral
 

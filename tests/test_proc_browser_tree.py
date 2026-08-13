@@ -100,12 +100,14 @@ def test_tree_depth_query_is_always_bounded() -> None:
 
 
 def test_tree_cold_start_uses_constant_time_child_lookup() -> None:
-    source = inspect.getsource(proc_browser.api_tree)
-    cold_start = source[
-        source.index("if started_inventory:") : source.index("inv_can_serve = False")
-    ]
-    assert "inventory.has_direct_child(subpath)" in cold_start
-    assert 'inventory.entries(scope="all-known")' not in cold_start
+    # The cold-start wait lives in the shared _ensure_inventory_serving
+    # helper (used by /api/tree and /api/rollup); the property under
+    # guard is unchanged: the wait polls the O(1) direct-child lookup,
+    # never a full-index scan.
+    source = inspect.getsource(proc_browser._ensure_inventory_serving)
+    assert "inventory.has_direct_child(subpath)" in source
+    assert 'inventory.entries(scope="all-known")' not in source
+    assert "_ensure_inventory_serving" in inspect.getsource(proc_browser.api_tree)
 
 
 def test_build_gitignore_check_no_repo_returns_noop(tmp_path: Path) -> None:

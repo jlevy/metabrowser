@@ -44,11 +44,13 @@
 //     renderTextTruncationWarning(data) — visible partial-content warning
 //
 //   Navigation:
-//     openPath(path)                     — open a path in the preview pane
+//     openPath(path, {viewId?})          — open a path, optionally preferring a view
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
+//     countClass(count)                   — shared file-count emphasis class
+//     sizeClass(bytes)                    — shared byte-count emphasis class
 //     sizeHtml(bytes, extraClass?)       — formatSize wrapped in <span class=size>
 //     isLargeTextPreview(data)           — true if /api/file payload exceeds the
 //                                          syntax-highlight cutoff
@@ -196,12 +198,21 @@
     return data;
   }
 
-  function openPath(path) {
+  /**
+   * Request shell navigation, preferring a destination view when it exists.
+   */
+  function openPath(path, options) {
     if (typeof path !== "string" || !path) {
       throw new Error("openPath: path must be a non-empty string");
     }
+    const viewId = options?.viewId;
+    if (viewId !== undefined && (typeof viewId !== "string" || !viewId)) {
+      throw new Error("openPath: options.viewId must be a non-empty string");
+    }
     global.dispatchEvent(
-      new global.CustomEvent("metabrowser:open-path", { detail: { path: path } }),
+      new global.CustomEvent("metabrowser:open-path", {
+        detail: { path: path, viewId: viewId },
+      }),
     );
   }
 
@@ -318,6 +329,181 @@
       return fs ? fs.activeCount() : 0;
     },
   };
+
+  // Age buckets shared with the shell's tree column. The thresholds
+  // mirror app.js formatAge exactly (sec <1m, min <1h, hr <1d, day
+  // <7d, wk <30d, old beyond); keep the two lists in sync so a
+  // treemap fill and a tree row never disagree about freshness.
+  /** @type {Array<[string, number]>} */
+  const AGE_BUCKET_STEPS = [
+    ["sec", 60 * 1000],
+    ["min", 60 * 60 * 1000],
+    ["hr", 24 * 60 * 60 * 1000],
+    ["day", 7 * 24 * 60 * 60 * 1000],
+    ["wk", 30 * 24 * 60 * 60 * 1000],
+  ];
+
+  function ageBucket(mtimeSeconds) {
+    if (typeof mtimeSeconds !== "number" || !Number.isFinite(mtimeSeconds) || mtimeSeconds <= 0) {
+      return null;
+    }
+    const absMs = Math.abs(Date.now() - mtimeSeconds * 1000);
+    for (const [bucket, limitMs] of AGE_BUCKET_STEPS) {
+      if (absMs < limitMs) {
+        return bucket;
+      }
+    }
+    return "old";
+  }
+
+  // Compact age text mirrors app.js formatAge ("3h", "2d", "<1m", …)
+  // so a plugin label and a tree row read identically.
+  /** @type {Array<[string, number]>} */
+  const AGE_LABEL_STEPS = [
+    ["y", 365 * 24 * 60 * 60 * 1000],
+    ["mo", 30 * 24 * 60 * 60 * 1000],
+    ["w", 7 * 24 * 60 * 60 * 1000],
+    ["d", 24 * 60 * 60 * 1000],
+    ["h", 60 * 60 * 1000],
+    ["m", 60 * 1000],
+  ];
+
+  function ageLabelHtml(mtimeSeconds) {
+    // The colored age chip the shell shows in tree rows and headers:
+    // `<span class="age-<bucket>">3h</span>` on the shared freshness
+    // tokens, or "" when there is no meaningful mtime.
+    const bucket = ageBucket(mtimeSeconds);
+    if (bucket === null) {
+      return "";
+    }
+    const absMs = Math.abs(Date.now() - /** @type {number} */ (mtimeSeconds) * 1000);
+    let text = "<1m";
+    for (const [suffix, stepMs] of AGE_LABEL_STEPS) {
+      if (absMs >= stepMs) {
+        text = `${Math.round(absMs / stepMs)}${suffix}`;
+        break;
+      }
+    }
+    return `<span class="age-${bucket}">${escapeHtml(text)}</span>`;
+  }
+
+  const ROLLUP_FALLBACK_DEBOUNCE_MS = 1000;
+
+  function _rollupSettings() {
+    const settings = global.METABROWSER_SETTINGS || {};
+    return {
+      depth: settings.ROLLUP_DEFAULT_DEPTH,
+      top: settings.ROLLUP_DEFAULT_TOP,
+      ext_top: settings.ROLLUP_DEFAULT_EXT_TOP,
+      ext_rank: settings.ROLLUP_DEFAULT_EXT_RANK || "bytes",
+      debounceMs: settings.ROLLUP_WATCH_DEBOUNCE_MS || ROLLUP_FALLBACK_DEBOUNCE_MS,
+    };
+  }
+
+  async function fetchRollup(path, opts) {
+    // Core rollup endpoint for directory subtrees (see /api/rollup).
+    // ``path`` may be "" for the served root. Optional opts:
+    // depth / top / ext_top query overrides plus ``signal`` for aborts.
+    if (typeof path !== "string") {
+      throw new Error("fetchRollup: path must be a string");
+    }
+    const defaults = _rollupSettings();
+    const options = opts && typeof opts === "object" ? opts : {};
+    const url = new URL("/api/rollup", global.location.origin);
+    url.searchParams.set("path", path);
+    for (const key of ["depth", "top", "ext_top", "ext_rank"]) {
+      const value = options[key] !== undefined ? options[key] : defaults[key];
+      if (value !== undefined && value !== null) {
+        url.searchParams.set(key, String(value));
+      }
+    }
+    const resp = await fetch(url.toString(), { signal: options.signal });
+    if (!resp.ok) {
+      throw new global.MetabrowserRequestErrors.RequestError("Could not load folder totals.", {
+        operation: "fetchRollup",
+        status: resp.status,
+      });
+    }
+    return resp.json();
+  }
+
+  function watchRollup(path, opts, onUpdate) {
+    // Fetch a rollup now and refresh it (trailing debounce) whenever the
+    // shell's inventory store reports a change touching ``path``'s
+    // subtree or ancestor chain. Returns {refresh, dispose, stale};
+    // dispose detaches the listener and aborts any in-flight fetch.
+    // Pair every watch with a view dispose — a leaked watch keeps
+    // refetching. ``opts.active`` (optional callback) gates the
+    // debounced refresh: while it returns false (e.g. the view's tab
+    // is hidden) the fetch is skipped and the watch marks itself
+    // stale instead; call ``refresh()`` when the view shows again and
+    // ``stale()`` reports true.
+    if (typeof onUpdate !== "function") {
+      throw new Error("watchRollup: onUpdate callback is required");
+    }
+    const options = opts && typeof opts === "object" ? opts : {};
+    return global.MetabrowserInventoryScope.createInventoryWatch(
+      path,
+      {
+        active: options.active,
+        debounceMs:
+          typeof options.debounceMs === "number"
+            ? options.debounceMs
+            : _rollupSettings().debounceMs,
+        fetch: (signal) => fetchRollup(path, Object.assign({}, options, { signal })),
+        onError: options.onError || ((err) => console.warn("watchRollup refresh failed:", err)),
+      },
+      onUpdate,
+    );
+  }
+
+  // Shell-surface proxies — same pattern as `icons`: plugins reach the
+  // shared tooltip and file-type classifier through the SDK so they
+  // never touch app.js globals directly, and get safe no-ops when the
+  // shell has not installed them (tests, partial harnesses).
+  const tooltip = {
+    show(html, event) {
+      if (global.MetabrowserTooltip) {
+        global.MetabrowserTooltip.show(html, event);
+      }
+    },
+    move(event) {
+      if (global.MetabrowserTooltip) {
+        global.MetabrowserTooltip.move(event);
+      }
+    },
+    hide() {
+      if (global.MetabrowserTooltip) {
+        global.MetabrowserTooltip.hide();
+      }
+    },
+  };
+
+  function fileTypeClass(path) {
+    if (global.MetabrowserFileTypes && typeof global.MetabrowserFileTypes.classFor === "function") {
+      return global.MetabrowserFileTypes.classFor(path);
+    }
+    return "";
+  }
+
+  function fileTypeIcon(path) {
+    if (global.MetabrowserFileTypes && typeof global.MetabrowserFileTypes.iconFor === "function") {
+      const icon = global.MetabrowserFileTypes.iconFor(path);
+      if (icon && typeof icon === "object") {
+        return {
+          svg: typeof icon.svg === "string" ? icon.svg : "",
+          className: typeof icon.cls === "string" ? icon.cls : "",
+        };
+      }
+    }
+    return {
+      svg:
+        global.MetabrowserIcons && typeof global.MetabrowserIcons.file === "string"
+          ? global.MetabrowserIcons.file
+          : "",
+      className: "",
+    };
+  }
 
   function formatKpressError(payload, status) {
     const body = payload && typeof payload === "object" ? payload : {};
@@ -624,6 +810,13 @@
       previous.abort();
     }
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const externalSignal = options?.signal;
+    const abortFromExternal = () => controller?.abort();
+    if (externalSignal?.aborted) {
+      controller?.abort();
+    } else {
+      externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
+    }
     if (controller) {
       _kpressInflight.set(dedupKey, controller);
     }
@@ -635,6 +828,7 @@
         signal: controller ? controller.signal : undefined,
       });
     } finally {
+      externalSignal?.removeEventListener("abort", abortFromExternal);
       if (controller && _kpressInflight.get(dedupKey) === controller) {
         _kpressInflight.delete(dedupKey);
       }
@@ -759,16 +953,15 @@
   }
 
   function formatSize(bytes) {
-    // Match the convention used everywhere else in the shell so plugin
-    // displays line up visually.
-    const n = Number(bytes) || 0;
-    if (n < 1024) {
-      return `${n} B`;
-    }
-    if (n < 1024 * 1024) {
-      return `${(n / 1024).toFixed(1)} KB`;
-    }
-    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    return global.MetabrowserFormatters.formatBytes(Number(bytes) || 0);
+  }
+
+  function formatInteger(value) {
+    return global.MetabrowserFormatters.formatInteger(Number(value) || 0);
+  }
+
+  function formatFileCount(value) {
+    return global.MetabrowserFormatters.formatFileCount(Number(value) || 0);
   }
 
   function formatTimestamp(secondsSinceEpoch) {
@@ -783,13 +976,12 @@
     return d.toLocaleString();
   }
 
-  // Single source of truth for the "large file = bold size, small file
-  // = normal" rule used everywhere a size badge is rendered. Threshold
-  // matches the shell's SIZE_LARGE_THRESHOLD (1 MiB).
-  const SIZE_LARGE_THRESHOLD = 1024 * 1024;
-
   function sizeClass(bytes) {
-    return (bytes || 0) > SIZE_LARGE_THRESHOLD ? "size-large" : "";
+    return global.MetabrowserFormatters.sizeClass(Number(bytes) || 0);
+  }
+
+  function countClass(value) {
+    return global.MetabrowserFormatters.countClass(Number(value) || 0);
   }
 
   function sizeHtml(bytes, extraClass) {
@@ -974,6 +1166,30 @@
     }
   }
 
+  async function fetchFolderEnvelope(path, signal) {
+    const url = new URL("/api/file", global.location.origin);
+    url.searchParams.set("path", path);
+    const response = await fetch(url.toString(), { signal });
+    if (!response.ok) {
+      throw new global.MetabrowserRequestErrors.RequestError("Could not refresh this folder.", {
+        operation: "fetchFolderEnvelope",
+        status: response.status,
+      });
+    }
+    return response.json();
+  }
+
+  const folderContext = global.MetabrowserResourceContext.createResourceContextStore({
+    debounceMs: _rollupSettings().debounceMs,
+    fetchEnvelope: fetchFolderEnvelope,
+    pathsIntersect: global.MetabrowserInventoryScope.pathsIntersectScope,
+  });
+
+  const viewState = Object.freeze({
+    isActive: global.MetabrowserViewState.isActive,
+    subscribeActive: global.MetabrowserViewState.subscribeActive,
+  });
+
   global.metabrowser = {
     builtins: {},
     registerView: registerView,
@@ -983,6 +1199,17 @@
     escapeHtml: escapeHtml,
     fetchPluginData: fetchPluginData,
     fetchJsonl: fetchJsonl,
+    fetchRollup: fetchRollup,
+    watchRollup: watchRollup,
+    errors: global.MetabrowserRequestErrors,
+    folderContext: folderContext,
+    viewState: viewState,
+    setViewPrintState: global.MetabrowserViewState.setPrintState,
+    ageBucket: ageBucket,
+    ageLabelHtml: ageLabelHtml,
+    tooltip: tooltip,
+    fileTypeClass: fileTypeClass,
+    fileTypeIcon: fileTypeIcon,
     openPath: openPath,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
@@ -991,7 +1218,11 @@
     formatKpressError: formatKpressError,
     chart: chart,
     formatSize: formatSize,
+    formatInteger: formatInteger,
+    formatFileCount: formatFileCount,
     formatTimestamp: formatTimestamp,
+    countClass: countClass,
+    sizeClass: sizeClass,
     sizeHtml: sizeHtml,
     isLargeTextPreview: isLargeTextPreview,
     wrapWithCopy: wrapWithCopy,

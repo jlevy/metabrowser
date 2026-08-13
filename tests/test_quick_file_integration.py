@@ -173,14 +173,16 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
     js = _read_app_js()
     select_file = js[
-        js.index("async function selectFile(path, skipHash)") : js.index("// ── File rendering")
+        js.index("async function selectFile(path, skipHistory, preferredViewId)") : js.index(
+            "// ── File rendering"
+        )
     ]
     for status in ("opened", "not-found", "error", "cancelled"):
         assert f'status: "{status}"' in select_file
     assert "resp.status === 404" in select_file
 
     navigate = js[
-        js.index("async function navigateToPath(path, skipHash)") : js.index(
+        js.index("async function navigateToPath(path, skipHistory, preferredViewId)") : js.index(
             "function initQuickFileFinder()"
         )
     ]
@@ -191,6 +193,37 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
     assert "fileNeedsRevalidate.add(path)" in init_block
     assert "return navigateToPath(path)" in init_block
     assert "knownFileCatalog.removePath(path)" in init_block
+
+
+def test_plugin_navigation_can_prefer_a_destination_view() -> None:
+    """Folder visualizations can carry their view intent across navigation."""
+    js = _read_app_js()
+    sdk = (proc_browser.STATIC_DIR / "plugin_sdk.js").read_text()
+    types = (proc_browser.STATIC_DIR / "types.d.ts").read_text()
+    treemap = (
+        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
+    ).read_text()
+
+    assert "function openPath(path, options)" in sdk
+    assert "viewId: viewId" in sdk
+    assert "type MetabrowserOpenPathOptions" in types
+    assert "openPath(path: string, options?: MetabrowserOpenPathOptions): void;" in types
+
+    assert "async function selectFile(path, skipHistory, preferredViewId)" in js
+    assert "function renderFile(data, preferredViewId)" in js
+    assert "async function navigateToPath(path, skipHistory, preferredViewId)" in js
+    listener_start = js.index('window.addEventListener("metabrowser:open-path"')
+    listener = js[listener_start : listener_start + 500]
+    assert "event.detail?.viewId" in listener
+    assert "navigateToPath(path, undefined, viewId)" in listener
+
+    render_start = js.index("function renderFile(data, preferredViewId)")
+    render = js[render_start : render_start + 5000]
+    assert "view.id === preferredViewId" in render
+    assert "views.find((view) => view.default)" in render
+
+    assert 'const TREEMAP_VIEW_ID = "treemap";' in treemap
+    assert "mb.openPath(cell.path, { viewId: TREEMAP_VIEW_ID })" in treemap
 
 
 def test_local_quick_file_modules_define_no_search_endpoint() -> None:

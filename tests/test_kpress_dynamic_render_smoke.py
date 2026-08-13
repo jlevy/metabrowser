@@ -218,6 +218,9 @@ def test_dynamic_render_consumes_frontmatter_into_metadata_section(
     # Each frontmatter key surfaces as a <dt>; values as <dd>.
     assert "<dt>author</dt><dd>Ada</dd>" in html
     assert "kpress-frontmatter" in html
+    frontmatter = re.search(r'<details[^>]*class="[^"]*kpress-frontmatter[^"]*"[^>]*>', html)
+    assert frontmatter is not None
+    assert " open" not in frontmatter.group(0), "frontmatter must start collapsed"
 
 
 def test_dynamic_render_advertised_assets_are_actually_serveable(served_root: Path) -> None:

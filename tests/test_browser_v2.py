@@ -246,7 +246,7 @@ def test_api_file_codex_turn_completed_without_usage_helper_crash(tmp_path: Path
     proc_browser._set_root_dir(tmp_path)
     try:
         resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "codex.jsonl"}))))
-        body = json.loads(resp.body)
+        body = json.loads(bytes(resp.body))
         assert resp.status_code == 200
         assert body["type"] == "jsonl"
         assert body["summary"]["adapter"] == "codex"
@@ -270,7 +270,7 @@ def test_api_file_internal_error_degrades_to_error_view(tmp_path: Path, monkeypa
     proc_browser._set_root_dir(tmp_path)
     try:
         resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "broken.jsonl"}))))
-        body = json.loads(resp.body)
+        body = json.loads(bytes(resp.body))
         assert resp.status_code == 200
         assert body["type"] == "error"
         assert "Internal error while rendering this file" in body["error"]
@@ -667,9 +667,10 @@ def test_sse_tail_closes_on_file_disappearance(tmp_path: Path) -> None:
 
 
 def test_markdown_plugin_has_no_duplicate_client_renderer() -> None:
-    plugin_js = (
-        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown" / "index.js"
-    ).read_text()
+    plugin_dir = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown"
+    plugin_js = "\n".join(
+        (plugin_dir / name).read_text() for name in ("index.js", "rendered.js", "source.js")
+    )
     assert "DOMPurify" not in plugin_js
     assert "marked.parse(" not in plugin_js
     assert "fetchKpressRender" in plugin_js

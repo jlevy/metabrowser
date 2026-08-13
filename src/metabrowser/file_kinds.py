@@ -60,6 +60,9 @@ VIEW_REGISTRY: dict[str, list[dict[str, Any]]] = {
         },
     ],
     "binary": [],
+    # Directories: core assigns the kind (api_file's is_dir branch);
+    # the built-in `folder` plugin manifest contributes the views.
+    "folder": [],
 }
 
 

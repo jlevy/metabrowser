@@ -35,7 +35,7 @@ def _api_file(path: str) -> dict[str, Any]:
     request.query_params = _FakeQuery({"path": path})
     request.headers = {}
     response = asyncio.run(server.api_file(request))
-    return json.loads(response.body)
+    return json.loads(bytes(response.body))
 
 
 def test_plain_markdown_resolves_via_markdown_plugin(tmp_path: Path) -> None:

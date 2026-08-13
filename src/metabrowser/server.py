@@ -92,12 +92,14 @@ from metabrowser.file_kinds import (
     register_file_kind_detector,
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.folder_discovery import discover_folder
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
     ArtifactPath,
 )
 from metabrowser.inventory import get_instance as get_inventory
+from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
@@ -114,7 +116,15 @@ from metabrowser.paths_safe import (
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
 from metabrowser.settings import (
+    FOLDER_DISCOVERY_MAX_ENTRIES,
     RECENT_WINDOW_SECONDS,
+    ROLLUP_DEFAULT_DEPTH,
+    ROLLUP_DEFAULT_EXT_RANK,
+    ROLLUP_DEFAULT_EXT_TOP,
+    ROLLUP_DEFAULT_TOP,
+    ROLLUP_MAX_DEPTH,
+    ROLLUP_MAX_EXT_TOP,
+    ROLLUP_MAX_TOP,
     SLOW_OPERATION_LOG_SECONDS,
     client_settings_dict,
 )
@@ -442,6 +452,30 @@ def _query_int(request: Request, name: str, default: int) -> int:
         return default
 
 
+def _query_bounded_int(
+    request: Request,
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    return max(minimum, min(_query_int(request, name, default), maximum))
+
+
+def _query_choice(
+    request: Request,
+    name: str,
+    default: str,
+    allowed: frozenset[str],
+) -> str:
+    raw = request.query_params.get(name, "")
+    value = default if raw == "" else raw
+    if value not in allowed:
+        raise ValueError(f"Unknown {name}: {value!r}")
+    return value
+
+
 def _read_artifact_text_chunk(
     artifact: ArtifactPath, offset: int, limit: int
 ) -> tuple[str, int, int, bool]:
@@ -694,22 +728,6 @@ def _initial_path_html() -> str:
     return f'<span class="path"><span class="path-base">{html_escape(root_str)}</span></span>'
 
 
-def _initial_file_path() -> str:
-    """Return a cheap first-preview file path, without walking the tree."""
-
-    root = _paths_safe.ROOT_DIR.resolve()
-    for name in ("README.md", "readme.md", "Readme.md"):
-        if (root / name).is_file():
-            return name
-    try:
-        for child in root.iterdir():
-            if child.is_file() and child.name.lower() == "readme.md":
-                return child.name
-    except OSError:
-        return ""
-    return ""
-
-
 def _static_asset_url(rel_path: str) -> str:
     """Return a local static URL with an mtime-based cache buster."""
 
@@ -737,9 +755,14 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
-    initial_file_path = _initial_file_path()
     styles_url = _static_asset_url("styles.css")
     theme_state_url = _static_asset_url("theme_state.js")
+    request_error_url = _static_asset_url("request_error.js")
+    formatters_url = _static_asset_url("formatters.js")
+    inventory_scope_url = _static_asset_url("inventory_scope.js")
+    contribution_registry_url = _static_asset_url("contribution_registry.js")
+    resource_context_url = _static_asset_url("resource_context.js")
+    view_state_url = _static_asset_url("view_state.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
     filter_controls_url = _static_asset_url("filter_controls.js")
@@ -760,8 +783,7 @@ async def index(_request: Request) -> HTMLResponse:
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
     settings_block = (
-        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};"
-        f"window.METABROWSER_INITIAL_PATH={_json.dumps(initial_file_path)};</script>"
+        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
@@ -971,6 +993,12 @@ async def index(_request: Request) -> HTMLResponse:
   {perf_block}
   {settings_block}
   <script src="{theme_state_url}"></script>
+  <script src="{request_error_url}"></script>
+  <script src="{formatters_url}"></script>
+  <script src="{inventory_scope_url}"></script>
+  <script src="{contribution_registry_url}"></script>
+  <script src="{resource_context_url}"></script>
+  <script src="{view_state_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{filter_state_url}"></script>
   <script src="{filter_controls_url}"></script>
@@ -991,15 +1019,14 @@ async def index(_request: Request) -> HTMLResponse:
     return HTMLResponse(html)
 
 
-@log_async_calls()
-async def api_tree(request: Request) -> JSONResponse:
-    subpath = request.query_params.get("path", "")
-    depth_str = request.query_params.get("depth", "")
-    target = _safe_path(subpath)
-    if target is None or not target.is_dir():
-        return JSONResponse({"error": "Not found"}, status_code=404)
+async def _ensure_inventory_serving(subpath: str) -> bool:
+    """Start the inventory walker if needed, wait briefly on a cold
+    start, and report whether the index can serve *subpath*.
 
-    remaining_depth = _tree_depth_from_query(depth_str)
+    Shared by `/api/tree` and `/api/rollup`: both read the same index
+    and share the cold-start grace so a request landing right after
+    boot finds the visible tree populated.
+    """
 
     inventory = get_inventory()
     root_dir = _resolved_root_dir()
@@ -1020,9 +1047,24 @@ async def api_tree(request: Request) -> JSONResponse:
                 break
             await asyncio.sleep(0.005)
 
-    inv_can_serve = False
-    if inventory_has_data():
-        inv_can_serve = True if not subpath else inventory.get(subpath) is not None
+    if not inventory_has_data():
+        return False
+    return True if not subpath else inventory.get(subpath) is not None
+
+
+@log_async_calls()
+async def api_tree(request: Request) -> JSONResponse:
+    subpath = request.query_params.get("path", "")
+    depth_str = request.query_params.get("depth", "")
+    target = _safe_path(subpath)
+    if target is None or not target.is_dir():
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    remaining_depth = _tree_depth_from_query(depth_str)
+
+    inventory = get_inventory()
+    root_dir = _resolved_root_dir()
+    inv_can_serve = await _ensure_inventory_serving(subpath)
 
     if inv_can_serve:
         tree = _build_inventory_tree(
@@ -1098,6 +1140,71 @@ async def api_tree(request: Request) -> JSONResponse:
             "extensions": extensions,
             "type_presets": type_presets,
             "recency_tallies": recency_tallies,
+        }
+    )
+
+
+@log_async_calls(if_slower_than=0.1)
+async def api_rollup(request: Request) -> JSONResponse:
+    """Bounded treemap rollup for a directory subtree.
+
+    `GET /api/rollup?path=&depth=&top=&ext_top=` — params clamp to the
+    ROLLUP_* settings bounds. `node` is null while the index cannot
+    serve the path yet (cold start); the client renders that as a
+    pending treemap and refreshes off `/api/events` activity. Totals
+    always cover the full subtree. Depth truncation is represented by
+    `children: null` without a rest bucket; node-budget truncation can
+    retain emitted `children` alongside a `rest` bucket for their
+    omitted siblings.
+    """
+
+    subpath = request.query_params.get("path", "")
+    target = _safe_path(subpath)
+    if target is None or not target.is_dir():
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    depth = _query_bounded_int(
+        request, "depth", ROLLUP_DEFAULT_DEPTH, minimum=0, maximum=ROLLUP_MAX_DEPTH
+    )
+    top = _query_bounded_int(request, "top", ROLLUP_DEFAULT_TOP, minimum=0, maximum=ROLLUP_MAX_TOP)
+    ext_top = _query_bounded_int(
+        request, "ext_top", ROLLUP_DEFAULT_EXT_TOP, minimum=0, maximum=ROLLUP_MAX_EXT_TOP
+    )
+    try:
+        ext_rank = cast(
+            RollupRank,
+            _query_choice(
+                request,
+                "ext_rank",
+                ROLLUP_DEFAULT_EXT_RANK,
+                frozenset({"bytes", "dual"}),
+            ),
+        )
+    except ValueError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+
+    inventory = get_inventory()
+    inv_can_serve = await _ensure_inventory_serving(subpath)
+    result = None
+    if inv_can_serve:
+        result = await asyncio.to_thread(
+            inventory.rollup,
+            subpath,
+            depth=depth,
+            top=top,
+            ext_top=ext_top,
+            ext_rank=ext_rank,
+        )
+    return JSONResponse(
+        {
+            "root": str(_resolved_root_dir()),
+            "path": subpath,
+            "node": result["node"] if result is not None else None,
+            "ext_tallies": result["ext_tallies"] if result is not None else [],
+            "index_status": inventory_status(),
+            "indexed_files": inventory.files_indexed(),
+            "max_files": inventory.max_files(),
+            "truncated": inventory_status() == "truncated",
         }
     )
 
@@ -1274,6 +1381,52 @@ def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONRespo
     )
 
 
+async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
+    """Directory envelope for `/api/file`: the folder analog of a file response.
+
+    Mirrors the file envelope shape (`type` / `kind` / `views` / `path`)
+    so `renderFile` routes folders through the same tab pipeline. The
+    `dir` block carries the inventory aggregates (null while the walker
+    is still finalizing, matching the tree wire contract) and
+    `readme_path` names a direct-child README for Overview panel discovery.
+    Served no-store: the envelope is tiny and its aggregates change
+    while a scan is running.
+    """
+
+    inventory = get_inventory()
+    entry = inventory.get(subpath)
+    discovery = await asyncio.to_thread(
+        discover_folder,
+        target,
+        max_entries=FOLDER_DISCOVERY_MAX_ENTRIES,
+    )
+    readme_path = (
+        f"{subpath}/{discovery.readme_name}"
+        if subpath and discovery.readme_name
+        else discovery.readme_name
+    )
+    total_files = entry.total_files if entry is not None else None
+    total_size = entry.total_size if entry is not None else None
+    newest_ns = entry.newest_mtime_ns if entry is not None else None
+    payload: dict[str, Any] = {
+        "type": "folder",
+        "kind": "folder",
+        "path": subpath,
+        "name": target.name,
+        "views": _views_for_kind("folder"),
+        "dir": {
+            "total_files": total_files,
+            "total_size": total_size,
+            "mtime": newest_ns / 1_000_000_000.0 if newest_ns is not None else None,
+            "gitignored": bool(entry.gitignored) if entry is not None else False,
+            "state": "pending" if total_files is None else "complete",
+        },
+        "readme_path": readme_path,
+        "readme_search_truncated": discovery.readme_search_truncated,
+    }
+    return JSONResponse(payload, headers={"cache-control": "no-store"})
+
+
 @log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
@@ -1343,7 +1496,11 @@ def _file_unavailable_response(subpath: str, target: Path | None) -> JSONRespons
 async def _api_file_impl(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
     target = _safe_path(subpath)
-    if target is None or not target.is_file():
+    if target is None:
+        return _file_unavailable_response(subpath, target)
+    if target.is_dir():
+        return await _api_folder_envelope(subpath, target)
+    if not target.is_file():
         return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
@@ -2336,6 +2493,7 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
 routes = [
     Route("/", index),
     Route("/api/tree", api_tree),
+    Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),
     Route("/api/file", api_file),
     Route("/api/kpress/render", api_kpress_render),

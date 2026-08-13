@@ -70,12 +70,19 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/__init__.py",
             "metabrowser/static/app.js",
             "metabrowser/static/charts.js",
+            "metabrowser/static/contribution_registry.js",
+            "metabrowser/static/resource_context.js",
+            "metabrowser/static/view_state.js",
             # Vendored browser libraries: the offline-first page depends on
             # these shipping in the wheel (see static/vendor/manifest.json).
             "metabrowser/static/vendor/manifest.json",
             "metabrowser/static/vendor/highlight.min.js",
             "metabrowser/static/vendor/chart.umd.min.js",
             "metabrowser/builtin_plugins/markdown/manifest.toml",
+            "metabrowser/builtin_plugins/markdown/rendered.js",
+            "metabrowser/builtin_plugins/folder/overview.js",
+            "metabrowser/builtin_plugins/folder/file_type_summary.js",
+            "metabrowser/builtin_plugins/folder/file_type_summary.css",
             "dist-info/licenses/LICENSE",
             "dist-info/licenses/NOTICE.md",
         }
@@ -144,13 +151,15 @@ def _smoke_install(wheel: Path) -> None:
             "from metabrowser.plugin_loader.discovery import discover_plugins; "
             "plugins = discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
-            "required = {'agent-log', 'binary', 'markdown', 'structured', 'text', "
-            "'unknown-jsonl'}; "
+            "required = {'agent-log', 'binary', 'folder', 'markdown', 'structured', "
+            "'text', 'unknown-jsonl'}; "
             "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
             "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
             "mtime_hash='wheel-smoke', size=14); "
             "assert metabrowser.__version__; "
             "assert files('metabrowser').joinpath('static/app.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
             "assert required == names; "
             "assert not plugins.errors; "
             "assert 'Wheel smoke' in rendered['html']; "

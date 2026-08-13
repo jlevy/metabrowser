@@ -16,12 +16,14 @@ import contextlib
 from pathlib import Path
 
 import pytest
+from watchfiles import Change
 
 from metabrowser.events import FsChange, FsUpsert
 from metabrowser.inventory import get_instance, reset_instance_for_tests
 from metabrowser.watch_backends import (
     _NATIVE_FS_TYPES,
     _POLLING_FS_TYPES,
+    _emit_for_path,
     detect_fs_type,
     run_watcher,
     select_watch_mode,
@@ -159,3 +161,50 @@ def test_run_watcher_emits_fs_change_on_new_file(tmp_path: Path) -> None:
     seen = asyncio.run(_run())
     # The watcher should have fired for the newly-created file.
     assert "runs/x/new.jsonl" in seen
+
+
+def test_stale_delete_event_reconciles_recreated_directory(tmp_path: Path) -> None:
+    async def run() -> tuple[set[str], int]:
+        reset_instance_for_tests()
+        inventory = get_instance()
+        artifacts = tmp_path / "dist"
+        artifacts.mkdir()
+        (artifacts / "old.whl").write_bytes(b"old")
+        inventory.start(tmp_path)
+        await inventory.wait_until_done(timeout=5.0)
+
+        (artifacts / "old.whl").unlink()
+        artifacts.rmdir()
+        artifacts.mkdir()
+        (artifacts / "new.whl").write_bytes(b"new artifact")
+
+        await _emit_for_path(inventory, tmp_path, str(artifacts), Change.deleted)
+        rollup = inventory.rollup("dist", depth=0, top=0, ext_top=10)
+        assert rollup is not None
+        indexed_paths = {entry.path for entry in inventory.entries(scope="all-known")}
+        return indexed_paths, rollup["node"]["total_files"]
+
+    indexed_paths, total_files = asyncio.run(run())
+    assert "dist/new.whl" in indexed_paths
+    assert "dist/old.whl" not in indexed_paths
+    assert total_files == 1
+
+
+def test_stale_add_event_removes_now_absent_file(tmp_path: Path) -> None:
+    async def run() -> tuple[bool, int]:
+        reset_instance_for_tests()
+        inventory = get_instance()
+        target = tmp_path / "gone.txt"
+        target.write_text("gone")
+        inventory.start(tmp_path)
+        await inventory.wait_until_done(timeout=5.0)
+
+        target.unlink()
+        await _emit_for_path(inventory, tmp_path, str(target), Change.added)
+        root = inventory.rollup("", depth=0, top=0, ext_top=10)
+        assert root is not None
+        return inventory.get("gone.txt") is None, root["node"]["total_files"]
+
+    removed, total_files = asyncio.run(run())
+    assert removed
+    assert total_files == 0

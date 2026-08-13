@@ -369,6 +369,32 @@ def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
     assert "setSelectedPath(path)" in reveal_block
 
 
+def test_folder_row_click_selects_opens_and_toggles_the_folder() -> None:
+    """A folder row is one target, including its chevron hotspot.
+
+    Every activation must keep navigation and disclosure together: open the
+    folder Overview, then toggle the immediate subtree in either direction.
+    """
+
+    js = _read_app_js()
+    handler_start = js.index('treePane.addEventListener("click"')
+    handler_block = js[handler_start : handler_start + 3400]
+    select_dir_start = handler_block.index('action === "select-dir"')
+    select_dir_block = handler_block[select_dir_start : select_dir_start + 500]
+    assert "setSelectedPath(item.dataset.path)" in select_dir_block
+    assert "selectFile(item.dataset.path)" in select_dir_block
+    assert "toggleTreeFolder(item, e.shiftKey)" in select_dir_block
+    assert "isToggleHotspot" not in handler_block
+
+
+def test_initial_and_live_folder_rows_share_the_select_dir_action() -> None:
+    """Live inserts must not regress to chevron-only folder behavior."""
+
+    js = _read_app_js()
+    assert js.count('data-action="select-dir"') == 2
+    assert 'data-action="toggle"' not in js
+
+
 # ── Auto-expand behavior ───────────────────────────────────────
 
 
@@ -423,17 +449,16 @@ def test_styles_css_drops_the_superseded_recent_chip() -> None:
     assert ".recent-controls" not in css
 
 
-# ── findRootReadme follows the tab refactor ─────────────────
+# ── Default folder route ─────────────────────────────────────
 
 
-def test_find_root_readme_targets_tab_files_panel() -> None:
-    """The selector must match files inside #tab-files, not the
-    old #tree-content > selector that broke after the tab refactor."""
-
+def test_no_hash_opens_the_root_folder_overview() -> None:
+    """The stable root route replaces shell-side README discovery."""
     js = _read_app_js()
-    fn_start = js.index("function findRootReadme()")
-    fn_block = js[fn_start : fn_start + 800]
-    assert "#tab-files > .tree-item.tree-file" in fn_block
+    assert "function findRootReadme()" not in js
+    assert 'var initialPath = hashRoute ? hashParts.path : "";' in js
+    assert "var initialIsDir = hashRoute ? hashParts.isDir : true;" in js
+    assert "selectFile(initialPath, true);" in js
 
 
 # ── DOMContentLoaded wiring ─────────────────────────────────

@@ -8,7 +8,7 @@ the JSDOM shim end-to-end test (see tests/dom/).
 
 Surface checked:
 - mb.escapeHtml, mb.formatSize, mb.formatTimestamp (already shipped)
-- mb.sizeHtml, mb.isLargeTextPreview (new in 3b)
+- mb.countClass, mb.sizeClass, mb.sizeHtml, mb.isLargeTextPreview
 - mb.wrapWithCopy (new in 3b)
 - mb.icons proxy (new in 3b — backed by window.MetabrowserIcons)
 - mb.perf.measure (new in 3b — wraps app.js's _mbPerf)
@@ -55,6 +55,14 @@ def test_sdk_exports_icons_proxy() -> None:
     # The proxy must read from window.MetabrowserIcons so plugins get the
     # canonical SVGs, not their own copies.
     assert "MetabrowserIcons" in src
+
+
+def test_sdk_exports_file_type_icon_proxy() -> None:
+    src = _sdk_source()
+    assert "fileTypeIcon: fileTypeIcon" in src
+    assert "function fileTypeIcon" in src
+    assert "MetabrowserFileTypes.iconFor" in src
+    assert 'typeof icon.cls === "string"' in src
 
 
 def test_sdk_exports_perf_measure() -> None:
@@ -104,8 +112,10 @@ def test_sdk_size_html_handles_null_skeleton() -> None:
     assert "tally-pending" in src
 
 
-def test_sdk_size_html_uses_size_class_threshold() -> None:
-    """1 MiB threshold defines size-large vs normal class — same as app.js."""
+def test_sdk_exports_shared_metric_emphasis_classes() -> None:
+    """Plugins use the same count and byte emphasis contract as the shell."""
     src = _sdk_source()
-    assert "size-large" in src
-    assert "1024 * 1024" in src
+    assert "countClass: countClass" in src
+    assert "sizeClass: sizeClass" in src
+    assert "MetabrowserFormatters.countClass" in src
+    assert "MetabrowserFormatters.sizeClass" in src

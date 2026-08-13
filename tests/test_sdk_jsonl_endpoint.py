@@ -45,7 +45,7 @@ def test_api_file_returns_jsonl_envelope(tmp_path: Path) -> None:
     request.headers = {}
 
     response = asyncio.run(server.api_file(request))
-    payload = json.loads(response.body)
+    payload = json.loads(bytes(response.body))
     assert payload["type"] == "jsonl"
     # Envelope should carry events + summary so plugin code can do
     # something with it (the precise shape is part of the legacy
