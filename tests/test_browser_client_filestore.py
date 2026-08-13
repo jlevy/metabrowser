@@ -261,7 +261,7 @@ def test_apply_cell_patch_uses_subtree_empty_state_for_empty_class() -> None:
 
     js = _read_app_js()
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 3600]
+    fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert 'classList.toggle("tree-item-empty"' in fn_block
     assert 'typeof entry.empty === "boolean"' in fn_block
     assert "entry.empty" in fn_block
@@ -278,7 +278,7 @@ def test_apply_cell_patch_syncs_gitignored_class() -> None:
 
     js = _read_app_js()
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 3600]
+    fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert 'classList.toggle("tree-item-gitignored"' in fn_block
 
 
@@ -504,7 +504,7 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
 def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
     js = _read_app_js()
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
-    fn_block = js[fn_start : fn_start + 2400]
+    fn_block = js[fn_start : js.index("// ── Custom tooltip", fn_start)]
     assert "if (!resp.ok)" in fn_block
     assert "throw new Error(`HTTP ${resp.status}`)" in fn_block
     assert "treeLazyFailureHtml(" in fn_block
@@ -674,7 +674,7 @@ def test_apply_cell_patch_inserts_new_rows_under_expanded_parent() -> None:
     assert "function _buildRowHtml(entry, options)" in js
     # applyCellPatch references them when no row exists.
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 5000]
+    fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert "_findChildContainerFor" in fn_block
     assert "_insertRowSorted" in fn_block
     assert "_insertRowSorted(container, entry, treeRenderOptionsForElement(panel))" in fn_block

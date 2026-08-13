@@ -25,7 +25,9 @@
   function isKnownEmptyFolder(row) {
     return (
       rowKind(row) === "folder" &&
-      (row.classList.contains("tree-item-empty") || row.dataset.treeEmpty === "true")
+      (row.classList.contains("tree-item-empty") ||
+        row.dataset.treeEmpty === "true" ||
+        !childGroup(row))
     );
   }
 
@@ -211,6 +213,9 @@
     }
 
     function prepareForMutation() {
+      if (mutation) {
+        return;
+      }
       const anchor = focusedRow();
       const parent = anchor ? parentRow(anchor) : null;
       const siblings = anchor?.parentElement ? directTreeItems(anchor.parentElement) : [];

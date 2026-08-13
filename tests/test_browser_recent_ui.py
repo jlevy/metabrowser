@@ -352,16 +352,14 @@ def test_set_selected_path_clears_when_path_falsy() -> None:
     assert "if (!path)" in fn_block
 
 
-def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
-    """Both the tree-pane click delegate's 'select' branch AND
-    revealInTree should funnel through setSelectedPath; otherwise
-    cross-panel selection breaks."""
+def test_set_selected_path_called_from_shared_activation_and_reveal() -> None:
+    """Pointer and keyboard activation share selection with deep-link reveal."""
 
     js = _read_app_js()
-    # The select-branch use is right after the action === "select".
+    # The select branch lives in the shared pointer/keyboard action.
     select_branch = js.index('action === "select"')
     select_block = js[select_branch : select_branch + 500]
-    assert "setSelectedPath(item.dataset.path)" in select_block
+    assert "setSelectedPath(row.dataset.path)" in select_block
 
     # revealInTree uses it.
     reveal_start = js.index("async function revealInTree(path)")
@@ -433,7 +431,7 @@ def test_find_root_readme_targets_tab_files_panel() -> None:
     js = _read_app_js()
     fn_start = js.index("function findRootReadme()")
     fn_block = js[fn_start : fn_start + 800]
-    assert "#tab-files > .tree-item.tree-file" in fn_block
+    assert "#tab-files > .tree-root > .tree-item.tree-file" in fn_block
 
 
 # ── DOMContentLoaded wiring ─────────────────────────────────

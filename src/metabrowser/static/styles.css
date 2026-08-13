@@ -1697,7 +1697,7 @@ html[data-prose-font="sans"] {
 /* Pagination sentinel — clickable row that swaps in the next batch
    of children for a directory that exceeded TREE_PAGE_SIZE. Compact
    and visually subordinate to real tree rows. */
-.tree-page-more {
+.tree-item.tree-page-more {
   padding: 2px 12px 2px 32px;
   cursor: pointer;
   user-select: var(--toggle-user-select);
@@ -1705,7 +1705,7 @@ html[data-prose-font="sans"] {
   font-style: italic;
   font-size: var(--ui-small-font-size);
 }
-.tree-page-more:hover {
+.tree-item.tree-page-more:hover {
   background: var(--hover-bg);
   color: var(--text);
 }
@@ -1725,6 +1725,11 @@ html[data-prose-font="sans"] {
   transition: background var(--transition-fast);
 }
 .tree-item:hover {
+  background: var(--hover-bg);
+}
+.tree-item:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
   background: var(--hover-bg);
 }
 /* Current item — same tinted background + accent left bar as the embedded
@@ -2456,9 +2461,9 @@ html[data-prose-font="sans"] {
    leads the pane and when rows do (a recency window renders no tally
    of its own). Margin, not padding, so the row's hover fill and its
    selected border stay the height of every other row. */
-.tree-summary + .tree-item,
-.tree-summary-filtered + .tree-item,
-.tree-content > * > .tree-item:first-child {
+.tree-summary + .tree-root > .tree-item:first-child,
+.tree-summary-filtered + .tree-root > .tree-item:first-child,
+.tree-content > * > .tree-root:first-child > .tree-item:first-child {
   margin-top: 4px;
 }
 .recent-truncated-note {

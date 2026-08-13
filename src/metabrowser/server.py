@@ -754,6 +754,7 @@ async def index(_request: Request) -> HTMLResponse:
     keyboard_shortcuts_url = _static_asset_url("keyboard_shortcuts.js")
     overlay_layer_url = _static_asset_url("overlay_layer.js")
     keyboard_help_url = _static_asset_url("keyboard_help.js")
+    tree_keyboard_navigation_url = _static_asset_url("tree_keyboard_navigation.js")
     search_palette_url = _static_asset_url("search_palette.js")
     app_url = _static_asset_url("app.js")
     perf_block = (
@@ -989,6 +990,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{keyboard_shortcuts_url}"></script>
   <script src="{overlay_layer_url}"></script>
   <script src="{keyboard_help_url}"></script>
+  <script src="{tree_keyboard_navigation_url}"></script>
   <script src="{search_palette_url}"></script>
   <script src="{app_url}"></script>
   {plugin_scripts}
