@@ -10,6 +10,9 @@ Checked items below are supported today; unchecked items are planned work.
 - [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
   rendering can evolve independently
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
+- [ ] Add
+  [contextual keyboard help and accessible tree navigation](docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
+  through one shortcut registry
 - [x] Add the client-only
   [Quick File finder](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
   over a complete live catalog of non-gitignored files

@@ -1,6 +1,6 @@
 # Feature: Menu Primitives and Gated File Actions
 
-**Date:** 2026-08-06 (last updated 2026-08-06)
+**Date:** 2026-08-06 (last updated 2026-08-12)
 
 **Author:** Metabrowser maintainers
 
@@ -33,8 +33,9 @@ Rename and trash are the proof that the vocabulary is real, not the reason to bu
 - Add an action registry so a menu’s contents are resolved from a context (what was
   clicked, which capabilities are live) instead of hard-coded per call site
 - Add an in-place edit primitive with commit, cancel, validation, and rollback
-- Add a context menu on nav-tree rows, opened by right-click and by the keyboard, which
-  requires giving tree rows a minimal keyboard focus order they lack today
+- Add a context menu on nav-tree rows, opened by right-click and by the keyboard, using
+  the shared focus model from the
+  [contextual keyboard plan](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
 - Add file rename and trash behind a `POST /api/mutate` capability gated at server
   startup
 - Keep every new browser module under the strict `tsconfig.json` gate and under
@@ -55,8 +56,9 @@ Rename and trash are the proof that the vocabulary is real, not the reason to bu
 - OS-level trash integration (`send2trash`) — rejected for now in favor of the
   quarantine design below; the quarantine layout leaves room to add it later
 - The full ARIA tree role model (`role="tree"`, `aria-expanded`, `aria-level`) for the
-  nav pane — this plan adds row focusability and a focus order, not complete tree
-  semantics
+  nav pane — that contract belongs to the
+  [contextual keyboard help and tree navigation](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
+  plan, and this plan consumes it rather than adding a competing focus model
 - Drag-and-drop move, multi-select, and bulk operations
 - Copy, duplicate, new file, and new folder — the registry makes them cheap to add, but
   each needs its own conflict semantics
@@ -118,9 +120,11 @@ Nothing in the app implements arrow-key roving focus, Home and End, or
 **Tree rows cannot take keyboard focus.** `renderTreeNodes` emits rows with no
 `tabindex`, so no row is reachable by keyboard at all — selection is mouse-only today,
 and a menu “opened on the focused row” has nothing to anchor to.
-The design-system accessibility checklist already promises keyboard operability, so a
-row-targeted menu cannot ship without closing at least the focus-order slice of this
-gap.
+The
+[contextual keyboard help and tree navigation](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
+plan now owns the complete focus, role, and arrow-key contract.
+A row-targeted menu depends on that shared navigator instead of landing a temporary
+focus-order subset.
 
 **The two behaviors we do have are trapped inside their features.** The custom tooltip
 (`app.js`) has the app’s only viewport-clamping logic, and it is private to
@@ -269,7 +273,10 @@ trailing edge for a keyboard shortcut rendered with the existing `.kbd` componen
 
 #### Browser: `static/action_registry.js` → `window.MetabrowserActions`
 
-The command primitive.
+The contextual action primitive.
+It decides which operations apply and whether they are enabled; the
+[contextual keyboard plan](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
+owns which keys invoke them and how those keys are presented.
 An action is a plain descriptor:
 
 ```js
@@ -302,9 +309,11 @@ request.
 The registry resolves and orders; it owns no progress or error UI. Each action drives
 its own surface — rename the inline editor, trash the confirmation dialog — which keeps
 the command layer thin.
-The same descriptors also serve entry points that are not menus: Phase 2 binds `F2` and
-`Delete` on the focused tree row to the same rename and trash actions, which is the
-content/command separation earning its keep.
+The same descriptors also serve entry points that are not menus: Phase 2 registers `F2`
+and `Delete` with the shared shortcut registry and delegates to the same rename and
+trash actions for the focused tree row.
+The action registry still owns applicability and capability checks; the shortcut
+registry owns matching, context, and presentation.
 
 #### Browser: `static/inline_edit.js` → `window.MetabrowserInlineEdit`
 
@@ -343,11 +352,10 @@ The context comes from the row’s existing `data-path`, `data-tip-type`, and
 `data-tip-name` attributes, and the row shows a menu-open target state (the existing
 hover surface) while its menu is up, so the target is visible without being selected.
 
-Keyboard reach is the prerequisite half of this integration: tree rows join a minimal
-roving-tabindex focus order — `ArrowUp`, `ArrowDown`, `Home`, `End` over the rendered
-rows, `Enter` mirroring click — scoped to rendered rows only.
-That is the smallest change that makes “open the menu on the focused row” true for a
-keyboard user; the full ARIA tree role model stays out (see Non-Goals).
+Keyboard reach is a prerequisite supplied by the
+[contextual keyboard plan](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md).
+This integration reads that navigator’s focused row and does not install its own
+roving-tabindex, arrow-key, or activation handlers.
 
 #### Server: `src/metabrowser/mutations.py`
 
@@ -460,8 +468,8 @@ drive-by-write path.
 - [ ] Add `action_registry.js` with context resolution and capability-aware enablement
 - [ ] Add `inline_edit.js` with selection, commit, cancel, validation, pending, error,
   re-mount across re-renders, and restore
-- [ ] Give tree rows the minimal roving-tabindex focus order — arrow keys over rendered
-  rows, `Enter` mirroring click — so the focused row is a real menu target
+- [ ] Integrate the context-menu target with the focused-row contract from the
+  contextual keyboard plan, without registering a second tree-navigation handler
 - [ ] Wire the one nav-tree `contextmenu` handler for pointer and keyboard, registering
   the real rename and trash descriptors; with no `CAPABILITIES` published yet they
   render disabled with their reasons, which is the Phase 1 deliverable
@@ -489,8 +497,8 @@ drive-by-write path.
   the confirmation dialog — the app has icon, tab, and filter buttons but no plain text
   button today
 - [ ] Wire rename to `inline_edit.js` and trash to a confirmation on the shared modal
-  shell, and bind `F2` and `Delete` on the focused tree row to the same descriptors,
-  hints rendered through `.menu-item-hint`
+  shell, and register `F2` and `Delete` through the shared shortcut registry against the
+  same focused-row action descriptors; menu hints still render through `.menu-item-hint`
 - [ ] Document the capability, the quarantine trash semantics, and the trusted-local
   warning
 
