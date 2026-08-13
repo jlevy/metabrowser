@@ -215,8 +215,13 @@ The supported API is available as `window.metabrowser`.
 
 ```javascript
 mb.registerView(kind, viewId, {
-  async render(container, ctx) {
+  render(container, ctx) {
     // Own the contents of container.
+    return {
+      dispose() {
+        // Abort this mount's requests and release retained resources.
+      },
+    };
   },
   dispose(container) {
     // Abort requests, remove global listeners, and destroy retained resources.
@@ -230,6 +235,9 @@ Nondefault tabs mount lazily.
 It does not run for an ordinary tab switch.
 The shell passes the same `container` that was supplied to `render`, so shared renderers
 can keep state per mounted view instead of using one module-wide slot.
+`render` may return an instance handle with an idempotent `dispose()` method, directly
+or through a promise.
+Prefer that form when one renderer can have multiple mounts.
 
 The context contains the served-root-relative `path`, selected `kind`, logical `ext`,
 size, frontmatter, body text where applicable, and the raw `/api/file` envelope.
@@ -244,7 +252,7 @@ Useful helpers include:
 - `render(template, data)` for auto-escaped Mustache templates;
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
-- `formatSize`, `formatTimestamp`, and `sizeHtml`;
+- `formatSize`, `formatInteger`, `formatFileCount`, `formatTimestamp`, and `sizeHtml`;
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
@@ -268,6 +276,84 @@ Build DOM elements, attach listeners, and keep cleanup handles in the renderer c
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `openPath(path)` asks the shell to navigate without reaching into private `app.js`
   functions.
+
+Folder aggregate views can use these bounded inventory helpers:
+
+- `fetchRollup(path, options)` reads the in-memory subtree rollup.
+  `depth`, `top`, `ext_top`, and `ext_rank` map to `/api/rollup`; use `depth: 0`,
+  `top: 0`, and `ext_rank: "dual"` for a tally-only count-and-byte summary.
+- `watchRollup(path, options, onUpdate)` performs the initial fetch and refreshes after
+  relevant inventory changes.
+  Supply `active` to gate hidden views and `onError` for a local failure state.
+  Always call the returned handle’s `dispose()`; when `stale()` is true after
+  activation, call `refresh()`.
+- Each `ext_tallies` row is
+  `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
+  extension is the aggregate **Other** tail; `(none)` is the distinct extensionless
+  category.
+
+### Folder Overview Contributions
+
+The built-in folder plugin publishes `mb.folderOverview` before installed plugins load.
+Use it when a capability summarizes a folder inside **Overview**. A primary working mode
+such as a future Files listing remains a normal `registerView("folder", ...)` tab.
+
+```javascript
+const unregister = mb.folderOverview.registerPanel("hello.license", {
+  label: "License",
+  placement: "supplemental",
+  presentation: "surface",
+  printable: false,
+  async resolve(ctx, { signal }) {
+    const url = new URL("/api/plugin/hello/license", window.location.origin);
+    url.searchParams.set("path", ctx.path);
+    const response = await fetch(url, { signal });
+    if (!response.ok) {
+      throw new mb.errors.RequestError("Could not load the license summary.", {
+        operation: "helloLicense",
+        status: response.status,
+      });
+    }
+    const data = await response.json();
+    return data.present ? { key: data.path, data } : null;
+  },
+  mount(container, _ctx, data, { signal }) {
+    container.textContent = data.summary;
+    return {
+      dispose() {
+        // Remove listeners and cancel work owned by this mount.
+      },
+    };
+  },
+});
+```
+
+Panel IDs must be plugin-qualified.
+`placement` is `summary`, `content`, or `supplemental`; fixed placement order and then
+the panel ID determine layout.
+`presentation` is `surface` for standard panel chrome or `document` when the renderer
+owns its normal document surface.
+Set `required: true` only when returning null is a contract error.
+A resolver returns `{key, data}` or null; matching keys preserve a mounted panel and
+call its optional `update(ctx, data)` method.
+Resolvers and mounts receive abort signals, one failure remains local to its panel, and
+every returned disposer must be idempotent.
+`listPanels()` returns the frozen deterministic descriptor list.
+
+The surrounding folder envelope is available through
+`mb.folderContext.subscribe(path, onUpdate)`. The shell seeds and multiplexes that
+context, so subscribers do not start parallel `/api/file` refreshes.
+Unsubscribe on disposal.
+`mb.viewState.isActive(container)` and `subscribeActive(container, listener)` let a lazy
+view defer hidden work.
+A composite renderer calls `mb.setViewPrintState(container, state)` when its effective
+printability changes.
+
+The Markdown built-in exposes
+`mb.builtins.markdown.mountRendered(container, ctx, {signal})` for a document panel.
+It uses the ordinary KPress Markdown presentation and returns an instance-specific
+handle that aborts its request and disposes its own table of contents.
+Do not copy Markdown DOM or TOC behavior into a folder contribution.
 
 Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variables in
 `app.js` are implementation details and may change without a plugin compatibility

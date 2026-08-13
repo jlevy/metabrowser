@@ -45,9 +45,9 @@ Replacing the preview pane disposes mounted plugin views.
 Switching tabs does not: their DOM and captured state remain available until a different
 file replaces the pane.
 
-## Planned Folder Views and Overview Composition
+## Folder Views and Overview Composition
 
-The folder-view work extends the same request and registry flow to directories.
+Folder views extend the same request and registry flow to directories.
 `/api/file` returns `kind: "folder"`, an ordered set of top-level folder view
 descriptors, folder aggregates, and bounded direct-child discovery facts such as
 `readme_path`. The served root and selected nested folders use the same envelope and
@@ -261,7 +261,7 @@ route stack.
 - [Security policy and content trust model](../SECURITY.md)
 - [Plugin authoring](plugins.md)
 - [Design system](design-system.md)
-- [Folder Overview panels and file-type summary](project/specs/active/plan-2026-08-12-directory-file-type-summary.md)
+- [Folder Overview panels and file-type summary](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
 - [End-to-end testing](e2e-testing.md)
 - [Real-time debugging](realtime-debugging.md)
 - [Development](development.md)

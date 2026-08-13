@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** In progress
+**Status:** Complete
 
 ## Overview
 
@@ -1393,63 +1393,63 @@ types meet only in the final composition, avoiding a long serial implementation 
 
 - [x] Port the three baseline slices from `feat/folder-treemap` onto current `main`
   while preserving newer shell behavior.
-- [ ] Move WIP code directly into the target modules; do not land the hard-coded README
+- [x] Move WIP code directly into the target modules; do not land the hard-coded README
   tab or monolithic folder plugin as an intermediate public contract.
-- [ ] Update root startup and folder route tests so no-hash startup opens root Overview.
+- [x] Update root startup and folder route tests so no-hash startup opens root Overview.
 
 ### Phase 1: Stabilize the Server Data Plane
 
 - [x] Extract `inventory_rollup.py` and make `InventoryIndex.rollup` a thin delegate.
 - [x] Add zero-depth/top bounds, opt-in dual ranking, exact Other arithmetic, and full
   wire validators.
-- [ ] Add bounded README discovery and make the folder envelope always advertise
+- [x] Add bounded README discovery and make the folder envelope always advertise
   Overview and Treemap.
 - [x] Lock byte-heavy, count-heavy, ignored-only, extensionless, compound-extension,
   zero-byte, cold, scanning, truncated, and empty fixtures before browser work.
 
 ### Phase 2: Add Strict Reusable Browser Primitives
 
-- [ ] Add request errors, shared formatters, scoped inventory watch, generic
+- [x] Add request errors, shared formatters, scoped inventory watch, generic
   contribution registry, resource-context store, and view-state bridge under strict
   check-JS.
-- [ ] Reduce `plugin_sdk.js` to adapters for those modules and extend exact public
+- [x] Reduce `plugin_sdk.js` to adapters for those modules and extend exact public
   types.
-- [ ] Integrate context seeding, dynamic print state, per-instance view handles, and
+- [x] Integrate context seeding, dynamic print state, per-instance view handles, and
   root folder startup into `app.js` with focused DOM tests.
 
 ### Phase 3: Build Overview and Instance-Safe Markdown
 
-- [ ] Split Markdown source/rendered modules and replace singleton TOC state with a
+- [x] Split Markdown source/rendered modules and replace singleton TOC state with a
   returned mount handle.
-- [ ] Add the folder Overview registry facade and keyed composer with independent
+- [x] Add the folder Overview registry facade and keyed composer with independent
   resolve, mount, Retry, print, and disposal boundaries.
-- [ ] Register README as a conditional document contribution and prove parity with the
+- [x] Register README as a conditional document contribution and prove parity with the
   ordinary Markdown view.
-- [ ] Register a synthetic third panel in tests to prove that composer markup contains
+- [x] Register a synthetic third panel in tests to prove that composer markup contains
   no built-in panel branching.
 
 ### Phase 4: Build File Types and Integrate Treemap
 
-- [ ] Add the pure File types model, paired distribution view, controller, disclosure
+- [x] Add the pure File types model, paired distribution view, controller, disclosure
   persistence, exact empty states, and Show ignored switching.
-- [ ] Add the path-scoped palette pool and route both File types and type-grouped
+- [x] Add the path-scoped palette pool and route both File types and type-grouped
   Treemap marks through it.
-- [ ] Split the WIP Treemap into layout, model, and controller modules and adopt the
+- [x] Split the WIP Treemap into layout, model, and controller modules and adopt the
   supported active-view lifecycle.
-- [ ] Register File types as the required first summary panel and validate Overview with
+- [x] Register File types as the required first summary panel and validate Overview with
   README, without README, and completely empty.
 
 ### Phase 5: Documentation, Packaging, and Validation
 
-- [ ] Document the shipped `mb.folderOverview`, folder-context, view-state, rollup, and
+- [x] Document the shipped `mb.folderOverview`, folder-context, view-state, rollup, and
   Markdown mount contracts in `docs/plugins.md`.
-- [ ] Change the main architecture and design-system sections from planned to shipped,
+- [x] Change the main architecture and design-system sections from planned to shipped,
   preserving this spec as the detailed authority.
-- [ ] Verify manifest-driven JS/CSS inclusion, strict type coverage, wheel contents, and
+- [x] Verify manifest-driven JS/CSS inclusion, strict type coverage, wheel contents, and
   installed-wheel smoke behavior.
-- [ ] Complete real-browser light/dark, wide/narrow, keyboard, reduced-motion, live
+- [x] Complete real-browser light/dark, wide/narrow, keyboard, reduced-motion, live
   update, and print review.
-- [ ] Run `make verify`, review the final diff, sync and close completed tbd children,
+- [x] Run `make verify`, review the final diff, sync and close completed tbd children,
   push the branch, and watch CI to completion.
 
 ## Testing Strategy

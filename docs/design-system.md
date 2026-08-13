@@ -373,9 +373,9 @@ Do not add filename-specific CSS selectors.
 
 ### Aggregate Distributions
 
-The active
-[Folder Overview plan](project/specs/active/plan-2026-08-12-directory-file-type-summary.md)
-introduces the first instance of this component contract.
+The shipped
+[Folder Overview plan](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
+defines the first instance of this component contract.
 An aggregate distribution relates exact categories across one or more compact stacked
 bars and an adjacent value table.
 It is distinct from the broad `ft-*` identity system: several exact extensions may
@@ -387,7 +387,7 @@ a track token, and named track-height and segment-gap tokens.
 Consumers select palette classes; they do not copy color literals or set theme colors
 inline. Inline unitless weights are allowed because they encode data rather than theme.
 
-The planned token family is `--mb-distribution-category-1` through
+The token family is `--mb-distribution-category-1` through
 `--mb-distribution-category-12`, plus `--mb-distribution-other`,
 `--mb-distribution-track`, `--mb-distribution-track-height`, and
 `--mb-distribution-segment-gap`. Shared `.mb-distribution-slot-*` and
@@ -423,7 +423,7 @@ itself requires independent horizontal or virtual scrolling.
 
 ### Folder Views Are Tabs
 
-The active Folder Overview plan applies these rules as folder views land.
+The Folder Overview applies these rules to every served directory.
 A tab changes the primary way the selected item is inspected.
 For folders, **Overview** is the default tab and **Treemap** is a peer visualization.
 A future **Files** listing also belongs at this level because it replaces the primary

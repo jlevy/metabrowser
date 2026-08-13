@@ -18,7 +18,6 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [Full-page HTML rendering and an explicit trust model](specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
 - [Filter controls and fine-grained navigation filtering](specs/active/plan-2026-08-09-nav-filter-controls.md)
-- [Folder Overview panels and file-type summary](specs/active/plan-2026-08-12-directory-file-type-summary.md)
 
 ## Research
 
@@ -30,6 +29,7 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 
 - [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
 - [Flat single-command `metab` CLI](specs/done/plan-2026-07-27-metab-flat-cli.md)
+- [Folder Overview panels and file-type summary](specs/done/plan-2026-08-12-directory-file-type-summary.md)
 
 The [roadmap](../../TODO.md) is the concise status index.
 Draft architecture and plan documents record intent rather than compatibility
