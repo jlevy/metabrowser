@@ -1,4 +1,4 @@
-// Initial file-tree expansion planner.
+// File-tree disclosure state and initial expansion planner.
 //
 // The shell renders root folders in source order, but expands the cheapest
 // eligible folders first so the initial navigation stays within one viewport.
@@ -113,8 +113,36 @@
     return Math.max(1, Math.floor(viewportHeight / rowHeight));
   }
 
+  /**
+   * Apply one disclosure state to both halves of a rendered folder.
+   *
+   * @param {HTMLElement} row
+   * @param {HTMLElement} children
+   * @param {boolean} expanded
+   */
+  function setFolderExpanded(row, children, expanded) {
+    children.style.display = expanded ? "block" : "none";
+    row.classList.toggle("expanded", expanded);
+    row.classList.toggle("collapsed", !expanded);
+  }
+
+  /**
+   * Toggle a rendered folder and return its new expanded state.
+   *
+   * @param {HTMLElement} row
+   * @param {HTMLElement} children
+   * @returns {boolean}
+   */
+  function toggleFolderExpanded(row, children) {
+    const expanded = children.style.display === "none";
+    setFolderExpanded(row, children, expanded);
+    return expanded;
+  }
+
   window.MetabrowserTreeExpansion = Object.freeze({
     chooseDefaultExpandedPaths,
+    setFolderExpanded,
+    toggleFolderExpanded,
     visibleRowBudget,
   });
 })();

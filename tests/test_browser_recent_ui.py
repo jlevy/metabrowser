@@ -369,6 +369,32 @@ def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
     assert "setSelectedPath(path)" in reveal_block
 
 
+def test_folder_row_click_selects_opens_and_toggles_the_folder() -> None:
+    """A folder row is one target, including its chevron hotspot.
+
+    Every activation must keep navigation and disclosure together: open the
+    folder Overview, then toggle the immediate subtree in either direction.
+    """
+
+    js = _read_app_js()
+    handler_start = js.index('treePane.addEventListener("click"')
+    handler_block = js[handler_start : handler_start + 3400]
+    select_dir_start = handler_block.index('action === "select-dir"')
+    select_dir_block = handler_block[select_dir_start : select_dir_start + 500]
+    assert "setSelectedPath(item.dataset.path)" in select_dir_block
+    assert "selectFile(item.dataset.path)" in select_dir_block
+    assert "toggleTreeFolder(item, e.shiftKey)" in select_dir_block
+    assert "isToggleHotspot" not in handler_block
+
+
+def test_initial_and_live_folder_rows_share_the_select_dir_action() -> None:
+    """Live inserts must not regress to chevron-only folder behavior."""
+
+    js = _read_app_js()
+    assert js.count('data-action="select-dir"') == 2
+    assert 'data-action="toggle"' not in js
+
+
 # ── Auto-expand behavior ───────────────────────────────────────
 
 

@@ -3620,11 +3620,11 @@ pre.code-block code.hljs {
 }
 /* Left-align folder names with file names. A file row leads with a 16px icon
    box (.tree-item-icon); a folder row leads with the chevron inside its
-   .tree-toggle hotspot, so the wrapper's 2px inline margins make its
+   .tree-toggle wrapper, so the wrapper's 2px inline margins make its
    margin-box 16px to match the icon box (glyph stays 12px, centered), so
    names align at every indent level. Scoped to .tree-folder so the shared
-   tally-tree chevron is unaffected. The hotspot is the expand/collapse
-   control; the rest of the row selects the folder for preview. */
+   tally-tree chevron is unaffected. The entire folder row shares one
+   disclosure-and-navigation action. */
 .tree-folder > .tree-toggle {
   display: inline-flex;
   align-items: center;
@@ -3632,9 +3632,6 @@ pre.code-block code.hljs {
   margin-inline: 2px;
   flex-shrink: 0;
   border-radius: var(--radius-circle);
-}
-.tree-folder > .tree-toggle:hover {
-  background: var(--hover-bg);
 }
 .tree-folder > .tree-toggle .toggle-chevron {
   margin: 0;

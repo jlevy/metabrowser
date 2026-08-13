@@ -492,6 +492,8 @@ type MetabrowserTreeExpansion = {
     maxVisibleRows: number,
     pageSize: number,
   ): Set<string>;
+  setFolderExpanded(row: HTMLElement, children: HTMLElement, expanded: boolean): void;
+  toggleFolderExpanded(row: HTMLElement, children: HTMLElement): boolean;
   visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
 };
 

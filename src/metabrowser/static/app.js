@@ -1117,7 +1117,7 @@ function renderTreeNodes(nodes, isRoot, options) {
       var dirChip = treeDirChipHtml(node.total_files, node.total_size, options);
       parts.push(
         `<div class="tree-item tree-folder ${stateClass}${mutedCls}" data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
-        `<span class="tree-toggle" data-role="toggle">${ICONS.toggle}</span>`,
+        `<span class="tree-toggle">${ICONS.toggle}</span>`,
         '<span class="tree-item-name">',
         esc(node.name),
         "</span>",
@@ -1683,9 +1683,7 @@ async function expandAllDescendants(container) {
     if (!ch?.classList.contains("tree-children")) {
       continue;
     }
-    ch.style.display = "block";
-    folder.classList.remove("collapsed");
-    folder.classList.add("expanded");
+    window.MetabrowserTreeExpansion.setFolderExpanded(folder, ch, true);
     if (ch.querySelector(":scope > .tree-lazy-placeholder")) {
       await loadSubtree(folder.dataset.path, ch);
     }
@@ -1698,10 +1696,32 @@ function collapseAllDescendants(container) {
     ch.style.display = "none";
     var folder = ch.previousElementSibling;
     if (folder?.classList.contains("tree-folder")) {
-      folder.classList.remove("expanded");
-      folder.classList.add("collapsed");
+      window.MetabrowserTreeExpansion.setFolderExpanded(folder, ch, false);
     }
   });
+}
+
+function toggleTreeFolder(item, recursive) {
+  var children = /** @type {HTMLElement | null} */ (item.nextElementSibling);
+  if (!children?.classList.contains("tree-children")) {
+    return;
+  }
+  var expanded = window.MetabrowserTreeExpansion.toggleFolderExpanded(item, children);
+  if (!expanded) {
+    if (recursive) {
+      collapseAllDescendants(children);
+    }
+    return;
+  }
+  var needsLoad = !!children.querySelector(":scope > .tree-lazy-placeholder");
+  if (needsLoad) {
+    var load = loadSubtree(item.dataset.path, children);
+    if (recursive) {
+      load.then(() => expandAllDescendants(children));
+    }
+  } else if (recursive) {
+    expandAllDescendants(children);
+  }
 }
 
 treePane.addEventListener("click", (e) => {
@@ -1731,64 +1751,13 @@ treePane.addEventListener("click", (e) => {
     return;
   }
   const action = item.dataset.action;
-  // The chevron hotspot expands/collapses without selecting; anywhere
-  // else on a folder row selects the folder for preview (select-dir).
-  const isToggleHotspot = !!target.closest('[data-role="toggle"]');
-  if (action === "toggle" || isToggleHotspot) {
-    var children = /** @type {HTMLElement | null} */ (item.nextElementSibling);
-    if (!children) {
-      return;
-    }
-    if (e.shiftKey) {
-      // Shift+click: recursive expand/collapse.
-      var wasExpanded = children.style.display !== "none";
-      if (wasExpanded) {
-        collapseAllDescendants(children);
-        children.style.display = "none";
-        item.classList.remove("expanded");
-        item.classList.add("collapsed");
-      } else {
-        children.style.display = "block";
-        item.classList.remove("collapsed");
-        item.classList.add("expanded");
-        if (children.querySelector(":scope > .tree-lazy-placeholder")) {
-          loadSubtree(item.dataset.path, children).then(() => {
-            expandAllDescendants(children);
-          });
-        } else {
-          expandAllDescendants(children);
-        }
-      }
-    } else {
-      // Normal click: toggle single level.
-      var isExpanded = children.style.display !== "none";
-      children.style.display = isExpanded ? "none" : "block";
-      item.classList.toggle("expanded", !isExpanded);
-      item.classList.toggle("collapsed", isExpanded);
-      if (!isExpanded && children.querySelector(".tree-lazy-placeholder")) {
-        loadSubtree(item.dataset.path, children);
-      }
-    }
-  } else if (action === "select") {
+  if (action === "select") {
     setSelectedPath(item.dataset.path);
     selectFile(item.dataset.path);
   } else if (action === "select-dir") {
     setSelectedPath(item.dataset.path);
     selectFile(item.dataset.path);
-    // Selecting a folder also reveals its children (expand-only: a
-    // second click re-previews without collapsing; collapse lives on
-    // the chevron hotspot).
-    var dirChildren = /** @type {HTMLElement | null} */ (item.nextElementSibling);
-    if (dirChildren?.classList.contains("tree-children")) {
-      if (dirChildren.style.display === "none") {
-        dirChildren.style.display = "block";
-        item.classList.remove("collapsed");
-        item.classList.add("expanded");
-      }
-      if (dirChildren.querySelector(":scope > .tree-lazy-placeholder")) {
-        loadSubtree(item.dataset.path, dirChildren);
-      }
-    }
+    toggleTreeFolder(item, e.shiftKey);
   }
 });
 
@@ -4816,7 +4785,7 @@ function _buildRowHtml(entry, options) {
     return (
       '<div class="tree-item tree-folder collapsed' +
       muted +
-      '" data-action="toggle" data-path="' +
+      '" data-action="select-dir" data-path="' +
       esc(entry.path) +
       '" data-tip-type="dir" data-tip-name="' +
       esc(name) +
@@ -4827,7 +4796,9 @@ function _buildRowHtml(entry, options) {
       '" data-tip-mtime="' +
       nullableDataValue((entry.newest_mtime_ns || 0) / 1e9) +
       '">' +
+      '<span class="tree-toggle">' +
       ICONS.toggle +
+      "</span>" +
       '<span class="tree-item-name">' +
       esc(name) +
       "</span>" +
@@ -5462,11 +5433,7 @@ async function revealInTree(path) {
         if (children.querySelector(".tree-lazy-placeholder")) {
           await loadSubtree(current, children);
         }
-        if (children.style.display === "none") {
-          children.style.display = "block";
-          folder.classList.remove("collapsed");
-          folder.classList.add("expanded");
-        }
+        window.MetabrowserTreeExpansion.setFolderExpanded(folder, children, true);
       }
     }
   }

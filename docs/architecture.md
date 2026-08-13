@@ -113,6 +113,12 @@ starting one folder request per panel.
 Aggregate panels retain their own bounded watchers when their data plane differs, and
 every subscription ends when the selected path is replaced.
 
+Tree disclosure and folder navigation share one row-activation path.
+The activation selects the folder and starts its ordinary `/api/file` request while
+synchronously toggling the row’s direct-child container.
+Repeated activation can therefore collapse the tree branch without changing the selected
+folder or replacing its Overview.
+
 Overview exists even when no optional panel applies.
 File types remains mounted for a complete empty folder and renders an explicit
 zero-total state without bars, a table, or a synthetic README region.

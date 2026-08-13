@@ -190,6 +190,20 @@ typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
 
+### Navigation Tree Folders
+
+A folder row is one activation target, including its chevron, name, and metadata.
+Activating it selects the folder, opens its default **Overview** view, and toggles its
+immediate children. Activating an already open folder collapses its children without
+clearing the folder selection or replacing Overview.
+
+The chevron is a state indicator within that target, not a second action with separate
+navigation semantics.
+Its direction and the child container’s visibility derive from the same expanded state
+so they cannot drift.
+Shift-activation applies the same open or close direction recursively, while still
+selecting the folder and opening Overview.
+
 ## Icons and Icon Buttons
 
 Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
