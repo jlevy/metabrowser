@@ -18,8 +18,8 @@ their own panels without rewriting Overview.
 The File types panel adopts the compact proportional grammar that makes GitHub’s
 repository language panel useful, but describes the files Metabrowser actually indexes
 rather than inferring programming languages.
-One structured table groups rows under **Code**, **Data**, and **Other** and compares
-two metrics:
+One structured table groups rows under **Documentation**, **Code**, **Data**, and
+**Other** and compares two metrics:
 
 - **Files** shows the absolute file count, a bar normalized to total indexed files, and
   the percentage
@@ -32,8 +32,13 @@ For example:
 CODE
 .py     150 files  ██████       12%     10 MB  ███████████████  30%
 
-OTHER
+DOCUMENTATION
 .md      63 files  ██            5%      1 MB  ██                3%
+
+OTHER
+.bin      1 file   ▏          <0.1%    512 KB  █               1.5%
+
+Total   250 files  ██████████  100%     33 MB  ███████████████ 100%
 ```
 
 The two fills on a row use the same stable type color, so the user can compare how a
@@ -115,8 +120,8 @@ Three changes make the pattern more useful for a file browser:
 
 1. Count and byte share get separate inline bars on every row because they answer
    different questions.
-2. Code, Data, and Other row groups make a longer list easier to scan without inventing
-   group totals.
+2. Documentation, Code, Data, and Other row groups reuse the navigation-preset
+   vocabulary to make a longer list easier to scan without inventing group totals.
 3. The rows retain absolute counts and sizes, so the visualization never hides the
    underlying quantities.
 
@@ -225,6 +230,7 @@ The data selection must account for both dimensions before the UI is trustworthy
     right-aligned percentage.
     Fills are decorative, do not become tab stops, and are hidden from the accessibility
     tree. Color is never the only path to the data.
+    Type labels are bold scan anchors.
 14. **Overview supports surface and document presentations.** The composer aligns every
     contribution to the responsive Markdown text column and supplies one shared section
     heading. Surface panels are flat rather than boxed; Overview also removes README’s
@@ -242,13 +248,17 @@ The data selection must account for both dimensions before the UI is trustworthy
 17. **One watch belongs to each mounted summary.** It uses `watchRollup` with the view’s
     active gate, aborts in-flight work on disposal, and updates keyed rows in place.
     Hidden lazy views do not keep polling, and updates preserve keyed rows and fills.
-18. **Code, Data, and Other are presentation groups, not new rollups.** Code and Data
-    reuse the shared broad filter-preset extension vocabulary.
-    Compound extensions inherit a recognized suffix; docs, media, archives,
+18. **Documentation, Code, Data, and Other are presentation groups, not new rollups.**
+    Documentation, Code, and Data reuse the complete shared navigation-preset extension
+    vocabulary. Compound extensions inherit a recognized suffix; docs, media, archives,
     extensionless files, unknown extensions, and the rollup-tail row fall under Other.
     Empty groups are omitted, group headings carry no subtotal, and rows keep
     deterministic server order within a group.
     The rollup tail is labelled **Remaining types** so it is distinct from the group.
+19. **The table closes with the selected population.** A semantic Total footer repeats
+    the exact file and byte totals.
+    Its two neutral tracks are filled to 100%; a zero-byte population truthfully uses
+    `0 B`, `0%`, and no Size fill.
 
 ### Information Architecture
 
@@ -279,14 +289,17 @@ FILE TYPES
 Including ignored                         1,250 files · 33.3 MB
 
 Type                    Files                         Size
+DOCUMENTATION
+.md        23 files █       1.8%      400 KB █             1.2%
 CODE
 .py       150 files ████████ 12%       10 MB ██████████████ 30%
 .js        75 files ████      6%       18 MB █████████████████ 54%
 DATA
 .json      63 files ███      5%         1 MB ██              3%
 OTHER
-.md        23 files █       1.8%      400 KB █             1.2%
+.bin        1 file  ▏       <0.1%      512 KB █             1.5%
 Remaining types …
+Total    1,250 files ███████ 100%      33.3 MB ████████████ 100%
 
 README
 ──────────────────────────────────────────────────────────────
@@ -1168,9 +1181,10 @@ This file is pure and has no DOM, fetch, preference, or global access.
 - `selectPopulation(envelope, showIgnored)` chooses all or unignored integer columns.
 - `formatPercent(numerator, denominator, formatter)` implements zero, `<0.1%`, and
   at-most-one-decimal behavior from the design.
-- `createFileTypeCategoryClassifier(rawPresets)` builds the Code/Data/Other presentation
-  classifier from shared browser settings, with suffix inheritance for compound
-  extensions and Other as the safe fallback.
+- `createFileTypeCategoryClassifier(rawPresets)` builds the
+  Documentation/Code/Data/Other presentation classifier from the complete shared
+  navigation-preset vocabulary, with suffix inheritance for compound extensions and
+  Other as the safe fallback.
 - `buildFileTypeSummaryModel(envelope, showIgnored, formatters, classifyCategory)`
   returns one discriminated model for `pending`, `populated`, `empty`, `ignored-only`,
   `zero-bytes`, or `truncated`.
@@ -1185,8 +1199,9 @@ This file is pure and has no DOM, fetch, preference, or global access.
 - `mountDistributionView(container, model, palette)` builds the metadata row and
   semantic Type/Files/Size table once.
 - `updateDistributionView(handle, model)` keys DOM rows by extension key, updates text
-  and fill widths in place, moves rows under Code/Data/Other row-group bodies, and
-  removes stale rows or empty groups without replacing retained elements.
+  and fill widths in place, moves rows under Documentation/Code/Data/Other row-group
+  bodies, updates the neutral Total footer, and removes stale rows or empty groups
+  without replacing retained elements.
 - Each metric cell owns a right-aligned tally, an `aria-hidden` track and fill, and a
   right-aligned percentage.
   Files and Size reuse the row’s palette class.
@@ -1502,11 +1517,13 @@ types meet only in the final composition, avoiding a long serial implementation 
   that adding a panel does not require an Overview template branch.
   They distinguish a future top-level Files view from an Overview contribution.
 - Pure tests cover percent formatting boundaries, zero denominators, count
-  pluralization, byte-unit boundaries, maximum-share ordering, Code/Data/Other
-  classification, stable color slots, Other-last behavior, and malformed rows.
-- DOM tests assert Code/Data/Other row-group order, the same slot class on both metric
-  fills, real table headers, exact adjacent values, hidden decorative tracks, flat
-  section structure, and escaped labels.
+  pluralization, byte-unit boundaries, maximum-share ordering,
+  Documentation/Code/Data/Other classification from shared presets, stable color slots,
+  Other-last behavior, and malformed rows.
+- DOM tests assert Documentation/Code/Data/Other row-group order, the same slot class on
+  both metric fills, real table headers, exact adjacent values, the neutral Total
+  footer, the zero-byte total state, hidden decorative tracks, flat section structure,
+  and escaped labels.
 - Lifecycle tests assert one active watch, no hidden-view refresh, abort and listener
   cleanup on disposal, Retry recovery, and focus preservation during keyed updates.
 - Filter tests assert that **Show ignored** changes the selected integer columns while
@@ -1596,12 +1613,16 @@ root behave differently from nested folders.
   conditional document panel below the summary band and uses the ordinary rendered
   Markdown presentation
 - An explicitly opened README has no directory summary
-- The panel shows a fixed Type/Files/Size table grouped under Code, Data, and Other,
-  omitting empty groups and adding no group subtotals
+- The panel shows a fixed Type/Files/Size table grouped under Documentation, Code, Data,
+  and Other from the same extension vocabulary used by navigation, omitting empty groups
+  and adding no group subtotals
 - Each row shows logical type plus absolute file count, a total-normalized file fill,
   file percentage, formatted bytes, a total-normalized byte fill, and byte percentage
 - Files and Size use the same row color; no separate circle, aggregate bar, or legend is
   needed
+- A neutral Total footer repeats the selected population’s exact Files and Size values;
+  each populated metric fills its track to 100%, while a zero-byte population remains at
+  `0 B`, `0%`, and no fill
 - A count-heavy type and a byte-heavy type both survive the top-ten bound
 - No extension is a named group, and compound extensions use their canonical indexed
   type

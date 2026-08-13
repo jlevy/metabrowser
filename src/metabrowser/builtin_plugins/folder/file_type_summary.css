@@ -79,7 +79,7 @@
 
 .file-type-summary-type {
   overflow-wrap: anywhere;
-  font-weight: var(--weight-normal);
+  font-weight: var(--weight-bold);
 }
 
 .file-type-summary-group:not(:first-of-type) .file-type-summary-group-row th {
@@ -93,6 +93,19 @@
   font-weight: var(--label-font-weight);
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
+}
+
+.file-type-summary-table tfoot {
+  border-top: 1px solid var(--border);
+}
+
+.file-type-summary-total-row th,
+.file-type-summary-total-row td {
+  padding-top: 9px;
+}
+
+.file-type-summary-total-row th {
+  font-weight: var(--weight-bold);
 }
 
 .file-type-summary-table td.file-type-summary-metric {
@@ -116,6 +129,10 @@
 .file-type-summary-percent {
   text-align: right;
   white-space: nowrap;
+}
+
+.file-type-summary-total-row .file-type-summary-value {
+  font-weight: var(--weight-bold);
 }
 
 .file-type-summary-track {
@@ -148,20 +165,20 @@
 
 @container (max-width: 460px) {
   .file-type-summary-table {
-    --file-type-summary-metric-gap: 4px;
-    --file-type-summary-metric-padding: 8px;
-    --file-type-summary-size-padding: 14px;
-    --file-type-summary-value-width: 48px;
+    --file-type-summary-metric-gap: 3px;
+    --file-type-summary-metric-padding: 6px;
+    --file-type-summary-size-padding: 10px;
+    --file-type-summary-value-width: 58px;
   }
 
   .file-type-summary-type-column {
-    width: 24%;
+    width: 22%;
   }
 
   .file-type-summary-metric-content {
     grid-template-columns:
       var(--file-type-summary-value-width) minmax(16px, 1fr)
-      3.4em;
+      3.2em;
   }
 }
 

@@ -6,6 +6,13 @@ function element(parent, className) {
   return child;
 }
 
+const CATEGORY_LABELS = Object.freeze({
+  docs: "Documentation",
+  code: "Code",
+  data: "Data",
+  other: "Other",
+});
+
 /** @param {"files" | "bytes"} metric */
 function createMetricCell(metric) {
   const cell = document.createElement("td");
@@ -51,6 +58,7 @@ export function mountDistributionView(container, model, palette) {
     /** @type {Map<FileTypeCategory, SummaryGroupHandle>} */
     groups: new Map(),
     table: /** @type {HTMLTableElement | null} */ (null),
+    totalRow: /** @type {SummaryTotalHandle | null} */ (null),
     status: /** @type {HTMLElement | null} */ (null),
     mode: "",
   };
@@ -93,6 +101,7 @@ export function updateDistributionView(handle, model) {
 
   ensureDistributionBody(handle);
   updateRows(handle, model.rows);
+  updateTotalRow(handle, model);
   if (!handle.status) {
     return;
   }
@@ -116,6 +125,7 @@ function resetBody(handle, mode) {
   handle.rows.clear();
   handle.groups.clear();
   handle.table = null;
+  handle.totalRow = null;
   handle.status = null;
 }
 
@@ -143,10 +153,51 @@ function ensureDistributionBody(handle) {
   }
   thead.append(headerRow);
   table.append(columns, thead);
+  const totalBody = document.createElement("tfoot");
+  const totalRow = document.createElement("tr");
+  totalRow.className = "file-type-summary-total-row";
+  const totalLabel = document.createElement("th");
+  totalLabel.scope = "row";
+  totalLabel.textContent = "Total";
+  const totalFiles = createMetricCell("files");
+  const totalBytes = createMetricCell("bytes");
+  totalBytes.value.className += " size";
+  totalRow.append(totalLabel, totalFiles.cell, totalBytes.cell);
+  totalBody.append(totalRow);
+  table.append(totalBody);
   handle.body.append(table);
   handle.table = table;
+  handle.totalRow = {
+    body: totalBody,
+    label: totalLabel,
+    fileValue: totalFiles.value,
+    fileFill: totalFiles.fill,
+    filePercent: totalFiles.percent,
+    byteValue: totalBytes.value,
+    byteFill: totalBytes.fill,
+    bytePercent: totalBytes.percent,
+  };
   handle.status = element(handle.body, "file-type-summary-status");
   handle.status.setAttribute("role", "status");
+}
+
+/** @param {DistributionHandle} handle @param {SummaryModel} model */
+function updateTotalRow(handle, model) {
+  const total = handle.totalRow;
+  if (!total || !handle.table) {
+    return;
+  }
+  const filesPopulated = (model.files ?? 0) > 0;
+  const bytesPopulated = (model.bytes ?? 0) > 0;
+  total.fileValue.textContent = model.filesText ?? "0 files";
+  total.fileFill.className = "file-type-summary-fill mb-distribution-other";
+  total.fileFill.style.width = filesPopulated ? "100%" : "0%";
+  total.filePercent.textContent = filesPopulated ? "100%" : "0%";
+  total.byteValue.textContent = model.bytesText ?? "0 B";
+  total.byteFill.className = "file-type-summary-fill mb-distribution-other";
+  total.byteFill.style.width = bytesPopulated ? "100%" : "0%";
+  total.bytePercent.textContent = bytesPopulated ? "100%" : "0%";
+  handle.table.append(total.body);
 }
 
 /** @param {DistributionHandle} handle @param {FileTypeCategory} category */
@@ -163,7 +214,7 @@ function ensureGroup(handle, category) {
   const heading = document.createElement("th");
   heading.scope = "rowgroup";
   heading.colSpan = 3;
-  heading.textContent = category === "code" ? "Code" : category === "data" ? "Data" : "Other";
+  heading.textContent = CATEGORY_LABELS[category];
   headingRow.append(heading);
   body.append(headingRow);
   group = { body };
@@ -179,7 +230,7 @@ function updateRows(handle, rows) {
   }
   const liveKeys = new Set();
   const liveCategories = new Set();
-  for (const category of /** @type {const} */ (["code", "data", "other"])) {
+  for (const category of /** @type {const} */ (["docs", "code", "data", "other"])) {
     const categoryRows = rows.filter((row) => row.category === category);
     if (categoryRows.length === 0) {
       continue;
@@ -244,10 +295,11 @@ function updateRows(handle, rows) {
   }
 }
 
-/** @typedef {"code" | "data" | "other"} FileTypeCategory */
+/** @typedef {"docs" | "code" | "data" | "other"} FileTypeCategory */
 /** @typedef {{key: string, label: string, category: FileTypeCategory, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string}} Palette */
-/** @typedef {{state: "pending" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, filesText?: string, allFilesText?: string, bytesText?: string, hasIgnored?: boolean, showIgnored?: boolean, scanning?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
+/** @typedef {{state: "pending" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, hasIgnored?: boolean, showIgnored?: boolean, scanning?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, meta: HTMLElement, scope: HTMLElement, total: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLTableSectionElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryTotalHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, meta: HTMLElement, scope: HTMLElement, total: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */

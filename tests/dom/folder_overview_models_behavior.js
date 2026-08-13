@@ -54,6 +54,7 @@ async function importSource(relative) {
     modelModule.normalizeTallyRow(["", 1, 1, 1, 1]).label === "Remaining types",
   );
   const classifyCategory = modelModule.createFileTypeCategoryClassifier([
+    { id: "docs", values: [".md", ".txt"] },
     { id: "code", values: [".py", ".ts", ".js"] },
     { id: "data", values: [".json", ".jsonl"] },
   ]);
@@ -70,7 +71,8 @@ async function importSource(relative) {
     visible.rows[0].files === 150 && visible.rows[0].bytes === 10000000,
   );
   check("code category", visible.rows[0].category === "code", visible.rows[0].category);
-  check("docs fall through to Other", visible.rows[1].category === "other");
+  check("documentation category", visible.rows[1].category === "docs");
+  check("documentation category is case-insensitive", classifyCategory(".TXT") === "docs");
   check("compound code extension", classifyCategory(".d.ts") === "code");
   check("data category", classifyCategory(".jsonl") === "data");
   check("unknown category", classifyCategory(".bin") === "other");

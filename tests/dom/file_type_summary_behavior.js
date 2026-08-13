@@ -139,12 +139,15 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   };
   const first = {
     state: "populated",
-    filesText: "10 files",
+    files: 100,
+    bytes: 100,
+    filesText: "100 files",
     bytesText: "100 B",
     rows: [
-      row(".py", ".py", "code", 70, 20, "70%", "20%"),
+      row(".md", ".md", "docs", 15, 40, "15%", "40%"),
+      row(".py", ".py", "code", 60, 20, "60%", "20%"),
       row(".json", ".json", "data", 20, 30, "20%", "30%"),
-      row(".md", ".md", "other", 10, 50, "10%", "50%"),
+      row(".bin", ".bin", "other", 5, 10, "5%", "10%"),
     ],
   };
   const container = new Element("div");
@@ -156,22 +159,43 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   check("summary has a metadata row", handle.root.children[0] === handle.meta);
   check("summary body follows metadata", handle.root.children[1] === handle.body);
   check("aggregate bars removed", handle.body.querySelector(".file-type-summary-bars") === null);
-  check("groups have a fixed order", [...handle.groups.keys()].join(",") === "code,data,other");
+  check(
+    "groups have a fixed order",
+    [...handle.groups.keys()].join(",") === "docs,code,data,other",
+  );
+  check(
+    "documentation row grouped",
+    handle.groups.get("docs").body.children[1].dataset.typeKey === ".md",
+  );
   check(
     "group headings are semantic",
     handle.groups.get("code").body.children[0].children[0].scope === "rowgroup",
   );
   check("code row grouped", handle.groups.get("code").body.children[1] === originalPyRow);
   check("data row grouped", handle.groups.get("data").body.children[1].dataset.typeKey === ".json");
-  check("other row grouped", handle.groups.get("other").body.children[1].dataset.typeKey === ".md");
+  check(
+    "other row grouped",
+    handle.groups.get("other").body.children[1].dataset.typeKey === ".bin",
+  );
   check("color circles removed", handle.body.querySelector(".file-type-summary-mark") === null);
+  check("total row follows groups", handle.table.children.at(-1) === handle.totalRow.body);
+  check("total row names the population", handle.totalRow.label.textContent === "Total");
+  check(
+    "total row has full neutral bars",
+    handle.totalRow.fileFill.style.width === "100%" &&
+      handle.totalRow.byteFill.style.width === "100%" &&
+      handle.totalRow.fileFill.className.includes("mb-distribution-other") &&
+      handle.totalRow.byteFill.className.includes("mb-distribution-other"),
+  );
 
   const updated = {
     ...first,
-    filesText: "100 files",
-    bytesText: "100 B",
+    files: 120,
+    bytes: 200,
+    filesText: "120 files",
+    bytesText: "200 B",
     rows: [
-      row(".md", ".md", "other", 25, 75, "25%", "75%"),
+      row(".md", ".md", "docs", 25, 75, "25%", "75%"),
       row(".py", ".py", "code", 75, 25, "75%", "25%"),
     ],
   };
@@ -182,12 +206,17 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   check(
     "rows stay in category groups",
     handle.groups.get("code").body.children[1].dataset.typeKey === ".py" &&
-      handle.groups.get("other").body.children[1].dataset.typeKey === ".md",
+      handle.groups.get("docs").body.children[1].dataset.typeKey === ".md",
   );
   check("row values patched", handle.rows.get(".py").fileValue.textContent === "75 files");
   check("row Files bar scaled", handle.rows.get(".py").fileFill.style.width === "75%");
   check("row Size bar scaled", handle.rows.get(".py").byteFill.style.width === "25%");
-  check("total metadata patched", handle.total.textContent === "100 files · 100 B");
+  check("total metadata patched", handle.total.textContent === "120 files · 200 B");
+  check(
+    "footer totals patched",
+    handle.totalRow.fileValue.textContent === "120 files" &&
+      handle.totalRow.byteValue.textContent === "200 B",
+  );
   check(
     "paired row bars share a color",
     handle.rows.get(".py").fileFill.className === handle.rows.get(".py").byteFill.className,
@@ -201,7 +230,27 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     "labels use text content",
     handle.rows.get(".bad").label.textContent === '<img src=x onerror="pwned">',
   );
-  check("removed rows leave the DOM map", !handle.rows.has(".py") && !handle.rows.has(".md"));
+  check(
+    "removed rows leave the DOM map",
+    !handle.rows.has(".py") &&
+      !handle.rows.has(".md") &&
+      !handle.rows.has(".json") &&
+      !handle.rows.has(".bin"),
+  );
+
+  view.updateDistributionView(handle, {
+    ...updated,
+    state: "zero-bytes",
+    bytes: 0,
+    bytesText: "0 B",
+    rows: [row(".py", ".py", "code", 100, 0, "100%", "0%")],
+  });
+  check(
+    "zero-byte total remains truthful",
+    handle.totalRow.fileFill.style.width === "100%" &&
+      handle.totalRow.byteFill.style.width === "0%" &&
+      handle.totalRow.bytePercent.textContent === "0%",
+  );
 
   view.updateDistributionView(handle, {
     state: "empty",
@@ -209,7 +258,10 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     filesText: "0 files",
     bytesText: "0 B",
   });
-  check("empty state removes distributions", handle.rows.size === 0 && handle.groups.size === 0);
+  check(
+    "empty state removes distributions",
+    handle.rows.size === 0 && handle.groups.size === 0 && handle.totalRow === null,
+  );
   check("empty state copy", handle.body.children[0].textContent === "No files to summarize.");
 
   if (failures.length) {

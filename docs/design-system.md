@@ -412,11 +412,20 @@ fills need no separate circle or legend.
 Fills do not become tab stops or add duplicate tooltips and are hidden from the
 accessibility tree. Labels never rely on color or place text on a category fill.
 
-File types uses non-aggregating `CODE`, `DATA`, and `OTHER` row groups.
-Membership comes from the shared broad filter vocabulary, compound extensions inherit a
-recognized suffix, and every unrecognized or rollup-tail row falls under Other.
+File types uses non-aggregating `DOCUMENTATION`, `CODE`, `DATA`, and `OTHER` row groups.
+Membership comes from the complete shared navigation-preset vocabulary, so one extension
+definition classifies both surfaces.
+Compound extensions inherit a recognized suffix, and every unrecognized or rollup-tail
+row falls under Other.
 The aggregate tail is labelled **Remaining types** so it is not confused with the group
 itself. A group heading is shown only when it has rows and carries no subtotal.
+Type labels use the bold design-system weight as the row’s scan anchor.
+
+A final **Total** row is separate from those presentation groups.
+Its exact values equal the selected population, and both tracks use the neutral
+distribution color at 100%. When the population has files but zero bytes, the Size total
+remains `0 B`, `0%`, and an unfilled neutral track rather than implying a share of an
+empty byte population.
 
 Zero totals do not produce a colored fill, division artifact, or header-only table.
 If one metric is zero while another is not, the zero metric uses the neutral track and

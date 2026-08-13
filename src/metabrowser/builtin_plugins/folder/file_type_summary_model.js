@@ -10,8 +10,9 @@ export const OTHER_KEY = "";
  * @param {unknown} rawPresets
  */
 export function createFileTypeCategoryClassifier(rawPresets) {
-  /** @type {Map<"code" | "data", Array<string>>} */
+  /** @type {Map<"docs" | "code" | "data", Array<string>>} */
   const suffixes = new Map([
+    ["docs", []],
     ["code", []],
     ["data", []],
   ]);
@@ -21,7 +22,7 @@ export function createFileTypeCategoryClassifier(rawPresets) {
         continue;
       }
       const preset = /** @type {{id?: unknown, values?: unknown}} */ (rawPreset);
-      if (preset.id !== "code" && preset.id !== "data") {
+      if (preset.id !== "docs" && preset.id !== "code" && preset.id !== "data") {
         continue;
       }
       if (!Array.isArray(preset.values)) {
@@ -38,7 +39,7 @@ export function createFileTypeCategoryClassifier(rawPresets) {
   }
   return /** @param {string} key */ (key) => {
     const normalized = key.toLowerCase();
-    for (const category of /** @type {const} */ (["code", "data"])) {
+    for (const category of /** @type {const} */ (["docs", "code", "data"])) {
       if (suffixes.get(category)?.some((suffix) => normalized.endsWith(suffix))) {
         return category;
       }
@@ -131,7 +132,7 @@ function percentShare(numerator, denominator) {
  * @param {ReturnType<typeof normalizeRollupEnvelope> | null} envelope
  * @param {boolean} showIgnored
  * @param {{formatSize(value: number): string, formatInteger(value: number): string, formatFileCount(value: number): string}} formatters
- * @param {(key: string) => "code" | "data" | "other"} [classifyCategory]
+ * @param {(key: string) => "docs" | "code" | "data" | "other"} [classifyCategory]
  */
 export function buildFileTypeSummaryModel(
   envelope,
