@@ -208,8 +208,10 @@ The data selection must account for both dimensions before the UI is trustworthy
    control that reorders the table adds work without adding a new answer.
 10. **Show ignored is the one shared filter that changes the summary.** When it is on,
     the panel uses all-file columns; when it is off, it uses unignored columns.
-    The scope text says **Including ignored** or **Ignored excluded** when ignored files
-    exist. Recency, type, and size filters do not change the directory composition
+    When ignored files are included, a neutral **Ignored** footer row reports their
+    exact file and byte tallies immediately above Total.
+    When ignored files are excluded, the row is absent and Total reports the unignored
+    population. Recency, type, and size filters do not change the directory composition
     summary: applying `.py` and making the panel report 100% `.py` would destroy its
     purpose.
 11. **Overview sections are always expanded.** File types and README are compact enough
@@ -257,8 +259,10 @@ The data selection must account for both dimensions before the UI is trustworthy
     Empty groups are omitted, group headings carry no subtotal, and rows keep
     deterministic server order within a group.
     The rollup tail is labelled **Remaining types** so it is distinct from the group.
-19. **The table closes with the selected population.** A semantic Total footer repeats
-    the exact file and byte totals.
+19. **The table closes with ignored context and the selected population.** When ignored
+    files are included, a neutral Ignored row reports the exact all-minus-unignored file
+    and byte deltas and their shares of the selected population.
+    A semantic Total row then repeats the exact selected file and byte totals.
     Its two neutral tracks are filled to 100%; a zero-byte population truthfully uses
     `0 B`, `0%`, and no Size fill.
 
@@ -289,7 +293,7 @@ section:
 ```text
 FILE TYPES
 ──────────────────────────────────────────────────────────────
-Including ignored                         1,250 files · 33.3 MB
+                                           1,250 files · 33.3 MB
 
 Type                    Files                         Size
 DOCUMENTATION
@@ -302,6 +306,7 @@ DATA
 OTHER
 .bin        1 file  ▏       <0.1%      512 KB █             1.5%
 Remaining types …
+Ignored    75 files █          6%       15 MB █████           45%
 Total    1,250 files ███████ 100%      33.3 MB ████████████ 100%
 
 README
@@ -318,11 +323,13 @@ Each metric column uses an 8-pixel track and existing type-scale and spacing tok
 The track height is a named Aggregate distributions component token rather than a
 use-site literal.
 
-The File types section contains three metadata roles and no repeated sentence:
+The File types section contains two metadata roles and no repeated sentence:
 
 - the shared uppercase **File types** section heading
-- optional muted scope text when ignored files exist
 - total file count and byte size in tabular numerals
+
+The table itself makes scope explicit: when ignored files are included, its neutral
+Ignored row appears immediately above Total; when they are excluded, that row is absent.
 
 An empty folder keeps the same first panel and no synthetic document panel:
 
@@ -1159,6 +1166,9 @@ modules execute.
   runtime from that contribution.
 - The composite disposer ends the context subscription, disposes every record, and
   publishes non-printable state.
+- Resolver cancellation and mounted-panel lifetime use separate abort controllers, so a
+  same-key folder-envelope refresh can call `update` without silently disposing the
+  mounted panel’s watchers and subscriptions.
 
 The composer contains no `if panelId === ...` branches.
 Tests must register a synthetic third panel and receive the same lifecycle as built-ins.
@@ -1197,6 +1207,8 @@ This file is pure and has no DOM, fetch, preference, or global access.
 - Populated rows preserve server order, drop only active-scope double-zero named rows,
   keep Other last, and carry a presentation group, total-normalized percentage widths,
   and formatted counts, sizes, and shares.
+- The model derives exact ignored file and byte deltas from the all and unignored root
+  totals, formatted values, and all-population shares for the optional Ignored row.
 - `_assertPopulationSums(model)` is a development/test assertion that named plus Other
   integers equal the selected root totals.
 
@@ -1206,8 +1218,8 @@ This file is pure and has no DOM, fetch, preference, or global access.
   semantic Type/Files/Size table once.
 - `updateDistributionView(handle, model)` keys DOM rows by extension key, updates text
   and fill widths in place, moves rows under Documentation/Code/Data/Other row-group
-  bodies, updates the neutral Total footer, and removes stale rows or empty groups
-  without replacing retained elements.
+  bodies, updates the neutral Ignored and Total footer rows, and removes stale rows or
+  empty groups without replacing retained elements.
 - Each metric cell owns a right-aligned tally, an `aria-hidden` track and fill, and a
   right-aligned percentage.
   Files and Size reuse the row’s palette class.
@@ -1529,8 +1541,8 @@ types meet only in the final composition, avoiding a long serial implementation 
   Other-last behavior, and malformed rows.
 - DOM tests assert Documentation/Code/Data/Other row-group order, the same slot class on
   both metric fills, real table headers, exact adjacent values, the neutral Total
-  footer, the zero-byte total state, hidden decorative tracks, flat section structure,
-  and escaped labels.
+  footer, the conditional neutral Ignored row, the zero-byte total state, hidden
+  decorative tracks, flat section structure, and escaped labels.
 - Lifecycle tests assert one active watch, no hidden-view refresh, abort and listener
   cleanup on disposal, Retry recovery, and focus preservation during keyed updates.
 - Filter tests assert that **Show ignored** changes the selected integer columns while
@@ -1569,7 +1581,8 @@ rather than an unpainted preview.
 - **Byte ranking hides count-heavy types.** The server selects categories using the
   maximum of both metrics and both ignored-file populations.
 - **Ignored dependencies dominate.** The panel follows the existing Show ignored state,
-  makes its scope explicit, and already has both populations on the wire.
+  makes its scope explicit through an exact footer row, and already has both populations
+  on the wire.
 - **Colors drift during live updates.** The mounted view reserves slots for its lifetime
   and updates keyed rows rather than rebuilding rank-colored markup.
 - **Arbitrary extensions exhaust the palette.** The visible named set is capped at ten
@@ -1635,7 +1648,10 @@ root behave differently from nested folders.
   file percentage, formatted bytes, a total-normalized byte fill, and byte percentage
 - Files and Size use the same row color; no separate circle, aggregate bar, or legend is
   needed
-- A neutral Total footer repeats the selected population’s exact Files and Size values;
+- When ignored files are included, a neutral Ignored row immediately above Total reports
+  their exact Files and Size values and shares; it is absent when ignored files are
+  excluded
+- A neutral Total row repeats the selected population’s exact Files and Size values;
   each populated metric fills its track to 100%, while a zero-byte population remains at
   `0 B`, `0%`, and no fill
 - A count-heavy type and a byte-heavy type both survive the top-ten bound

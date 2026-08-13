@@ -98,7 +98,8 @@ Its semantic comparison table groups logical extensions as Documentation, Code, 
 Other using the same preset vocabulary as navigation, without adding group totals or
 another server aggregation.
 Each row renders count and byte shares as independently normalized inline bars beside
-their exact values, and a neutral footer repeats the full population totals.
+their exact values. When ignored files are included, a neutral footer row reports that
+exact subset immediately before the neutral selected-population Total row.
 README is another contribution whose resolver checks the folder envelope and whose
 renderer delegates to the instance-safe built-in Markdown mount.
 Using the same mount keeps Overview’s README structurally and behaviorally aligned with

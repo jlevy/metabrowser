@@ -143,6 +143,15 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     bytes: 100,
     filesText: "100 files",
     bytesText: "100 B",
+    showIgnored: true,
+    ignoredFiles: 70,
+    ignoredBytes: 60,
+    ignoredFilesText: "70 files",
+    ignoredBytesText: "60 B",
+    ignoredFilePercent: "70%",
+    ignoredBytePercent: "60%",
+    ignoredFileShare: 70,
+    ignoredByteShare: 60,
     rows: [
       row(".md", ".md", "docs", 15, 40, "15%", "40%"),
       row(".py", ".py", "code", 60, 20, "60%", "20%"),
@@ -158,6 +167,10 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   check("summary uses a flat section body", handle.root.tagName === "DIV");
   check("summary has a metadata row", handle.root.children[0] === handle.meta);
   check("summary body follows metadata", handle.root.children[1] === handle.body);
+  check(
+    "metadata only reports the total",
+    handle.meta.children.length === 1 && handle.meta.children[0] === handle.total,
+  );
   check("aggregate bars removed", handle.body.querySelector(".file-type-summary-bars") === null);
   check(
     "groups have a fixed order",
@@ -179,6 +192,23 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   );
   check("color circles removed", handle.body.querySelector(".file-type-summary-mark") === null);
   check("total row follows groups", handle.table.children.at(-1) === handle.totalRow.body);
+  check(
+    "ignored row sits immediately above Total",
+    handle.totalRow.body.children[0] === handle.ignoredRow.tr &&
+      handle.totalRow.body.children[1] === handle.totalRow.tr,
+  );
+  check("ignored row names the subset", handle.ignoredRow.label.textContent === "Ignored");
+  check(
+    "ignored row reports exact values and shares",
+    handle.ignoredRow.fileValue.textContent === "70 files" &&
+      handle.ignoredRow.byteValue.textContent === "60 B" &&
+      handle.ignoredRow.fileFill.style.width === "70%" &&
+      handle.ignoredRow.byteFill.style.width === "60%" &&
+      handle.ignoredRow.filePercent.textContent === "70%" &&
+      handle.ignoredRow.bytePercent.textContent === "60%" &&
+      handle.ignoredRow.fileFill.className.includes("mb-distribution-other") &&
+      handle.ignoredRow.byteFill.className.includes("mb-distribution-other"),
+  );
   check("total row names the population", handle.totalRow.label.textContent === "Total");
   check(
     "total row has full neutral bars",
@@ -217,6 +247,16 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     handle.totalRow.fileValue.textContent === "120 files" &&
       handle.totalRow.byteValue.textContent === "200 B",
   );
+  check(
+    "ignored row is visible when ignored files are included",
+    handle.ignoredRow.tr.hidden === false,
+  );
+
+  view.updateDistributionView(handle, {
+    ...updated,
+    showIgnored: false,
+  });
+  check("ignored row hides when ignored files are excluded", handle.ignoredRow.tr.hidden === true);
   check(
     "paired row bars share a color",
     handle.rows.get(".py").fileFill.className === handle.rows.get(".py").byteFill.className,
@@ -260,7 +300,10 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   });
   check(
     "empty state removes distributions",
-    handle.rows.size === 0 && handle.groups.size === 0 && handle.totalRow === null,
+    handle.rows.size === 0 &&
+      handle.groups.size === 0 &&
+      handle.ignoredRow === null &&
+      handle.totalRow === null,
   );
   check("empty state copy", handle.body.children[0].textContent === "No files to summarize.");
 

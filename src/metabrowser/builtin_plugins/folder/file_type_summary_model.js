@@ -106,11 +106,15 @@ export function selectPopulation(envelope, showIgnored) {
   if (!envelope.totals) {
     return null;
   }
+  const ignoredFiles = Math.max(0, envelope.totals.allFiles - envelope.totals.unignoredFiles);
+  const ignoredBytes = Math.max(0, envelope.totals.allBytes - envelope.totals.unignoredBytes);
   return Object.freeze({
     files: showIgnored ? envelope.totals.allFiles : envelope.totals.unignoredFiles,
     bytes: showIgnored ? envelope.totals.allBytes : envelope.totals.unignoredBytes,
     allFiles: envelope.totals.allFiles,
-    hasIgnored: envelope.totals.allFiles !== envelope.totals.unignoredFiles,
+    allBytes: envelope.totals.allBytes,
+    ignoredFiles,
+    ignoredBytes,
   });
 }
 
@@ -176,7 +180,22 @@ export function buildFileTypeSummaryModel(
     filesText: formatters.formatFileCount(population.files),
     allFilesText: formatters.formatFileCount(population.allFiles),
     bytesText: formatters.formatSize(population.bytes),
-    hasIgnored: population.hasIgnored,
+    ignoredFiles: population.ignoredFiles,
+    ignoredBytes: population.ignoredBytes,
+    ignoredFilesText: formatters.formatFileCount(population.ignoredFiles),
+    ignoredBytesText: formatters.formatSize(population.ignoredBytes),
+    ignoredFilePercent: formatPercent(
+      population.ignoredFiles,
+      population.allFiles,
+      percentFormatter,
+    ),
+    ignoredBytePercent: formatPercent(
+      population.ignoredBytes,
+      population.allBytes,
+      percentFormatter,
+    ),
+    ignoredFileShare: percentShare(population.ignoredFiles, population.allFiles),
+    ignoredByteShare: percentShare(population.ignoredBytes, population.allBytes),
     showIgnored,
     scanning: envelope.indexStatus !== "done" && envelope.indexStatus !== "complete",
     indexedFiles: envelope.indexedFiles,

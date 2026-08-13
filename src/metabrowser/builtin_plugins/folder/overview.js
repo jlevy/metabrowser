@@ -1,7 +1,7 @@
 /** @typedef {{key: string, data: unknown} | null} PanelResolution */
 /** @typedef {{dispose: () => void, update?: (context: {path?: string, raw?: unknown}, data: unknown) => void | Promise<void>}} PanelHandle */
 /** @typedef {{id: string, label: string, placement: "summary" | "content" | "supplemental", presentation: "surface" | "document", printable?: boolean, required?: boolean, classifyError?: (error: unknown) => {message: string, retryable: boolean}, resolve: (context: {path?: string, raw?: unknown}, options: {signal: AbortSignal}) => PanelResolution | Promise<PanelResolution>, mount: (container: HTMLElement, context: {path?: string, raw?: unknown}, data: unknown, options: {signal?: AbortSignal}) => void | PanelHandle | Promise<void | PanelHandle>}} PanelDescriptor */
-/** @typedef {{descriptor: PanelDescriptor, slot: HTMLElement, body: HTMLElement, generation: number, controller: AbortController | null, handle: PanelHandle | null, key: string | null, retry: (() => void) | null, mounted: boolean}} PanelRecord */
+/** @typedef {{descriptor: PanelDescriptor, slot: HTMLElement, body: HTMLElement, generation: number, resolveController: AbortController | null, mountController: AbortController | null, handle: PanelHandle | null, key: string | null, retry: (() => void) | null, mounted: boolean}} PanelRecord */
 /** @typedef {{listPanels: () => ReadonlyArray<PanelDescriptor>}} PanelRegistry */
 
 /** @param {PanelDescriptor} descriptor */
@@ -56,7 +56,8 @@ export function mountOverview(container, initialContext, mb, registry) {
       slot: elements.slot,
       body: elements.body,
       generation: 0,
-      controller: null,
+      resolveController: null,
+      mountController: null,
       handle: null,
       key: null,
       retry: null,
@@ -66,6 +67,8 @@ export function mountOverview(container, initialContext, mb, registry) {
 
   /** @param {PanelRecord} record */
   function disposeMount(record) {
+    record.mountController?.abort();
+    record.mountController = null;
     if (record.handle) {
       const handle = record.handle;
       record.handle = null;
@@ -137,30 +140,44 @@ export function mountOverview(container, initialContext, mb, registry) {
     disposeMount(record);
     record.body.replaceChildren();
     record.key = result.key;
+    const mountController = new AbortController();
+    record.mountController = mountController;
     try {
       const handle = await record.descriptor.mount(record.body, context, result.data, {
-        signal: record.controller?.signal,
+        signal: mountController.signal,
       });
       if (disposed || generation !== record.generation) {
+        mountController.abort();
         handle?.dispose();
+        if (record.mountController === mountController) {
+          record.mountController = null;
+        }
         return;
       }
       record.handle = handle || { dispose() {} };
       record.mounted = true;
       publishPrintState(container, records, mb);
     } catch (error) {
+      mountController.abort();
+      if (record.mountController === mountController) {
+        record.mountController = null;
+      }
+      if (disposed || generation !== record.generation) {
+        return;
+      }
       renderFailure(record, error);
     }
   }
 
   /** @param {PanelRecord} record */
   async function resolvePanel(record) {
-    record.controller?.abort();
-    record.controller = new AbortController();
+    record.resolveController?.abort();
+    const resolveController = new AbortController();
+    record.resolveController = resolveController;
     const generation = ++record.generation;
     try {
       const result = await record.descriptor.resolve(context, {
-        signal: record.controller.signal,
+        signal: resolveController.signal,
       });
       await applyResolution(record, result, generation);
     } catch (error) {
@@ -205,7 +222,7 @@ export function mountOverview(container, initialContext, mb, registry) {
       unsubscribeActive();
       unsubscribeContext();
       for (const record of [...records].reverse()) {
-        record.controller?.abort();
+        record.resolveController?.abort();
         record.retry?.();
         disposeMount(record);
       }

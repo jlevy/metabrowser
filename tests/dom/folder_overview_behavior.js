@@ -61,6 +61,7 @@ global.document = { createElement: (tag) => new Element(tag) };
   let updateCount = 0;
   let updateShouldFail = false;
   let disposeCount = 0;
+  let summaryMountSignal = null;
   const printStates = [];
   const envelope = { kind: "folder", path: "src", readme_path: "src/README.md" };
   const mb = {
@@ -100,8 +101,9 @@ global.document = { createElement: (tag) => new Element(tag) };
       required: true,
       printable: false,
       resolve: (context) => ({ key: context.path, data: "summary" }),
-      mount(container) {
+      mount(container, _context, _data, options) {
         container.innerHTML = "summary";
+        summaryMountSignal = options.signal;
         return {
           dispose: () => (disposeCount += 1),
           update() {
@@ -167,6 +169,7 @@ global.document = { createElement: (tag) => new Element(tag) };
   contextListener({ ...envelope, readme_search_truncated: true });
   await new Promise((resolve) => setImmediate(resolve));
   check("same-key update", updateCount === 1, String(updateCount));
+  check("same-key update keeps the mounted panel active", summaryMountSignal.aborted === false);
   activeListener(false);
   contextListener({ ...envelope, readme_search_truncated: false });
   await new Promise((resolve) => setImmediate(resolve));
@@ -179,6 +182,7 @@ global.document = { createElement: (tag) => new Element(tag) };
   contextListener({ ...envelope, readme_search_truncated: true });
   await new Promise((resolve) => setImmediate(resolve));
   check("failed update disposes old mount", disposeCount === 1, String(disposeCount));
+  check("failed update aborts the mounted panel", summaryMountSignal.aborted === true);
   check(
     "failed update renders panel error",
     stack.children[0].children[1].children[0].attributes.role === "alert",

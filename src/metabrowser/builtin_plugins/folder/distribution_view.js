@@ -34,22 +34,42 @@ function createMetricCell(metric) {
   return { cell, fill, percent, value };
 }
 
+/** @param {string} className @param {string} label */
+function createFooterRow(className, label) {
+  const tr = document.createElement("tr");
+  tr.className = className;
+  const rowLabel = document.createElement("th");
+  rowLabel.scope = "row";
+  rowLabel.textContent = label;
+  const files = createMetricCell("files");
+  const bytes = createMetricCell("bytes");
+  bytes.value.className += " size";
+  tr.append(rowLabel, files.cell, bytes.cell);
+  return {
+    tr,
+    label: rowLabel,
+    fileValue: files.value,
+    fileFill: files.fill,
+    filePercent: files.percent,
+    byteValue: bytes.value,
+    byteFill: bytes.fill,
+    bytePercent: bytes.percent,
+  };
+}
+
 /** @param {HTMLElement} container @param {SummaryModel} model @param {Palette} palette */
 export function mountDistributionView(container, model, palette) {
   const root = document.createElement("div");
   root.className = "file-type-summary";
   const meta = element(root, "file-type-summary-meta");
-  const scope = document.createElement("span");
-  scope.className = "file-type-summary-scope";
   const total = document.createElement("span");
   total.className = "file-type-summary-total";
-  meta.append(scope, total);
+  meta.append(total);
   const body = element(root, "file-type-summary-body");
   const handle = {
     container,
     root,
     meta,
-    scope,
     total,
     body,
     palette,
@@ -58,6 +78,7 @@ export function mountDistributionView(container, model, palette) {
     /** @type {Map<FileTypeCategory, SummaryGroupHandle>} */
     groups: new Map(),
     table: /** @type {HTMLTableElement | null} */ (null),
+    ignoredRow: /** @type {SummaryFooterRowHandle | null} */ (null),
     totalRow: /** @type {SummaryTotalHandle | null} */ (null),
     status: /** @type {HTMLElement | null} */ (null),
     mode: "",
@@ -70,12 +91,6 @@ export function mountDistributionView(container, model, palette) {
 /** @param {DistributionHandle} handle @param {SummaryModel} model */
 export function updateDistributionView(handle, model) {
   handle.total.textContent = `${"filesText" in model ? model.filesText : "0 files"} · ${"bytesText" in model ? model.bytesText : "0 B"}`;
-  handle.scope.textContent =
-    "hasIgnored" in model && model.hasIgnored
-      ? model.showIgnored
-        ? "Including ignored"
-        : "Ignored excluded"
-      : "";
   if (model.state === "pending") {
     resetBody(handle, "pending");
     const skeleton = element(handle.body, "file-type-summary-skeleton");
@@ -101,7 +116,7 @@ export function updateDistributionView(handle, model) {
 
   ensureDistributionBody(handle);
   updateRows(handle, model.rows);
-  updateTotalRow(handle, model);
+  updateFooterRows(handle, model);
   if (!handle.status) {
     return;
   }
@@ -125,6 +140,7 @@ function resetBody(handle, mode) {
   handle.rows.clear();
   handle.groups.clear();
   handle.table = null;
+  handle.ignoredRow = null;
   handle.totalRow = null;
   handle.status = null;
 }
@@ -154,39 +170,38 @@ function ensureDistributionBody(handle) {
   thead.append(headerRow);
   table.append(columns, thead);
   const totalBody = document.createElement("tfoot");
-  const totalRow = document.createElement("tr");
-  totalRow.className = "file-type-summary-total-row";
-  const totalLabel = document.createElement("th");
-  totalLabel.scope = "row";
-  totalLabel.textContent = "Total";
-  const totalFiles = createMetricCell("files");
-  const totalBytes = createMetricCell("bytes");
-  totalBytes.value.className += " size";
-  totalRow.append(totalLabel, totalFiles.cell, totalBytes.cell);
-  totalBody.append(totalRow);
+  const ignored = createFooterRow("file-type-summary-ignored-row", "Ignored");
+  const total = createFooterRow("file-type-summary-total-row", "Total");
+  totalBody.append(ignored.tr, total.tr);
   table.append(totalBody);
   handle.body.append(table);
   handle.table = table;
+  handle.ignoredRow = ignored;
   handle.totalRow = {
     body: totalBody,
-    label: totalLabel,
-    fileValue: totalFiles.value,
-    fileFill: totalFiles.fill,
-    filePercent: totalFiles.percent,
-    byteValue: totalBytes.value,
-    byteFill: totalBytes.fill,
-    bytePercent: totalBytes.percent,
+    ...total,
   };
   handle.status = element(handle.body, "file-type-summary-status");
   handle.status.setAttribute("role", "status");
 }
 
 /** @param {DistributionHandle} handle @param {SummaryModel} model */
-function updateTotalRow(handle, model) {
+function updateFooterRows(handle, model) {
+  const ignored = handle.ignoredRow;
   const total = handle.totalRow;
-  if (!total || !handle.table) {
+  if (!ignored || !total || !handle.table) {
     return;
   }
+  const ignoredVisible = model.showIgnored === true && (model.ignoredFiles ?? 0) > 0;
+  ignored.tr.hidden = !ignoredVisible;
+  ignored.fileValue.textContent = model.ignoredFilesText ?? "0 files";
+  ignored.fileFill.className = "file-type-summary-fill mb-distribution-other";
+  ignored.fileFill.style.width = `${model.ignoredFileShare ?? 0}%`;
+  ignored.filePercent.textContent = model.ignoredFilePercent ?? "0%";
+  ignored.byteValue.textContent = model.ignoredBytesText ?? "0 B";
+  ignored.byteFill.className = "file-type-summary-fill mb-distribution-other";
+  ignored.byteFill.style.width = `${model.ignoredByteShare ?? 0}%`;
+  ignored.bytePercent.textContent = model.ignoredBytePercent ?? "0%";
   const filesPopulated = (model.files ?? 0) > 0;
   const bytesPopulated = (model.bytes ?? 0) > 0;
   total.fileValue.textContent = model.filesText ?? "0 files";
@@ -298,8 +313,9 @@ function updateRows(handle, rows) {
 /** @typedef {"docs" | "code" | "data" | "other"} FileTypeCategory */
 /** @typedef {{key: string, label: string, category: FileTypeCategory, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string}} Palette */
-/** @typedef {{state: "pending" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, hasIgnored?: boolean, showIgnored?: boolean, scanning?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
+/** @typedef {{state: "pending" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
-/** @typedef {{body: HTMLTableSectionElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryTotalHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, meta: HTMLElement, scope: HTMLElement, total: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryFooterRowHandle */
+/** @typedef {SummaryFooterRowHandle & {body: HTMLTableSectionElement}} SummaryTotalHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, meta: HTMLElement, total: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, ignoredRow: SummaryFooterRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */

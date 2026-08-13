@@ -3,10 +3,8 @@
 }
 
 .file-type-summary-meta {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
+  display: flex;
+  justify-content: flex-end;
   margin-bottom: 10px;
 }
 
@@ -16,12 +14,6 @@
   font-weight: var(--label-font-weight);
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
-}
-
-.file-type-summary-scope {
-  overflow-wrap: anywhere;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 
 .file-type-summary-total,
@@ -104,6 +96,7 @@
   padding-top: 9px;
 }
 
+.file-type-summary-ignored-row th,
 .file-type-summary-total-row th {
   font-weight: var(--weight-bold);
 }

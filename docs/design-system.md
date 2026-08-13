@@ -421,11 +421,14 @@ The aggregate tail is labelled **Remaining types** so it is not confused with th
 itself. A group heading is shown only when it has rows and carries no subtotal.
 Type labels use the bold design-system weight as the row’s scan anchor.
 
-A final **Total** row is separate from those presentation groups.
-Its exact values equal the selected population, and both tracks use the neutral
-distribution color at 100%. When the population has files but zero bytes, the Size total
-remains `0 B`, `0%`, and an unfilled neutral track rather than implying a share of an
-empty byte population.
+Footer rows are separate from those presentation groups and use the neutral distribution
+color. When ignored files are included, an **Ignored** row reports that exact subset and
+its share of the selected population immediately above **Total**. The row is absent when
+ignored files are excluded, so a separate scope notice is unnecessary.
+The final Total row’s exact values equal the selected population, and both tracks fill
+to 100%. When the population has files but zero bytes, the Size total remains `0 B`,
+`0%`, and an unfilled neutral track rather than implying a share of an empty byte
+population.
 
 Zero totals do not produce a colored fill, division artifact, or header-only table.
 If one metric is zero while another is not, the zero metric uses the neutral track and

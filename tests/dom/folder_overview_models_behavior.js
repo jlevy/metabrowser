@@ -73,6 +73,17 @@ async function importSource(relative) {
   check("code category", visible.rows[0].category === "code", visible.rows[0].category);
   check("documentation category", visible.rows[1].category === "docs");
   check("documentation category is case-insensitive", classifyCategory(".TXT") === "docs");
+  check(
+    "ignored subset is explicit",
+    visible.ignoredFiles === 7 &&
+      visible.ignoredBytes === 1000000 &&
+      visible.ignoredFilesText === "7 files" &&
+      visible.ignoredBytesText === "1000000 B",
+  );
+  check(
+    "ignored subset uses all-file denominators when included",
+    visible.ignoredFileShare > 4 && visible.ignoredByteShare > 9,
+  );
   check("compound code extension", classifyCategory(".d.ts") === "code");
   check("data category", classifyCategory(".jsonl") === "data");
   check("unknown category", classifyCategory(".bin") === "other");
