@@ -744,6 +744,11 @@ var knownFileCatalog = null;
 var quickFileSearchController = null;
 var quickFilePalette = null;
 var quickFileCatalogFeed = null;
+var shortcutRegistry = null;
+var keyboardHelp = null;
+var treeKeyboard = null;
+var applicationFocusRegion = null;
+var applicationFocusListener = null;
 var QUICK_FILE_RESULT_LIMIT = 100;
 
 // ── Tree ────────────────────────────────────────────────────────
@@ -5278,6 +5283,71 @@ async function navigateToPath(path, skipHash) {
   return selectFile(path, skipHash);
 }
 
+// Compose application keyboard infrastructure at the shell boundary.
+function resolveApplicationFocusFallback(previous) {
+  if (treeKeyboard && previous?.classList?.contains("tree-item")) {
+    var focusedTreeRow = treeKeyboard.focusedRow();
+    if (focusedTreeRow?.isConnected) {
+      return focusedTreeRow;
+    }
+  }
+  if (applicationFocusRegion === "preview") {
+    return document.getElementById("preview-pane");
+  }
+  return null;
+}
+
+function initKeyboardInfrastructure() {
+  if (shortcutRegistry || keyboardHelp) {
+    return;
+  }
+  if (
+    !window.MetabrowserKeyboardShortcuts ||
+    !window.MetabrowserOverlay ||
+    !window.MetabrowserKeyboardHelp
+  ) {
+    console.warn("Keyboard Help dependencies are unavailable");
+    return;
+  }
+  var hintHost = document.getElementById("nav-shortcut-hints");
+  if (!hintHost) {
+    console.warn("Keyboard Help hint host is unavailable");
+    return;
+  }
+  shortcutRegistry = window.MetabrowserKeyboardShortcuts.create({ document: document });
+  keyboardHelp = window.MetabrowserKeyboardHelp.create({
+    document: document,
+    hintHost: hintHost,
+    overlay: window.MetabrowserOverlay,
+    resolveFocusFallback: resolveApplicationFocusFallback,
+    shortcuts: shortcutRegistry,
+  });
+  applicationFocusListener = (event) => {
+    var target = event.target;
+    var treePaneElement = document.getElementById("tree-pane");
+    var previewElement = document.getElementById("preview-pane");
+    if (treePaneElement?.contains(target)) {
+      applicationFocusRegion = "tree";
+    } else if (previewElement?.contains(target)) {
+      applicationFocusRegion = "preview";
+    }
+  };
+  document.addEventListener("focusin", applicationFocusListener);
+}
+
+function disposeKeyboardInfrastructure() {
+  if (applicationFocusListener) {
+    document.removeEventListener("focusin", applicationFocusListener);
+    applicationFocusListener = null;
+  }
+  keyboardHelp?.dispose();
+  keyboardHelp = null;
+  shortcutRegistry?.dispose();
+  shortcutRegistry = null;
+}
+
+window.addEventListener("pagehide", disposeKeyboardInfrastructure, { once: true });
+
 // Compose the application-lifetime quick-file modules at the shell boundary.
 function initQuickFileFinder() {
   if (quickFilePalette) {
@@ -5388,6 +5458,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavTabs();
   initFilterBar();
   initNavScrollShadow();
+  initKeyboardInfrastructure();
   initQuickFileFinder();
   // Fire the URL-pinned file fetch in parallel with the tree walk: the
   // two requests don't depend on each other, so a deep-link's preview

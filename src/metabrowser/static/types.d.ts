@@ -671,6 +671,33 @@ type MetabrowserOverlayRuntime = Readonly<{
   restoreBackgroundState(records: ReadonlyArray<{ element: HTMLElement; inert: boolean }>): void;
 }>;
 
+type MetabrowserKeyboardHelpApi = Readonly<{
+  close(): void;
+  dispose(): void;
+  open(trigger?: HTMLElement | null): void;
+}>;
+
+type MetabrowserKeyboardHelpRuntime = Readonly<{
+  create(options: {
+    document?: Document;
+    hintHost: HTMLElement;
+    overlay: MetabrowserOverlayRuntime;
+    resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
+    shortcuts: MetabrowserShortcutRegistry;
+  }): MetabrowserKeyboardHelpApi;
+  reconcileHintStrip(
+    host: HTMLElement,
+    snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
+    invoke: (commandId: string, context: Record<string, unknown>) => boolean,
+    append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
+  ): void;
+  renderHelpGroups(
+    body: HTMLElement,
+    snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
+    append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
+  ): void;
+}>;
+
 declare global {
   var hljs: {
     highlightElement(element: Element): void;
@@ -702,6 +729,7 @@ declare global {
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserKeyboardShortcuts: MetabrowserKeyboardShortcutsRuntime;
+    MetabrowserKeyboardHelp: MetabrowserKeyboardHelpRuntime;
     MetabrowserOverlay: MetabrowserOverlayRuntime;
     MetabrowserPendingTallyDiagnostics: MetabrowserPendingTallyDiagnosticsRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;

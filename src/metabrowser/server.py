@@ -751,6 +751,9 @@ async def index(_request: Request) -> HTMLResponse:
     catalog_feed_url = _static_asset_url("catalog_feed.js")
     file_fuzzy_match_url = _static_asset_url("file_fuzzy_match.js")
     search_controller_url = _static_asset_url("search_controller.js")
+    keyboard_shortcuts_url = _static_asset_url("keyboard_shortcuts.js")
+    overlay_layer_url = _static_asset_url("overlay_layer.js")
+    keyboard_help_url = _static_asset_url("keyboard_help.js")
     search_palette_url = _static_asset_url("search_palette.js")
     app_url = _static_asset_url("app.js")
     perf_block = (
@@ -952,6 +955,7 @@ async def index(_request: Request) -> HTMLResponse:
           <div class="loading"><div class="spinner"></div>Loading files…</div>
         </div>
       </div>
+      <div class="nav-shortcut-hints" id="nav-shortcut-hints" hidden></div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
@@ -982,6 +986,9 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{catalog_feed_url}"></script>
   <script src="{file_fuzzy_match_url}"></script>
   <script src="{search_controller_url}"></script>
+  <script src="{keyboard_shortcuts_url}"></script>
+  <script src="{overlay_layer_url}"></script>
+  <script src="{keyboard_help_url}"></script>
   <script src="{search_palette_url}"></script>
   <script src="{app_url}"></script>
   {plugin_scripts}
