@@ -301,8 +301,10 @@ does not look like a failed or unfinished preview.
 
 ### Folder Overview Panel Contract
 
-The browser SDK adds `registerFolderOverviewPanel(panelId, spec)` alongside the existing
-top-level `registerView(kindId, viewId, spec)` registry.
+The built-in folder plugin adds `mb.folderOverview.registerPanel(panelId, spec)`
+alongside the core `registerView(kindId, viewId, spec)` registry.
+It is a documented `window.metabrowser` capability, but its implementation and schema
+remain in the folder plugin rather than making core understand folder panels.
 The two registries are not interchangeable: the view registry owns tabs and lazy tab
 mounting, while the Overview registry owns regions inside the one
 `("folder", "overview")` view.
@@ -314,16 +316,22 @@ Each panel descriptor supplies:
   fixed band and then by `panelId`, never by script-load timing
 - `presentation` as `surface` for standard host panel chrome or `document` when the
   mounted renderer already owns its content surface
-- `resolve(ctx, { signal })`, which may return panel data, a promise of panel data, or
-  `null` when the panel does not apply; all asynchronous work must be bounded and
+- `required`, defaulting to false; a required panel keeps its slot and treats a null
+  resolution as a contract error, while an optional null result removes its slot
+- `resolve(ctx, { signal })`, which may return `{ key, data }`, a promise of that
+  result, or `null` when the panel does not apply; `key` identifies equivalent mounted
+  content across context refreshes, and all asynchronous work must be bounded and
   abortable
-- `mount(container, ctx, data)`, which may return an instance-specific disposer
+- `mount(container, ctx, data, { signal })`, which returns an instance-specific handle
+  with `dispose()` and may provide `update(ctx, data)`
 - `printable`, which defaults to false
 
 Registration validates unknown placement and presentation values and rejects duplicate
 IDs. The composer resolves contributions independently, reserves their deterministic
 order while pending, and mounts each result into its own labelled `<section>`. A null
-result removes only that slot.
+result removes only an optional slot.
+A result with the same key keeps its mounted handle and calls `update` when one exists;
+a changed key disposes the old handle before mounting the replacement.
 A failed resolver or renderer receives a compact, panel-scoped error.
 Transient failures offer Retry; invalid or permanent failures show an applicable
 corrective action.
@@ -550,17 +558,20 @@ Switching between Overview and Treemap follows the existing lazy view lifecycle.
 
 ## API Changes
 
-No new endpoint or filesystem pass is required.
+No new endpoint or second file-type filesystem pass is required.
+Extend the WIP `/api/rollup` route and folder envelope; File types reads the in-memory
+inventory, while README availability retains one separately bounded direct-child lookup.
 
 Add these browser SDK contracts:
 
-- `registerFolderOverviewPanel(panelId, spec)` validates and registers the descriptor
-  defined above; it is additive to `registerView`, not a special view identifier
-- `listFolderOverviewPanels()` returns descriptors in deterministic placement and ID
-  order for the built-in Overview composer
-- `subscribeFolderContext(path, onUpdate)` exposes the shell’s multiplexed live folder
-  envelope refresh and returns an unsubscribe function; it does not start a second
-  refresh request per subscriber
+- `mb.folderOverview.registerPanel(panelId, spec)` validates and registers the
+  descriptor defined above; the folder plugin installs this namespace on the public SDK,
+  and registration is additive to `registerView`, not a special view identifier
+- `mb.folderOverview.listPanels()` returns frozen descriptors in deterministic placement
+  and ID order for the built-in Overview composer
+- `mb.folderContext.subscribe(path, onUpdate)` exposes the shell’s multiplexed live
+  folder-envelope refresh and returns an unsubscribe function; it does not start a
+  second refresh request per subscriber
 - `setViewPrintState(container, state)` lets a composite renderer publish aggregate
   printability, profile, and runtime without editing private preview attributes
 - the Markdown built-in exposes an instance-safe rendered-document mount returning a
@@ -629,52 +640,817 @@ It does not access private `app.js` state.
 - **File formats: N/A.**
 - **Database schemas: N/A.**
 
+## Implementation Architecture
+
+### Baseline Reconciliation
+
+Implementation starts from current `main` plus the useful parts of the
+`feat/folder-treemap` work, not from a wholesale copy of its final browser files.
+Port the foundation in three reviewable slices:
+
+1. Inventory rollup types, route, settings, and their tests.
+2. Folder envelope, folder routing, lazy folder views, SDK rollup watch, and lifecycle
+   tests.
+3. Treemap layout, model, interaction, styles, and browser tests.
+
+Preserve newer `main` behavior in `server.py` and `app.js`, including quick file
+finding, current asset ordering, and recent-file behavior.
+Do not port the WIP’s conditional README tab, root-README auto-navigation, singleton
+Markdown TOC disposer, duplicate size formatter, direct folder-header refresher, or
+1,100-line folder `index.js` as final architecture.
+The slices may initially reproduce WIP behavior behind tests, but each slice is complete
+only after it lands in the target modules below.
+
+The implementation follows test-driven slices.
+Write or port the focused failing tests for one contract, make that contract pass, then
+refactor while the focused suite remains green.
+Run the formatter and the affected Python and DOM wrappers after each slice;
+`make verify` remains the final gate.
+
+### Target Module Graph
+
+```text
+src/metabrowser/
+├── inventory.py                         live index; thin rollup entry point
+├── inventory_rollup.py                  pure aggregation and bounded emission
+├── folder_discovery.py                  bounded direct-child README discovery
+├── settings.py                          server limits and client-visible constants
+├── server.py                            folder envelope, rollup route, asset wiring
+├── wire_models.py                       rollup and tally wire types/validators
+├── static/
+│   ├── request_error.js                 generic request error classification
+│   ├── formatters.js                    shared byte/count formatting
+│   ├── inventory_scope.js               scoped event relevance and watch factory
+│   ├── contribution_registry.js         generic deterministic registry primitive
+│   ├── resource_context.js              multiplexed live resource-envelope store
+│   ├── view_state.js                    active-view and dynamic print-state bridge
+│   ├── plugin_sdk.js                    public SDK adapters only
+│   ├── types.d.ts                       exact SDK and wire declarations
+│   ├── app.js                           routing, folder chrome, generic view mounting
+│   └── styles.css                       design tokens only for the new components
+└── builtin_plugins/
+    ├── markdown/
+    │   ├── index.js                     thin view registration adapter
+    │   ├── rendered.js                  instance-safe rendered Markdown mount
+    │   └── source.js                    source rendering helpers
+    └── folder/
+        ├── manifest.toml                Overview default; Treemap peer
+        ├── index.js                     imports and registrations only
+        ├── overview_registry.js         folder-panel schema and registry facade
+        ├── overview.js                  panel composer and lifecycle
+        ├── readme_panel.js               conditional Markdown contribution
+        ├── file_type_summary_model.js   pure tally-to-view-model transform
+        ├── distribution_view.js         paired bars and semantic table
+        ├── file_type_summary.js         live panel controller
+        ├── category_palette.js          path-scoped stable palette pool
+        ├── treemap_layout.js             pure geometry exports
+        ├── treemap_model.js              pure rollup/filter/cell transforms
+        ├── treemap.js                    Treemap DOM controller and view adapter
+        ├── styles.css                    existing Treemap styles
+        ├── overview.css                  composer and panel presentation styles
+        └── file_type_summary.css         distribution-specific layout styles
+```
+
+Every new browser file except the existing legacy adapters `app.js`, `plugin_sdk.js`,
+and Markdown `index.js` stays under the fully strict `tsconfig.json` include.
+Do not add any new file to the legacy exclusion list.
+Folder and Markdown `index.js` files are ES modules and use relative imports served by
+the existing plugin-static route; the folder manifest no longer needs
+`extra_scripts = ["treemap_layout.js"]`.
+
+### Cross-Layer Data Flow
+
+The one summary request is:
+
+```text
+FileTypeSummaryController
+  -> mb.watchRollup(path, depth=0, top=0, ext_top=10, ext_rank=dual)
+  -> GET /api/rollup
+  -> InventoryIndex.rollup
+  -> inventory_rollup.build_rollup
+  -> root totals + bounded extension tallies
+  -> normalizeRollupEnvelope
+  -> buildFileTypeSummaryModel
+  -> updateDistributionView
+```
+
+No layer walks the filesystem for file-type composition.
+The rollup uses the process-wide inventory and calculates all/unignored totals together.
+The browser holds both populations and changes columns locally when **Show ignored**
+changes.
+
+Folder context follows a separate, multiplexed path:
+
+```text
+/api/file folder envelope
+  -> mb.folderContext.seed(path, envelope)
+  -> one path-scoped inventory watch and debounced envelope refresh
+  -> shell folder header subscriber
+  -> Overview composer subscriber
+  -> keyed panel re-resolution
+```
+
+The header and composer therefore never issue parallel `/api/file` refreshes for the
+same selected folder.
+README discovery is a bounded direct-child operation used only by the envelope; File
+types continues to use inventory rollups.
+
+### Server and Inventory Function Map
+
+#### `src/metabrowser/inventory_rollup.py` — new
+
+This module owns pure, synchronous transformation of a read-only inventory mapping.
+It imports `FsEntry` only under `TYPE_CHECKING`, avoiding a runtime cycle with
+`inventory.py`.
+
+- `RollupOptions` is a frozen, slotted dataclass containing `depth`, `top`, `ext_top`,
+  `ext_rank`, and `max_nodes`. Construction rejects negative limits and unknown ranking
+  modes.
+- `_SubtreeAggregate` is a private slotted accumulator for all/unignored file counts,
+  bytes, newest modification time, and the four extension counters.
+- `build_rollup(entries, root_path, options, ancestor_gitignored)` is the only public
+  transformation entry point.
+  It returns `None` for an absent or non-directory root and otherwise returns one
+  `RollupResult` containing `node` and `ext_tallies`.
+- `_group_children(entries)` creates the one parent-to-children map and skips the root’s
+  self-parent link.
+- `_aggregate_subtree(...)` performs the post-order aggregation once, propagates
+  inherited ignore state, and never follows a symlink or opens a file.
+- `_file_node(...)` and `_directory_node(...)` serialize the two node shapes without
+  mixing traversal policy into aggregation.
+- `_all_weight(...)`, `_unignored_weight(...)`, and `_ordered_children(...)` preserve
+  the WIP’s interleaved all/unignored child selection and deterministic path tie-break.
+- `_emit_bounded_tree(...)` performs breadth-first emission under both the per-directory
+  and global node budgets.
+  `depth=0` leaves the root’s `children` as the lazy `null` sentinel; `top=0` emits no
+  child nodes and accounts for omitted content in `rest` when depth permits emission.
+- `_share(value, total)` returns zero for a zero denominator and otherwise uses the
+  unrounded integer ratio.
+- `_extension_scores(aggregate, key)` returns `(score, byte_score, file_score)` from the
+  four populations defined in Category Selection and Other.
+- `_select_extension_keys(aggregate, limit, rank_mode)` returns deterministic named
+  keys. `bytes` preserves the prior byte-first order; `dual` sorts descending by the
+  three scores and ascending by normalized key.
+- `_serialize_extension_tallies(aggregate, keys)` emits the compact five-cell rows and
+  one exact Other row for every omitted key.
+  It selects from the union of all four counters so a zero-byte or ignored-only type is
+  not lost.
+
+The algorithm remains one O(N) grouping/aggregation pass plus bounded sorts.
+Its 100,000-entry performance fixture keeps the existing 150 ms development target and
+records emitted-node and serialized-payload bounds.
+
+#### `src/metabrowser/inventory.py`
+
+- Remove `_SubtreeAgg` and the nested rollup helpers.
+- Keep `ROLLUP_NO_EXT_KEY` and `ROLLUP_REST_EXT_KEY` in `inventory_rollup.py`; re-export
+  them from `inventory.py` only if an existing import requires compatibility.
+- `InventoryIndex.rollup(path, *, depth, top, ext_top, ext_rank="bytes", max_nodes=None)`
+  validates its local preconditions, computes `_ancestor_gitignored(path)`, constructs
+  `RollupOptions`, and delegates to `build_rollup`. It contains no serialization
+  branches of its own.
+- `_ancestor_gitignored(path)` remains on `InventoryIndex` because it reads index state,
+  but it returns only the initial boolean passed into the pure builder.
+
+The method is synchronous and contains no `await`, so the event loop cannot mutate the
+index during one call.
+Do not add an O(N) defensive copy merely to simulate concurrency that cannot interleave.
+
+#### `src/metabrowser/folder_discovery.py` — new
+
+- `FolderDiscovery` is a frozen, slotted result carrying `readme_name` and whether the
+  unusual-casing fallback reached its entry limit.
+- `discover_folder(target, *, max_entries)` first probes the three existing preferred
+  spellings with regular-file, no-symlink checks, then performs at most `max_entries`
+  `os.scandir` entries to find other case-insensitive `README.md` spellings.
+- `_choose_readme(candidates)` applies the documented preferred-spelling order and then
+  a stable case-sensitive name tie-break.
+
+The caller has already resolved `target` through the safe-path helper.
+The fallback never recurses, follows symlinks, or reads file content.
+`_api_folder_envelope` calls it with `asyncio.to_thread`, so even the bounded directory
+operation stays off the server event loop.
+
+#### `src/metabrowser/settings.py`
+
+Add named constants rather than literals at call sites:
+
+- `ROLLUP_DEFAULT_EXT_RANK = "bytes"`
+- `ROLLUP_FILE_TYPE_NAMED_LIMIT = 10`
+- `DISTRIBUTION_PALETTE_SLOTS = 12`
+- `FOLDER_DISCOVERY_MAX_ENTRIES = 4096`
+
+Keep the WIP rollup depth, top, extension, node, and debounce bounds.
+`client_settings_dict()` exports the rollup defaults, file-type named limit, palette
+size, and watch debounce; it does not export the server-only discovery limit.
+
+#### `src/metabrowser/wire_models.py`
+
+- `ExtensionTallyRow` names the five-position tuple contract.
+- `RollupResult` names the inventory result with `node` and `ext_tallies`.
+- `RollupEnvelope` names the route response, including scan and truncation metadata.
+- `validate_extension_tallies(rows)` checks row length, distinct string keys,
+  nonnegative integer cells, at most one final Other sentinel, and all/unignored
+  monotonicity.
+- `validate_rollup_result(result)` calls `validate_rollup_node`, validates tallies, and
+  asserts that tally columns sum to the root’s four totals.
+- `validate_rollup_envelope(envelope)` additionally validates the nullable cold-index
+  state and route metadata.
+
+These validators remain test and assertion helpers; do not traverse a large response
+again on every production request.
+
+#### `src/metabrowser/server.py`
+
+- `_query_bounded_int(request, name, default, *, minimum, maximum)` replaces repeated
+  clamp expressions and treats malformed input as the default.
+- `_query_choice(request, name, default, allowed)` parses `ext_rank`; an unsupported
+  explicit value returns a 400 response rather than silently selecting a different
+  semantic ranking.
+- `api_rollup(request)` accepts zero for `depth` and `top`, passes `ext_rank` through to
+  `InventoryIndex.rollup`, and preserves the current envelope and 404/cold-index
+  behavior.
+- `_api_folder_envelope(subpath, target)` always returns the folder manifest’s Overview
+  and Treemap views without filtering a README tab.
+  It calls `discover_folder` in a worker thread, retains `readme_path` as discovery
+  data, and keeps the envelope `no-store`.
+- `_api_file_impl(request)` continues to route directories before file classification.
+- `index(request)` adds the strict helper assets before `plugin_sdk.js`, preserves all
+  later dependency ordering, and no longer injects `METABROWSER_INITIAL_PATH`.
+- Remove `_initial_file_path()`. With no hash route, the browser selects the served root
+  folder; README becomes a panel inside its Overview rather than replacing the landing
+  route.
+- `_build_plugin_script_block()` needs no new loader feature.
+  Relative ES-module imports resolve under the existing safe plugin-static route.
+
+### Strict Browser-Core Function Map
+
+These modules are small IIFEs that expose one frozen global factory for the legacy SDK
+and shell adapters. They contain no folder panel IDs, README branches, or component CSS.
+
+#### `src/metabrowser/static/request_error.js` — new
+
+- `RequestError` stores a safe message, HTTP status, operation, and cause.
+- `isAbortError(error)` recognizes browser aborts without depending on one realm’s
+  `DOMException` constructor.
+- `classifyRequestError(error)` returns `{ message, retryable }`; aborts are control
+  flow, 408/425/429/5xx and network failures are retryable, and other 4xx failures are
+  not.
+
+Expose the helpers as `window.MetabrowserRequestErrors` and through `mb.errors`. Never
+display raw response bodies or local paths.
+
+#### `src/metabrowser/static/formatters.js` — new
+
+- `formatBytes(value)` preserves existing B/KB/MB output and adds bounded GB/TB/PB
+  bands.
+- `formatInteger(value)` uses one cached `Intl.NumberFormat` instance.
+- `formatFileCount(value)` applies localized integers and correct `file`/`files` copy.
+
+Expose one frozen `window.MetabrowserFormatters` object.
+Both `app.js` and `plugin_sdk.js` delegate to it; neither keeps a private
+byte-formatting implementation.
+
+#### `src/metabrowser/static/inventory_scope.js` — new
+
+- `pathsIntersectScope(changedPaths, scopePath)` is the single relevance predicate used
+  by rollups and live folder envelopes.
+- `createInventoryWatch(scopePath, options, onUpdate)` owns the inventory event
+  listener, trailing debounce, abort controller, stale bit, active gate, refresh, error
+  callback, and idempotent disposal.
+- The returned handle is `{ refresh, stale, dispose }`. `refresh()` never overlaps a
+  prior request, and a completion after disposal is ignored.
+
+`mb.watchRollup` becomes a typed wrapper that supplies `fetchRollup` to this generic
+factory rather than duplicating listener code.
+
+#### `src/metabrowser/static/contribution_registry.js` — new
+
+- `createContributionRegistry({ validate, compare })` returns an isolated registry with
+  `register(id, spec)` and `list()`.
+- `register` validates before mutation, rejects duplicates, freezes the stored
+  descriptor, and returns an unregister function for test isolation.
+- `list` returns a frozen sorted snapshot and never exposes the mutable backing map.
+
+The helper knows nothing about folder placements or panel presentation.
+`overview_registry.js` supplies those rules.
+Like `registerView`, panel registration happens during plugin module evaluation before
+the DOM-ready mount; version one does not hot-add a newly registered descriptor to an
+already mounted Overview.
+
+#### `src/metabrowser/static/resource_context.js` — new
+
+- `createResourceContextStore({ fetchEnvelope, pathsIntersect, debounceMs })` returns
+  `seed`, `subscribe`, `refresh`, and `dispose` methods.
+- A map entry holds the latest envelope, subscriber set, timer, abort controller, and
+  monotonic request generation for one path.
+- `seed(path, envelope)` publishes the already-fetched `/api/file` result without
+  another request.
+- `subscribe(path, listener)` immediately delivers a seed when present, adds no new
+  inventory listener, and returns an idempotent unsubscribe.
+- One global inventory listener schedules at most one trailing refresh for each path
+  with subscribers.
+- The last unsubscribe clears that path’s timer and request and releases the map entry.
+
+`plugin_sdk.js` instantiates this generic store as `mb.folderContext`. Only folder
+envelopes are seeded in version one, but the helper’s state model remains
+resource-generic.
+
+#### `src/metabrowser/static/view_state.js` — new
+
+- `setActive(container, active)` is the shell-side state write and notifies subscribers
+  only on a real transition.
+- `isActive(container)` is the supported replacement for plugin checks of private tab
+  attributes or `offsetParent` heuristics.
+- `subscribeActive(container, listener)` delivers current state and returns an
+  idempotent unsubscribe.
+- `setPrintState(container, state)` validates `printable`, `profile`, and `runtime`,
+  updates the view container, and dispatches one shell event when the active view’s
+  print eligibility changes.
+
+Expose plugin-safe methods as `mb.viewState.isActive`, `mb.viewState.subscribeActive`,
+and `mb.setViewPrintState`. The shell-only active setter remains on
+`window.MetabrowserViewState`.
+
+#### `src/metabrowser/static/plugin_sdk.js`
+
+Keep this legacy file an adapter:
+
+- `fetchRollup(path, options)` serializes `depth`, `top`, `ext_top`, and `ext_rank`,
+  forwards `signal`, parses the envelope, and throws `RequestError` for failures.
+- `watchRollup(path, options, onUpdate)` delegates to `createInventoryWatch`.
+- `fetchKpressRender(ctx, viewId, options)` forwards an additive `signal` option so a
+  composed README mount can be aborted.
+- `formatSize`, `formatInteger`, and `formatFileCount` delegate to the shared formatter.
+- Install `mb.errors`, `mb.folderContext`, `mb.viewState`, and `mb.setViewPrintState`
+  from the strict factories.
+- Do not add the folder Overview registry here; the folder plugin attaches its own
+  documented namespace.
+
+Preserve all existing method names and defaults.
+Do not move unrelated legacy SDK helpers during this feature.
+
+#### `src/metabrowser/static/app.js`
+
+Limit changes to shell integration seams:
+
+- `selectFile(path, skipHistory)` keeps folder envelopes out of the file cache, commits
+  directory routes only after a successful envelope, and aborts stale selections.
+- `renderFolderHeader(data)` remains shared folder chrome and includes the same
+  initially hidden print control as file views; dynamic Overview print state reveals it
+  only when a printable panel is mounted.
+- Replace `startFolderHeaderRefresh` and `stopFolderHeaderRefresh` with
+  `startFolderHeaderSubscription(path)` and `stopFolderHeaderSubscription()`; the former
+  subscribes to `mb.folderContext` and patches only the summary strip.
+- `renderFile(data)` seeds `mb.folderContext` before it starts the header subscriber or
+  mounts folder views.
+- `mountPluginView(container, pluginView, ctx)` accepts either the existing spec-level
+  `dispose` callback or a new instance handle returned by `render`. If an asynchronous
+  mount finishes after replacement, dispose its handle immediately instead of retaining
+  detached state.
+- `disposeActivePluginViews()` invokes each normalized handle exactly once and then
+  unsubscribes the folder header.
+- `setActivePreviewView(tabId, preview)` calls `MetabrowserViewState.setActive` for
+  every tab container and consumes dynamic print-state events.
+- `printActiveView()` retains the existing print path; visibility now follows the active
+  view’s published composite state.
+- `parseHashRoute`, `splitHashRoute`, `commitRoute`, and `navigateToPath` preserve the
+  WIP’s trailing-slash directory routes and history behavior.
+- The DOM-ready entry point selects root Overview when there is no hash.
+  Remove `serverInitialPath()` and `findRootReadme()`.
+
+The shell does not import folder renderer modules, inspect panel IDs, or reach into
+their DOM.
+
+#### `src/metabrowser/static/types.d.ts`
+
+Replace broad `Record<string, unknown>` declarations at the new boundaries with:
+
+- `MetabrowserExtensionTallyRow` and normalized `MetabrowserExtensionTally`
+- `MetabrowserRollupNode`, `MetabrowserRollupEnvelope`, options, and watch handle
+- generic contribution-registry types
+- `FolderOverviewPanelSpec<T>`, `FolderOverviewResolution<T>`,
+  `FolderOverviewMountHandle<T>`, and panel error classification
+- `FolderEnvelope`, folder-context subscription, and view-state APIs
+- instance-safe Markdown mount options and handle
+- category-palette lease and File types view-model types
+
+The view renderer return type becomes additive:
+`void | DisposableHandle | Promise<void | DisposableHandle>`. Existing `spec.dispose`
+remains valid.
+
+### Markdown Plugin Function Map
+
+#### `src/metabrowser/builtin_plugins/markdown/rendered.js` — new
+
+- `renderKpressDiagnosticsHtml(diagnostics, escapeHtml)` and `buildDiagnosticsNode(...)`
+  retain the current diagnostic structure.
+- `injectDiagnostics(container, diagnostics, mb)` inserts diagnostics in the existing
+  KPress location.
+- `renderKpressError(error, mb)` preserves the ordinary Markdown corrective states.
+- `mountRenderedMarkdown(container, ctx, mb, options={})` paints loading state, fetches
+  KPress with `options.signal`, ignores stale completions, injects diagnostics, starts
+  one TOC instance, and returns `{ dispose }` for that instance.
+- Its disposer aborts pending work and invokes only its own TOC disposer.
+  It is safe to call more than once.
+
+#### `src/metabrowser/builtin_plugins/markdown/source.js` — new
+
+- `renderMarkdownSourceHtml(data, mb)` owns frontmatter splitting, truncation warning,
+  escaping, and copy framing.
+- `renderMarkdownSource(container, ctx, mb)` applies the source host class and measures
+  the render.
+
+#### `src/metabrowser/builtin_plugins/markdown/index.js`
+
+Import the two modules, register the ordinary `rendered` and `source` views, and expose:
+
+```text
+mb.builtins.markdown.mountRendered
+mb.builtins.markdown.renderSource
+```
+
+The ordinary rendered view returns the mount handle to the shell.
+Remove `activeTocDispose`, `disposeToc`, and any module-wide rendered-document instance.
+README and directly opened Markdown now exercise exactly the same mount function.
+
+### Folder Plugin Function Map
+
+#### `src/metabrowser/builtin_plugins/folder/overview_registry.js` — new
+
+- `PLACEMENT_ORDER` maps `summary`, `content`, and `supplemental` to fixed ranks.
+- `validatePanelId(id)` requires a stable plugin-qualified form such as
+  `folder.file-types` or `example.license`.
+- `validatePanelSpec(spec)` checks label, placement, presentation, resolver, mount,
+  required status, printability, and optional error classifier without coercing invalid
+  values.
+- `comparePanels(a, b)` sorts placement rank and then panel ID.
+- `createFolderOverviewRegistry(mb)` configures the generic contribution registry and
+  returns `{ registerPanel, listPanels }`.
+
+`index.js` publishes that frozen facade as `mb.folderOverview` before installed plugin
+modules execute.
+
+#### `src/metabrowser/builtin_plugins/folder/overview.js` — new
+
+- `createOverviewView(mb, registry)` returns the `("folder", "overview")` view spec.
+- `mountOverview(container, ctx, mb, registry)` creates the stack, subscribes once to
+  `mb.folderContext` and active-view state, reconciles every registered descriptor, and
+  returns one composite disposer.
+- `handleContext(nextCtx)` retains the newest envelope and reconciles immediately only
+  while Overview is active; otherwise it marks the composer stale.
+- `handleActive(active)` performs one reconciliation when a stale Overview becomes
+  visible.
+- `createPanelSlot(descriptor)` creates a stable, labelled `<section>` in deterministic
+  order and applies only composer-owned presentation classes.
+- `resolvePanel(record, ctx)` increments the record generation, aborts the prior
+  resolver, and calls `resolve(ctx, { signal })` inside the panel error boundary.
+- `applyResolution(record, result, ctx)` removes an optional null slot, reports a
+  required-null contract error, preserves an equal keyed mount, calls `update` when
+  provided, or disposes before a changed-key mount.
+- `mountPanel(record, result, ctx)` passes an abort signal, normalizes the returned
+  handle, and discards late async completions safely.
+- `renderPanelFailure(record, error)` uses the descriptor classifier and `mb.errors`;
+  Retry reruns only that record’s resolver.
+- `disposePanel(record)` aborts resolution/mount work, removes Retry listeners, and
+  invokes the mount disposer exactly once.
+- `publishPrintState(container, records, mb)` enables document printing only when one
+  successfully mounted contribution is printable and derives the document profile and
+  runtime from that contribution.
+- The composite disposer ends the context subscription, disposes every record, and
+  publishes non-printable state.
+
+The composer contains no `if panelId === ...` branches.
+Tests must register a synthetic third panel and receive the same lifecycle as built-ins.
+
+#### `src/metabrowser/builtin_plugins/folder/readme_panel.js` — new
+
+- `createReadmePanel(mb)` returns the `folder.readme` descriptor in the `content` band
+  with `document` presentation and `printable: true`.
+- `resolveReadme(ctx)` returns `null` without `ctx.raw.readme_path`; otherwise it
+  returns `{ key: readmePath, data: { path: readmePath } }`.
+- `mountReadme(container, _ctx, data, options)` calls
+  `mb.builtins.markdown.mountRendered` with a normal Markdown render context and the
+  provided signal.
+
+There is no README title, wrapper card, copied KPress selector, or README-specific TOC
+cleanup in the folder plugin.
+
+#### `src/metabrowser/builtin_plugins/folder/file_type_summary_model.js` — new
+
+This file is pure and has no DOM, fetch, preference, or global access.
+
+- `normalizeTallyRow(row)` converts the five-cell wire row into named integer fields,
+  maps `(none)` and the Other sentinel explicitly, and throws on malformed data.
+- `normalizeRollupEnvelope(raw)` normalizes every tally and root total while preserving
+  scan/truncation metadata.
+- `selectPopulation(envelope, showIgnored)` chooses all or unignored integer columns.
+- `formatPercent(numerator, denominator, formatter)` implements zero, `<0.1%`, and
+  at-most-one-decimal behavior from the design.
+- `buildFileTypeSummaryModel(envelope, showIgnored, formatters)` returns one
+  discriminated model for `pending`, `populated`, `empty`, `ignored-only`, `zero-bytes`,
+  or `truncated`.
+- Populated rows preserve server order, drop only active-scope double-zero named rows,
+  keep Other last, and carry raw flex weights plus formatted counts, sizes, and shares.
+- `_assertPopulationSums(model)` is a development/test assertion that named plus Other
+  integers equal the selected root totals.
+
+#### `src/metabrowser/builtin_plugins/folder/distribution_view.js` — new
+
+- `mountDistributionView(container, model, palette)` builds the native disclosure,
+  labelled Files and Size figures, and semantic Type/Files/Size table once.
+- `updateDistributionView(handle, model)` keys DOM rows by extension key, updates text
+  and flex weights in place, and removes stale rows without replacing `<summary>` or
+  moving focus.
+- `renderDistributionBar(metric, rows, palette)` marks visual segments
+  `aria-hidden="true"` and places one concise accessible description on the figure.
+- `renderSummaryState(handle, model)` switches among loading, partial, empty,
+  ignored-only, zero-byte, populated, and failure bodies without manufacturing a table
+  for zero rows.
+- `disposeDistributionView(handle)` removes only listeners the view installed.
+
+Color is applied through `mb-distribution-slot-N` or Other classes.
+Only unitless data weights may be inline.
+
+#### `src/metabrowser/builtin_plugins/folder/file_type_summary.js` — new
+
+- `createFileTypeSummaryPanel(mb, palettePool)` returns the required `folder.file-types`
+  summary/surface descriptor with `required: true`.
+- Its resolver immediately returns `{ key: ctx.path, data: null }`; the panel is never
+  absent, including for pending and empty folders.
+- `mountFileTypeSummary(container, ctx, mb, palettePool, options)` restores
+  `folder.fileTypeSummary.open`, acquires the path palette, subscribes to **Show
+  ignored**, subscribes to active-view state, and starts exactly one rollup watch.
+- `applyEnvelope(raw)` normalizes once, rebuilds the pure model for current ignored
+  scope, reserves palette slots for all named rows in the envelope, and patches the
+  distribution view.
+- `applyFilters(filterState)` rebuilds from the retained normalized envelope only when
+  ignored visibility changes; it never refetches for recency, type, size, or Current.
+- `handleActive(active)` refreshes a stale watch when Overview becomes visible.
+- `handleFailure(error)` retains a stale successful model when one exists; otherwise it
+  renders the classified panel error and wires Retry to `watch.refresh()`.
+- `dispose()` ends watch, filter and active subscriptions, Retry/disclosure listeners,
+  and palette lease exactly once.
+
+The rollup options are read from named client settings and resolve to `depth=0`,
+`top=0`, `ext_top=10`, and `ext_rank="dual"`.
+
+#### `src/metabrowser/builtin_plugins/folder/category_palette.js` — new
+
+- `createCategoryPalettePool(slotCount)` owns a path-to-session map.
+- `acquire(path)` increments a reference count and returns a lease with `sync(keys)`,
+  `slotFor(key)`, `classFor(key)`, and `release()`.
+- `hashKey(key)` gives a deterministic starting slot.
+- `assignSlot(session, key)` probes unused slots so the capped summary has distinct
+  colors; reserved slots survive rank and visibility changes for the session.
+- Other always returns the neutral class and never consumes a numbered slot.
+- The final release deletes the path session.
+
+Overview and Treemap both acquire the same pool exported by folder `index.js`.
+
+#### Treemap modules
+
+The WIP Treemap behavior is retained but its final implementation is split:
+
+- `treemap_layout.js` exports `squarify`, `focusTransform`, `projectRect`, `layoutTree`,
+  and `worstAspect`; it has no global registration or DOM access.
+- `treemap_model.js` owns preference normalization, legacy ignored migration, subtree
+  scoping, node visibility, weight selection, filter dimming, cell labels, and status
+  copy as pure functions.
+- `treemap.js` owns toolbar DOM, camera transitions, resize handling, keyboard and
+  pointer behavior, tooltip lifecycle, rollup watch, filter/view-state subscriptions,
+  and one instance disposer.
+- Replace `offsetParent` plus `IntersectionObserver` activity inference with
+  `mb.viewState`.
+- Type-grouped cell classes request the shared category-palette lease; existing broad
+  `ft-*` icons remain appropriate outside exact-type aggregate marks.
+
+Do not combine these modules back into folder `index.js`.
+
+#### `src/metabrowser/builtin_plugins/folder/index.js`
+
+This file only:
+
+1. validates that `window.metabrowser` exists;
+2. creates the category-palette pool and Overview registry;
+3. publishes `mb.folderOverview`;
+4. registers the File types and README descriptors;
+5. registers the Overview and Treemap view adapters.
+
+It contains no HTML templates, fetch loops, layout math, or retained view instance.
+
+#### `src/metabrowser/builtin_plugins/folder/manifest.toml`
+
+Declare exactly two folder views:
+
+1. `overview`, label **Overview**, default, `content-body folder-overview-host`;
+2. `treemap`, label **Treemap**, lazy peer, `content-body folder-treemap-host`.
+
+Overview’s manifest printability starts false and is published dynamically by the
+composer. Remove the README view and `extra_scripts` entry.
+Do not declare the future Files tab.
+
+### Styles and Asset Packaging
+
+#### `src/metabrowser/static/styles.css`
+
+Add only design tokens and palette utility classes:
+
+- twelve light/dark `--mb-distribution-category-*` tokens;
+- `--mb-distribution-other` and `--mb-distribution-track`;
+- `--mb-distribution-track-height` and `--mb-distribution-segment-gap`;
+- `.mb-distribution-slot-1` through `-12` and `.mb-distribution-other`, each assigning
+  the component color variable from a token.
+
+No folder layout selector belongs in core styles.
+
+#### Folder plugin styles
+
+- `overview.css` owns the document measure, vertical panel stack, surface/document
+  presentation, local error, loading slot, print exclusion, and the wide-band document
+  row that lets README’s TOC begin below summaries.
+- `file_type_summary.css` owns the disclosure header, two 8-pixel tracks, 2-pixel visual
+  gaps, row marks, numeric alignment, narrow two-line row layout, skeletons, status, and
+  reduced-motion behavior.
+- Existing `styles.css` remains Treemap-specific.
+- Every value comes from an existing token or one of the new documented distribution
+  tokens; no category color literal appears in plugin CSS.
+- `manifest.toml` lists the two additional styles with `extra_styles` so wheel asset
+  discovery and cache behavior stay manifest-driven.
+
+### Test File Map
+
+Keep tests beside the boundary they protect rather than accumulating one feature-wide
+harness.
+
+Python and route coverage:
+
+- `tests/test_inventory_rollup.py` ports the WIP rollup unit and performance cases and
+  adds dual selection, exact Other, zero limits, and zero-byte/ignored-only unions.
+- `tests/test_rollup_route.py` owns query parsing, 400/404 behavior, clamping, cold
+  envelopes, metadata, and the `depth=0&top=0&ext_rank=dual` summary request.
+- `tests/test_rollup_wire_models.py` owns every node, tally, result, envelope, sentinel,
+  nonnegative, monotonicity, and population-sum validator failure.
+- `tests/test_api_folder_envelope.py` owns folder views, pending/complete aggregates,
+  README discovery, unusual casing, scan cap, symlinks, empty folders, safe paths, and
+  no-store headers.
+- `tests/test_index_cdn_origins.py` replaces the root README seed assertion with root
+  Overview startup and checks strict helper asset order.
+- `tests/test_browser_lifespan_e2e.py` extends filesystem-to-inventory-to-envelope and
+  rollup coverage for live file and README mutations.
+- `tests/test_browser_assets.py`, `tests/test_plugin_extra_assets.py`, and
+  `tests/test_distribution_policy.py` own SDK presence, relative ES-module/static style
+  packaging, and built-wheel inclusion respectively.
+
+Strict JavaScript and DOM coverage, each with a same-named `tests/test_*_js.py` Node
+wrapper:
+
+- `tests/dom/inventory_scope_behavior.js` tests path relevance, debounce, active/stale
+  transitions, abort, retry callback, and disposal.
+- `tests/dom/contribution_registry_behavior.js` tests schema rejection, duplicates,
+  freezing, stable order, unregister, and independent registries.
+- `tests/dom/resource_context_behavior.js` tests seeding, immediate delivery,
+  multiplexing, generation races, last-subscriber cleanup, and one request per path.
+- `tests/dom/view_state_behavior.js` tests active delivery, transition deduplication,
+  print validation, active-view print events, and idempotent unsubscribe.
+- `tests/dom/markdown_mount_behavior.js` tests direct/composed parity, two simultaneous
+  TOCs, abort, late completion, diagnostics/error DOM, and exactly-once disposal.
+- `tests/dom/folder_overview_behavior.js` tests placement/ID order, hidden optional
+  slots, out-of-order resolution, keyed preserve/update/remount, local Retry, print
+  aggregation, synthetic third panels, active gating, and teardown.
+- `tests/dom/file_type_summary_model_behavior.js` tests tally normalization, active
+  populations, sums, percent/size/count boundaries, row order, and every discriminated
+  state without a DOM.
+- `tests/dom/file_type_summary_behavior.js` tests the disclosure, paired bars, table
+  semantics, escaped labels, focus-preserving keyed patches, filters, Retry, hidden
+  refresh, empty/ignored-only/zero-byte DOM, and teardown.
+- `tests/dom/category_palette_behavior.js` tests deterministic probing, distinct capped
+  slots, Other, reservation, cross-view leases, path isolation, and final release.
+- `tests/dom/folder_treemap_behavior.js` receives the WIP interaction cases after the
+  split and adds shared-palette and supported active-view assertions.
+
+`tests/test_plugin_sdk_helpers.py` and TypeScript check-JS lock the public method and
+declaration names.
+Avoid source-text assertions for behavior that a DOM or route contract
+test can execute.
+
+### Lifecycle, Error, and Performance Invariants
+
+One selected folder may have one mounted Overview and one lazily mounted Treemap.
+Switching tabs does not dispose either, but `mb.viewState` prevents hidden views from
+refreshing. Navigating to another path disposes every mounted view, context subscriber,
+panel record, rollup watch, filter listener, active listener, request, timer, Retry
+handler, TOC, resize observer, tooltip, and palette lease.
+
+Disposal is idempotent at every level.
+Late resolver, Markdown, rollup, or view-mount completions check their generation or
+abort signal before touching DOM. A parent disposes children in reverse acquisition
+order and catches only cleanup errors it can log without masking the original failure.
+
+Panel resolver and mount failures are isolated by contribution.
+Abort is never rendered as an error.
+An invalid descriptor fails during registration; a permanent request error has no Retry;
+a transient request error does.
+A successful stale File types model stays visible while a refresh error is reported
+quietly. No server error exposes an absolute root path.
+
+Performance gates are:
+
+- no new crawl and one O(N) in-memory rollup pass per request;
+- no emitted child nodes for the summary request;
+- at most ten named rows plus Other;
+- one rollup watch per mounted File types panel;
+- one multiplexed folder-envelope refresh per selected path;
+- no panel-resolution or rollup refresh for hidden Overview or Treemap views; the one
+  folder-envelope refresh remains active for the visible shell header;
+- no full panel or table replacement during ordinary live updates;
+- the existing 100,000-entry rollup budget and global node/payload caps remain tested.
+
 ## Implementation Plan
 
-### Phase 1: Folder Overview Platform
+The top-level implementation epic is `mb-ilty`. Its children are independently
+verifiable and carry their blockers in tbd:
 
-- [ ] Rebase or land the folder envelope, rollup route, SDK watcher, and folder plugin
-  prerequisites from the folder-view work
-- [ ] Replace the conditional folder README view with an always-present Overview view,
-  make Overview the default, and keep Treemap as a peer top-level view
-- [ ] Add the validated Overview panel registry, named placement bands, composer,
-  independent resolver and mount lifecycles, Retry isolation, and print eligibility
-- [ ] Publish the shell’s multiplexed folder-envelope refresh through the SDK so panel
-  availability can update without parallel folder fetches
-- [ ] Refactor rendered Markdown to an instance-safe mount and contribute README as a
-  conditional document panel with the exact ordinary Markdown presentation
-- [ ] Add registry and composer tests using a synthetic third panel so extensibility is
-  demonstrated rather than inferred from File types and README alone
-- [ ] Document the shipped panel registration and composite print-state APIs in the
-  plugin authoring guide when they become available
-- [x] Record folder views, Overview panel composition, panel presentation variants, and
-  aggregate distributions in the main architecture and design-system documents
+| Bead | Scope | Blocked by |
+| --- | --- | --- |
+| `mb-qbmw` | Reconcile the folder-view foundation | — |
+| `mb-lnfw` | Extract and extend the inventory rollup | `mb-qbmw` |
+| `mb-qm04` | Stabilize folder envelopes and root routing | `mb-qbmw` |
+| `mb-in4t` | Add strict browser lifecycle primitives | `mb-qbmw` |
+| `mb-0c0e` | Make rendered Markdown mounts instance-safe | `mb-in4t` |
+| `mb-0c9h` | Implement the Folder Overview registry and composer | `mb-qm04`, `mb-in4t` |
+| `mb-o95v` | Contribute README to Folder Overview | `mb-0c0e`, `mb-0c9h` |
+| `mb-6ol0` | Implement the dual-metric File types panel | `mb-lnfw`, `mb-in4t`, `mb-0c9h` |
+| `mb-ds1s` | Share category colors and modularize Treemap | `mb-6ol0` |
+| `mb-w0xh` | Complete integration and release validation | `mb-o95v`, `mb-ds1s` |
 
-### Phase 2: Dual-Metric Rollup and Summary Primitive
+After `mb-qbmw`, the server rollup, folder envelope, and strict browser primitives can
+proceed independently.
+Markdown can proceed as soon as the browser lifecycle primitives exist; README and File
+types meet only in the final composition, avoiding a long serial implementation branch.
 
-- [ ] Extend rollup bounds to allow a root-and-tallies response with no emitted children
-- [ ] Implement four-share type selection, stable Other totals, and all/unignored parity
-- [ ] Add typed wire validation and fixtures for byte-heavy, count-heavy, ignored-heavy,
-  extensionless, compound-extension, zero-byte, scanning, and truncated cases
-- [ ] Add aggregate-distribution tokens and the exact-type category resolver, and route
-  type-grouped folder visualizations through it
-- [ ] Implement the strict summary module with percentage formatting, keyed updates,
-  collapse persistence, Retry, active gating, disposal, and a stable empty state with no
-  zero-width bars or empty table
+### Phase 0: Reconcile the Folder-View Foundation
 
-### Phase 3: Integration and Browser Validation
+- [ ] Port the three baseline slices from `feat/folder-treemap` onto current `main`
+  while preserving newer shell behavior.
+- [ ] Move WIP code directly into the target modules; do not land the hard-coded README
+  tab or monolithic folder plugin as an intermediate public contract.
+- [ ] Update root startup and folder route tests so no-hash startup opens root Overview.
 
-- [ ] Register File types as the required summary panel and README as a conditional
-  document panel; keep their data, errors, rendering, and disposal independent
-- [ ] Render the same measured Overview stack with a README, without one, and for a
-  completely empty folder
-- [ ] Synchronize **Show ignored**, retain directory-wide behavior for the other filter
-  dimensions, and expose scope copy only when it carries information
-- [ ] Validate live file and README addition and removal, type change, scan completion,
-  truncation, folder navigation, lazy tab activation, and view replacement
-- [ ] Validate wide and narrow panes, light and dark themes, reduced motion, keyboard
-  and screen-reader structure, and print output in a real browser
-- [ ] Run `make verify` and review the built wheel for the new folder assets
+### Phase 1: Stabilize the Server Data Plane
+
+- [ ] Extract `inventory_rollup.py` and make `InventoryIndex.rollup` a thin delegate.
+- [ ] Add zero-depth/top bounds, opt-in dual ranking, exact Other arithmetic, and full
+  wire validators.
+- [ ] Add bounded README discovery and make the folder envelope always advertise
+  Overview and Treemap.
+- [ ] Lock byte-heavy, count-heavy, ignored-only, extensionless, compound-extension,
+  zero-byte, cold, scanning, truncated, and empty fixtures before browser work.
+
+### Phase 2: Add Strict Reusable Browser Primitives
+
+- [ ] Add request errors, shared formatters, scoped inventory watch, generic
+  contribution registry, resource-context store, and view-state bridge under strict
+  check-JS.
+- [ ] Reduce `plugin_sdk.js` to adapters for those modules and extend exact public
+  types.
+- [ ] Integrate context seeding, dynamic print state, per-instance view handles, and
+  root folder startup into `app.js` with focused DOM tests.
+
+### Phase 3: Build Overview and Instance-Safe Markdown
+
+- [ ] Split Markdown source/rendered modules and replace singleton TOC state with a
+  returned mount handle.
+- [ ] Add the folder Overview registry facade and keyed composer with independent
+  resolve, mount, Retry, print, and disposal boundaries.
+- [ ] Register README as a conditional document contribution and prove parity with the
+  ordinary Markdown view.
+- [ ] Register a synthetic third panel in tests to prove that composer markup contains
+  no built-in panel branching.
+
+### Phase 4: Build File Types and Integrate Treemap
+
+- [ ] Add the pure File types model, paired distribution view, controller, disclosure
+  persistence, exact empty states, and Show ignored switching.
+- [ ] Add the path-scoped palette pool and route both File types and type-grouped
+  Treemap marks through it.
+- [ ] Split the WIP Treemap into layout, model, and controller modules and adopt the
+  supported active-view lifecycle.
+- [ ] Register File types as the required first summary panel and validate Overview with
+  README, without README, and completely empty.
+
+### Phase 5: Documentation, Packaging, and Validation
+
+- [ ] Document the shipped `mb.folderOverview`, folder-context, view-state, rollup, and
+  Markdown mount contracts in `docs/plugins.md`.
+- [ ] Change the main architecture and design-system sections from planned to shipped,
+  preserving this spec as the detailed authority.
+- [ ] Verify manifest-driven JS/CSS inclusion, strict type coverage, wheel contents, and
+  installed-wheel smoke behavior.
+- [ ] Complete real-browser light/dark, wide/narrow, keyboard, reduced-motion, live
+  update, and print review.
+- [ ] Run `make verify`, review the final diff, sync and close completed tbd children,
+  push the branch, and watch CI to completion.
 
 ## Testing Strategy
 

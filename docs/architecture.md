@@ -73,15 +73,18 @@ A future Files listing belongs beside Overview and Treemap; it does not become a
 panel inside Overview.
 
 The built-in folder plugin owns the Overview composer, but not a hard-coded list of
-panels. Built-in and installed plugins register stable panel IDs with a named placement
-band, accessible label, surface or document presentation, bounded resolver, instance
-mount, disposer, and print eligibility.
+panels. It publishes the documented `mb.folderOverview` registry facade; built-in and
+installed plugins register stable panel IDs with a named placement band, accessible
+label, surface or document presentation, bounded resolver, keyed instance mount,
+disposer, and print eligibility.
 The composer validates descriptors, establishes deterministic order before asynchronous
 work finishes, and gives every contribution an independent loading, error, recovery,
 abort, and disposal boundary.
 A panel never reaches into sibling DOM or private shell state.
 
-Core supplies only the generic lifecycle and SDK registry.
+Core supplies only generic contribution-registry, resource-context, request, formatter,
+and view-state primitives.
+The folder plugin supplies the folder-panel schema and registry facade.
 A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
 File types is a built-in folder panel backed by the existing inventory rollup.
 README is another contribution whose resolver checks the folder envelope and whose

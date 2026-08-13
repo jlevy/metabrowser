@@ -387,6 +387,14 @@ a track token, and named track-height and segment-gap tokens.
 Consumers select palette classes; they do not copy color literals or set theme colors
 inline. Inline unitless weights are allowed because they encode data rather than theme.
 
+The planned token family is `--mb-distribution-category-1` through
+`--mb-distribution-category-12`, plus `--mb-distribution-other`,
+`--mb-distribution-track`, `--mb-distribution-track-height`, and
+`--mb-distribution-segment-gap`. Shared `.mb-distribution-slot-*` and
+`.mb-distribution-other` utility classes map those tokens to a component color variable.
+Core owns these tokens and utilities; the folder plugin owns File types and Treemap
+layout selectors.
+
 When several bars compare different metrics over the same population, they use the same
 category set, order, and color map.
 Categories keep their assigned slot for the mounted folder even when live updates change
