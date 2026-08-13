@@ -34,68 +34,102 @@
   gap: 12px;
 }
 
-.file-type-summary-bars {
-  display: grid;
-  gap: 8px;
-}
-
-.file-type-distribution {
-  display: grid;
-  grid-template-columns: 40px 1fr;
-  gap: 8px;
-  align-items: center;
-  margin: 0;
-}
-
-.file-type-distribution figcaption,
 .file-type-summary-status,
 .file-type-summary-empty {
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
 
-.file-type-distribution-track {
-  display: flex;
-  gap: var(--mb-distribution-segment-gap);
+.file-type-summary-table {
+  --file-type-summary-metric-gap: 6px;
+  --file-type-summary-metric-padding: 18px;
+  --file-type-summary-size-padding: 30px;
+  --file-type-summary-value-width: 68px;
+
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.file-type-summary-type-column {
+  width: 18%;
+}
+
+.file-type-summary-table th,
+.file-type-summary-table td {
+  padding: 3px 0;
+  text-align: left;
+}
+
+.file-type-summary-table thead th:nth-child(2) {
+  padding-left: calc(
+    var(--file-type-summary-metric-padding) +
+    var(--file-type-summary-value-width) +
+    var(--file-type-summary-metric-gap)
+  );
+}
+
+.file-type-summary-table thead th:nth-child(3) {
+  padding-left: calc(
+    var(--file-type-summary-size-padding) +
+    var(--file-type-summary-value-width) +
+    var(--file-type-summary-metric-gap)
+  );
+}
+
+.file-type-summary-type {
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-normal);
+}
+
+.file-type-summary-group:not(:first-of-type) .file-type-summary-group-row th {
+  padding-top: 14px;
+}
+
+.file-type-summary-group-row th {
+  padding: 8px 0 3px;
+  color: var(--label-color);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
+}
+
+.file-type-summary-table td.file-type-summary-metric {
+  padding-left: var(--file-type-summary-metric-padding);
+}
+
+.file-type-summary-table td.file-type-summary-metric-bytes {
+  padding-left: var(--file-type-summary-size-padding);
+}
+
+.file-type-summary-metric-content {
+  display: grid;
+  grid-template-columns:
+    var(--file-type-summary-value-width) minmax(40px, 1fr)
+    3.6em;
+  gap: var(--file-type-summary-metric-gap);
+  align-items: center;
+}
+
+.file-type-summary-value,
+.file-type-summary-percent {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.file-type-summary-track {
   height: var(--mb-distribution-track-height);
   overflow: hidden;
   background: var(--mb-distribution-track);
   border-radius: var(--radius-chrome);
 }
 
-.file-type-distribution-segment {
-  min-width: 0;
+.file-type-summary-fill {
+  display: block;
+  height: 100%;
   background: var(--mb-distribution-color);
-  transition: flex-grow 140ms ease;
-}
-
-.file-type-summary-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.file-type-summary-table th,
-.file-type-summary-table td {
-  padding: 4px 0;
-  text-align: left;
-}
-
-.file-type-summary-table td {
-  text-align: right;
-}
-
-.file-type-summary-table tbody th {
-  overflow-wrap: anywhere;
-  font-weight: var(--weight-normal);
-}
-
-.file-type-summary-mark {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 7px;
-  background: var(--mb-distribution-color);
-  border-radius: var(--radius-circle);
+  transition: width 140ms ease;
 }
 
 .file-type-summary-percent {
@@ -113,31 +147,26 @@
 }
 
 @container (max-width: 460px) {
-  .file-type-summary-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
+  .file-type-summary-table {
+    --file-type-summary-metric-gap: 4px;
+    --file-type-summary-metric-padding: 8px;
+    --file-type-summary-size-padding: 14px;
+    --file-type-summary-value-width: 48px;
   }
 
-  .file-type-summary-table tr {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 5px 0;
+  .file-type-summary-type-column {
+    width: 24%;
   }
 
-  .file-type-summary-table th {
-    grid-column: 1 / -1;
-  }
-
-  .file-type-summary-table td:first-of-type {
-    text-align: left;
+  .file-type-summary-metric-content {
+    grid-template-columns:
+      var(--file-type-summary-value-width) minmax(16px, 1fr)
+      3.4em;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .file-type-distribution-segment {
+  .file-type-summary-fill {
     transition: none;
   }
 }

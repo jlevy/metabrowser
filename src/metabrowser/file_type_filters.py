@@ -52,6 +52,8 @@ FILTER_TYPE_PRESETS: tuple[FilterTypePreset, ...] = (
             ".py",
             ".pyi",
             ".ts",
+            ".mts",
+            ".cts",
             ".tsx",
             ".js",
             ".jsx",

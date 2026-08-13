@@ -481,6 +481,10 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     assert "license" in docs["values"]
     assert ".md" in docs["values"]
 
+    code = next(preset for preset in FILTER_TYPE_PRESETS if preset["id"] == "code")
+    assert ".mts" in code["values"]
+    assert ".cts" in code["values"]
+
     state = _read("filter_state.js")
     assert "mb.filterState = {" in state
     assert "MetabrowserFilterState" not in state

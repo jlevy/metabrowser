@@ -1,5 +1,9 @@
 import { mountDistributionView, updateDistributionView } from "./distribution_view.js";
-import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file_type_summary_model.js";
+import {
+  buildFileTypeSummaryModel,
+  createFileTypeCategoryClassifier,
+  normalizeRollupEnvelope,
+} from "./file_type_summary_model.js";
 
 /** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} SummaryPalette */
 /** @typedef {{acquire: (path: string) => SummaryPalette}} SummaryPalettePool */
@@ -22,11 +26,14 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     formatInteger: mb.formatInteger,
     formatSize: mb.formatSize,
   };
-  let model = buildFileTypeSummaryModel(null, showIgnored, formatters);
+  const classifyCategory = createFileTypeCategoryClassifier(
+    window.METABROWSER_SETTINGS?.FILTER_TYPE_PRESETS,
+  );
+  let model = buildFileTypeSummaryModel(null, showIgnored, formatters, classifyCategory);
   const view = mountDistributionView(container, model, palette);
 
   function render() {
-    model = buildFileTypeSummaryModel(envelope, showIgnored, formatters);
+    model = buildFileTypeSummaryModel(envelope, showIgnored, formatters, classifyCategory);
     updateDistributionView(view, model);
   }
 

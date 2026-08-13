@@ -1,6 +1,52 @@
 export const NO_EXTENSION_KEY = "(none)";
 export const OTHER_KEY = "";
 
+/**
+ * Build a pure extension classifier from the shell's broad filter presets.
+ * Compound logical extensions inherit the category of their final known
+ * suffix, so `.d.ts` and `.min.js` stay with Code without duplicating the
+ * catalog in the folder plugin.
+ *
+ * @param {unknown} rawPresets
+ */
+export function createFileTypeCategoryClassifier(rawPresets) {
+  /** @type {Map<"code" | "data", Array<string>>} */
+  const suffixes = new Map([
+    ["code", []],
+    ["data", []],
+  ]);
+  if (Array.isArray(rawPresets)) {
+    for (const rawPreset of rawPresets) {
+      if (!rawPreset || typeof rawPreset !== "object") {
+        continue;
+      }
+      const preset = /** @type {{id?: unknown, values?: unknown}} */ (rawPreset);
+      if (preset.id !== "code" && preset.id !== "data") {
+        continue;
+      }
+      if (!Array.isArray(preset.values)) {
+        continue;
+      }
+      const category = preset.id;
+      const categorySuffixes = suffixes.get(category);
+      for (const value of preset.values) {
+        if (typeof value === "string" && value.startsWith(".")) {
+          categorySuffixes?.push(value.toLowerCase());
+        }
+      }
+    }
+  }
+  return /** @param {string} key */ (key) => {
+    const normalized = key.toLowerCase();
+    for (const category of /** @type {const} */ (["code", "data"])) {
+      if (suffixes.get(category)?.some((suffix) => normalized.endsWith(suffix))) {
+        return category;
+      }
+    }
+    return /** @type {const} */ ("other");
+  };
+}
+
 /** @param {unknown} raw */
 export function normalizeTallyRow(raw) {
   if (!Array.isArray(raw) || raw.length !== 5 || typeof raw[0] !== "string") {
@@ -13,7 +59,7 @@ export function normalizeTallyRow(raw) {
   const key = raw[0];
   return Object.freeze({
     key,
-    label: key === OTHER_KEY ? "Other" : key === NO_EXTENSION_KEY ? "No extension" : key,
+    label: key === OTHER_KEY ? "Remaining types" : key === NO_EXTENSION_KEY ? "No extension" : key,
     allFiles: /** @type {number} */ (raw[1]),
     allBytes: /** @type {number} */ (raw[2]),
     unignoredFiles: /** @type {number} */ (raw[3]),
@@ -76,12 +122,23 @@ export function formatPercent(numerator, denominator, formatter) {
   return percent < 0.1 ? "<0.1%" : `${formatter.format(percent)}%`;
 }
 
+/** @param {number} numerator @param {number} denominator */
+function percentShare(numerator, denominator) {
+  return denominator === 0 ? 0 : (numerator / denominator) * 100;
+}
+
 /**
  * @param {ReturnType<typeof normalizeRollupEnvelope> | null} envelope
  * @param {boolean} showIgnored
  * @param {{formatSize(value: number): string, formatInteger(value: number): string, formatFileCount(value: number): string}} formatters
+ * @param {(key: string) => "code" | "data" | "other"} [classifyCategory]
  */
-export function buildFileTypeSummaryModel(envelope, showIgnored, formatters) {
+export function buildFileTypeSummaryModel(
+  envelope,
+  showIgnored,
+  formatters,
+  classifyCategory = () => "other",
+) {
   if (!envelope?.totals) {
     return Object.freeze({ state: /** @type {const} */ ("pending"), rows: [], files: 0, bytes: 0 });
   }
@@ -97,12 +154,15 @@ export function buildFileTypeSummaryModel(envelope, showIgnored, formatters) {
       return Object.freeze({
         key: tally.key,
         label: tally.label,
+        category: classifyCategory(tally.key),
         files,
         bytes,
         filesText: formatters.formatFileCount(files),
         bytesText: formatters.formatSize(bytes),
         filePercent: formatPercent(files, population.files, percentFormatter),
         bytePercent: formatPercent(bytes, population.bytes, percentFormatter),
+        fileShare: percentShare(files, population.files),
+        byteShare: percentShare(bytes, population.bytes),
       });
     })
     .filter((row) => row.files !== 0 || row.bytes !== 0)

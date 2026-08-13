@@ -92,6 +92,10 @@ and view-state primitives.
 The folder plugin supplies the folder-panel schema and registry facade.
 A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
 File types is a built-in folder panel backed by the existing inventory rollup.
+Its semantic comparison table groups logical extensions as Code, Data, or Other using
+the shared filter-preset vocabulary, without adding group totals or another server
+aggregation. Each row renders count and byte shares as independently normalized inline
+bars beside their exact values.
 README is another contribution whose resolver checks the folder envelope and whose
 renderer delegates to the instance-safe built-in Markdown mount.
 Using the same mount keeps Overview’s README structurally and behaviorally aligned with

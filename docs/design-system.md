@@ -376,40 +376,49 @@ Do not add filename-specific CSS selectors.
 The shipped
 [Folder Overview plan](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
 defines the first instance of this component contract.
-An aggregate distribution relates exact categories across one or more compact stacked
-bars and an adjacent value table.
-It is distinct from the broad `ft-*` identity system: several exact extensions may
-intentionally share one file icon, while adjacent `.py`, `.pyi`, and `.md` segments
-still need distinguishable marks.
+An aggregate comparison relates exact categories across repeated metric columns in one
+semantic table. Each metric cell presents an absolute value, a track normalized to that
+metric’s population total, and a percentage.
+This keeps many categories vertically scannable and makes skew between metrics visible
+on the same row. It is distinct from the broad `ft-*` identity system: several exact
+extensions may intentionally share one file icon, while adjacent `.py`, `.pyi`, and
+`.md` row fills still need distinguishable colors.
 
 The component uses a bounded light/dark categorical palette, a neutral **Other** token,
-a track token, and named track-height and segment-gap tokens.
+a track token, and a named track-height token.
 Consumers select palette classes; they do not copy color literals or set theme colors
-inline. Inline unitless weights are allowed because they encode data rather than theme.
+inline. Inline percentage widths are allowed because they encode data rather than theme.
 
 The token family is `--mb-distribution-category-1` through
 `--mb-distribution-category-12`, plus `--mb-distribution-other`,
 `--mb-distribution-track`, `--mb-distribution-track-height`, and
-`--mb-distribution-segment-gap`. Shared `.mb-distribution-slot-*` and
-`.mb-distribution-other` utility classes map those tokens to a component color variable.
+`--mb-distribution-segment-gap`. The segment-gap token remains available to consumers
+that place categorical segments beside one another.
+Shared `.mb-distribution-slot-*` and `.mb-distribution-other` utility classes map those
+tokens to a component color variable.
 Core owns these tokens and utilities; the folder plugin owns File types and Treemap
 layout selectors.
 
-When several bars compare different metrics over the same population, they use the same
-category set, order, and color map.
+When several metric columns compare the same population, they use the same category set,
+row order, and color map.
 Categories keep their assigned slot for the mounted folder even when live updates change
 rank, and Other stays last and neutral.
 A related visualization, such as a type-grouped Treemap for that folder, reuses the same
 mounted mapping when both views exist.
 
-The bars are a glanceable summary, not the source of exact values.
-The semantic table names every category and reports absolute values and percentages;
-each row repeats a small decorative color mark.
-Bar segments do not become tab stops or add duplicate tooltips.
-Each bar has one concise accessible description, visual segments are hidden from the
-accessibility tree, and labels never rely on color or place text on a category fill.
+The semantic table is the visual summary and the source of exact values.
+Every row names its category and reports absolute values and percentages; the colored
+fills need no separate circle or legend.
+Fills do not become tab stops or add duplicate tooltips and are hidden from the
+accessibility tree. Labels never rely on color or place text on a category fill.
 
-Zero totals do not produce a colored segment, division artifact, or header-only table.
+File types uses non-aggregating `CODE`, `DATA`, and `OTHER` row groups.
+Membership comes from the shared broad filter vocabulary, compound extensions inherit a
+recognized suffix, and every unrecognized or rollup-tail row falls under Other.
+The aggregate tail is labelled **Remaining types** so it is not confused with the group
+itself. A group heading is shown only when it has rows and carries no subtotal.
+
+Zero totals do not produce a colored fill, division artifact, or header-only table.
 If one metric is zero while another is not, the zero metric uses the neutral track and
 the populated metric remains meaningful.
 If the whole population is empty, the parent surface renders its explicit empty state

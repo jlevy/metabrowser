@@ -49,12 +49,34 @@ async function importSource(relative) {
     ],
   };
   const normalized = modelModule.normalizeRollupEnvelope(raw);
-  const visible = modelModule.buildFileTypeSummaryModel(normalized, true, formatters);
+  check(
+    "rollup tail has a distinct row label",
+    modelModule.normalizeTallyRow(["", 1, 1, 1, 1]).label === "Remaining types",
+  );
+  const classifyCategory = modelModule.createFileTypeCategoryClassifier([
+    { id: "code", values: [".py", ".ts", ".js"] },
+    { id: "data", values: [".json", ".jsonl"] },
+  ]);
+  const visible = modelModule.buildFileTypeSummaryModel(
+    normalized,
+    true,
+    formatters,
+    classifyCategory,
+  );
   check("populated model", visible.state === "populated", visible.state);
   check("server order retained", visible.rows.map((row) => row.key).join(",") === ".py,.md");
   check(
     "files and size both present",
     visible.rows[0].files === 150 && visible.rows[0].bytes === 10000000,
+  );
+  check("code category", visible.rows[0].category === "code", visible.rows[0].category);
+  check("docs fall through to Other", visible.rows[1].category === "other");
+  check("compound code extension", classifyCategory(".d.ts") === "code");
+  check("data category", classifyCategory(".jsonl") === "data");
+  check("unknown category", classifyCategory(".bin") === "other");
+  check(
+    "row shares remain numeric",
+    visible.rows[0].fileShare > 95 && visible.rows[0].byteShare > 90,
   );
   check(
     "scope switches locally",

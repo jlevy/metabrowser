@@ -6,31 +6,25 @@ function element(parent, className) {
   return child;
 }
 
-/** @param {"files" | "bytes"} metric @param {ReadonlyArray<SummaryRow>} rows @param {Palette} palette */
-export function renderDistributionBar(metric, rows, palette) {
-  const figure = document.createElement("figure");
-  figure.className = "file-type-distribution";
-  const label = document.createElement("figcaption");
-  label.textContent = metric === "files" ? "Files" : "Size";
+/** @param {"files" | "bytes"} metric */
+function createMetricCell(metric) {
+  const cell = document.createElement("td");
+  cell.className = `file-type-summary-metric file-type-summary-metric-${metric}`;
+  const contents = document.createElement("div");
+  contents.className = "file-type-summary-metric-content";
+  const value = document.createElement("span");
+  value.className = "file-type-summary-value";
   const track = document.createElement("div");
-  track.className = "file-type-distribution-track";
-  track.setAttribute(
-    "aria-label",
-    `${label.textContent} distribution. Exact values are in the File types table.`,
-  );
-  for (const row of rows) {
-    if (row[metric] <= 0) {
-      continue;
-    }
-    const segment = document.createElement("span");
-    segment.className = `file-type-distribution-segment ${palette.classFor(row.key)}`;
-    segment.dataset.typeKey = row.key;
-    segment.style.flexGrow = String(row[metric]);
-    segment.setAttribute("aria-hidden", "true");
-    track.append(segment);
-  }
-  figure.append(label, track);
-  return figure;
+  track.className = "file-type-summary-track";
+  track.setAttribute("aria-hidden", "true");
+  const fill = document.createElement("span");
+  fill.className = "file-type-summary-fill";
+  track.append(fill);
+  const percent = document.createElement("span");
+  percent.className = "file-type-summary-percent";
+  contents.append(value, track, percent);
+  cell.append(contents);
+  return { cell, fill, percent, value };
 }
 
 /** @param {HTMLElement} container @param {SummaryModel} model @param {Palette} palette */
@@ -54,9 +48,9 @@ export function mountDistributionView(container, model, palette) {
     palette,
     /** @type {Map<string, SummaryRowHandle>} */
     rows: new Map(),
-    /** @type {Map<"files" | "bytes", DistributionBarHandle>} */
-    bars: new Map(),
-    tableBody: /** @type {HTMLTableSectionElement | null} */ (null),
+    /** @type {Map<FileTypeCategory, SummaryGroupHandle>} */
+    groups: new Map(),
+    table: /** @type {HTMLTableElement | null} */ (null),
     status: /** @type {HTMLElement | null} */ (null),
     mode: "",
   };
@@ -98,8 +92,6 @@ export function updateDistributionView(handle, model) {
   }
 
   ensureDistributionBody(handle);
-  updateDistributionBar(handle.bars.get("files"), "files", model.rows, handle.palette);
-  updateDistributionBar(handle.bars.get("bytes"), "bytes", model.rows, handle.palette);
   updateRows(handle, model.rows);
   if (!handle.status) {
     return;
@@ -122,8 +114,8 @@ function resetBody(handle, mode) {
   handle.mode = mode;
   handle.body.replaceChildren();
   handle.rows.clear();
-  handle.bars.clear();
-  handle.tableBody = null;
+  handle.groups.clear();
+  handle.table = null;
   handle.status = null;
 }
 
@@ -133,17 +125,14 @@ function ensureDistributionBody(handle) {
     return;
   }
   resetBody(handle, "distribution");
-  const bars = element(handle.body, "file-type-summary-bars");
-  for (const metric of /** @type {const} */ (["files", "bytes"])) {
-    const figure = renderDistributionBar(metric, [], handle.palette);
-    const track = /** @type {HTMLElement} */ (
-      figure.querySelector(".file-type-distribution-track")
-    );
-    bars.append(figure);
-    handle.bars.set(metric, { figure, track, segments: new Map() });
-  }
   const table = document.createElement("table");
   table.className = "file-type-summary-table";
+  const columns = document.createElement("colgroup");
+  for (const className of ["file-type-summary-type-column", "", ""]) {
+    const column = document.createElement("col");
+    column.className = className;
+    columns.append(column);
+  }
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
   for (const label of ["Type", "Files", "Size"]) {
@@ -153,84 +142,93 @@ function ensureDistributionBody(handle) {
     headerRow.append(header);
   }
   thead.append(headerRow);
-  const tbody = document.createElement("tbody");
-  table.append(thead, tbody);
+  table.append(columns, thead);
   handle.body.append(table);
-  handle.tableBody = tbody;
+  handle.table = table;
   handle.status = element(handle.body, "file-type-summary-status");
   handle.status.setAttribute("role", "status");
 }
 
-/** @param {DistributionBarHandle | undefined} bar @param {"files" | "bytes"} metric @param {ReadonlyArray<SummaryRow>} rows @param {Palette} palette */
-function updateDistributionBar(bar, metric, rows, palette) {
-  if (!bar) {
-    return;
+/** @param {DistributionHandle} handle @param {FileTypeCategory} category */
+function ensureGroup(handle, category) {
+  let group = handle.groups.get(category);
+  if (group || !handle.table) {
+    return group;
   }
-  const liveKeys = new Set();
-  for (const row of rows) {
-    if (row[metric] <= 0) {
-      continue;
-    }
-    liveKeys.add(row.key);
-    let segment = bar.segments.get(row.key);
-    if (!segment) {
-      segment = document.createElement("span");
-      segment.dataset.typeKey = row.key;
-      segment.setAttribute("aria-hidden", "true");
-      bar.segments.set(row.key, segment);
-    }
-    segment.className = `file-type-distribution-segment ${palette.classFor(row.key)}`;
-    segment.style.flexGrow = String(row[metric]);
-    bar.track.append(segment);
-  }
-  for (const [key, segment] of bar.segments) {
-    if (!liveKeys.has(key)) {
-      segment.remove();
-      bar.segments.delete(key);
-    }
-  }
+  const body = document.createElement("tbody");
+  body.className = "file-type-summary-group";
+  body.dataset.category = category;
+  const headingRow = document.createElement("tr");
+  headingRow.className = "file-type-summary-group-row";
+  const heading = document.createElement("th");
+  heading.scope = "rowgroup";
+  heading.colSpan = 3;
+  heading.textContent = category === "code" ? "Code" : category === "data" ? "Data" : "Other";
+  headingRow.append(heading);
+  body.append(headingRow);
+  group = { body };
+  handle.groups.set(category, group);
+  handle.table.append(body);
+  return group;
 }
 
 /** @param {DistributionHandle} handle @param {ReadonlyArray<SummaryRow>} rows */
 function updateRows(handle, rows) {
-  if (!handle.tableBody) {
+  if (!handle.table) {
     return;
   }
   const liveKeys = new Set();
-  for (const row of rows) {
-    liveKeys.add(row.key);
-    let rowHandle = handle.rows.get(row.key);
-    if (!rowHandle) {
-      const tr = document.createElement("tr");
-      tr.dataset.typeKey = row.key;
-      const type = document.createElement("th");
-      type.scope = "row";
-      const mark = document.createElement("span");
-      mark.setAttribute("aria-hidden", "true");
-      const label = document.createElement("span");
-      type.append(mark, label);
-      const files = document.createElement("td");
-      const fileValue = document.createElement("span");
-      const filePercent = document.createElement("span");
-      filePercent.className = "file-type-summary-percent";
-      files.append(fileValue, document.createTextNode(" "), filePercent);
-      const bytes = document.createElement("td");
-      const byteValue = document.createElement("span");
-      byteValue.className = "size";
-      const bytePercent = document.createElement("span");
-      bytePercent.className = "file-type-summary-percent";
-      bytes.append(byteValue, document.createTextNode(" "), bytePercent);
-      tr.append(type, files, bytes);
-      rowHandle = { tr, mark, label, fileValue, filePercent, byteValue, bytePercent };
-      handle.rows.set(row.key, rowHandle);
+  const liveCategories = new Set();
+  for (const category of /** @type {const} */ (["code", "data", "other"])) {
+    const categoryRows = rows.filter((row) => row.category === category);
+    if (categoryRows.length === 0) {
+      continue;
     }
-    rowHandle.mark.className = `file-type-summary-mark ${handle.palette.classFor(row.key)}`;
-    rowHandle.label.textContent = row.label;
-    rowHandle.fileValue.textContent = row.filesText;
-    rowHandle.filePercent.textContent = `(${row.filePercent})`;
-    rowHandle.byteValue.textContent = row.bytesText;
-    rowHandle.bytePercent.textContent = `(${row.bytePercent})`;
-    handle.tableBody.append(rowHandle.tr);
+    liveCategories.add(category);
+    const group = ensureGroup(handle, category);
+    if (!group) {
+      continue;
+    }
+    handle.table.append(group.body);
+    for (const row of categoryRows) {
+      liveKeys.add(row.key);
+      let rowHandle = handle.rows.get(row.key);
+      if (!rowHandle) {
+        const tr = document.createElement("tr");
+        tr.dataset.typeKey = row.key;
+        const type = document.createElement("th");
+        type.scope = "row";
+        type.className = "file-type-summary-type";
+        const label = document.createElement("span");
+        type.append(label);
+        const files = createMetricCell("files");
+        const bytes = createMetricCell("bytes");
+        bytes.value.className += " size";
+        tr.append(type, files.cell, bytes.cell);
+        rowHandle = {
+          tr,
+          label,
+          fileValue: files.value,
+          fileFill: files.fill,
+          filePercent: files.percent,
+          byteValue: bytes.value,
+          byteFill: bytes.fill,
+          bytePercent: bytes.percent,
+        };
+        handle.rows.set(row.key, rowHandle);
+      }
+      const colorClass = handle.palette.classFor(row.key);
+      rowHandle.label.textContent = row.label;
+      rowHandle.fileValue.textContent = row.filesText;
+      rowHandle.fileFill.className = `file-type-summary-fill ${colorClass}`;
+      rowHandle.fileFill.style.width = `${row.fileShare}%`;
+      rowHandle.filePercent.textContent = row.filePercent;
+      rowHandle.byteValue.textContent = row.bytesText;
+      rowHandle.byteFill.className = `file-type-summary-fill ${colorClass}`;
+      rowHandle.byteFill.style.width = `${row.byteShare}%`;
+      rowHandle.bytePercent.textContent = row.bytePercent;
+      group.body.append(rowHandle.tr);
+    }
   }
   for (const [key, rowHandle] of handle.rows) {
     if (!liveKeys.has(key)) {
@@ -238,11 +236,18 @@ function updateRows(handle, rows) {
       handle.rows.delete(key);
     }
   }
+  for (const [category, group] of handle.groups) {
+    if (!liveCategories.has(category)) {
+      group.body.remove();
+      handle.groups.delete(category);
+    }
+  }
 }
 
-/** @typedef {{key: string, label: string, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string}} SummaryRow */
+/** @typedef {"code" | "data" | "other"} FileTypeCategory */
+/** @typedef {{key: string, label: string, category: FileTypeCategory, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string}} Palette */
 /** @typedef {{state: "pending" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, filesText?: string, allFilesText?: string, bytesText?: string, hasIgnored?: boolean, showIgnored?: boolean, scanning?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
-/** @typedef {{figure: HTMLElement, track: HTMLElement, segments: Map<string, HTMLElement>}} DistributionBarHandle */
-/** @typedef {{tr: HTMLTableRowElement, mark: HTMLElement, label: HTMLElement, fileValue: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, meta: HTMLElement, scope: HTMLElement, total: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, bars: Map<"files" | "bytes", DistributionBarHandle>, tableBody: HTMLTableSectionElement | null, status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
+/** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, meta: HTMLElement, scope: HTMLElement, total: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, status: HTMLElement | null, mode: string}} DistributionHandle */
