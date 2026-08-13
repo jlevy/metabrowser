@@ -253,6 +253,8 @@ Useful helpers include:
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
 - `formatSize`, `formatInteger`, `formatFileCount`, `formatTimestamp`, and `sizeHtml`;
+- `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
+  classes used by core numeric readouts;
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;

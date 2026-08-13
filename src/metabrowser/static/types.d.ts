@@ -51,9 +51,11 @@ type MetabrowserRequestErrorRuntime = Readonly<{
 }>;
 
 type MetabrowserFormatterRuntime = Readonly<{
+  countClass(value: number): "" | "count-large";
   formatBytes(value: number): string;
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
+  sizeClass(value: number): "" | "size-large";
 }>;
 
 type MetabrowserInventoryWatch = Readonly<{
@@ -442,6 +444,7 @@ type MetabrowserSdk = {
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
   filterState?: MetabrowserFilterState;
+  countClass(value: number): "" | "count-large";
   formatSize(value: number): string;
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
@@ -459,6 +462,8 @@ type MetabrowserSdk = {
     state: { printable: boolean; profile?: string; runtime?: string },
   ): void;
   renderTextTruncationWarning(data: Record<string, unknown>): string;
+  sizeClass(value: number): "" | "size-large";
+  sizeHtml(value: number | null | undefined, extraClass?: string): string;
   wrapWithCopy(html: string): string;
   viewState: Readonly<{
     isActive(container: HTMLElement): boolean;

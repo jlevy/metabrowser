@@ -162,14 +162,10 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Size-weight convention — single source of truth. Anything displaying a
-// byte count anywhere in the SPA (file tree, file header, app header,
-// drawer, tooltip) reaches for these helpers so "big = bold, small =
-// normal" is identical everywhere. Threshold is 1 MiB; to change it,
-// change here and nowhere else.
-var SIZE_LARGE_THRESHOLD = 1024 * 1024;
+// Size-weight convention — every shell surface delegates to the shared
+// formatter runtime so plugins and core use the same threshold.
 function sizeClass(bytes) {
-  return (bytes || 0) > SIZE_LARGE_THRESHOLD ? "size-large" : "";
+  return window.MetabrowserFormatters.sizeClass(Number(bytes) || 0);
 }
 function sizeHtml(bytes, extraClass) {
   // Walker emits ``null`` aggregates while a directory is still
@@ -189,10 +185,7 @@ function sizeHtml(bytes, extraClass) {
 // consistent rendering of "N files" / "1 file" anywhere a count shows up
 // (app header, tooltip, drawer). Keep formatting decisions (thousands
 // separator, singular/plural) here so every call site agrees. Counts
-// above COUNT_LARGE_THRESHOLD bold up the same way sizes above
-// SIZE_LARGE_THRESHOLD do — the two helpers share the same visual
-// scale because they describe the same data category.
-var COUNT_LARGE_THRESHOLD = 1000;
+// above the shared count boundary bold up the same way large sizes do.
 function isPendingNumber(n) {
   return n === null || n === undefined || Number.isNaN(n);
 }
@@ -210,7 +203,7 @@ function formatCount(n) {
   return `${(n || 0).toLocaleString()} ${n === 1 ? "file" : "files"}`;
 }
 function countClass(n) {
-  return (n || 0) >= COUNT_LARGE_THRESHOLD ? "count-large" : "";
+  return window.MetabrowserFormatters.countClass(Number(n) || 0);
 }
 function countHtml(n, extraClass) {
   if (isPendingNumber(n)) {

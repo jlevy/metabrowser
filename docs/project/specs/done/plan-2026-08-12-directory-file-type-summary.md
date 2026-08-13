@@ -234,6 +234,9 @@ The data selection must account for both dimensions before the UI is trustworthy
     Fills are decorative, do not become tab stops, and are hidden from the accessibility
     tree. Color is never the only path to the data.
     Type labels are bold scan anchors.
+    Files and Size tallies use the navigation panel’s shared count and byte emphasis
+    classes, including the Total and Ignored rows; row roles do not override the
+    magnitude-driven numeric weight.
 14. **Overview supports surface and document presentations.** The composer supplies one
     shared section heading while preserving each presentation’s role.
     Surface panels are flat chrome rather than boxed; README retains the ordinary
@@ -1237,7 +1240,8 @@ This file is pure and has no DOM, fetch, preference, or global access.
   empty groups without replacing retained elements.
 - Each metric cell owns a right-aligned tally, an `aria-hidden` track and fill, and a
   right-aligned percentage.
-  Files and Size reuse the row’s palette class.
+  Files and Size reuse the row’s palette class, while their exact tallies use the public
+  shared count and byte emphasis classes on mount and every keyed update.
 - `renderSummaryState(handle, model)` switches among loading, partial, empty,
   ignored-only, zero-byte, populated, and failure bodies without manufacturing a table
   for zero rows.

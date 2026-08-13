@@ -131,11 +131,19 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/distribution_view.js"),
     "utf8",
   );
+  const styles = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/file_type_summary.css"),
+    "utf8",
+  );
   const view = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
   );
   const palette = {
     classFor: (key) => (key ? `slot-${key.slice(1)}` : "slot-other"),
+  };
+  const metricClasses = {
+    countClass: (value) => (value >= 50 ? "count-large" : ""),
+    sizeClass: (value) => (value > 50 ? "size-large" : ""),
   };
   const first = {
     state: "populated",
@@ -160,7 +168,7 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     ],
   };
   const container = new Element("div");
-  const handle = view.mountDistributionView(container, first, palette);
+  const handle = view.mountDistributionView(container, first, palette, metricClasses);
   const originalBody = handle.body;
   const originalPyRow = handle.rows.get(".py").tr;
   const originalPyFileFill = handle.rows.get(".py").fileFill;
@@ -221,6 +229,24 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
       handle.totalRow.fileFill.className.includes("mb-distribution-other") &&
       handle.totalRow.byteFill.className.includes("mb-distribution-other"),
   );
+  check(
+    "breakdown values use shared metric emphasis",
+    handle.rows.get(".py").fileValue.className === "file-type-summary-value count count-large" &&
+      handle.rows.get(".py").byteValue.className === "file-type-summary-value size" &&
+      handle.rows.get(".md").fileValue.className === "file-type-summary-value count" &&
+      handle.rows.get(".md").byteValue.className === "file-type-summary-value size",
+  );
+  check(
+    "Total and Ignored use the same metric emphasis",
+    handle.totalRow.fileValue.className === "file-type-summary-value count count-large" &&
+      handle.totalRow.byteValue.className === "file-type-summary-value size size-large" &&
+      handle.ignoredRow.fileValue.className === "file-type-summary-value count count-large" &&
+      handle.ignoredRow.byteValue.className === "file-type-summary-value size size-large",
+  );
+  check(
+    "Total values have no unconditional bold override",
+    !styles.includes(".file-type-summary-total-row .file-type-summary-value"),
+  );
 
   const updated = {
     ...first,
@@ -245,6 +271,13 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   check("row values patched", handle.rows.get(".py").fileValue.textContent === "75 files");
   check("row Files bar scaled", handle.rows.get(".py").fileFill.style.width === "75%");
   check("row Size bar scaled", handle.rows.get(".py").byteFill.style.width === "25%");
+  check(
+    "live updates replace metric emphasis classes",
+    handle.rows.get(".md").fileValue.className === "file-type-summary-value count" &&
+      handle.rows.get(".md").byteValue.className === "file-type-summary-value size size-large" &&
+      handle.rows.get(".py").fileValue.className === "file-type-summary-value count count-large" &&
+      handle.rows.get(".py").byteValue.className === "file-type-summary-value size",
+  );
   check(
     "top totals patched",
     handle.totalRow.fileValue.textContent === "120 files" &&
@@ -293,6 +326,10 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     handle.totalRow.fileFill.style.width === "100%" &&
       handle.totalRow.byteFill.style.width === "0%" &&
       handle.totalRow.bytePercent.textContent === "0%",
+  );
+  check(
+    "zero-byte total stays at normal size weight",
+    handle.totalRow.byteValue.className === "file-type-summary-value size",
   );
 
   view.updateDistributionView(handle, {

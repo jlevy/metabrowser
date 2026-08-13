@@ -30,7 +30,11 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     window.METABROWSER_SETTINGS?.FILTER_TYPE_PRESETS,
   );
   let model = buildFileTypeSummaryModel(null, showIgnored, formatters, classifyCategory);
-  const view = mountDistributionView(container, model, palette);
+  const metricClasses = {
+    countClass: mb.countClass,
+    sizeClass: mb.sizeClass,
+  };
+  const view = mountDistributionView(container, model, palette, metricClasses);
 
   function render() {
     model = buildFileTypeSummaryModel(envelope, showIgnored, formatters, classifyCategory);

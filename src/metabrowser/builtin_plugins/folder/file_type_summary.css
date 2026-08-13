@@ -96,10 +96,6 @@
   white-space: nowrap;
 }
 
-.file-type-summary-total-row .file-type-summary-value {
-  font-weight: var(--weight-bold);
-}
-
 .file-type-summary-track {
   height: var(--mb-distribution-track-height);
   overflow: hidden;

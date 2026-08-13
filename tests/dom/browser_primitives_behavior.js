@@ -77,6 +77,16 @@ for (const name of [
 (async () => {
   check("bytes reach GB", sandbox.MetabrowserFormatters.formatBytes(1024 ** 3) === "1.0 GB");
   check("file singular", sandbox.MetabrowserFormatters.formatFileCount(1).endsWith(" file"));
+  check(
+    "byte emphasis uses the shared navigation boundary",
+    sandbox.MetabrowserFormatters.sizeClass(1024 ** 2) === "" &&
+      sandbox.MetabrowserFormatters.sizeClass(1024 ** 2 + 1) === "size-large",
+  );
+  check(
+    "file-count emphasis uses the shared navigation boundary",
+    sandbox.MetabrowserFormatters.countClass(999) === "" &&
+      sandbox.MetabrowserFormatters.countClass(1000) === "count-large",
+  );
   const retryable = sandbox.MetabrowserRequestErrors.classifyRequestError(
     new sandbox.MetabrowserRequestErrors.RequestError("safe", { status: 503 }),
   );

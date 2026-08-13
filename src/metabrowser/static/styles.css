@@ -81,10 +81,10 @@
            app header, drawer, tooltip — routes through
            `sizeHtml(bytes)`. The helper formats via formatSize()
            AND applies `.size-large` (= font-weight: bold) above a
-           single shared threshold (SIZE_LARGE_THRESHOLD). Big reads
+           single threshold owned by MetabrowserFormatters. Big reads
            as bold, small as normal, EVERYWHERE. Never render a byte
            count with a bare formatSize() call + custom weight logic
-           in a one-off site — adjust the threshold in one place.
+           in a one-off site.
 
        File-type colors (.ft-<name> + --ft-*) — see the block in
        :root. Each subtype is one hue triplet (--ft-color, --ft-bg,
@@ -1857,7 +1857,7 @@ html[data-prose-font="sans"] {
    these, not bespoke styles. `.size` is the neutral base (cool-blue
    hue, tabular nums); `.size-large` bumps weight + shifts to the
    bolder stop of the same hue above the shared threshold (see
-   sizeHtml() / SIZE_LARGE_THRESHOLD in app.js). Callers add a
+   MetabrowserFormatters.sizeClass() in formatters.js). Callers add a
    site-specific class for positioning (.tree-item-size,
    .file-header-size, .tree-summary-size) but NEVER for weight/color. */
 .size {
@@ -1872,8 +1872,8 @@ html[data-prose-font="sans"] {
 /* File-count convention — same idea as .size, same hue family (file
    counts and file sizes are two views of the same data category so
    they share the color signal). `.count-large` bolds up at the
-   shared threshold (see countHtml() / COUNT_LARGE_THRESHOLD in
-   app.js) the same way `.size-large` does for byte counts. */
+   shared threshold (see MetabrowserFormatters.countClass() in
+   formatters.js) the same way `.size-large` does for byte counts. */
 .count {
   color: var(--size-color);
   font-variant-numeric: tabular-nums;

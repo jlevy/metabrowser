@@ -49,6 +49,8 @@
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
+//     countClass(count)                   — shared file-count emphasis class
+//     sizeClass(bytes)                    — shared byte-count emphasis class
 //     sizeHtml(bytes, extraClass?)       — formatSize wrapped in <span class=size>
 //     isLargeTextPreview(data)           — true if /api/file payload exceeds the
 //                                          syntax-highlight cutoff
@@ -955,13 +957,12 @@
     return d.toLocaleString();
   }
 
-  // Single source of truth for the "large file = bold size, small file
-  // = normal" rule used everywhere a size badge is rendered. Threshold
-  // matches the shell's SIZE_LARGE_THRESHOLD (1 MiB).
-  const SIZE_LARGE_THRESHOLD = 1024 * 1024;
-
   function sizeClass(bytes) {
-    return (bytes || 0) > SIZE_LARGE_THRESHOLD ? "size-large" : "";
+    return global.MetabrowserFormatters.sizeClass(Number(bytes) || 0);
+  }
+
+  function countClass(value) {
+    return global.MetabrowserFormatters.countClass(Number(value) || 0);
   }
 
   function sizeHtml(bytes, extraClass) {
@@ -1200,6 +1201,8 @@
     formatInteger: formatInteger,
     formatFileCount: formatFileCount,
     formatTimestamp: formatTimestamp,
+    countClass: countClass,
+    sizeClass: sizeClass,
     sizeHtml: sizeHtml,
     isLargeTextPreview: isLargeTextPreview,
     wrapWithCopy: wrapWithCopy,

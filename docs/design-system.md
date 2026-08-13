@@ -434,6 +434,10 @@ row falls under Other.
 The aggregate tail is labelled **Remaining types** so it is not confused with the group
 itself. A group heading is shown only when it has rows and carries no subtotal.
 Type labels use the bold design-system weight as the row’s scan anchor.
+Every exact Files value uses the shared `.count` and `.count-large` convention, and
+every exact Size value uses `.size` and `.size-large`. The stronger weight therefore
+appears at the same count and byte thresholds as the navigation panel, including on
+Total and Ignored; a row role never forces a different numeric weight.
 
 A **Totals** group appears before the presentation groups and uses the neutral
 distribution color. **Total** comes first: its exact values equal the selected

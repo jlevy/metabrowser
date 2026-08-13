@@ -20,7 +20,7 @@ function createMetricCell(metric) {
   const contents = document.createElement("div");
   contents.className = "file-type-summary-metric-content";
   const value = document.createElement("span");
-  value.className = "file-type-summary-value";
+  value.className = `file-type-summary-value ${metric === "files" ? "count" : "size"}`;
   const track = document.createElement("div");
   track.className = "file-type-summary-track";
   track.setAttribute("aria-hidden", "true");
@@ -43,7 +43,6 @@ function createMetricRow(className, label) {
   rowLabel.textContent = label;
   const files = createMetricCell("files");
   const bytes = createMetricCell("bytes");
-  bytes.value.className += " size";
   tr.append(rowLabel, files.cell, bytes.cell);
   return {
     tr,
@@ -72,8 +71,13 @@ function createGroupBody(className, label) {
   return body;
 }
 
-/** @param {HTMLElement} container @param {SummaryModel} model @param {Palette} palette */
-export function mountDistributionView(container, model, palette) {
+/**
+ * @param {HTMLElement} container
+ * @param {SummaryModel} model
+ * @param {Palette} palette
+ * @param {MetricClasses} metricClasses
+ */
+export function mountDistributionView(container, model, palette, metricClasses) {
   const root = document.createElement("div");
   root.className = "file-type-summary";
   const body = element(root, "file-type-summary-body");
@@ -82,6 +86,7 @@ export function mountDistributionView(container, model, palette) {
     root,
     body,
     palette,
+    metricClasses,
     /** @type {Map<string, SummaryRowHandle>} */
     rows: new Map(),
     /** @type {Map<FileTypeCategory, SummaryGroupHandle>} */
@@ -203,24 +208,63 @@ function updateTotalRows(handle, model) {
   }
   const ignoredVisible = model.showIgnored === true && (model.ignoredFiles ?? 0) > 0;
   ignored.tr.hidden = !ignoredVisible;
-  ignored.fileValue.textContent = model.ignoredFilesText ?? "0 files";
+  updateMetricValue(
+    ignored.fileValue,
+    "files",
+    model.ignoredFiles ?? 0,
+    model.ignoredFilesText ?? "0 files",
+    handle.metricClasses,
+  );
   ignored.fileFill.className = "file-type-summary-fill mb-distribution-other";
   ignored.fileFill.style.width = `${model.ignoredFileShare ?? 0}%`;
   ignored.filePercent.textContent = model.ignoredFilePercent ?? "0%";
-  ignored.byteValue.textContent = model.ignoredBytesText ?? "0 B";
+  updateMetricValue(
+    ignored.byteValue,
+    "bytes",
+    model.ignoredBytes ?? 0,
+    model.ignoredBytesText ?? "0 B",
+    handle.metricClasses,
+  );
   ignored.byteFill.className = "file-type-summary-fill mb-distribution-other";
   ignored.byteFill.style.width = `${model.ignoredByteShare ?? 0}%`;
   ignored.bytePercent.textContent = model.ignoredBytePercent ?? "0%";
   const filesPopulated = (model.files ?? 0) > 0;
   const bytesPopulated = (model.bytes ?? 0) > 0;
-  total.fileValue.textContent = model.filesText ?? "0 files";
+  updateMetricValue(
+    total.fileValue,
+    "files",
+    model.files ?? 0,
+    model.filesText ?? "0 files",
+    handle.metricClasses,
+  );
   total.fileFill.className = "file-type-summary-fill mb-distribution-other";
   total.fileFill.style.width = filesPopulated ? "100%" : "0%";
   total.filePercent.textContent = filesPopulated ? "100%" : "0%";
-  total.byteValue.textContent = model.bytesText ?? "0 B";
+  updateMetricValue(
+    total.byteValue,
+    "bytes",
+    model.bytes ?? 0,
+    model.bytesText ?? "0 B",
+    handle.metricClasses,
+  );
   total.byteFill.className = "file-type-summary-fill mb-distribution-other";
   total.byteFill.style.width = bytesPopulated ? "100%" : "0%";
   total.bytePercent.textContent = bytesPopulated ? "100%" : "0%";
+}
+
+/**
+ * @param {HTMLElement} element
+ * @param {"files" | "bytes"} metric
+ * @param {number} value
+ * @param {string} text
+ * @param {MetricClasses} metricClasses
+ */
+function updateMetricValue(element, metric, value, text, metricClasses) {
+  const baseClass = metric === "files" ? "count" : "size";
+  const emphasisClass =
+    metric === "files" ? metricClasses.countClass(value) : metricClasses.sizeClass(value);
+  element.className = `file-type-summary-value ${baseClass} ${emphasisClass}`.trim();
+  element.textContent = text;
 }
 
 /** @param {DistributionHandle} handle @param {FileTypeCategory} category */
@@ -268,7 +312,6 @@ function updateRows(handle, rows) {
         type.append(label);
         const files = createMetricCell("files");
         const bytes = createMetricCell("bytes");
-        bytes.value.className += " size";
         tr.append(type, files.cell, bytes.cell);
         rowHandle = {
           tr,
@@ -284,11 +327,23 @@ function updateRows(handle, rows) {
       }
       const colorClass = handle.palette.classFor(row.key);
       rowHandle.label.textContent = row.label;
-      rowHandle.fileValue.textContent = row.filesText;
+      updateMetricValue(
+        rowHandle.fileValue,
+        "files",
+        row.files,
+        row.filesText,
+        handle.metricClasses,
+      );
       rowHandle.fileFill.className = `file-type-summary-fill ${colorClass}`;
       rowHandle.fileFill.style.width = `${row.fileShare}%`;
       rowHandle.filePercent.textContent = row.filePercent;
-      rowHandle.byteValue.textContent = row.bytesText;
+      updateMetricValue(
+        rowHandle.byteValue,
+        "bytes",
+        row.bytes,
+        row.bytesText,
+        handle.metricClasses,
+      );
       rowHandle.byteFill.className = `file-type-summary-fill ${colorClass}`;
       rowHandle.byteFill.style.width = `${row.byteShare}%`;
       rowHandle.bytePercent.textContent = row.bytePercent;
@@ -312,9 +367,10 @@ function updateRows(handle, rows) {
 /** @typedef {"docs" | "code" | "data" | "other"} FileTypeCategory */
 /** @typedef {{key: string, label: string, category: FileTypeCategory, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string}} Palette */
+/** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {{state: "pending" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryMetricRowHandle */
 /** @typedef {SummaryMetricRowHandle & {body: HTMLTableSectionElement}} SummaryTotalHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, ignoredRow: SummaryMetricRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, table: HTMLTableElement | null, ignoredRow: SummaryMetricRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */

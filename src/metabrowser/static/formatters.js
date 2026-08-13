@@ -3,6 +3,10 @@
 (() => {
   const integerFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
   const byteUnits = ["B", "KB", "MB", "GB", "TB", "PB"];
+  /** Byte counts above this boundary receive the shared stronger emphasis. */
+  const SIZE_LARGE_THRESHOLD_BYTES = 1024 * 1024;
+  /** File counts at or above this boundary receive the shared stronger emphasis. */
+  const COUNT_LARGE_THRESHOLD = 1000;
 
   /** @param {number} value */
   function formatBytes(value) {
@@ -29,5 +33,21 @@
     return `${formatInteger(count)} ${count === 1 ? "file" : "files"}`;
   }
 
-  window.MetabrowserFormatters = Object.freeze({ formatBytes, formatFileCount, formatInteger });
+  /** @param {number} value */
+  function sizeClass(value) {
+    return (Number(value) || 0) > SIZE_LARGE_THRESHOLD_BYTES ? "size-large" : "";
+  }
+
+  /** @param {number} value */
+  function countClass(value) {
+    return (Number(value) || 0) >= COUNT_LARGE_THRESHOLD ? "count-large" : "";
+  }
+
+  window.MetabrowserFormatters = Object.freeze({
+    countClass,
+    formatBytes,
+    formatFileCount,
+    formatInteger,
+    sizeClass,
+  });
 })();
