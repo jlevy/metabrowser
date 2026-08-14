@@ -20,6 +20,9 @@ WIKI_ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown_wiki_enha
 PROJECT_ADAPTER_JS = (
     Path(__file__).resolve().parent / "dom" / "markdown_project_adapter_behavior.js"
 )
+GITHUB_LOCALIZER_JS = (
+    Path(__file__).resolve().parent / "dom" / "markdown_github_localizer_behavior.js"
+)
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -133,6 +136,22 @@ def test_configured_markdown_project_adapters() -> None:
         f"Markdown project adapter failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
     assert "markdown project adapter OK" in result.stdout
+
+
+def test_verified_github_url_localization() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(GITHUB_LOCALIZER_JS), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Markdown GitHub localizer failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "markdown GitHub localizer OK" in result.stdout
 
 
 def test_standard_markdown_link_fixture_matches_its_schema() -> None:

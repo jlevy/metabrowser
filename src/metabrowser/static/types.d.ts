@@ -29,6 +29,15 @@ type MetabrowserNavigationTarget = Readonly<{
   fragment?: string;
 }>;
 
+type MetabrowserRepositoryContext = Readonly<{
+  branch: string | null;
+  host: "github.com";
+  name: string;
+  owner: string;
+  revision: string;
+  served_prefix: string;
+}>;
+
 type MetabrowserNavigationApplyContext = Readonly<{
   source: "startup" | "user" | "popstate";
   pathChanged: boolean;
@@ -557,6 +566,7 @@ type MetabrowserSdk = {
   langForExtension(ext: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   navigation: MetabrowserNavigationApi;
+  repository: MetabrowserRepositoryContext | null;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
   setViewPrintState(
@@ -932,6 +942,7 @@ declare global {
       move(event: MouseEvent): void;
       show(html: string, event: MouseEvent): void;
     };
+    METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SETTINGS?: {
       FILE_TYPE_TAXONOMY?: {
         categories: Array<{

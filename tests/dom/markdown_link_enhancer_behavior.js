@@ -130,6 +130,11 @@ async function loadModule() {
     "utf8",
   );
   const projectAdaptersUrl = `data:text/javascript;base64,${Buffer.from(projectAdaptersSource).toString("base64")}`;
+  const githubLocalizerSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/github_localizer.js"),
+    "utf8",
+  );
+  const githubLocalizerUrl = `data:text/javascript;base64,${Buffer.from(githubLocalizerSource).toString("base64")}`;
   const wikiResolverSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_resolver.js"),
     "utf8",
@@ -147,6 +152,7 @@ async function loadModule() {
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/link_enhancer.js"),
       "utf8",
     )
+    .replace('"./github_localizer.js"', JSON.stringify(githubLocalizerUrl))
     .replace('"./links.js"', JSON.stringify(linksUrl))
     .replace('"./project_adapters.js"', JSON.stringify(projectAdaptersUrl))
     .replace('"./wiki_enhancer.js"', JSON.stringify(wikiEnhancerUrl));
@@ -158,6 +164,10 @@ async function loadModule() {
   const internal = new FakeElement("a", { href: "guide.md#Install" });
   const published = new FakeElement("a", { href: "/published/" });
   const external = new FakeElement("a", { href: "https://example.com/docs" });
+  const revision = "a".repeat(40);
+  const github = new FakeElement("a", {
+    href: `https://github.com/example/docs/blob/${revision}/docs/guide.md#Install`,
+  });
   const unsafe = new FakeElement("a", { href: "javascript:alert(1)" });
   const download = new FakeElement("a", { download: "", href: "files/archive.zip" });
   const newTab = new FakeElement("a", { href: "other.md", target: "_blank" });
@@ -169,6 +179,7 @@ async function loadModule() {
     internal,
     published,
     external,
+    github,
     unsafe,
     download,
     newTab,
@@ -183,6 +194,14 @@ async function loadModule() {
   const opened = [];
   let current = { path: "docs/readme.md", fragment: "Install" };
   const mb = {
+    repository: {
+      branch: "main",
+      host: "github.com",
+      name: "docs",
+      owner: "example",
+      revision,
+      served_prefix: "",
+    },
     fileCatalog: {
       snapshot: () => ({
         complete: true,
@@ -216,6 +235,14 @@ async function loadModule() {
     published.getAttribute("data-metabrowser-link-adapter") === "mkdocs",
   );
   check("external href preserved", external.getAttribute("href") === "https://example.com/docs");
+  check(
+    "verified GitHub href localized",
+    github.getAttribute("href") === "/view/docs/guide.md#Install",
+  );
+  check(
+    "GitHub localization disclosed",
+    github.getAttribute("data-metabrowser-github-localization") === "revision",
+  );
   check("unsafe href removed", !unsafe.hasAttribute("href"));
   check("unsafe link keyboard reachable", unsafe.getAttribute("tabindex") === "0");
   check("unsafe link explained", unsafe.getAttribute("aria-disabled") === "true");

@@ -115,6 +115,7 @@ from metabrowser.paths_safe import (
 )
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
+from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     RECENT_WINDOW_SECONDS,
@@ -757,6 +758,7 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
+    repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     theme_state_url = _static_asset_url("theme_state.js")
     request_error_url = _static_asset_url("request_error.js")
@@ -788,6 +790,10 @@ async def index(_request: Request) -> HTMLResponse:
     # duplicating constants in the source.
     settings_block = (
         f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
+    )
+    repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    repository_context_block = (
+        f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
@@ -996,6 +1002,7 @@ async def index(_request: Request) -> HTMLResponse:
        highlight-toml.min.js. -->
   {perf_block}
   {settings_block}
+  {repository_context_block}
   <script src="{theme_state_url}"></script>
   <script src="{request_error_url}"></script>
   <script src="{formatters_url}"></script>

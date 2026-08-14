@@ -1,3 +1,4 @@
+import { localizeGithubUrl } from "./github_localizer.js";
 import { resolveStandardTarget } from "./links.js";
 import { resolvePublishedRoute } from "./project_adapters.js";
 import { enhanceWikiLinks } from "./wiki_enhancer.js";
@@ -50,7 +51,21 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       if (isPossiblePublishedRoute(authoredTarget)) {
         possiblePublishedRoutes.push({ anchor, authoredTarget });
       }
-    } else if (resolved.status !== "external") {
+    } else if (resolved.status === "external") {
+      const localized = localizeGithubUrl(authoredTarget, mb.repository);
+      if (localized) {
+        const target = navigationTarget(localized);
+        anchor.setAttribute("href", mb.navigation.href(target));
+        anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
+        if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
+          anchor.setAttribute(
+            "title",
+            "Open the corresponding path in the currently served working tree.",
+          );
+        }
+        internalTargets.set(anchor, target);
+      }
+    } else {
       disableTarget(anchor, "href", resolved.status, resolved.reason);
     }
   }

@@ -85,6 +85,9 @@ Acceptance criteria:
 
 ### Verified GitHub URL Localization (`mb-v5cz`)
 
+**Status:** Implemented with bounded Git metadata discovery, pure URL localization, and
+rendered-link integration coverage.
+
 Absolute `https://github.com/<owner>/<repo>/blob/...` and `/tree/...` links become local
 only when their host and repository match the mounted Git context.
 

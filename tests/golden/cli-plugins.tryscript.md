@@ -176,6 +176,7 @@ data hooks:
   (none)
 
 assets in static_root:
+  - github_localizer.js
   - index.js
   - link_enhancer.js
   - links.js
@@ -235,6 +236,7 @@ $ metab --plugin markdown --json
     "data_hooks": [],
     "disabled_data_hooks": [],
     "assets": [
+      "github_localizer.js",
       "index.js",
       "link_enhancer.js",
       "links.js",

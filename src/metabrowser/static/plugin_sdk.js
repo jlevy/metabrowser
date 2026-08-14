@@ -50,6 +50,7 @@
 //     navigation.current()               — current path/query/fragment target or null
 //     fileCatalog.snapshot()              — immutable known-file inventory snapshot
 //     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
+//     repository                          — verified GitHub identity for the served tree
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
@@ -118,6 +119,36 @@
       return _attachedFileCatalog?.subscribe(listener) || (() => {});
     },
   });
+  const repository = normalizeRepositoryContext(global.METABROWSER_REPOSITORY_CONTEXT);
+
+  /** @param {unknown} value */
+  function normalizeRepositoryContext(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const context = /** @type {Record<string, unknown>} */ (value);
+    if (
+      context.host !== "github.com" ||
+      typeof context.owner !== "string" ||
+      !context.owner ||
+      typeof context.name !== "string" ||
+      !context.name ||
+      typeof context.revision !== "string" ||
+      !/^[0-9a-f]{40}$/i.test(context.revision) ||
+      (context.branch !== null && typeof context.branch !== "string") ||
+      typeof context.served_prefix !== "string"
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      branch: context.branch,
+      host: context.host,
+      name: context.name,
+      owner: context.owner,
+      revision: context.revision.toLowerCase(),
+      served_prefix: context.served_prefix,
+    });
+  }
 
   function attachFileCatalog(catalog) {
     if (
@@ -1310,6 +1341,7 @@
     fileTypeIcon: fileTypeIcon,
     fileCatalog: fileCatalog,
     navigation: global.MetabrowserNavigationRoute.navigation,
+    repository: repository,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
     loadKpressAssets: loadKpressAssets,
