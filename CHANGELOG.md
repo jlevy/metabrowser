@@ -4,6 +4,23 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+## 0.4.0
+
+Folder Overview and Treemap:
+
+- Every directory now opens with an extensible Overview whose always-present Files
+  summary appears above a rendered README when the folder contains one.
+  Files and README share responsive alignment and independently collapsible section
+  headings, while the README retains the ordinary Markdown document surface.
+- The Files summary compares exact file counts and byte totals with percentages and
+  independently normalized bars.
+  A leading Total row and conditional Ignored row make the selected population explicit,
+  including deliberate empty, pending, partial, incompatible, and unavailable states.
+- Treemap is now a peer folder view with Bytes and Files sizing, a Show ignored
+  checkbox, adaptive labels, and hierarchy-preserving hover.
+  File icons and colors match Overview and navigation, folder labels end in `/`, and
+  folder navigation keeps the Treemap active.
+
 File types and folder summaries:
 
 - One versioned File-Type Registry now drives folder Overview, navigation filters,
@@ -29,6 +46,22 @@ File types and folder summaries:
   checkout or network access.
   Packet export prunes stale destination content, verifies exact manifest membership and
   hashes before returning, and supports an independent `--verify` mode.
+
+Navigation, plugins, and reliability:
+
+- The file-type chooser uses the same registry-backed hierarchy as Overview: broad
+  groups, semantic families, and exact canonical or raw extensions can be selected
+  independently, with parent choices selecting their children.
+- The public browser SDK adds immutable file-type definitions, bounded folder-rollup
+  helpers, folder context, view-aware navigation, shared formatters and file identity,
+  active-view state, and an extensible folder-panel registry.
+  Existing documented extension and rollup aliases remain available for a transition
+  release.
+- Folder rollups run off the event loop and reuse the inventory snapshot instead of
+  crawling the filesystem again.
+  Rapidly rebuilt directories are reconciled against the current filesystem so stale
+  watcher deletes cannot leave an Overview blank, and brief local navigation no longer
+  flashes loading chrome.
 
 ## 0.3.0
 

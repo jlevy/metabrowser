@@ -181,7 +181,7 @@ TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 # tree only (totals stay full-subtree); ``top`` caps children per
 # directory before the rest bucket; ``ext_top`` caps envelope
 # extension-tally rows before the remainder row. The semantic breakdown
-# independently caps No extension basenames and Remaining types extensions;
+# independently caps No extension basenames and Other types extensions;
 # the route clamps every query parameter to the corresponding maximum.
 ROLLUP_DEFAULT_DEPTH = 3
 ROLLUP_MAX_DEPTH = 6
