@@ -72,7 +72,7 @@ change.
 | `label` | string | Nonempty human label |
 | `order` | integer | Deterministic order; unique among groups |
 
-The initial order is Code, Docs, Data, Logs, Archives, Media, and Other.
+The initial order is Code, Documentation, Data, Logs, Archives, Media, and Other.
 Other is the fallback section for No extension and Remaining types.
 It does not collect unrelated ordinary families merely to avoid a taxonomy decision.
 
@@ -212,9 +212,10 @@ Python and Rust validators reject:
 - kinds without any supported evidence; and
 - equal-priority evidence that can select different kind IDs.
 
-An error names the table ID, field, invalid value, and conflicting declaration.
-Metabrowser fails during startup before listening.
-`fdu` fails during its build-time registry compilation.
+An error has a stable code and structured context naming the invalid declaration and
+conflict. Metabrowser loads and validates the packaged registry before serving requests.
+The browser consumes the resulting immutable projection rather than parsing TOML. `fdu`
+fails during its future build-time registry compilation.
 
 ## Normalization and Fingerprint
 
@@ -223,6 +224,9 @@ ordered semantic field.
 It excludes TOML whitespace and comments.
 Both implementations produce the same lowercase hexadecimal digest for the same
 declarations.
+
+The generated `registry-v1.json` projection and `conformance-v1.json` corpus pin that
+digest for Python, browser JavaScript, and future Rust parity tests.
 
 The digest is a drift and cache identity, not a security primitive.
 A source Git revision or released artifact records provenance.

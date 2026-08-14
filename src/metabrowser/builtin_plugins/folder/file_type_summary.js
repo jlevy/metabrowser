@@ -41,8 +41,12 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     }
     envelope = normalizeRollupEnvelope(raw);
     palette.sync([
-      ...envelope.families.map((family) => `family:${family.id}`),
-      ...envelope.tallies.filter((row) => row.key !== "").map((row) => row.key),
+      ...(envelope.breakdown
+        ? envelope.groups.flatMap((group) => group.families.map((family) => `family:${family.id}`))
+        : envelope.families.map((family) => `family:${family.id}`)),
+      ...(envelope.breakdown
+        ? (envelope.specialTypes?.remainingTypes.extensions ?? []).map((row) => row.key)
+        : envelope.tallies.filter((row) => row.key !== "").map((row) => row.key)),
     ]);
     render();
   }
@@ -53,8 +57,9 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
       active: () => mb.viewState.isActive(container.closest("[data-tab-content]") || container),
       depth: 0,
       top: 0,
-      ext_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_NAMED_LIMIT ?? 10,
-      type_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_RAW_LIMIT ?? 10,
+      ext_top: 0,
+      filename_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_FILENAME_LIMIT ?? 20,
+      remaining_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_REMAINING_LIMIT ?? 20,
       ext_rank: "dual",
       /** @param {unknown} error */
       onError(error) {

@@ -60,6 +60,7 @@ Validated TOML is projected into JSON-compatible runtime data:
 ```json
 {
   "schema": "file-type-registry-v1",
+  "schema_version": 1,
   "revision": 1,
   "fingerprint": "normalized-registry-identity",
   "max_extension_components": 2,
@@ -71,7 +72,8 @@ Validated TOML is projected into JSON-compatible runtime data:
       "id": "javascript",
       "label": "JavaScript",
       "group_id": "code",
-      "order": 100
+      "order": 100,
+      "extensions": [".js", ".jsx", ".mjs", ".cjs"]
     }
   ],
   "kinds": [
@@ -79,7 +81,10 @@ Validated TOML is projected into JSON-compatible runtime data:
       "id": "javascript",
       "family_id": "javascript",
       "content_family": "code",
-      "extensions": [".js", ".jsx", ".mjs", ".cjs"]
+      "extensions": [".js", ".jsx", ".mjs", ".cjs"],
+      "filenames": [],
+      "shebangs": ["node", "deno", "bun"],
+      "priority": 100
     }
   ]
 }
@@ -102,8 +107,10 @@ Every row in that breakdown carries the same keys:
 }
 ```
 
-Metabrowser emits `all` and `unignored`. `fdu` emits `selected` and can also emit `all`
-when it retains the denominator.
+The portable schema permits named populations.
+Metabrowser’s current `/api/rollup` profile emits and validates exactly `all` and
+`unignored`. A future standalone `fdu` report can emit `selected` and can also emit
+`all` when it retains the denominator.
 A host documents the meaning of additional population names.
 Each population requires `files` and `bytes`; additive metrics belong in the same
 measure object.
@@ -272,12 +279,13 @@ It never guesses labels or membership from IDs alone.
 
 ## Conformance Corpus
 
-`file-type-conformance-v1` contains three fixture classes:
+The checked `src/metabrowser/data/file-types/conformance-v1.json` corpus contains three
+fixture classes:
 
-- valid registry declarations and their normalized fingerprint;
-- metadata cases containing basename, expected logical and canonical extension, kind,
-  family, group, content family, detection source, and confidence; and
-- aggregate cases containing file facts and one exact expected breakdown.
+- exhaustive metadata cases containing basename, expected logical and canonical
+  extension, kind, family, group, content family, detection source, and confidence; and
+- invalid TOML declarations with stable expected error codes; and
+- aggregate cases containing file facts and one exact expected Breakdown v1 value.
 
 Required metadata cases cover every declaration, uppercase suffixes, dotfiles, one- and
 two-component limits, longer dotted names, exact compound precedence, suffix fallback,
@@ -285,7 +293,11 @@ JSON versus JSON Lines, SVG, C/C++, extensionless files, and unknown extensions.
 
 Invalid cases cover every Registry v1 validation class with an expected stable error
 code. Human error text can be package-specific, but the code and offending declaration
-identity agree.
+identity agree. Aggregate cases include an empty directory and a mixed, high-cardinality
+directory that exercises semantic families, ignored populations, both 20-child caps, and
+exact Others remainders.
+The contract tool validates every expected aggregate against `breakdown-v1.schema.json`
+before publishing or exporting it.
 
 ## Versioning
 

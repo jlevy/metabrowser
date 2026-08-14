@@ -1,6 +1,6 @@
 # File-Type Compatibility Contract
 
-**Status:** Design contract for the active implementation plan
+**Status:** Implemented reference contract
 
 Metabrowser owns the shared description of file-type facts, classification, semantic
 families, and directory breakdowns.
@@ -17,8 +17,8 @@ The contract is split by responsibility:
 - [`fdu` compatibility](fdu-compatibility.md) defines the adoption boundary, field
   mapping, export requirements, conformance process, and staged handoff.
 - The
-  [active implementation plan](../../specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
-  defines repository work, migration, testing, and acceptance criteria.
+  [implementation plan](../../specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
+  records design rationale, migration, testing, and acceptance criteria.
 
 ## Contract Layers
 
@@ -37,12 +37,12 @@ Likewise, JSON Lines can retain a data content family while appearing under Log 
 
 ## Normative Sources
 
-During implementation, requirements use this precedence:
+Requirements use this precedence:
 
-1. the versioned registry and interchange schemas once they are checked in;
+1. the versioned registry and interchange schemas;
 2. the contract documents in this directory;
 3. the shared conformance corpus;
-4. the active implementation plan; and
+4. the implementation plan; and
 5. package-specific adapters and UI view models.
 
 The registry payload is the source of truth for taxonomy membership.
@@ -77,10 +77,45 @@ breakdown
     └── exact Others remainder
 ```
 
-Metabrowser emits `all` and `unignored` populations.
-`fdu` may emit `selected`, `all`, or other documented populations.
+The portable schema supports named populations.
+Metabrowser’s `/api/rollup` profile emits and requires `all` and `unignored`; a future
+standalone `fdu` report may emit `selected`, `all`, or other documented populations.
 Every row in one breakdown has the same population keys and at least the required
 `files` and apparent `bytes` metrics.
+
+## Implemented Artifacts
+
+| Artifact | Repository path |
+| --- | --- |
+| Reviewed declaration | `src/metabrowser/data/file-types.toml` |
+| Immutable Python loader | `src/metabrowser/file_type_registry.py` |
+| Registry projection schema | `src/metabrowser/data/file-types/registry-v1.schema.json` |
+| Breakdown schema | `src/metabrowser/data/file-types/breakdown-v1.schema.json` |
+| Conformance schema | `src/metabrowser/data/file-types/conformance-v1.schema.json` |
+| Generated projection | `src/metabrowser/data/file-types/registry-v1.json` |
+| Shared corpus | `src/metabrowser/data/file-types/conformance-v1.json` |
+| Empty breakdown example | `src/metabrowser/data/file-types/breakdown-empty-v1.json` |
+| Drift and export tool | `devtools/file_type_contract.py` |
+
+The repository gate checks that generated artifacts match the reviewed TOML and that the
+registry, corpus, and every expected aggregate conform to their schemas.
+Regenerate intentional registry changes with:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py --write
+```
+
+Create a self-contained handoff packet for `fdu` with an explicit source revision:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
+  --export /explicit/destination \
+  --source-revision SOURCE_GIT_REVISION
+```
+
+The packet includes the TOML source, normalized projection, schemas, corpus, example,
+contract documents, and a `manifest.json` recording the source revision and registry
+identity. It has no sibling-checkout or network dependency.
 
 ## Ownership and Distribution
 

@@ -387,6 +387,104 @@ function familyRow() {
     family.fileFill.className === jsChild.fileFill.className,
   );
 
+  const singleton = {
+    ...row("family:images", "Images", "media", 40, 80, "40%", "80%"),
+    kind: "family",
+    paletteKey: "family:images",
+    disclosable: true,
+    children: [
+      {
+        ...row("family:images/.png", ".png", "media", 40, 80, "40%", "80%"),
+        kind: "extension",
+        child: true,
+        extension: ".png",
+        iconPath: "x.png",
+        paletteKey: "family:images",
+      },
+    ],
+  };
+  const noExtension = {
+    ...row("(none)", "No extension", "other", 60, 20, "60%", "20%"),
+    kind: "special",
+    iconPath: "file",
+    paletteKey: "",
+    disclosable: true,
+    children: [
+      {
+        ...row("no-extension/README", "README", "other", 50, 15, "50%", "15%"),
+        kind: "filename",
+        child: true,
+        iconPath: "README",
+        paletteKey: "",
+      },
+      {
+        ...row("no-extension/others", "Others (3 more)", "other", 10, 5, "10%", "5%"),
+        kind: "others",
+        child: true,
+        iconPath: "file",
+        paletteKey: "",
+      },
+    ],
+  };
+  const remainingTypes = {
+    ...row("", "Remaining types", "other", 2, 10, "2%", "10%"),
+    kind: "special",
+    iconPath: "file",
+    paletteKey: "",
+    disclosable: true,
+    children: [
+      {
+        ...row("remaining-types/.bin", ".bin", "other", 2, 10, "2%", "10%"),
+        kind: "extension",
+        child: true,
+        extension: ".bin",
+        iconPath: "x.bin",
+        paletteKey: ".bin",
+      },
+    ],
+  };
+  view.updateDistributionView(handle, {
+    ...updated,
+    groups: [
+      { id: "media", label: "Media" },
+      { id: "other", label: "Other" },
+    ],
+    rows: [singleton, noExtension, remainingTypes],
+  });
+  check(
+    "registry group order and labels drive the table",
+    [...handle.groups.keys()].join(",") === "media,other" &&
+      handle.groups.get("media").body.children[0].children[0].textContent === "Media",
+  );
+  const imageFamily = handle.rows.get("family:images");
+  check(
+    "singleton families retain a collapsed disclosure",
+    imageFamily.disclosure.hidden === false &&
+      imageFamily.disclosure.attributes["aria-expanded"] === "false",
+  );
+  const noExtensionParent = handle.rows.get("(none)");
+  check(
+    "special parents share the disclosure and generic identity",
+    noExtensionParent.disclosure.hidden === false &&
+      noExtensionParent.icon.innerHTML === '<svg data-file-icon="generic"></svg>',
+  );
+  noExtensionParent.disclosure.listeners.click();
+  check(
+    "filename and Others children use consistent icon fallbacks",
+    handle.rows.get("no-extension/README").icon.innerHTML ===
+      '<svg data-file-icon="README"></svg>' &&
+      handle.rows.get("no-extension/others").icon.innerHTML ===
+        '<svg data-file-icon="generic"></svg>',
+  );
+  const remainingTypesParent = handle.rows.get("");
+  remainingTypesParent.disclosure.listeners.click();
+  check(
+    "empty-string Remaining types key remains a valid disclosure identity",
+    remainingTypesParent.disclosure.attributes["aria-expanded"] === "true" &&
+      handle.rows.get("remaining-types/.bin").icon.innerHTML ===
+        '<svg data-file-icon="generic"></svg>',
+  );
+
   view.updateDistributionView(handle, {
     ...updated,
     rows: [

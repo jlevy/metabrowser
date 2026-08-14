@@ -58,19 +58,45 @@ type MetabrowserFormatterRuntime = Readonly<{
   sizeClass(value: number): "" | "size-large";
 }>;
 
-type MetabrowserFileTypeCategoryId = "docs" | "code" | "data";
+type MetabrowserFileTypeCategoryId = string;
 
 type MetabrowserFileTypeCategory = Readonly<{
   id: MetabrowserFileTypeCategoryId;
   label: string;
-  extraValues: ReadonlyArray<string>;
+  order: number;
 }>;
 
 type MetabrowserFileTypeFamily = Readonly<{
   id: string;
   label: string;
+  groupId: MetabrowserFileTypeCategoryId;
+  /** Compatibility alias for groupId. */
   category: MetabrowserFileTypeCategoryId;
+  order: number;
   extensions: ReadonlyArray<string>;
+}>;
+
+type MetabrowserFileTypeKind = Readonly<{
+  id: string;
+  familyId: string | null;
+  contentFamily: "code" | "prose" | "markup" | "data" | "binary" | "unknown";
+  extensions: ReadonlyArray<string>;
+  filenames: ReadonlyArray<string>;
+  shebangs: ReadonlyArray<string>;
+  priority: number;
+}>;
+
+type MetabrowserFileTypeClassification = Readonly<{
+  logicalExtension: string | null;
+  canonicalExtension: string | null;
+  kindId: string | null;
+  familyId: string | null;
+  groupId: string;
+  contentFamily: string;
+  detectionSource: string;
+  confidence: string;
+  registryRevision: number;
+  registryFingerprint: string;
 }>;
 
 type MetabrowserFileTypeFamilyMatch = Readonly<{
@@ -79,11 +105,27 @@ type MetabrowserFileTypeFamilyMatch = Readonly<{
 }>;
 
 type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
+  schema: "file-type-registry-v1";
+  schemaVersion: 1;
+  revision: number;
+  fingerprint: string;
+  maxExtensionComponents: 2;
+  registryIdentity: Readonly<{
+    schemaVersion: 1;
+    revision: number;
+    fingerprint: string;
+  }>;
+  groups: ReadonlyArray<MetabrowserFileTypeCategory>;
+  /** Compatibility alias for groups. */
   categories: ReadonlyArray<MetabrowserFileTypeCategory>;
   families: ReadonlyArray<MetabrowserFileTypeFamily>;
+  kinds: ReadonlyArray<MetabrowserFileTypeKind>;
+  classify(name: unknown, extension: unknown): MetabrowserFileTypeClassification;
   matchExtension(extension: unknown): MetabrowserFileTypeFamilyMatch | null;
   canonicalExtension(extension: unknown): string;
-  categoryForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId | "other";
+  groupForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
+  /** Compatibility alias for groupForFile. */
+  categoryForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
   distributionKeyForExtension(extension: unknown): string;
 }>;
 
@@ -338,10 +380,64 @@ type MetabrowserRollupEnvelope = {
     }>;
     extensions: Array<[string, number, number, number, number]>;
   };
+  file_type_breakdown: MetabrowserFileTypeBreakdown | null;
   index_status: string;
   indexed_files: number;
   max_files: number;
   truncated: boolean;
+};
+
+type MetabrowserFileTypeMeasure = {
+  files: number;
+  bytes: number;
+  [metric: string]: number;
+};
+
+type MetabrowserFileTypeMetrics = Record<string, MetabrowserFileTypeMeasure>;
+
+type MetabrowserFileTypeBreakdown = {
+  schema: "file-type-breakdown-v1";
+  registry: { schema_version: 1; revision: number; fingerprint: string };
+  metrics: MetabrowserFileTypeMetrics;
+  groups: Array<{
+    id: string;
+    families: Array<{
+      id: string;
+      metrics: MetabrowserFileTypeMetrics;
+      extensions: Array<{ extension: string; metrics: MetabrowserFileTypeMetrics }>;
+    }>;
+  }>;
+  no_extension: {
+    metrics: MetabrowserFileTypeMetrics;
+    filenames: Array<{ basename: string; metrics: MetabrowserFileTypeMetrics }>;
+    others: {
+      metrics: MetabrowserFileTypeMetrics;
+      omitted_distinct_values: number;
+    } | null;
+  };
+  remaining_types: {
+    metrics: MetabrowserFileTypeMetrics;
+    extensions: Array<{ extension: string; metrics: MetabrowserFileTypeMetrics }>;
+    others: {
+      metrics: MetabrowserFileTypeMetrics;
+      omitted_distinct_values: number;
+    } | null;
+  };
+};
+
+type MetabrowserRollupOptions = {
+  active?: () => boolean;
+  debounceMs?: number;
+  depth?: number;
+  ext_rank?: "bytes" | "dual";
+  ext_top?: number;
+  filename_top?: number;
+  onError?: (error: unknown) => void;
+  remaining_top?: number;
+  signal?: AbortSignal;
+  top?: number;
+  /** Compatibility alias for remaining_top. */
+  type_top?: number;
 };
 
 type MetabrowserRollupWatch = {
@@ -460,7 +556,7 @@ type MetabrowserSdk = {
     options?: Record<string, unknown>,
   ): MetabrowserChartInstance;
   escapeHtml(value: string): string;
-  fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
+  fetchRollup(path: string, opts?: MetabrowserRollupOptions): Promise<MetabrowserRollupEnvelope>;
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
@@ -476,7 +572,7 @@ type MetabrowserSdk = {
   };
   watchRollup(
     path: string,
-    opts: Record<string, unknown>,
+    opts: MetabrowserRollupOptions,
     onUpdate: (envelope: MetabrowserRollupEnvelope) => void,
   ): MetabrowserRollupWatch;
   fetchKpressRender(
@@ -867,16 +963,40 @@ declare global {
       show(html: string, event: MouseEvent): void;
     };
     METABROWSER_SETTINGS?: {
+      FILE_TYPE_REGISTRY?: {
+        schema: "file-type-registry-v1";
+        schema_version: 1;
+        revision: number;
+        fingerprint: string;
+        max_extension_components: 2;
+        groups: Array<{ id: string; label: string; order: number }>;
+        families: Array<{
+          id: string;
+          label: string;
+          group_id: string;
+          order: number;
+          extensions: Array<string>;
+        }>;
+        kinds: Array<{
+          id: string;
+          family_id: string | null;
+          content_family: string;
+          extensions: Array<string>;
+          filenames: Array<string>;
+          shebangs: Array<string>;
+          priority: number;
+        }>;
+      };
       FILE_TYPE_TAXONOMY?: {
         categories: Array<{
-          id: MetabrowserFileTypeCategoryId;
+          id: string;
           label: string;
           extra_values: Array<string>;
         }>;
         families: Array<{
           id: string;
           label: string;
-          category: MetabrowserFileTypeCategoryId;
+          category: string;
           extensions: Array<string>;
         }>;
       };
@@ -900,6 +1020,8 @@ declare global {
       ROLLUP_DEFAULT_EXT_TOP?: number;
       ROLLUP_FILE_TYPE_NAMED_LIMIT?: number;
       ROLLUP_FILE_TYPE_RAW_LIMIT?: number;
+      ROLLUP_FILE_TYPE_FILENAME_LIMIT?: number;
+      ROLLUP_FILE_TYPE_REMAINING_LIMIT?: number;
       ROLLUP_DEFAULT_TOP?: number;
       ROLLUP_WATCH_DEBOUNCE_MS?: number;
       DISTRIBUTION_PALETTE_SLOTS?: number;

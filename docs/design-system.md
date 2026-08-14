@@ -465,35 +465,40 @@ fills need no separate circle or legend.
 Fills do not become tab stops or add duplicate tooltips and are hidden from the
 accessibility tree. Labels never rely on color or place text on a category fill.
 
-File types uses non-subtotaling `DOCUMENTATION`, `CODE`, `DATA`, and `OTHER` row groups.
-Membership comes from the server-owned semantic file-type taxonomy used by rollups,
-navigation filters, and Treemap colors.
+File types uses non-subtotaling row groups in the server registry’s order: Code,
+Documentation, Data, Logs, Archives, Media, and Other.
+Empty groups are omitted.
+Membership comes from the same File-Type Registry v1 used by rollups, navigation
+filters, and Treemap colors; surfaces never maintain local extension lists.
 Known canonical suffixes roll up into readable family parents such as **JavaScript**,
-**TypeScript**, **CSS**, and **YAML**. Compound extensions inherit the longest declared
-suffix: `.min.js` contributes to JavaScript’s `.js` child without rewriting the file’s
-exact logical extension.
+**TypeScript**, **CSS**, **YAML**, **Log files**, **Archives**, and **Images**. Compound
+extensions inherit the longest declared suffix: `.min.js` contributes to JavaScript’s
+`.js` child without rewriting the file’s exact logical extension.
 Indexed logical extensions contain at most two suffix components, so source maps remain
 useful `.js.map` or `.ts.map` rows without fragmenting the table into filename-specific
 `.umd.min.js.map` and `.d.ts.map` variants.
 
 Family parents are aggregate identities, so they are text-only.
-A family with two or more nonzero canonical children places the shared gray trailing
-chevron after its label, starts collapsed, and reveals indented child rows without
-changing denominators or colors.
-A singleton family keeps its readable label but has no redundant disclosure.
+Every nonempty family places the shared gray trailing chevron after its label, starts
+collapsed, and reveals its indented extension rows without changing denominators or
+colors. A singleton such as Rust therefore still expands to `.rs`, preserving one
+consistent interaction and leaving room for future exact-extension filtering.
 Canonical children retain exact extension icons and share their parent’s `family:<id>`
 palette key. Unknown and deliberately ambiguous extensions remain raw rows; they are not
 assigned a confident name merely to shorten the table.
-The aggregate tail is labelled **Remaining types** so it is not confused with the group
-itself. A group heading is shown only when it has rows and carries no subtotal.
+**No extension** and **Remaining types** are disclosable special parents under Other.
+No extension reveals exact basenames; Remaining types reveals raw logical extensions.
+Each list is independently capped at 20 and adds a neutral **Others (N more)** row whose
+file and byte metrics exactly conserve the omitted children.
+A group heading is shown only when it has rows and carries no subtotal.
 Type labels use the bold design-system weight as the row’s scan anchor.
 Each raw or disclosed canonical extension row leads with the shared file-identity icon
-resolved from a synthetic filename, so it matches navigation without weakening the
-extension label.
-**No extension** and **Remaining types** use the same generic blank-page
-icon as an unknown extension such as `.bin`, so every type-breakdown row keeps the same
-identity slot. Total and Ignored stay text-only because they describe populations rather
-than file types. Every exact Files value uses the shared `.count` and `.count-large`
+resolved from a synthetic filename, and each basename child resolves from the basename,
+so both match navigation without weakening the text label.
+Special parents, Others, and an unknown extension such as `.bin` use the generic
+blank-page identity.
+Family parents, Total, and Ignored stay iconless because they describe aggregates rather
+than exact files. Every exact Files value uses the shared `.count` and `.count-large`
 convention, and every exact Size value uses `.size` and `.size-large`. The stronger
 weight therefore appears at the same count and byte thresholds as the navigation panel,
 including on Total and Ignored; a row role never forces a different numeric weight.

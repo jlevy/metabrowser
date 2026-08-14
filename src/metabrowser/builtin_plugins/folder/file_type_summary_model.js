@@ -89,6 +89,184 @@ function normalizeFamilyTally(raw) {
   });
 }
 
+/** @param {unknown} raw @param {string} label */
+function normalizePopulationMetrics(raw, label) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new TypeError(`${label} metrics must be an object`);
+  }
+  const value = /** @type {Record<string, unknown>} */ (raw);
+  /** @param {unknown} candidate @param {string} population */
+  const measure = (candidate, population) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new TypeError(`${label} ${population} measure must be an object`);
+    }
+    const item = /** @type {Record<string, unknown>} */ (candidate);
+    if (
+      !Number.isInteger(item.files) ||
+      /** @type {number} */ (item.files) < 0 ||
+      !Number.isInteger(item.bytes) ||
+      /** @type {number} */ (item.bytes) < 0
+    ) {
+      throw new TypeError(`${label} ${population} measure must contain nonnegative integers`);
+    }
+    return {
+      files: /** @type {number} */ (item.files),
+      bytes: /** @type {number} */ (item.bytes),
+    };
+  };
+  const all = measure(value.all, "all");
+  const unignored = measure(value.unignored, "unignored");
+  if (unignored.files > all.files || unignored.bytes > all.bytes) {
+    throw new TypeError(`${label} unignored metrics cannot exceed all metrics`);
+  }
+  return Object.freeze({
+    allFiles: all.files,
+    allBytes: all.bytes,
+    unignoredFiles: unignored.files,
+    unignoredBytes: unignored.bytes,
+  });
+}
+
+/** @param {unknown} raw */
+function normalizeBreakdown(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new TypeError("file-type breakdown must be an object");
+  }
+  const value = /** @type {Record<string, unknown>} */ (raw);
+  if (value.schema !== "file-type-breakdown-v1") {
+    throw new TypeError("unsupported file-type breakdown schema");
+  }
+  const registry =
+    value.registry && typeof value.registry === "object" && !Array.isArray(value.registry)
+      ? /** @type {Record<string, unknown>} */ (value.registry)
+      : null;
+  if (
+    registry?.schema_version !== 1 ||
+    !Number.isInteger(registry.revision) ||
+    typeof registry.fingerprint !== "string"
+  ) {
+    throw new TypeError("file-type breakdown has invalid registry identity");
+  }
+  if (!Array.isArray(value.groups)) {
+    throw new TypeError("file-type breakdown groups must be an array");
+  }
+  const groups = value.groups.map((rawGroup) => {
+    const group = /** @type {Record<string, unknown>} */ (rawGroup);
+    if (!group || typeof group.id !== "string" || !Array.isArray(group.families)) {
+      throw new TypeError("file-type breakdown group is invalid");
+    }
+    return Object.freeze({
+      id: group.id,
+      families: Object.freeze(
+        group.families.map((rawFamily) => {
+          const family = /** @type {Record<string, unknown>} */ (rawFamily);
+          if (!family || typeof family.id !== "string" || !Array.isArray(family.extensions)) {
+            throw new TypeError("file-type breakdown family is invalid");
+          }
+          return Object.freeze({
+            id: family.id,
+            ...normalizePopulationMetrics(family.metrics, `family ${family.id}`),
+            extensions: Object.freeze(
+              family.extensions.map((rawExtension) => {
+                const extension = /** @type {Record<string, unknown>} */ (rawExtension);
+                if (!extension || typeof extension.extension !== "string") {
+                  throw new TypeError("file-type breakdown extension is invalid");
+                }
+                return Object.freeze({
+                  key: extension.extension,
+                  label: extension.extension,
+                  ...normalizePopulationMetrics(
+                    extension.metrics,
+                    `extension ${extension.extension}`,
+                  ),
+                });
+              }),
+            ),
+          });
+        }),
+      ),
+    });
+  });
+
+  /** @param {unknown} rawOthers @param {string} label */
+  const normalizeOthers = (rawOthers, label) => {
+    if (rawOthers === null) {
+      return null;
+    }
+    if (!rawOthers || typeof rawOthers !== "object" || Array.isArray(rawOthers)) {
+      throw new TypeError(`${label} Others row is invalid`);
+    }
+    const others = /** @type {Record<string, unknown>} */ (rawOthers);
+    if (
+      !Number.isInteger(others.omitted_distinct_values) ||
+      /** @type {number} */ (others.omitted_distinct_values) < 1
+    ) {
+      throw new TypeError(`${label} Others row requires an omitted-value count`);
+    }
+    return Object.freeze({
+      key: `${label}:others`,
+      label: "Others",
+      omittedDistinctValues: /** @type {number} */ (others.omitted_distinct_values),
+      ...normalizePopulationMetrics(others.metrics, `${label} Others`),
+    });
+  };
+
+  const noExtension = /** @type {Record<string, unknown>} */ (value.no_extension);
+  const remainingTypes = /** @type {Record<string, unknown>} */ (value.remaining_types);
+  if (!noExtension || !Array.isArray(noExtension.filenames)) {
+    throw new TypeError("No extension breakdown is invalid");
+  }
+  if (!remainingTypes || !Array.isArray(remainingTypes.extensions)) {
+    throw new TypeError("Remaining types breakdown is invalid");
+  }
+  return Object.freeze({
+    registry: Object.freeze({
+      schemaVersion: 1,
+      revision: /** @type {number} */ (registry.revision),
+      fingerprint: registry.fingerprint,
+    }),
+    totals: normalizePopulationMetrics(value.metrics, "breakdown root"),
+    groups: Object.freeze(groups),
+    noExtension: Object.freeze({
+      ...normalizePopulationMetrics(noExtension.metrics, "No extension"),
+      filenames: Object.freeze(
+        noExtension.filenames.map((rawFilename) => {
+          const filename = /** @type {Record<string, unknown>} */ (rawFilename);
+          if (!filename || typeof filename.basename !== "string" || !filename.basename) {
+            throw new TypeError("No extension filename is invalid");
+          }
+          return Object.freeze({
+            key: filename.basename,
+            label: filename.basename,
+            ...normalizePopulationMetrics(filename.metrics, `filename ${filename.basename}`),
+          });
+        }),
+      ),
+      others: normalizeOthers(noExtension.others, "no-extension"),
+    }),
+    remainingTypes: Object.freeze({
+      ...normalizePopulationMetrics(remainingTypes.metrics, "Remaining types"),
+      extensions: Object.freeze(
+        remainingTypes.extensions.map((rawExtension) => {
+          const extension = /** @type {Record<string, unknown>} */ (rawExtension);
+          if (!extension || typeof extension.extension !== "string") {
+            throw new TypeError("Remaining types extension is invalid");
+          }
+          return Object.freeze({
+            key: extension.extension,
+            label: extension.extension,
+            ...normalizePopulationMetrics(
+              extension.metrics,
+              `remaining extension ${extension.extension}`,
+            ),
+          });
+        }),
+      ),
+      others: normalizeOthers(remainingTypes.others, "remaining-types"),
+    }),
+  });
+}
+
 /** @param {unknown} raw */
 export function normalizeRollupEnvelope(raw) {
   if (!raw || typeof raw !== "object") {
@@ -111,20 +289,34 @@ export function normalizeRollupEnvelope(raw) {
   const legacyTallies = Array.isArray(value.ext_tallies)
     ? value.ext_tallies.map(normalizeTallyRow)
     : [];
+  const breakdown = value.file_type_breakdown
+    ? normalizeBreakdown(value.file_type_breakdown)
+    : null;
   return Object.freeze({
     path: typeof value.path === "string" ? value.path : "",
     indexStatus: typeof value.index_status === "string" ? value.index_status : "pending",
     indexedFiles: integer(value.indexed_files),
     maxFiles: integer(value.max_files),
     truncated: value.truncated === true,
-    totals: node
+    breakdown,
+    registry: breakdown?.registry ?? null,
+    groups: breakdown?.groups ?? Object.freeze([]),
+    specialTypes: breakdown
       ? Object.freeze({
-          allFiles: integer(node.total_files),
-          allBytes: integer(node.total_size),
-          unignoredFiles: integer(node.unignored_files),
-          unignoredBytes: integer(node.unignored_size),
+          noExtension: breakdown.noExtension,
+          remainingTypes: breakdown.remainingTypes,
         })
       : null,
+    totals: breakdown
+      ? breakdown.totals
+      : node
+        ? Object.freeze({
+            allFiles: integer(node.total_files),
+            allBytes: integer(node.total_size),
+            unignoredFiles: integer(node.unignored_files),
+            unignoredBytes: integer(node.unignored_size),
+          })
+        : null,
     families: Object.freeze(
       semantic && Array.isArray(semantic.families)
         ? semantic.families.map(normalizeFamilyTally)
@@ -220,6 +412,158 @@ function sortRows(rows) {
 }
 
 /**
+ * @param {ReturnType<typeof normalizeRollupEnvelope>} envelope
+ * @param {boolean} showIgnored
+ * @param {ReturnType<typeof selectPopulation>} population
+ * @param {{formatSize(value: number): string, formatInteger(value: number): string, formatFileCount(value: number): string}} formatters
+ * @param {Intl.NumberFormat} percentFormatter
+ * @param {MetabrowserPublicFileTypeTaxonomyRuntime} runtime
+ */
+function buildRegistryRows(
+  envelope,
+  showIgnored,
+  population,
+  formatters,
+  percentFormatter,
+  runtime,
+) {
+  if (!population || !envelope.breakdown || !envelope.registry) {
+    return [];
+  }
+  if (
+    runtime.revision !== envelope.registry.revision ||
+    runtime.fingerprint !== envelope.registry.fingerprint
+  ) {
+    throw new TypeError("file-type breakdown registry does not match the browser registry");
+  }
+  const rawGroups = new Map(envelope.groups.map((group) => [group.id, group]));
+  const familyDescriptors = new Map(runtime.families.map((family) => [family.id, family]));
+  const rows = [];
+  for (const group of runtime.groups) {
+    const rawGroup = rawGroups.get(group.id);
+    if (!rawGroup) {
+      continue;
+    }
+    for (const tally of rawGroup.families) {
+      const descriptor = familyDescriptors.get(tally.id);
+      if (!descriptor || (descriptor.groupId ?? descriptor.category) !== group.id) {
+        throw new TypeError(`unknown file-type family in breakdown: ${tally.id}`);
+      }
+      const paletteKey = `family:${tally.id}`;
+      const children = tally.extensions
+        .map((child) =>
+          buildRow(child, showIgnored, population, formatters, percentFormatter, {
+            key: `${paletteKey}/${child.key}`,
+            rawKey: child.key,
+            extension: child.key,
+            iconPath: `x${child.key}`,
+            label: child.label,
+            category: group.id,
+            kind: "extension",
+            child: true,
+            paletteKey,
+          }),
+        )
+        .filter((row) => row.files !== 0 || row.bytes !== 0);
+      rows.push(
+        Object.freeze({
+          ...buildRow(tally, showIgnored, population, formatters, percentFormatter, {
+            key: paletteKey,
+            rawKey: null,
+            extension: null,
+            iconPath: null,
+            label: descriptor.label,
+            category: group.id,
+            kind: "family",
+            child: false,
+            paletteKey,
+          }),
+          children: Object.freeze(children),
+          disclosable: children.length >= 1,
+        }),
+      );
+    }
+  }
+
+  /**
+   * @param {"no-extension" | "remaining-types"} id
+   * @param {string} key
+   * @param {string} label
+   * @param {any} tally
+   * @param {ReadonlyArray<any>} rawChildren
+   * @param {"filename" | "extension"} childKind
+   */
+  const specialRow = (id, key, label, tally, rawChildren, childKind) => {
+    const children = rawChildren
+      .map((child) => {
+        const others = child.omittedDistinctValues > 0;
+        const childLabel = others
+          ? `Others (${formatters.formatInteger(child.omittedDistinctValues)} more)`
+          : child.label;
+        return buildRow(child, showIgnored, population, formatters, percentFormatter, {
+          key: `${id}/${child.key}`,
+          rawKey: child.key,
+          extension: !others && childKind === "extension" ? child.key : null,
+          iconPath:
+            !others && childKind === "filename"
+              ? child.key
+              : !others && childKind === "extension"
+                ? `x${child.key}`
+                : "file",
+          label: childLabel,
+          category: "other",
+          kind: others ? "others" : childKind,
+          child: true,
+          paletteKey: others ? "" : childKind === "extension" ? child.key : "",
+        });
+      })
+      .filter((row) => row.files !== 0 || row.bytes !== 0);
+    return Object.freeze({
+      ...buildRow(tally, showIgnored, population, formatters, percentFormatter, {
+        key,
+        rawKey: key,
+        extension: null,
+        iconPath: "file",
+        label,
+        category: "other",
+        kind: "special",
+        child: false,
+        paletteKey: "",
+      }),
+      children: Object.freeze(children),
+      disclosable: children.length >= 1,
+    });
+  };
+  const noExtension = envelope.specialTypes?.noExtension;
+  const remainingTypes = envelope.specialTypes?.remainingTypes;
+  if (noExtension) {
+    rows.push(
+      specialRow(
+        "no-extension",
+        NO_EXTENSION_KEY,
+        "No extension",
+        noExtension,
+        [...noExtension.filenames, ...(noExtension.others ? [noExtension.others] : [])],
+        "filename",
+      ),
+    );
+  }
+  if (remainingTypes) {
+    rows.push(
+      specialRow(
+        "remaining-types",
+        OTHER_KEY,
+        "Remaining types",
+        remainingTypes,
+        [...remainingTypes.extensions, ...(remainingTypes.others ? [remainingTypes.others] : [])],
+        "extension",
+      ),
+    );
+  }
+  return rows.filter((row) => row.files !== 0 || row.bytes !== 0);
+}
+
+/**
  * @param {ReturnType<typeof normalizeRollupEnvelope> | null} envelope
  * @param {boolean} showIgnored
  * @param {{formatSize(value: number): string, formatInteger(value: number): string, formatFileCount(value: number): string}} formatters
@@ -251,7 +595,7 @@ export function buildFileTypeSummaryModel(envelope, showIgnored, formatters, fil
 
   const familyRows = envelope.families.map((tally) => {
     const descriptor = familyDescriptors.get(tally.id);
-    const category = descriptor?.category ?? "other";
+    const category = descriptor?.groupId ?? descriptor?.category ?? "other";
     const paletteKey = `family:${tally.id}`;
     const children = sortRows(
       tally.extensions
@@ -281,7 +625,7 @@ export function buildFileTypeSummaryModel(envelope, showIgnored, formatters, fil
         paletteKey,
       }),
       children,
-      disclosable: children.length >= 2,
+      disclosable: children.length >= 1,
     });
   });
   const rawRows = envelope.tallies.map((tally) => {
@@ -297,12 +641,24 @@ export function buildFileTypeSummaryModel(envelope, showIgnored, formatters, fil
       paletteKey: tally.key,
     });
   });
-  const rows = sortRows([...familyRows, ...rawRows]).filter(
-    (row) => row.files !== 0 || row.bytes !== 0,
+  const rows =
+    envelope.breakdown && runtime
+      ? buildRegistryRows(envelope, showIgnored, population, formatters, percentFormatter, runtime)
+      : sortRows([...familyRows, ...rawRows]).filter((row) => row.files !== 0 || row.bytes !== 0);
+  const groupDescriptors = Object.freeze(
+    runtime?.groups?.length
+      ? runtime.groups.map((group) => Object.freeze({ id: group.id, label: group.label }))
+      : [
+          Object.freeze({ id: "docs", label: "Documentation" }),
+          Object.freeze({ id: "code", label: "Code" }),
+          Object.freeze({ id: "data", label: "Data" }),
+          Object.freeze({ id: "other", label: "Other" }),
+        ],
   );
 
   const base = {
     rows,
+    groups: groupDescriptors,
     files: population.files,
     bytes: population.bytes,
     filesText: formatters.formatFileCount(population.files),

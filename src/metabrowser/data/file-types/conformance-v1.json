@@ -1,0 +1,3238 @@
+{
+  "aggregate_cases": [
+    {
+      "expected": {
+        "groups": [],
+        "metrics": {
+          "all": {
+            "bytes": 0,
+            "files": 0
+          },
+          "unignored": {
+            "bytes": 0,
+            "files": 0
+          }
+        },
+        "no_extension": {
+          "filenames": [],
+          "metrics": {
+            "all": {
+              "bytes": 0,
+              "files": 0
+            },
+            "unignored": {
+              "bytes": 0,
+              "files": 0
+            }
+          },
+          "others": null
+        },
+        "registry": {
+          "fingerprint": "7093a67ce890113518a9f37b6e7802b902ed120230891ec373bb5e1e0b6e06bb",
+          "revision": 1,
+          "schema_version": 1
+        },
+        "remaining_types": {
+          "extensions": [],
+          "metrics": {
+            "all": {
+              "bytes": 0,
+              "files": 0
+            },
+            "unignored": {
+              "bytes": 0,
+              "files": 0
+            }
+          },
+          "others": null
+        },
+        "schema": "file-type-breakdown-v1"
+      },
+      "facts": [],
+      "id": "empty-directory"
+    },
+    {
+      "expected": {
+        "groups": [
+          {
+            "families": [
+              {
+                "extensions": [
+                  {
+                    "extension": ".log",
+                    "metrics": {
+                      "all": {
+                        "bytes": 80,
+                        "files": 1
+                      },
+                      "unignored": {
+                        "bytes": 0,
+                        "files": 0
+                      }
+                    }
+                  },
+                  {
+                    "extension": ".jsonl",
+                    "metrics": {
+                      "all": {
+                        "bytes": 100,
+                        "files": 1
+                      },
+                      "unignored": {
+                        "bytes": 100,
+                        "files": 1
+                      }
+                    }
+                  }
+                ],
+                "id": "log-files",
+                "metrics": {
+                  "all": {
+                    "bytes": 180,
+                    "files": 2
+                  },
+                  "unignored": {
+                    "bytes": 100,
+                    "files": 1
+                  }
+                }
+              }
+            ],
+            "id": "logs"
+          },
+          {
+            "families": [
+              {
+                "extensions": [
+                  {
+                    "extension": ".tar.gz",
+                    "metrics": {
+                      "all": {
+                        "bytes": 200,
+                        "files": 1
+                      },
+                      "unignored": {
+                        "bytes": 200,
+                        "files": 1
+                      }
+                    }
+                  }
+                ],
+                "id": "archives",
+                "metrics": {
+                  "all": {
+                    "bytes": 200,
+                    "files": 1
+                  },
+                  "unignored": {
+                    "bytes": 200,
+                    "files": 1
+                  }
+                }
+              }
+            ],
+            "id": "archives"
+          },
+          {
+            "families": [
+              {
+                "extensions": [
+                  {
+                    "extension": ".svg",
+                    "metrics": {
+                      "all": {
+                        "bytes": 60,
+                        "files": 1
+                      },
+                      "unignored": {
+                        "bytes": 60,
+                        "files": 1
+                      }
+                    }
+                  }
+                ],
+                "id": "images",
+                "metrics": {
+                  "all": {
+                    "bytes": 60,
+                    "files": 1
+                  },
+                  "unignored": {
+                    "bytes": 60,
+                    "files": 1
+                  }
+                }
+              }
+            ],
+            "id": "media"
+          }
+        ],
+        "metrics": {
+          "all": {
+            "bytes": 1590,
+            "files": 50
+          },
+          "unignored": {
+            "bytes": 1268,
+            "files": 40
+          }
+        },
+        "no_extension": {
+          "filenames": [
+            {
+              "basename": "bare-22",
+              "metrics": {
+                "all": {
+                  "bytes": 22,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 22,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-20",
+              "metrics": {
+                "all": {
+                  "bytes": 20,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 20,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-19",
+              "metrics": {
+                "all": {
+                  "bytes": 19,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 19,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-18",
+              "metrics": {
+                "all": {
+                  "bytes": 18,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 18,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-17",
+              "metrics": {
+                "all": {
+                  "bytes": 17,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 17,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-16",
+              "metrics": {
+                "all": {
+                  "bytes": 16,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 16,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-15",
+              "metrics": {
+                "all": {
+                  "bytes": 15,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 15,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-13",
+              "metrics": {
+                "all": {
+                  "bytes": 13,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 13,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-12",
+              "metrics": {
+                "all": {
+                  "bytes": 12,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 12,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-11",
+              "metrics": {
+                "all": {
+                  "bytes": 11,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 11,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-10",
+              "metrics": {
+                "all": {
+                  "bytes": 10,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 10,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-9",
+              "metrics": {
+                "all": {
+                  "bytes": 9,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 9,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-8",
+              "metrics": {
+                "all": {
+                  "bytes": 8,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 8,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-6",
+              "metrics": {
+                "all": {
+                  "bytes": 6,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 6,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-5",
+              "metrics": {
+                "all": {
+                  "bytes": 5,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 5,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-4",
+              "metrics": {
+                "all": {
+                  "bytes": 4,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 4,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-3",
+              "metrics": {
+                "all": {
+                  "bytes": 3,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 3,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-2",
+              "metrics": {
+                "all": {
+                  "bytes": 2,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 2,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-1",
+              "metrics": {
+                "all": {
+                  "bytes": 1,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 1,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "basename": "bare-21",
+              "metrics": {
+                "all": {
+                  "bytes": 21,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 0,
+                  "files": 0
+                }
+              }
+            }
+          ],
+          "metrics": {
+            "all": {
+              "bytes": 253,
+              "files": 23
+            },
+            "unignored": {
+              "bytes": 211,
+              "files": 19
+            }
+          },
+          "others": {
+            "metrics": {
+              "all": {
+                "bytes": 21,
+                "files": 3
+              },
+              "unignored": {
+                "bytes": 0,
+                "files": 0
+              }
+            },
+            "omitted_distinct_values": 3
+          }
+        },
+        "registry": {
+          "fingerprint": "7093a67ce890113518a9f37b6e7802b902ed120230891ec373bb5e1e0b6e06bb",
+          "revision": 1,
+          "schema_version": 1
+        },
+        "remaining_types": {
+          "extensions": [
+            {
+              "extension": ".x1",
+              "metrics": {
+                "all": {
+                  "bytes": 49,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 49,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x2",
+              "metrics": {
+                "all": {
+                  "bytes": 48,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 48,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x3",
+              "metrics": {
+                "all": {
+                  "bytes": 47,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 47,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x4",
+              "metrics": {
+                "all": {
+                  "bytes": 46,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 46,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x6",
+              "metrics": {
+                "all": {
+                  "bytes": 44,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 44,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x7",
+              "metrics": {
+                "all": {
+                  "bytes": 43,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 43,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x8",
+              "metrics": {
+                "all": {
+                  "bytes": 42,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 42,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x9",
+              "metrics": {
+                "all": {
+                  "bytes": 41,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 41,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x0",
+              "metrics": {
+                "all": {
+                  "bytes": 50,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 0,
+                  "files": 0
+                }
+              }
+            },
+            {
+              "extension": ".x11",
+              "metrics": {
+                "all": {
+                  "bytes": 39,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 39,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x12",
+              "metrics": {
+                "all": {
+                  "bytes": 38,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 38,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x13",
+              "metrics": {
+                "all": {
+                  "bytes": 37,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 37,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x14",
+              "metrics": {
+                "all": {
+                  "bytes": 36,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 36,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x5",
+              "metrics": {
+                "all": {
+                  "bytes": 45,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 0,
+                  "files": 0
+                }
+              }
+            },
+            {
+              "extension": ".x16",
+              "metrics": {
+                "all": {
+                  "bytes": 34,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 34,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x17",
+              "metrics": {
+                "all": {
+                  "bytes": 33,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 33,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x18",
+              "metrics": {
+                "all": {
+                  "bytes": 32,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 32,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x10",
+              "metrics": {
+                "all": {
+                  "bytes": 40,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 0,
+                  "files": 0
+                }
+              }
+            },
+            {
+              "extension": ".x19",
+              "metrics": {
+                "all": {
+                  "bytes": 31,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 31,
+                  "files": 1
+                }
+              }
+            },
+            {
+              "extension": ".x21",
+              "metrics": {
+                "all": {
+                  "bytes": 29,
+                  "files": 1
+                },
+                "unignored": {
+                  "bytes": 29,
+                  "files": 1
+                }
+              }
+            }
+          ],
+          "metrics": {
+            "all": {
+              "bytes": 897,
+              "files": 23
+            },
+            "unignored": {
+              "bytes": 697,
+              "files": 18
+            }
+          },
+          "others": {
+            "metrics": {
+              "all": {
+                "bytes": 93,
+                "files": 3
+              },
+              "unignored": {
+                "bytes": 28,
+                "files": 1
+              }
+            },
+            "omitted_distinct_values": 3
+          }
+        },
+        "schema": "file-type-breakdown-v1"
+      },
+      "facts": [
+        {
+          "apparent_bytes": 100,
+          "basename": "events.jsonl",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 80,
+          "basename": "notes.log",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 60,
+          "basename": "photo.svg",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 200,
+          "basename": "bundle.tar.gz",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 0,
+          "basename": "bare-0",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 1,
+          "basename": "bare-1",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 2,
+          "basename": "bare-2",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 3,
+          "basename": "bare-3",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 4,
+          "basename": "bare-4",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 5,
+          "basename": "bare-5",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 6,
+          "basename": "bare-6",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 7,
+          "basename": "bare-7",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 8,
+          "basename": "bare-8",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 9,
+          "basename": "bare-9",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 10,
+          "basename": "bare-10",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 11,
+          "basename": "bare-11",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 12,
+          "basename": "bare-12",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 13,
+          "basename": "bare-13",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 14,
+          "basename": "bare-14",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 15,
+          "basename": "bare-15",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 16,
+          "basename": "bare-16",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 17,
+          "basename": "bare-17",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 18,
+          "basename": "bare-18",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 19,
+          "basename": "bare-19",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 20,
+          "basename": "bare-20",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 21,
+          "basename": "bare-21",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 22,
+          "basename": "bare-22",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 50,
+          "basename": "unknown-0.x0",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 49,
+          "basename": "unknown-1.x1",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 48,
+          "basename": "unknown-2.x2",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 47,
+          "basename": "unknown-3.x3",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 46,
+          "basename": "unknown-4.x4",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 45,
+          "basename": "unknown-5.x5",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 44,
+          "basename": "unknown-6.x6",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 43,
+          "basename": "unknown-7.x7",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 42,
+          "basename": "unknown-8.x8",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 41,
+          "basename": "unknown-9.x9",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 40,
+          "basename": "unknown-10.x10",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 39,
+          "basename": "unknown-11.x11",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 38,
+          "basename": "unknown-12.x12",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 37,
+          "basename": "unknown-13.x13",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 36,
+          "basename": "unknown-14.x14",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 35,
+          "basename": "unknown-15.x15",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 34,
+          "basename": "unknown-16.x16",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 33,
+          "basename": "unknown-17.x17",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 32,
+          "basename": "unknown-18.x18",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 31,
+          "basename": "unknown-19.x19",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 30,
+          "basename": "unknown-20.x20",
+          "ignored": true
+        },
+        {
+          "apparent_bytes": 29,
+          "basename": "unknown-21.x21",
+          "ignored": false
+        },
+        {
+          "apparent_bytes": 28,
+          "basename": "unknown-22.x22",
+          "ignored": false
+        }
+      ],
+      "id": "families-and-bounded-fallbacks"
+    }
+  ],
+  "invalid_registry_cases": [
+    {
+      "error_code": "invalid-toml",
+      "id": "invalid-toml",
+      "toml": "not = [valid"
+    },
+    {
+      "error_code": "unsupported-schema-version",
+      "id": "unsupported-schema",
+      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "unsupported-extension-components",
+      "id": "unsupported-components",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 3\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "invalid-field",
+      "id": "invalid-field",
+      "toml": "schema_version = 1\nregistry_revision = 0\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "invalid-id",
+      "id": "invalid-id",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code_name\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "missing-fallback",
+      "id": "missing-fallback",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"fallback\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "duplicate-order",
+      "id": "duplicate-order",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 10\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "unknown-group",
+      "id": "unknown-group",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"missing\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "unknown-family",
+      "id": "unknown-family",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"missing\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "invalid-content-family",
+      "id": "invalid-content-family",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"mystery\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "invalid-extension",
+      "id": "invalid-extension",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\".py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "duplicate-evidence",
+      "id": "duplicate-evidence",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100\n\n[[kind]]\nid = \"python-copy\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 1\n"
+    },
+    {
+      "error_code": "empty-family",
+      "id": "empty-family",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100\n\n[[family]]\nid = \"empty\"\nlabel = \"Empty\"\ngroup = \"code\"\norder = 30\n"
+    },
+    {
+      "error_code": "missing-evidence",
+      "id": "missing-evidence",
+      "toml": "schema_version = 1\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = []\nfilenames = []\nshebangs = []\npriority = 100"
+    }
+  ],
+  "metadata_cases": [
+    {
+      "expected": {
+        "canonical_extension": ".py",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "python",
+        "group_id": "code",
+        "kind_id": "python",
+        "logical_extension": ".py"
+      },
+      "logical_extension": ".py",
+      "name": "sample.py"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".pyi",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "python",
+        "group_id": "code",
+        "kind_id": "python",
+        "logical_extension": ".pyi"
+      },
+      "logical_extension": ".pyi",
+      "name": "sample.pyi"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".js",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "javascript",
+        "group_id": "code",
+        "kind_id": "javascript",
+        "logical_extension": ".js"
+      },
+      "logical_extension": ".js",
+      "name": "sample.js"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".mjs",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "javascript",
+        "group_id": "code",
+        "kind_id": "javascript",
+        "logical_extension": ".mjs"
+      },
+      "logical_extension": ".mjs",
+      "name": "sample.mjs"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".cjs",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "javascript",
+        "group_id": "code",
+        "kind_id": "javascript",
+        "logical_extension": ".cjs"
+      },
+      "logical_extension": ".cjs",
+      "name": "sample.cjs"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".jsx",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "javascript",
+        "group_id": "code",
+        "kind_id": "javascript",
+        "logical_extension": ".jsx"
+      },
+      "logical_extension": ".jsx",
+      "name": "sample.jsx"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ts",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "typescript",
+        "group_id": "code",
+        "kind_id": "typescript",
+        "logical_extension": ".ts"
+      },
+      "logical_extension": ".ts",
+      "name": "sample.ts"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".mts",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "typescript",
+        "group_id": "code",
+        "kind_id": "typescript",
+        "logical_extension": ".mts"
+      },
+      "logical_extension": ".mts",
+      "name": "sample.mts"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".cts",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "typescript",
+        "group_id": "code",
+        "kind_id": "typescript",
+        "logical_extension": ".cts"
+      },
+      "logical_extension": ".cts",
+      "name": "sample.cts"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tsx",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "typescript",
+        "group_id": "code",
+        "kind_id": "typescript",
+        "logical_extension": ".tsx"
+      },
+      "logical_extension": ".tsx",
+      "name": "sample.tsx"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".css",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "css",
+        "group_id": "code",
+        "kind_id": "css",
+        "logical_extension": ".css"
+      },
+      "logical_extension": ".css",
+      "name": "sample.css"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".scss",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "css",
+        "group_id": "code",
+        "kind_id": "css",
+        "logical_extension": ".scss"
+      },
+      "logical_extension": ".scss",
+      "name": "sample.scss"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".less",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "css",
+        "group_id": "code",
+        "kind_id": "css",
+        "logical_extension": ".less"
+      },
+      "logical_extension": ".less",
+      "name": "sample.less"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".html",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "html",
+        "group_id": "code",
+        "kind_id": "html",
+        "logical_extension": ".html"
+      },
+      "logical_extension": ".html",
+      "name": "sample.html"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".htm",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "html",
+        "group_id": "code",
+        "kind_id": "html",
+        "logical_extension": ".htm"
+      },
+      "logical_extension": ".htm",
+      "name": "sample.htm"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".rs",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "rust",
+        "group_id": "code",
+        "kind_id": "rust",
+        "logical_extension": ".rs"
+      },
+      "logical_extension": ".rs",
+      "name": "sample.rs"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".go",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "go",
+        "group_id": "code",
+        "kind_id": "go",
+        "logical_extension": ".go"
+      },
+      "logical_extension": ".go",
+      "name": "sample.go"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".java",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "java",
+        "group_id": "code",
+        "kind_id": "java",
+        "logical_extension": ".java"
+      },
+      "logical_extension": ".java",
+      "name": "sample.java"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".kt",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "kotlin",
+        "group_id": "code",
+        "kind_id": "kotlin",
+        "logical_extension": ".kt"
+      },
+      "logical_extension": ".kt",
+      "name": "sample.kt"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".kts",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "kotlin",
+        "group_id": "code",
+        "kind_id": "kotlin",
+        "logical_extension": ".kts"
+      },
+      "logical_extension": ".kts",
+      "name": "sample.kts"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".swift",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "swift",
+        "group_id": "code",
+        "kind_id": "swift",
+        "logical_extension": ".swift"
+      },
+      "logical_extension": ".swift",
+      "name": "sample.swift"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".c",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "c-cpp",
+        "group_id": "code",
+        "kind_id": "c",
+        "logical_extension": ".c"
+      },
+      "logical_extension": ".c",
+      "name": "sample.c"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".h",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "c-cpp",
+        "group_id": "code",
+        "kind_id": "c",
+        "logical_extension": ".h"
+      },
+      "logical_extension": ".h",
+      "name": "sample.h"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".cc",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "c-cpp",
+        "group_id": "code",
+        "kind_id": "cpp",
+        "logical_extension": ".cc"
+      },
+      "logical_extension": ".cc",
+      "name": "sample.cc"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".cpp",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "c-cpp",
+        "group_id": "code",
+        "kind_id": "cpp",
+        "logical_extension": ".cpp"
+      },
+      "logical_extension": ".cpp",
+      "name": "sample.cpp"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".hpp",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "c-cpp",
+        "group_id": "code",
+        "kind_id": "cpp",
+        "logical_extension": ".hpp"
+      },
+      "logical_extension": ".hpp",
+      "name": "sample.hpp"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".cs",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "csharp",
+        "group_id": "code",
+        "kind_id": "csharp",
+        "logical_extension": ".cs"
+      },
+      "logical_extension": ".cs",
+      "name": "sample.cs"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".rb",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "ruby",
+        "group_id": "code",
+        "kind_id": "ruby",
+        "logical_extension": ".rb"
+      },
+      "logical_extension": ".rb",
+      "name": "sample.rb"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".php",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "php",
+        "group_id": "code",
+        "kind_id": "php",
+        "logical_extension": ".php"
+      },
+      "logical_extension": ".php",
+      "name": "sample.php"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".scala",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "scala",
+        "group_id": "code",
+        "kind_id": "scala",
+        "logical_extension": ".scala"
+      },
+      "logical_extension": ".scala",
+      "name": "sample.scala"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".clj",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "clojure",
+        "group_id": "code",
+        "kind_id": "clojure",
+        "logical_extension": ".clj"
+      },
+      "logical_extension": ".clj",
+      "name": "sample.clj"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ex",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "elixir",
+        "group_id": "code",
+        "kind_id": "elixir",
+        "logical_extension": ".ex"
+      },
+      "logical_extension": ".ex",
+      "name": "sample.ex"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".exs",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "elixir",
+        "group_id": "code",
+        "kind_id": "elixir",
+        "logical_extension": ".exs"
+      },
+      "logical_extension": ".exs",
+      "name": "sample.exs"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".erl",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "erlang",
+        "group_id": "code",
+        "kind_id": "erlang",
+        "logical_extension": ".erl"
+      },
+      "logical_extension": ".erl",
+      "name": "sample.erl"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".hs",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "haskell",
+        "group_id": "code",
+        "kind_id": "haskell",
+        "logical_extension": ".hs"
+      },
+      "logical_extension": ".hs",
+      "name": "sample.hs"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".lua",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "lua",
+        "group_id": "code",
+        "kind_id": "lua",
+        "logical_extension": ".lua"
+      },
+      "logical_extension": ".lua",
+      "name": "sample.lua"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".jl",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "julia",
+        "group_id": "code",
+        "kind_id": "julia",
+        "logical_extension": ".jl"
+      },
+      "logical_extension": ".jl",
+      "name": "sample.jl"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".dart",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "dart",
+        "group_id": "code",
+        "kind_id": "dart",
+        "logical_extension": ".dart"
+      },
+      "logical_extension": ".dart",
+      "name": "sample.dart"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".vue",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "vue",
+        "group_id": "code",
+        "kind_id": "vue",
+        "logical_extension": ".vue"
+      },
+      "logical_extension": ".vue",
+      "name": "sample.vue"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".svelte",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "svelte",
+        "group_id": "code",
+        "kind_id": "svelte",
+        "logical_extension": ".svelte"
+      },
+      "logical_extension": ".svelte",
+      "name": "sample.svelte"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".sh",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "shell",
+        "group_id": "code",
+        "kind_id": "shell",
+        "logical_extension": ".sh"
+      },
+      "logical_extension": ".sh",
+      "name": "sample.sh"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".bash",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "shell",
+        "group_id": "code",
+        "kind_id": "shell",
+        "logical_extension": ".bash"
+      },
+      "logical_extension": ".bash",
+      "name": "sample.bash"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".zsh",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "shell",
+        "group_id": "code",
+        "kind_id": "shell",
+        "logical_extension": ".zsh"
+      },
+      "logical_extension": ".zsh",
+      "name": "sample.zsh"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".fish",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "shell",
+        "group_id": "code",
+        "kind_id": "shell",
+        "logical_extension": ".fish"
+      },
+      "logical_extension": ".fish",
+      "name": "sample.fish"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ps1",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "powershell",
+        "group_id": "code",
+        "kind_id": "powershell",
+        "logical_extension": ".ps1"
+      },
+      "logical_extension": ".ps1",
+      "name": "sample.ps1"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".sql",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "sql",
+        "group_id": "code",
+        "kind_id": "sql",
+        "logical_extension": ".sql"
+      },
+      "logical_extension": ".sql",
+      "name": "sample.sql"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".md",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "markdown",
+        "group_id": "docs",
+        "kind_id": "markdown",
+        "logical_extension": ".md"
+      },
+      "logical_extension": ".md",
+      "name": "sample.md"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".txt",
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "extension",
+        "family_id": "plain-text",
+        "group_id": "docs",
+        "kind_id": "plain-text",
+        "logical_extension": ".txt"
+      },
+      "logical_extension": ".txt",
+      "name": "sample.txt"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".rst",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "restructured-text",
+        "group_id": "docs",
+        "kind_id": "restructured-text",
+        "logical_extension": ".rst"
+      },
+      "logical_extension": ".rst",
+      "name": "sample.rst"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".adoc",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "asciidoc",
+        "group_id": "docs",
+        "kind_id": "asciidoc",
+        "logical_extension": ".adoc"
+      },
+      "logical_extension": ".adoc",
+      "name": "sample.adoc"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".org",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "org",
+        "group_id": "docs",
+        "kind_id": "org",
+        "logical_extension": ".org"
+      },
+      "logical_extension": ".org",
+      "name": "sample.org"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".pdf",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "pdf",
+        "group_id": "docs",
+        "kind_id": "pdf",
+        "logical_extension": ".pdf"
+      },
+      "logical_extension": ".pdf",
+      "name": "sample.pdf"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".doc",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "word",
+        "group_id": "docs",
+        "kind_id": "word",
+        "logical_extension": ".doc"
+      },
+      "logical_extension": ".doc",
+      "name": "sample.doc"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".docx",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "word",
+        "group_id": "docs",
+        "kind_id": "word",
+        "logical_extension": ".docx"
+      },
+      "logical_extension": ".docx",
+      "name": "sample.docx"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".rtf",
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "extension",
+        "family_id": "rich-text",
+        "group_id": "docs",
+        "kind_id": "rich-text",
+        "logical_extension": ".rtf"
+      },
+      "logical_extension": ".rtf",
+      "name": "sample.rtf"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".odt",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "open-document",
+        "group_id": "docs",
+        "kind_id": "open-document",
+        "logical_extension": ".odt"
+      },
+      "logical_extension": ".odt",
+      "name": "sample.odt"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".epub",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "epub",
+        "group_id": "docs",
+        "kind_id": "epub",
+        "logical_extension": ".epub"
+      },
+      "logical_extension": ".epub",
+      "name": "sample.epub"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".json",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "json",
+        "group_id": "data",
+        "kind_id": "json",
+        "logical_extension": ".json"
+      },
+      "logical_extension": ".json",
+      "name": "sample.json"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".yaml",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "yaml",
+        "group_id": "data",
+        "kind_id": "yaml",
+        "logical_extension": ".yaml"
+      },
+      "logical_extension": ".yaml",
+      "name": "sample.yaml"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".yml",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "yaml",
+        "group_id": "data",
+        "kind_id": "yaml",
+        "logical_extension": ".yml"
+      },
+      "logical_extension": ".yml",
+      "name": "sample.yml"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".toml",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "toml",
+        "group_id": "data",
+        "kind_id": "toml",
+        "logical_extension": ".toml"
+      },
+      "logical_extension": ".toml",
+      "name": "sample.toml"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ini",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "ini",
+        "group_id": "data",
+        "kind_id": "ini",
+        "logical_extension": ".ini"
+      },
+      "logical_extension": ".ini",
+      "name": "sample.ini"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".csv",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "delimited-text",
+        "group_id": "data",
+        "kind_id": "delimited-text",
+        "logical_extension": ".csv"
+      },
+      "logical_extension": ".csv",
+      "name": "sample.csv"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tsv",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "delimited-text",
+        "group_id": "data",
+        "kind_id": "delimited-text",
+        "logical_extension": ".tsv"
+      },
+      "logical_extension": ".tsv",
+      "name": "sample.tsv"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".psv",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "delimited-text",
+        "group_id": "data",
+        "kind_id": "delimited-text",
+        "logical_extension": ".psv"
+      },
+      "logical_extension": ".psv",
+      "name": "sample.psv"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".xml",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "xml",
+        "group_id": "data",
+        "kind_id": "xml",
+        "logical_extension": ".xml"
+      },
+      "logical_extension": ".xml",
+      "name": "sample.xml"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".parquet",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "parquet",
+        "group_id": "data",
+        "kind_id": "parquet",
+        "logical_extension": ".parquet"
+      },
+      "logical_extension": ".parquet",
+      "name": "sample.parquet"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".arrow",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "arrow",
+        "group_id": "data",
+        "kind_id": "arrow",
+        "logical_extension": ".arrow"
+      },
+      "logical_extension": ".arrow",
+      "name": "sample.arrow"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".feather",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "arrow",
+        "group_id": "data",
+        "kind_id": "arrow",
+        "logical_extension": ".feather"
+      },
+      "logical_extension": ".feather",
+      "name": "sample.feather"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".avro",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "avro",
+        "group_id": "data",
+        "kind_id": "avro",
+        "logical_extension": ".avro"
+      },
+      "logical_extension": ".avro",
+      "name": "sample.avro"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".orc",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "orc",
+        "group_id": "data",
+        "kind_id": "orc",
+        "logical_extension": ".orc"
+      },
+      "logical_extension": ".orc",
+      "name": "sample.orc"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".proto",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "protocol-buffers",
+        "group_id": "data",
+        "kind_id": "protocol-buffers",
+        "logical_extension": ".proto"
+      },
+      "logical_extension": ".proto",
+      "name": "sample.proto"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".graphql",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "graphql",
+        "group_id": "data",
+        "kind_id": "graphql",
+        "logical_extension": ".graphql"
+      },
+      "logical_extension": ".graphql",
+      "name": "sample.graphql"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".sqlite",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "sqlite",
+        "group_id": "data",
+        "kind_id": "sqlite",
+        "logical_extension": ".sqlite"
+      },
+      "logical_extension": ".sqlite",
+      "name": "sample.sqlite"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".log",
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "extension",
+        "family_id": "log-files",
+        "group_id": "logs",
+        "kind_id": "log",
+        "logical_extension": ".log"
+      },
+      "logical_extension": ".log",
+      "name": "sample.log"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".jsonl",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "log-files",
+        "group_id": "logs",
+        "kind_id": "json-lines",
+        "logical_extension": ".jsonl"
+      },
+      "logical_extension": ".jsonl",
+      "name": "sample.jsonl"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ndjson",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "log-files",
+        "group_id": "logs",
+        "kind_id": "json-lines",
+        "logical_extension": ".ndjson"
+      },
+      "logical_extension": ".ndjson",
+      "name": "sample.ndjson"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".zip",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".zip"
+      },
+      "logical_extension": ".zip",
+      "name": "sample.zip"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tar",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".tar"
+      },
+      "logical_extension": ".tar",
+      "name": "sample.tar"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tar.gz",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".tar.gz"
+      },
+      "logical_extension": ".tar.gz",
+      "name": "sample.tar.gz"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tgz",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".tgz"
+      },
+      "logical_extension": ".tgz",
+      "name": "sample.tgz"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".gz",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".gz"
+      },
+      "logical_extension": ".gz",
+      "name": "sample.gz"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tar.bz2",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".tar.bz2"
+      },
+      "logical_extension": ".tar.bz2",
+      "name": "sample.tar.bz2"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".bz2",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".bz2"
+      },
+      "logical_extension": ".bz2",
+      "name": "sample.bz2"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tar.xz",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".tar.xz"
+      },
+      "logical_extension": ".tar.xz",
+      "name": "sample.tar.xz"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".xz",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".xz"
+      },
+      "logical_extension": ".xz",
+      "name": "sample.xz"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tar.zst",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".tar.zst"
+      },
+      "logical_extension": ".tar.zst",
+      "name": "sample.tar.zst"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".zst",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".zst"
+      },
+      "logical_extension": ".zst",
+      "name": "sample.zst"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".7z",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".7z"
+      },
+      "logical_extension": ".7z",
+      "name": "sample.7z"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".rar",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".rar"
+      },
+      "logical_extension": ".rar",
+      "name": "sample.rar"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".jpg",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".jpg"
+      },
+      "logical_extension": ".jpg",
+      "name": "sample.jpg"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".jpeg",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".jpeg"
+      },
+      "logical_extension": ".jpeg",
+      "name": "sample.jpeg"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".png",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".png"
+      },
+      "logical_extension": ".png",
+      "name": "sample.png"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".gif",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".gif"
+      },
+      "logical_extension": ".gif",
+      "name": "sample.gif"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".webp",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".webp"
+      },
+      "logical_extension": ".webp",
+      "name": "sample.webp"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".avif",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".avif"
+      },
+      "logical_extension": ".avif",
+      "name": "sample.avif"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".bmp",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".bmp"
+      },
+      "logical_extension": ".bmp",
+      "name": "sample.bmp"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ico",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".ico"
+      },
+      "logical_extension": ".ico",
+      "name": "sample.ico"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tif",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".tif"
+      },
+      "logical_extension": ".tif",
+      "name": "sample.tif"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tiff",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".tiff"
+      },
+      "logical_extension": ".tiff",
+      "name": "sample.tiff"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".heic",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".heic"
+      },
+      "logical_extension": ".heic",
+      "name": "sample.heic"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".svg",
+        "confidence": "exact",
+        "content_family": "markup",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "svg",
+        "logical_extension": ".svg"
+      },
+      "logical_extension": ".svg",
+      "name": "sample.svg"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".mp4",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "videos",
+        "group_id": "media",
+        "kind_id": "video",
+        "logical_extension": ".mp4"
+      },
+      "logical_extension": ".mp4",
+      "name": "sample.mp4"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".mov",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "videos",
+        "group_id": "media",
+        "kind_id": "video",
+        "logical_extension": ".mov"
+      },
+      "logical_extension": ".mov",
+      "name": "sample.mov"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".m4v",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "videos",
+        "group_id": "media",
+        "kind_id": "video",
+        "logical_extension": ".m4v"
+      },
+      "logical_extension": ".m4v",
+      "name": "sample.m4v"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".mkv",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "videos",
+        "group_id": "media",
+        "kind_id": "video",
+        "logical_extension": ".mkv"
+      },
+      "logical_extension": ".mkv",
+      "name": "sample.mkv"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".webm",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "videos",
+        "group_id": "media",
+        "kind_id": "video",
+        "logical_extension": ".webm"
+      },
+      "logical_extension": ".webm",
+      "name": "sample.webm"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".avi",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "videos",
+        "group_id": "media",
+        "kind_id": "video",
+        "logical_extension": ".avi"
+      },
+      "logical_extension": ".avi",
+      "name": "sample.avi"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".mp3",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "audio",
+        "group_id": "media",
+        "kind_id": "audio",
+        "logical_extension": ".mp3"
+      },
+      "logical_extension": ".mp3",
+      "name": "sample.mp3"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".wav",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "audio",
+        "group_id": "media",
+        "kind_id": "audio",
+        "logical_extension": ".wav"
+      },
+      "logical_extension": ".wav",
+      "name": "sample.wav"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".flac",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "audio",
+        "group_id": "media",
+        "kind_id": "audio",
+        "logical_extension": ".flac"
+      },
+      "logical_extension": ".flac",
+      "name": "sample.flac"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".m4a",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "audio",
+        "group_id": "media",
+        "kind_id": "audio",
+        "logical_extension": ".m4a"
+      },
+      "logical_extension": ".m4a",
+      "name": "sample.m4a"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".aac",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "audio",
+        "group_id": "media",
+        "kind_id": "audio",
+        "logical_extension": ".aac"
+      },
+      "logical_extension": ".aac",
+      "name": "sample.aac"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ogg",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "audio",
+        "group_id": "media",
+        "kind_id": "audio",
+        "logical_extension": ".ogg"
+      },
+      "logical_extension": ".ogg",
+      "name": "sample.ogg"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".opus",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "audio",
+        "group_id": "media",
+        "kind_id": "audio",
+        "logical_extension": ".opus"
+      },
+      "logical_extension": ".opus",
+      "name": "sample.opus"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ttf",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "fonts",
+        "group_id": "media",
+        "kind_id": "font",
+        "logical_extension": ".ttf"
+      },
+      "logical_extension": ".ttf",
+      "name": "sample.ttf"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".otf",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "fonts",
+        "group_id": "media",
+        "kind_id": "font",
+        "logical_extension": ".otf"
+      },
+      "logical_extension": ".otf",
+      "name": "sample.otf"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".woff",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "fonts",
+        "group_id": "media",
+        "kind_id": "font",
+        "logical_extension": ".woff"
+      },
+      "logical_extension": ".woff",
+      "name": "sample.woff"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".woff2",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "fonts",
+        "group_id": "media",
+        "kind_id": "font",
+        "logical_extension": ".woff2"
+      },
+      "logical_extension": ".woff2",
+      "name": "sample.woff2"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "README"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "LICENSE"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "LICENCE"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "COPYING"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "NOTICE"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "CHANGELOG"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "AUTHORS"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "CONTRIBUTORS"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "CONTRIBUTING"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "prose",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "docs",
+        "kind_id": "documentation-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "CODEOWNERS"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "build-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "MAKEFILE"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "build-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "DOCKERFILE"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "build-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "JUSTFILE"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "build-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "RAKEFILE"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "build-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "GEMFILE"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "basename",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "build-file",
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": "PROCFILE"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".m",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "ambiguous-code",
+        "logical_extension": ".m"
+      },
+      "logical_extension": ".m",
+      "name": "sample.m"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".mm",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "ambiguous-code",
+        "logical_extension": ".mm"
+      },
+      "logical_extension": ".mm",
+      "name": "sample.mm"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ml",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "ambiguous-code",
+        "logical_extension": ".ml"
+      },
+      "logical_extension": ".ml",
+      "name": "sample.ml"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".pl",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "ambiguous-code",
+        "logical_extension": ".pl"
+      },
+      "logical_extension": ".pl",
+      "name": "sample.pl"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".r",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "code",
+        "kind_id": "ambiguous-code",
+        "logical_extension": ".r"
+      },
+      "logical_extension": ".r",
+      "name": "sample.r"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".cfg",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "data",
+        "kind_id": "configuration",
+        "logical_extension": ".cfg"
+      },
+      "logical_extension": ".cfg",
+      "name": "sample.cfg"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".conf",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "data",
+        "kind_id": "configuration",
+        "logical_extension": ".conf"
+      },
+      "logical_extension": ".conf",
+      "name": "sample.conf"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".properties",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "data",
+        "kind_id": "configuration",
+        "logical_extension": ".properties"
+      },
+      "logical_extension": ".properties",
+      "name": "sample.properties"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".db",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "data",
+        "kind_id": "configuration",
+        "logical_extension": ".db"
+      },
+      "logical_extension": ".db",
+      "name": "sample.db"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".map",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": null,
+        "group_id": "data",
+        "kind_id": "source-map",
+        "logical_extension": ".map"
+      },
+      "logical_extension": ".map",
+      "name": "sample.map"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".js",
+        "confidence": "suffix",
+        "content_family": "code",
+        "detection_source": "suffix",
+        "family_id": "javascript",
+        "group_id": "code",
+        "kind_id": "javascript",
+        "logical_extension": ".min.js"
+      },
+      "logical_extension": ".min.js",
+      "name": "bundle.min.js"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".ts",
+        "confidence": "suffix",
+        "content_family": "code",
+        "detection_source": "suffix",
+        "family_id": "typescript",
+        "group_id": "code",
+        "kind_id": "typescript",
+        "logical_extension": ".d.ts"
+      },
+      "logical_extension": ".d.ts",
+      "name": "types.d.ts"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".map",
+        "confidence": "suffix",
+        "content_family": "data",
+        "detection_source": "suffix",
+        "family_id": null,
+        "group_id": "data",
+        "kind_id": "source-map",
+        "logical_extension": ".js.map"
+      },
+      "logical_extension": ".js.map",
+      "name": "bundle.js.map"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".tar.gz",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "archives",
+        "group_id": "archives",
+        "kind_id": "archives",
+        "logical_extension": ".tar.gz"
+      },
+      "logical_extension": ".tar.gz",
+      "name": "archive.tar.gz"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".jpeg",
+        "confidence": "exact",
+        "content_family": "binary",
+        "detection_source": "extension",
+        "family_id": "images",
+        "group_id": "media",
+        "kind_id": "raster-image",
+        "logical_extension": ".jpeg"
+      },
+      "logical_extension": ".jpeg",
+      "name": "PHOTO.JPEG"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".json",
+        "confidence": "exact",
+        "content_family": "data",
+        "detection_source": "extension",
+        "family_id": "json",
+        "group_id": "data",
+        "kind_id": "json",
+        "logical_extension": ".json"
+      },
+      "logical_extension": ".json",
+      "name": ".eslintrc.json"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "unknown",
+        "content_family": "unknown",
+        "detection_source": "unknown",
+        "family_id": null,
+        "group_id": "other",
+        "kind_id": null,
+        "logical_extension": null
+      },
+      "logical_extension": null,
+      "name": ".gitignore"
+    },
+    {
+      "expected": {
+        "canonical_extension": null,
+        "confidence": "unknown",
+        "content_family": "unknown",
+        "detection_source": "unknown",
+        "family_id": null,
+        "group_id": "other",
+        "kind_id": null,
+        "logical_extension": ".zzz"
+      },
+      "logical_extension": ".zzz",
+      "name": "unknown.zzz"
+    }
+  ],
+  "registry": {
+    "fingerprint": "7093a67ce890113518a9f37b6e7802b902ed120230891ec373bb5e1e0b6e06bb",
+    "revision": 1,
+    "schema_version": 1
+  },
+  "schema": "file-type-conformance-v1"
+}

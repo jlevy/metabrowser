@@ -46,6 +46,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from metabrowser.file_type_filters import FILE_TYPE_FAMILIES, family_for_extension
+from metabrowser.file_type_registry import load_file_type_registry
 
 
 class FileNode(TypedDict, total=False):
@@ -248,6 +249,7 @@ class NavigationTallies(TypedDict):
     """One complete-index pass backing root navigation filters."""
 
     summary: dict[str, int]
+    file_type_registry: FileTypeRegistryIdentity
     extensions: list[list[object]]
     canonical_extensions: list[list[object]]
     type_families: list[list[object]]
@@ -273,12 +275,80 @@ class TypeTallies(TypedDict):
     extensions: list[ExtensionTallyRow]
 
 
+class FileTypeMeasure(TypedDict):
+    """One population's conserved file and apparent-byte measures."""
+
+    files: int
+    bytes: int
+
+
+type FileTypePopulationMetrics = dict[str, FileTypeMeasure]
+
+
+class FileTypeRegistryIdentity(TypedDict):
+    """Registry identity required to interpret a breakdown."""
+
+    schema_version: int
+    revision: int
+    fingerprint: str
+
+
+class FileTypeExtensionBreakdown(TypedDict):
+    extension: str
+    metrics: FileTypePopulationMetrics
+
+
+class FileTypeFilenameBreakdown(TypedDict):
+    basename: str
+    metrics: FileTypePopulationMetrics
+
+
+class FileTypeOthersBreakdown(TypedDict):
+    metrics: FileTypePopulationMetrics
+    omitted_distinct_values: int
+
+
+class FileTypeFamilyBreakdown(TypedDict):
+    id: str
+    metrics: FileTypePopulationMetrics
+    extensions: list[FileTypeExtensionBreakdown]
+
+
+class FileTypeGroupBreakdown(TypedDict):
+    id: str
+    families: list[FileTypeFamilyBreakdown]
+
+
+class FileTypeNoExtensionBreakdown(TypedDict):
+    metrics: FileTypePopulationMetrics
+    filenames: list[FileTypeFilenameBreakdown]
+    others: FileTypeOthersBreakdown | None
+
+
+class FileTypeRemainingBreakdown(TypedDict):
+    metrics: FileTypePopulationMetrics
+    extensions: list[FileTypeExtensionBreakdown]
+    others: FileTypeOthersBreakdown | None
+
+
+class FileTypeBreakdown(TypedDict):
+    """Complete Registry v1 directory partition."""
+
+    schema: Literal["file-type-breakdown-v1"]
+    registry: FileTypeRegistryIdentity
+    metrics: FileTypePopulationMetrics
+    groups: list[FileTypeGroupBreakdown]
+    no_extension: FileTypeNoExtensionBreakdown
+    remaining_types: FileTypeRemainingBreakdown
+
+
 class RollupResult(TypedDict):
     """Inventory rollup before route metadata is attached."""
 
     node: RollupDirNode
     ext_tallies: list[ExtensionTallyRow]
     type_tallies: TypeTallies
+    file_type_breakdown: FileTypeBreakdown
 
 
 class RollupEnvelope(TypedDict):
@@ -289,6 +359,7 @@ class RollupEnvelope(TypedDict):
     node: RollupDirNode | None
     ext_tallies: list[ExtensionTallyRow]
     type_tallies: TypeTallies
+    file_type_breakdown: FileTypeBreakdown | None
     index_status: str
     indexed_files: int
     max_files: int
@@ -445,10 +516,178 @@ def validate_type_tallies(raw: object, node: Mapping[str, Any]) -> None:
     ]
 
 
+def _validated_population_metrics(raw: object) -> dict[str, tuple[int, int]]:
+    assert isinstance(raw, dict), "file-type metrics must be an object"
+    assert set(raw) == {"all", "unignored"}
+    result: dict[str, tuple[int, int]] = {}
+    for population, measure in raw.items():
+        assert isinstance(population, str)
+        assert isinstance(measure, dict)
+        assert set(measure) == {"files", "bytes"}
+        files = measure["files"]
+        size = measure["bytes"]
+        assert isinstance(files, int) and not isinstance(files, bool) and files >= 0
+        assert isinstance(size, int) and not isinstance(size, bool) and size >= 0
+        result[population] = (files, size)
+    assert result["unignored"][0] <= result["all"][0]
+    assert result["unignored"][1] <= result["all"][1]
+    return result
+
+
+def _sum_population_metrics(
+    rows: Sequence[dict[str, tuple[int, int]]],
+) -> dict[str, tuple[int, int]]:
+    return {
+        population: (
+            sum(row[population][0] for row in rows),
+            sum(row[population][1] for row in rows),
+        )
+        for population in ("all", "unignored")
+    }
+
+
+def validate_file_type_breakdown(raw: object, node: Mapping[str, Any]) -> None:
+    """Assert Registry v1 identity, hierarchy, bounds, and conservation."""
+
+    assert isinstance(raw, dict), "file-type breakdown must be an object"
+    assert set(raw) == {
+        "schema",
+        "registry",
+        "metrics",
+        "groups",
+        "no_extension",
+        "remaining_types",
+    }
+    assert raw["schema"] == "file-type-breakdown-v1"
+    registry = raw["registry"]
+    assert isinstance(registry, dict)
+    assert set(registry) == {"schema_version", "revision", "fingerprint"}
+    assert registry["schema_version"] == 1
+    active_registry = load_file_type_registry()
+    assert registry["revision"] == active_registry.revision
+    assert registry["fingerprint"] == active_registry.fingerprint
+    root_metrics = _validated_population_metrics(raw["metrics"])
+    assert root_metrics == {
+        "all": (node["total_files"], node["total_size"]),
+        "unignored": (node["unignored_files"], node["unignored_size"]),
+    }
+
+    groups = raw["groups"]
+    assert isinstance(groups, list)
+    family_metrics: list[dict[str, tuple[int, int]]] = []
+    seen_groups: set[str] = set()
+    seen_families: set[str] = set()
+    known_families = {family.id: family for family in FILE_TYPE_FAMILIES}
+    emitted_group_ids: list[str] = []
+    for group in groups:
+        assert isinstance(group, dict) and set(group) == {"id", "families"}
+        group_id = group["id"]
+        assert isinstance(group_id, str) and group_id not in seen_groups
+        seen_groups.add(group_id)
+        emitted_group_ids.append(group_id)
+        families = group["families"]
+        assert isinstance(families, list) and families
+        emitted_family_ids: list[str] = []
+        for family in families:
+            assert isinstance(family, dict)
+            assert set(family) == {"id", "metrics", "extensions"}
+            family_id = family["id"]
+            assert isinstance(family_id, str) and family_id not in seen_families
+            descriptor = known_families[family_id]
+            assert descriptor.category == group_id
+            seen_families.add(family_id)
+            emitted_family_ids.append(family_id)
+            metrics = _validated_population_metrics(family["metrics"])
+            extensions = family["extensions"]
+            assert isinstance(extensions, list) and extensions
+            child_metrics: list[dict[str, tuple[int, int]]] = []
+            seen_extensions: set[str] = set()
+            emitted_extensions: list[str] = []
+            for extension in extensions:
+                assert isinstance(extension, dict)
+                assert set(extension) == {"extension", "metrics"}
+                key = extension["extension"]
+                assert isinstance(key, str) and key.startswith(".") and key not in seen_extensions
+                seen_extensions.add(key)
+                emitted_extensions.append(key)
+                child_metrics.append(_validated_population_metrics(extension["metrics"]))
+            assert emitted_extensions == [
+                extension for extension in descriptor.extensions if extension in seen_extensions
+            ]
+            assert _sum_population_metrics(child_metrics) == metrics
+            family_metrics.append(metrics)
+        assert emitted_family_ids == [
+            family.id
+            for family in FILE_TYPE_FAMILIES
+            if family.category == group_id and family.id in emitted_family_ids
+        ]
+    assert emitted_group_ids == [
+        group.id for group in active_registry.groups if group.id in emitted_group_ids
+    ]
+
+    no_extension = raw["no_extension"]
+    assert isinstance(no_extension, dict)
+    assert set(no_extension) == {"metrics", "filenames", "others"}
+    no_extension_metrics = _validated_population_metrics(no_extension["metrics"])
+    filenames = no_extension["filenames"]
+    assert isinstance(filenames, list) and len(filenames) <= 20
+    no_extension_children: list[dict[str, tuple[int, int]]] = []
+    seen_filenames: set[str] = set()
+    for filename in filenames:
+        assert isinstance(filename, dict) and set(filename) == {"basename", "metrics"}
+        basename = filename["basename"]
+        assert isinstance(basename, str) and basename and basename not in seen_filenames
+        seen_filenames.add(basename)
+        no_extension_children.append(_validated_population_metrics(filename["metrics"]))
+    no_extension_others = no_extension["others"]
+    if no_extension_others is not None:
+        assert isinstance(no_extension_others, dict)
+        assert set(no_extension_others) == {"metrics", "omitted_distinct_values"}
+        assert (
+            isinstance(no_extension_others["omitted_distinct_values"], int)
+            and no_extension_others["omitted_distinct_values"] > 0
+        )
+        no_extension_children.append(_validated_population_metrics(no_extension_others["metrics"]))
+    assert _sum_population_metrics(no_extension_children) == no_extension_metrics
+
+    remaining = raw["remaining_types"]
+    assert isinstance(remaining, dict)
+    assert set(remaining) == {"metrics", "extensions", "others"}
+    remaining_metrics = _validated_population_metrics(remaining["metrics"])
+    remaining_extensions = remaining["extensions"]
+    assert isinstance(remaining_extensions, list) and len(remaining_extensions) <= 20
+    remaining_children: list[dict[str, tuple[int, int]]] = []
+    seen_remaining: set[str] = set()
+    for extension in remaining_extensions:
+        assert isinstance(extension, dict) and set(extension) == {"extension", "metrics"}
+        key = extension["extension"]
+        assert isinstance(key, str) and key.startswith(".") and key not in seen_remaining
+        assert family_for_extension(key) is None
+        seen_remaining.add(key)
+        remaining_children.append(_validated_population_metrics(extension["metrics"]))
+    remaining_others = remaining["others"]
+    if remaining_others is not None:
+        assert isinstance(remaining_others, dict)
+        assert set(remaining_others) == {"metrics", "omitted_distinct_values"}
+        assert (
+            isinstance(remaining_others["omitted_distinct_values"], int)
+            and remaining_others["omitted_distinct_values"] > 0
+        )
+        remaining_children.append(_validated_population_metrics(remaining_others["metrics"]))
+    assert _sum_population_metrics(remaining_children) == remaining_metrics
+    assert (
+        _sum_population_metrics([*family_metrics, no_extension_metrics, remaining_metrics])
+        == root_metrics
+    )
+
+
 def validate_rollup_result(result: Mapping[str, Any]) -> None:
     """Assert one inventory result and the equality of root and tally totals."""
 
-    assert set(result) == {"node", "ext_tallies", "type_tallies"}
+    assert set(result) in (
+        {"node", "ext_tallies", "type_tallies"},
+        {"node", "ext_tallies", "type_tallies", "file_type_breakdown"},
+    )
     node = result["node"]
     assert isinstance(node, dict)
     validate_rollup_node(node)
@@ -463,6 +702,8 @@ def validate_rollup_result(result: Mapping[str, Any]) -> None:
         node["unignored_size"],
     ]
     validate_type_tallies(result["type_tallies"], node)
+    if "file_type_breakdown" in result:
+        validate_file_type_breakdown(result["file_type_breakdown"], node)
 
 
 def validate_rollup_envelope(envelope: Mapping[str, Any]) -> None:
@@ -478,13 +719,18 @@ def validate_rollup_envelope(envelope: Mapping[str, Any]) -> None:
     node = envelope.get("node")
     rows = envelope.get("ext_tallies")
     type_tallies = envelope.get("type_tallies")
+    file_type_breakdown = envelope.get("file_type_breakdown")
     assert isinstance(rows, list)
     assert isinstance(type_tallies, dict)
     if node is None:
         assert rows == [], "a cold rollup cannot advertise tallies"
         assert type_tallies == {"families": [], "extensions": []}
+        assert file_type_breakdown is None
         return
-    validate_rollup_result({"node": node, "ext_tallies": rows, "type_tallies": type_tallies})
+    result = {"node": node, "ext_tallies": rows, "type_tallies": type_tallies}
+    if file_type_breakdown is not None:
+        result["file_type_breakdown"] = file_type_breakdown
+    validate_rollup_result(result)
 
 
 __all__ = [
@@ -500,6 +746,7 @@ __all__ = [
     "TypeFamilyTally",
     "TypeTallies",
     "validate_extension_tallies",
+    "validate_file_type_breakdown",
     "validate_rollup_envelope",
     "validate_rollup_node",
     "validate_rollup_result",

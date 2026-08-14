@@ -145,10 +145,109 @@ async function importSource(relative) {
       javascript.children.every((row) => row.paletteKey === "family:javascript"),
   );
   check(
-    "ignored scope removes an empty canonical child and redundant disclosure",
+    "singleton family remains disclosable in the ignored scope",
     modelModule.buildFileTypeSummaryModel(semantic, false, formatters, fileTypes).rows[0]
-      .disclosable === false,
+      .disclosable === true,
   );
+  const registryRuntime = {
+    revision: 7,
+    fingerprint: "registry-seven",
+    groups: [
+      { id: "media", label: "Media" },
+      { id: "logs", label: "Logs" },
+      { id: "other", label: "Other" },
+    ],
+    families: [
+      { id: "images", label: "Images", groupId: "media", extensions: [".png"] },
+      { id: "log-files", label: "Log files", groupId: "logs", extensions: [".log"] },
+    ],
+    categoryForFile: () => "other",
+  };
+  const metrics = (files, bytes) => ({
+    all: { files, bytes },
+    unignored: { files, bytes },
+  });
+  const breakdownEnvelope = modelModule.normalizeRollupEnvelope({
+    ...raw,
+    node: { total_files: 6, total_size: 50, unignored_files: 6, unignored_size: 50 },
+    file_type_breakdown: {
+      schema: "file-type-breakdown-v1",
+      registry: { schema_version: 1, revision: 7, fingerprint: "registry-seven" },
+      metrics: metrics(6, 50),
+      groups: [
+        {
+          id: "logs",
+          families: [
+            {
+              id: "log-files",
+              metrics: metrics(1, 10),
+              extensions: [{ extension: ".log", metrics: metrics(1, 10) }],
+            },
+          ],
+        },
+        {
+          id: "media",
+          families: [
+            {
+              id: "images",
+              metrics: metrics(1, 20),
+              extensions: [{ extension: ".png", metrics: metrics(1, 20) }],
+            },
+          ],
+        },
+      ],
+      no_extension: {
+        metrics: metrics(2, 5),
+        filenames: [{ basename: "README", metrics: metrics(1, 3) }],
+        others: { metrics: metrics(1, 2), omitted_distinct_values: 4 },
+      },
+      remaining_types: {
+        metrics: metrics(2, 15),
+        extensions: [{ extension: ".bin", metrics: metrics(1, 10) }],
+        others: { metrics: metrics(1, 5), omitted_distinct_values: 2 },
+      },
+    },
+  });
+  const breakdownModel = modelModule.buildFileTypeSummaryModel(
+    breakdownEnvelope,
+    true,
+    formatters,
+    registryRuntime,
+  );
+  check(
+    "Registry v1 controls group and family order",
+    breakdownModel.groups.map((group) => group.id).join(",") === "media,logs,other" &&
+      breakdownModel.rows.map((row) => row.key).join(",") ===
+        "family:images,family:log-files,(none),",
+  );
+  check(
+    "singleton Registry v1 families are disclosable",
+    breakdownModel.rows[0].disclosable === true && breakdownModel.rows[0].children.length === 1,
+  );
+  const noExtensionRow = breakdownModel.rows.find((row) => row.key === "(none)");
+  const remainingRow = breakdownModel.rows.find((row) => row.key === "");
+  check(
+    "No extension exposes filenames and a counted Others tail",
+    noExtensionRow?.children[0].label === "README" &&
+      noExtensionRow.children[0].iconPath === "README" &&
+      noExtensionRow.children[1].label === "Others (4 more)",
+  );
+  check(
+    "Remaining types exposes raw extensions and a counted Others tail",
+    remainingRow?.children[0].extension === ".bin" &&
+      remainingRow.children[0].iconPath === "x.bin" &&
+      remainingRow.children[1].label === "Others (2 more)",
+  );
+  let identityMismatch = false;
+  try {
+    modelModule.buildFileTypeSummaryModel(breakdownEnvelope, true, formatters, {
+      ...registryRuntime,
+      fingerprint: "wrong",
+    });
+  } catch (error) {
+    identityMismatch = error instanceof TypeError;
+  }
+  check("breakdown rejects a mismatched browser registry", identityMismatch);
   const withRemainder = modelModule.normalizeRollupEnvelope({
     ...raw,
     ext_tallies: [

@@ -25,15 +25,27 @@ then synchronized as a new version or revision.
 | Metabrowser artifact | `fdu` destination or consumer |
 | --- | --- |
 | `src/metabrowser/data/file-types.toml` | `crates/fdu/rules/file-types.toml` |
-| Registry v1 contract and schema | `build.rs` parser, validator, generator, and Rust API docs |
-| Interchange v1 contract and schema | Query report types and JSON/YAML serializers |
-| `file-type-conformance-v1` corpus | Rust classifier, parser, and aggregate tests |
-| Captured Registry and Breakdown examples | CLI and `fdu-py` goldens |
-| Source revision and fingerprint | Build provenance and cache identity |
+| `registry-v1.schema.json` and `registry-v1.json` | `build.rs` validator, Rust API, and projection goldens |
+| `breakdown-v1.schema.json` and `breakdown-empty-v1.json` | Query types and JSON/YAML serializers |
+| `conformance-v1.schema.json` and `conformance-v1.json` | Rust classifier, parser, and aggregate tests |
+| Contract Markdown files | `fdu` architecture and compatibility references |
+| Packet `manifest.json` | Source revision, registry identity, and adopted-file hashes |
 
 Synchronization accepts an explicit source checkout or release artifact.
 It never reads an implicit sibling path or fetches the network during build.
 Both repository diffs are reviewed, and `fdu` records the source Git revision.
+
+Create the reviewed packet from the Metabrowser checkout with:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
+  --export /explicit/destination \
+  --source-revision SOURCE_GIT_REVISION
+```
+
+The destination is self-contained.
+`fdu` copies or compiles only packet contents and verifies the manifest before adopting
+them; its build never reaches back into a Metabrowser checkout.
 
 ## Semantic Mapping
 
