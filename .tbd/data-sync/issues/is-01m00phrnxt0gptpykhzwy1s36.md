@@ -5,16 +5,18 @@ title: Unify folder rollup metric and ignored-file controls
 kind: feature
 status: open
 priority: 2
-version: 2
+version: 3
 labels:
   - browser
   - folder-controls
 dependencies:
   - type: blocks
     target: is-01m00phs4p1dvrzhgay8fqvwwr
+  - type: blocks
+    target: is-01m00px2azd2vq64p7w4cas7r2
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:54:06.139Z
-updated_at: 2026-08-14T17:54:06.613Z
+updated_at: 2026-08-14T18:00:16.478Z
 ---
 Create one folder-rollup control and state abstraction shared by the overview File Types breakdown and the treemap.
 

@@ -5,16 +5,18 @@ title: Support bounded expansion of file-rollup subsection tails
 kind: feature
 status: open
 priority: 1
-version: 2
+version: 3
 labels:
   - file-rollup-format
   - browser-api
 dependencies:
   - type: blocks
     target: is-01m00prch1akzeds6rnwc4rkwy
+  - type: blocks
+    target: is-01m00px2azd2vq64p7w4cas7r2
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:57:42.628Z
-updated_at: 2026-08-14T17:57:43.072Z
+updated_at: 2026-08-14T18:00:16.478Z
 ---
 Extend the File Rollup Format and Metabrowser rollup projection so a consumer can expand a high-cardinality subsection without making the initial directory payload unbounded.
 
