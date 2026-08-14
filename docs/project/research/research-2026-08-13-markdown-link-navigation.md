@@ -142,6 +142,33 @@ This addendum supersedes the earlier suggestion that the baseline expose `auto`,
 Standard anchors and parsed wiki syntax identify themselves; only later site adapters
 may require configuration or project detection.
 
+### Clean-Break Implementation Directive
+
+**Decision date:** 2026-08-13
+
+The approved implementation plan makes a clean break from the current link router and
+SDK shape. It supersedes the implementation-specific compatibility recommendations later
+in this dated research record:
+
+- `/view/<path>#<fragment>` is the only selected-file route.
+  The old `/#<path>` form is deleted rather than read, migrated, redirected, or written
+  in parallel.
+- The navigation API may be redesigned and all bundled callers migrated atomically;
+  preserving `openPath` is not an acceptance requirement.
+- Exact GitHub repository links and standard Obsidian note, heading, named-block,
+  occurrence-label, and media wiki-links are all required for the end-to-end baseline.
+  Their phases describe dependency order, not optional product scope.
+- Obsidian named-block links must land on real source-derived DOM targets.
+  They are not deferred as unsupported metadata.
+- Published-site adapters, remote GitHub URL localization, source-line locations,
+  backlinks, graph features, metadata-alias lookup, multi-root navigation, and full note
+  transclusion remain separate future features.
+
+The comparative findings below remain useful evidence.
+Where a later recommendation mentions legacy hash migration, preserving the old SDK, or
+treating Obsidian navigation as a later optional release, this directive and the active
+feature plan control.
+
 ## Findings
 
 ### Four Independent Layers
