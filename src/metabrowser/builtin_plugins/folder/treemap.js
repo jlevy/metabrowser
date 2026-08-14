@@ -22,7 +22,7 @@ import { parentNavigation } from "./treemap_model.js";
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
 
-/** @param {MetabrowserPublicSdk} mb @param {TreemapPalettePool} palettePool @param {{mount: (container: HTMLElement) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
+/** @param {MetabrowserPublicSdk} mb @param {TreemapPalettePool} palettePool @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
 export function registerTreemap(mb, palettePool, rollupControls) {
   const TREEMAP_VIEW_ID = "treemap";
   /** Minimum paint thresholds; type size itself comes from cell geometry. */
@@ -234,15 +234,19 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       : "";
 
     container.innerHTML =
-      '<h2 class="tm-totals-heading">File Totals</h2>' +
+      '<h2 class="tm-totals-heading">Files</h2>' +
+      '<div class="tm-metric-controls folder-rollup-controls"></div>' +
       '<div class="tm-totals"></div>' +
-      '<div class="folder-rollup-controls"></div>' +
+      '<div class="tm-scope-controls folder-rollup-controls"></div>' +
       parentControlHtml +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
       '<div class="tm-status" role="status"></div>';
     const totalsContainer = /** @type {HTMLElement} */ (container.querySelector(".tm-totals"));
-    const controlsContainer = /** @type {HTMLElement} */ (
-      container.querySelector(".folder-rollup-controls")
+    const metricControls = /** @type {HTMLElement} */ (
+      container.querySelector(".tm-metric-controls")
+    );
+    const scopeControls = /** @type {HTMLElement} */ (
+      container.querySelector(".tm-scope-controls")
     );
     const parentControl = parent
       ? /** @type {HTMLButtonElement} */ (container.querySelector(".tm-parent-nav"))
@@ -257,6 +261,7 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       totalsContainer,
       normalizeFolderTotals(initialRaw),
       mb,
+      state.metric,
     );
     const unsubscribeTotals = mb.directoryTotals.subscribe(ctx.path || "", (next) => {
       const normalized = normalizeFolderTotals(next);
@@ -264,7 +269,14 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         totalsView.update(normalized);
       }
     });
-    const unmountControls = rollupControls.mount(controlsContainer);
+    const unmountMetricControls = rollupControls.mount(metricControls, {
+      metric: true,
+      ignored: false,
+    });
+    const unmountScopeControls = rollupControls.mount(scopeControls, {
+      metric: false,
+      ignored: true,
+    });
 
     function openParent() {
       if (parent) {
@@ -433,6 +445,9 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     });
 
     const unsubscribeControls = rollupControls.subscribe((next) => {
+      if (next.metric !== state.metric) {
+        totalsView.updateMetric(next.metric);
+      }
       state = next;
       relayout();
     });
@@ -515,7 +530,8 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       unsubscribeActive();
       unsubscribeControls();
       unsubscribeTotals();
-      unmountControls();
+      unmountMetricControls();
+      unmountScopeControls();
       if (parentControl) {
         parentControl.removeEventListener("click", openParent);
       }

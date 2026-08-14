@@ -88,10 +88,29 @@ export function buildFolderTotalsModel(totals, formatters) {
   });
 }
 
-/** @param {"files" | "bytes"} metric */
-function metricCell(metric) {
+/**
+ * @param {FolderTotalsMetricRow} row
+ * @param {"files" | "size"} metric
+ */
+export function selectFolderTotalsMetric(row, metric) {
+  if (metric === "size") {
+    return Object.freeze({
+      value: row.bytes,
+      text: row.bytesText,
+      share: row.byteShare,
+      percent: row.bytePercent,
+    });
+  }
+  return Object.freeze({
+    value: row.files,
+    text: row.filesText,
+    share: row.fileShare,
+    percent: row.filePercent,
+  });
+}
+
+function metricCell() {
   const cell = document.createElement("td");
-  cell.className = `file-type-summary-metric file-type-summary-metric-${metric}`;
   const contents = document.createElement("div");
   contents.className = "file-type-summary-metric-content";
   const value = document.createElement("span");
@@ -115,14 +134,13 @@ function totalsRow(label) {
   const heading = document.createElement("th");
   heading.scope = "row";
   heading.textContent = label;
-  const files = metricCell("files");
-  const bytes = metricCell("bytes");
-  tr.append(heading, files.cell, bytes.cell);
-  return { tr, files, bytes };
+  const metric = metricCell();
+  tr.append(heading, metric.cell);
+  return { tr, metric };
 }
 
-/** @param {HTMLElement} container @param {FolderTotals} totals @param {MetabrowserPublicSdk} mb */
-export function mountFolderTotalsView(container, totals, mb) {
+/** @param {HTMLElement} container @param {FolderTotals} totals @param {MetabrowserPublicSdk} mb @param {"files" | "size"} [initialMetric] */
+export function mountFolderTotalsView(container, totals, mb, initialMetric = "files") {
   const root = document.createElement("div");
   root.className = "folder-totals";
   container.append(root);
@@ -132,6 +150,12 @@ export function mountFolderTotalsView(container, totals, mb) {
   let totalRow = null;
   /** @type {ReturnType<typeof totalsRow> | null} */
   let ignoredRow = null;
+  /** @type {HTMLTableCellElement | null} */
+  let metricHeader = null;
+  /** @type {FolderTotals} */
+  let currentTotals = totals;
+  /** @type {"files" | "size"} */
+  let currentMetric = initialMetric === "size" ? "size" : "files";
 
   function ensureTable() {
     if (table) {
@@ -141,7 +165,7 @@ export function mountFolderTotalsView(container, totals, mb) {
     table = document.createElement("table");
     table.className = "file-type-summary-table folder-totals-table";
     const columns = document.createElement("colgroup");
-    for (const className of ["file-type-summary-type-column", "", ""]) {
+    for (const className of ["file-type-summary-type-column", ""]) {
       const column = document.createElement("col");
       column.className = className;
       columns.append(column);
@@ -149,11 +173,14 @@ export function mountFolderTotalsView(container, totals, mb) {
     const head = document.createElement("thead");
     head.className = "sr-only";
     const headRow = document.createElement("tr");
-    for (const label of ["Population", "Files", "Size"]) {
+    for (const label of ["Population", currentMetric === "size" ? "Bytes" : "Files"]) {
       const heading = document.createElement("th");
       heading.scope = "col";
       heading.textContent = label;
       headRow.append(heading);
+      if (label !== "Population") {
+        metricHeader = heading;
+      }
     }
     head.append(headRow);
     const body = document.createElement("tbody");
@@ -167,27 +194,24 @@ export function mountFolderTotalsView(container, totals, mb) {
 
   /** @param {FolderTotalsMetricRow} row @param {ReturnType<typeof totalsRow>} handle */
   function updateRow(row, handle) {
-    /** @param {"files" | "bytes"} metric @param {ReturnType<typeof metricCell>} values */
-    function updateMetric(metric, values) {
-      const number = metric === "files" ? row.files : row.bytes;
-      values.value.className = `file-type-summary-value ${metric === "files" ? "count" : "size"} ${
-        metric === "files" ? mb.countClass(number) : mb.sizeClass(number)
-      }`.trim();
-      values.value.textContent = metric === "files" ? row.filesText : row.bytesText;
-      values.fill.style.width = `${metric === "files" ? row.fileShare : row.byteShare}%`;
-      values.percent.textContent = metric === "files" ? row.filePercent : row.bytePercent;
-    }
-    updateMetric("files", handle.files);
-    updateMetric("bytes", handle.bytes);
+    const selected = selectFolderTotalsMetric(row, currentMetric);
+    const displayKind = currentMetric === "files" ? "count" : "size";
+    handle.metric.cell.className = `file-type-summary-metric file-type-summary-metric-${currentMetric}`;
+    handle.metric.value.className = `file-type-summary-value ${displayKind} ${
+      currentMetric === "files" ? mb.countClass(selected.value) : mb.sizeClass(selected.value)
+    }`.trim();
+    handle.metric.value.textContent = selected.text;
+    handle.metric.fill.style.width = `${selected.share}%`;
+    handle.metric.percent.textContent = selected.percent;
   }
 
-  /** @param {FolderTotals} nextTotals */
-  function update(nextTotals) {
-    const model = buildFolderTotalsModel(nextTotals, mb);
+  function render() {
+    const model = buildFolderTotalsModel(currentTotals, mb);
     if (model.state === "pending") {
       table = null;
       totalRow = null;
       ignoredRow = null;
+      metricHeader = null;
       root.innerHTML =
         '<div class="folder-totals-loading mb-delayed-loading" aria-hidden="true"></div>' +
         '<span class="sr-only">Loading file totals…</span>';
@@ -197,63 +221,29 @@ export function mountFolderTotalsView(container, totals, mb) {
     if (!totalRow || !ignoredRow) {
       throw new TypeError("folder totals table failed to initialize");
     }
+    if (metricHeader) {
+      metricHeader.textContent = currentMetric === "size" ? "Bytes" : "Files";
+    }
     updateRow(model.total, totalRow);
     updateRow(model.ignored, ignoredRow);
   }
 
-  update(totals);
-  return Object.freeze({ update });
-}
+  /** @param {FolderTotals} nextTotals */
+  function update(nextTotals) {
+    currentTotals = nextTotals;
+    render();
+  }
 
-/** @param {unknown} raw */
-function totalsFromFolderEnvelope(raw) {
-  const envelope =
-    raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
-  return normalizeFolderTotals(envelope.dir);
-}
+  /** @param {"files" | "size"} nextMetric */
+  function updateMetric(nextMetric) {
+    const normalized = nextMetric === "size" ? "size" : "files";
+    if (normalized === currentMetric) {
+      return;
+    }
+    currentMetric = normalized;
+    render();
+  }
 
-/** @param {MetabrowserPublicSdk} mb */
-export function createFileTotalsPanel(mb) {
-  return Object.freeze({
-    label: "File Totals",
-    placement: /** @type {const} */ ("summary"),
-    presentation: /** @type {const} */ ("surface"),
-    collapsible: false,
-    required: true,
-    printable: false,
-    /** @param {{path?: string, raw?: unknown}} context */
-    resolve(context) {
-      return Object.freeze({
-        key: context.path || "",
-        data: totalsFromFolderEnvelope(context.raw),
-      });
-    },
-    /** @param {HTMLElement} container @param {{path?: string}} context @param {FolderTotals} data @param {{signal?: AbortSignal}} options */
-    mount(container, context, data, options) {
-      const view = mountFolderTotalsView(container, data, mb);
-      const unsubscribe = mb.directoryTotals.subscribe(context.path || "", (next) => {
-        const normalized = normalizeFolderTotals(next);
-        if (normalized.state === "complete") {
-          view.update(normalized);
-        }
-      });
-      let disposed = false;
-      const dispose = () => {
-        if (disposed) {
-          return;
-        }
-        disposed = true;
-        unsubscribe();
-        options.signal?.removeEventListener("abort", dispose);
-      };
-      options.signal?.addEventListener("abort", dispose, { once: true });
-      return Object.freeze({
-        dispose,
-        /** @param {{path?: string, raw?: unknown}} nextContext */
-        update(nextContext) {
-          view.update(totalsFromFolderEnvelope(nextContext.raw));
-        },
-      });
-    },
-  });
+  render();
+  return Object.freeze({ update, updateMetric });
 }

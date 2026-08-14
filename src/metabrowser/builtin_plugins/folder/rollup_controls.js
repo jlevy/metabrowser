@@ -48,35 +48,43 @@ export function createFolderRollupControls(mb) {
     return () => subscribers.delete(subscriber);
   }
 
-  /** @param {HTMLElement} container */
-  function mount(container) {
+  /** @param {HTMLElement} container @param {{metric?: boolean, ignored?: boolean}} [parts] */
+  function mount(container, parts = {}) {
     const controls = mb.filterControls;
     if (!controls) {
       throw new Error("metabrowser folder plugin: filter controls are unavailable");
     }
     const filterControls = controls;
+    const showMetric = parts.metric !== false;
+    const showIgnored = parts.ignored !== false;
     container.classList.add("folder-rollup-controls");
 
     /** @param {FolderRollupState} state */
     function render(state) {
-      container.innerHTML =
-        filterControls.groupHtml({
-          key: "folder-rollup-metric",
-          select: "one",
-          layout: "joined",
-          label: "Measure file rollups by",
-          options: [
-            { value: "files", label: "Files" },
-            { value: "size", label: "Bytes" },
-          ],
-          value: state.metric,
-        }) +
-        filterControls.checkHtml({
-          key: "folder-rollup-ignored",
-          label: "Show ignored",
-          checked: state.includeIgnored,
-          title: "Include gitignored files",
-        });
+      container.innerHTML = `${
+        showMetric
+          ? filterControls.groupHtml({
+              key: "folder-rollup-metric",
+              select: "one",
+              layout: "joined",
+              label: "Measure file rollups by",
+              options: [
+                { value: "files", label: "Files" },
+                { value: "size", label: "Bytes" },
+              ],
+              value: state.metric,
+            })
+          : ""
+      }${
+        showIgnored
+          ? filterControls.checkHtml({
+              key: "folder-rollup-ignored",
+              label: "Show ignored",
+              checked: state.includeIgnored,
+              title: "Include gitignored files",
+            })
+          : ""
+      }`;
     }
 
     const unsubscribe = subscribe(render);

@@ -165,7 +165,7 @@
 }
 
 /* Every folder/file fill shares the mounted extension palette with
-   the File Types Overview. Directory cells use their dominant type;
+   the Files Overview. Directory cells use their dominant type;
    the remainder uses the neutral Other slot. The base hue is mixed
    into the current surface so chrome text stays readable in both
    themes while the Overview bars retain the full-strength swatch. */

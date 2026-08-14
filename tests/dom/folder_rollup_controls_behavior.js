@@ -13,6 +13,7 @@ async function main() {
 
   const stored = new Map();
   const renderedGroups = [];
+  const renderedChecks = [];
   const mb = {
     prefs: {
       get: (key, fallback) => (stored.has(key) ? stored.get(key) : fallback),
@@ -23,7 +24,10 @@ async function main() {
         renderedGroups.push(options);
         return "<span>metric</span>";
       },
-      checkHtml: () => "<span>ignored</span>",
+      checkHtml: (options) => {
+        renderedChecks.push(options);
+        return "<span>ignored</span>";
+      },
       bind: () => () => {},
     },
   };
@@ -35,7 +39,7 @@ async function main() {
     innerHTML: "",
     classList: { add() {} },
   };
-  const unmount = state.mount(container);
+  const unmount = state.mount(container, { metric: true, ignored: false });
   const metricGroup = renderedGroups.at(-1);
   if (
     metricGroup.value !== "files" ||
@@ -44,7 +48,24 @@ async function main() {
   ) {
     throw new Error(`unexpected metric chooser: ${JSON.stringify(metricGroup)}`);
   }
+  if (container.innerHTML !== "<span>metric</span>" || renderedChecks.length !== 0) {
+    throw new Error(`metric-only mount leaked scope controls: ${container.innerHTML}`);
+  }
   unmount();
+
+  const scopeContainer = {
+    innerHTML: "",
+    classList: { add() {} },
+  };
+  const unmountScope = state.mount(scopeContainer, { metric: false, ignored: true });
+  if (
+    scopeContainer.innerHTML !== "<span>ignored</span>" ||
+    renderedGroups.length !== 1 ||
+    renderedChecks.at(-1).label !== "Show ignored"
+  ) {
+    throw new Error(`scope-only mount leaked metric controls: ${scopeContainer.innerHTML}`);
+  }
+  unmountScope();
 
   const first = [];
   const second = [];

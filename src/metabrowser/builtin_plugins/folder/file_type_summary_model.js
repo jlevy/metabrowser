@@ -536,9 +536,12 @@ export function buildFileTypeSummaryModel(
   fileTypes,
   metric = "size",
 ) {
+  /** @type {"files" | "size"} */
+  const selectedMetric = metric === "files" ? "files" : "size";
   if (envelope?.indexStatus === "scanning") {
     return Object.freeze({
       state: /** @type {const} */ ("pending"),
+      metric: selectedMetric,
       rows: [],
       files: 0,
       bytes: 0,
@@ -553,6 +556,7 @@ export function buildFileTypeSummaryModel(
       state: /** @type {"pending" | "failed" | "unavailable"} */ (
         failed ? "failed" : unavailable ? "unavailable" : "pending"
       ),
+      metric: selectedMetric,
       rows: [],
       files: 0,
       bytes: 0,
@@ -576,13 +580,14 @@ export function buildFileTypeSummaryModel(
     formatters,
     percentFormatter,
     runtime,
-    metric === "files" ? "files" : "size",
+    selectedMetric,
   );
   const groupDescriptors = Object.freeze(
     runtime.groups.map((group) => Object.freeze({ id: group.id, label: group.label })),
   );
 
   const base = {
+    metric: selectedMetric,
     rows,
     groups: groupDescriptors,
     files: population.files,

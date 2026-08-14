@@ -483,13 +483,16 @@ Do not add filename-specific CSS selectors.
 The shipped
 [Folder Overview plan](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
 defines the first instance of this component contract.
-An aggregate comparison relates exact categories across repeated metric columns in one
-semantic table. Each metric cell presents an absolute value, a track normalized to that
+An aggregate distribution relates exact categories through one selected metric column in
+a semantic table. The metric cell presents an absolute value, a track normalized to that
 metric’s population total, and a percentage.
-This keeps many categories vertically scannable and makes skew between metrics visible
-on the same row. It is distinct from the broad `ft-*` identity system: several exact
-extensions may intentionally share one file icon, while semantic families such as
-JavaScript and YAML need stable distribution identities of their own.
+A nearby exclusive control switches the entire table atomically between Files and Bytes;
+it never leaves parallel metric columns competing with that control.
+This keeps large category sets vertically scannable and lets the selected measure use
+the available width.
+It is distinct from the broad `ft-*` identity system: several exact extensions may
+intentionally share one file icon, while semantic families such as JavaScript and YAML
+need stable distribution identities of their own.
 
 The component uses a bounded light/dark categorical palette, a neutral **Other** token,
 a track token, and a named track-height token.
@@ -506,10 +509,10 @@ tokens to a component color variable.
 Core owns these tokens and utilities; the folder plugin owns File types and Treemap
 layout selectors.
 
-When several metric columns compare the same population, they use the same category set,
-row order, and color map.
-Categories keep their assigned slot for the mounted folder even when live updates change
-rank, and Other stays last and neutral.
+When a selected metric changes, the table keeps the same category set and color map.
+The active measure controls values, percentage widths, emphasis classes, and row order
+as one update. Categories keep their assigned slot for the mounted folder even when live
+updates change rank, and Other stays last and neutral.
 A related visualization, such as the extension-colored Treemap for that folder, reuses
 the same mounted mapping when both views exist.
 
@@ -561,7 +564,7 @@ exact files or extensions.
 An unknown exact extension such as `.bin` uses the generic blank-page identity.
 Family parents, Total, and Ignored are likewise iconless.
 Every exact Files value uses the shared `.count` and `.count-large` convention, and
-every exact Size value uses `.size` and `.size-large`. The stronger weight therefore
+every exact byte value uses `.size` and `.size-large`. The stronger weight therefore
 appears at the same count and byte thresholds as the navigation panel, including on
 Total and Ignored; a row role never forces a different numeric weight.
 
@@ -571,19 +574,23 @@ final tie-breaker. Group order remains registry-defined.
 Changing the metric therefore reveals the relevant skew without making equal rows jump
 unpredictably.
 
-The separate **File Totals** panel uses the neutral distribution color.
+The **Files** section begins with the shared Files / Bytes control and a fixed two-row
+totals table using the neutral distribution color.
 **Total** comes first and reports the complete selected directory immediately from the
 inventory snapshot. **Ignored** follows with the exact ignored subset.
-Both rows are always present, including when ignored files are hidden from the File
-Types population, so scope is explicit without a separate notice.
+Both rows switch to the selected metric and are always present, including when ignored
+files are hidden from the type population, so scope is explicit without a separate
+notice. The **Show ignored** checkbox follows the totals and changes only the type rows
+below it; it never changes or hides the explicit Total and Ignored context.
 A populated Total track fills to 100%. When the population has files but zero bytes, the
-Size total remains `0 B`, `0%`, and an unfilled neutral track rather than implying a
+Bytes total remains `0 B`, `0%`, and an unfilled neutral track rather than implying a
 share of an empty byte population.
 
-Visual Type, Files, and Size column labels are unnecessary when every metric cell keeps
-the same value-track-percentage grammar.
-The semantic table retains screen-reader-only column headers so assistive technology
-receives the relationships that sighted users get from alignment.
+Visual Type and metric column labels are unnecessary when every metric cell keeps the
+same value-track-percentage grammar.
+The semantic table retains screen-reader-only headers and updates the selected metric
+header between Files and Bytes, so assistive technology receives the relationships that
+sighted users get from alignment.
 
 Zero totals do not produce a colored fill, division artifact, or header-only table.
 If one metric is zero while another is not, the zero metric uses the neutral track and
@@ -599,7 +606,9 @@ Folders/Types grouping choice.
 File types already answers which extensions make up the population, while Treemap
 answers where space or file count sits and keeps folder and file cells navigable.
 
-The toolbar contains the same reusable folder-rollup control mounted by File Types:
+The Files context above the map mounts the same reusable folder-rollup controls used by
+Overview. The metric control appears before Total and Ignored; the scope control appears
+after them:
 
 - A joined, exclusive **Files / Bytes** group chooses the cell-area metric and starts on
   Files when there is no saved preference.
@@ -607,9 +616,11 @@ The toolbar contains the same reusable folder-rollup control mounted by File Typ
   Checked includes gitignored cells and dims them; unchecked removes them and switches
   folder, remainder, and status values to the rollup’s unignored totals.
 
-Both mounts observe one state object and preference key, so changing either control in
-File Types or Treemap updates the other surface without a second interpretation of scope
-or metric.
+Both views observe one state object and preference key, so changing either control in
+Overview or Treemap updates the other surface without a second interpretation of scope
+or metric. The metric switches both totals rows and the map.
+Show ignored changes map membership but leaves the explicit Total and Ignored rows
+intact.
 
 There is no separate color selector.
 Every file maps its exact extension through the taxonomy’s distribution key, every
@@ -692,8 +703,7 @@ Overview is one vertically ordered composition surface, not a fixed page templat
 Its panel registry lets a capability contribute a region without knowing which other
 regions are installed:
 
-- **File Totals** is the required, fixed summary panel for every folder.
-- **File Types** is the required, collapsible composition panel for every folder.
+- **Files** is the required, collapsible totals-and-composition panel for every folder.
 - **README** is a content panel only when a direct-child README exists.
 - License and other future panels use the same contribution contract and appear only
   when applicable.
@@ -712,15 +722,14 @@ panel body. These headings use the tab bar’s uppercase, bold, tracked sans-ser
 at the body-text size, followed by a neutral separator.
 Collapsible headings contain the shared section-disclosure trigger, with its gray
 trailing chevron and unchanged heading typography.
-File Types and README start expanded and collapse in place without disposing their
-mounted contents. File Totals is always expanded and uses the same heading grammar
-without a disclosure control.
-File Types’ stable internal panel ID remains `folder.file-types`.
+Files and README start expanded and collapse in place without disposing their mounted
+contents. Files uses the stable internal panel ID `folder.file-types`; one heading and
+one metric choice own the whole file summary.
 
 Panel bodies use one of two presentations:
 
 - A **surface panel** receives a flat host-rendered body and chrome typography.
-  File Totals and File Types use this presentation without a surrounding card.
+  Files uses this presentation without a surrounding card.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
   its metadata, diagnostics, TOC, breakpoints, and print behavior.
@@ -750,27 +759,26 @@ and empty-state chrome stay off paper.
 ### Folder Rollup Loading
 
 Directory totals and detailed rollups have separate readiness contracts.
-File Totals renders from the inventory snapshot attached to the selected folder and
-subscribes to the public directory-totals store for later revisions.
+The totals rows at the start of Files render from the inventory snapshot attached to the
+selected folder and subscribe to the public directory-totals store for later revisions.
 Navigation must never replace a known total with a fabricated zero or a loading
 placeholder.
 
-File Types and Treemap publish only terminal rollup generations.
+The Files type breakdown and Treemap publish only terminal rollup generations.
 While a scan is pending, they keep their geometry stable and render the same
 low-contrast pulsing block used by the navigation tally.
 Provisional rows or rectangles are never painted and then reshuffled.
 The motion is delayed briefly, respects reduced-motion preferences, and is replaced
 atomically when the complete, truncated, or failed generation arrives.
 
-Treemap repeats the fixed **File Totals** context immediately above its controls and
-map. It does not make that context collapsible and does not duplicate totals or scan
-state in a footer sentence.
-The print action is absent when no mounted contribution is printable.
+Treemap repeats the fixed **Files** context immediately above the map.
+It does not make that context collapsible and does not duplicate totals or scan state in
+a footer sentence. The print action is absent when no mounted contribution is printable.
 
 An empty folder is still a completed Overview.
-File types remains visible with the message **No files to summarize.** It renders no
-empty bars, percentages, table, standalone tally, or synthetic “No README” document
-panel. Loading, partial, empty, and failed states must remain visually and semantically
+Files remains visible with the message **No files to summarize.** It renders no empty
+bars, percentages, table, standalone tally, or synthetic “No README” document panel.
+Loading, partial, empty, and failed states must remain visually and semantically
 distinct.
 
 Floating menus and tooltips use the shared surface, border, radius, and shadow tokens.

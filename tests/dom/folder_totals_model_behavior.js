@@ -32,6 +32,20 @@ async function main() {
   ) {
     throw new Error(`folder totals are incorrect: ${JSON.stringify(complete)}`);
   }
+  const filesTotal = model.selectFolderTotalsMetric(complete.total, "files");
+  const bytesIgnored = model.selectFolderTotalsMetric(complete.ignored, "size");
+  if (
+    filesTotal.value !== 100 ||
+    filesTotal.text !== "100 files" ||
+    filesTotal.percent !== "100%" ||
+    bytesIgnored.value !== 200 ||
+    bytesIgnored.text !== "200 B" ||
+    bytesIgnored.percent !== "40%"
+  ) {
+    throw new Error(
+      `folder totals did not follow the selected metric: ${JSON.stringify({ filesTotal, bytesIgnored })}`,
+    );
+  }
   const pending = model.buildFolderTotalsModel(
     model.normalizeFolderTotals({ total_files: null, total_size: null, state: "pending" }),
     formatters,

@@ -63,7 +63,7 @@ def test_chip_family_is_defined_in_core_styles() -> None:
 def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
     """One reusable owner renders the metric and scope controls.
 
-    File Types and Treemap mount the same stateful component, so neither view
+    Files and Treemap mount the same stateful component, so neither view
     can fork its labels, accessibility semantics, defaults, or preference key.
     """
 
@@ -78,25 +78,41 @@ def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
     assert "filterControls.checkHtml" in controls
     assert 'label: "Show ignored"' in controls
     assert "includeIgnored: value.includeIgnored === true" in controls
-    assert "rollupControls.mount" in treemap
-    assert "rollupControls.mount" in file_types
+    for source in (treemap, file_types):
+        assert "rollupControls.mount(metricControls" in source
+        assert "rollupControls.mount(scopeControls" in source
+        assert "metric: true" in source
+        assert "ignored: false" in source
+        assert "metric: false" in source
+        assert "ignored: true" in source
     assert "segmentHtml" not in controls
     assert ".tm-seg" not in plugin_css
 
 
-def test_folder_totals_have_one_visible_heading_across_views() -> None:
-    """Overview and Treemap name the section identically, while the
-    shared table keeps its column relationships available only to
-    assistive technology rather than repeating visible chrome."""
+def test_folder_rollups_use_one_files_section_and_one_selected_metric() -> None:
+    """Overview and Treemap share one Files heading and one selected metric.
+
+    Total, Ignored, and type rows must switch together instead of retaining
+    parallel Files and Size columns that compete with the chooser.
+    """
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    index = (folder_root / "index.js").read_text()
     totals = (folder_root / "folder_totals.js").read_text()
+    file_types = (folder_root / "file_type_summary.js").read_text()
+    distribution = (folder_root / "distribution_view.js").read_text()
     treemap = (folder_root / "treemap.js").read_text()
     css = (folder_root / "file_type_summary.css").read_text()
 
-    assert 'label: "File Totals"' in totals
-    assert '<h2 class="tm-totals-heading">File Totals</h2>' in treemap
+    assert 'label: "Files"' in file_types
+    assert 'registry.registerPanel("folder.file-totals"' not in index
+    assert '"folder.file-types"' in index
+    assert '<h2 class="tm-totals-heading">Files</h2>' in treemap
+    assert "mountFolderTotalsView" in file_types
     assert 'head.className = "sr-only"' in totals
+    assert 'for (const label of ["Population", "Files", "Size"])' not in totals
+    assert 'for (const label of ["Type", "Files", "Size"])' not in distribution
+    assert "metricHeader" in distribution
     assert ".folder-totals .sr-only" in css
 
 

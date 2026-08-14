@@ -183,6 +183,7 @@ function familyRow() {
         };
   const first = {
     state: "populated",
+    metric: "files",
     files: 100,
     bytes: 100,
     filesText: "100 files",
@@ -207,13 +208,18 @@ function familyRow() {
   const handle = view.mountDistributionView(container, first, palette, metricClasses, fileTypeIcon);
   const originalBody = handle.body;
   const originalPyRow = handle.rows.get(".py").tr;
-  const originalPyFileFill = handle.rows.get(".py").fileFill;
+  const originalPyMetricFill = handle.rows.get(".py").metricFill;
   check("summary uses a flat section body", handle.root.tagName === "DIV");
   check(
     "summary has no standalone metadata row",
     handle.root.children.length === 1 && handle.root.children[0] === handle.body,
   );
   check("visual table headers are removed", handle.table.children[1].className === "sr-only");
+  check("summary has one selected metric column", handle.table.children[0].children.length === 2);
+  check(
+    "semantic metric header follows the selected measure",
+    handle.metricHeader.textContent === "Files",
+  );
   check("aggregate bars removed", handle.body.querySelector(".file-type-summary-bars") === null);
   check(
     "groups have a fixed order",
@@ -246,15 +252,9 @@ function familyRow() {
       handle.rows.get(".bin").icon.innerHTML === '<svg data-file-icon="generic"></svg>',
   );
   check(
-    "File Types excludes the separately rendered totals",
-    handle.totalRow === null && handle.ignoredRow === null,
-  );
-  check(
-    "breakdown values use shared metric emphasis",
-    handle.rows.get(".py").fileValue.className === "file-type-summary-value count count-large" &&
-      handle.rows.get(".py").byteValue.className === "file-type-summary-value size" &&
-      handle.rows.get(".md").fileValue.className === "file-type-summary-value count" &&
-      handle.rows.get(".md").byteValue.className === "file-type-summary-value size",
+    "breakdown values use the selected metric emphasis",
+    handle.rows.get(".py").metricValue.className === "file-type-summary-value count count-large" &&
+      handle.rows.get(".md").metricValue.className === "file-type-summary-value count",
   );
   check(
     "Total values have no unconditional bold override",
@@ -279,29 +279,33 @@ function familyRow() {
   view.updateDistributionView(handle, updated);
   check("body retained for live update", handle.body === originalBody);
   check("row retained by key", handle.rows.get(".py").tr === originalPyRow);
-  check("row bar retained by key", handle.rows.get(".py").fileFill === originalPyFileFill);
+  check("row bar retained by key", handle.rows.get(".py").metricFill === originalPyMetricFill);
   check(
     "rows stay in category groups",
     handle.groups.get("code").body.children[1].dataset.typeKey === ".py" &&
       handle.groups.get("docs").body.children[1].dataset.typeKey === ".md",
   );
-  check("row values patched", handle.rows.get(".py").fileValue.textContent === "75 files");
-  check("row Files bar scaled", handle.rows.get(".py").fileFill.style.width === "75%");
-  check("row Size bar scaled", handle.rows.get(".py").byteFill.style.width === "25%");
+  check("row values patched", handle.rows.get(".py").metricValue.textContent === "75 files");
+  check("row Files bar scaled", handle.rows.get(".py").metricFill.style.width === "75%");
   check(
     "live updates replace metric emphasis classes",
-    handle.rows.get(".md").fileValue.className === "file-type-summary-value count" &&
-      handle.rows.get(".md").byteValue.className === "file-type-summary-value size size-large" &&
-      handle.rows.get(".py").fileValue.className === "file-type-summary-value count count-large" &&
-      handle.rows.get(".py").byteValue.className === "file-type-summary-value size",
+    handle.rows.get(".md").metricValue.className === "file-type-summary-value count" &&
+      handle.rows.get(".py").metricValue.className === "file-type-summary-value count count-large",
   );
+  const filesColorClass = handle.rows.get(".py").metricFill.className;
   view.updateDistributionView(handle, {
     ...updated,
+    metric: "size",
     showIgnored: false,
   });
   check(
-    "paired row bars share a color",
-    handle.rows.get(".py").fileFill.className === handle.rows.get(".py").byteFill.className,
+    "metric switch reuses the cell and changes every displayed measure atomically",
+    handle.rows.get(".py").metricFill === originalPyMetricFill &&
+      handle.rows.get(".py").metricValue.textContent === "25 B" &&
+      handle.rows.get(".py").metricFill.style.width === "25%" &&
+      handle.rows.get(".py").metricValue.className === "file-type-summary-value size" &&
+      handle.metricHeader.textContent === "Bytes" &&
+      handle.rows.get(".py").metricFill.className === filesColorClass,
   );
 
   view.updateDistributionView(handle, { ...updated, rows: [familyRow()] });
@@ -335,7 +339,7 @@ function familyRow() {
   );
   check(
     "family parent and child share one palette identity",
-    family.fileFill.className === jsChild.fileFill.className,
+    family.metricFill.className === jsChild.metricFill.className,
   );
 
   const singleton = {
@@ -502,10 +506,7 @@ function familyRow() {
   });
   check(
     "empty state removes distributions",
-    handle.rows.size === 0 &&
-      handle.groups.size === 0 &&
-      handle.ignoredRow === null &&
-      handle.totalRow === null,
+    handle.rows.size === 0 && handle.groups.size === 0 && handle.table === null,
   );
   check("empty state copy", handle.body.children[0].textContent === "No files to summarize.");
 

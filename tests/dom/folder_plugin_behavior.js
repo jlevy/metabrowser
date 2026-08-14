@@ -51,8 +51,11 @@ function makeElement() {
       if (selector === ".tm-totals") {
         return el.totals;
       }
-      if (selector === ".folder-rollup-controls") {
-        return el.controls;
+      if (selector === ".tm-metric-controls") {
+        return el.metricControls;
+      }
+      if (selector === ".tm-scope-controls") {
+        return el.scopeControls;
       }
       if (selector === ".tm-parent-nav") {
         return el.parentNav;
@@ -263,9 +266,13 @@ const treemapStyles = fs.readFileSync(
 vm.runInContext(treemapSource, sandbox, { filename: "treemap.js" });
 vm.runInContext(
   `function normalizeFolderTotals(value) { return value || {state: "pending"}; }
-   function mountFolderTotalsView(container, value) {
+   function mountFolderTotalsView(container, value, _mb, metric) {
      container.value = value;
-     return { update(next) { container.value = next; } };
+     container.metric = metric;
+     return {
+       update(next) { container.value = next; },
+       updateMetric(next) { container.metric = next; }
+     };
    }`,
   sandbox,
 );
@@ -322,7 +329,8 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   container.viewport = makeElement();
   container.status = makeElement();
   container.totals = makeElement();
-  container.controls = makeElement();
+  container.metricControls = makeElement();
+  container.scopeControls = makeElement();
   const metricChips = ["files", "size"].map((value) => {
     const attributes = {
       "aria-checked": value === "files" ? "true" : "false",
@@ -338,7 +346,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
       },
     };
   });
-  container.querySelectorAll = (selector) =>
+  container.metricControls.querySelectorAll = (selector) =>
     selector === '[data-chip-group="folder-rollup-metric"] [data-chip-value]' ? metricChips : [];
   container.viewport.textContent = "";
   Object.defineProperty(container.viewport, "textContent", {
@@ -383,12 +391,14 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   });
   check(
     "pending cache entries never replace complete first-frame totals",
-    container.totals.value.total_files === 4 && container.totals.value.total_size === 1050,
-    JSON.stringify(container.totals.value),
+    container.totals.value.total_files === 4 &&
+      container.totals.value.total_size === 1050 &&
+      container.totals.metric === "files",
+    JSON.stringify({ value: container.totals.value, metric: container.totals.metric }),
   );
   check(
-    "File Totals heading precedes the treemap",
-    container.innerHTML.includes('<h2 class="tm-totals-heading">File Totals</h2>'),
+    "Files heading precedes the treemap",
+    container.innerHTML.includes('<h2 class="tm-totals-heading">Files</h2>'),
     container.innerHTML,
   );
   check("shared controls rendered", container.innerHTML.includes("folder-rollup-controls"));
@@ -399,16 +409,16 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   );
   check(
     "metric chooser present",
-    container.controls.innerHTML.includes('data-chip-key="folder-rollup-metric"'),
+    container.metricControls.innerHTML.includes('data-chip-key="folder-rollup-metric"'),
   );
   check(
     "metric chooser is Files then Bytes with Files selected",
-    container.controls.innerHTML.indexOf('data-chip-value="files"') <
-      container.controls.innerHTML.indexOf('data-chip-value="size"') &&
-      container.controls.innerHTML.includes(
+    container.metricControls.innerHTML.indexOf('data-chip-value="files"') <
+      container.metricControls.innerHTML.indexOf('data-chip-value="size"') &&
+      container.metricControls.innerHTML.includes(
         'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
       ),
-    container.controls.innerHTML,
+    container.metricControls.innerHTML,
   );
   check(
     "obsolete grouping and color choices absent",
@@ -421,11 +431,13 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   );
   check(
     "ignored scope defaults to an unchecked checkbox",
-    container.controls.innerHTML.includes('type="checkbox"') &&
-      container.controls.innerHTML.includes('data-chip-check="folder-rollup-ignored"') &&
-      !container.controls.innerHTML.includes('data-chip-check="folder-rollup-ignored" checked') &&
-      container.controls.innerHTML.includes("Show ignored"),
-    container.controls.innerHTML,
+    container.scopeControls.innerHTML.includes('type="checkbox"') &&
+      container.scopeControls.innerHTML.includes('data-chip-check="folder-rollup-ignored"') &&
+      !container.scopeControls.innerHTML.includes(
+        'data-chip-check="folder-rollup-ignored" checked',
+      ) &&
+      container.scopeControls.innerHTML.includes("Show ignored"),
+    container.scopeControls.innerHTML,
   );
 
   // Initial watchRollup fetch resolves through several microtasks; a
@@ -625,7 +637,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   // Metric and ignored-scope changes relayout without refetching.
   const before = fetchCalls.length;
   const filesMetricHtml = container.viewport.innerHTML;
-  const toolbarClick = container.controls.listeners.click?.[0];
+  const toolbarClick = container.metricControls.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
   const clickMetric = (value) => {
     const group = {
@@ -662,21 +674,26 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     clickMetric("size");
     check("metric toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
+      "metric toggle updates the visible totals measure",
+      container.totals.metric === "size",
+      container.totals.metric,
+    );
+    check(
       "metric toggle changes cell geometry",
       container.viewport.innerHTML !== filesMetricHtml,
       "Bytes and Files produced identical markup",
     );
     check(
       "metric chooser reflects the active metric",
-      container.controls.innerHTML.includes(
+      container.metricControls.innerHTML.includes(
         'data-chip-value="size" role="radio" aria-checked="true" tabindex="0"',
       ),
-      container.controls.innerHTML,
+      container.metricControls.innerHTML,
     );
     clickMetric("files");
     check(
       "Files metric keeps useful formatted bytes on file leaves",
-      container.controls.innerHTML.includes(
+      container.metricControls.innerHTML.includes(
         'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
       ) &&
         container.viewport.innerHTML.includes("600 B") &&
@@ -685,9 +702,11 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     );
   }
 
-  const toolbarChange = container.controls.listeners.change?.[0];
+  const toolbarChange = container.scopeControls.listeners.change?.[0];
   check("ignored checkbox handler bound", typeof toolbarChange === "function");
   if (toolbarChange) {
+    const totalsBeforeIgnored = JSON.stringify(container.totals.value);
+    const totalsMetricBeforeIgnored = container.totals.metric;
     toolbarChange({
       target: {
         checked: true,
@@ -702,6 +721,12 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
       container.viewport.innerHTML,
     );
     check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
+    check(
+      "ignored scope leaves explicit Total and Ignored context unchanged",
+      JSON.stringify(container.totals.value) === totalsBeforeIgnored &&
+        container.totals.metric === totalsMetricBeforeIgnored,
+      JSON.stringify({ value: container.totals.value, metric: container.totals.metric }),
+    );
   }
 
   // Dispose detaches the inventory-change and window-resize listeners.
@@ -719,7 +744,8 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   nestedContainer.viewport = makeElement();
   nestedContainer.status = makeElement();
   nestedContainer.totals = makeElement();
-  nestedContainer.controls = makeElement();
+  nestedContainer.metricControls = makeElement();
+  nestedContainer.scopeControls = makeElement();
   nestedContainer.parentNav = makeElement();
   sandbox.MetabrowserViewState.setActive(nestedContainer, true);
   const nestedMounted = view.render(nestedContainer, {
