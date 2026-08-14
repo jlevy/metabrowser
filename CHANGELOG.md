@@ -8,8 +8,9 @@ Compatibility policy:
 
 - Development guidance now forbids speculative compatibility layers.
   An alias, fallback branch, shim, deprecation window, or transitional duplicate field
-  requires a consumer that cannot be updated in the same commit, named in the pull
-  request. The server, browser shell, and built-in plugins ship as one artifact behind an
+  requires a real consumer that must keep using the old contract after the change ships,
+  named in the pull request.
+  The server, browser shell, and built-in plugins ship as one artifact behind an
   uncached page with content-versioned asset URLs, so there is no version skew for such
   code to protect against.
 - Removed the file-type compatibility layer that policy forbids.

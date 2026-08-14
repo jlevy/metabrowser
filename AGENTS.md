@@ -31,11 +31,12 @@ pre-push gates.
 [Compatibility and Legacy Code](docs/development.md#compatibility-and-legacy-code) for
 this repository’s structural facts and standing answers.
 
-- Name the consumer that cannot be updated in the same commit, in the pull request, or
-  do not add the layer.
+- Name the consumer that must keep using the old contract after the change ships, in the
+  pull request, or do not add the layer.
 - The server, browser shell, and built-in plugins ship as one artifact, so `/api/*`,
   `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are internal
-  contracts. Change one everywhere in one commit and record it in `CHANGELOG.md`.
+  contracts. Change one everywhere in one commit, and note it in `CHANGELOG.md` when a
+  user or plugin author can observe the change.
 - `PLUGIN_SDK_VERSION` is a hard gate, not a compatibility layer: bump it on a break and
   update every built-in manifest in the same commit.
 

@@ -211,7 +211,7 @@ This section records only what that guideline cannot know — the facts about th
 repository, and the standing answers it asks each project to record once.
 
 **Speculative compatibility layers are forbidden.** The deciding question is whether a
-consumer exists today that cannot be updated in the same commit.
+real consumer must keep using the old contract after the change ships.
 For almost everything here, none does, and the reason is structural rather than
 stylistic.
 
@@ -226,7 +226,8 @@ window is dead on arrival.
 
 `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the plugin manifest, and
 the built-in plugin interfaces are therefore internal contracts.
-Change one everywhere in one commit and record it in `CHANGELOG.md`.
+Change one everywhere in one commit, and record it in `CHANGELOG.md` when the change is
+observable to someone using Metabrowser or writing a plugin.
 
 **The one genuinely external artifact** is an exported File Rollup Format packet, which
 leaves the repository for another implementation.
