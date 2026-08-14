@@ -149,6 +149,7 @@ from metabrowser.tree import (
     inventory_has_data,
     inventory_status,
 )
+from metabrowser.view_routes import decode_safe_view_path
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -764,6 +765,7 @@ async def index(_request: Request) -> HTMLResponse:
     contribution_registry_url = _static_asset_url("contribution_registry.js")
     resource_context_url = _static_asset_url("resource_context.js")
     view_state_url = _static_asset_url("view_state.js")
+    navigation_url = _static_asset_url("navigation.js")
     file_type_taxonomy_url = _static_asset_url("file_type_taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
@@ -1001,6 +1003,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>
+  <script src="{navigation_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{filter_state_url}"></script>
@@ -1020,6 +1023,15 @@ async def index(_request: Request) -> HTMLResponse:
 </body>
 </html>"""
     return HTMLResponse(html)
+
+
+async def view_shell(request: Request) -> Response:
+    """Serve the SPA shell only for one safely encoded canonical view path."""
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
+        return PlainTextResponse("Invalid view path.", status_code=400)
+    return await index(request)
 
 
 async def _ensure_inventory_serving(subpath: str) -> bool:
@@ -2517,6 +2529,7 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
 
 routes = [
     Route("/", index),
+    Route("/view/{path:path}", view_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),
