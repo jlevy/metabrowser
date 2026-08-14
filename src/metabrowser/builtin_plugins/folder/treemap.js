@@ -33,7 +33,6 @@ export function registerTreemap(mb, palettePool) {
    * survives across Metabrowser instances (each served root runs on
    * its own port and therefore its own localStorage origin). */
   const PREF_KEY = "folder.treemap";
-  const LEGACY_STORAGE_KEY = "metabrowser.folder.treemap";
   const TREEMAP_VIEW_ID = "treemap";
   /** Minimum paint thresholds; type size itself comes from cell geometry. */
   const LABEL_MIN_W = 56;
@@ -49,24 +48,7 @@ export function registerTreemap(mb, palettePool) {
 
   /** @returns {TreemapState} */
   function loadState() {
-    const stored = mb.prefs.get(PREF_KEY, null);
-    if (stored !== null) {
-      return sanitizeTreemapState(stored);
-    }
-    // One-time migration from the pre-prefs localStorage key (which
-    // was invisible to instances on other ports).
-    try {
-      const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (legacy) {
-        const state = sanitizeTreemapState(JSON.parse(legacy));
-        mb.prefs.set(PREF_KEY, state);
-        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-        return state;
-      }
-    } catch (_err) {
-      // No usable legacy value; fall through to defaults.
-    }
-    return sanitizeTreemapState(null);
+    return sanitizeTreemapState(mb.prefs.get(PREF_KEY, null));
   }
 
   /** @param {TreemapState} state */

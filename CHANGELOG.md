@@ -25,6 +25,16 @@ Compatibility policy:
 - Removed the `mb.fileTypes.categories` and `mb.fileTypes.categoryForFile` aliases; use
   `groups` and `groupForFile`. The browser SDK carries no deprecation window and is
   versioned with the release.
+- `sdk_version` in a plugin manifest is now enforced instead of advisory.
+  It defaults to the host’s `PLUGIN_SDK_VERSION`, and a manifest declaring any other
+  value is refused when it loads, with a message naming the required version;
+  `metab --doctor` exits non-zero on the same problem.
+  Previously the field was recorded and never compared, so a plugin written against a
+  different SDK loaded and failed later inside a renderer.
+- Removed two migrations for persisted browser state that no released version could have
+  written: the treemap’s pre-prefs `metabrowser.folder.treemap` localStorage key, added
+  in an untagged commit, and the theme-mode localStorage fallback, which has been
+  unreachable since cookies became the store before v0.1.0.
 
 ## 0.4.0
 

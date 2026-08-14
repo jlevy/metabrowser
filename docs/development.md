@@ -227,20 +227,35 @@ Rename the field, update every caller, update the tests, and record the change i
 changelog. A wire field, a settings key, a query parameter, and an SDK method are all
 internal contracts. Removing one is a normal edit, not a migration.
 
-Three boundaries are real, and versioning them is required rather than speculative:
+**Versioning is not backward compatibility, and only versioning is required.** Stamping
+a payload with a version or fingerprint so a consumer can detect a mismatch and fail
+loudly is cheap and correct.
+Keeping a reader for the old shape is the expensive part, and that is what we do not do.
+The File Rollup Format carries a schema version, registry revision, and fingerprint for
+exactly this reason: a consumer that sees an unfamiliar identity refuses the payload
+rather than guessing.
+Follow the format’s Evolution section when the identity changes, and do not add a second
+reader for the previous one.
 
-- **Persisted user state.** Saved filters, theme, and other browser-stored values
-  outlive an upgrade. Read them defensively and migrate them explicitly.
-- **Exported File Rollup Format packets.** These leave the repository for other
-  implementations, which is exactly why the format carries a schema version, a registry
-  revision, and a fingerprint.
-  Follow the format’s Evolution section.
-- **On-disk files the user owns.** Never require a rewrite of the served tree.
-
+The one genuinely external artifact is an exported File Rollup Format packet, which
+leaves the repository for another implementation.
 Everything else — `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the
-built-in plugin interfaces — moves with the release.
-Externally installed plugins are rebuilt against the release they target; a breaking SDK
-change belongs in the changelog, not behind a compatibility alias.
+plugin manifest, the built-in plugin interfaces — moves with the release.
+
+**Plugins are upgraded, not accommodated.** The plugin ecosystem is new and small, so
+the cheap system is a hard version gate rather than a compatibility layer per SDK
+generation. `PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract the host
+provides; a manifest declaring anything else is refused at load time with a message
+naming the required version, and `metab --doctor` reports it.
+Bump that constant only when the contract actually breaks, update every built-in
+manifest in the same commit, and note the break in `CHANGELOG.md`. An external plugin
+updates and declares the new version; the host ships no shim for the older surface.
+
+Two things about the user’s own data still hold, and neither is a compatibility layer.
+Never require a rewrite of the served tree — those files belong to the user.
+And read persisted browser state defensively, falling back to the default when a stored
+value is absent or unusable; carry a migration only for a key some released version
+actually wrote, which today means none.
 
 If you find an existing alias or fallback whose consumer does not exist, delete it in
 the change you are already making.
@@ -255,10 +270,10 @@ to ask again:
 | Area | Standing answer |
 | --- | --- |
 | Code types, methods, signatures | DO NOT MAINTAIN |
-| Library APIs, including `window.metabrowser` | DO NOT MAINTAIN |
+| Library APIs, including `window.metabrowser` and the plugin manifest | DO NOT MAINTAIN — version gate refuses a mismatch |
 | Server APIs (`/api/*`) | DO NOT MAINTAIN |
-| Exported File Rollup Format packets | SUPPORT BOTH |
-| Persisted browser state | MIGRATE |
+| Exported File Rollup Format packets | DO NOT MAINTAIN — identity stamped so a consumer fails fast |
+| Persisted browser state | DO NOT MAINTAIN — read defensively, fall back to the default |
 | Database schemas | N/A |
 
 Raise it with the maintainers if a change needs a different answer; do not assume a

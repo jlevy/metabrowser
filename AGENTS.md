@@ -38,8 +38,12 @@ pre-push gates.
 - Change internal contracts — `/api/*` shapes, `window.metabrowser`,
   `METABROWSER_SETTINGS`, query parameters, wire fields — everywhere in one commit, and
   record the change in `CHANGELOG.md`.
-- Only persisted user state, exported File Rollup Format packets, and files in the
-  served tree are real compatibility boundaries.
+- Version a payload so a consumer can fail loudly on a mismatch, but do not keep a
+  reader for the old shape.
+  Versioning is not backward compatibility.
+- Upgrade the plugin contract rather than accommodating old plugins.
+  `PLUGIN_SDK_VERSION` is a hard gate: bump it on a break, update every built-in
+  manifest in the same commit, and let external plugins update.
 - Delete an alias or fallback whose consumer does not exist as part of the change you
   are already making, rather than filing it as future cleanup.
 

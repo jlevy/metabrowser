@@ -116,7 +116,7 @@ The `[plugin]` table supports:
 | `name` | yes | Stable lowercase URL and registry identifier. |
 | `display_name` | no | Human-readable diagnostics label. |
 | `version` | no | Plugin version string. |
-| `sdk_version` | no | Browser SDK contract version; defaults to `"0.1"`. |
+| `sdk_version` | no | Browser SDK contract this plugin targets; defaults to the host’s current `PLUGIN_SDK_VERSION`. Any other value is refused at load time. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded with the page. |
 
@@ -391,11 +391,19 @@ Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variable
 `app.js` are implementation details and may change without a plugin compatibility
 guarantee.
 
-The SDK is versioned with the release, not independently.
-It carries no deprecation window and no aliases for renamed members: a method that moves
-or changes shape does so in one commit across core and the built-in plugins, and the
-change is recorded in `CHANGELOG.md`. Rebuild an externally installed plugin against the
-release it targets rather than expecting the host to keep an older surface alive.
+The SDK is versioned with the release, not independently, and the version is enforced
+rather than advisory.
+`PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract this host provides.
+A manifest whose `sdk_version` differs is refused when it loads, with a message naming
+the required version, and `metab --doctor` reports the same problem before it reaches a
+user. There is no negotiation and no shim for an older surface.
+
+That gate is deliberately strict because the alternative is worse.
+A method that moves or changes shape does so in one commit across core and every
+built-in plugin; the constant is bumped only when the contract actually breaks, and the
+break is recorded in `CHANGELOG.md`. An external plugin updates against the release it
+targets and sets its `sdk_version` to match.
+A young plugin ecosystem is cheaper to upgrade than to carry.
 See [Compatibility and Legacy Code](development.md#compatibility-and-legacy-code).
 
 ## Packaging a Python Plugin

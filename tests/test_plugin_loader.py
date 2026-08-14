@@ -40,6 +40,7 @@ from metabrowser.plugin_loader.discovery import (
     discover_plugins,
 )
 from metabrowser.plugin_loader.manifest import (
+    PLUGIN_SDK_VERSION,
     DataHookSpec,
     KindMatch,
     KindRule,
@@ -92,6 +93,41 @@ default = true
     assert manifest.plugin.name == "p1"
     assert manifest.kind[0].id == "myk"
     assert manifest.view[0].id == "main"
+
+
+def test_manifest_defaults_to_the_host_sdk_version(make_plugin_dir) -> None:
+    plugin_dir = make_plugin_dir(
+        "sdk-default",
+        """
+[plugin]
+name = "sdk-default"
+
+[[kind]]
+id = "myk"
+match = { ext = ".myk" }
+""",
+    )
+    manifest = load_manifest(plugin_dir / "manifest.toml")
+    assert manifest.plugin.sdk_version == PLUGIN_SDK_VERSION
+
+
+def test_manifest_rejects_a_foreign_sdk_version(make_plugin_dir) -> None:
+    """An SDK break is refused at load time rather than absorbed by a shim."""
+
+    plugin_dir = make_plugin_dir(
+        "sdk-stale",
+        """
+[plugin]
+name = "sdk-stale"
+sdk_version = "0.0"
+
+[[kind]]
+id = "myk"
+match = { ext = ".myk" }
+""",
+    )
+    with pytest.raises(ValueError, match="targets browser SDK"):
+        load_manifest(plugin_dir / "manifest.toml")
 
 
 def test_manifest_rejects_empty_match(make_plugin_dir) -> None:
