@@ -180,6 +180,7 @@ assets in static_root:
   - link_enhancer.js
   - links.js
   - manifest.toml
+  - project_adapters.js
   - rendered.js
   - source.js
   - wiki_enhancer.js
@@ -238,6 +239,7 @@ $ metab --plugin markdown --json
       "link_enhancer.js",
       "links.js",
       "manifest.toml",
+      "project_adapters.js",
       "rendered.js",
       "source.js",
       "wiki_enhancer.js",

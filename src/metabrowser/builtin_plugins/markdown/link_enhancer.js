@@ -1,4 +1,5 @@
 import { resolveStandardTarget } from "./links.js";
+import { resolvePublishedRoute } from "./project_adapters.js";
 import { enhanceWikiLinks } from "./wiki_enhancer.js";
 
 const MAX_ENHANCED_TARGETS = 4096;
@@ -26,8 +27,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const cancel = options.cancel ?? cancelAnimationFrame;
   /** @type {WeakMap<Element, NavigationTarget>} */
   const internalTargets = new WeakMap();
+  /** @type {Array<{anchor: Element, authoredTarget: string}>} */
+  const possiblePublishedRoutes = [];
   let disposed = false;
   let scheduledFrame = 0;
+  /** @type {(() => void) | null} */
+  let unsubscribeCatalog = null;
 
   for (const anchor of boundedElements(container.querySelectorAll("a[href]"))) {
     const authoredTarget = anchor.getAttribute("href");
@@ -41,12 +46,63 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       syntax: "html",
     });
     if (resolved.status === "internal") {
-      const target = navigationTarget(resolved);
-      anchor.setAttribute("href", mb.navigation.href(target));
-      internalTargets.set(anchor, target);
+      applyInternalAnchor(anchor, authoredTarget, resolved);
+      if (isPossiblePublishedRoute(authoredTarget)) {
+        possiblePublishedRoutes.push({ anchor, authoredTarget });
+      }
     } else if (resolved.status !== "external") {
       disableTarget(anchor, "href", resolved.status, resolved.reason);
     }
+  }
+
+  /**
+   * @param {Element} anchor
+   * @param {string} authoredTarget
+   * @param {{status: "internal", path: string, query?: string, fragment?: string}} resolved
+   */
+  function applyInternalAnchor(anchor, authoredTarget, resolved) {
+    const adapted = resolvePublishedRoute(
+      { authoredTarget, resolvedPath: resolved.path },
+      mb.fileCatalog.snapshot(),
+    );
+    if (adapted && adapted.status !== "internal") {
+      internalTargets.delete(anchor);
+      disableTarget(anchor, "href", adapted.status, adapted.reason);
+      return;
+    }
+    const path = adapted?.status === "internal" ? adapted.path : resolved.path;
+    const target = navigationTarget({ ...resolved, path });
+    clearDisabledTarget(anchor);
+    anchor.setAttribute("href", mb.navigation.href(target));
+    if (adapted?.status === "internal") {
+      anchor.setAttribute("data-metabrowser-link-adapter", adapted.adapter);
+    } else {
+      anchor.removeAttribute("data-metabrowser-link-adapter");
+    }
+    internalTargets.set(anchor, target);
+  }
+
+  if (possiblePublishedRoutes.length > 0 && !mb.fileCatalog.snapshot().complete) {
+    unsubscribeCatalog = mb.fileCatalog.subscribe(() => {
+      if (disposed) {
+        return;
+      }
+      for (const candidate of possiblePublishedRoutes) {
+        const resolved = resolveStandardTarget({
+          action: "navigate",
+          authoredTarget: candidate.authoredTarget,
+          sourcePath,
+          syntax: "html",
+        });
+        if (resolved.status === "internal") {
+          applyInternalAnchor(candidate.anchor, candidate.authoredTarget, resolved);
+        }
+      }
+      if (mb.fileCatalog.snapshot().complete) {
+        unsubscribeCatalog?.();
+        unsubscribeCatalog = null;
+      }
+    });
   }
 
   for (const descriptor of RESOURCE_ATTRIBUTES) {
@@ -141,6 +197,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       }
       disposed = true;
       wiki.dispose();
+      unsubscribeCatalog?.();
+      unsubscribeCatalog = null;
       container.removeEventListener("click", handleClick);
       eventTarget.removeEventListener("metabrowser:navigation-fragment", handleFragment);
       if (scheduledFrame) {
@@ -180,10 +238,46 @@ function disableTarget(element, attribute, status, reason) {
   element.removeAttribute(attribute);
   element.setAttribute("data-metabrowser-link-status", status);
   element.setAttribute("aria-disabled", "true");
-  element.setAttribute("title", `Metabrowser blocked this destination (${reason}).`);
+  element.setAttribute("title", `${destinationStatusMessage(status)} (${reason}).`);
   if (element.tagName.toLowerCase() === "a" && !element.hasAttribute("tabindex")) {
     element.setAttribute("tabindex", "0");
+    element.setAttribute("data-metabrowser-managed-tabindex", "true");
   }
+}
+
+/** @param {string} status */
+function destinationStatusMessage(status) {
+  if (status === "pending") {
+    return "Metabrowser is resolving this destination";
+  }
+  if (status === "ambiguous") {
+    return "Multiple local documents match this destination";
+  }
+  if (status === "unsupported") {
+    return "Metabrowser cannot resolve this destination";
+  }
+  return "Metabrowser blocked this destination";
+}
+
+/** @param {Element} element */
+function clearDisabledTarget(element) {
+  if (!element.hasAttribute("data-metabrowser-link-status")) {
+    return;
+  }
+  element.removeAttribute("aria-disabled");
+  element.removeAttribute("data-metabrowser-link-status");
+  element.removeAttribute("title");
+  if (element.getAttribute("data-metabrowser-managed-tabindex") === "true") {
+    element.removeAttribute("data-metabrowser-managed-tabindex");
+    element.removeAttribute("tabindex");
+  }
+}
+
+/** @param {string} authoredTarget */
+function isPossiblePublishedRoute(authoredTarget) {
+  const path = authoredTarget.split("#", 1)[0].split("?", 1)[0];
+  const leaf = path.replace(/\/$/, "").split("/").at(-1) || "";
+  return path.startsWith("/") && (path.endsWith("/") || !leaf.includes("."));
 }
 
 /** @param {Event} event */

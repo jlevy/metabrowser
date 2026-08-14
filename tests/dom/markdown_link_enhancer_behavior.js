@@ -125,6 +125,11 @@ async function loadModule() {
     "utf8",
   );
   const linksUrl = `data:text/javascript;base64,${Buffer.from(linksSource).toString("base64")}`;
+  const projectAdaptersSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/project_adapters.js"),
+    "utf8",
+  );
+  const projectAdaptersUrl = `data:text/javascript;base64,${Buffer.from(projectAdaptersSource).toString("base64")}`;
   const wikiResolverSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_resolver.js"),
     "utf8",
@@ -143,6 +148,7 @@ async function loadModule() {
       "utf8",
     )
     .replace('"./links.js"', JSON.stringify(linksUrl))
+    .replace('"./project_adapters.js"', JSON.stringify(projectAdaptersUrl))
     .replace('"./wiki_enhancer.js"', JSON.stringify(wikiEnhancerUrl));
   return import(`data:text/javascript;base64,${Buffer.from(enhancerSource).toString("base64")}`);
 }
@@ -150,6 +156,7 @@ async function loadModule() {
 (async () => {
   const module = await loadModule();
   const internal = new FakeElement("a", { href: "guide.md#Install" });
+  const published = new FakeElement("a", { href: "/published/" });
   const external = new FakeElement("a", { href: "https://example.com/docs" });
   const unsafe = new FakeElement("a", { href: "javascript:alert(1)" });
   const download = new FakeElement("a", { download: "", href: "files/archive.zip" });
@@ -160,6 +167,7 @@ async function loadModule() {
   const heading = new FakeElement("h2", { id: "Install" });
   const container = new FakeContainer([
     internal,
+    published,
     external,
     unsafe,
     download,
@@ -175,6 +183,13 @@ async function loadModule() {
   const opened = [];
   let current = { path: "docs/readme.md", fragment: "Install" };
   const mb = {
+    fileCatalog: {
+      snapshot: () => ({
+        complete: true,
+        files: [{ path: "mkdocs.yml" }, { path: "docs/published.md" }],
+      }),
+      subscribe: () => () => {},
+    },
     navigation: {
       current: () => current,
       href: (target) => `/view/${target.path}${target.fragment ? `#${target.fragment}` : ""}`,
@@ -192,6 +207,14 @@ async function loadModule() {
   });
 
   check("canonical internal href", internal.getAttribute("href") === "/view/docs/guide.md#Install");
+  check(
+    "configured published route href",
+    published.getAttribute("href") === "/view/docs/published.md",
+  );
+  check(
+    "configured adapter disclosed",
+    published.getAttribute("data-metabrowser-link-adapter") === "mkdocs",
+  );
   check("external href preserved", external.getAttribute("href") === "https://example.com/docs");
   check("unsafe href removed", !unsafe.hasAttribute("href"));
   check("unsafe link keyboard reachable", unsafe.getAttribute("tabindex") === "0");

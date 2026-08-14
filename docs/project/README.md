@@ -19,6 +19,7 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
 - [Filter controls and fine-grained navigation filtering](specs/active/plan-2026-08-09-nav-filter-controls.md)
 - [Shared file type taxonomy and bounded breakdowns](specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
+- [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 
 ## Research
 
@@ -26,10 +27,6 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [Fuzzy file ranking contract and measurements](research/research-2026-07-31-fuzzy-file-ranking.md)
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
-
-## Future Plans
-
-- [Markdown navigation extensions](specs/future/plan-2026-08-13-markdown-navigation-extensions.md)
 
 ## Done Plans
 
