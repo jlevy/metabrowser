@@ -74,6 +74,10 @@ class Element {
     this.attributes[name] = String(value);
   }
 
+  removeAttribute(name) {
+    delete this.attributes[name];
+  }
+
   addEventListener(type, listener) {
     this.listeners[type] = listener;
   }
@@ -123,6 +127,31 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
     bytePercent,
     fileShare: files,
     byteShare: bytes,
+  };
+}
+
+function familyRow() {
+  return {
+    ...row("family:javascript", "JavaScript", "code", 80, 50, "80%", "50%"),
+    kind: "family",
+    paletteKey: "family:javascript",
+    disclosable: true,
+    children: [
+      {
+        ...row("family:javascript/.js", ".js", "code", 70, 40, "70%", "40%"),
+        kind: "extension",
+        child: true,
+        extension: ".js",
+        paletteKey: "family:javascript",
+      },
+      {
+        ...row("family:javascript/.mjs", ".mjs", "code", 10, 10, "10%", "10%"),
+        kind: "extension",
+        child: true,
+        extension: ".mjs",
+        paletteKey: "family:javascript",
+      },
+    ],
   };
 }
 
@@ -322,6 +351,40 @@ function row(key, label, category, files, bytes, filePercent, bytePercent) {
   check(
     "paired row bars share a color",
     handle.rows.get(".py").fileFill.className === handle.rows.get(".py").byteFill.className,
+  );
+
+  view.updateDistributionView(handle, { ...updated, rows: [familyRow()] });
+  const family = handle.rows.get("family:javascript");
+  check(
+    "family parent starts collapsed without an icon",
+    family.icon.hidden === true &&
+      family.disclosure.hidden === false &&
+      family.disclosure.className.includes("section-disclosure-trigger") &&
+      family.disclosure.attributes["aria-expanded"] === "false" &&
+      !handle.rows.has("family:javascript/.js"),
+  );
+  check(
+    "family disclosure identifies stable controlled rows",
+    family.disclosure.attributes["aria-controls"] ===
+      "file-type-summary-1-family_3Ajavascript_2F.js file-type-summary-1-family_3Ajavascript_2F.mjs",
+  );
+  check(
+    "summary styles preserve hidden labels, icons, and disclosures",
+    styles.includes(".file-type-summary-type-content > [hidden]") &&
+      styles.includes("display: none;"),
+  );
+  family.disclosure.listeners.click();
+  const jsChild = handle.rows.get("family:javascript/.js");
+  check(
+    "family disclosure reveals canonical extension rows",
+    family.disclosure.attributes["aria-expanded"] === "true" &&
+      family.disclosure.attributes["aria-controls"].split(" ").includes(jsChild.tr.id) &&
+      jsChild.label.textContent === ".js" &&
+      jsChild.icon.innerHTML === '<svg data-file-icon="x.js"></svg>',
+  );
+  check(
+    "family parent and child share one palette identity",
+    family.fileFill.className === jsChild.fileFill.className,
   );
 
   view.updateDistributionView(handle, {

@@ -244,7 +244,8 @@
       // name README and LICENSE alongside .md and .txt — files that
       // carry no extension at all and would otherwise be unreachable.
       if (token.charAt(0) === ".") {
-        if (ext && ext === token) {
+        const semantic = window.MetabrowserFileTypeTaxonomy?.matchExtension(token);
+        if (ext && (ext === token || (semantic && ext.endsWith(token)))) {
           return true;
         }
       } else if (name === token) {

@@ -44,6 +44,8 @@ def test_rollup_options_reject_invalid_limits_and_rank() -> None:
     with pytest.raises(ValueError):
         RollupOptions(depth=0, top=0, ext_top=0, max_nodes=-1)
     with pytest.raises(ValueError):
+        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, type_top=-1)
+    with pytest.raises(ValueError):
         RollupOptions(
             depth=0,
             top=0,
@@ -105,3 +107,41 @@ def test_zero_top_accounts_for_omitted_children_when_depth_allows() -> None:
         "unignored_files": 2,
         "unignored_size": 12,
     }
+
+
+def test_semantic_type_tallies_aggregate_before_raw_bounding() -> None:
+    files = [
+        ("app.js", 10, False),
+        ("bundle.min.js", 20, False),
+        ("worker.mjs", 30, True),
+        ("types.d.ts", 5, False),
+        ("large.unknown", 1_000, False),
+        ("many.raw", 3, False),
+        ("README", 7, False),
+    ]
+    index = _synthetic_index(files)
+
+    result = index.rollup("", depth=0, top=0, ext_top=1, type_top=1, ext_rank="dual")
+
+    assert result is not None
+    tallies = result["type_tallies"]
+    families = {row["id"]: row for row in tallies["families"]}
+    assert families["javascript"] == {
+        "id": "javascript",
+        "all_files": 3,
+        "all_bytes": 60,
+        "unignored_files": 2,
+        "unignored_bytes": 30,
+        "extensions": [
+            (".js", 2, 30, 2, 30),
+            (".mjs", 1, 30, 0, 0),
+        ],
+    }
+    assert families["typescript"]["extensions"] == [(".ts", 1, 5, 1, 5)]
+    assert tallies["extensions"][0] == ("(none)", 1, 7, 1, 7)
+    assert tallies["extensions"][-1][0] == ""
+    assert (
+        sum(row["all_files"] for row in tallies["families"])
+        + sum(row[1] for row in tallies["extensions"])
+        == result["node"]["total_files"]
+    )

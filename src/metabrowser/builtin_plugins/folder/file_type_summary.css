@@ -62,6 +62,31 @@
   gap: 6px;
 }
 
+.file-type-summary-type-content > [hidden] {
+  display: none;
+}
+
+.file-type-summary-disclosure {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+}
+
+.file-type-summary-disclosure:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.file-type-summary-child-row .file-type-summary-type-content {
+  padding-left: 18px;
+}
+
 .file-type-summary-group:not(:first-of-type) .file-type-summary-group-row th {
   padding-top: 14px;
 }

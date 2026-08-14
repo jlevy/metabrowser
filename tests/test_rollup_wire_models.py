@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from metabrowser.wire_models import (
     validate_extension_tallies,
     validate_rollup_envelope,
     validate_rollup_result,
+    validate_type_tallies,
 )
 
 
@@ -48,12 +51,49 @@ def test_rollup_result_requires_tallies_to_sum_to_root() -> None:
     result = {
         "node": _node(),
         "ext_tallies": [[".py", 2, 7, 2, 7], ["", 1, 5, 0, 0]],
+        "type_tallies": {
+            "families": [
+                {
+                    "id": "python",
+                    "all_files": 2,
+                    "all_bytes": 7,
+                    "unignored_files": 2,
+                    "unignored_bytes": 7,
+                    "extensions": [[".py", 2, 7, 2, 7]],
+                }
+            ],
+            "extensions": [["", 1, 5, 0, 0]],
+        },
     }
     validate_rollup_result(result)
 
     result["ext_tallies"] = [[".py", 2, 7, 2, 7]]
     with pytest.raises(AssertionError):
         validate_rollup_result(result)
+
+
+def test_semantic_type_tallies_require_conserved_known_families() -> None:
+    rows: dict[str, Any] = {
+        "families": [
+            {
+                "id": "javascript",
+                "all_files": 2,
+                "all_bytes": 7,
+                "unignored_files": 1,
+                "unignored_bytes": 5,
+                "extensions": [[".js", 1, 5, 1, 5], [".mjs", 1, 2, 0, 0]],
+            }
+        ],
+        "extensions": [["(none)", 1, 5, 1, 2]],
+    }
+    validate_type_tallies(rows, _node())
+
+    invalid = {
+        **rows,
+        "families": [{**rows["families"][0], "all_files": 3}],
+    }
+    with pytest.raises(AssertionError):
+        validate_type_tallies(invalid, _node())
 
 
 def test_rollup_envelope_accepts_honest_cold_state() -> None:
@@ -63,6 +103,7 @@ def test_rollup_envelope_accepts_honest_cold_state() -> None:
             "path": "nested",
             "node": None,
             "ext_tallies": [],
+            "type_tallies": {"families": [], "extensions": []},
             "index_status": "scanning",
             "indexed_files": 0,
             "max_files": 500_000,
@@ -77,6 +118,7 @@ def test_rollup_envelope_accepts_honest_cold_state() -> None:
                 "path": "nested",
                 "node": None,
                 "ext_tallies": [[".py", 1, 1, 1, 1]],
+                "type_tallies": {"families": [], "extensions": []},
                 "index_status": "scanning",
                 "indexed_files": 0,
                 "max_files": 500_000,

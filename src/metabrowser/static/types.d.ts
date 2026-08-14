@@ -58,6 +58,35 @@ type MetabrowserFormatterRuntime = Readonly<{
   sizeClass(value: number): "" | "size-large";
 }>;
 
+type MetabrowserFileTypeCategoryId = "docs" | "code" | "data";
+
+type MetabrowserFileTypeCategory = Readonly<{
+  id: MetabrowserFileTypeCategoryId;
+  label: string;
+  extraValues: ReadonlyArray<string>;
+}>;
+
+type MetabrowserFileTypeFamily = Readonly<{
+  id: string;
+  label: string;
+  category: MetabrowserFileTypeCategoryId;
+  extensions: ReadonlyArray<string>;
+}>;
+
+type MetabrowserFileTypeFamilyMatch = Readonly<{
+  family: MetabrowserFileTypeFamily;
+  canonicalExtension: string;
+}>;
+
+type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
+  categories: ReadonlyArray<MetabrowserFileTypeCategory>;
+  families: ReadonlyArray<MetabrowserFileTypeFamily>;
+  matchExtension(extension: unknown): MetabrowserFileTypeFamilyMatch | null;
+  canonicalExtension(extension: unknown): string;
+  categoryForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId | "other";
+  distributionKeyForExtension(extension: unknown): string;
+}>;
+
 type MetabrowserInventoryWatch = Readonly<{
   dispose(): void;
   refresh(): Promise<void>;
@@ -298,6 +327,17 @@ type MetabrowserRollupEnvelope = {
   path: string;
   node: Record<string, unknown> | null;
   ext_tallies: Array<Array<unknown>>;
+  type_tallies: {
+    families: Array<{
+      id: string;
+      all_files: number;
+      all_bytes: number;
+      unignored_files: number;
+      unignored_bytes: number;
+      extensions: Array<[string, number, number, number, number]>;
+    }>;
+    extensions: Array<[string, number, number, number, number]>;
+  };
   index_status: string;
   indexed_files: number;
   max_files: number;
@@ -421,6 +461,7 @@ type MetabrowserSdk = {
   ): MetabrowserChartInstance;
   escapeHtml(value: string): string;
   fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
+  fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
   formatTimestamp(secondsSinceEpoch: number): string;
@@ -774,6 +815,7 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
 }>;
 
 declare global {
+  type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;
   type MetabrowserPublicSdk = MetabrowserSdk;
 
@@ -802,6 +844,7 @@ declare global {
       classFor(path: string): string;
       iconFor(path: string): { cls: string; svg: string };
     };
+    MetabrowserFileTypeTaxonomy: MetabrowserFileTypeTaxonomyRuntime;
     MetabrowserCatalogFeed: MetabrowserCatalogFeedRuntime;
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
@@ -824,6 +867,19 @@ declare global {
       show(html: string, event: MouseEvent): void;
     };
     METABROWSER_SETTINGS?: {
+      FILE_TYPE_TAXONOMY?: {
+        categories: Array<{
+          id: MetabrowserFileTypeCategoryId;
+          label: string;
+          extra_values: Array<string>;
+        }>;
+        families: Array<{
+          id: string;
+          label: string;
+          category: MetabrowserFileTypeCategoryId;
+          extensions: Array<string>;
+        }>;
+      };
       FILTER_TYPE_PRESETS?: Array<{
         id: string;
         label: string;
@@ -843,6 +899,7 @@ declare global {
       ROLLUP_DEFAULT_EXT_RANK?: "bytes" | "dual";
       ROLLUP_DEFAULT_EXT_TOP?: number;
       ROLLUP_FILE_TYPE_NAMED_LIMIT?: number;
+      ROLLUP_FILE_TYPE_RAW_LIMIT?: number;
       ROLLUP_DEFAULT_TOP?: number;
       ROLLUP_WATCH_DEBOUNCE_MS?: number;
       DISTRIBUTION_PALETTE_SLOTS?: number;

@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser contributors
 
-**Status:** In Review
+**Status:** Implemented and validated.
 
 ## Overview
 
@@ -28,8 +28,9 @@ The taxonomy remains intentionally open-ended, and unsupported or ambiguous exte
 retain their current raw-extension behavior.
 
 This plan is a follow-up to the implemented
-[folder Overview plan](../done/plan-2026-08-12-directory-file-type-summary.md).
-It does not change runtime code by itself.
+[folder Overview plan](plan-2026-08-12-directory-file-type-summary.md).
+It defines and tracks the runtime implementation across the server, browser shell,
+folder plugin, tests, and durable documentation.
 
 ## Goals
 
@@ -65,7 +66,6 @@ It does not change runtime code by itself.
   A family is an aggregate and remains text-only.
 - Making **Remaining types** selectable in the navigation filter.
   It is a response budget tail, not a stable semantic identity.
-- Implementing the runtime or UI changes as part of this planning pass.
 
 ## Background
 
@@ -88,6 +88,56 @@ family aggregation would produce incomplete parent totals and incomplete expansi
 The semantic family layer must therefore be defined once and applied before response
 truncation on the server.
 Browser helpers consume the serialized catalog rather than copying it.
+
+### Relationship to GitHub Linguist
+
+The preceding folder Overview research correctly separates GitHub’s useful visual
+grammar from Linguist’s repository-language classifier.
+The implementation also checks the current Linguist model rather than treating GitHub’s
+visible bar as an extension lookup table.
+
+Linguist owns a large `languages.yml` catalog and then refines classification through
+repository overrides, modelines, filenames, shebangs, extensions, XML headers,
+heuristics, and Bayesian classification.
+Its repository language bar excludes binary, vendored, generated, documentation, data,
+and prose files, then reports byte share for the remaining languages.
+Metabrowser intentionally answers a different question: what files are present in this
+selected folder, including documentation, data, unknown, and optionally ignored files,
+by both file count and bytes.
+
+The semantic family model is consistent with Linguist where the constraints align:
+
+- use a declarative, reviewed catalog with stable semantic IDs;
+- recognize common aliases such as `.yaml` and `.yml`, module variants such as `.js`,
+  `.mjs`, and `.cjs`, and typed variants such as `.ts`, `.mts`, `.cts`, and `.tsx`;
+- retain a family/category distinction instead of deriving display names from icons;
+- keep ambiguous extensions conservative rather than claiming precision the available
+  evidence cannot support; and
+- use bytes as one first-class proportion, while adding file count because a file
+  browser must also reveal many-small-file populations.
+
+The deliberate differences are part of the product contract:
+
+- classification is deterministic from indexed filenames and logical extensions; it does
+  not read file contents or repository attributes on a request path;
+- the catalog is a curated UI taxonomy, not a vendored or partial copy of Linguist;
+- CSS includes common stylesheet variants such as SCSS and Less because users browse
+  them as one practical family even though Linguist currently identifies those as
+  distinct languages;
+- C and C++ share one family because extension-only metadata cannot reliably
+  disambiguate shared headers such as `.h`;
+- SQL remains in Metabrowser’s existing Code filter for compatibility and task-oriented
+  browsing, although Linguist declares SQL as data and excludes data languages from its
+  repository language bar;
+- Vue and Svelte remain readable standalone families rather than being folded into HTML;
+  and
+- unsupported types stay visible as raw extensions instead of disappearing from the
+  summary.
+
+These differences should remain explicit in catalog reviews.
+A future content-aware classifier could add evidence without changing family IDs, but
+exhaustive Linguist parity is neither required nor desirable for this metadata-only
+rollup.
 
 ## Design Principles
 
@@ -172,6 +222,21 @@ The initial catalog is curated by usefulness and confidence, not completeness:
 
 The implementation PR should list the final seed catalog explicitly for review.
 This plan does not claim to enumerate every language or extension.
+
+The implemented seed catalog is:
+
+- Documentation: Markdown, Plain text, reStructuredText, AsciiDoc, Org, PDF, Word, Rich
+  Text, OpenDocument, and EPUB
+- Code: Python, JavaScript, TypeScript, CSS, HTML, Rust, Go, Java, Kotlin, Swift, C/C++,
+  C#, Ruby, PHP, Scala, Clojure, Elixir, Erlang, Haskell, Lua, Julia, Dart, Vue, Svelte,
+  Shell, PowerShell, and SQL
+- Data: JSON, YAML, TOML, INI, Delimited text, XML, Parquet, Arrow, Avro, ORC, Protocol
+  Buffers, GraphQL, and SQLite
+
+Ambiguous `.m`, `.mm`, `.ml`, `.pl`, `.r`, and `.db` tails remain raw rows inside their
+broad category.
+Category-only filenames such as README, LICENSE, Makefile, and Dockerfile
+also remain outside semantic families.
 
 ### Matching and Canonicalization
 
@@ -533,14 +598,14 @@ documented rollup contract.
 
 Use one implementation phase with red-green changes at each boundary:
 
-- [ ] Add and validate the server-owned taxonomy plus the strict browser/SDK runtime.
-- [ ] Extend navigation and rollup aggregation with conserved semantic tallies and
+- [x] Add and validate the server-owned taxonomy plus the strict browser/SDK runtime.
+- [x] Extend navigation and rollup aggregation with conserved semantic tallies and
   additive wire fields.
-- [ ] Upgrade the navigation chooser to category, family, and canonical-extension tiers.
-- [ ] Upgrade the folder Files model and table with collapsed family disclosures.
-- [ ] Align Files and Treemap palette keys for known families.
-- [ ] Update durable design, architecture, plugin, and navigation-filter documentation.
-- [ ] Run targeted Python and Node tests, live browser validation, and `make verify`.
+- [x] Upgrade the navigation chooser to category, family, and canonical-extension tiers.
+- [x] Upgrade the folder Files model and table with collapsed family disclosures.
+- [x] Align Files and Treemap palette keys for known families.
+- [x] Update durable design, architecture, plugin, and navigation-filter documentation.
+- [x] Run targeted Python and Node tests, live browser validation, and `make verify`.
 
 ## Testing Strategy
 
@@ -637,8 +702,10 @@ examples above as the minimum and ambiguous extensions excluded by default.
 
 ## References
 
-- [Folder Overview panels and file-type summary](../done/plan-2026-08-12-directory-file-type-summary.md)
-- [Filter controls and fine-grained navigation filtering](plan-2026-08-09-nav-filter-controls.md)
+- [Folder Overview panels and file-type summary](plan-2026-08-12-directory-file-type-summary.md)
+- [GitHub Linguist classification pipeline](https://github.com/github-linguist/linguist/blob/main/docs/how-linguist-works.md)
+- [GitHub Linguist language catalog](https://github.com/github-linguist/linguist/blob/main/lib/linguist/languages.yml)
+- [Filter controls and fine-grained navigation filtering](../active/plan-2026-08-09-nav-filter-controls.md)
 - [Design system](../../../design-system.md)
 - [Architecture](../../../architecture.md)
 - [Plugin API](../../../plugins.md)

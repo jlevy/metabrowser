@@ -95,6 +95,60 @@ async function importSource(relative) {
     "scope switches locally",
     modelModule.buildFileTypeSummaryModel(normalized, false, formatters).rows[0].files === 145,
   );
+  const fileTypes = {
+    families: [
+      { id: "javascript", label: "JavaScript", category: "code", extensions: [".js", ".mjs"] },
+    ],
+    categoryForFile: (_name, extension) => (extension === ".md" ? "docs" : "other"),
+  };
+  const semantic = modelModule.normalizeRollupEnvelope({
+    ...raw,
+    node: { total_files: 4, total_size: 40, unignored_files: 3, unignored_size: 30 },
+    type_tallies: {
+      families: [
+        {
+          id: "javascript",
+          all_files: 3,
+          all_bytes: 30,
+          unignored_files: 2,
+          unignored_bytes: 20,
+          extensions: [
+            [".js", 2, 20, 2, 20],
+            [".mjs", 1, 10, 0, 0],
+          ],
+        },
+      ],
+      extensions: [[".md", 1, 10, 1, 10]],
+    },
+  });
+  const semanticModel = modelModule.buildFileTypeSummaryModel(
+    semantic,
+    true,
+    formatters,
+    fileTypes,
+  );
+  const javascript = semanticModel.rows.find((row) => row.key === "family:javascript");
+  check(
+    "semantic family uses readable aggregate identity",
+    javascript?.label === "JavaScript" &&
+      javascript.category === "code" &&
+      javascript.kind === "family" &&
+      javascript.paletteKey === "family:javascript",
+  );
+  check(
+    "semantic family preserves canonical children",
+    javascript?.disclosable === true &&
+      javascript.children
+        .map((row) => row.extension)
+        .sort()
+        .join(",") === ".js,.mjs" &&
+      javascript.children.every((row) => row.paletteKey === "family:javascript"),
+  );
+  check(
+    "ignored scope removes an empty canonical child and redundant disclosure",
+    modelModule.buildFileTypeSummaryModel(semantic, false, formatters, fileTypes).rows[0]
+      .disclosable === false,
+  );
   const withRemainder = modelModule.normalizeRollupEnvelope({
     ...raw,
     ext_tallies: [

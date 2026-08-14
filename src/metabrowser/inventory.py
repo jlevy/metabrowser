@@ -66,6 +66,11 @@ from metabrowser.events import (
     StreamEvent,
     WriteToken,
 )
+from metabrowser.file_type_filters import (
+    canonical_extension,
+    category_for_file,
+    family_for_extension,
+)
 from metabrowser.inventory_rollup import (
     RollupOptions,
     RollupRank,
@@ -87,7 +92,7 @@ from metabrowser.walker import (
 from metabrowser.walker import (
     depth_of as _depth_of,
 )
-from metabrowser.wire_models import RollupResult
+from metabrowser.wire_models import NavigationTallies, RollupResult
 
 LOG = logging.getLogger(__name__)
 
@@ -330,12 +335,7 @@ class InventoryIndex:
         *,
         now_ns: int | None = None,
         entries: Sequence[FsEntry] | None = None,
-    ) -> tuple[
-        dict[str, int],
-        list[list[object]],
-        list[list[object]],
-        list[list[object]],
-    ]:
+    ) -> NavigationTallies:
         """
         Return root, file-type, and cumulative recency tallies in one index pass.
 
@@ -352,6 +352,8 @@ class InventoryIndex:
         ]
         files = size = ignored_files = ignored_size = 0
         extension_counts: dict[str, list[int]] = {}
+        canonical_extension_counts: dict[str, list[int]] = {}
+        family_counts: dict[str, list[int]] = {}
         preset_counts: dict[str, list[int]] = {}
         recency_counts: dict[str, list[int]] = {key: [0, 0] for key, _cutoff in recency_cutoffs}
         normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
@@ -382,9 +384,22 @@ class InventoryIndex:
                     extension_counts[ext] = row
                 row[ignored_index] += 1
 
+                canonical = canonical_extension(ext)
+                canonical_row = canonical_extension_counts.setdefault(canonical, [0, 0])
+                canonical_row[ignored_index] += 1
+
+                family_match = family_for_extension(ext)
+                if family_match is not None:
+                    family_row = family_counts.setdefault(family_match.family.id, [0, 0])
+                    family_row[ignored_index] += 1
+
             name = entry.name.lower()
+            semantic_category = category_for_file(name, ext)
             for preset_id, preset_extensions, preset_names in normalized_presets:
-                if ext in preset_extensions or name in preset_names:
+                if preset_id == semantic_category or (
+                    preset_id not in ("docs", "code", "data")
+                    and (ext in preset_extensions or name in preset_names)
+                ):
                     preset_counts[preset_id][ignored_index] += 1
 
             for window_key, cutoff_ns in recency_cutoffs:
@@ -404,13 +419,34 @@ class InventoryIndex:
         extension_rows: list[list[object]] = [
             [ext, counts[0], counts[1]] for ext, counts in ranked[:limit]
         ]
+        canonical_ranked = sorted(
+            canonical_extension_counts.items(),
+            key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+        )
+        canonical_rows: list[list[object]] = [
+            [ext, counts[0], counts[1]] for ext, counts in canonical_ranked[:limit]
+        ]
+        family_rows: list[list[object]] = [
+            [family_id, counts[0], counts[1]]
+            for family_id, counts in sorted(
+                family_counts.items(),
+                key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+            )
+        ]
         preset_rows: list[list[object]] = [
             [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
         ]
         recency_rows: list[list[object]] = [
             [window_key, counts[0], counts[1]] for window_key, counts in recency_counts.items()
         ]
-        return summary, extension_rows, preset_rows, recency_rows
+        return {
+            "summary": summary,
+            "extensions": extension_rows,
+            "canonical_extensions": canonical_rows,
+            "type_families": family_rows,
+            "type_presets": preset_rows,
+            "recency_tallies": recency_rows,
+        }
 
     def file_type_tallies(
         self,
@@ -427,10 +463,8 @@ class InventoryIndex:
         at most once per preset.
         """
 
-        _summary, extension_rows, preset_rows, _recency = self.navigation_tallies(
-            presets, (), limit=limit, entries=entries
-        )
-        return extension_rows, preset_rows
+        tallies = self.navigation_tallies(presets, (), limit=limit, entries=entries)
+        return tallies["extensions"], tallies["type_presets"]
 
     def extension_tally(self, limit: int = 200) -> list[list[object]]:
         """``[ext, tracked_files, ignored_files]`` rows, most frequent first.
@@ -459,6 +493,7 @@ class InventoryIndex:
         depth: int,
         top: int,
         ext_top: int,
+        type_top: int = 10,
         ext_rank: RollupRank = "bytes",
         max_nodes: int | None = None,
     ) -> RollupResult | None:
@@ -468,6 +503,7 @@ class InventoryIndex:
             depth=depth,
             top=top,
             ext_top=ext_top,
+            type_top=type_top,
             ext_rank=ext_rank,
             max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
         )

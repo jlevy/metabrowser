@@ -1,9 +1,5 @@
 import { mountDistributionView, updateDistributionView } from "./distribution_view.js";
-import {
-  buildFileTypeSummaryModel,
-  createFileTypeCategoryClassifier,
-  normalizeRollupEnvelope,
-} from "./file_type_summary_model.js";
+import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file_type_summary_model.js";
 
 /** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} SummaryPalette */
 /** @typedef {{acquire: (path: string) => SummaryPalette}} SummaryPalettePool */
@@ -26,10 +22,7 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     formatInteger: mb.formatInteger,
     formatSize: mb.formatSize,
   };
-  const classifyCategory = createFileTypeCategoryClassifier(
-    window.METABROWSER_SETTINGS?.FILTER_TYPE_PRESETS,
-  );
-  let model = buildFileTypeSummaryModel(null, showIgnored, formatters, classifyCategory);
+  let model = buildFileTypeSummaryModel(null, showIgnored, formatters, mb.fileTypes);
   const metricClasses = {
     countClass: mb.countClass,
     sizeClass: mb.sizeClass,
@@ -37,7 +30,7 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
   const view = mountDistributionView(container, model, palette, metricClasses, mb.fileTypeIcon);
 
   function render() {
-    model = buildFileTypeSummaryModel(envelope, showIgnored, formatters, classifyCategory);
+    model = buildFileTypeSummaryModel(envelope, showIgnored, formatters, mb.fileTypes);
     updateDistributionView(view, model);
   }
 
@@ -47,7 +40,10 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
       return;
     }
     envelope = normalizeRollupEnvelope(raw);
-    palette.sync(envelope.tallies.filter((row) => row.key !== "").map((row) => row.key));
+    palette.sync([
+      ...envelope.families.map((family) => `family:${family.id}`),
+      ...envelope.tallies.filter((row) => row.key !== "").map((row) => row.key),
+    ]);
     render();
   }
 
@@ -58,6 +54,7 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
       depth: 0,
       top: 0,
       ext_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_NAMED_LIMIT ?? 10,
+      type_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_RAW_LIMIT ?? 10,
       ext_rank: "dual",
       /** @param {unknown} error */
       onError(error) {
