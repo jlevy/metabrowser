@@ -185,7 +185,7 @@
    *          anyValue?: string, select?: string, open?: boolean,
    *          menuId: string,
    *          presets?: Array<{id: string, label: string, values: string[], count?: number}>,
-   *          presetSections?: Array<{id: string, presets: Array<{id: string, label: string, values: string[], count?: number}>}>}} spec
+   *          presetSections?: Array<{id: string, label?: string, presets: Array<{id: string, label: string, values: string[], count?: number}>}>}} spec
    */
   function menuGroupHtml(spec) {
     const many = spec.select !== "one";
@@ -216,6 +216,7 @@
     const allPresets = presetSections.flatMap((section) => section.presets || []);
     const exact = allPresets.find(
       (preset) =>
+        preset.values.length > 0 &&
         preset.values.length === selected.length &&
         preset.values.every((value) => selected.indexOf(value) >= 0),
     );
@@ -273,9 +274,12 @@
     // group never claims to be on.
     const presetRows = presetSections
       .filter((section) => section.presets.length > 0)
-      .map(
-        (section) =>
+      .map((section, sectionIndex) => {
+        const labelId = `${spec.menuId}-section-${sectionIndex}`;
+        return (
+          `<div class="chip-menu-preset-section" role="group" aria-labelledby="${esc(labelId)}">` +
           `<div class="menu-separator" data-chip-menu-section="${esc(section.id)}"></div>` +
+          `<div class="menu-section-label" id="${esc(labelId)}">${esc(section.label || section.id)}</div>` +
           section.presets
             .map((preset) => {
               const on =
@@ -293,8 +297,10 @@
                 `<span class="menu-item-label">${esc(preset.label)}</span>${count}</button>`
               );
             })
-            .join(""),
-      )
+            .join("") +
+          `</div>`
+        );
+      })
       .join("");
     const optionSeparator = presetRows ? '<div class="menu-separator"></div>' : "";
     return (

@@ -7,9 +7,21 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from metabrowser.file_type_filters import FILE_TYPE_FAMILIES, family_for_extension
+from metabrowser.file_type_filters import FILE_TYPE_FAMILIES
+from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.settings import (
+    ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+    ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+)
 from metabrowser.wire_models import (
     ExtensionTallyRow,
+    FileTypeBreakdown,
+    FileTypeExtensionBreakdown,
+    FileTypeFamilyBreakdown,
+    FileTypeFilenameBreakdown,
+    FileTypeMeasure,
+    FileTypeOthersBreakdown,
+    FileTypePopulationMetrics,
     RollupDirNode,
     RollupResult,
     TypeFamilyTally,
@@ -34,14 +46,29 @@ class RollupOptions:
     top: int
     ext_top: int
     max_nodes: int
-    type_top: int = 10
+    type_top: int = ROLLUP_FILE_TYPE_REMAINING_LIMIT
+    filename_top: int = ROLLUP_FILE_TYPE_FILENAME_LIMIT
     ext_rank: RollupRank = "bytes"
 
     def __post_init__(self) -> None:
-        if min(self.depth, self.top, self.ext_top, self.max_nodes, self.type_top) < 0:
+        if (
+            min(
+                self.depth,
+                self.top,
+                self.ext_top,
+                self.max_nodes,
+                self.type_top,
+                self.filename_top,
+            )
+            < 0
+        ):
             raise ValueError("rollup limits must be nonnegative")
         if self.ext_rank not in ("bytes", "dual"):
             raise ValueError(f"unknown extension ranking mode: {self.ext_rank!r}")
+        if self.type_top > ROLLUP_FILE_TYPE_REMAINING_LIMIT:
+            raise ValueError("remaining file-type limit exceeds the compatibility contract")
+        if self.filename_top > ROLLUP_FILE_TYPE_FILENAME_LIMIT:
+            raise ValueError("filename file-type limit exceeds the compatibility contract")
 
 
 @dataclass(slots=True)
@@ -55,6 +82,10 @@ class _SubtreeAggregate:
     ext_bytes: Counter[str] = field(default_factory=Counter)
     ext_files_unignored: Counter[str] = field(default_factory=Counter)
     ext_bytes_unignored: Counter[str] = field(default_factory=Counter)
+    no_ext_files: Counter[str] = field(default_factory=Counter)
+    no_ext_bytes: Counter[str] = field(default_factory=Counter)
+    no_ext_files_unignored: Counter[str] = field(default_factory=Counter)
+    no_ext_bytes_unignored: Counter[str] = field(default_factory=Counter)
 
     def absorb(self, other: _SubtreeAggregate) -> None:
         self.files_all += other.files_all
@@ -66,6 +97,19 @@ class _SubtreeAggregate:
         self.ext_bytes.update(other.ext_bytes)
         self.ext_files_unignored.update(other.ext_files_unignored)
         self.ext_bytes_unignored.update(other.ext_bytes_unignored)
+        self.no_ext_files.update(other.no_ext_files)
+        self.no_ext_bytes.update(other.no_ext_bytes)
+        self.no_ext_files_unignored.update(other.no_ext_files_unignored)
+        self.no_ext_bytes_unignored.update(other.no_ext_bytes_unignored)
+
+
+@dataclass(frozen=True, slots=True)
+class _FileTypePartition:
+    """One registry classification pass shared by every wire projection."""
+
+    family_children: dict[str, dict[str, list[int]]]
+    remaining_keys: set[str]
+    has_no_extension: bool
 
 
 def build_rollup(
@@ -97,10 +141,21 @@ def build_rollup(
         options,
     )
     selected = _select_extension_keys(root_aggregate, options.ext_top, options.ext_rank)
+    file_types = _partition_file_types(root_aggregate)
     return {
         "node": cast(RollupDirNode, root_node),
         "ext_tallies": _serialize_extension_tallies(root_aggregate, selected),
-        "type_tallies": _serialize_type_tallies(root_aggregate, options.type_top),
+        "type_tallies": _serialize_type_tallies(
+            root_aggregate,
+            options.type_top,
+            file_types,
+        ),
+        "file_type_breakdown": _serialize_file_type_breakdown(
+            root_aggregate,
+            filename_limit=options.filename_top,
+            remaining_limit=options.type_top,
+            file_types=file_types,
+        ),
     }
 
 
@@ -137,11 +192,17 @@ def _aggregate_subtree(
         aggregate.newest_mtime_ns = max(aggregate.newest_mtime_ns, child.mtime_ns)
         aggregate.ext_files[extension] += 1
         aggregate.ext_bytes[extension] += child.size
+        if not child.ext:
+            aggregate.no_ext_files[child.name] += 1
+            aggregate.no_ext_bytes[child.name] += child.size
         if not ignored:
             aggregate.files_unignored += 1
             aggregate.size_unignored += child.size
             aggregate.ext_files_unignored[extension] += 1
             aggregate.ext_bytes_unignored[extension] += child.size
+            if not child.ext:
+                aggregate.no_ext_files_unignored[child.name] += 1
+                aggregate.no_ext_bytes_unignored[child.name] += child.size
     aggregates[directory_path] = aggregate
     return aggregate
 
@@ -380,26 +441,259 @@ def _tally_row(aggregate: _SubtreeAggregate, key: str) -> ExtensionTallyRow:
     )
 
 
-def _serialize_type_tallies(aggregate: _SubtreeAggregate, raw_limit: int) -> TypeTallies:
-    """Aggregate every known family before bounding only the raw tail."""
+def _population_metrics(
+    all_files: int,
+    all_bytes: int,
+    unignored_files: int,
+    unignored_bytes: int,
+) -> FileTypePopulationMetrics:
+    return {
+        "all": FileTypeMeasure(files=all_files, bytes=all_bytes),
+        "unignored": FileTypeMeasure(files=unignored_files, bytes=unignored_bytes),
+    }
 
+
+def _extension_metrics(aggregate: _SubtreeAggregate, key: str) -> FileTypePopulationMetrics:
+    return _population_metrics(
+        aggregate.ext_files[key],
+        aggregate.ext_bytes[key],
+        aggregate.ext_files_unignored[key],
+        aggregate.ext_bytes_unignored[key],
+    )
+
+
+def _add_metrics(target: list[int], metrics: FileTypePopulationMetrics) -> None:
+    target[0] += metrics["all"]["files"]
+    target[1] += metrics["all"]["bytes"]
+    target[2] += metrics["unignored"]["files"]
+    target[3] += metrics["unignored"]["bytes"]
+
+
+def _metrics_from_totals(totals: Sequence[int]) -> FileTypePopulationMetrics:
+    return _population_metrics(totals[0], totals[1], totals[2], totals[3])
+
+
+def _counter_scores(
+    key: str,
+    files_all: Counter[str],
+    bytes_all: Counter[str],
+    files_unignored: Counter[str],
+    bytes_unignored: Counter[str],
+    aggregate: _SubtreeAggregate,
+) -> tuple[float, float, float]:
+    file_score = max(
+        _share(files_all[key], aggregate.files_all),
+        _share(files_unignored[key], aggregate.files_unignored),
+    )
+    byte_score = max(
+        _share(bytes_all[key], aggregate.size_all),
+        _share(bytes_unignored[key], aggregate.size_unignored),
+    )
+    return max(file_score, byte_score), byte_score, file_score
+
+
+def _select_counter_keys(
+    keys: set[str],
+    limit: int,
+    files_all: Counter[str],
+    bytes_all: Counter[str],
+    files_unignored: Counter[str],
+    bytes_unignored: Counter[str],
+    aggregate: _SubtreeAggregate,
+) -> list[str]:
+    return sorted(
+        keys,
+        key=lambda key: (
+            *(
+                -score
+                for score in _counter_scores(
+                    key,
+                    files_all,
+                    bytes_all,
+                    files_unignored,
+                    bytes_unignored,
+                    aggregate,
+                )
+            ),
+            key,
+        ),
+    )[:limit]
+
+
+def _others_metrics(
+    omitted: set[str],
+    files_all: Counter[str],
+    bytes_all: Counter[str],
+    files_unignored: Counter[str],
+    bytes_unignored: Counter[str],
+) -> FileTypeOthersBreakdown | None:
+    if not omitted:
+        return None
+    return {
+        "metrics": _population_metrics(
+            sum(files_all[key] for key in omitted),
+            sum(bytes_all[key] for key in omitted),
+            sum(files_unignored[key] for key in omitted),
+            sum(bytes_unignored[key] for key in omitted),
+        ),
+        "omitted_distinct_values": len(omitted),
+    }
+
+
+def _serialize_file_type_breakdown(
+    aggregate: _SubtreeAggregate,
+    *,
+    filename_limit: int,
+    remaining_limit: int,
+    file_types: _FileTypePartition,
+) -> FileTypeBreakdown:
+    """Build the conserved File Rollup Format hierarchy before presentation."""
+
+    registry = load_file_type_registry()
+    groups = []
+    for group in registry.groups:
+        families: list[FileTypeFamilyBreakdown] = []
+        for family in registry.families:
+            if family.group_id != group.id:
+                continue
+            raw_children = file_types.family_children.get(family.id)
+            if not raw_children:
+                continue
+            family_totals = [0, 0, 0, 0]
+            children: list[FileTypeExtensionBreakdown] = []
+            for extension in family.extensions:
+                totals = raw_children.get(extension)
+                if totals is None:
+                    continue
+                metrics = _metrics_from_totals(totals)
+                _add_metrics(family_totals, metrics)
+                children.append({"extension": extension, "metrics": metrics})
+            families.append(
+                {
+                    "id": family.id,
+                    "metrics": _metrics_from_totals(family_totals),
+                    "extensions": children,
+                }
+            )
+        if families:
+            groups.append({"id": group.id, "families": families})
+
+    no_extension_keys = set(aggregate.no_ext_files) | set(aggregate.no_ext_bytes)
+    no_extension_keys.update(aggregate.no_ext_files_unignored)
+    no_extension_keys.update(aggregate.no_ext_bytes_unignored)
+    selected_filenames = _select_counter_keys(
+        no_extension_keys,
+        filename_limit,
+        aggregate.no_ext_files,
+        aggregate.no_ext_bytes,
+        aggregate.no_ext_files_unignored,
+        aggregate.no_ext_bytes_unignored,
+        aggregate,
+    )
+    filenames: list[FileTypeFilenameBreakdown] = [
+        {
+            "basename": basename,
+            "metrics": _population_metrics(
+                aggregate.no_ext_files[basename],
+                aggregate.no_ext_bytes[basename],
+                aggregate.no_ext_files_unignored[basename],
+                aggregate.no_ext_bytes_unignored[basename],
+            ),
+        }
+        for basename in selected_filenames
+    ]
+
+    selected_remaining = _select_counter_keys(
+        file_types.remaining_keys,
+        remaining_limit,
+        aggregate.ext_files,
+        aggregate.ext_bytes,
+        aggregate.ext_files_unignored,
+        aggregate.ext_bytes_unignored,
+        aggregate,
+    )
+    remaining_extensions: list[FileTypeExtensionBreakdown] = [
+        {"extension": key, "metrics": _extension_metrics(aggregate, key)}
+        for key in selected_remaining
+    ]
+    no_extension_metrics = _extension_metrics(aggregate, ROLLUP_NO_EXT_KEY)
+    remaining_totals = [0, 0, 0, 0]
+    for key in file_types.remaining_keys:
+        _add_metrics(remaining_totals, _extension_metrics(aggregate, key))
+    return {
+        "schema": "file-type-breakdown-v1",
+        "registry": {
+            "schema_version": registry.schema_version,
+            "revision": registry.revision,
+            "fingerprint": registry.fingerprint,
+        },
+        "metrics": _population_metrics(
+            aggregate.files_all,
+            aggregate.size_all,
+            aggregate.files_unignored,
+            aggregate.size_unignored,
+        ),
+        "groups": groups,
+        "no_extension": {
+            "metrics": no_extension_metrics,
+            "filenames": filenames,
+            "others": _others_metrics(
+                no_extension_keys - set(selected_filenames),
+                aggregate.no_ext_files,
+                aggregate.no_ext_bytes,
+                aggregate.no_ext_files_unignored,
+                aggregate.no_ext_bytes_unignored,
+            ),
+        },
+        "remaining_types": {
+            "metrics": _metrics_from_totals(remaining_totals),
+            "extensions": remaining_extensions,
+            "others": _others_metrics(
+                file_types.remaining_keys - set(selected_remaining),
+                aggregate.ext_files,
+                aggregate.ext_bytes,
+                aggregate.ext_files_unignored,
+                aggregate.ext_bytes_unignored,
+            ),
+        },
+    }
+
+
+def _partition_file_types(aggregate: _SubtreeAggregate) -> _FileTypePartition:
+    """Classify each distinct logical extension exactly once per rollup."""
+
+    registry = load_file_type_registry()
     family_children: dict[str, dict[str, list[int]]] = {}
-    raw_keys: set[str] = set()
-    for key in _all_extension_keys(aggregate):
-        match = family_for_extension(key)
-        if match is None:
-            raw_keys.add(key)
+    remaining_keys: set[str] = set()
+    extension_keys = _all_extension_keys(aggregate)
+    for key in extension_keys - {ROLLUP_NO_EXT_KEY}:
+        classification = registry.classify("", key)
+        if classification.family_id is None:
+            remaining_keys.add(key)
             continue
-        canonical = match.canonical_extension
-        children = family_children.setdefault(match.family.id, {})
-        metrics = children.setdefault(canonical, [0, 0, 0, 0])
-        row = _tally_row(aggregate, key)
-        for index, value in enumerate(row[1:]):
-            metrics[index] += value
+        canonical = classification.canonical_extension or key
+        totals = family_children.setdefault(classification.family_id, {}).setdefault(
+            canonical,
+            [0, 0, 0, 0],
+        )
+        _add_metrics(totals, _extension_metrics(aggregate, key))
+    return _FileTypePartition(
+        family_children=family_children,
+        remaining_keys=remaining_keys,
+        has_no_extension=ROLLUP_NO_EXT_KEY in extension_keys,
+    )
+
+
+def _serialize_type_tallies(
+    aggregate: _SubtreeAggregate,
+    raw_limit: int,
+    file_types: _FileTypePartition,
+) -> TypeTallies:
+    """Aggregate every known family before bounding only the raw tail."""
 
     families: list[TypeFamilyTally] = []
     for family in FILE_TYPE_FAMILIES:
-        children = family_children.get(family.id)
+        children = file_types.family_children.get(family.id)
         if not children:
             continue
         child_rows: list[ExtensionTallyRow] = [
@@ -418,12 +712,11 @@ def _serialize_type_tallies(aggregate: _SubtreeAggregate, raw_limit: int) -> Typ
             }
         )
 
-    no_extension = ROLLUP_NO_EXT_KEY in raw_keys
-    ranked_raw = _select_type_raw_keys(aggregate, raw_keys - {ROLLUP_NO_EXT_KEY}, raw_limit)
+    ranked_raw = _select_type_raw_keys(aggregate, file_types.remaining_keys, raw_limit)
     extensions = [_tally_row(aggregate, key) for key in ranked_raw]
-    if no_extension:
+    if file_types.has_no_extension:
         extensions.insert(0, _tally_row(aggregate, ROLLUP_NO_EXT_KEY))
-    omitted = raw_keys - set(ranked_raw) - {ROLLUP_NO_EXT_KEY}
+    omitted = file_types.remaining_keys - set(ranked_raw)
     if omitted:
         extensions.append(
             (

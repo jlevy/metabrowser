@@ -151,9 +151,12 @@ def test_file_type_tallies_match_preset_filter_semantics(tmp_path: Path) -> None
     assert extension_rows[".md"] == (1, 0)
     assert extension_rows[".py"] == (1, 1)
     assert preset_rows == {
-        "docs": (2, 1),
         "code": (1, 1),
+        "docs": (2, 1),
         "data": (0, 1),
+        "logs": (0, 0),
+        "archives": (0, 0),
+        "media": (0, 0),
     }
 
 
@@ -251,9 +254,12 @@ def test_navigation_tallies_share_semantic_family_and_canonical_counts() -> None
     }
     assert {row[0]: row[1:] for row in tallies["type_families"]} == {"javascript": [1, 1]}
     assert {row[0]: row[1:] for row in tallies["type_presets"]} == {
-        "docs": [0, 0],
         "code": [1, 1],
+        "docs": [0, 0],
         "data": [0, 0],
+        "logs": [0, 0],
+        "archives": [0, 0],
+        "media": [0, 0],
     }
 
 

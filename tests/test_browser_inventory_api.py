@@ -31,6 +31,7 @@ from metabrowser.activity import (
     _discover_trackable_files_from_inventory,
 )
 from metabrowser.events import FsEntry
+from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.inventory import InventoryIndex, get_instance, reset_instance_for_tests
 from metabrowser.tree import _build_inventory_tree, inventory_has_data, inventory_status
 from metabrowser.wire_models import NavigationTallies
@@ -184,7 +185,19 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
     assert "tally_cache_status" in body
     assert body["tally_cache_status"] in ("idle", "scanning", "done", "truncated")
     assert "tree" in body
-    assert [row[0] for row in body["type_presets"]] == ["docs", "code", "data"]
+    assert [row[0] for row in body["type_presets"]] == [
+        "code",
+        "docs",
+        "data",
+        "logs",
+        "archives",
+        "media",
+    ]
+    assert body["file_type_registry"] == {
+        "schema_version": 1,
+        "revision": load_file_type_registry().revision,
+        "fingerprint": load_file_type_registry().fingerprint,
+    }
     assert body["canonical_extensions"] is not None
     assert body["type_families"] is not None
     assert [row[0] for row in body["recency_tallies"]] == [

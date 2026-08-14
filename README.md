@@ -89,6 +89,12 @@ read Markdown docs.
 It doesn’t currently support editing (or commenting on Markdown docs), but it could in
 the future.
 
+Metabrowser is also a candidate producer and consumer of the reusable
+[File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md),
+which defines portable file-type registries and conserved directory statistics.
+The format is application-independent and is intended to be usable by other inventory
+tools, including [`fdu`](https://github.com/jlevy/fdu).
+
 ## Quick Start
 
 Metabrowser requires Python 3.12 or newer and uses [uv](https://docs.astral.sh/uv/).
@@ -252,6 +258,7 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 - [Installation](docs/installation.md)
 - [Plugin authoring](docs/plugins.md)
 - [Architecture](docs/architecture.md)
+- [File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md)
 - [Design system](docs/design-system.md)
 - [Development](docs/development.md)
 - [End-to-end testing](docs/e2e-testing.md)

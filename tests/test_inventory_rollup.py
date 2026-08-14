@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
+import metabrowser.inventory_rollup as inventory_rollup
 from metabrowser.events import FsEntry
+from metabrowser.file_type_registry import FileTypeClassification, load_file_type_registry
 from metabrowser.inventory import InventoryIndex
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 
@@ -45,6 +47,10 @@ def test_rollup_options_reject_invalid_limits_and_rank() -> None:
         RollupOptions(depth=0, top=0, ext_top=0, max_nodes=-1)
     with pytest.raises(ValueError):
         RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, type_top=-1)
+    with pytest.raises(ValueError):
+        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, type_top=21)
+    with pytest.raises(ValueError):
+        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, filename_top=21)
     with pytest.raises(ValueError):
         RollupOptions(
             depth=0,
@@ -145,3 +151,63 @@ def test_semantic_type_tallies_aggregate_before_raw_bounding() -> None:
         + sum(row[1] for row in tallies["extensions"])
         == result["node"]["total_files"]
     )
+
+
+def test_rollup_classifies_each_distinct_extension_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = load_file_type_registry()
+    calls: list[str] = []
+
+    class CountingRegistry:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(registry, name)
+
+        def classify(self, name: str, extension: str) -> FileTypeClassification:
+            calls.append(extension)
+            return registry.classify(name, extension)
+
+    monkeypatch.setattr(inventory_rollup, "load_file_type_registry", CountingRegistry)
+    index = _synthetic_index(
+        [
+            ("app.js", 1, False),
+            ("bundle.min.js", 1, False),
+            ("types.d.ts", 1, False),
+            ("unknown.zzz", 1, False),
+            ("README", 1, False),
+        ]
+    )
+
+    result = index.rollup("", depth=0, top=0, ext_top=0, type_top=20, ext_rank="dual")
+
+    assert result is not None
+    assert sorted(calls) == [".d.ts", ".js", ".min.js", ".zzz"]
+
+
+def test_registry_breakdown_groups_families_and_bounds_fallback_children() -> None:
+    files = [
+        ("events.jsonl", 20, False),
+        ("notes.log", 10, True),
+        ("photo.svg", 5, False),
+    ]
+    files.extend((f"bare-{index}", index, False) for index in range(21))
+    files.extend((f"unknown-{index}.x{index}", index, False) for index in range(21))
+    index = _synthetic_index(files)
+
+    result = index.rollup("", depth=0, top=0, ext_top=1, type_top=20, filename_top=20)
+
+    assert result is not None
+    breakdown = result["file_type_breakdown"]
+    assert breakdown["schema"] == "file-type-breakdown-v1"
+    groups = {group["id"]: group for group in breakdown["groups"]}
+    log_files = groups["logs"]["families"][0]
+    assert log_files["id"] == "log-files"
+    assert {row["extension"] for row in log_files["extensions"]} == {".jsonl", ".log"}
+    assert groups["media"]["families"][0]["id"] == "images"
+
+    no_extension = breakdown["no_extension"]
+    assert len(no_extension["filenames"]) == 20
+    assert no_extension["others"] is not None
+    assert no_extension["others"]["omitted_distinct_values"] == 1
+    remaining = breakdown["remaining_types"]
+    assert len(remaining["extensions"]) == 20
+    assert remaining["others"] is not None
+    assert remaining["others"]["omitted_distinct_values"] == 1

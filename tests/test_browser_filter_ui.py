@@ -491,15 +491,22 @@ def test_missing_data_never_excludes_a_row() -> None:
     assert "return false;" in type_block
 
 
-def test_type_presets_name_broad_kinds_of_work() -> None:
-    """Docs / Code / Data are shorthands for the full extension list
-    beneath them, and a deliberately separate vocabulary from
+def test_type_presets_name_registry_display_groups() -> None:
+    """Registry groups are shorthands for the full declared membership
+    beneath them and a deliberately separate vocabulary from
     FILE_TYPES: that list answers "what icon and hue does this file
     get" (which is why .json sits with YAML there), these answer "which
     kind of work is this"."""
 
     labels = [preset["label"] for preset in FILTER_TYPE_PRESETS]
-    assert labels == ["Docs", "Code", "Data"]
+    assert labels == [
+        "Code",
+        "Documentation",
+        "Data",
+        "Logs",
+        "Archives",
+        "Media",
+    ]
 
     settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()
     assert '"FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS' in settings
@@ -695,11 +702,16 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     block = js[start : start + 1000]
     assert "showIgnored ? row[1] + row[2] : row[1]" in block
     assert "count:" in block
+    tally_start = js.index("function updateFilterTallies(data)")
+    tally_block = js[tally_start : tally_start + 1800]
+    assert "registryMismatch" not in tally_block
+    assert "file_type_registry" not in tally_block
 
     render_start = js.index("function renderNavFilterBar()")
     render_block = js[render_start : render_start + 2200]
     assert "presetSections: filterTypePresetSections()" in render_block
-    assert "function filterTypeFamilies()" in js
+    assert "function filterTypeFamilies(groupId)" in js
+    assert "window.MetabrowserFileTypeTaxonomy?.groups" in js
     assert "_typeFamilyTally" in js
 
 

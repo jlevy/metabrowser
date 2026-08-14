@@ -4,7 +4,16 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Implemented
+
+**Documentation addendum:** The durable registry, classification, and aggregation
+contract is consolidated as
+[File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md).
+This dated plan retains the implementation history and downstream adoption rationale;
+the format document owns the current application-independent standard, and the
+[development guide](../../../development.md#file-rollup-format-maintenance) owns the
+reference implementation’s edit, regeneration, validation, export, and verification
+workflow.
 
 ## Overview
 
@@ -55,9 +64,44 @@ This plan extends the implemented
 [semantic file type family plan](../done/plan-2026-08-13-semantic-file-type-families.md)
 and the original
 [folder Files summary plan](../done/plan-2026-08-12-directory-file-type-summary.md).
-It also aligns with fdu’s
+The durable
+[File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md)
+is the normative application-independent contract for definitions, classification, and
+conserved directory rollups.
+This plan owns design rationale, implementation order, migration, testing, and
+acceptance. Where transitional detail overlaps, the durable contract governs the
+implemented format. It also aligns with fdu’s
 [file-type registry](https://github.com/jlevy/fdu/blob/main/crates/fdu/rules/file-types.toml)
 and its role as the future high-performance rollup engine.
+
+## Implementation Outcome
+
+Metabrowser now ships the complete reference implementation and a self-contained future
+`fdu` handoff:
+
+- `src/metabrowser/data/file-rollup-format/recommended-file-types.toml` is the reviewed
+  declaration; `file_type_registry.py` validates it once and supplies immutable
+  classification, projection, revision, and normalized fingerprint values.
+- `fs_paths.py`, `inventory_rollup.py`, and `wire_models.py` implement the shared
+  logical extension, conserved dual-population Breakdown v1, independent 20-child
+  fallback caps, exact Others remainders, and strict registry-identity validation.
+- `file_type_taxonomy.js`, `plugin_sdk.js`, and `types.d.ts` expose the same registry
+  and Breakdown v1 contract to the browser.
+  Overview, navigation, and Treemap consume those helpers rather than separate extension
+  catalogs.
+- `devtools/file_type_contract.py` generates and checks the normalized projection, JSON
+  Schemas, metadata and invalid-declaration corpus, empty example, and a mixed
+  high-cardinality aggregate.
+  Its export mode creates a self-contained packet with a source-revision manifest for
+  future `fdu` adoption.
+- The durable
+  [File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md)
+  owns the machine structures, classifier rules, conservation rules, artifact names, and
+  export boundary.
+
+Legacy settings and tuple fields remain as derived additive aliases for one supported
+transition cycle. Their eventual removal is tracked separately by `mb-me85`, so the
+reference rollout does not silently break mixed server and browser assets.
 
 ## Goals
 
@@ -70,8 +114,8 @@ and its role as the future high-performance rollup engine.
   families so each project can use the same facts without weakening its own model.
 - Align logical-extension derivation and matching precedence across Python, Rust, and
   browser consumers.
-- Add the top-level groups **Logs**, **Archives**, and **Media** alongside Code, Docs,
-  and Data.
+- Add the top-level groups **Logs**, **Archives**, and **Media** alongside Code,
+  Documentation, and Data.
 - Define Log files from `.log`, `.jsonl`, and `.ndjson` while preserving the structured
   content class of line-delimited JSON.
 - Define common archive, image, video, audio, and font formats conservatively.
@@ -256,8 +300,9 @@ hierarchy alongside its existing analytical reports.”
 
 ### Ownership and Distribution
 
-Metabrowser hosts the reference registry at `src/metabrowser/data/file-types.toml` and
-the normative format documentation in this repository.
+Metabrowser hosts the reference registry at
+`src/metabrowser/data/file-rollup-format/recommended-file-types.toml` and the normative
+format documentation in this repository.
 That ownership keeps the taxonomy, rollup, SDK, navigation, and Files UI contracts
 together while this design is established.
 The file is packaged in the wheel, parsed once during server startup, and injected into
@@ -612,7 +657,7 @@ The registry declares this initial order:
 | ID | Label | Purpose |
 | --- | --- | --- |
 | `code` | Code | Programming, styling, query, and build languages |
-| `docs` | Docs | Human-facing prose and document formats |
+| `docs` | Documentation | Human-facing prose and document formats |
 | `data` | Data | Structured records, configuration, tables, and databases |
 | `logs` | Logs | Append-oriented textual and structured logs |
 | `archives` | Archives | Compressed streams and multi-file containers |
@@ -631,8 +676,8 @@ them with fdu kinds:
 - Code includes Python, JavaScript, TypeScript, CSS, HTML, Rust, Go, Java, Kotlin,
   Swift, C/C++, C#, Ruby, PHP, Scala, Clojure, Elixir, Erlang, Haskell, Lua, Julia,
   Dart, Vue, Svelte, Shell, PowerShell, and SQL.
-- Docs includes Markdown, Plain text, reStructuredText, AsciiDoc, Org, PDF, Word, Rich
-  Text, OpenDocument, and EPUB.
+- Documentation includes Markdown, Plain text, reStructuredText, AsciiDoc, Org, PDF,
+  Word, Rich Text, OpenDocument, and EPUB.
 - Data includes JSON, YAML, TOML, INI, Delimited text, XML, Parquet, Arrow, Avro, ORC,
   Protocol Buffers, GraphQL, and SQLite.
 
@@ -900,7 +945,7 @@ model carries the same token the filter already understands.
 - File icons remain extension or basename identities.
   Families and totals do not acquire invented icons.
 
-## fdu Integration
+## Future `fdu` Integration
 
 ### Classification
 
@@ -953,7 +998,8 @@ mergeable bounded summary separately; do not label an approximate top list as ex
 
 ### Registry and Classification
 
-- Add `src/metabrowser/data/file-types.toml` as the packaged reference registry.
+- Add `src/metabrowser/data/file-rollup-format/recommended-file-types.toml` as the
+  packaged reference registry.
 - Add `src/metabrowser/file_type_registry.py` with typed immutable group, family, kind,
   registry, match, and classification values.
 - Add `load_file_type_registry()` to parse with `tomllib`, validate once, and return one
@@ -1037,7 +1083,7 @@ mergeable bounded summary separately; do not label an approximate top list as ex
   reviewed Metabrowser registry revision.
 - Add release notes for extension-derivation and JSONL group changes.
 
-## fdu File- and Function-Level Plan
+## Future `fdu` File- and Function-Level Plan
 
 ### Registry Compiler
 
@@ -1118,34 +1164,78 @@ metadata cases. A registry update is incomplete until all three implementations 
 
 ## Implementation Plan
 
-Use two phases because the shared contract must land before product consumers can
-reliably adopt it. Each phase uses red-green tests and may be split into separate
-repository pull requests while preserving the dependency order.
+This epic implements the reference contract and publishes a complete adoption packet.
+Changes inside the `fdu` repository are a later downstream effort using the
+application-independent
+[File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md);
+they are not hidden inside a Metabrowser bead.
 
-### Phase 1: Shared Registry and Classification Contract
+### Bead Dependency Graph
 
-- [ ] Finalize registry v1 fields, group order, seed declarations, and validation rules.
-- [ ] Land the reference registry, conformance corpus, normative format documentation,
-  typed Python loader, and compatibility facade in Metabrowser.
-- [ ] Add the `file-type-registry-v1` projection and browser parity checks.
-- [ ] Sync the normalized registry and corpus into fdu; extend its TOML compiler and
-  classifier and invalidate affected caches by registry identity.
-- [ ] Align Python, Rust, and browser extension derivation and metadata matching.
-- [ ] Serialize registry identity and dynamic groups through the Metabrowser SDK.
-- [ ] Document reference ownership in Metabrowser and adoption/maintenance in fdu.
+```mermaid
+flowchart TD
+  docs["mb-7c0v Compatibility packet"] --> loader["mb-2c5u Registry loader"]
+  loader --> seed["mb-0t3d Taxonomy seed"]
+  seed --> classify["mb-qkl7 Classification"]
+  classify --> corpus["mb-45j9 Schemas and corpus"]
+  corpus --> rollup["mb-7jk7 Hierarchical rollup"]
+  rollup --> fallback["mb-cgj3 Bounded fallbacks"]
+  corpus --> sdk["mb-ihcd Registry and Breakdown SDK"]
+  rollup --> sdk
+  fallback --> overview["mb-f3ab Files Overview"]
+  sdk --> overview
+  sdk --> nav["mb-jlo8 Navigation filters"]
+  fallback --> treemap["mb-9r31 Treemap identity"]
+  sdk --> treemap
+  fallback --> migration["mb-ipxm Migration boundary"]
+  sdk --> migration
+  overview --> validate["mb-136f Validation and fdu packet"]
+  nav --> validate
+  treemap --> validate
+  migration --> validate
+```
 
-### Phase 2: Bounded Hierarchical Breakdowns
+### Bead Map
 
-- [ ] Add the portable breakdown types and conservation helpers in both projects.
-- [ ] Add complete family children and 20-child No extension and Remaining types
-  summaries with exact Others rows.
-- [ ] Make all Metabrowser family and special-parent rows disclosable when they have one
-  or more children.
-- [ ] Make navigation groups and family sections fully registry-driven.
-- [ ] Add fdu’s registry plus breakdown exports across the Rust library, CLI JSON/YAML,
-  grouped human view, and Python binding.
-- [ ] Update design, architecture, SDK, CLI, and release documentation.
-- [ ] Run both repositories’ full handoff gates and cross-project fixture comparison.
+| Order | Bead | Outcome | Blockers |
+| --- | --- | --- | --- |
+| 1 | `mb-7c0v` | Durable registry, interchange, and `fdu` compatibility documents | None |
+| 2 | `mb-2c5u` | Packaged Registry v1 source, immutable loader, validation, and compatibility facade | `mb-7c0v` |
+| 3 | `mb-0t3d` | Reconciled Code, Documentation, Data, Logs, Archives, Media, and Other taxonomy | `mb-2c5u` |
+| 4 | `mb-qkl7` | Shared logical-extension and metadata-classification behavior | `mb-0t3d` |
+| 5 | `mb-45j9` | Machine schemas, conformance corpus, fingerprints, and drift tooling | `mb-qkl7` |
+| 6 | `mb-7jk7` | Typed conserved Registry v1 hierarchical directory breakdown | `mb-45j9` |
+| 7 | `mb-cgj3` | Bounded No extension and Remaining types children with exact Others | `mb-7jk7` |
+| 8 | `mb-ihcd` | Public immutable registry projection and Breakdown v1 SDK | `mb-45j9`, `mb-7jk7` |
+| 9 | `mb-f3ab` | Complete registry-driven Files Overview | `mb-cgj3`, `mb-ihcd` |
+| 10 | `mb-jlo8` | Registry-driven navigation filter hierarchy | `mb-ihcd` |
+| 11 | `mb-9r31` | Treemap identity aligned to every registry family | `mb-cgj3`, `mb-ihcd` |
+| 12 | `mb-ipxm` | Legacy wire, saved-filter, cache, and mixed-version migration boundary | `mb-cgj3`, `mb-ihcd` |
+| 13 | `mb-136f` | Full validation plus normalized, versioned `fdu` adoption packet | `mb-f3ab`, `mb-jlo8`, `mb-9r31`, `mb-ipxm` |
+
+### Phase 1: Reference Contract and Classification
+
+- [x] `mb-7c0v`: publish the durable compatibility documents.
+- [x] `mb-2c5u`: implement and package Registry v1.
+- [x] `mb-0t3d`: seed and reconcile the shared taxonomy.
+- [x] `mb-qkl7`: align logical-extension derivation and metadata matching.
+- [x] `mb-45j9`: publish schemas, conformance cases, and checked drift tooling.
+
+### Phase 2: Metabrowser Data Path and UI
+
+- [x] `mb-7jk7`: build the conserved hierarchical rollup.
+- [x] `mb-cgj3`: add exact bounded fallback children.
+- [x] `mb-ihcd`: expose Registry and Breakdown v1 through the SDK.
+- [x] `mb-f3ab`: render the complete Files Overview hierarchy.
+- [x] `mb-jlo8`: derive navigation filters from the registry.
+- [x] `mb-9r31`: align Treemap type identities.
+- [x] `mb-ipxm`: complete compatibility and cache migration.
+
+### Phase 3: Validation and Downstream Handoff
+
+- [x] `mb-136f`: validate all Metabrowser surfaces, finalize durable documentation, and
+  publish the registry, schemas, corpus, fingerprints, and captured examples that a
+  later `fdu` change adopts.
 
 ## Testing Strategy
 
@@ -1247,8 +1337,8 @@ Metabrowser.
 - The registry has explicit kinds, display families, display groups, and analyzer
   content families with stable IDs.
 - Logical extension derivation agrees across Python and Rust for all boundary fixtures.
-- Code, Docs, Data, Logs, Archives, Media, and Other are registry-declared and appear in
-  the same order across Metabrowser surfaces.
+- Code, Documentation, Data, Logs, Archives, Media, and Other are registry-declared and
+  appear in the same order across Metabrowser surfaces.
 - `.log`, `.jsonl`, and `.ndjson` appear under Log files; `.jsonl` and `.ndjson` retain
   a data content family in fdu.
 - The declared archive and media formats classify into the intended display families.

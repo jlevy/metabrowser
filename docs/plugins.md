@@ -258,11 +258,17 @@ Useful helpers include:
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
   `fileTypeIcon(pathOrName)` for its host-owned SVG plus `className`;
 - `fileTypes` for the immutable semantic type catalog.
-  Its `categories` and `families` descriptors are server-owned.
+  `schema`, `schemaVersion`, `revision`, `fingerprint`, `maxExtensionComponents`, and
+  `registryIdentity` identify the loaded File Rollup Format type definitions; ordered
+  `groups`, `families`, and `kinds` expose their immutable descriptors.
+  `categories` remains a derived compatibility alias for `groups`. `classify(name, ext)`
+  returns registry identities and evidence for one file.
   `matchExtension(ext)` returns the matching family and canonical suffix,
   `canonicalExtension(ext)` preserves unknown extensions, `categoryForFile(name, ext)`
   includes category-only filenames, and `distributionKeyForExtension(ext)` returns the
-  shared family or raw palette key;
+  shared family or raw palette key.
+  Compare a file rollup’s `registry` identity before combining it with labels or colors
+  from this projection;
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
@@ -296,8 +302,11 @@ path.
 Folder aggregate views can use these bounded inventory helpers:
 
 - `fetchRollup(path, options)` reads the in-memory subtree rollup.
-  `depth`, `top`, `ext_top`, `type_top`, and `ext_rank` map to `/api/rollup`; use
-  `depth: 0`, `top: 0`, and `ext_rank: "dual"` for a tally-only count-and-byte summary.
+  `depth`, `top`, `ext_top`, `filename_top`, `remaining_top`, and `ext_rank` map to
+  `/api/rollup`; use `depth: 0`, `top: 0`, and `ext_rank: "dual"` for a tally-only
+  count-and-byte summary.
+  Both file-type child limits default to 20 and cannot exceed 20. `type_top` remains a
+  temporary alias for `remaining_top`.
 - `watchRollup(path, options, onUpdate)` performs the initial fetch and refreshes after
   relevant inventory changes.
   Supply `active` to gate hidden views and `onError` for a local failure state.
@@ -307,10 +316,13 @@ Folder aggregate views can use these bounded inventory helpers:
   `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
   extension is the aggregate **Other** tail; `(none)` is the distinct extensionless
   category.
-- `type_tallies` contains complete known family parents and canonical-extension
-  children, plus a separately bounded raw-extension list.
-  Its final empty-key raw row is **Remaining types**; family members never leak into
-  that tail.
+- `file_type_breakdown` is the native File Rollup Format result.
+  It carries matching registry identity, exact `all` and `unignored` populations,
+  ordered nonempty group and family rows, complete canonical-extension children, and
+  bounded No extension and Remaining types children with exact Others remainders.
+- `type_tallies` is a transitional compatibility projection.
+  New code consumes `file_type_breakdown`; its final empty-key raw row is **Remaining
+  types**.
 
 ### Folder Overview Contributions
 

@@ -31,6 +31,23 @@ async function importSource(relative) {
     formatInteger: String,
     formatSize: (value) => `${value} B`,
   };
+  const metrics = (files, bytes, unignoredFiles = files, unignoredBytes = bytes) => ({
+    all: { files, bytes },
+    unignored: { files: unignoredFiles, bytes: unignoredBytes },
+  });
+  const baseRuntime = {
+    revision: 7,
+    fingerprint: "registry-seven",
+    groups: [
+      { id: "code", label: "Code" },
+      { id: "docs", label: "Documentation" },
+      { id: "other", label: "Other" },
+    ],
+    families: [
+      { id: "python", label: "Python", groupId: "code", extensions: [".py"] },
+      { id: "markdown", label: "Markdown", groupId: "docs", extensions: [".md"] },
+    ],
+  };
   const raw = {
     path: "src",
     index_status: "done",
@@ -43,36 +60,49 @@ async function importSource(relative) {
       unignored_files: 150,
       unignored_size: 10000000,
     },
-    ext_tallies: [
-      [".py", 150, 10000000, 145, 9500000],
-      [".md", 7, 1000000, 5, 500000],
-    ],
+    file_type_breakdown: {
+      schema: "file-type-breakdown-v1",
+      registry: { schema_version: 1, revision: 7, fingerprint: "registry-seven" },
+      metrics: metrics(157, 11000000, 150, 10000000),
+      groups: [
+        {
+          id: "code",
+          families: [
+            {
+              id: "python",
+              metrics: metrics(150, 10000000, 145, 9500000),
+              extensions: [{ extension: ".py", metrics: metrics(150, 10000000, 145, 9500000) }],
+            },
+          ],
+        },
+        {
+          id: "docs",
+          families: [
+            {
+              id: "markdown",
+              metrics: metrics(7, 1000000, 5, 500000),
+              extensions: [{ extension: ".md", metrics: metrics(7, 1000000, 5, 500000) }],
+            },
+          ],
+        },
+      ],
+      no_extension: { metrics: metrics(0, 0), filenames: [], others: null },
+      remaining_types: { metrics: metrics(0, 0), extensions: [], others: null },
+    },
   };
   const normalized = modelModule.normalizeRollupEnvelope(raw);
-  check(
-    "rollup tail has a distinct row label",
-    modelModule.normalizeTallyRow(["", 1, 1, 1, 1]).label === "Remaining types",
-  );
-  const classifyCategory = modelModule.createFileTypeCategoryClassifier([
-    { id: "docs", values: [".md", ".txt"] },
-    { id: "code", values: [".py", ".ts", ".js"] },
-    { id: "data", values: [".json", ".jsonl"] },
-  ]);
-  const visible = modelModule.buildFileTypeSummaryModel(
-    normalized,
-    true,
-    formatters,
-    classifyCategory,
-  );
+  const visible = modelModule.buildFileTypeSummaryModel(normalized, true, formatters, baseRuntime);
   check("populated model", visible.state === "populated", visible.state);
-  check("server order retained", visible.rows.map((row) => row.key).join(",") === ".py,.md");
+  check(
+    "registry order retained",
+    visible.rows.map((row) => row.key).join(",") === "family:python,family:markdown",
+  );
   check(
     "files and size both present",
     visible.rows[0].files === 150 && visible.rows[0].bytes === 10000000,
   );
   check("code category", visible.rows[0].category === "code", visible.rows[0].category);
   check("documentation category", visible.rows[1].category === "docs");
-  check("documentation category is case-insensitive", classifyCategory(".TXT") === "docs");
   check(
     "ignored subset is explicit",
     visible.ignoredFiles === 7 &&
@@ -84,94 +114,119 @@ async function importSource(relative) {
     "ignored subset uses all-file denominators when included",
     visible.ignoredFileShare > 4 && visible.ignoredByteShare > 9,
   );
-  check("compound code extension", classifyCategory(".d.ts") === "code");
-  check("data category", classifyCategory(".jsonl") === "data");
-  check("unknown category", classifyCategory(".bin") === "other");
   check(
     "row shares remain numeric",
     visible.rows[0].fileShare > 95 && visible.rows[0].byteShare > 90,
   );
   check(
     "scope switches locally",
-    modelModule.buildFileTypeSummaryModel(normalized, false, formatters).rows[0].files === 145,
+    modelModule.buildFileTypeSummaryModel(normalized, false, formatters, baseRuntime).rows[0]
+      .files === 145,
   );
-  const fileTypes = {
-    families: [
-      { id: "javascript", label: "JavaScript", category: "code", extensions: [".js", ".mjs"] },
+  const registryRuntime = {
+    revision: 7,
+    fingerprint: "registry-seven",
+    groups: [
+      { id: "media", label: "Media" },
+      { id: "logs", label: "Logs" },
+      { id: "other", label: "Other" },
     ],
-    categoryForFile: (_name, extension) => (extension === ".md" ? "docs" : "other"),
+    families: [
+      { id: "images", label: "Images", groupId: "media", extensions: [".png"] },
+      { id: "log-files", label: "Log files", groupId: "logs", extensions: [".log"] },
+    ],
+    categoryForFile: () => "other",
   };
-  const semantic = modelModule.normalizeRollupEnvelope({
+  const breakdownEnvelope = modelModule.normalizeRollupEnvelope({
     ...raw,
-    node: { total_files: 4, total_size: 40, unignored_files: 3, unignored_size: 30 },
-    type_tallies: {
-      families: [
+    node: { total_files: 6, total_size: 50, unignored_files: 6, unignored_size: 50 },
+    file_type_breakdown: {
+      schema: "file-type-breakdown-v1",
+      registry: { schema_version: 1, revision: 7, fingerprint: "registry-seven" },
+      metrics: metrics(6, 50),
+      groups: [
         {
-          id: "javascript",
-          all_files: 3,
-          all_bytes: 30,
-          unignored_files: 2,
-          unignored_bytes: 20,
-          extensions: [
-            [".js", 2, 20, 2, 20],
-            [".mjs", 1, 10, 0, 0],
+          id: "logs",
+          families: [
+            {
+              id: "log-files",
+              metrics: metrics(1, 10),
+              extensions: [{ extension: ".log", metrics: metrics(1, 10) }],
+            },
+          ],
+        },
+        {
+          id: "media",
+          families: [
+            {
+              id: "images",
+              metrics: metrics(1, 20),
+              extensions: [{ extension: ".png", metrics: metrics(1, 20) }],
+            },
           ],
         },
       ],
-      extensions: [[".md", 1, 10, 1, 10]],
+      no_extension: {
+        metrics: metrics(2, 5),
+        filenames: [{ basename: "README", metrics: metrics(1, 3) }],
+        others: { metrics: metrics(1, 2), omitted_distinct_values: 4 },
+      },
+      remaining_types: {
+        metrics: metrics(2, 15),
+        extensions: [{ extension: ".bin", metrics: metrics(1, 10) }],
+        others: { metrics: metrics(1, 5), omitted_distinct_values: 2 },
+      },
     },
   });
-  const semanticModel = modelModule.buildFileTypeSummaryModel(
-    semantic,
+  const breakdownModel = modelModule.buildFileTypeSummaryModel(
+    breakdownEnvelope,
     true,
     formatters,
-    fileTypes,
-  );
-  const javascript = semanticModel.rows.find((row) => row.key === "family:javascript");
-  check(
-    "semantic family uses readable aggregate identity",
-    javascript?.label === "JavaScript" &&
-      javascript.category === "code" &&
-      javascript.kind === "family" &&
-      javascript.paletteKey === "family:javascript",
+    registryRuntime,
   );
   check(
-    "semantic family preserves canonical children",
-    javascript?.disclosable === true &&
-      javascript.children
-        .map((row) => row.extension)
-        .sort()
-        .join(",") === ".js,.mjs" &&
-      javascript.children.every((row) => row.paletteKey === "family:javascript"),
+    "file-type definitions control group and family order",
+    breakdownModel.groups.map((group) => group.id).join(",") === "media,logs,other" &&
+      breakdownModel.rows.map((row) => row.key).join(",") ===
+        "family:images,family:log-files,(none),",
   );
   check(
-    "ignored scope removes an empty canonical child and redundant disclosure",
-    modelModule.buildFileTypeSummaryModel(semantic, false, formatters, fileTypes).rows[0]
-      .disclosable === false,
+    "singleton file-type families are disclosable",
+    breakdownModel.rows[0].disclosable === true && breakdownModel.rows[0].children.length === 1,
   );
-  const withRemainder = modelModule.normalizeRollupEnvelope({
-    ...raw,
-    ext_tallies: [
-      ["", 1, 1, 1, 1],
-      [".py", 150, 10000000, 145, 9500000],
-      [".md", 6, 999999, 4, 499999],
-    ],
-  });
+  const noExtensionRow = breakdownModel.rows.find((row) => row.key === "(none)");
+  const remainingRow = breakdownModel.rows.find((row) => row.key === "");
   check(
-    "remainder row sorts last with a reflexive comparator",
-    modelModule
-      .buildFileTypeSummaryModel(withRemainder, true, formatters)
-      .rows.map((row) => row.key)
-      .join(",") === ".py,.md,",
+    "No extension exposes filenames and a counted Others tail",
+    noExtensionRow?.children[0].label === "README" &&
+      noExtensionRow.children[0].iconPath === "README" &&
+      noExtensionRow.children[1].label === "Others (4 more)",
   );
+  check(
+    "Other types exposes raw extensions and a counted Others tail",
+    remainingRow?.children[0].extension === ".bin" &&
+      remainingRow.children[0].iconPath === "x.bin" &&
+      remainingRow.children[1].label === "Others (2 more)",
+  );
+  let identityMismatch = false;
+  try {
+    modelModule.buildFileTypeSummaryModel(breakdownEnvelope, true, formatters, {
+      ...registryRuntime,
+      fingerprint: "wrong",
+    });
+  } catch (error) {
+    identityMismatch = error instanceof TypeError;
+  }
+  check("breakdown rejects a mismatched browser registry", identityMismatch);
   const failed = modelModule.normalizeRollupEnvelope({ ...raw, index_status: "failed" });
-  const failedModel = modelModule.buildFileTypeSummaryModel(failed, true, formatters);
+  const failedModel = modelModule.buildFileTypeSummaryModel(failed, true, formatters, baseRuntime);
   check("failed index is terminal", failedModel.scanning === false);
   check("failed index has a distinct flag", failedModel.indexFailed === true);
   const failedWithoutTotals = modelModule.normalizeRollupEnvelope({
     ...raw,
     index_status: "failed",
     node: null,
+    file_type_breakdown: null,
   });
   check(
     "failed index without totals is not a pending skeleton",
@@ -181,6 +236,7 @@ async function importSource(relative) {
     ...raw,
     index_status: "done",
     node: null,
+    file_type_breakdown: null,
   });
   check(
     "completed index miss is not a pending skeleton",
@@ -200,18 +256,36 @@ async function importSource(relative) {
   const empty = modelModule.normalizeRollupEnvelope({
     ...raw,
     node: { total_files: 0, total_size: 0, unignored_files: 0, unignored_size: 0 },
-    ext_tallies: [],
+    file_type_breakdown: {
+      ...raw.file_type_breakdown,
+      metrics: metrics(0, 0),
+      groups: [],
+    },
   });
   check(
     "empty model",
-    modelModule.buildFileTypeSummaryModel(empty, false, formatters).state === "empty",
+    modelModule.buildFileTypeSummaryModel(empty, false, formatters, baseRuntime).state === "empty",
   );
   const ignoredOnly = modelModule.normalizeRollupEnvelope({
     ...raw,
     node: { total_files: 2, total_size: 10, unignored_files: 0, unignored_size: 0 },
-    ext_tallies: [[".tmp", 2, 10, 0, 0]],
+    file_type_breakdown: {
+      ...raw.file_type_breakdown,
+      metrics: metrics(2, 10, 0, 0),
+      groups: [],
+      remaining_types: {
+        metrics: metrics(2, 10, 0, 0),
+        extensions: [{ extension: ".tmp", metrics: metrics(2, 10, 0, 0) }],
+        others: null,
+      },
+    },
   });
-  const ignoredModel = modelModule.buildFileTypeSummaryModel(ignoredOnly, false, formatters);
+  const ignoredModel = modelModule.buildFileTypeSummaryModel(
+    ignoredOnly,
+    false,
+    formatters,
+    baseRuntime,
+  );
   check("ignored-only model", ignoredModel.state === "ignored-only");
   check("ignored-only count", ignoredModel.allFilesText === "2 files", ignoredModel.allFilesText);
 

@@ -2908,12 +2908,13 @@ function filterTypePresets() {
   }));
 }
 
-function filterTypeFamilies() {
+function filterTypeFamilies(groupId) {
   const showIgnored = filterState ? filterState.get().showIgnored : true;
   const counts = new Map(
     _typeFamilyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
   );
   return (window.MetabrowserFileTypeTaxonomy?.families || [])
+    .filter((family) => !groupId || (family.groupId || family.category) === groupId)
     .map((family) => ({
       id: `family:${family.id}`,
       label: family.label,
@@ -2924,9 +2925,21 @@ function filterTypeFamilies() {
 }
 
 function filterTypePresetSections() {
+  const groups = window.MetabrowserFileTypeTaxonomy?.groups || [];
+  const groupPresets = filterTypePresets();
+  if (groups.length === 0) {
+    return [
+      { id: "groups", label: "Groups", presets: groupPresets },
+      { id: "families", label: "Families", presets: filterTypeFamilies() },
+    ];
+  }
   return [
-    { id: "categories", presets: filterTypePresets() },
-    { id: "families", presets: filterTypeFamilies() },
+    { id: "groups", label: "Groups", presets: groupPresets },
+    ...groups.map((group) => ({
+      id: `families:${group.id}`,
+      label: group.label,
+      presets: filterTypeFamilies(group.id),
+    })),
   ];
 }
 
@@ -3010,7 +3023,7 @@ function renderNavFilterBar() {
     }) +
     fc.menuGroupHtml({
       key: "types",
-      label: "File extension",
+      label: "File type",
       options: filterTypeOptions(),
       presetSections: filterTypePresetSections(),
       value: st.types,
