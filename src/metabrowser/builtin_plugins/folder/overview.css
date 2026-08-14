@@ -27,7 +27,7 @@
 
 .folder-overview-panel-heading {
   margin: 0 0 14px;
-  padding: 0 0 8px;
+  padding: 0 0 var(--section-heading-divider-gap);
   border-bottom: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font-sans);
@@ -61,6 +61,14 @@
 
 .folder-overview-panel-body-collapsed {
   display: none;
+}
+
+.folder-rollup-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 12px;
 }
 
 .folder-overview-panel-surface > .folder-overview-panel-heading,

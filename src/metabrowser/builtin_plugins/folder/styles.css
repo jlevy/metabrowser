@@ -12,7 +12,26 @@
   flex-direction: column;
 }
 
-.tm-toolbar {
+.tm-totals-heading {
+  max-width: var(--tm-max-width);
+  margin: 0 0 14px;
+  padding: 0 0 var(--section-heading-divider-gap);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: 1.25;
+  text-transform: var(--label-text-transform);
+}
+
+.tm-totals {
+  max-width: var(--tm-max-width);
+  margin: 0 0 18px;
+}
+
+.folder-treemap-host > .folder-rollup-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -41,6 +60,8 @@
   align-items: center;
   justify-content: center;
   height: 100%;
+  background: var(--tally-skeleton-bg);
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 
 .tm-cell {
@@ -181,6 +202,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tm-loading,
   .tm-pending {
     animation: none;
     opacity: 0.75;
@@ -203,7 +225,7 @@
    interactive chrome; the host's print rules already hide the app
    shell around it. */
 @media print {
-  .tm-toolbar {
+  .folder-treemap-host > .folder-rollup-controls {
     display: none;
   }
   .tm-cell {

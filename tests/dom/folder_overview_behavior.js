@@ -76,8 +76,8 @@ global.window = { METABROWSER_SETTINGS: {} };
   )();
   const fileTypeSummaryPanel = createFileTypeSummaryPanel({}, {});
   check(
-    "built-in file-type summary uses Files heading",
-    fileTypeSummaryPanel.label === "Files",
+    "built-in file-type summary uses File Types heading",
+    fileTypeSummaryPanel.label === "File Types",
     fileTypeSummaryPanel.label,
   );
 
@@ -128,7 +128,22 @@ global.window = { METABROWSER_SETTINGS: {} };
   const summaryPalette = {
     acquire: () => ({ classFor: () => "", release() {}, sync() {} }),
   };
-  mountFileTypeSummary(new Element("div"), { path: "" }, summaryMb, summaryPalette, {});
+  const summaryControls = {
+    get: () => ({ metric: "size", includeIgnored: false }),
+    mount: () => () => {},
+    subscribe(listener) {
+      listener({ metric: "size", includeIgnored: false });
+      return () => {};
+    },
+  };
+  mountFileTypeSummary(
+    new Element("div"),
+    { path: "" },
+    summaryMb,
+    summaryPalette,
+    summaryControls,
+    {},
+  );
   try {
     rollupApply({ incompatible: true, breakdown: null, families: [], tallies: [] });
   } catch (error) {
@@ -185,10 +200,26 @@ global.window = { METABROWSER_SETTINGS: {} };
   };
   const descriptors = [
     {
-      id: "folder.file-types",
-      label: "Files",
+      id: "folder.file-totals",
+      label: "File Totals",
       placement: "summary",
       presentation: "surface",
+      collapsible: false,
+      required: true,
+      printable: false,
+      resolve: (context) => ({ key: context.path, data: "totals" }),
+      mount(container) {
+        container.innerHTML = "totals";
+        return { dispose() {} };
+      },
+    },
+    {
+      id: "folder.file-types",
+      label: "File Types",
+      placement: "summary",
+      presentation: "surface",
+      collapsible: true,
+      defaultExpanded: true,
       required: true,
       printable: false,
       resolve: (context) => ({ key: context.path, data: "summary" }),
@@ -239,20 +270,20 @@ global.window = { METABROWSER_SETTINGS: {} };
   check(
     "deterministic slots",
     stack.children.map((slot) => slot.dataset.panelId).join(",") ===
-      "folder.file-types,folder.readme,example.license",
+      "folder.file-totals,folder.file-types,folder.readme,example.license",
   );
   check(
     "panels receive visible headings",
     stack.children.map((slot) => slot.children[0].children[0].textContent).join(",") ===
-      "Files,README,License",
+      "File Totals,File Types,README,License",
   );
   check(
     "panel headings use a shared semantic level",
     stack.children.every((slot) => slot.children[0].tagName === "H2"),
   );
   check(
-    "panel headings expose disclosure buttons",
-    stack.children.every((slot) => {
+    "collapsible panel headings expose disclosure buttons",
+    stack.children.slice(1).every((slot) => {
       const button = slot.children[0].children[0];
       return (
         button.tagName === "BUTTON" &&
@@ -263,15 +294,20 @@ global.window = { METABROWSER_SETTINGS: {} };
       );
     }),
   );
-  check("optional panel hidden", stack.children[1].hidden === true);
-  check("synthetic panel mounted", stack.children[2].children[1].innerHTML === "MIT");
+  check(
+    "File Totals heading is fixed",
+    stack.children[0].children[0].children[0].tagName === "SPAN" &&
+      stack.children[0].children[0].children[0].listeners.click === undefined,
+  );
+  check("optional panel hidden", stack.children[2].hidden === true);
+  check("synthetic panel mounted", stack.children[3].children[1].innerHTML === "MIT");
   check(
     "print aggregation",
     printStates.some((state) => state.printable === true),
   );
 
-  const filesToggle = stack.children[0].children[0].children[0];
-  const filesBody = stack.children[0].children[1];
+  const filesToggle = stack.children[1].children[0].children[0];
+  const filesBody = stack.children[1].children[1];
   filesToggle.listeners.click();
   check(
     "overview panels collapse",
@@ -313,7 +349,7 @@ global.window = { METABROWSER_SETTINGS: {} };
   check("failed update aborts the mounted panel", summaryMountSignal.aborted === true);
   check(
     "failed update renders panel error",
-    stack.children[0].children[1].children[0].attributes.role === "alert",
+    stack.children[1].children[1].children[0].attributes.role === "alert",
   );
 
   handle.dispose();

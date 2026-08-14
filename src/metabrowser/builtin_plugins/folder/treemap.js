@@ -5,35 +5,25 @@
 //
 //   ("folder", "treemap") — squarified folder/file hierarchy from
 //       /api/rollup via mb.watchRollup: a Bytes/Files metric choice,
-//       a default-on ignored-file checkbox, shared file-type colors,
+//       a default-off ignored-file checkbox, shared file-type colors,
 //       fluid cell typography, hover tooltip, click navigation,
 //       keyboard support, pending and truncated presentations.
 //
-// Geometry comes from treemap_layout.js, toggle state
-// persists through mb.prefs (host-only cookies, shared across per-root
-// ports), and live refresh rides mb.watchRollup's debounced
-// /api/events signal.
+// Geometry comes from treemap_layout.js. Toggle state comes from the shared
+// folder rollup controls, persists through mb.prefs (host-only cookies,
+// shared across per-root ports), and live refresh rides mb.watchRollup's
+// debounced /api/events signal.
 
+import { mountFolderTotalsView, normalizeFolderTotals } from "./folder_totals.js";
 import { layoutTree } from "./treemap_layout.js";
-import { parentPath, sanitizeTreemapState } from "./treemap_model.js";
+import { parentPath } from "./treemap_model.js";
 
 /** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
 
-/** @param {MetabrowserPublicSdk} mb @param {TreemapPalettePool} palettePool */
-export function registerTreemap(mb, palettePool) {
-  const controls = mb.filterControls;
-  if (!controls) {
-    throw new Error("metabrowser folder plugin: filter controls are unavailable");
-  }
-  const filterControls = controls;
-  /** Persisted toggle state (one preference key; absent or invalid
-   * fields fall to defaults). Stored through mb.prefs so the choice
-   * survives across Metabrowser instances (each served root runs on
-   * its own port and therefore its own localStorage origin). */
-  const PREF_KEY = "folder.treemap";
-  const LEGACY_STORAGE_KEY = "metabrowser.folder.treemap";
+/** @param {MetabrowserPublicSdk} mb @param {TreemapPalettePool} palettePool @param {{mount: (container: HTMLElement) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
+export function registerTreemap(mb, palettePool, rollupControls) {
   const TREEMAP_VIEW_ID = "treemap";
   /** Minimum paint thresholds; type size itself comes from cell geometry. */
   const LABEL_MIN_W = 56;
@@ -46,33 +36,6 @@ export function registerTreemap(mb, palettePool) {
   const VIEWPORT_MIN_H = 280;
   const VIEWPORT_MAX_H = 900;
   const VIEWPORT_BOTTOM_RESERVE = 64;
-
-  /** @returns {TreemapState} */
-  function loadState() {
-    const stored = mb.prefs.get(PREF_KEY, null);
-    if (stored !== null) {
-      return sanitizeTreemapState(stored);
-    }
-    // One-time migration from the pre-prefs localStorage key (which
-    // was invisible to instances on other ports).
-    try {
-      const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (legacy) {
-        const state = sanitizeTreemapState(JSON.parse(legacy));
-        mb.prefs.set(PREF_KEY, state);
-        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-        return state;
-      }
-    } catch (_err) {
-      // No usable legacy value; fall through to defaults.
-    }
-    return sanitizeTreemapState(null);
-  }
-
-  /** @param {TreemapState} state */
-  function saveState(state) {
-    mb.prefs.set(PREF_KEY, sanitizeTreemapState(state));
-  }
 
   /**
    * File-type class for a cell: real path for files, a synthetic name
@@ -140,32 +103,6 @@ export function registerTreemap(mb, palettePool) {
     return cell.kind === "dir" || cell.kind === "file";
   }
 
-  /** @param {TreemapState} state */
-  function toolbarHtml(state) {
-    return (
-      '<div class="tm-toolbar">' +
-      filterControls.groupHtml({
-        key: "metric",
-        select: "one",
-        layout: "joined",
-        label: "Treemap area",
-        options: [
-          { value: "size", label: "Bytes" },
-          { value: "files", label: "Files" },
-        ],
-        value: state.metric,
-      }) +
-      filterControls.checkHtml({
-        key: "includeIgnored",
-        label: "Show ignored",
-        checked: state.includeIgnored,
-        title: "Include gitignored files, dimmed",
-        className: "tm-ignored-check",
-      }) +
-      "</div>"
-    );
-  }
-
   /**
    * @param {Record<string, any>} cell
    * @param {TreemapState} state
@@ -223,40 +160,21 @@ export function registerTreemap(mb, palettePool) {
   }
 
   /**
-   * Footer caption. When ignored files are excluded the map lays out
-   * from unignored_* weights, so the caption quotes the same figures.
+   * Exceptional status copy; steady-state totals render above the map.
    * @param {Record<string, any> | null} envelope
-   * @param {TreemapState} state
    * @returns {string}
    */
-  function statusHtml(envelope, state) {
+  function statusHtml(envelope) {
     if (!envelope) {
-      return "Loading rollup…";
+      return "";
     }
-    const node = envelope.node;
-    if (!node) {
-      return "Indexing… the treemap fills in as the scan completes.";
-    }
-    const excludeIgnored = !state.includeIgnored;
-    const files = excludeIgnored ? node.unignored_files : node.total_files;
-    const size = excludeIgnored ? node.unignored_size : node.total_size;
-    const parts = [
-      mb.formatFileCount(files),
-      mb.formatSize(size),
-      `scan: ${envelope.index_status}`,
-    ];
-    if (excludeIgnored) {
-      parts.push("ignored hidden");
-    }
-    if (node.state === "pending") {
-      parts.push("this folder is still being scanned");
+    if (envelope.index_status === "failed") {
+      return "Indexing failed; the treemap is unavailable.";
     }
     if (envelope.truncated) {
-      parts.push(
-        `index capped at ${mb.formatFileCount(envelope.max_files)} — totals are lower bounds`,
-      );
+      return `Index capped at ${mb.formatFileCount(envelope.max_files)}; the treemap covers the indexed files.`;
     }
-    return parts.join(" · ");
+    return "";
   }
 
   /**
@@ -292,7 +210,8 @@ export function registerTreemap(mb, palettePool) {
    * @param {Record<string, any>} ctx
    */
   function renderTreemap(container, ctx) {
-    const state = loadState();
+    /** @type {TreemapState} */
+    let state = rollupControls.get();
     const palette = palettePool.acquire(ctx.path || "");
     /** @type {Record<string, any> | null} */
     let envelope = null;
@@ -304,27 +223,38 @@ export function registerTreemap(mb, palettePool) {
     let focusPos = 0;
 
     container.innerHTML =
-      toolbarHtml(state) +
+      '<h2 class="tm-totals-heading">Totals</h2>' +
+      '<div class="tm-totals"></div>' +
+      '<div class="folder-rollup-controls"></div>' +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
-      `<div class="tm-status">${statusHtml(null, state)}</div>`;
+      '<div class="tm-status" role="status"></div>';
+    const totalsContainer = /** @type {HTMLElement} */ (container.querySelector(".tm-totals"));
+    const controlsContainer = /** @type {HTMLElement} */ (
+      container.querySelector(".folder-rollup-controls")
+    );
     const viewport = /** @type {HTMLElement} */ (container.querySelector(".tm-viewport"));
     const status = /** @type {HTMLElement} */ (container.querySelector(".tm-status"));
+    const initialRaw =
+      ctx.raw && typeof ctx.raw === "object"
+        ? /** @type {Record<string, any>} */ (ctx.raw).dir
+        : null;
+    const totalsView = mountFolderTotalsView(
+      totalsContainer,
+      normalizeFolderTotals(initialRaw),
+      mb,
+    );
+    const unsubscribeTotals = mb.directoryTotals.subscribe(ctx.path || "", (next) => {
+      const normalized = normalizeFolderTotals(next);
+      if (normalized.state === "complete") {
+        totalsView.update(normalized);
+      }
+    });
+    const unmountControls = rollupControls.mount(controlsContainer);
 
     /** Keep the shared exclusive-control semantics in step with the
      * controller state. filterControls.bind delegates state ownership
      * to the consumer, so relayout must update both the visible fill
      * and the radiogroup's roving tabindex. */
-    function syncToolbarState() {
-      const metricChips = container.querySelectorAll(
-        '[data-chip-group="metric"] [data-chip-value]',
-      );
-      for (const chip of metricChips) {
-        const selected = chip.getAttribute("data-chip-value") === state.metric;
-        chip.setAttribute("aria-checked", String(selected));
-        chip.setAttribute("tabindex", selected ? "0" : "-1");
-      }
-    }
-
     /** Measure the height actually available below the viewport's top
      * edge and pin it as an inline style (clamped to the bounds
      * above). Skips silently where layout metrics are unavailable
@@ -350,14 +280,19 @@ export function registerTreemap(mb, palettePool) {
       if (disposed || !viewport) {
         return;
       }
-      syncToolbarState();
       const rect = viewport.getBoundingClientRect();
       const node = envelope ? envelope.node : null;
-      status.textContent = statusHtml(envelope, state);
-      if (!node || rect.width < 10 || rect.height < 10) {
-        viewport.innerHTML = envelope
-          ? ""
-          : '<div class="tm-loading mb-delayed-loading"><div class="spinner"></div></div>';
+      status.textContent = statusHtml(envelope);
+      status.hidden = status.textContent === "";
+      const terminal =
+        envelope &&
+        (envelope.index_status === "done" || envelope.index_status === "truncated") &&
+        node?.state !== "pending";
+      if (!terminal || !node || rect.width < 10 || rect.height < 10) {
+        viewport.innerHTML =
+          envelope?.index_status === "failed"
+            ? '<div class="preview-empty">Treemap unavailable.</div>'
+            : '<div class="tm-loading mb-delayed-loading" aria-hidden="true"></div><span class="sr-only">Loading treemap…</span>';
         return;
       }
       cells = layoutTree(
@@ -492,28 +427,9 @@ export function registerTreemap(mb, palettePool) {
       }
     });
 
-    const unbindControls = filterControls.bind(container, {
-      onChange(key, value, select) {
-        if (
-          key !== "metric" ||
-          select !== "one" ||
-          (value !== "size" && value !== "files") ||
-          state.metric === value
-        ) {
-          return;
-        }
-        state.metric = value;
-        saveState(state);
-        relayout();
-      },
-      onToggle(key, checked) {
-        if (key !== "includeIgnored" || state.includeIgnored === checked) {
-          return;
-        }
-        state.includeIgnored = checked;
-        saveState(state);
-        relayout();
-      },
+    const unsubscribeControls = rollupControls.subscribe((next) => {
+      state = next;
+      relayout();
     });
 
     sizeViewport();
@@ -526,6 +442,12 @@ export function registerTreemap(mb, palettePool) {
     }
     const watch = mb.watchRollup(ctx.path, { active: isVisible, ext_rank: "dual" }, (env) => {
       envelope = env;
+      const completeSnapshot =
+        (env.index_status === "done" || env.index_status === "truncated") &&
+        env.node?.state !== "pending";
+      if (completeSnapshot && env.node) {
+        totalsView.update(normalizeFolderTotals(env.node));
+      }
       const breakdown = env.file_type_breakdown;
       palette.sync(
         breakdown && Array.isArray(breakdown.groups)
@@ -586,12 +508,14 @@ export function registerTreemap(mb, palettePool) {
       disposed = true;
       watch.dispose();
       unsubscribeActive();
+      unsubscribeControls();
+      unsubscribeTotals();
+      unmountControls();
       window.removeEventListener("resize", onWindowResize);
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
       mb.tooltip.hide();
-      unbindControls();
       palette.release();
     };
     return Object.freeze({ dispose });

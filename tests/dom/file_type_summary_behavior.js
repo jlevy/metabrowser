@@ -246,39 +246,8 @@ function familyRow() {
       handle.rows.get(".bin").icon.innerHTML === '<svg data-file-icon="generic"></svg>',
   );
   check(
-    "aggregate rows remain text-only",
-    handle.totalRow.label.children.length === 0 && handle.ignoredRow.label.children.length === 0,
-  );
-  check("Totals group precedes the breakdown", handle.table.children[2] === handle.totalRow.body);
-  check(
-    "Total precedes Ignored",
-    handle.totalRow.body.children[1] === handle.totalRow.tr &&
-      handle.totalRow.body.children[2] === handle.ignoredRow.tr,
-  );
-  check(
-    "Totals group has a semantic heading",
-    handle.totalRow.body.children[0].children[0].textContent === "Totals" &&
-      handle.totalRow.body.children[0].children[0].scope === "rowgroup",
-  );
-  check("ignored row names the subset", handle.ignoredRow.label.textContent === "Ignored");
-  check(
-    "ignored row reports exact values and shares",
-    handle.ignoredRow.fileValue.textContent === "70 files" &&
-      handle.ignoredRow.byteValue.textContent === "60 B" &&
-      handle.ignoredRow.fileFill.style.width === "70%" &&
-      handle.ignoredRow.byteFill.style.width === "60%" &&
-      handle.ignoredRow.filePercent.textContent === "70%" &&
-      handle.ignoredRow.bytePercent.textContent === "60%" &&
-      handle.ignoredRow.fileFill.className.includes("mb-distribution-other") &&
-      handle.ignoredRow.byteFill.className.includes("mb-distribution-other"),
-  );
-  check("total row names the population", handle.totalRow.label.textContent === "Total");
-  check(
-    "total row has full neutral bars",
-    handle.totalRow.fileFill.style.width === "100%" &&
-      handle.totalRow.byteFill.style.width === "100%" &&
-      handle.totalRow.fileFill.className.includes("mb-distribution-other") &&
-      handle.totalRow.byteFill.className.includes("mb-distribution-other"),
+    "File Types excludes the separately rendered totals",
+    handle.totalRow === null && handle.ignoredRow === null,
   );
   check(
     "breakdown values use shared metric emphasis",
@@ -286,13 +255,6 @@ function familyRow() {
       handle.rows.get(".py").byteValue.className === "file-type-summary-value size" &&
       handle.rows.get(".md").fileValue.className === "file-type-summary-value count" &&
       handle.rows.get(".md").byteValue.className === "file-type-summary-value size",
-  );
-  check(
-    "Total and Ignored use the same metric emphasis",
-    handle.totalRow.fileValue.className === "file-type-summary-value count count-large" &&
-      handle.totalRow.byteValue.className === "file-type-summary-value size size-large" &&
-      handle.ignoredRow.fileValue.className === "file-type-summary-value count count-large" &&
-      handle.ignoredRow.byteValue.className === "file-type-summary-value size size-large",
   );
   check(
     "Total values have no unconditional bold override",
@@ -333,21 +295,10 @@ function familyRow() {
       handle.rows.get(".py").fileValue.className === "file-type-summary-value count count-large" &&
       handle.rows.get(".py").byteValue.className === "file-type-summary-value size",
   );
-  check(
-    "top totals patched",
-    handle.totalRow.fileValue.textContent === "120 files" &&
-      handle.totalRow.byteValue.textContent === "200 B",
-  );
-  check(
-    "ignored row is visible when ignored files are included",
-    handle.ignoredRow.tr.hidden === false,
-  );
-
   view.updateDistributionView(handle, {
     ...updated,
     showIgnored: false,
   });
-  check("ignored row hides when ignored files are excluded", handle.ignoredRow.tr.hidden === true);
   check(
     "paired row bars share a color",
     handle.rows.get(".py").fileFill.className === handle.rows.get(".py").byteFill.className,
@@ -418,7 +369,7 @@ function familyRow() {
         paletteKey: "",
       },
       {
-        ...row("no-extension/others", "Others (3 more)", "other", 10, 5, "10%", "5%"),
+        ...row("no-extension/others", "3 more", "other", 10, 5, "10%", "5%"),
         kind: "others",
         child: true,
         iconPath: "file",
@@ -511,24 +462,6 @@ function familyRow() {
       !handle.rows.has(".md") &&
       !handle.rows.has(".json") &&
       !handle.rows.has(".bin"),
-  );
-
-  view.updateDistributionView(handle, {
-    ...updated,
-    state: "zero-bytes",
-    bytes: 0,
-    bytesText: "0 B",
-    rows: [row(".py", ".py", "code", 100, 0, "100%", "0%")],
-  });
-  check(
-    "zero-byte total remains truthful",
-    handle.totalRow.fileFill.style.width === "100%" &&
-      handle.totalRow.byteFill.style.width === "0%" &&
-      handle.totalRow.bytePercent.textContent === "0%",
-  );
-  check(
-    "zero-byte total stays at normal size weight",
-    handle.totalRow.byteValue.className === "file-type-summary-value size",
   );
 
   view.updateDistributionView(handle, {

@@ -48,6 +48,12 @@ function makeElement() {
       if (selector === ".tm-status") {
         return el.status;
       }
+      if (selector === ".tm-totals") {
+        return el.totals;
+      }
+      if (selector === ".folder-rollup-controls") {
+        return el.controls;
+      }
       return null;
     },
     querySelectorAll() {
@@ -222,6 +228,7 @@ for (const relative of [
   "src/metabrowser/static/request_error.js",
   "src/metabrowser/static/formatters.js",
   "src/metabrowser/static/inventory_scope.js",
+  "src/metabrowser/static/directory_totals_store.js",
   "src/metabrowser/static/resource_context.js",
   "src/metabrowser/static/view_state.js",
   "src/metabrowser/static/plugin_sdk.js",
@@ -233,6 +240,7 @@ for (const relative of [
 const moduleSources = [
   "src/metabrowser/builtin_plugins/folder/treemap_layout.js",
   "src/metabrowser/builtin_plugins/folder/treemap_model.js",
+  "src/metabrowser/builtin_plugins/folder/rollup_controls.js",
 ];
 for (const relative of moduleSources) {
   const source = fs
@@ -250,6 +258,14 @@ const treemapStyles = fs.readFileSync(
   "utf8",
 );
 vm.runInContext(treemapSource, sandbox, { filename: "treemap.js" });
+vm.runInContext(
+  `function normalizeFolderTotals(value) { return value || {state: "pending"}; }
+   function mountFolderTotalsView(container, value) {
+     container.value = value;
+     return { update(next) { container.value = next; } };
+   }`,
+  sandbox,
+);
 const fileIconCalls = [];
 sandbox.MetabrowserFileTypes = {
   iconFor(name) {
@@ -272,12 +288,19 @@ vm.runInContext(
         }
       };
     }
-  });`,
+  }, createFolderRollupControls(metabrowser));`,
   sandbox,
 );
 
 const mb = sandbox.metabrowser;
 check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
+check(
+  "public directory totals store is read-only",
+  typeof mb.directoryTotals.get === "function" &&
+    typeof mb.directoryTotals.subscribe === "function" &&
+    mb.directoryTotals.applySnapshot === undefined &&
+    mb.directoryTotals.applyChange === undefined,
+);
 const openPathEvents = [];
 sandbox.addEventListener("metabrowser:open-path", (event) => {
   openPathEvents.push(event.detail);
@@ -295,6 +318,8 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   const container = makeElement();
   container.viewport = makeElement();
   container.status = makeElement();
+  container.totals = makeElement();
+  container.controls = makeElement();
   const metricChips = ["size", "files"].map((value) => {
     const attributes = {
       "aria-checked": value === "size" ? "true" : "false",
@@ -311,7 +336,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     };
   });
   container.querySelectorAll = (selector) =>
-    selector === '[data-chip-group="metric"] [data-chip-value]' ? metricChips : [];
+    selector === '[data-chip-group="folder-rollup-metric"] [data-chip-value]' ? metricChips : [];
   container.viewport.textContent = "";
   Object.defineProperty(container.viewport, "textContent", {
     set() {},
@@ -330,13 +355,40 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
 
   const view = mb.getRegisteredView("folder", "treemap");
   sandbox.MetabrowserViewState.setActive(container, true);
+  sandbox.metabrowserDirectoryTotalsStore.applySnapshot([
+    {
+      path: "",
+      type: "dir",
+      total_files: null,
+      total_size: null,
+      unignored_files: null,
+      unignored_size: null,
+    },
+  ]);
   const mounted = view.render(container, {
     path: "",
     kind: "folder",
-    raw: { readme_path: "README.md" },
+    raw: {
+      readme_path: "README.md",
+      dir: {
+        total_files: 4,
+        total_size: 1050,
+        unignored_files: 3,
+        unignored_size: 950,
+      },
+    },
   });
-  check("toolbar rendered", container.innerHTML.includes("tm-toolbar"), "no toolbar");
-  check("metric chooser present", container.innerHTML.includes('data-chip-key="metric"'));
+  check(
+    "pending cache entries never replace complete first-frame totals",
+    container.totals.value.total_files === 4 && container.totals.value.total_size === 1050,
+    JSON.stringify(container.totals.value),
+  );
+  check("totals precede the treemap", container.innerHTML.includes("tm-totals-heading"));
+  check("shared controls rendered", container.innerHTML.includes("folder-rollup-controls"));
+  check(
+    "metric chooser present",
+    container.controls.innerHTML.includes('data-chip-key="folder-rollup-metric"'),
+  );
   check(
     "obsolete grouping and color choices absent",
     !container.innerHTML.includes('data-chip-key="grouping"') &&
@@ -347,11 +399,12 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     container.innerHTML,
   );
   check(
-    "ignored scope is a checked checkbox",
-    container.innerHTML.includes('type="checkbox"') &&
-      container.innerHTML.includes('data-chip-check="includeIgnored" checked') &&
-      container.innerHTML.includes("Show ignored"),
-    container.innerHTML,
+    "ignored scope defaults to an unchecked checkbox",
+    container.controls.innerHTML.includes('type="checkbox"') &&
+      container.controls.innerHTML.includes('data-chip-check="folder-rollup-ignored"') &&
+      !container.controls.innerHTML.includes('data-chip-check="folder-rollup-ignored" checked') &&
+      container.controls.innerHTML.includes("Show ignored"),
+    container.controls.innerHTML,
   );
 
   // Initial watchRollup fetch resolves through several microtasks; a
@@ -388,7 +441,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     "type fill always uses the shared palette",
     container.viewport.innerHTML.includes("tm-type-fill") &&
       container.viewport.innerHTML.includes("mb-distribution-slot-7") &&
-      container.viewport.innerHTML.includes("mb-distribution-slot-3"),
+      !container.viewport.innerHTML.includes("mb-distribution-slot-3"),
     container.viewport.innerHTML,
   );
   check(
@@ -409,9 +462,40 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     container.viewport.innerHTML,
   );
   check(
-    "status line totals",
-    container.status.textContent.includes("4 files"),
+    "steady-state footer is empty",
+    container.status.textContent === "",
     container.status.textContent,
+  );
+
+  const refreshFromInventoryChange = async () => {
+    sandbox.dispatchEvent(
+      new sandbox.CustomEvent("metabrowser:inventory-change", {
+        detail: { kind: "change", paths: ["a.py"] },
+      }),
+    );
+    const refreshTimers = pendingTimers.slice();
+    pendingTimers = [];
+    for (const fn of refreshTimers) {
+      fn();
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  envelope.index_status = "scanning";
+  await refreshFromInventoryChange();
+  check(
+    "in-progress snapshots render one quiet loading block without partial cells",
+    container.viewport.innerHTML.includes("tm-loading mb-delayed-loading") &&
+      !container.viewport.innerHTML.includes("data-tm-cell"),
+    container.viewport.innerHTML,
+  );
+  envelope.index_status = "done";
+  await refreshFromInventoryChange();
+  check(
+    "completed snapshots replace loading atomically",
+    !container.viewport.innerHTML.includes("tm-loading") &&
+      container.viewport.innerHTML.includes("data-tm-cell"),
+    container.viewport.innerHTML,
   );
 
   const folderIndexMatch = container.viewport.innerHTML.match(
@@ -455,6 +539,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   sandbox.innerHeight = 1000;
 
   // Inventory change → debounce timer → refetch.
+  const refreshStart = fetchCalls.length;
   sandbox.dispatchEvent(
     new sandbox.CustomEvent("metabrowser:inventory-change", {
       detail: { kind: "change", paths: ["a.py"] },
@@ -467,12 +552,16 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     fn();
   }
   await new Promise((resolve) => setImmediate(resolve));
-  check("refresh refetched", fetchCalls.length === 2, `${fetchCalls.length} fetches`);
+  check(
+    "refresh refetched",
+    fetchCalls.length === refreshStart + 1,
+    `${fetchCalls.length} fetches`,
+  );
 
   // Metric and ignored-scope changes relayout without refetching.
   const before = fetchCalls.length;
   const sizeMetricHtml = container.viewport.innerHTML;
-  const toolbarClick = container.listeners.click?.[0];
+  const toolbarClick = container.controls.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
   const clickMetric = (value) => {
     const group = {
@@ -483,7 +572,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     const button = {
       getAttribute(name) {
         if (name === "data-chip-key") {
-          return "metric";
+          return "folder-rollup-metric";
         }
         if (name === "data-chip-value") {
           return value;
@@ -515,37 +604,33 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     );
     check(
       "metric chooser reflects the active metric",
-      metricChips[0].getAttribute("aria-checked") === "false" &&
-        metricChips[0].getAttribute("tabindex") === "-1" &&
-        metricChips[1].getAttribute("aria-checked") === "true" &&
-        metricChips[1].getAttribute("tabindex") === "0",
-      JSON.stringify(metricChips.map((chip) => chip.getAttribute("aria-checked"))),
+      container.controls.innerHTML.includes(
+        'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
+      ),
+      container.controls.innerHTML,
     );
     check(
       "Files metric keeps useful formatted bytes on file leaves",
-      container.viewport.innerHTML.includes("600 B") &&
-        container.status.textContent.includes("4 files"),
+      container.viewport.innerHTML.includes("600 B") && container.status.textContent === "",
       container.viewport.innerHTML,
     );
   }
 
-  const toolbarChange = container.listeners.change?.[0];
+  const toolbarChange = container.controls.listeners.change?.[0];
   check("ignored checkbox handler bound", typeof toolbarChange === "function");
   if (toolbarChange) {
     toolbarChange({
       target: {
-        checked: false,
+        checked: true,
         getAttribute(name) {
-          return name === "data-chip-check" ? "includeIgnored" : null;
+          return name === "data-chip-check" ? "folder-rollup-ignored" : null;
         },
       },
     });
     check(
-      "unchecked ignored scope removes ignored cells and updates totals",
-      !container.viewport.innerHTML.includes("c.md") &&
-        container.status.textContent.includes("3 files") &&
-        container.status.textContent.includes("ignored hidden"),
-      container.status.textContent,
+      "checked ignored scope includes ignored cells without a footer summary",
+      container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
+      container.viewport.innerHTML,
     );
     check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
   }

@@ -4594,6 +4594,7 @@ function fileStoreApplySnapshot(scope, entries) {
     applyCellPatch(entries[i]);
     _mirrorActiveFromFsEntry(entries[i]);
   }
+  window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
 
@@ -4623,6 +4624,7 @@ function fileStoreApplyChange(ops) {
     // active window, mirror it into that base too.
     recentBaseApplyOp(op);
   }
+  window.metabrowserDirectoryTotalsStore?.applyChange(ops);
   notifyFileStoreSubscribers({ kind: "change", ops: ops });
 }
 

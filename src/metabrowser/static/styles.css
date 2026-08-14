@@ -290,6 +290,7 @@
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
+  --section-heading-divider-gap: 5px;
 
   /* "Panel" envelope — the bordered, rounded frame shared by markdown
      tables and frontmatter blocks (and any future similar surface).

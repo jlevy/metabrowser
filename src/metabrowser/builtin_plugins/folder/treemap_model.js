@@ -3,7 +3,7 @@
 /** @type {Readonly<TreemapState>} */
 export const DEFAULT_TREEMAP_STATE = Object.freeze({
   metric: "size",
-  includeIgnored: true,
+  includeIgnored: false,
 });
 
 /**

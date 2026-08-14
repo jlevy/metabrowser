@@ -278,6 +278,8 @@ async def walk_tree(
     # they themselves finalize.
     accum_files: dict[str, int] = {}
     accum_size: dict[str, int] = {}
+    accum_unignored_files: dict[str, int] = {}
+    accum_unignored_size: dict[str, int] = {}
     accum_newest: dict[str, int] = {}
     # Placeholder entries we'll need to replace at finalize-time.
     placeholders: dict[str, FsEntry] = {}
@@ -291,6 +293,8 @@ async def walk_tree(
     parent_of[root_rel] = ""
     accum_files[root_rel] = 0
     accum_size[root_rel] = 0
+    accum_unignored_files[root_rel] = 0
+    accum_unignored_size[root_rel] = 0
     accum_newest[root_rel] = 0
 
     root_gitignored = _gi(root, True)
@@ -325,11 +329,15 @@ async def walk_tree(
                 break
             tf = accum_files[cursor]
             ts = accum_size[cursor]
+            uf = accum_unignored_files[cursor]
+            us = accum_unignored_size[cursor]
             nm = accum_newest[cursor]
             final = replace(
                 ph,
                 total_files=tf,
                 total_size=ts,
+                unignored_files=uf,
+                unignored_size=us,
                 newest_mtime_ns=nm,
                 mtime_ns=nm,
             )
@@ -344,6 +352,8 @@ async def walk_tree(
                 break
             accum_files[parent] = accum_files.get(parent, 0) + tf
             accum_size[parent] = accum_size.get(parent, 0) + ts
+            accum_unignored_files[parent] = accum_unignored_files.get(parent, 0) + uf
+            accum_unignored_size[parent] = accum_unignored_size.get(parent, 0) + us
             if nm > accum_newest.get(parent, 0):
                 accum_newest[parent] = nm
             pending[parent] = pending.get(parent, 0) - 1
@@ -419,6 +429,8 @@ async def walk_tree(
                 parent_of[child_rel] = rel_path_cur
                 accum_files[child_rel] = 0
                 accum_size[child_rel] = 0
+                accum_unignored_files[child_rel] = 0
+                accum_unignored_size[child_rel] = 0
                 accum_newest[child_rel] = 0
                 yield placeholder
                 # First-render-depth dirs go to the front of the
@@ -454,6 +466,13 @@ async def walk_tree(
                 yield file_entry
                 accum_files[rel_path_cur] = accum_files.get(rel_path_cur, 0) + 1
                 accum_size[rel_path_cur] = accum_size.get(rel_path_cur, 0) + ce.size
+                if not file_gi:
+                    accum_unignored_files[rel_path_cur] = (
+                        accum_unignored_files.get(rel_path_cur, 0) + 1
+                    )
+                    accum_unignored_size[rel_path_cur] = (
+                        accum_unignored_size.get(rel_path_cur, 0) + ce.size
+                    )
                 if ce.mtime_ns > accum_newest.get(rel_path_cur, 0):
                     accum_newest[rel_path_cur] = ce.mtime_ns
 

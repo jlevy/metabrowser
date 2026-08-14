@@ -15,6 +15,8 @@ export function createReadmePanel(mb) {
     placement: /** @type {const} */ ("content"),
     presentation: /** @type {const} */ ("document"),
     printable: true,
+    collapsible: true,
+    defaultExpanded: true,
     resolve: resolveReadme,
     /** @param {HTMLElement} container @param {{path?: string, raw?: unknown}} context @param {{path: string}} data @param {{signal?: AbortSignal}} options */
     mount(container, context, data, options) {

@@ -9,12 +9,14 @@ import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file_type_
  * @param {{path?: string, raw?: unknown}} context
  * @param {MetabrowserPublicSdk} mb
  * @param {SummaryPalettePool} palettePool
+ * @param {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
  * @param {{signal?: AbortSignal}} options
  */
-export function mountFileTypeSummary(container, context, mb, palettePool, options) {
+export function mountFileTypeSummary(container, context, mb, palettePool, rollupControls, options) {
   const palette = palettePool.acquire(context.path || "");
   let disposed = false;
-  let showIgnored = mb.filters.get().showIgnored;
+  let controlsState = rollupControls.get();
+  let showIgnored = controlsState.includeIgnored;
   /** @type {ReturnType<typeof normalizeRollupEnvelope> | null} */
   let envelope = null;
   const formatters = {
@@ -22,15 +24,30 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     formatInteger: mb.formatInteger,
     formatSize: mb.formatSize,
   };
-  let model = buildFileTypeSummaryModel(null, showIgnored, formatters, mb.fileTypes);
+  let model = buildFileTypeSummaryModel(
+    null,
+    showIgnored,
+    formatters,
+    mb.fileTypes,
+    controlsState.metric,
+  );
   const metricClasses = {
     countClass: mb.countClass,
     sizeClass: mb.sizeClass,
   };
+  const toolbar = document.createElement("div");
+  container.append(toolbar);
+  const unmountControls = rollupControls.mount(toolbar);
   const view = mountDistributionView(container, model, palette, metricClasses, mb.fileTypeIcon);
 
   function render() {
-    model = buildFileTypeSummaryModel(envelope, showIgnored, formatters, mb.fileTypes);
+    model = buildFileTypeSummaryModel(
+      envelope,
+      showIgnored,
+      formatters,
+      mb.fileTypes,
+      controlsState.metric,
+    );
     updateDistributionView(view, model);
   }
 
@@ -45,6 +62,7 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
       showIgnored,
       formatters,
       mb.fileTypes,
+      controlsState.metric,
     );
     palette.sync([
       ...nextEnvelope.groups.flatMap((group) =>
@@ -94,9 +112,11 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     },
     applyEnvelope,
   );
-  const unsubscribeFilters = mb.filters.subscribe((filters) => {
-    if (filters.showIgnored !== showIgnored) {
-      showIgnored = filters.showIgnored;
+  const unsubscribeControls = rollupControls.subscribe((nextState) => {
+    const metricChanged = nextState.metric !== controlsState.metric;
+    controlsState = nextState;
+    if (nextState.includeIgnored !== showIgnored || metricChanged) {
+      showIgnored = nextState.includeIgnored;
       render();
     }
   });
@@ -118,25 +138,28 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     disposed = true;
     options.signal?.removeEventListener("abort", abort);
     watch.dispose();
-    unsubscribeFilters();
+    unsubscribeControls();
+    unmountControls();
     unsubscribeActive();
     palette.release();
   }
   return Object.freeze({ dispose });
 }
 
-/** @param {MetabrowserPublicSdk} mb @param {SummaryPalettePool} palettePool */
-export function createFileTypeSummaryPanel(mb, palettePool) {
+/** @param {MetabrowserPublicSdk} mb @param {SummaryPalettePool} palettePool @param {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls */
+export function createFileTypeSummaryPanel(mb, palettePool, rollupControls) {
   return Object.freeze({
-    label: "Files",
+    label: "File Types",
     placement: /** @type {const} */ ("summary"),
     presentation: /** @type {const} */ ("surface"),
     required: true,
+    collapsible: true,
+    defaultExpanded: true,
     printable: false,
     /** @param {{path?: string}} context */
     resolve: (context) => Object.freeze({ key: context.path || "", data: null }),
     /** @param {HTMLElement} container @param {{path?: string, raw?: unknown}} context @param {unknown} _data @param {{signal?: AbortSignal}} options */
     mount: (container, context, _data, options) =>
-      mountFileTypeSummary(container, context, mb, palettePool, options),
+      mountFileTypeSummary(container, context, mb, palettePool, rollupControls, options),
   });
 }

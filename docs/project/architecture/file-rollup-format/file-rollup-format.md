@@ -558,6 +558,33 @@ Others contains the exact sum of every omitted candidate and its
 Optional allocated bytes do not affect ranking, so consumers supporting only the
 required metrics choose the same children.
 
+### Recommended Interactive Projection
+
+The producer bound and the display bound solve different problems.
+A conforming producer keeps up to 20 exact fallback children so consumers have a useful,
+bounded projection. An interactive renderer should show at most 10 direct children
+initially and represent the rest with one **N more** row whose metrics equal those
+hidden children. Expanding that row reveals the already-serialized children; it does not
+alter the producer’s optional Others aggregate for values beyond the 20-child
+interchange bound.
+
+Apply the 10-child presentation bound consistently to every direct list, including
+family extensions and fallback children.
+Sort each list by the selected display measure descending, then by the other required
+measure descending, then by stable identity.
+Changing the selected measure may reorder siblings but never changes classification,
+conservation, or the serialized record.
+
+### Snapshot Consistency
+
+A `FileTypeBreakdown` is one complete directory generation.
+A consumer must not combine groups, fallback children, or measures from different
+generations or present a partial generation as a completed breakdown.
+A host envelope can expose independently cached directory totals before the detailed
+breakdown is ready, provided those totals carry their own revision or snapshot boundary
+and are labelled as general directory context rather than as children of the pending
+breakdown.
+
 ### Filename Encoding
 
 A producer retains native filenames internally and uses a documented lossless encoding

@@ -763,6 +763,7 @@ async def index(_request: Request) -> HTMLResponse:
     request_error_url = _static_asset_url("request_error.js")
     formatters_url = _static_asset_url("formatters.js")
     inventory_scope_url = _static_asset_url("inventory_scope.js")
+    directory_totals_store_url = _static_asset_url("directory_totals_store.js")
     contribution_registry_url = _static_asset_url("contribution_registry.js")
     resource_context_url = _static_asset_url("resource_context.js")
     view_state_url = _static_asset_url("view_state.js")
@@ -1000,6 +1001,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{request_error_url}"></script>
   <script src="{formatters_url}"></script>
   <script src="{inventory_scope_url}"></script>
+  <script src="{directory_totals_store_url}"></script>
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>
@@ -1453,6 +1455,8 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
     )
     total_files = entry.total_files if entry is not None else None
     total_size = entry.total_size if entry is not None else None
+    unignored_files = entry.unignored_files if entry is not None else None
+    unignored_size = entry.unignored_size if entry is not None else None
     newest_ns = entry.newest_mtime_ns if entry is not None else None
     payload: dict[str, Any] = {
         "type": "folder",
@@ -1463,6 +1467,8 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
         "dir": {
             "total_files": total_files,
             "total_size": total_size,
+            "unignored_files": unignored_files,
+            "unignored_size": unignored_size,
             "mtime": newest_ns / 1_000_000_000.0 if newest_ns is not None else None,
             "gitignored": bool(entry.gitignored) if entry is not None else False,
             "state": "pending" if total_files is None else "complete",

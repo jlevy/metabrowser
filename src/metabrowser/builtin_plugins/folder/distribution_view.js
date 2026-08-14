@@ -35,28 +35,6 @@ function createMetricCell(metric) {
 }
 
 /** @param {string} className @param {string} label */
-function createMetricRow(className, label) {
-  const tr = document.createElement("tr");
-  tr.className = className;
-  const rowLabel = document.createElement("th");
-  rowLabel.scope = "row";
-  rowLabel.textContent = label;
-  const files = createMetricCell("files");
-  const bytes = createMetricCell("bytes");
-  tr.append(rowLabel, files.cell, bytes.cell);
-  return {
-    tr,
-    label: rowLabel,
-    fileValue: files.value,
-    fileFill: files.fill,
-    filePercent: files.percent,
-    byteValue: bytes.value,
-    byteFill: bytes.fill,
-    bytePercent: bytes.percent,
-  };
-}
-
-/** @param {string} className @param {string} label */
 function createGroupBody(className, label) {
   const body = document.createElement("tbody");
   body.className = className;
@@ -115,7 +93,7 @@ export function mountDistributionView(container, model, palette, metricClasses, 
 export function updateDistributionView(handle, model) {
   if (model.state === "pending") {
     resetBody(handle, "pending");
-    const skeleton = element(handle.body, "file-type-summary-skeleton");
+    const skeleton = element(handle.body, "file-type-summary-skeleton mb-delayed-loading");
     skeleton.append(document.createElement("span"), document.createElement("span"));
     const loading = document.createElement("span");
     loading.className = "sr-only";
@@ -151,7 +129,6 @@ export function updateDistributionView(handle, model) {
 
   ensureDistributionBody(handle);
   updateRows(handle, model.rows, model.groups || []);
-  updateTotalRows(handle, model);
   if (!handle.status) {
     return;
   }
@@ -208,73 +185,10 @@ function ensureDistributionBody(handle) {
   }
   thead.append(headerRow);
   table.append(columns, thead);
-  const totalsBody = createGroupBody("file-type-summary-group file-type-summary-totals", "Totals");
-  const total = createMetricRow("file-type-summary-total-row", "Total");
-  const ignored = createMetricRow("file-type-summary-ignored-row", "Ignored");
-  totalsBody.append(total.tr, ignored.tr);
-  table.append(totalsBody);
   handle.body.append(table);
   handle.table = table;
-  handle.ignoredRow = ignored;
-  handle.totalRow = {
-    body: totalsBody,
-    ...total,
-  };
   handle.status = element(handle.body, "file-type-summary-status");
   handle.status.setAttribute("role", "status");
-}
-
-/** @param {DistributionHandle} handle @param {SummaryModel} model */
-function updateTotalRows(handle, model) {
-  const ignored = handle.ignoredRow;
-  const total = handle.totalRow;
-  if (!ignored || !total || !handle.table) {
-    return;
-  }
-  const ignoredVisible = model.showIgnored === true && (model.ignoredFiles ?? 0) > 0;
-  ignored.tr.hidden = !ignoredVisible;
-  updateMetricValue(
-    ignored.fileValue,
-    "files",
-    model.ignoredFiles ?? 0,
-    model.ignoredFilesText ?? "0 files",
-    handle.metricClasses,
-  );
-  ignored.fileFill.className = "file-type-summary-fill mb-distribution-other";
-  ignored.fileFill.style.width = `${model.ignoredFileShare ?? 0}%`;
-  ignored.filePercent.textContent = model.ignoredFilePercent ?? "0%";
-  updateMetricValue(
-    ignored.byteValue,
-    "bytes",
-    model.ignoredBytes ?? 0,
-    model.ignoredBytesText ?? "0 B",
-    handle.metricClasses,
-  );
-  ignored.byteFill.className = "file-type-summary-fill mb-distribution-other";
-  ignored.byteFill.style.width = `${model.ignoredByteShare ?? 0}%`;
-  ignored.bytePercent.textContent = model.ignoredBytePercent ?? "0%";
-  const filesPopulated = (model.files ?? 0) > 0;
-  const bytesPopulated = (model.bytes ?? 0) > 0;
-  updateMetricValue(
-    total.fileValue,
-    "files",
-    model.files ?? 0,
-    model.filesText ?? "0 files",
-    handle.metricClasses,
-  );
-  total.fileFill.className = "file-type-summary-fill mb-distribution-other";
-  total.fileFill.style.width = filesPopulated ? "100%" : "0%";
-  total.filePercent.textContent = filesPopulated ? "100%" : "0%";
-  updateMetricValue(
-    total.byteValue,
-    "bytes",
-    model.bytes ?? 0,
-    model.bytesText ?? "0 B",
-    handle.metricClasses,
-  );
-  total.byteFill.className = "file-type-summary-fill mb-distribution-other";
-  total.byteFill.style.width = bytesPopulated ? "100%" : "0%";
-  total.bytePercent.textContent = bytesPopulated ? "100%" : "0%";
 }
 
 /**
@@ -315,7 +229,17 @@ function updateRows(handle, rows, groupOrder) {
   handle.lastGroupOrder = groupOrder;
   const liveKeys = new Set();
   const liveCategories = new Set();
-  const liveFamilyKeys = new Set(rows.filter((row) => row.disclosable).map((row) => row.key));
+  /** @type {Array<SummaryRow>} */
+  const allRows = [];
+  /** @param {ReadonlyArray<SummaryRow>} items */
+  const collectRows = (items) => {
+    for (const row of items) {
+      allRows.push(row);
+      collectRows(row.children || []);
+    }
+  };
+  collectRows(rows);
+  const liveFamilyKeys = new Set(allRows.filter((row) => row.disclosable).map((row) => row.key));
   for (const familyKey of handle.expandedFamilies) {
     if (!liveFamilyKeys.has(familyKey)) {
       handle.expandedFamilies.delete(familyKey);
@@ -333,12 +257,15 @@ function updateRows(handle, rows, groupOrder) {
   ];
   for (const descriptor of orderedGroups) {
     const category = descriptor.id;
-    const categoryRows = rows
-      .filter((row) => row.category === category)
-      .flatMap((row) => [
+    /** @param {ReadonlyArray<SummaryRow>} items @returns {Array<SummaryRow>} */
+    const visibleRows = (items) =>
+      items.flatMap((row) => [
         row,
-        ...(row.disclosable && handle.expandedFamilies.has(row.key) ? row.children || [] : []),
+        ...(row.disclosable && handle.expandedFamilies.has(row.key)
+          ? visibleRows(row.children || [])
+          : []),
       ]);
+    const categoryRows = visibleRows(rows.filter((row) => row.category === category));
     if (categoryRows.length === 0) {
       continue;
     }

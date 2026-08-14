@@ -225,6 +225,10 @@ Markdown Frontmatter and Diagnostics disclosures start collapsed through the abs
 the native `open` attribute.
 These defaults are not saved as user preferences.
 
+Section headings use `--section-heading-divider-gap` between their content and the
+divider. Components consume the token instead of choosing local bottom padding, so the
+divider remains equally close to headings with and without disclosure controls.
+
 This pattern does not replace the navigation-tree disclosure.
 The tree keeps its leading chevron because that mark communicates hierarchy and shares
 one activation target with folder navigation.
@@ -491,8 +495,15 @@ palette key. Unknown and deliberately ambiguous extensions remain raw rows; they
 assigned a confident name merely to shorten the table.
 **No extension** and **Other types** are disclosable special parents under Other.
 No extension reveals exact basenames; Other types reveals raw logical extensions.
-Each list is independently capped at 20 and adds a neutral **Others (N more)** row whose
-file and byte metrics exactly conserve the omitted children.
+Each serialized fallback list is independently capped at 20 and adds a neutral
+**Others** row whose file and byte metrics exactly conserve children omitted by the
+producer. Presentation applies a second, consistent bound to every direct child list:
+show the first 10 rows and add one neutral **N more** aggregate row.
+Activating that row reveals its exact children in place.
+The same grammar applies recursively to family, special-parent, and fallback lists,
+including lists with only 11 entries.
+Expansion does not refetch or change denominators, and remains stable across live
+updates while its row still exists.
 A group heading is shown only when it has rows and carries no subtotal.
 Type labels use the bold design-system weight as the row’s scan anchor.
 Each raw or disclosed canonical extension row leads with the shared file-identity icon
@@ -507,14 +518,20 @@ every exact Size value uses `.size` and `.size-large`. The stronger weight there
 appears at the same count and byte thresholds as the navigation panel, including on
 Total and Ignored; a row role never forces a different numeric weight.
 
-A **Totals** group appears before the presentation groups and uses the neutral
-distribution color. **Total** comes first: its exact values equal the selected
-population, and both populated tracks fill to 100%. When ignored files are included, an
-**Ignored** row follows with that exact subset and its share of the selected population.
-The Ignored row is absent when ignored files are excluded, so a separate scope notice is
-unnecessary. When the population has files but zero bytes, the Size total remains `0 B`,
-`0%`, and an unfilled neutral track rather than implying a share of an empty byte
-population.
+Rows within each subsection sort by the active Bytes or Files measure, descending.
+The other measure is the deterministic secondary key and the stable row identity is the
+final tie-breaker. Group order remains registry-defined.
+Changing the metric therefore reveals the relevant skew without making equal rows jump
+unpredictably.
+
+The separate **File Totals** panel uses the neutral distribution color.
+**Total** comes first and reports the complete selected directory immediately from the
+inventory snapshot. **Ignored** follows with the exact ignored subset.
+Both rows are always present, including when ignored files are hidden from the File
+Types population, so scope is explicit without a separate notice.
+A populated Total track fills to 100%. When the population has files but zero bytes, the
+Size total remains `0 B`, `0%`, and an unfilled neutral track rather than implying a
+share of an empty byte population.
 
 Visual Type, Files, and Size column labels are unnecessary when every metric cell keeps
 the same value-track-percentage grammar.
@@ -535,12 +552,16 @@ Folders/Types grouping choice.
 File types already answers which extensions make up the population, while Treemap
 answers where space or file count sits and keeps folder and file cells navigable.
 
-The toolbar contains two controls from the shared filter-control family:
+The toolbar contains the same reusable folder-rollup control mounted by File Types:
 
 - A joined, exclusive **Bytes / Files** group chooses the cell-area metric.
-- A labelled **Show ignored** checkbox chooses scope and starts checked.
+- A labelled **Show ignored** checkbox chooses scope and starts unchecked.
   Checked includes gitignored cells and dims them; unchecked removes them and switches
   folder, remainder, and status values to the rollup’s unignored totals.
+
+Both mounts observe one state object and preference key, so changing either control in
+File Types or Treemap updates the other surface without a second interpretation of scope
+or metric.
 
 There is no separate color selector.
 Every file maps its exact extension through the taxonomy’s distribution key, every
@@ -610,7 +631,8 @@ Overview is one vertically ordered composition surface, not a fixed page templat
 Its panel registry lets a capability contribute a region without knowing which other
 regions are installed:
 
-- **Files** is the required file-type summary panel for every folder.
+- **File Totals** is the required, fixed summary panel for every folder.
+- **File Types** is the required, collapsible composition panel for every folder.
 - **README** is a content panel only when a direct-child README exists.
 - License and other future panels use the same contribution contract and appear only
   when applicable.
@@ -627,17 +649,17 @@ Every contribution is a labelled semantic section.
 The composer renders the label as a visible, document-aligned section heading above the
 panel body. These headings use the tab bar’s uppercase, bold, tracked sans-serif grammar
 at the body-text size, followed by a neutral separator.
-Each heading contains the shared section-disclosure trigger, with its gray trailing
-chevron and unchanged heading typography.
-Overview contributions start expanded and collapse in place without disposing their
-mounted contents.
-The **Files** heading labels the file-type summary; its stable internal
-panel ID remains `folder.file-types`.
+Collapsible headings contain the shared section-disclosure trigger, with its gray
+trailing chevron and unchanged heading typography.
+File Types and README start expanded and collapse in place without disposing their
+mounted contents. File Totals is always expanded and uses the same heading grammar
+without a disclosure control.
+File Types’ stable internal panel ID remains `folder.file-types`.
 
 Panel bodies use one of two presentations:
 
 - A **surface panel** receives a flat host-rendered body and chrome typography.
-  The Files summary uses this presentation without a surrounding card.
+  File Totals and File Types use this presentation without a surrounding card.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
   its metadata, diagnostics, TOC, breakpoints, and print behavior.
@@ -663,7 +685,25 @@ Transient failures offer Retry; invalid or permanent failures provide the applic
 corrective action instead of a control that cannot help.
 Printing includes only contributions that declare themselves printable; host summaries
 and empty-state chrome stay off paper.
-The print action is absent when no mounted contribution is printable.
+
+### Folder Rollup Loading
+
+Directory totals and detailed rollups have separate readiness contracts.
+File Totals renders from the inventory snapshot attached to the selected folder and
+subscribes to the public directory-totals store for later revisions.
+Navigation must never replace a known total with a fabricated zero or a loading
+placeholder.
+
+File Types and Treemap publish only terminal rollup generations.
+While a scan is pending, they keep their geometry stable and render the same
+low-contrast pulsing block used by the navigation tally.
+Provisional rows or rectangles are never painted and then reshuffled.
+The motion is delayed briefly, respects reduced-motion preferences, and is replaced
+atomically when the complete, truncated, or failed generation arrives.
+
+Treemap repeats the fixed **Totals** context immediately above its controls and map.
+It does not make that context collapsible and does not duplicate totals or scan state in
+a footer sentence. The print action is absent when no mounted contribution is printable.
 
 An empty folder is still a completed Overview.
 File types remains visible with the message **No files to summarize.** It renders no

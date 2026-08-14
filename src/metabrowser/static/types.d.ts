@@ -461,6 +461,8 @@ type MetabrowserFolderEnvelope = {
     state: "pending" | "complete";
     total_files: number | null;
     total_size: number | null;
+    unignored_files: number | null;
+    unignored_size: number | null;
   };
   kind: "folder";
   name: string;
@@ -480,8 +482,10 @@ type FolderOverviewMountHandle<T> = Readonly<{
   update?(context: MetabrowserRenderContext, data: T): void | Promise<void>;
 }>;
 type FolderOverviewPanelSpec<T> = Readonly<{
+  collapsible?: boolean;
   classifyError?(error: unknown): FolderOverviewPanelError;
   label: string;
+  defaultExpanded?: boolean;
   mount(
     container: HTMLElement,
     context: MetabrowserRenderContext,
@@ -504,6 +508,27 @@ type FolderOverviewRegistry = Readonly<{
 }>;
 
 type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
+
+type MetabrowserDirectoryTotals = Readonly<{
+  path: string;
+  revision: number;
+  state: "pending" | "complete";
+  totalFiles: number;
+  totalBytes: number;
+  unignoredFiles: number;
+  unignoredBytes: number;
+}>;
+
+type MetabrowserDirectoryTotalsStore = Readonly<{
+  get(path: string): MetabrowserDirectoryTotals | null;
+  subscribe(path: string, listener: (value: MetabrowserDirectoryTotals | null) => void): () => void;
+}>;
+
+type MetabrowserDirectoryTotalsHostStore = MetabrowserDirectoryTotalsStore &
+  Readonly<{
+    applyChange(ops: ReadonlyArray<Record<string, unknown>>): void;
+    applySnapshot(entries: ReadonlyArray<unknown>): void;
+  }>;
 
 type MetabrowserFileTypeIcon = Readonly<{
   className: string;
@@ -550,6 +575,7 @@ type MetabrowserSdk = {
   ageLabelHtml(mtimeSeconds: number | null | undefined): string;
   builtins: MetabrowserBuiltins;
   errors: MetabrowserRequestErrorRuntime;
+  directoryTotals: MetabrowserDirectoryTotalsStore;
   filters: MetabrowserFilterState;
   folderOverview?: FolderOverviewRegistry;
   folderContext: Readonly<{
@@ -1023,6 +1049,7 @@ declare global {
       DISTRIBUTION_PALETTE_SLOTS?: number;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
     };
+    metabrowserDirectoryTotalsStore: MetabrowserDirectoryTotalsHostStore;
     metabrowser: MetabrowserSdk;
     metabrowserAgentLog?: {
       mountLogEventRaw?: (rawEl: HTMLElement) => void;

@@ -250,6 +250,62 @@ function dualScore(files, bytes, totalFiles, totalBytes) {
   return [Math.max(fileShare, byteShare), byteShare, fileShare];
 }
 
+const VISIBLE_ROWS_PER_SUBSECTION = 10;
+
+/** @param {ReadonlyArray<any>} rows @param {"files" | "size"} metric */
+function sortRows(rows, metric) {
+  const primary = metric === "files" ? "files" : "bytes";
+  const secondary = metric === "files" ? "bytes" : "files";
+  return [...rows].sort(
+    (left, right) =>
+      right[primary] - left[primary] ||
+      right[secondary] - left[secondary] ||
+      left.key.localeCompare(right.key),
+  );
+}
+
+/**
+ * @param {ReadonlyArray<any>} rows
+ * @param {"files" | "size"} metric
+ * @param {{key: string, category: string, child: boolean}} identity
+ * @param {ReturnType<typeof selectPopulation>} population
+ * @param {{formatSize(value: number): string, formatFileCount(value: number): string, formatInteger(value: number): string}} formatters
+ * @param {Intl.NumberFormat} percentFormatter
+ */
+function boundedRows(rows, metric, identity, population, formatters, percentFormatter) {
+  const sorted = sortRows(rows, metric);
+  if (sorted.length <= VISIBLE_ROWS_PER_SUBSECTION || !population) {
+    return Object.freeze(sorted);
+  }
+  const visible = sorted.slice(0, VISIBLE_ROWS_PER_SUBSECTION);
+  const remainder = sorted.slice(VISIBLE_ROWS_PER_SUBSECTION);
+  const files = remainder.reduce((total, row) => total + row.files, 0);
+  const bytes = remainder.reduce((total, row) => total + row.bytes, 0);
+  const tail = Object.freeze({
+    key: identity.key,
+    rawKey: null,
+    extension: null,
+    iconPath: null,
+    label: `${formatters.formatInteger ? formatters.formatInteger(remainder.length) : remainder.length} more`,
+    category: identity.category,
+    kind: "tail",
+    child: identity.child,
+    paletteKey: "",
+    files,
+    bytes,
+    filesText: formatters.formatFileCount(files),
+    bytesText: formatters.formatSize(bytes),
+    filePercent: formatPercent(files, population.files, percentFormatter),
+    bytePercent: formatPercent(bytes, population.bytes, percentFormatter),
+    fileShare: percentShare(files, population.files),
+    byteShare: percentShare(bytes, population.bytes),
+    score: dualScore(files, bytes, population.files, population.bytes),
+    children: Object.freeze(remainder),
+    disclosable: true,
+  });
+  return Object.freeze([...visible, tail]);
+}
+
 /**
  * @param {{allFiles: number, allBytes: number, unignoredFiles: number, unignoredBytes: number}} tally
  * @param {boolean} showIgnored
@@ -285,6 +341,7 @@ function buildRow(tally, showIgnored, population, formatters, percentFormatter, 
  * @param {{formatSize(value: number): string, formatInteger(value: number): string, formatFileCount(value: number): string}} formatters
  * @param {Intl.NumberFormat} percentFormatter
  * @param {MetabrowserPublicFileTypeTaxonomyRuntime} runtime
+ * @param {"files" | "size"} metric
  */
 function buildRegistryRows(
   envelope,
@@ -293,6 +350,7 @@ function buildRegistryRows(
   formatters,
   percentFormatter,
   runtime,
+  metric,
 ) {
   if (!population || !envelope.breakdown || !envelope.registry) {
     return [];
@@ -317,7 +375,7 @@ function buildRegistryRows(
         throw new TypeError(`unknown file-type family in breakdown: ${tally.id}`);
       }
       const paletteKey = `family:${tally.id}`;
-      const children = tally.extensions
+      const rawChildren = tally.extensions
         .map((child) =>
           buildRow(child, showIgnored, population, formatters, percentFormatter, {
             key: `${paletteKey}/${child.key}`,
@@ -332,6 +390,18 @@ function buildRegistryRows(
           }),
         )
         .filter((row) => row.files !== 0 || row.bytes !== 0);
+      const children = boundedRows(
+        rawChildren,
+        metric,
+        {
+          key: `${paletteKey}/tail`,
+          category: group.id,
+          child: true,
+        },
+        population,
+        formatters,
+        percentFormatter,
+      );
       rows.push(
         Object.freeze({
           ...buildRow(tally, showIgnored, population, formatters, percentFormatter, {
@@ -361,11 +431,11 @@ function buildRegistryRows(
    * @param {"filename" | "extension"} childKind
    */
   const specialRow = (id, key, label, tally, rawChildren, childKind) => {
-    const children = rawChildren
+    const populatedChildren = rawChildren
       .map((child) => {
         const others = child.omittedDistinctValues > 0;
         const childLabel = others
-          ? `Others (${formatters.formatInteger(child.omittedDistinctValues)} more)`
+          ? `${formatters.formatInteger(child.omittedDistinctValues)} more`
           : child.label;
         return buildRow(child, showIgnored, population, formatters, percentFormatter, {
           key: `${id}/${child.key}`,
@@ -385,6 +455,14 @@ function buildRegistryRows(
         });
       })
       .filter((row) => row.files !== 0 || row.bytes !== 0);
+    const children = boundedRows(
+      populatedChildren,
+      metric,
+      { key: `${id}/tail`, category: "other", child: true },
+      population,
+      formatters,
+      percentFormatter,
+    );
     return Object.freeze({
       ...buildRow(tally, showIgnored, population, formatters, percentFormatter, {
         key,
@@ -427,7 +505,21 @@ function buildRegistryRows(
       ),
     );
   }
-  return rows.filter((row) => row.files !== 0 || row.bytes !== 0);
+  const populatedRows = rows.filter((row) => row.files !== 0 || row.bytes !== 0);
+  const bounded = [];
+  for (const group of runtime.groups) {
+    bounded.push(
+      ...boundedRows(
+        populatedRows.filter((row) => row.category === group.id),
+        metric,
+        { key: `group:${group.id}/tail`, category: group.id, child: false },
+        population,
+        formatters,
+        percentFormatter,
+      ),
+    );
+  }
+  return bounded;
 }
 
 /**
@@ -435,8 +527,25 @@ function buildRegistryRows(
  * @param {boolean} showIgnored
  * @param {{formatSize(value: number): string, formatInteger(value: number): string, formatFileCount(value: number): string}} formatters
  * @param {MetabrowserPublicFileTypeTaxonomyRuntime} [fileTypes]
+ * @param {"files" | "size"} [metric]
  */
-export function buildFileTypeSummaryModel(envelope, showIgnored, formatters, fileTypes) {
+export function buildFileTypeSummaryModel(
+  envelope,
+  showIgnored,
+  formatters,
+  fileTypes,
+  metric = "size",
+) {
+  if (envelope?.indexStatus === "scanning") {
+    return Object.freeze({
+      state: /** @type {const} */ ("pending"),
+      rows: [],
+      files: 0,
+      bytes: 0,
+      scanning: true,
+      indexFailed: false,
+    });
+  }
   if (!envelope?.totals) {
     const failed = envelope?.indexStatus === "failed";
     const unavailable = envelope?.indexStatus === "done" || envelope?.indexStatus === "truncated";
@@ -467,6 +576,7 @@ export function buildFileTypeSummaryModel(envelope, showIgnored, formatters, fil
     formatters,
     percentFormatter,
     runtime,
+    metric === "files" ? "files" : "size",
   );
   const groupDescriptors = Object.freeze(
     runtime.groups.map((group) => Object.freeze({ id: group.id, label: group.label })),

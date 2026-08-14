@@ -61,18 +61,26 @@ def test_chip_family_is_defined_in_core_styles() -> None:
 
 
 def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
-    """Treemap has one exclusive metric and one polarity-bearing
-    boolean, so both must use the existing control primitives."""
+    """One reusable owner renders the metric and scope controls.
+
+    File Types and Treemap mount the same stateful component, so neither view
+    can fork its labels, accessibility semantics, defaults, or preference key.
+    """
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
-    source = (folder_root / "treemap.js").read_text()
+    controls = (folder_root / "rollup_controls.js").read_text()
+    treemap = (folder_root / "treemap.js").read_text()
+    file_types = (folder_root / "file_type_summary.js").read_text()
     plugin_css = (folder_root / "styles.css").read_text()
 
-    assert "filterControls.groupHtml" in source
-    assert 'label: "Treemap area"' in source
-    assert "filterControls.checkHtml" in source
-    assert 'label: "Show ignored"' in source
-    assert "segmentHtml" not in source
+    assert "filterControls.groupHtml" in controls
+    assert 'label: "Measure file rollups by"' in controls
+    assert "filterControls.checkHtml" in controls
+    assert 'label: "Show ignored"' in controls
+    assert "includeIgnored: value.includeIgnored === true" in controls
+    assert "rollupControls.mount" in treemap
+    assert "rollupControls.mount" in file_types
+    assert "segmentHtml" not in controls
     assert ".tm-seg" not in plugin_css
 
 
