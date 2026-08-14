@@ -55,9 +55,13 @@ class Element {
   get innerHTML() {
     return this._innerHTML;
   }
+  closest() {
+    return null;
+  }
 }
 
 global.document = { createElement: (tag) => new Element(tag) };
+global.window = { METABROWSER_SETTINGS: {} };
 
 (async () => {
   const fileTypeSummarySource = fs
@@ -75,6 +79,65 @@ global.document = { createElement: (tag) => new Element(tag) };
     "built-in file-type summary uses Files heading",
     fileTypeSummaryPanel.label === "Files",
     fileTypeSummaryPanel.label,
+  );
+
+  let rollupApply = null;
+  let rollupOptions = null;
+  const summaryBody = new Element("div");
+  summaryBody.querySelector = () => null;
+  const mountFileTypeSummary = new Function(
+    "mountDistributionView",
+    "updateDistributionView",
+    "buildFileTypeSummaryModel",
+    "normalizeRollupEnvelope",
+    `${fileTypeSummarySource}\nreturn mountFileTypeSummary;`,
+  )(
+    () => ({ body: summaryBody }),
+    () => {},
+    (envelope) => {
+      if (envelope?.incompatible) {
+        throw new TypeError("registry mismatch");
+      }
+      return { state: envelope ? "ready" : "pending" };
+    },
+    (raw) => raw,
+  );
+  const summaryMb = {
+    countClass: () => "",
+    errors: { classifyRequestError: () => ({ retryable: true }) },
+    fileTypeIcon: () => "",
+    fileTypes: {},
+    filters: {
+      get: () => ({ showIgnored: true }),
+      subscribe: () => () => {},
+    },
+    formatFileCount: String,
+    formatInteger: String,
+    formatSize: String,
+    sizeClass: () => "",
+    viewState: {
+      isActive: () => true,
+      subscribeActive: () => () => {},
+    },
+    watchRollup(_path, options, apply) {
+      rollupOptions = options;
+      rollupApply = apply;
+      return { dispose() {}, refresh: async () => {}, stale: () => false };
+    },
+  };
+  const summaryPalette = {
+    acquire: () => ({ classFor: () => "", release() {}, sync() {} }),
+  };
+  mountFileTypeSummary(new Element("div"), { path: "" }, summaryMb, summaryPalette, {});
+  try {
+    rollupApply({ incompatible: true, breakdown: null, families: [], tallies: [] });
+  } catch (error) {
+    rollupOptions.onError(error);
+  }
+  check(
+    "an incompatible first rollup replaces the pending skeleton with an error",
+    summaryBody.innerHTML.includes("rollup data is incompatible"),
+    summaryBody.innerHTML,
   );
 
   const source = fs.readFileSync(

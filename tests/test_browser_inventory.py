@@ -259,7 +259,7 @@ def test_ext_of_bounded_compound_tail() -> None:
     assert _ext_of("plain.txt") == ".txt"
     assert _ext_of("Makefile") == ""
     assert _ext_of(".dotfile") == ""
-    assert _ext_of("Foo.With.Dots.Txt") == ""
+    assert _ext_of("Foo.With.Dots.Txt") == ".dots.txt"
 
 
 def test_fs_entry_factory_uses_bounded_compound_ext_for_file_observations() -> None:

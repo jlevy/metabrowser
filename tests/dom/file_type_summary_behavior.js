@@ -387,12 +387,111 @@ function familyRow() {
     family.fileFill.className === jsChild.fileFill.className,
   );
 
+  const singleton = {
+    ...row("family:images", "Images", "media", 40, 80, "40%", "80%"),
+    kind: "family",
+    paletteKey: "family:images",
+    disclosable: true,
+    children: [
+      {
+        ...row("family:images/.png", ".png", "media", 40, 80, "40%", "80%"),
+        kind: "extension",
+        child: true,
+        extension: ".png",
+        iconPath: "x.png",
+        paletteKey: "family:images",
+      },
+    ],
+  };
+  const noExtension = {
+    ...row("(none)", "No extension", "other", 60, 20, "60%", "20%"),
+    kind: "special",
+    iconPath: "file",
+    paletteKey: "",
+    disclosable: true,
+    children: [
+      {
+        ...row("no-extension/README", "README", "other", 50, 15, "50%", "15%"),
+        kind: "filename",
+        child: true,
+        iconPath: "README",
+        paletteKey: "",
+      },
+      {
+        ...row("no-extension/others", "Others (3 more)", "other", 10, 5, "10%", "5%"),
+        kind: "others",
+        child: true,
+        iconPath: "file",
+        paletteKey: "",
+      },
+    ],
+  };
+  const remainingTypes = {
+    ...row("", "Other types", "other", 2, 10, "2%", "10%"),
+    kind: "special",
+    iconPath: "file",
+    paletteKey: "",
+    disclosable: true,
+    children: [
+      {
+        ...row("remaining-types/.bin", ".bin", "other", 2, 10, "2%", "10%"),
+        kind: "extension",
+        child: true,
+        extension: ".bin",
+        iconPath: "x.bin",
+        paletteKey: ".bin",
+      },
+    ],
+  };
+  view.updateDistributionView(handle, {
+    ...updated,
+    groups: [
+      { id: "media", label: "Media" },
+      { id: "other", label: "Other" },
+    ],
+    rows: [singleton, noExtension, remainingTypes],
+  });
+  check(
+    "registry group order and labels drive the table",
+    [...handle.groups.keys()].join(",") === "media,other" &&
+      handle.groups.get("media").body.children[0].children[0].textContent === "Media",
+  );
+  const imageFamily = handle.rows.get("family:images");
+  check(
+    "singleton families retain a collapsed disclosure",
+    imageFamily.disclosure.hidden === false &&
+      imageFamily.disclosure.attributes["aria-expanded"] === "false",
+  );
+  const noExtensionParent = handle.rows.get("(none)");
+  check(
+    "special parents share the disclosure and remain iconless",
+    noExtensionParent.disclosure.hidden === false &&
+      noExtensionParent.icon.hidden === true &&
+      noExtensionParent.icon.innerHTML === "",
+  );
+  noExtensionParent.disclosure.listeners.click();
+  check(
+    "exact filename children use icons while aggregate Others stays iconless",
+    handle.rows.get("no-extension/README").icon.innerHTML ===
+      '<svg data-file-icon="README"></svg>' &&
+      handle.rows.get("no-extension/others").icon.hidden === true &&
+      handle.rows.get("no-extension/others").icon.innerHTML === "",
+  );
+  const remainingTypesParent = handle.rows.get("");
+  remainingTypesParent.disclosure.listeners.click();
+  check(
+    "empty-string Other types key remains a valid disclosure identity",
+    remainingTypesParent.disclosure.attributes["aria-expanded"] === "true" &&
+      handle.rows.get("remaining-types/.bin").icon.innerHTML ===
+        '<svg data-file-icon="generic"></svg>',
+  );
+
   view.updateDistributionView(handle, {
     ...updated,
     rows: [
       row(".bad", '<img src=x onerror="pwned">', "other", 100, 100, "100%", "100%"),
       row("(none)", "No extension", "other", 0, 0, "0%", "0%"),
-      row("", "Remaining types", "other", 0, 0, "0%", "0%"),
+      row("", "Other types", "other", 0, 0, "0%", "0%"),
     ],
   });
   check(
@@ -400,13 +499,11 @@ function familyRow() {
     handle.rows.get(".bad").label.textContent === '<img src=x onerror="pwned">',
   );
   check(
-    "non-extension breakdown rows use the generic file icon",
-    handle.rows.get("(none)").icon.hidden === false &&
-      handle.rows.get("(none)").icon.className === "file-identity-icon" &&
-      handle.rows.get("(none)").icon.innerHTML === '<svg data-file-icon="generic"></svg>' &&
-      handle.rows.get("").icon.hidden === false &&
-      handle.rows.get("").icon.className === "file-identity-icon" &&
-      handle.rows.get("").icon.innerHTML === '<svg data-file-icon="generic"></svg>',
+    "non-extension aggregate rows remain iconless",
+    handle.rows.get("(none)").icon.hidden === true &&
+      handle.rows.get("(none)").icon.innerHTML === "" &&
+      handle.rows.get("").icon.hidden === true &&
+      handle.rows.get("").icon.innerHTML === "",
   );
   check(
     "removed rows leave the DOM map",

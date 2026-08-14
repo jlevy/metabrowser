@@ -350,7 +350,7 @@ content modes continuously, while the palette stays specialized for navigation.
 
 The shared dispatcher, canonical key presentation, Help copy, hints, and modal shell are
 owned by the
-[contextual keyboard Help and tree-navigation plan](plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md).
+[contextual keyboard Help and tree-navigation plan](../done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md).
 The rules below remain the Quick File interaction contract that migration must preserve.
 
 - `T` or `/` opens the finder with an empty query; `/` prevents the browser’s quick-find

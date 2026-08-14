@@ -59,7 +59,7 @@ there.
 - Listing every standard browser or control key in Help; the dialog documents
   Metabrowser commands and the non-obvious tree contract
 - A second overlay implementation; Help reuses the shared modal contract from the
-  [menu and overlay plan](plan-2026-08-06-menu-primitives-and-file-actions.md)
+  [menu and overlay plan](../active/plan-2026-08-06-menu-primitives-and-file-actions.md)
 
 ## Background
 
@@ -92,7 +92,8 @@ when progress is hidden, and progress keeps its own polite live-region semantics
 
 ### Overlay work is already planned
 
-The [menu and overlay plan](plan-2026-08-06-menu-primitives-and-file-actions.md)
+The
+[menu and overlay plan](../active/plan-2026-08-06-menu-primitives-and-file-actions.md)
 specifies a body-portaled modal controller with focus capture, focus restoration, Tab
 containment, Escape routing, and disposal.
 Help consumes that contract.
@@ -989,9 +990,9 @@ The registry leaves room for them without implementing their policy now.
 
 ## References
 
-- [Quick File finder and search providers](plan-2026-07-17-scalable-file-search.md)
-- [Menu primitives and gated file actions](plan-2026-08-06-menu-primitives-and-file-actions.md)
-- [Filter controls and fine-grained navigation filtering](plan-2026-08-09-nav-filter-controls.md)
+- [Quick File finder and search providers](../active/plan-2026-07-17-scalable-file-search.md)
+- [Menu primitives and gated file actions](../active/plan-2026-08-06-menu-primitives-and-file-actions.md)
+- [Filter controls and fine-grained navigation filtering](../active/plan-2026-08-09-nav-filter-controls.md)
 - [Design system](../../../design-system.md)
 - [End-to-end testing](../../../e2e-testing.md)
 - [Metabrowser on GitHub](https://github.com/jlevy/metabrowser)

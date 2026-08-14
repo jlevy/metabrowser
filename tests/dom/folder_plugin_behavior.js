@@ -594,6 +594,24 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     watch.dispose();
   }
 
+  await mb.fetchRollup("legacy", { type_top: 7 });
+  const legacyUrl = new URL(fetchCalls.at(-1));
+  check(
+    "legacy type_top input maps to the canonical parameter",
+    legacyUrl.searchParams.get("type_top") === null &&
+      legacyUrl.searchParams.get("remaining_top") === "7",
+    legacyUrl.search,
+  );
+
+  await mb.fetchRollup("modern", { remaining_top: 9 });
+  const modernUrl = new URL(fetchCalls.at(-1));
+  check(
+    "modern remaining_top emits no redundant alias",
+    modernUrl.searchParams.get("type_top") === null &&
+      modernUrl.searchParams.get("remaining_top") === "9",
+    modernUrl.search,
+  );
+
   if (failures.length > 0) {
     console.error(`folder plugin FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);

@@ -1,24 +1,28 @@
-"""Semantic file type taxonomy shared by the server and browser."""
+"""Compatibility helpers derived from the shared file-type registry."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Literal, TypedDict
+from typing import TypedDict
 
-type FileTypeCategoryId = Literal["docs", "code", "data"]
-type ClassifiedFileTypeCategoryId = Literal["docs", "code", "data", "other"]
+from metabrowser.file_type_registry import (
+    FILE_TYPE_FAMILY_KEY_PREFIX,
+    FILE_TYPE_NO_EXTENSION_KEY,
+    FILE_TYPE_REMAINING_KEY,
+    load_file_type_registry,
+    normalize_logical_extension,
+)
 
-FILE_TYPE_NO_EXTENSION_KEY = "(none)"
-FILE_TYPE_REMAINING_KEY = ""
-FILE_TYPE_FAMILY_KEY_PREFIX = "family:"
+type FileTypeCategoryId = str
+type ClassifiedFileTypeCategoryId = str
 
 _VALID_ID = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
 @dataclass(frozen=True, slots=True)
 class FileTypeCategory:
-    """A broad filter category plus members that have no semantic family."""
+    """A broad filter group plus members without a display family."""
 
     id: FileTypeCategoryId
     label: str
@@ -49,124 +53,43 @@ class FilterTypePreset(TypedDict):
     values: tuple[str, ...]
 
 
-# Exact filenames and ambiguous extensions remain category-only. They retain
-# useful broad filtering without acquiring a misleading semantic family name.
-FILE_TYPE_CATEGORIES: tuple[FileTypeCategory, ...] = (
+_REGISTRY = load_file_type_registry()
+_EXTRA_VALUES_BY_GROUP: dict[str, list[str]] = {group.id: [] for group in _REGISTRY.groups}
+for _kind in _REGISTRY.kinds:
+    if _kind.family_id is not None:
+        continue
+    _EXTRA_VALUES_BY_GROUP[_kind.group_id].extend(f".{value}" for value in _kind.extensions)
+    _EXTRA_VALUES_BY_GROUP[_kind.group_id].extend(_kind.filenames)
+
+FILE_TYPE_CATEGORIES: tuple[FileTypeCategory, ...] = tuple(
     FileTypeCategory(
-        id="docs",
-        label="Docs",
-        extra_values=(
-            "readme",
-            "license",
-            "licence",
-            "copying",
-            "notice",
-            "changelog",
-            "authors",
-            "contributors",
-            "contributing",
-            "codeowners",
-        ),
-    ),
-    FileTypeCategory(
-        id="code",
-        label="Code",
-        extra_values=(
-            ".m",
-            ".mm",
-            ".ml",
-            ".pl",
-            ".r",
-            "makefile",
-            "dockerfile",
-            "justfile",
-            "rakefile",
-            "gemfile",
-            "procfile",
-        ),
-    ),
-    FileTypeCategory(
-        id="data",
-        label="Data",
-        extra_values=(".cfg", ".conf", ".properties", ".db"),
-    ),
+        id=group.id,
+        label=group.label,
+        extra_values=tuple(_EXTRA_VALUES_BY_GROUP[group.id]),
+    )
+    for group in _REGISTRY.groups
 )
-
-
-# Families are deliberately curated rather than exhaustive. Singleton entries
-# are included only where the readable name materially improves the UI.
-FILE_TYPE_FAMILIES: tuple[FileTypeFamily, ...] = (
-    FileTypeFamily("markdown", "Markdown", "docs", (".md",)),
-    FileTypeFamily("plain-text", "Plain text", "docs", (".txt",)),
-    FileTypeFamily("restructured-text", "reStructuredText", "docs", (".rst",)),
-    FileTypeFamily("asciidoc", "AsciiDoc", "docs", (".adoc",)),
-    FileTypeFamily("org", "Org", "docs", (".org",)),
-    FileTypeFamily("pdf", "PDF", "docs", (".pdf",)),
-    FileTypeFamily("word", "Word", "docs", (".doc", ".docx")),
-    FileTypeFamily("rich-text", "Rich Text", "docs", (".rtf",)),
-    FileTypeFamily("open-document", "OpenDocument", "docs", (".odt",)),
-    FileTypeFamily("epub", "EPUB", "docs", (".epub",)),
-    FileTypeFamily("python", "Python", "code", (".py", ".pyi")),
-    FileTypeFamily("javascript", "JavaScript", "code", (".js", ".mjs", ".cjs", ".jsx")),
-    FileTypeFamily("typescript", "TypeScript", "code", (".ts", ".mts", ".cts", ".tsx")),
-    FileTypeFamily("css", "CSS", "code", (".css", ".scss", ".less")),
-    FileTypeFamily("html", "HTML", "code", (".html",)),
-    FileTypeFamily("rust", "Rust", "code", (".rs",)),
-    FileTypeFamily("go", "Go", "code", (".go",)),
-    FileTypeFamily("java", "Java", "code", (".java",)),
-    FileTypeFamily("kotlin", "Kotlin", "code", (".kt", ".kts")),
-    FileTypeFamily("swift", "Swift", "code", (".swift",)),
-    FileTypeFamily("c-cpp", "C/C++", "code", (".c", ".h", ".cc", ".cpp", ".hpp")),
-    FileTypeFamily("csharp", "C#", "code", (".cs",)),
-    FileTypeFamily("ruby", "Ruby", "code", (".rb",)),
-    FileTypeFamily("php", "PHP", "code", (".php",)),
-    FileTypeFamily("scala", "Scala", "code", (".scala",)),
-    FileTypeFamily("clojure", "Clojure", "code", (".clj",)),
-    FileTypeFamily("elixir", "Elixir", "code", (".ex", ".exs")),
-    FileTypeFamily("erlang", "Erlang", "code", (".erl",)),
-    FileTypeFamily("haskell", "Haskell", "code", (".hs",)),
-    FileTypeFamily("lua", "Lua", "code", (".lua",)),
-    FileTypeFamily("julia", "Julia", "code", (".jl",)),
-    FileTypeFamily("dart", "Dart", "code", (".dart",)),
-    FileTypeFamily("vue", "Vue", "code", (".vue",)),
-    FileTypeFamily("svelte", "Svelte", "code", (".svelte",)),
-    FileTypeFamily("shell", "Shell", "code", (".sh", ".bash", ".zsh", ".fish")),
-    FileTypeFamily("powershell", "PowerShell", "code", (".ps1",)),
-    FileTypeFamily("sql", "SQL", "code", (".sql",)),
-    FileTypeFamily("json", "JSON", "data", (".json", ".jsonl", ".ndjson")),
-    FileTypeFamily("yaml", "YAML", "data", (".yaml", ".yml")),
-    FileTypeFamily("toml", "TOML", "data", (".toml",)),
-    FileTypeFamily("ini", "INI", "data", (".ini",)),
-    FileTypeFamily("delimited-text", "Delimited text", "data", (".csv", ".tsv", ".psv")),
-    FileTypeFamily("xml", "XML", "data", (".xml",)),
-    FileTypeFamily("parquet", "Parquet", "data", (".parquet",)),
-    FileTypeFamily("arrow", "Arrow", "data", (".arrow", ".feather")),
-    FileTypeFamily("avro", "Avro", "data", (".avro",)),
-    FileTypeFamily("orc", "ORC", "data", (".orc",)),
-    FileTypeFamily("protocol-buffers", "Protocol Buffers", "data", (".proto",)),
-    FileTypeFamily("graphql", "GraphQL", "data", (".graphql",)),
-    FileTypeFamily("sqlite", "SQLite", "data", (".sqlite",)),
+FILE_TYPE_FAMILIES: tuple[FileTypeFamily, ...] = tuple(
+    FileTypeFamily(
+        id=family.id,
+        label=family.label,
+        category=family.group_id,
+        extensions=family.extensions,
+    )
+    for family in _REGISTRY.families
 )
-
-
-def _extension_matches(extension: str, suffix: str) -> bool:
-    return extension == suffix or extension.endswith(suffix)
+_FAMILIES_BY_ID = {family.id: family for family in FILE_TYPE_FAMILIES}
 
 
 def _normalize_extension(extension: str) -> str:
-    normalized = extension.strip().lower()
-    if not normalized or normalized == FILE_TYPE_REMAINING_KEY:
-        return FILE_TYPE_REMAINING_KEY
-    if normalized == FILE_TYPE_NO_EXTENSION_KEY:
-        return FILE_TYPE_NO_EXTENSION_KEY
-    return normalized if normalized.startswith(".") else f".{normalized}"
+    return normalize_logical_extension(extension)
 
 
 def validate_file_type_taxonomy(
     categories: tuple[FileTypeCategory, ...],
     families: tuple[FileTypeFamily, ...],
 ) -> None:
-    """Reject declarations that could classify the same suffix ambiguously."""
+    """Validate the legacy projected taxonomy used by existing consumers."""
 
     category_ids: set[str] = set()
     extra_values: dict[str, str] = {}
@@ -227,74 +150,43 @@ def validate_file_type_taxonomy(
 
 validate_file_type_taxonomy(FILE_TYPE_CATEGORIES, FILE_TYPE_FAMILIES)
 
-_FAMILY_SUFFIXES: tuple[tuple[str, FileTypeFamily], ...] = tuple(
-    sorted(
-        ((extension, family) for family in FILE_TYPE_FAMILIES for extension in family.extensions),
-        key=lambda item: (-len(item[0]), item[0], item[1].id),
-    )
-)
-_CATEGORY_SUFFIXES: tuple[tuple[str, FileTypeCategoryId], ...] = tuple(
-    sorted(
-        (
-            (value, category.id)
-            for category in FILE_TYPE_CATEGORIES
-            for value in category.extra_values
-            if value.startswith(".")
-        ),
-        key=lambda item: (-len(item[0]), item[0], item[1]),
-    )
-)
-_CATEGORY_FILENAMES: dict[str, FileTypeCategoryId] = {
-    value: category.id
-    for category in FILE_TYPE_CATEGORIES
-    for value in category.extra_values
-    if not value.startswith(".")
-}
-
 
 def family_for_extension(extension: str) -> FileTypeFamilyMatch | None:
-    """Return the longest declared family suffix for a logical extension."""
+    """Return the longest declared display-family suffix."""
 
-    normalized = _normalize_extension(extension)
-    if not normalized.startswith("."):
+    match = _REGISTRY.match("", _normalize_extension(extension))
+    if match is None or match.kind.family_id is None or match.canonical_extension is None:
         return None
-    for suffix, family in _FAMILY_SUFFIXES:
-        if _extension_matches(normalized, suffix):
-            return FileTypeFamilyMatch(family=family, canonical_extension=suffix)
-    return None
+    family = _FAMILIES_BY_ID[match.kind.family_id]
+    return FileTypeFamilyMatch(family=family, canonical_extension=match.canonical_extension)
 
 
 def canonical_extension(extension: str) -> str:
-    """Collapse a known logical extension to its canonical family member."""
+    """Collapse a known logical extension to its canonical registry member."""
 
     normalized = _normalize_extension(extension)
-    match = family_for_extension(normalized)
-    return match.canonical_extension if match is not None else normalized
+    match = _REGISTRY.match("", normalized)
+    return (
+        match.canonical_extension
+        if match is not None and match.canonical_extension is not None
+        else normalized
+    )
 
 
 def category_for_file(name: str, extension: str) -> ClassifiedFileTypeCategoryId:
-    """Classify a file by family, then category-only suffixes and filenames."""
+    """Classify a file into its registry display or compatibility group."""
 
-    match = family_for_extension(extension)
-    if match is not None:
-        return match.family.category
-    normalized_extension = _normalize_extension(extension)
-    if normalized_extension.startswith("."):
-        for suffix, category_id in _CATEGORY_SUFFIXES:
-            if _extension_matches(normalized_extension, suffix):
-                return category_id
-    basename = name.replace("\\", "/").rsplit("/", maxsplit=1)[-1].lower()
-    return _CATEGORY_FILENAMES.get(basename, "other")
+    return _REGISTRY.classify(name, extension).group_id
 
 
 def distribution_key_for_extension(extension: str) -> str:
     """Return the shared family palette key or an honest raw fallback."""
 
     normalized = _normalize_extension(extension)
+    if normalized == FILE_TYPE_NO_EXTENSION_KEY:
+        return FILE_TYPE_REMAINING_KEY
     match = family_for_extension(normalized)
-    if match is not None:
-        return f"{FILE_TYPE_FAMILY_KEY_PREFIX}{match.family.id}"
-    return normalized
+    return f"{FILE_TYPE_FAMILY_KEY_PREFIX}{match.family.id}" if match else normalized
 
 
 def _build_filter_type_presets() -> tuple[FilterTypePreset, ...]:
@@ -311,6 +203,8 @@ def _build_filter_type_presets() -> tuple[FilterTypePreset, ...]:
             + category.extra_values,
         }
         for category in FILE_TYPE_CATEGORIES
+        if any(family.category == category.id for family in FILE_TYPE_FAMILIES)
+        or category.extra_values
     )
 
 
@@ -318,9 +212,12 @@ FILTER_TYPE_PRESETS = _build_filter_type_presets()
 
 
 def serialize_file_type_taxonomy() -> dict[str, object]:
-    """Return the immutable declarations as a JSON-safe browser setting."""
+    """Return the legacy taxonomy projection for mixed browser assets."""
 
     return {
+        "schema": "file-type-taxonomy-compat-v1",
+        "registry_revision": _REGISTRY.revision,
+        "registry_fingerprint": _REGISTRY.fingerprint,
         "categories": tuple(
             {
                 "id": category.id,
@@ -341,6 +238,12 @@ def serialize_file_type_taxonomy() -> dict[str, object]:
     }
 
 
+def serialize_file_type_registry() -> dict[str, object]:
+    """Return the projected file-type definitions for the public browser SDK."""
+
+    return _REGISTRY.projection()
+
+
 __all__ = [
     "FILE_TYPE_CATEGORIES",
     "FILE_TYPE_FAMILIES",
@@ -358,6 +261,7 @@ __all__ = [
     "category_for_file",
     "distribution_key_for_extension",
     "family_for_extension",
+    "serialize_file_type_registry",
     "serialize_file_type_taxonomy",
     "validate_file_type_taxonomy",
 ]

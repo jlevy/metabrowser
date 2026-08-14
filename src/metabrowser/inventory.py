@@ -71,13 +71,18 @@ from metabrowser.file_type_filters import (
     category_for_file,
     family_for_extension,
 )
+from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.inventory_rollup import (
     RollupOptions,
     RollupRank,
     build_rollup,
     group_rollup_children,
 )
-from metabrowser.settings import ROLLUP_MAX_NODES
+from metabrowser.settings import (
+    ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+    ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+    ROLLUP_MAX_NODES,
+)
 from metabrowser.walker import (
     DEFAULT_FIRST_RENDER_DEPTH,
     DEFAULT_MAX_DEPTH,
@@ -396,9 +401,10 @@ class InventoryIndex:
             name = entry.name.lower()
             semantic_category = category_for_file(name, ext)
             for preset_id, preset_extensions, preset_names in normalized_presets:
-                if preset_id == semantic_category or (
-                    preset_id not in ("docs", "code", "data")
-                    and (ext in preset_extensions or name in preset_names)
+                if (
+                    preset_id == semantic_category
+                    or ext in preset_extensions
+                    or name in preset_names
                 ):
                     preset_counts[preset_id][ignored_index] += 1
 
@@ -439,8 +445,14 @@ class InventoryIndex:
         recency_rows: list[list[object]] = [
             [window_key, counts[0], counts[1]] for window_key, counts in recency_counts.items()
         ]
+        registry = load_file_type_registry()
         return {
             "summary": summary,
+            "file_type_registry": {
+                "schema_version": registry.schema_version,
+                "revision": registry.revision,
+                "fingerprint": registry.fingerprint,
+            },
             "extensions": extension_rows,
             "canonical_extensions": canonical_rows,
             "type_families": family_rows,
@@ -493,7 +505,8 @@ class InventoryIndex:
         depth: int,
         top: int,
         ext_top: int,
-        type_top: int = 10,
+        type_top: int = ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+        filename_top: int = ROLLUP_FILE_TYPE_FILENAME_LIMIT,
         ext_rank: RollupRank = "bytes",
         max_nodes: int | None = None,
     ) -> RollupResult | None:
@@ -504,6 +517,7 @@ class InventoryIndex:
             top=top,
             ext_top=ext_top,
             type_top=type_top,
+            filename_top=filename_top,
             ext_rank=ext_rank,
             max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
         )

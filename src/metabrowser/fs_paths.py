@@ -69,22 +69,23 @@ def derive_ext(name: str) -> str:
     ``types.d.ts.map`` becomes ``.ts.map``. This keeps suffix tallies stable
     without losing common compound formats.
 
-    A component is eligible only when it is short, lowercase, and
-    alphanumeric. Dotfiles have no extension.
+    Components are ASCII-lowercased before validation. A leading dot belongs
+    to the basename, so ``.gitignore`` has no extension while
+    ``.eslintrc.json`` has ``.json``.
     """
 
-    if not name or name.startswith("."):
+    if not name:
         return ""
-    parts = name.split(".")
+    basename = name.replace("\\", "/").rsplit("/", maxsplit=1)[-1]
+    candidate = basename[1:] if basename.startswith(".") else basename
+    parts = candidate.split(".")
     if len(parts) <= 1:
         return ""
-    # A "tail segment" is short, lowercase, alphanumeric. Folds
-    # ``.runbook.md`` / ``.tar.gz`` / ``.html5`` but stops at the
-    # first segment that breaks the pattern.
     tail_parts: list[str] = []
     for part in reversed(parts[1:][-_MAX_LOGICAL_EXTENSION_COMPONENTS:]):
-        if 0 < len(part) <= 12 and part.islower() and part.isalnum():
-            tail_parts.append(part)
+        normalized = part.lower()
+        if 0 < len(normalized) <= 12 and normalized.isascii() and normalized.isalnum():
+            tail_parts.append(normalized)
         else:
             break
     if not tail_parts:

@@ -336,8 +336,34 @@
   const fileTypes =
     global.MetabrowserFileTypeTaxonomy ||
     Object.freeze({
+      schema: "file-type-registry-v1",
+      schemaVersion: 1,
+      revision: 0,
+      fingerprint: "unavailable",
+      maxExtensionComponents: 2,
+      registryIdentity: Object.freeze({
+        schemaVersion: 1,
+        revision: 0,
+        fingerprint: "unavailable",
+      }),
+      groups: Object.freeze([]),
       categories: Object.freeze([]),
       families: Object.freeze([]),
+      kinds: Object.freeze([]),
+      classify(_name, extension) {
+        return Object.freeze({
+          logicalExtension: typeof extension === "string" ? extension.toLowerCase() || null : null,
+          canonicalExtension: null,
+          kindId: null,
+          familyId: null,
+          groupId: "other",
+          contentFamily: "unknown",
+          detectionSource: "unknown",
+          confidence: "unknown",
+          registryRevision: 0,
+          registryFingerprint: "unavailable",
+        });
+      },
       matchExtension() {
         return null;
       },
@@ -345,6 +371,9 @@
         return typeof extension === "string" ? extension.toLowerCase() : "";
       },
       categoryForFile() {
+        return "other";
+      },
+      groupForFile() {
         return "other";
       },
       distributionKeyForExtension(extension) {
@@ -417,7 +446,8 @@
       depth: settings.ROLLUP_DEFAULT_DEPTH,
       top: settings.ROLLUP_DEFAULT_TOP,
       ext_top: settings.ROLLUP_DEFAULT_EXT_TOP,
-      type_top: settings.ROLLUP_FILE_TYPE_RAW_LIMIT,
+      filename_top: settings.ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+      remaining_top: settings.ROLLUP_FILE_TYPE_REMAINING_LIMIT,
       ext_rank: settings.ROLLUP_DEFAULT_EXT_RANK || "bytes",
       debounceMs: settings.ROLLUP_WATCH_DEBOUNCE_MS || ROLLUP_FALLBACK_DEBOUNCE_MS,
     };
@@ -426,7 +456,8 @@
   async function fetchRollup(path, opts) {
     // Core rollup endpoint for directory subtrees (see /api/rollup).
     // ``path`` may be "" for the served root. Optional opts:
-    // depth / top / ext_top / type_top query overrides plus ``signal`` for aborts.
+    // depth / top / ext_top / filename_top / remaining_top query overrides plus
+    // the public ``type_top`` input alias and ``signal``.
     if (typeof path !== "string") {
       throw new Error("fetchRollup: path must be a string");
     }
@@ -434,11 +465,22 @@
     const options = opts && typeof opts === "object" ? opts : {};
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
-    for (const key of ["depth", "top", "ext_top", "type_top", "ext_rank"]) {
+    for (const key of ["depth", "top", "ext_top", "filename_top", "ext_rank"]) {
       const value = options[key] !== undefined ? options[key] : defaults[key];
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));
       }
+    }
+    // Preserve the public input alias for older plugins, but emit only the
+    // canonical parameter because page assets and the server cannot be mixed.
+    const remainingTop =
+      options.remaining_top !== undefined
+        ? options.remaining_top
+        : options.type_top !== undefined
+          ? options.type_top
+          : defaults.remaining_top;
+    if (remainingTop !== undefined && remainingTop !== null) {
+      url.searchParams.set("remaining_top", String(remainingTop));
     }
     const resp = await fetch(url.toString(), { signal: options.signal });
     if (!resp.ok) {

@@ -94,6 +94,61 @@ rendering, and the in-process navigation API check.
 The installed wheel must also pass `metab --doctor`, so the release gate validates the
 user-facing plugin diagnostics rather than only importing plugin internals.
 
+## File Rollup Format Maintenance
+
+The [File Rollup Format](project/architecture/file-rollup-format/file-rollup-format.md)
+defines the application-independent classification and aggregation contract.
+Its
+[recommended file-type definitions](project/architecture/file-rollup-format/recommended-file-types.toml)
+are a generated documentation copy of the packaged source at
+`src/metabrowser/data/file-rollup-format/recommended-file-types.toml`. Edit the packaged
+TOML source, not the documentation copy.
+
+For a definitions-only change, increment `registry_revision` in the packaged TOML. Use
+the version boundaries in the format’s Evolution section when a change affects the
+registry structure, a serialized component, or the overall rollup semantics.
+Stable IDs are compatibility keys and must not be reassigned to a different meaning.
+
+Regenerate the documentation copy, projected registry, conformance corpus, and empty
+example after changing the definitions or their reference behavior:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py --write
+```
+
+Review every generated diff, then run the checker without a mode to prove that all
+checked artifacts match the source and validate against their JSON Schemas:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py
+uv --config-file uv.toml run --frozen pytest \
+  tests/test_file_type_contract.py \
+  tests/test_file_type_registry.py \
+  tests/test_file_type_taxonomy_js.py
+make verify
+```
+
+To hand the format to another implementation, export a self-contained packet into an
+explicit destination and record the reviewed source revision:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
+  --export /explicit/destination/file-rollup-format \
+  --source-revision SOURCE_GIT_REVISION
+
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
+  --verify /explicit/destination/file-rollup-format
+```
+
+Export replaces stale packet contents and immediately verifies the result.
+The manifest pins the source revision, registry schema and data revisions, normalized
+registry fingerprint, exact file list, and SHA-256 digest of every artifact.
+Verification rejects unsafe paths, symbolic links, missing or extra content, duplicate
+entries, and hash mismatches.
+The packet has no network, sibling-repository, or package-import dependency; its format
+document, recommended definitions, schemas, conformance cases, and empty example are the
+complete adoption boundary.
+
 ## Dependencies
 
 Read [supply-chain security](../SUPPLY-CHAIN-SECURITY.md) before adding or upgrading a

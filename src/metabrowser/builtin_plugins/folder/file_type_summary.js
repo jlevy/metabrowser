@@ -39,12 +39,22 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
     if (disposed) {
       return;
     }
-    envelope = normalizeRollupEnvelope(raw);
+    const nextEnvelope = normalizeRollupEnvelope(raw);
+    const nextModel = buildFileTypeSummaryModel(
+      nextEnvelope,
+      showIgnored,
+      formatters,
+      mb.fileTypes,
+    );
     palette.sync([
-      ...envelope.families.map((family) => `family:${family.id}`),
-      ...envelope.tallies.filter((row) => row.key !== "").map((row) => row.key),
+      ...nextEnvelope.groups.flatMap((group) =>
+        group.families.map((family) => `family:${family.id}`),
+      ),
+      ...(nextEnvelope.specialTypes?.remainingTypes.extensions ?? []).map((row) => row.key),
     ]);
-    render();
+    updateDistributionView(view, nextModel);
+    envelope = nextEnvelope;
+    model = nextModel;
   }
 
   const watch = mb.watchRollup(
@@ -53,8 +63,9 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
       active: () => mb.viewState.isActive(container.closest("[data-tab-content]") || container),
       depth: 0,
       top: 0,
-      ext_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_NAMED_LIMIT ?? 10,
-      type_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_RAW_LIMIT ?? 10,
+      ext_top: 0,
+      filename_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_FILENAME_LIMIT ?? 20,
+      remaining_top: window.METABROWSER_SETTINGS?.ROLLUP_FILE_TYPE_REMAINING_LIMIT ?? 20,
       ext_rank: "dual",
       /** @param {unknown} error */
       onError(error) {
@@ -65,8 +76,17 @@ export function mountFileTypeSummary(container, context, mb, palettePool, option
           }
           return;
         }
-        const classification = mb.errors.classifyRequestError(error);
-        view.body.innerHTML = `<div class="folder-overview-panel-error" role="alert">Could not load file types.${classification.retryable ? ' <button type="button" data-file-types-retry>Retry</button>' : ""}</div>`;
+        const contractFailure = error instanceof TypeError;
+        const classification = contractFailure
+          ? { retryable: false }
+          : mb.errors.classifyRequestError(error);
+        if (contractFailure) {
+          console.warn("Could not display the file-type rollup.", error);
+        }
+        const message = contractFailure
+          ? "Could not display file types because the rollup data is incompatible."
+          : "Could not load file types.";
+        view.body.innerHTML = `<div class="folder-overview-panel-error" role="alert">${message}${classification.retryable ? ' <button type="button" data-file-types-retry>Retry</button>' : ""}</div>`;
         view.body.querySelector("[data-file-types-retry]")?.addEventListener("click", () => {
           void watch.refresh();
         });

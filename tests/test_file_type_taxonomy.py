@@ -44,11 +44,12 @@ def test_unknown_and_ambiguous_extensions_remain_raw() -> None:
     assert category_for_file("asset.unknown", ".unknown") == "other"
     assert category_for_file("README", "") == "docs"
     assert distribution_key_for_extension("") == ""
+    assert distribution_key_for_extension("(none)") == ""
 
 
 def test_catalog_generates_compatible_presets_and_serialized_settings() -> None:
     presets = {preset["id"]: preset for preset in FILTER_TYPE_PRESETS}
-    assert tuple(presets) == ("docs", "code", "data")
+    assert tuple(presets) == ("code", "docs", "data", "logs", "archives", "media")
     assert {".js", ".mjs", ".cjs", ".jsx", "makefile"} <= set(presets["code"]["values"])
     assert {".yaml", ".yml", ".db"} <= set(presets["data"]["values"])
 
@@ -86,9 +87,12 @@ def test_catalog_validation_rejects_duplicate_members() -> None:
         raise AssertionError("family and category-only members must not overlap")
 
 
-def test_client_settings_publish_the_taxonomy() -> None:
+def test_client_settings_publish_one_authoritative_registry() -> None:
     settings = client_settings_dict()
-    assert settings["FILE_TYPE_TAXONOMY"] == serialize_file_type_taxonomy()
+    assert "FILE_TYPE_TAXONOMY" not in settings
+    registry = settings["FILE_TYPE_REGISTRY"]
+    assert isinstance(registry, dict)
+    assert registry["schema"] == "file-type-registry-v1"
 
 
 def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:

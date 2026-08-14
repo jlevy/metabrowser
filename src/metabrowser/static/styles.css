@@ -1340,7 +1340,8 @@ body {
                       theme and reading-font pickers.
      .menu-select     a small native <select> for a short list that may grow
                       (the font-set picker), styled as a recessed field.
-     .menu-separator  a divider between groups. */
+     .menu-separator  a divider between groups.
+     .menu-section-label a quiet heading for a semantic group of rows. */
 .menu {
   min-width: 124px;
   padding: 4px;
@@ -1410,6 +1411,15 @@ body {
   height: 1px;
   margin: 4px 0;
   background: var(--border);
+}
+.menu-section-label {
+  padding: 3px 8px 2px 32px;
+  color: var(--label-color);
+  font-family: var(--font-sans);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
 }
 /* Segmented chooser: icon-only buttons sharing a row, applied instantly
    on click. The active segment fills with the selection surface; the rest

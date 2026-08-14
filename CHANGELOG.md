@@ -26,6 +26,65 @@ Keyboard discovery and navigation:
 - Quick File result movement now wraps at both ends, and Home and End keep their normal
   meaning in the query box.
 
+## 0.4.0
+
+Folder Overview and Treemap:
+
+- Every directory now opens with an extensible Overview whose always-present Files
+  summary appears above a rendered README when the folder contains one.
+  Files and README share responsive alignment and independently collapsible section
+  headings, while the README retains the ordinary Markdown document surface.
+- The Files summary compares exact file counts and byte totals with percentages and
+  independently normalized bars.
+  A leading Total row and conditional Ignored row make the selected population explicit,
+  including deliberate empty, pending, partial, incompatible, and unavailable states.
+- Treemap is now a peer folder view with Bytes and Files sizing, a Show ignored
+  checkbox, adaptive labels, and hierarchy-preserving hover.
+  File icons and colors match Overview and navigation, folder labels end in `/`, and
+  folder navigation keeps the Treemap active.
+
+File types and folder summaries:
+
+- One versioned File-Type Registry now drives folder Overview, navigation filters,
+  Treemap colors, and the public browser SDK. Common extensions roll up into readable
+  semantic families under Code, Documentation, Data, Logs, Archives, Media, and Other;
+  singleton families remain expandable to their exact extension.
+- The Files summary now explains extensionless and unknown populations.
+  No extension expands to exact basenames and Other types expands to raw logical
+  extensions; each list is capped at 20 and conserves omitted files and bytes in an
+  exact Others row.
+- Logical extensions are ASCII-case-insensitive, treat bare dotfiles as extensionless,
+  and retain at most two trailing components.
+  This keeps `.js.map` and `.tar.gz` useful without fragmenting reports into names such
+  as `.umd.min.js.map`. This intentionally merges uppercase suffixes into their
+  lowercase identities: `README.MD` joins `.md`, `photo.PNG` joins `.png`, and `.C`
+  joins `.c` rather than retaining a case-distinct language bucket.
+- Log files include `.log`, `.jsonl`, and `.ndjson`; archives and common image, video,
+  audio, and font formats gain explicit families.
+  JSON Lines retains its data-analysis identity and SVG retains its markup identity
+  while using those display families.
+- Registry, Breakdown v1, JSON Schemas, conformance cases, and a checked export tool now
+  form a self-contained compatibility packet that `fdu` can adopt without a sibling
+  checkout or network access.
+  Packet export prunes stale destination content, verifies exact manifest membership and
+  hashes before returning, and supports an independent `--verify` mode.
+
+Navigation, plugins, and reliability:
+
+- The file-type chooser uses the same registry-backed hierarchy as Overview: broad
+  groups, semantic families, and exact canonical or raw extensions can be selected
+  independently, with parent choices selecting their children.
+- The public browser SDK adds immutable file-type definitions, bounded folder-rollup
+  helpers, folder context, view-aware navigation, shared formatters and file identity,
+  active-view state, and an extensible folder-panel registry.
+  Existing documented extension and rollup aliases remain available for a transition
+  release.
+- Folder rollups run off the event loop and reuse the inventory snapshot instead of
+  crawling the filesystem again.
+  Rapidly rebuilt directories are reconciled against the current filesystem so stale
+  watcher deletes cannot leave an Overview blank, and brief local navigation no longer
+  flashes loading chrome.
+
 ## 0.3.0
 
 Filtering and file navigation:

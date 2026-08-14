@@ -75,6 +75,17 @@ read Markdown docs.
   visible while you browse.
   And the streaming architecture easily scales to 100,000 files or more in a folder.
 
+- **Folder overviews with exact file tallies.** Every directory opens with a compact
+  Files summary that compares file counts and byte totals, percentages, and normalized
+  bars across semantic groups such as Code, Documentation, Data, Logs, Archives, and
+  Media. Expand a family to inspect exact extensions, or inspect bounded No extension and
+  Other types details without losing the conserved total or ignored-file subset.
+
+- **A visual Treemap for every folder.** Size the same live file hierarchy by bytes or
+  file count, include or exclude ignored files, and move through nested folders without
+  leaving the Treemap.
+  Colors and file identities stay consistent with Overview and the navigation filters.
+
 - **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every
   non-gitignored file under the root, then jump straight to it by name or path fragment.
 
@@ -97,6 +108,12 @@ read Markdown docs.
 
 It doesn’t currently support editing (or commenting on Markdown docs), but it could in
 the future.
+
+Metabrowser is also a candidate producer and consumer of the reusable
+[File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md),
+which defines portable file-type registries and conserved directory statistics.
+The format is application-independent and is intended to be usable by other inventory
+tools, including [`fdu`](https://github.com/jlevy/fdu).
 
 ## Quick Start
 
@@ -261,6 +278,7 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 - [Installation](docs/installation.md)
 - [Plugin authoring](docs/plugins.md)
 - [Architecture](docs/architecture.md)
+- [File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md)
 - [Design system](docs/design-system.md)
 - [Development](docs/development.md)
 - [End-to-end testing](docs/e2e-testing.md)

@@ -526,13 +526,25 @@ export function registerTreemap(mb, palettePool) {
     }
     const watch = mb.watchRollup(ctx.path, { active: isVisible, ext_rank: "dual" }, (env) => {
       envelope = env;
+      const breakdown = env.file_type_breakdown;
       palette.sync(
-        Array.isArray(env.ext_tallies)
-          ? env.ext_tallies
-              .map((row) => (Array.isArray(row) && typeof row[0] === "string" ? row[0] : ""))
-              .map((key) => mb.fileTypes.distributionKeyForExtension(key))
-              .filter((key) => key !== "")
-          : [],
+        breakdown && Array.isArray(breakdown.groups)
+          ? [
+              ...breakdown.groups.flatMap((group) =>
+                Array.isArray(group.families)
+                  ? group.families.map((family) => `family:${family.id}`)
+                  : [],
+              ),
+              ...(Array.isArray(breakdown.remaining_types?.extensions)
+                ? breakdown.remaining_types.extensions.map((row) => row.extension)
+                : []),
+            ]
+          : Array.isArray(env.ext_tallies)
+            ? env.ext_tallies
+                .map((row) => (Array.isArray(row) && typeof row[0] === "string" ? row[0] : ""))
+                .map((key) => mb.fileTypes.distributionKeyForExtension(key))
+                .filter((key) => key !== "")
+            : [],
       );
       relayout();
     });

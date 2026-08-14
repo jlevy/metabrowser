@@ -6,13 +6,6 @@ function element(parent, className) {
   return child;
 }
 
-const CATEGORY_LABELS = Object.freeze({
-  docs: "Documentation",
-  code: "Code",
-  data: "Data",
-  other: "Other",
-});
-
 let distributionViewSequence = 0;
 
 /** @param {DistributionHandle} handle @param {string} key */
@@ -99,12 +92,14 @@ export function mountDistributionView(container, model, palette, metricClasses, 
     idPrefix: `file-type-summary-${++distributionViewSequence}`,
     /** @type {Map<string, SummaryRowHandle>} */
     rows: new Map(),
-    /** @type {Map<FileTypeCategory, SummaryGroupHandle>} */
+    /** @type {Map<string, SummaryGroupHandle>} */
     groups: new Map(),
     /** @type {Set<string>} */
     expandedFamilies: new Set(),
     /** @type {ReadonlyArray<SummaryRow>} */
     lastRows: [],
+    /** @type {ReadonlyArray<SummaryGroup>} */
+    lastGroupOrder: [],
     table: /** @type {HTMLTableElement | null} */ (null),
     ignoredRow: /** @type {SummaryMetricRowHandle | null} */ (null),
     totalRow: /** @type {SummaryTotalHandle | null} */ (null),
@@ -155,7 +150,7 @@ export function updateDistributionView(handle, model) {
   }
 
   ensureDistributionBody(handle);
-  updateRows(handle, model.rows);
+  updateRows(handle, model.rows, model.groups || []);
   updateTotalRows(handle, model);
   if (!handle.status) {
     return;
@@ -297,48 +292,58 @@ function updateMetricValue(element, metric, value, text, metricClasses) {
   element.textContent = text;
 }
 
-/** @param {DistributionHandle} handle @param {FileTypeCategory} category */
-function ensureGroup(handle, category) {
-  let group = handle.groups.get(category);
+/** @param {DistributionHandle} handle @param {string} groupId @param {string} label */
+function ensureGroup(handle, groupId, label) {
+  let group = handle.groups.get(groupId);
   if (group || !handle.table) {
     return group;
   }
-  const body = createGroupBody("file-type-summary-group", CATEGORY_LABELS[category]);
-  body.dataset.category = category;
+  const body = createGroupBody("file-type-summary-group", label);
+  body.dataset.category = groupId;
   group = { body };
-  handle.groups.set(category, group);
+  handle.groups.set(groupId, group);
   handle.table.append(body);
   return group;
 }
 
-/** @param {DistributionHandle} handle @param {ReadonlyArray<SummaryRow>} rows */
-function updateRows(handle, rows) {
+/** @param {DistributionHandle} handle @param {ReadonlyArray<SummaryRow>} rows @param {ReadonlyArray<SummaryGroup>} groupOrder */
+function updateRows(handle, rows, groupOrder) {
   if (!handle.table) {
     return;
   }
   handle.lastRows = rows;
+  handle.lastGroupOrder = groupOrder;
   const liveKeys = new Set();
   const liveCategories = new Set();
-  const liveFamilyKeys = new Set(rows.filter((row) => row.kind === "family").map((row) => row.key));
+  const liveFamilyKeys = new Set(rows.filter((row) => row.disclosable).map((row) => row.key));
   for (const familyKey of handle.expandedFamilies) {
     if (!liveFamilyKeys.has(familyKey)) {
       handle.expandedFamilies.delete(familyKey);
     }
   }
-  for (const category of /** @type {const} */ (["docs", "code", "data", "other"])) {
+  const orderedGroups = [
+    ...groupOrder,
+    ...rows
+      .map((row) => row.category)
+      .filter(
+        (id, index, ids) =>
+          !groupOrder.some((group) => group.id === id) && ids.indexOf(id) === index,
+      )
+      .map((id) => ({ id, label: id })),
+  ];
+  for (const descriptor of orderedGroups) {
+    const category = descriptor.id;
     const categoryRows = rows
       .filter((row) => row.category === category)
       .flatMap((row) => [
         row,
-        ...(row.kind === "family" && handle.expandedFamilies.has(row.key)
-          ? row.children || []
-          : []),
+        ...(row.disclosable && handle.expandedFamilies.has(row.key) ? row.children || [] : []),
       ]);
     if (categoryRows.length === 0) {
       continue;
     }
     liveCategories.add(category);
-    const group = ensureGroup(handle, category);
+    const group = ensureGroup(handle, category, descriptor.label);
     if (!group) {
       continue;
     }
@@ -363,8 +368,8 @@ function updateRows(handle, rows) {
         const disclosureLabel = document.createElement("span");
         disclosure.append(disclosureLabel);
         disclosure.addEventListener("click", () => {
-          const key = disclosure.dataset.familyKey;
-          if (!key) {
+          const key = disclosure.dataset.rowKey;
+          if (key === undefined) {
             return;
           }
           if (handle.expandedFamilies.has(key)) {
@@ -372,7 +377,7 @@ function updateRows(handle, rows) {
           } else {
             handle.expandedFamilies.add(key);
           }
-          updateRows(handle, handle.lastRows);
+          updateRows(handle, handle.lastRows, handle.lastGroupOrder);
         });
         typeContent.append(icon, label, disclosure);
         type.append(typeContent);
@@ -396,20 +401,24 @@ function updateRows(handle, rows) {
       }
       rowHandle.tr.id = controlledRowId(handle, row.key);
       rowHandle.tr.classList?.toggle("file-type-summary-child-row", row.child === true);
-      const colorClass = handle.palette.classFor(row.paletteKey || row.key);
+      const colorClass = handle.palette.classFor(row.paletteKey ?? row.key);
       const extension = row.extension || (row.key.startsWith(".") ? row.key : null);
-      const iconPath = extension ? `x${extension}` : "file";
-      const fileIcon = handle.fileTypeIcon(iconPath);
-      const showIcon = row.kind !== "family";
-      rowHandle.icon.hidden = !showIcon || !fileIcon.svg;
+      const iconPath = row.iconPath || (extension ? `x${extension}` : "file");
+      const showIcon = Boolean(extension) || row.kind === "filename";
+      const fileIcon = showIcon ? handle.fileTypeIcon(iconPath) : { className: "", svg: "" };
+      rowHandle.icon.hidden = !fileIcon.svg;
       rowHandle.icon.className = `file-identity-icon ${fileIcon.className}`.trim();
       rowHandle.icon.innerHTML = fileIcon.svg;
       rowHandle.label.textContent = row.label;
       rowHandle.disclosureLabel.textContent = row.label;
-      const disclosable = row.kind === "family" && row.disclosable === true;
+      const disclosable = row.disclosable === true;
       rowHandle.label.hidden = disclosable;
       rowHandle.disclosure.hidden = !disclosable;
-      rowHandle.disclosure.dataset.familyKey = disclosable ? row.key : "";
+      if (disclosable) {
+        rowHandle.disclosure.dataset.rowKey = row.key;
+      } else {
+        delete rowHandle.disclosure.dataset.rowKey;
+      }
       rowHandle.disclosure.setAttribute(
         "aria-expanded",
         String(disclosable && handle.expandedFamilies.has(row.key)),
@@ -463,14 +472,14 @@ function updateRows(handle, rows) {
   }
 }
 
-/** @typedef {"docs" | "code" | "data" | "other"} FileTypeCategory */
-/** @typedef {{key: string, rawKey?: string | null, extension?: string | null, label: string, category: FileTypeCategory, kind?: string, child?: boolean, paletteKey?: string, disclosable?: boolean, children?: ReadonlyArray<SummaryRow>, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
+/** @typedef {{id: string, label: string}} SummaryGroup */
+/** @typedef {{key: string, rawKey?: string | null, extension?: string | null, iconPath?: string | null, label: string, category: string, kind?: string, child?: boolean, paletteKey?: string, disclosable?: boolean, children?: ReadonlyArray<SummaryRow>, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string}} Palette */
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
-/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
+/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", rows: ReadonlyArray<SummaryRow>, groups?: ReadonlyArray<SummaryGroup>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {{tr: HTMLTableRowElement, label: HTMLElement, fileValue: HTMLElement, fileFill: HTMLElement, filePercent: HTMLElement, byteValue: HTMLElement, byteFill: HTMLElement, bytePercent: HTMLElement}} SummaryMetricRowHandle */
 /** @typedef {SummaryMetricRowHandle & {body: HTMLTableSectionElement}} SummaryTotalHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<FileTypeCategory, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, table: HTMLTableElement | null, ignoredRow: SummaryMetricRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, ignoredRow: SummaryMetricRowHandle | null, totalRow: SummaryTotalHandle | null, status: HTMLElement | null, mode: string}} DistributionHandle */
