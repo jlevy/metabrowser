@@ -13,6 +13,10 @@ Checked items below are supported today; unchecked items are planned work.
   a future Files listing can become another peer tab
 - [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
   rendering can evolve independently
+- [ ] Make
+  [GitHub-compatible cross-file Markdown navigation](docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md)
+  automatic with canonical `/view/` URLs, then add Obsidian wiki-links over the same
+  safe resolver
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
 - [x] Add the client-only
   [Quick File finder](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)

@@ -67,6 +67,81 @@ repository cloning, and exact compilation of every static-site generator are fol
 capabilities. They are considered here only where the initial contract must leave room
 for them.
 
+## Decision Addendum: GitHub-Compatible Defaults
+
+**Decision date:** 2026-08-13
+
+The first implementation will make ordinary GitHub repository links work automatically,
+without a repository-type setting, dialect selector, or whole-tree index.
+This is the baseline against which later adapters are measured.
+
+The canonical browser route remains `/view/<path>#<fragment>`, rather than exposing a
+selected file directly at `/<path>`. Both shapes let a bare link such as `other.md` use
+the browser’s relative-URL algorithm, but `/view/` is the safer default for a repository
+browser:
+
+| Route shape | Fit for Metabrowser |
+| --- | --- |
+| `/view/docs/guide.md` | Keeps browsed files in one explicit namespace, leaves `/api`, `/raw`, `/static`, and plugin routes unambiguous, and makes copied URLs recognizable as Metabrowser views. |
+| `/docs/guide.md` | Resembles a published site, but lets arbitrary repository paths collide with application routes and makes a leading `/` ambiguous between repository content and the application origin. |
+
+A future site-preview adapter may expose or emulate published routes when a site’s
+configuration defines them.
+It must not replace the repository-browser default.
+
+### Phase 1 Default
+
+Every standard Markdown target that GitHub resolves within the current repository should
+resolve the same way in Metabrowser when that target exists beneath the served root:
+
+- bare, `./`, and `../` paths resolve from the source document’s directory;
+- a leading single `/` resolves from the served root, while `//host/path` remains a
+  network URL;
+- exact files, folders, fragments, queries, spaces, Unicode, reference-style links,
+  sanitized raw-HTML links, images, and other local resources retain their distinct
+  intents;
+- fragment-only links remain in the current document;
+- safe external URLs remain external; and
+- missing, malformed, or root-escaping targets remain visible but do not acquire a
+  guessed destination.
+
+The final rendered element receives a canonical `href`, such as
+`/view/docs/other.md#setup`, rather than relying only on a JavaScript click callback.
+Normal clicks can use in-app navigation, while copy-link, keyboard activation,
+modifier-click, middle-click, new tabs, reload, and browser history retain ordinary web
+behavior. Embedded local resources use the safe raw-resource route because `/view/`
+returns the application shell.
+
+Exact standard links do not gain implicit `.md`, basename search, case folding, README
+selection, or fuzzy matching.
+Those fallbacks would make a broken GitHub link appear to work locally and would
+introduce platform-dependent results.
+Static-site source conventions and absolute GitHub `/blob/` URLs remain adapter work
+rather than blocking the zero-configuration repository baseline.
+
+### Phase 2 Obsidian Compatibility
+
+Obsidian compatibility will reuse the same route, navigation, safe-resource, and
+resolved-result contracts.
+A Markdown-plugin adapter will parse self-identifying wiki syntax such as `[[Note]]`,
+`[[Note#Heading|Label]]`, and `![[asset.png]]`, then produce the same structured link
+intent used by standard anchors.
+
+Wiki targets may add optional `.md` lookup and a vault-wide basename or path-suffix
+search only when the result is unique.
+Duplicate note names remain ambiguous and are never resolved by arbitrary ordering.
+Heading targets map to the rendered document’s actual anchors.
+Image and media embeds can use the bounded safe-resource path; recursive note
+transclusion, backlinks, and graph indexing remain later work.
+
+Recognizing parsed wiki syntax does not change the meaning of ordinary Markdown links.
+An `.obsidian/` directory may improve vault context later, but standard
+GitHub-compatible resolution remains exact and automatic in every repository.
+This addendum supersedes the earlier suggestion that the baseline expose `auto`,
+`repository`, and `obsidian` as user-selectable policies.
+Standard anchors and parsed wiki syntax identify themselves; only later site adapters
+may require configuration or project detection.
+
 ## Findings
 
 ### Four Independent Layers
