@@ -211,7 +211,8 @@ This section records only what that guideline cannot know — the facts about th
 repository, and the standing answers it asks each project to record once.
 
 **Speculative compatibility layers are forbidden.** The deciding question is whether a
-real consumer must keep using the old contract after the change ships.
+real consumer cannot update alongside the producer, or whether a released version wrote
+data that needs migrating.
 For almost everything here, none does, and the reason is structural rather than
 stylistic.
 
@@ -256,15 +257,15 @@ These are this repository’s answers to the template in
 `tbd guidelines backward-compatibility-rules`, recorded once so no change has to ask
 again:
 
-| Area | Standing answer |
-| --- | --- |
-| Code types, methods, signatures | DO NOT MAINTAIN |
-| Library APIs, including `window.metabrowser` | DO NOT MAINTAIN |
-| Server APIs (`/api/*`) | DO NOT MAINTAIN — the client ships in the same artifact |
-| Plugin and extension APIs | UPGRADE + GATE — `PLUGIN_SDK_VERSION` refuses a mismatch |
-| File formats, including exported packets | VERSION + FAIL FAST — identity stamped, one reader |
-| Persisted client state | DO NOT MAINTAIN — read defensively, fall back to the default |
-| Database schemas | N/A |
+| Area | Standing answer | Why |
+| --- | --- | --- |
+| Internal code | DO NOT MAINTAIN | One repository, one artifact |
+| Library APIs | DO NOT MAINTAIN | `window.metabrowser` ships with the shell that uses it |
+| Server APIs | DO NOT MAINTAIN | `/api/*` is consumed only by the co-shipped client |
+| Plugin and extension APIs | UPGRADE + GATE | `PLUGIN_SDK_VERSION` refuses a mismatch at load |
+| File formats | VERSION + FAIL FAST | Exported packets carry an identity; one reader |
+| Persisted client state | DO NOT MAINTAIN | No released version wrote a key needing migration |
+| Database schemas | N/A | Metabrowser has none |
 
 Raise it with the maintainers if a change needs a different answer; do not assume a
 stricter one and build the layer anyway.

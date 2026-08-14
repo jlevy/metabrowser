@@ -31,7 +31,7 @@ pre-push gates.
 [Compatibility and Legacy Code](docs/development.md#compatibility-and-legacy-code) for
 this repository’s structural facts and standing answers.
 
-- Name the consumer that must keep using the old contract after the change ships, in the
+- Name the consumer or released data that cannot update alongside the producer, in the
   pull request, or do not add the layer.
 - The server, browser shell, and built-in plugins ship as one artifact, so `/api/*`,
   `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are internal
