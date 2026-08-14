@@ -224,9 +224,9 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     const parent = parentNavigation(ctx.path || "");
     const parentControlHtml = parent
       ? '<div class="tm-parent-nav-row">' +
-        `<button type="button" class="btn tm-parent-nav" aria-label="Zoom out to ${mb.escapeHtml(parent.label)}"` +
+        `<button type="button" class="btn parent-nav-btn tm-parent-nav" aria-label="Zoom out to ${mb.escapeHtml(parent.label)}"` +
         ` title="Open ${mb.escapeHtml(parent.label)} in Treemap">` +
-        '<span class="tm-parent-nav-arrow" aria-hidden="true">↑</span>' +
+        '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' +
         `<span>${mb.escapeHtml(parent.label)}</span></button></div>`
       : "";
 

@@ -1167,6 +1167,39 @@ body {
   outline: 2px solid var(--link);
   outline-offset: 1px;
 }
+/* Parent navigation is a button, not a bare icon action. Labelled and
+   icon-only forms share the same compact arrow, persistent boundary,
+   hover, and focus vocabulary through `.btn`. */
+.parent-nav-btn {
+  display: inline-flex;
+  height: var(--icon-btn-size);
+  align-items: center;
+  gap: 6px;
+  border-color: var(--viz-border-strong);
+  background: var(--viz-surface);
+}
+.parent-nav-btn-icon-only {
+  width: var(--icon-btn-size);
+  justify-content: center;
+  padding: 3px;
+}
+.parent-nav-arrow {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1;
+}
+.parent-nav-btn:hover .parent-nav-arrow,
+.parent-nav-btn:focus-visible .parent-nav-arrow {
+  color: inherit;
+}
+.parent-nav-btn[disabled] {
+  cursor: default;
+  opacity: 0.4;
+}
+.parent-nav-btn[disabled]:hover {
+  border-color: var(--viz-border-strong);
+  color: var(--text);
+}
 /* ── Section disclosures — shared trailing-chevron primitive ─────
    Section titles keep their local typography and put a quiet, em-sized
    chevron immediately after the text. The trigger owns aria-expanded;
@@ -2645,14 +2678,6 @@ html[data-prose-font="sans"] {
 }
 .folder-crumb-sep {
   color: var(--muted);
-}
-.folder-up {
-  font-size: 14px;
-  line-height: 1;
-}
-.folder-up[disabled] {
-  opacity: 0.4;
-  cursor: default;
 }
 .folder-header-summary {
   display: inline-flex;

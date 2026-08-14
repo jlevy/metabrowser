@@ -695,7 +695,10 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   });
   check(
     "nested Treemap names the enclosing folder above the map",
-    nestedContainer.innerHTML.includes('class="btn tm-parent-nav"') &&
+    nestedContainer.innerHTML.includes('class="btn parent-nav-btn tm-parent-nav"') &&
+      nestedContainer.innerHTML.includes(
+        '<span class="parent-nav-arrow" aria-hidden="true">↑</span>',
+      ) &&
       nestedContainer.innerHTML.includes('aria-label="Zoom out to src/"') &&
       nestedContainer.innerHTML.includes(">src/</span>"),
     nestedContainer.innerHTML,

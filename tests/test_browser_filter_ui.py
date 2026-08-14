@@ -407,8 +407,16 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
 
     assert 'class="btn file-header-action"' in app
     assert 'class="btn file-header-action" type="button"' in app
+    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in app
+    assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in app
     assert ".btn {" in css
     assert ".btn:focus-visible {" in css
+    assert ".parent-nav-btn {" in css
+    assert ".parent-nav-btn-icon-only {" in css
+    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-btn-icon-only {")]
+    assert "height: var(--icon-btn-size);" in parent_nav
+    assert "border-color: var(--viz-border-strong);" in parent_nav
+    assert 'aria-label="Open parent folder ${esc(parentLabel)}"' in app
 
 
 def test_every_core_button_declares_non_submit_behavior() -> None:

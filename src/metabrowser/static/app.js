@@ -3771,10 +3771,12 @@ function renderFolderHeader(data) {
     );
   }
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
+  var parentLabel =
+    parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
   var upButton =
     parent === null
-      ? '<button type="button" class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" disabled>↑</button>'
-      : `<button type="button" class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" data-nav-dir="${esc(parent)}">↑</button>`;
+      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
+      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
   var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
   return (
     '<div class="file-header folder-header">' +

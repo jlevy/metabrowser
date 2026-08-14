@@ -277,6 +277,19 @@ adds weight without adding information.
 The one sanctioned resting surface is `.icon-btn-overlay`, for a button that floats
 above content: a bare glyph over source text is unreadable, so it needs an opaque plate.
 
+### Parent Navigation Is a Bordered Button
+
+Moving to an enclosing folder is a labelled navigation action, even when a compact
+header has room for only its arrow.
+Both forms combine `.btn` with `.parent-nav-btn`, use the shared `.parent-nav-arrow`,
+and keep a visible resting boundary.
+The labelled form includes the destination folder; the icon-only form retains the same
+arrow size and button height with its destination in the accessible label and tooltip.
+
+Do not represent parent navigation as a bare `.icon-btn`. Icon actions such as Print
+operate on the current view and remain unboxed at rest; parent navigation changes the
+current location and uses the stronger bordered-button vocabulary.
+
 ### Reveal on Hover Keeps Keyboard Reach
 
 Buttons that appear only when their row or container is hovered use `.icon-btn-reveal`,
