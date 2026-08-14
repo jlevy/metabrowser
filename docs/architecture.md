@@ -25,6 +25,16 @@ The browser loads critical local assets first.
 Optional third-party assets enhance syntax highlighting, charts, or specialized
 renderers after the shell can already paint a useful first view.
 
+The server and the browser shell are one deployable unit, not two independently
+versioned peers. The index route is served uncached, `_static_asset_url` stamps every
+script with a content-derived `?v=` token, and `client_settings_dict` inlines the
+browser’s configuration into that same response.
+An upgraded server therefore always serves the matching shell, settings, and built-in
+plugins together; a browser cannot pair an old asset with a new route.
+This is why internal contracts change in one commit and why compatibility shims between
+the two halves are forbidden — see
+[Compatibility and Legacy Code](development.md#compatibility-and-legacy-code).
+
 ## Request Flow
 
 Opening a file follows this sequence:
@@ -177,17 +187,17 @@ basename, a normalized logical extension of at most two components, apparent byt
 ignore state. `inventory_rollup.py` classifies those facts against the active registry
 while building a response.
 It emits exact `all` and `unignored` populations for files and bytes, the definition
-registry identity, the current file-rollup hierarchy, and transitional legacy tallies.
+registry identity, and the current file-rollup hierarchy.
 A breakdown is rejected when its registry identity differs from the loaded projection or
 when any root, family, fallback, or Others conservation invariant fails.
 
 This boundary deliberately avoids persistent classification caches in the inventory.
 A registry revision changes one immutable loader value and subsequent rollups rather
 than requiring every indexed entry to be rewritten.
-Compatibility names and tuple tallies are derived from the registry during one additive
-transition; their removal is tracked as a separate cleanup after supported clients have
-migrated. The reusable semantics, recommended type definitions, schemas, conformance
-cases, and export boundary are documented in
+The rollup response carries exactly one representation of file types; a definition
+change updates the server, the browser, and the tests together rather than adding a
+parallel shape. The reusable semantics, recommended type definitions, schemas,
+conformance cases, and export boundary are documented in
 [File Rollup Format v0.1](project/architecture/file-rollup-format/file-rollup-format.md).
 
 ## Plugin Boundary

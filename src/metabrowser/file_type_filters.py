@@ -1,4 +1,9 @@
-"""Compatibility helpers derived from the shared file-type registry."""
+"""Filter-facing projection of the shared file-type registry.
+
+Navigation filters and rollups need the registry expressed as flat group and
+family tuples. This module derives those views from the one loaded registry so
+there is no second catalog to keep in sync.
+"""
 
 from __future__ import annotations
 
@@ -89,7 +94,7 @@ def validate_file_type_taxonomy(
     categories: tuple[FileTypeCategory, ...],
     families: tuple[FileTypeFamily, ...],
 ) -> None:
-    """Validate the legacy projected taxonomy used by existing consumers."""
+    """Reject a projection that could classify the same suffix ambiguously."""
 
     category_ids: set[str] = set()
     extra_values: dict[str, str] = {}
@@ -174,7 +179,7 @@ def canonical_extension(extension: str) -> str:
 
 
 def category_for_file(name: str, extension: str) -> ClassifiedFileTypeCategoryId:
-    """Classify a file into its registry display or compatibility group."""
+    """Classify a file into its registry display group."""
 
     return _REGISTRY.classify(name, extension).group_id
 
@@ -211,33 +216,6 @@ def _build_filter_type_presets() -> tuple[FilterTypePreset, ...]:
 FILTER_TYPE_PRESETS = _build_filter_type_presets()
 
 
-def serialize_file_type_taxonomy() -> dict[str, object]:
-    """Return the legacy taxonomy projection for mixed browser assets."""
-
-    return {
-        "schema": "file-type-taxonomy-compat-v1",
-        "registry_revision": _REGISTRY.revision,
-        "registry_fingerprint": _REGISTRY.fingerprint,
-        "categories": tuple(
-            {
-                "id": category.id,
-                "label": category.label,
-                "extra_values": category.extra_values,
-            }
-            for category in FILE_TYPE_CATEGORIES
-        ),
-        "families": tuple(
-            {
-                "id": family.id,
-                "label": family.label,
-                "category": family.category,
-                "extensions": family.extensions,
-            }
-            for family in FILE_TYPE_FAMILIES
-        ),
-    }
-
-
 def serialize_file_type_registry() -> dict[str, object]:
     """Return the projected file-type definitions for the public browser SDK."""
 
@@ -262,6 +240,5 @@ __all__ = [
     "distribution_key_for_extension",
     "family_for_extension",
     "serialize_file_type_registry",
-    "serialize_file_type_taxonomy",
     "validate_file_type_taxonomy",
 ]

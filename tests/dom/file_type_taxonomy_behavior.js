@@ -117,11 +117,11 @@ if (javascript?.family.id !== "javascript" || javascript.canonicalExtension !== 
 if (runtime.canonicalExtension(".d.ts") !== ".ts") {
   throw new Error("longest suffix matching diverged for TypeScript");
 }
-if (runtime.categoryForFile("README", "") !== "docs") {
-  throw new Error("whole-filename category matching failed");
+if (runtime.groupForFile("README", "") !== "docs") {
+  throw new Error("whole-filename group matching failed");
 }
-if (runtime.categoryForFile("module.m", ".m") !== "code") {
-  throw new Error("raw category-only extension matching failed");
+if (runtime.groupForFile("module.m", ".m") !== "code") {
+  throw new Error("family-less extension group matching failed");
 }
 if (
   runtime.groups.map((group) => group.id).join(",") !==

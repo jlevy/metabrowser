@@ -15,6 +15,18 @@ the format document owns the current application-independent standard, and the
 reference implementation’s edit, regeneration, validation, export, and verification
 workflow.
 
+**Compatibility addendum (2026-08-14):** The transition-cycle plan below was wrong about
+its own premise. Metabrowser serves an uncached page whose asset URLs carry
+content-derived versions, so a browser cannot pair an old asset with a new route and the
+mixed server-and-browser state those aliases protected against cannot occur.
+Every derived alias and fallback described here — `type_tallies`, the `type_top` query
+and SDK parameter, `ROLLUP_FILE_TYPE_NAMED_LIMIT`, `ROLLUP_FILE_TYPE_RAW_LIMIT`, the
+`file-type-taxonomy-compat-v1` settings projection, and the `categories` and
+`categoryForFile` SDK aliases — has been removed rather than deferred.
+[Compatibility and Legacy Code](../../../development.md#compatibility-and-legacy-code)
+now forbids adding a compatibility layer without a named consumer that cannot be updated
+in the same commit.
+
 ## Overview
 
 Metabrowser now groups common extensions into semantic families for its folder Files

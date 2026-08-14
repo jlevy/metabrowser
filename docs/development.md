@@ -201,6 +201,52 @@ The root-level `--kpress-host-font-size-base` hook anchors KPress’s derived ty
 Metabrowser’s document scale, while scoped public size tokens express deliberate mono,
 secondary-text, and label divergences.
 
+## Compatibility and Legacy Code
+
+**Speculative compatibility layers are forbidden.** Do not add an alias, a fallback
+branch, a shim, a deprecation window, a dual-write, or a “transitional” duplicate field
+unless a consumer that cannot be updated in the same commit actually exists today.
+“Someone might be running an older client” is not such a consumer, and neither is a
+future version of this repository.
+
+The reason is structural, not stylistic.
+Metabrowser ships the server, the browser shell, and the built-in plugins as one
+artifact from one repository.
+The page is served uncached and every asset URL carries a content-derived version, so a
+browser cannot hold an old `app.js` against a new `/api/rollup`. Settings are inlined
+into that same page, so the browser’s file-type definitions and the server’s are always
+the same object from the same process.
+There is no window in which the two halves disagree, so code written to survive that
+window is dead on arrival: it cannot be reached, cannot be tested honestly, and cannot
+be removed later without re-deriving the reachability argument from scratch.
+It is pure cost — more branches, more names for one concept, more surface for a reader
+to mistake for a real requirement.
+
+When an internal contract changes, change it everywhere in one commit.
+Rename the field, update every caller, update the tests, and record the change in the
+changelog. A wire field, a settings key, a query parameter, and an SDK method are all
+internal contracts. Removing one is a normal edit, not a migration.
+
+Three boundaries are real, and versioning them is required rather than speculative:
+
+- **Persisted user state.** Saved filters, theme, and other browser-stored values
+  outlive an upgrade. Read them defensively and migrate them explicitly.
+- **Exported File Rollup Format packets.** These leave the repository for other
+  implementations, which is exactly why the format carries a schema version, a registry
+  revision, and a fingerprint.
+  Follow the format’s Evolution section.
+- **On-disk files the user owns.** Never require a rewrite of the served tree.
+
+Everything else — `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the
+built-in plugin interfaces — moves with the release.
+Externally installed plugins are rebuilt against the release they target; a breaking SDK
+change belongs in the changelog, not behind a compatibility alias.
+
+If you find an existing alias or fallback whose consumer does not exist, delete it in
+the change you are already making.
+Do not file it as future cleanup: a deferred removal is how the layer becomes permanent.
+When a reviewer cannot name the consumer a branch protects, that branch is the finding.
+
 ## Python
 
 - Support the Python range declared in `pyproject.toml`.

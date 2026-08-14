@@ -135,7 +135,7 @@ async function importSource(relative) {
       { id: "images", label: "Images", groupId: "media", extensions: [".png"] },
       { id: "log-files", label: "Log files", groupId: "logs", extensions: [".log"] },
     ],
-    categoryForFile: () => "other",
+    groupForFile: () => "other",
   };
   const breakdownEnvelope = modelModule.normalizeRollupEnvelope({
     ...raw,

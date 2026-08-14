@@ -261,11 +261,10 @@ Useful helpers include:
   `schema`, `schemaVersion`, `revision`, `fingerprint`, `maxExtensionComponents`, and
   `registryIdentity` identify the loaded File Rollup Format type definitions; ordered
   `groups`, `families`, and `kinds` expose their immutable descriptors.
-  `categories` remains a derived compatibility alias for `groups`. `classify(name, ext)`
-  returns registry identities and evidence for one file.
+  `classify(name, ext)` returns registry identities and evidence for one file.
   `matchExtension(ext)` returns the matching family and canonical suffix,
-  `canonicalExtension(ext)` preserves unknown extensions, `categoryForFile(name, ext)`
-  includes category-only filenames, and `distributionKeyForExtension(ext)` returns the
+  `canonicalExtension(ext)` preserves unknown extensions, `groupForFile(name, ext)`
+  includes whole-filename evidence, and `distributionKeyForExtension(ext)` returns the
   shared family or raw palette key.
   Compare a file rollup’s `registry` identity before combining it with labels or colors
   from this projection;
@@ -321,9 +320,6 @@ Folder aggregate views can use these bounded inventory helpers:
   ordered nonempty group and family rows, complete canonical-extension children, and
   bounded No extension and `remaining_types` children with exact Others remainders; the
   latter is presented as **Other types** in the built-in UI.
-- `type_tallies` is a transitional compatibility projection.
-  New code consumes `file_type_breakdown`; its final empty-key raw row is presented as
-  **Other types**.
 
 ### Folder Overview Contributions
 
@@ -394,6 +390,13 @@ Do not copy Markdown DOM or TOC behavior into a folder contribution.
 Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variables in
 `app.js` are implementation details and may change without a plugin compatibility
 guarantee.
+
+The SDK is versioned with the release, not independently.
+It carries no deprecation window and no aliases for renamed members: a method that moves
+or changes shape does so in one commit across core and the built-in plugins, and the
+change is recorded in `CHANGELOG.md`. Rebuild an externally installed plugin against the
+release it targets rather than expecting the host to keep an older surface alive.
+See [Compatibility and Legacy Code](development.md#compatibility-and-legacy-code).
 
 ## Packaging a Python Plugin
 

@@ -15,7 +15,6 @@ from metabrowser.file_type_filters import (
     category_for_file,
     distribution_key_for_extension,
     family_for_extension,
-    serialize_file_type_taxonomy,
     validate_file_type_taxonomy,
 )
 from metabrowser.settings import client_settings_dict
@@ -47,16 +46,21 @@ def test_unknown_and_ambiguous_extensions_remain_raw() -> None:
     assert distribution_key_for_extension("(none)") == ""
 
 
-def test_catalog_generates_compatible_presets_and_serialized_settings() -> None:
+def test_catalog_generates_presets_for_every_populated_group() -> None:
     presets = {preset["id"]: preset for preset in FILTER_TYPE_PRESETS}
     assert tuple(presets) == ("code", "docs", "data", "logs", "archives", "media")
     assert {".js", ".mjs", ".cjs", ".jsx", "makefile"} <= set(presets["code"]["values"])
     assert {".yaml", ".yml", ".db"} <= set(presets["data"]["values"])
+    # A preset with no selectable values would render as a filter that does nothing.
+    assert all(preset["values"] for preset in FILTER_TYPE_PRESETS)
 
-    serialized = serialize_file_type_taxonomy()
-    raw_families = serialized["families"]
-    assert isinstance(raw_families, tuple)
-    assert [family["id"] for family in raw_families] == [family.id for family in FILE_TYPE_FAMILIES]
+
+def test_projected_families_track_the_registry() -> None:
+    from metabrowser.file_type_registry import load_file_type_registry
+
+    assert [family.id for family in FILE_TYPE_FAMILIES] == [
+        family.id for family in load_file_type_registry().families
+    ]
 
 
 def test_catalog_validation_rejects_duplicate_members() -> None:

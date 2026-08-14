@@ -24,6 +24,25 @@ isolated installed-wheel smoke tests.
 Run `make hooks-install` once per checkout to install the Lefthook pre-commit and
 pre-push gates.
 
+## Compatibility and Legacy Code
+
+**Speculative compatibility layers are forbidden.** See
+[Compatibility and Legacy Code](docs/development.md#compatibility-and-legacy-code).
+
+- Never add an alias, fallback branch, shim, deprecation window, or “transitional”
+  duplicate field unless a consumer that cannot be updated in the same commit exists
+  today. Name that consumer in the pull request or do not add the layer.
+- The server, browser shell, and built-in plugins ship as one artifact from one
+  repository, and cache-busted asset URLs make a version skew between them impossible.
+  Code written to survive that skew is unreachable by construction.
+- Change internal contracts — `/api/*` shapes, `window.metabrowser`,
+  `METABROWSER_SETTINGS`, query parameters, wire fields — everywhere in one commit, and
+  record the change in `CHANGELOG.md`.
+- Only persisted user state, exported File Rollup Format packets, and files in the
+  served tree are real compatibility boundaries.
+- Delete an alias or fallback whose consumer does not exist as part of the change you
+  are already making, rather than filing it as future cleanup.
+
 ## Python and Dependencies
 
 - Use uv exclusively. Never invoke raw `python` or `pip`, activate `.venv`, or add a

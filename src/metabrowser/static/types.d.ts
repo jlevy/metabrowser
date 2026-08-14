@@ -117,16 +117,12 @@ type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
     fingerprint: string;
   }>;
   groups: ReadonlyArray<MetabrowserFileTypeCategory>;
-  /** Compatibility alias for groups. */
-  categories: ReadonlyArray<MetabrowserFileTypeCategory>;
   families: ReadonlyArray<MetabrowserFileTypeFamily>;
   kinds: ReadonlyArray<MetabrowserFileTypeKind>;
   classify(name: unknown, extension: unknown): MetabrowserFileTypeClassification;
   matchExtension(extension: unknown): MetabrowserFileTypeFamilyMatch | null;
   canonicalExtension(extension: unknown): string;
   groupForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
-  /** Compatibility alias for groupForFile. */
-  categoryForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
   distributionKeyForExtension(extension: unknown): string;
 }>;
 
@@ -377,17 +373,6 @@ type MetabrowserRollupEnvelope = {
   path: string;
   node: Record<string, unknown> | null;
   ext_tallies: Array<Array<unknown>>;
-  type_tallies: {
-    families: Array<{
-      id: string;
-      all_files: number;
-      all_bytes: number;
-      unignored_files: number;
-      unignored_bytes: number;
-      extensions: Array<[string, number, number, number, number]>;
-    }>;
-    extensions: Array<[string, number, number, number, number]>;
-  };
   file_type_breakdown: MetabrowserFileTypeBreakdown | null;
   index_status: string;
   indexed_files: number;
@@ -444,8 +429,6 @@ type MetabrowserRollupOptions = {
   remaining_top?: number;
   signal?: AbortSignal;
   top?: number;
-  /** Compatibility alias for remaining_top. */
-  type_top?: number;
 };
 
 type MetabrowserRollupWatch = {
@@ -1014,8 +997,6 @@ declare global {
       ROLLUP_DEFAULT_DEPTH?: number;
       ROLLUP_DEFAULT_EXT_RANK?: "bytes" | "dual";
       ROLLUP_DEFAULT_EXT_TOP?: number;
-      ROLLUP_FILE_TYPE_NAMED_LIMIT?: number;
-      ROLLUP_FILE_TYPE_RAW_LIMIT?: number;
       ROLLUP_FILE_TYPE_FILENAME_LIMIT?: number;
       ROLLUP_FILE_TYPE_REMAINING_LIMIT?: number;
       ROLLUP_DEFAULT_TOP?: number;
