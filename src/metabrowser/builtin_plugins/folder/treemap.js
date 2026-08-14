@@ -426,9 +426,9 @@ export function registerTreemap(mb, palettePool) {
     /** @param {Record<string, any>} cell */
     function activateCell(cell) {
       if (cell.kind === "dir" && cell.path !== ctx.path) {
-        mb.openPath(cell.path, { viewId: TREEMAP_VIEW_ID });
+        void mb.navigation.open({ path: cell.path }, { viewId: TREEMAP_VIEW_ID });
       } else if (cell.kind === "file") {
-        mb.openPath(cell.path);
+        void mb.navigation.open({ path: cell.path });
       }
       // rest / ext cells have no navigation target.
     }
@@ -486,7 +486,7 @@ export function registerTreemap(mb, palettePool) {
         e.preventDefault();
       } else if (key === "Backspace") {
         if (ctx.path) {
-          mb.openPath(parentPath(ctx.path) || "/", { viewId: TREEMAP_VIEW_ID });
+          void mb.navigation.open({ path: parentPath(ctx.path) }, { viewId: TREEMAP_VIEW_ID });
         }
         e.preventDefault();
       }

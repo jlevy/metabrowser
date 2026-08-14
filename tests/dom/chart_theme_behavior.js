@@ -126,6 +126,7 @@ for (const relative of [
   "src/metabrowser/static/inventory_scope.js",
   "src/metabrowser/static/resource_context.js",
   "src/metabrowser/static/view_state.js",
+  "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin_sdk.js",
   "src/metabrowser/static/charts.js",
 ]) {

@@ -5549,20 +5549,10 @@ if (window.MetabrowserNavigationRoute) {
   navigationController = window.MetabrowserNavigationRoute.createController({
     apply: applyNavigationTarget,
   });
+  window.MetabrowserNavigationRoute.attachController(navigationController);
 } else {
   console.error("Canonical navigation module is unavailable");
 }
-
-window.addEventListener("metabrowser:open-path", (event) => {
-  if (!(event instanceof CustomEvent)) {
-    return;
-  }
-  var path = event.detail?.path;
-  var viewId = typeof event.detail?.viewId === "string" ? event.detail.viewId : undefined;
-  if (typeof path === "string" && path) {
-    navigateToPath(path, viewId);
-  }
-});
 
 function clearBrowserFileCache(path) {
   if (path) {

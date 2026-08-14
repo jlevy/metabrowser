@@ -56,6 +56,7 @@ for (const filename of [
   "inventory_scope.js",
   "resource_context.js",
   "view_state.js",
+  "navigation.js",
 ]) {
   const source = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8");
   vm.runInContext(source, sandbox, { filename });

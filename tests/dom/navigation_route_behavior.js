@@ -135,6 +135,12 @@ function makeBrowser(pathname, search = "", hash = "") {
         applied.push([target, context]);
       },
     });
+    const detachPublicNavigation = route.attachController(controller);
+    equal(
+      "public href uses the canonical codec",
+      route.navigation.href({ path: "public path.md", fragment: "part" }),
+      "/view/public%20path.md#part",
+    );
     await controller.start();
     equal("startup applies pathname route", applied[0][0], {
       path: "docs/start.md",
@@ -142,8 +148,13 @@ function makeBrowser(pathname, search = "", hash = "") {
       fragment: "intro",
     });
     equal("startup does not rewrite history", browser.writes, []);
+    equal("public current reads controller state", route.navigation.current(), {
+      path: "docs/start.md",
+      query: "plain=1",
+      fragment: "intro",
+    });
 
-    await controller.open({ path: "docs/next.md" });
+    await route.navigation.open({ path: "docs/next.md" });
     equal("user navigation pushes", browser.writes.at(-1), ["push", "/view/docs/next.md"]);
     check("path navigation reports a fetch boundary", applied.at(-1)[1].pathChanged === true);
     check("latest navigation context is current", applied.at(-1)[1].isCurrent());
@@ -178,6 +189,7 @@ function makeBrowser(pathname, search = "", hash = "") {
     equal("landing callback receives null", applied.at(-1)[0], null);
 
     controller.dispose();
+    detachPublicNavigation();
     check("dispose removes popstate", !browser.listeners.has("popstate"));
   }
 

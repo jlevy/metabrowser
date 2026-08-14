@@ -184,6 +184,23 @@
     return value.startsWith(prefix) ? value.slice(prefix.length) : value;
   }
 
+  /** @param {unknown} options */
+  function validateOpenOptions(options) {
+    if (!options || typeof options !== "object") {
+      throw new TypeError("navigation options must be an object");
+    }
+    const candidate = /** @type {{replace?: unknown, viewId?: unknown}} */ (options);
+    if (
+      candidate.viewId !== undefined &&
+      (typeof candidate.viewId !== "string" || !candidate.viewId)
+    ) {
+      throw new TypeError("navigation options.viewId must be a non-empty string");
+    }
+    if (candidate.replace !== undefined && typeof candidate.replace !== "boolean") {
+      throw new TypeError("navigation options.replace must be a boolean");
+    }
+  }
+
   /**
    * Compose route identity with browser history and application rendering.
    *
@@ -304,6 +321,7 @@
         if (disposed) {
           throw new Error("navigation controller is disposed");
         }
+        validateOpenOptions(openOptions);
         const normalized = normalizeTarget(target);
         const routeHref = href(normalized);
         const currentHref = `${browserLocation.pathname}${browserLocation.search}${browserLocation.hash}`;
@@ -328,9 +346,61 @@
     });
   }
 
+  /** @type {ReturnType<typeof createController> | null} */
+  let attachedController = null;
+
+  /**
+   * Attach the shell-owned controller to the stable public navigation facade.
+   *
+   * @param {ReturnType<typeof createController>} controller
+   */
+  function attachController(controller) {
+    if (
+      !controller ||
+      typeof controller.current !== "function" ||
+      typeof controller.open !== "function"
+    ) {
+      throw new TypeError("public navigation requires a navigation controller");
+    }
+    if (attachedController && attachedController !== controller) {
+      throw new Error("a public navigation controller is already attached");
+    }
+    attachedController = controller;
+    let attached = true;
+    return () => {
+      if (attached && attachedController === controller) {
+        attached = false;
+        attachedController = null;
+      }
+    };
+  }
+
+  const navigation = Object.freeze({
+    current() {
+      return (
+        attachedController?.current() ??
+        parse(window.location.pathname, window.location.search, window.location.hash)
+      );
+    },
+    href,
+    /**
+     * @param {NavigationTarget} target
+     * @param {{viewId?: string}=} options
+     */
+    async open(target, options) {
+      if (!attachedController) {
+        throw new Error("browser navigation is not initialized");
+      }
+      validateOpenOptions(options ?? {});
+      await attachedController.open(target, options);
+    },
+  });
+
   window.MetabrowserNavigationRoute = Object.freeze({
+    attachController,
     createController,
     href,
+    navigation,
     normalizeTarget,
     parse,
   });

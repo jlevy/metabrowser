@@ -206,18 +206,16 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
         proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
     ).read_text()
 
-    assert "function openPath(path, options)" in sdk
-    assert "viewId: viewId" in sdk
-    assert "type MetabrowserOpenPathOptions" in types
-    assert "openPath(path: string, options?: MetabrowserOpenPathOptions): void;" in types
+    assert "navigation: global.MetabrowserNavigationRoute.navigation" in sdk
+    assert "function openPath(" not in sdk
+    assert "type MetabrowserNavigationOpenOptions" in types
+    assert "navigation: MetabrowserNavigationApi;" in types
 
     assert "async function selectFile(path, preferredViewId)" in js
     assert "function renderFile(data, preferredViewId)" in js
     assert "async function navigateToPath(path, preferredViewId)" in js
-    listener_start = js.index('window.addEventListener("metabrowser:open-path"')
-    listener = js[listener_start : listener_start + 500]
-    assert "event.detail?.viewId" in listener
-    assert "navigateToPath(path, viewId)" in listener
+    assert "MetabrowserNavigationRoute.attachController(navigationController)" in js
+    assert "metabrowser:open-path" not in js
 
     render_start = js.index("function renderFile(data, preferredViewId)")
     render = js[render_start : render_start + 5000]
@@ -225,7 +223,7 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     assert "views.find((view) => view.default)" in render
 
     assert 'const TREEMAP_VIEW_ID = "treemap";' in treemap
-    assert "mb.openPath(cell.path, { viewId: TREEMAP_VIEW_ID })" in treemap
+    assert "mb.navigation.open({ path: cell.path }, { viewId: TREEMAP_VIEW_ID })" in treemap
 
 
 def test_local_quick_file_modules_define_no_search_endpoint() -> None:

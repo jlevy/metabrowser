@@ -44,7 +44,9 @@
 //     renderTextTruncationWarning(data) — visible partial-content warning
 //
 //   Navigation:
-//     openPath(path, {viewId?})          — open a path, optionally preferring a view
+//     navigation.href(target)            — canonical /view/ href for a target
+//     navigation.open(target, {viewId?}) — open a target, optionally preferring a view
+//     navigation.current()               — current path/query/fragment target or null
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
@@ -76,6 +78,9 @@
   if (global.metabrowser) {
     // Already initialized; protect against double-load.
     return;
+  }
+  if (!global.MetabrowserNavigationRoute?.navigation) {
+    throw new Error("plugin SDK requires the canonical navigation module");
   }
 
   // Internal registry: kindId -> Map<viewId, {render, dispose?}>.
@@ -196,24 +201,6 @@
       throw new Error(`fetchJsonl ${path}: expected JSONL, got type=${data.type || "?"}`);
     }
     return data;
-  }
-
-  /**
-   * Request shell navigation, preferring a destination view when it exists.
-   */
-  function openPath(path, options) {
-    if (typeof path !== "string" || !path) {
-      throw new Error("openPath: path must be a non-empty string");
-    }
-    const viewId = options?.viewId;
-    if (viewId !== undefined && (typeof viewId !== "string" || !viewId)) {
-      throw new Error("openPath: options.viewId must be a non-empty string");
-    }
-    global.dispatchEvent(
-      new global.CustomEvent("metabrowser:open-path", {
-        detail: { path: path, viewId: viewId },
-      }),
-    );
   }
 
   // ── Preferences ─────────────────────────────────────────────────
@@ -1233,7 +1220,7 @@
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
     fileTypeIcon: fileTypeIcon,
-    openPath: openPath,
+    navigation: global.MetabrowserNavigationRoute.navigation,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
     loadKpressAssets: loadKpressAssets,

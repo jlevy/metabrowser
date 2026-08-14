@@ -94,6 +94,7 @@ for (const filename of [
   "contribution_registry.js",
   "resource_context.js",
   "view_state.js",
+  "navigation.js",
 ]) {
   load(path.join(repoRoot, "src", "metabrowser", "static", filename), filename);
 }

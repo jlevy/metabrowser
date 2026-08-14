@@ -288,10 +288,33 @@ path.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
-- `openPath(path, options?)` asks the shell to navigate without reaching into private
-  `app.js` functions. Pass `{ viewId }` to prefer a view declared by the destination; the
-  shell uses the destination’s default when that view is unavailable.
-  The preference is transient and does not change the path route.
+- `navigation.href(target)` returns the canonical `/view/` URL for a
+  `{ path, query?, fragment? }` target.
+  Paths are served-root-relative, use `/` separators, and have no leading slash; the
+  empty path selects the served root.
+- `navigation.open(target, options?)` performs normal user navigation and returns a
+  promise. Pass `{ viewId }` to prefer a view declared by the destination; the shell uses
+  the destination’s default when that view is unavailable.
+  The preference is transient and does not change the target URL.
+- `navigation.current()` returns the current target or `null` on the landing URL.
+
+Use `navigation.href()` for real anchor `href` values so browser status previews,
+copy-link, modifier clicks, new tabs, and reloads retain native behavior.
+An unmodified in-app activation may then call `navigation.open()`:
+
+```javascript
+const target = { path: "docs/guide.md", fragment: "setup" };
+const link = document.createElement("a");
+link.href = mb.navigation.href(target);
+link.textContent = "Setup guide";
+link.addEventListener("click", (event) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  event.preventDefault();
+  void mb.navigation.open(target);
+});
+```
 
 Folder aggregate views can use these bounded inventory helpers:
 

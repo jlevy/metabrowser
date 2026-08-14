@@ -9,10 +9,19 @@ type MetabrowserViewSpec = {
   dispose?: (container: HTMLElement) => void;
 };
 
-type MetabrowserOpenPathOptions = {
+type MetabrowserNavigationOpenOptions = {
   /** Activate this view when the destination declares it; otherwise use its default. */
   viewId?: string;
 };
+
+type MetabrowserNavigationApi = Readonly<{
+  current(): MetabrowserNavigationTarget | null;
+  href(target: MetabrowserNavigationTarget): string;
+  open(
+    target: MetabrowserNavigationTarget,
+    options?: MetabrowserNavigationOpenOptions,
+  ): Promise<void>;
+}>;
 
 type MetabrowserNavigationTarget = Readonly<{
   path: string;
@@ -39,6 +48,7 @@ type MetabrowserNavigationController = Readonly<{
 }>;
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
+  attachController(controller: MetabrowserNavigationController): () => void;
   createController(options: {
     apply(
       target: MetabrowserNavigationTarget | null,
@@ -49,6 +59,7 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
     location?: Pick<Location, "pathname" | "search" | "hash">;
   }): MetabrowserNavigationController;
   href(target: MetabrowserNavigationTarget): string;
+  navigation: MetabrowserNavigationApi;
   normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
 }>;
@@ -540,7 +551,7 @@ type MetabrowserSdk = {
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
-  openPath(path: string, options?: MetabrowserOpenPathOptions): void;
+  navigation: MetabrowserNavigationApi;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
   setViewPrintState(

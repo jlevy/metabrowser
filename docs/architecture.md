@@ -133,8 +133,8 @@ byte and file values route through the public SDK formatters.
 File cells and exact extension rows also resolve their icon and subtype class through
 the public `fileTypeIcon()` SDK helper, the same matcher used by navigation.
 The shared `.file-identity-icon` primitive owns their geometry and subtype color.
-File cells use ordinary `mb.openPath` navigation; folder and parent navigation pass
-Treemap as the optional preferred destination view.
+File cells use ordinary `mb.navigation.open({ path })` navigation; folder and parent
+navigation pass Treemap as the optional preferred destination view.
 The shell activates that view only when the destination declares it and otherwise uses
 the destination’s default.
 
@@ -176,8 +176,11 @@ Plugins own:
 
 The stable browser-side boundary is the `window.metabrowser` API. Plugins should not
 reach into variables or functions defined privately by `app.js`. Cross-view navigation
-uses `openPath`; its optional `viewId` preserves a working mode when the destination
-offers that view without changing path or history semantics.
+uses `navigation.open({ path, query?, fragment? }, { viewId? })`; the optional `viewId`
+preserves a working mode when the destination offers that view without changing resource
+identity or history semantics.
+`navigation.href()` supplies canonical `/view/` links, and `navigation.current()`
+exposes the selected target without leaking shell state.
 Plugin HTTP calls use `fetchPluginData`.
 
 ## Startup and First Paint
@@ -186,8 +189,10 @@ The CLI binds before beginning expensive recursive work.
 Inventory walking, ignore-file parsing, and watcher setup run without blocking the event
 loop’s first response.
 
-When a URL names an initial file, `/api/file` begins independently of tree indexing.
-Without a hash, the current shell may seed a root `README.md` preview.
+When a `/view/` URL names an initial file, `/api/file` begins independently of tree
+indexing. The bare `/` URL remains an unselected landing view, while `/view/` explicitly
+selects the served root.
+URL fragments identify document locations and never file paths.
 The folder-view contract replaces that special case with the root folder’s default
 Overview while keeping an explicitly selected README as an ordinary file view.
 Inventory endpoints return current partial state plus progress metadata instead of

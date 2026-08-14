@@ -224,6 +224,7 @@ for (const relative of [
   "src/metabrowser/static/inventory_scope.js",
   "src/metabrowser/static/resource_context.js",
   "src/metabrowser/static/view_state.js",
+  "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin_sdk.js",
   "src/metabrowser/static/filter_controls.js",
 ]) {
@@ -278,20 +279,27 @@ vm.runInContext(
 
 const mb = sandbox.metabrowser;
 check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
-const openPathEvents = [];
-sandbox.addEventListener("metabrowser:open-path", (event) => {
-  openPathEvents.push(event.detail);
+const navigationCalls = [];
+sandbox.MetabrowserNavigationRoute.attachController({
+  current() {
+    return null;
+  },
+  open(target, options) {
+    navigationCalls.push({ target, options });
+    return Promise.resolve();
+  },
 });
-let invalidViewRejected = false;
-try {
-  mb.openPath("docs", { viewId: "" });
-} catch (error) {
-  invalidViewRejected = error.message.includes("options.viewId");
-}
-check("openPath rejects an empty preferred view", invalidViewRejected);
 
 // ── Treemap view: toolbar, cells, refresh, toggle, dispose ──────
 (async () => {
+  let invalidViewRejected = false;
+  try {
+    await mb.navigation.open({ path: "docs" }, { viewId: "" });
+  } catch (error) {
+    invalidViewRejected = error.message.includes("options.viewId");
+  }
+  check("navigation rejects an empty preferred view", invalidViewRejected);
+
   const container = makeElement();
   container.viewport = makeElement();
   container.status = makeElement();
@@ -430,10 +438,10 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     cellClick({ target: folderTarget });
     check(
       "folder cell keeps Treemap active",
-      openPathEvents.length === 1 &&
-        openPathEvents[0].path === "docs" &&
-        openPathEvents[0].viewId === "treemap",
-      JSON.stringify(openPathEvents),
+      navigationCalls.length === 1 &&
+        navigationCalls[0].target.path === "docs" &&
+        navigationCalls[0].options.viewId === "treemap",
+      JSON.stringify(navigationCalls),
     );
   }
 

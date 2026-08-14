@@ -348,10 +348,10 @@ All bundled code and documentation change atomically.
 
 ### Phase 1: Canonical Route and Navigation Boundary
 
-- [ ] Add the safe `/view/` shell route, strict route module, direct-load behavior, CLI
+- [x] Add the safe `/view/` shell route, strict route module, direct-load behavior, CLI
   URL, folder canonicalization, and push, replace, pop, and fragment behavior.
-- [ ] Delete hash file-route parsing, writing, listeners, and migration logic.
-- [ ] Introduce `metabrowser.navigation`, migrate bundled callers, remove the old SDK
+- [x] Delete hash file-route parsing, writing, listeners, and migration logic.
+- [x] Introduce `metabrowser.navigation`, migrate bundled callers, remove the old SDK
   event surface, and cover the public types.
 
 Exit condition: direct URLs, reload, new tabs, normal navigation, and back or forward
