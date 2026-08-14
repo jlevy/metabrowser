@@ -105,8 +105,8 @@ The comparison table follows registry order across Code, Documentation, Data, Lo
 Archives, Media, and Other.
 Every nonempty family can disclose exact extension rows, including a family with one
 contributing extension, without adding group subtotals.
-No extension discloses exact basenames and Remaining types discloses raw extensions;
-both cap at 20 children and conserve their omitted values in an exact Others row.
+No extension discloses exact basenames and Other types discloses raw extensions; both
+cap at 20 children and conserve their omitted values in an exact Others row.
 Each row renders count and byte shares as independently normalized inline bars beside
 their exact values. A Totals group leads with the neutral selected-population Total row
 and, when ignored files are included, follows it with the exact neutral Ignored subset.

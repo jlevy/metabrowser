@@ -319,10 +319,11 @@ Folder aggregate views can use these bounded inventory helpers:
 - `file_type_breakdown` is the native File Rollup Format result.
   It carries matching registry identity, exact `all` and `unignored` populations,
   ordered nonempty group and family rows, complete canonical-extension children, and
-  bounded No extension and Remaining types children with exact Others remainders.
+  bounded No extension and `remaining_types` children with exact Others remainders; the
+  latter is presented as **Other types** in the built-in UI.
 - `type_tallies` is a transitional compatibility projection.
-  New code consumes `file_type_breakdown`; its final empty-key raw row is **Remaining
-  types**.
+  New code consumes `file_type_breakdown`; its final empty-key raw row is presented as
+  **Other types**.
 
 ### Folder Overview Contributions
 

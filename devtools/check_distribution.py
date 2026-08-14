@@ -83,6 +83,13 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/builtin_plugins/folder/overview.js",
             "metabrowser/builtin_plugins/folder/file_type_summary.js",
             "metabrowser/builtin_plugins/folder/file_type_summary.css",
+            "metabrowser/data/file-rollup-format/empty-file-rollup.json",
+            "metabrowser/data/file-rollup-format/file-rollup-conformance.json",
+            "metabrowser/data/file-rollup-format/file-rollup-conformance.schema.json",
+            "metabrowser/data/file-rollup-format/file-rollup.schema.json",
+            "metabrowser/data/file-rollup-format/file-type-registry.schema.json",
+            "metabrowser/data/file-rollup-format/recommended-file-types.json",
+            "metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "dist-info/licenses/LICENSE",
             "dist-info/licenses/NOTICE.md",
         }
@@ -109,9 +116,12 @@ def _inspect_sdist(sdist: Path) -> None:
             "LICENSE",
             "NOTICE.md",
             "README.md",
+            "docs/project/architecture/file-rollup-format/file-rollup-format.md",
+            "docs/project/architecture/file-rollup-format/recommended-file-types.toml",
             "pyproject.toml",
             "skills/metabrowser/SKILL.md",
             "skills/metabrowser/agents/openai.yaml",
+            "src/metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "src/metabrowser/static/app.js",
         }
         for suffix in required_suffixes:
@@ -147,8 +157,10 @@ def _smoke_install(wheel: Path) -> None:
         (
             "from importlib.resources import files; "
             "import metabrowser; "
+            "from metabrowser.file_type_registry import load_file_type_registry; "
             "from metabrowser.kpress_adapter import render_kpress_view; "
             "from metabrowser.plugin_loader.discovery import discover_plugins; "
+            "registry = load_file_type_registry(); "
             "plugins = discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
             "required = {'agent-log', 'binary', 'folder', 'markdown', 'structured', "
@@ -157,6 +169,7 @@ def _smoke_install(wheel: Path) -> None:
             "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
             "mtime_hash='wheel-smoke', size=14); "
             "assert metabrowser.__version__; "
+            "assert registry.family('javascript') is not None; "
             "assert files('metabrowser').joinpath('static/app.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
