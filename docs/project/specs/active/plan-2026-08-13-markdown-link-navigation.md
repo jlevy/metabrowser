@@ -389,12 +389,23 @@ one end-to-end branch and PR. Phases are dependency order, not optional product 
 Epic `mb-yq1f` owns the required baseline.
 Its implementation chain is:
 
-1. `mb-ln8z` replaces routing and the public navigation boundary.
-2. `mb-zm16` implements exact standard Markdown links and resources.
-3. `mb-4pv4` proves the GitHub-compatible default and updates browsing documentation.
-4. `mb-8qnd` implements source-aware wiki parsing and deterministic note lookup.
-5. `mb-08is` completes Obsidian headings, named blocks, media, accessibility, and
-   end-to-end fixtures.
+1. Feature `mb-ln8z` replaces routing and the public navigation boundary: `mb-b6bb`
+   implements the URL codec, `mb-xt9v` adds direct server and CLI routes, `mb-ftti`
+   integrates history and removes hash routing, and `mb-pi55` publishes the SDK and
+   migrates bundled callers.
+2. Feature `mb-zm16` implements exact standard Markdown links and resources: `mb-plxn`
+   builds the typed resolver and `mb-ma28` integrates links, resources, fragments,
+   activation, and renderer disposal.
+3. Feature `mb-4pv4` proves the GitHub-compatible default: `mb-e0gk` builds the shared
+   fixture matrix and `mb-9y9n` completes integration, accessibility, history, and
+   browsing documentation.
+4. Feature `mb-8qnd` implements Obsidian syntax and deterministic note lookup: `mb-7ve6`
+   parses wiki syntax with source context and `mb-quiz` adds the bounded note index,
+   pending state, and ambiguity handling.
+5. Feature `mb-08is` completes Obsidian locations, media, and compatibility: `mb-lmub`
+   implements heading and named-block targets, `mb-x2xp` implements attachment links and
+   safe media embeds, and `mb-k1r7` completes vault fixtures, accessibility,
+   documentation, and end-to-end validation.
 
 Each bead includes focused tests and must pass `make verify`. The dependency chain keeps
 one stable route and resolver contract underneath both syntax families.
@@ -464,16 +475,15 @@ change baseline semantics silently.
 
 These are separate features after the baseline, not unresolved acceptance work:
 
-| Extension | Preserved seam and trigger |
-| --- | --- |
-| MkDocs, Docusaurus, Jekyll, and other site adapters | Translate source targets only after exact lookup and only from explicit or strong configuration; preserve `ResolvedTarget` diagnostics. |
-| Same-repository absolute GitHub URL localization | Map `/blob/` or `/tree/` URLs only when repository and revision identity are proven; otherwise remain external. |
-| Source-line locations | Add a source-view location type instead of overloading rendered heading fragments such as `#L14-L20`. |
-| Broken-link reports, backlinks, and graphs | Consume the bounded inventory and resolver results asynchronously without changing click-time semantics. |
-| Whole-note and section transclusion | Add a rendering action with recursion, cycle, byte, time, and disposal budgets over the same resolved target. |
-| Frontmatter alias lookup | Add a separately tested metadata index and explicit ambiguity behavior if real vaults require target-by-alias resolution. |
-| Multiple repositories or vaults | Add explicit mounted-root identity to `NavigationTarget`; never infer a cross-root path from traversal. |
-| Published root routes | Add a site-preview mode that owns `/<path>` only when its route table is configured, leaving `/view/` canonical for repository browsing. |
+| Extension | Bead | Preserved seam and trigger |
+| --- | --- | --- |
+| MkDocs, Docusaurus, Jekyll, and published root routes | `mb-d01n` | Translate source targets only after exact lookup and only from explicit or strong configuration; leave `/view/` canonical for repository browsing. |
+| Same-repository absolute GitHub URL localization | `mb-v5cz` | Map `/blob/` or `/tree/` URLs only when repository and revision identity are proven; otherwise remain external. |
+| Source-line locations | `mb-281d` | Add a source-view location type instead of overloading rendered heading fragments such as `#L14-L20`. |
+| Broken-link reports, backlinks, and graphs | `mb-cl0b` | Consume the bounded inventory and resolver results asynchronously without changing click-time semantics. |
+| Whole-note and section transclusion | `mb-55ll` | Add a rendering action with recursion, cycle, byte, time, and disposal budgets over the same resolved target. |
+| Frontmatter alias lookup | `mb-vjes` | Add a separately tested metadata index and explicit ambiguity behavior if real vaults require target-by-alias resolution. |
+| Multiple repositories or vaults | `mb-hvze` | Add explicit mounted-root identity to `NavigationTarget`; never infer a cross-root path from traversal. |
 
 Feature bead `mb-fbm2` owns evaluation of this map after the required implementation is
 measured.
