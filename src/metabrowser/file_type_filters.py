@@ -239,7 +239,7 @@ def serialize_file_type_taxonomy() -> dict[str, object]:
 
 
 def serialize_file_type_registry() -> dict[str, object]:
-    """Return Registry v1 for the public browser SDK."""
+    """Return the projected file-type definitions for the public browser SDK."""
 
     return _REGISTRY.projection()
 

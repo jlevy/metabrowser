@@ -6,6 +6,12 @@
 
 **Status:** Implemented
 
+**Documentation addendum:** The durable registry, classification, and aggregation
+contract is consolidated as
+[File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md).
+This dated plan retains the implementation history and downstream adoption rationale;
+the format document owns the current application-independent standard.
+
 ## Overview
 
 Metabrowser now groups common extensions into semantic families for its folder Files
@@ -55,9 +61,10 @@ This plan extends the implemented
 [semantic file type family plan](../done/plan-2026-08-13-semantic-file-type-families.md)
 and the original
 [folder Files summary plan](../done/plan-2026-08-12-directory-file-type-summary.md).
-The durable [file-type compatibility contract](../../architecture/file-types/README.md)
-is the normative cross-project handoff for registry, classification, interchange, and
-`fdu` adoption semantics.
+The durable
+[File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md)
+is the normative application-independent contract for definitions, classification, and
+conserved directory rollups.
 This plan owns design rationale, implementation order, migration, testing, and
 acceptance. Where transitional detail overlaps, the durable contract governs the
 implemented format. It also aligns with fdu’s
@@ -69,9 +76,9 @@ and its role as the future high-performance rollup engine.
 Metabrowser now ships the complete reference implementation and a self-contained future
 `fdu` handoff:
 
-- `src/metabrowser/data/file-types.toml` is the reviewed declaration;
-  `file_type_registry.py` validates it once and supplies immutable classification,
-  projection, revision, and normalized fingerprint values.
+- `src/metabrowser/data/file-rollup-format/recommended-file-types.toml` is the reviewed
+  declaration; `file_type_registry.py` validates it once and supplies immutable
+  classification, projection, revision, and normalized fingerprint values.
 - `fs_paths.py`, `inventory_rollup.py`, and `wire_models.py` implement the shared
   logical extension, conserved dual-population Breakdown v1, independent 20-child
   fallback caps, exact Others remainders, and strict registry-identity validation.
@@ -85,9 +92,9 @@ Metabrowser now ships the complete reference implementation and a self-contained
   Its export mode creates a self-contained packet with a source-revision manifest for
   future `fdu` adoption.
 - The durable
-  [file-type compatibility contract](../../architecture/file-types/README.md) now owns
-  the machine structures, classifier rules, conservation rules, artifact paths, export
-  command, and staged lowercase-`fdu` adoption process.
+  [File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md)
+  owns the machine structures, classifier rules, conservation rules, artifact names, and
+  export boundary.
 
 Legacy settings and tuple fields remain as derived additive aliases for one supported
 transition cycle. Their eventual removal is tracked separately by `mb-me85`, so the
@@ -290,8 +297,9 @@ hierarchy alongside its existing analytical reports.”
 
 ### Ownership and Distribution
 
-Metabrowser hosts the reference registry at `src/metabrowser/data/file-types.toml` and
-the normative format documentation in this repository.
+Metabrowser hosts the reference registry at
+`src/metabrowser/data/file-rollup-format/recommended-file-types.toml` and the normative
+format documentation in this repository.
 That ownership keeps the taxonomy, rollup, SDK, navigation, and Files UI contracts
 together while this design is established.
 The file is packaged in the wheel, parsed once during server startup, and injected into
@@ -987,7 +995,8 @@ mergeable bounded summary separately; do not label an approximate top list as ex
 
 ### Registry and Classification
 
-- Add `src/metabrowser/data/file-types.toml` as the packaged reference registry.
+- Add `src/metabrowser/data/file-rollup-format/recommended-file-types.toml` as the
+  packaged reference registry.
 - Add `src/metabrowser/file_type_registry.py` with typed immutable group, family, kind,
   registry, match, and classification values.
 - Add `load_file_type_registry()` to parse with `tomllib`, validate once, and return one
@@ -1152,10 +1161,11 @@ metadata cases. A registry update is incomplete until all three implementations 
 
 ## Implementation Plan
 
-This epic implements the reference contract in Metabrowser and publishes a complete
-adoption packet. Changes inside the `fdu` repository are a later downstream effort using
-[`fdu` compatibility](../../architecture/file-types/fdu-compatibility.md); they are not
-hidden inside a Metabrowser bead.
+This epic implements the reference contract and publishes a complete adoption packet.
+Changes inside the `fdu` repository are a later downstream effort using the
+application-independent
+[File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md);
+they are not hidden inside a Metabrowser bead.
 
 ### Bead Dependency Graph
 

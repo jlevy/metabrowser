@@ -16,7 +16,7 @@ from typing import Any, Literal, cast
 
 FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v1"
 FILE_TYPE_REGISTRY_SCHEMA_VERSION = 1
-FILE_TYPE_REGISTRY_RESOURCE = "data/file-types.toml"
+FILE_TYPE_REGISTRY_RESOURCE = "data/file-rollup-format/recommended-file-types.toml"
 FILE_TYPE_FAMILY_KEY_PREFIX = "family:"
 FILE_TYPE_NO_EXTENSION_KEY = "(none)"
 FILE_TYPE_REMAINING_KEY = ""
@@ -304,7 +304,7 @@ def normalize_logical_extension(extension: str) -> str:
 
 
 def load_file_type_registry_from_text(text: str) -> FileTypeRegistry:
-    """Parse and validate a Registry v1 TOML document."""
+    """Parse and validate a file-type definition TOML document."""
 
     try:
         raw = tomllib.loads(text)
@@ -323,7 +323,7 @@ def load_file_type_registry_from_text(text: str) -> FileTypeRegistry:
     if max_components != 2:
         raise FileTypeRegistryError(
             "unsupported-extension-components",
-            "Registry v1 requires two extension components",
+            "the recommended file-type profile requires two extension components",
             field_name="max_extension_components",
             value=max_components,
         )
@@ -605,7 +605,7 @@ def _parse_kinds(
             ):
                 raise FileTypeRegistryError(
                     "invalid-extension",
-                    "extension is not normalized Registry v1 evidence",
+                    "extension is not normalized file-type registry evidence",
                     table_id=kind_id,
                     field_name="extensions",
                     value=extension,

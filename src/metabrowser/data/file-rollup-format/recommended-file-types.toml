@@ -1,0 +1,950 @@
+schema_version = 1
+registry_revision = 1
+max_extension_components = 2
+
+[[group]]
+id = "code"
+label = "Code"
+order = 10
+
+[[group]]
+id = "docs"
+label = "Documentation"
+order = 20
+
+[[group]]
+id = "data"
+label = "Data"
+order = 30
+
+[[group]]
+id = "logs"
+label = "Logs"
+order = 40
+
+[[group]]
+id = "archives"
+label = "Archives"
+order = 50
+
+[[group]]
+id = "media"
+label = "Media"
+order = 60
+
+[[group]]
+id = "other"
+label = "Other"
+order = 70
+
+[[family]]
+id = "python"
+label = "Python"
+group = "code"
+order = 100
+
+[[family]]
+id = "javascript"
+label = "JavaScript"
+group = "code"
+order = 110
+
+[[family]]
+id = "typescript"
+label = "TypeScript"
+group = "code"
+order = 120
+
+[[family]]
+id = "css"
+label = "CSS"
+group = "code"
+order = 130
+
+[[family]]
+id = "html"
+label = "HTML"
+group = "code"
+order = 140
+
+[[family]]
+id = "rust"
+label = "Rust"
+group = "code"
+order = 150
+
+[[family]]
+id = "go"
+label = "Go"
+group = "code"
+order = 160
+
+[[family]]
+id = "java"
+label = "Java"
+group = "code"
+order = 170
+
+[[family]]
+id = "kotlin"
+label = "Kotlin"
+group = "code"
+order = 180
+
+[[family]]
+id = "swift"
+label = "Swift"
+group = "code"
+order = 190
+
+[[family]]
+id = "c-cpp"
+label = "C/C++"
+group = "code"
+order = 200
+
+[[family]]
+id = "csharp"
+label = "C#"
+group = "code"
+order = 210
+
+[[family]]
+id = "ruby"
+label = "Ruby"
+group = "code"
+order = 220
+
+[[family]]
+id = "php"
+label = "PHP"
+group = "code"
+order = 230
+
+[[family]]
+id = "scala"
+label = "Scala"
+group = "code"
+order = 240
+
+[[family]]
+id = "clojure"
+label = "Clojure"
+group = "code"
+order = 250
+
+[[family]]
+id = "elixir"
+label = "Elixir"
+group = "code"
+order = 260
+
+[[family]]
+id = "erlang"
+label = "Erlang"
+group = "code"
+order = 270
+
+[[family]]
+id = "haskell"
+label = "Haskell"
+group = "code"
+order = 280
+
+[[family]]
+id = "lua"
+label = "Lua"
+group = "code"
+order = 290
+
+[[family]]
+id = "julia"
+label = "Julia"
+group = "code"
+order = 300
+
+[[family]]
+id = "dart"
+label = "Dart"
+group = "code"
+order = 310
+
+[[family]]
+id = "vue"
+label = "Vue"
+group = "code"
+order = 320
+
+[[family]]
+id = "svelte"
+label = "Svelte"
+group = "code"
+order = 330
+
+[[family]]
+id = "shell"
+label = "Shell"
+group = "code"
+order = 340
+
+[[family]]
+id = "powershell"
+label = "PowerShell"
+group = "code"
+order = 350
+
+[[family]]
+id = "sql"
+label = "SQL"
+group = "code"
+order = 360
+
+[[family]]
+id = "markdown"
+label = "Markdown"
+group = "docs"
+order = 100
+
+[[family]]
+id = "plain-text"
+label = "Plain text"
+group = "docs"
+order = 110
+
+[[family]]
+id = "restructured-text"
+label = "reStructuredText"
+group = "docs"
+order = 120
+
+[[family]]
+id = "asciidoc"
+label = "AsciiDoc"
+group = "docs"
+order = 130
+
+[[family]]
+id = "org"
+label = "Org"
+group = "docs"
+order = 140
+
+[[family]]
+id = "pdf"
+label = "PDF"
+group = "docs"
+order = 150
+
+[[family]]
+id = "word"
+label = "Word"
+group = "docs"
+order = 160
+
+[[family]]
+id = "rich-text"
+label = "Rich Text"
+group = "docs"
+order = 170
+
+[[family]]
+id = "open-document"
+label = "OpenDocument"
+group = "docs"
+order = 180
+
+[[family]]
+id = "epub"
+label = "EPUB"
+group = "docs"
+order = 190
+
+[[family]]
+id = "json"
+label = "JSON"
+group = "data"
+order = 100
+
+[[family]]
+id = "yaml"
+label = "YAML"
+group = "data"
+order = 110
+
+[[family]]
+id = "toml"
+label = "TOML"
+group = "data"
+order = 120
+
+[[family]]
+id = "ini"
+label = "INI"
+group = "data"
+order = 130
+
+[[family]]
+id = "delimited-text"
+label = "Delimited text"
+group = "data"
+order = 140
+
+[[family]]
+id = "xml"
+label = "XML"
+group = "data"
+order = 150
+
+[[family]]
+id = "parquet"
+label = "Parquet"
+group = "data"
+order = 160
+
+[[family]]
+id = "arrow"
+label = "Arrow"
+group = "data"
+order = 170
+
+[[family]]
+id = "avro"
+label = "Avro"
+group = "data"
+order = 180
+
+[[family]]
+id = "orc"
+label = "ORC"
+group = "data"
+order = 190
+
+[[family]]
+id = "protocol-buffers"
+label = "Protocol Buffers"
+group = "data"
+order = 200
+
+[[family]]
+id = "graphql"
+label = "GraphQL"
+group = "data"
+order = 210
+
+[[family]]
+id = "sqlite"
+label = "SQLite"
+group = "data"
+order = 220
+
+[[family]]
+id = "log-files"
+label = "Log files"
+group = "logs"
+order = 100
+
+[[family]]
+id = "archives"
+label = "Archives"
+group = "archives"
+order = 100
+
+[[family]]
+id = "images"
+label = "Images"
+group = "media"
+order = 100
+
+[[family]]
+id = "videos"
+label = "Videos"
+group = "media"
+order = 110
+
+[[family]]
+id = "audio"
+label = "Audio"
+group = "media"
+order = 120
+
+[[family]]
+id = "fonts"
+label = "Fonts"
+group = "media"
+order = 130
+
+[[kind]]
+id = "python"
+family = "python"
+content_family = "code"
+extensions = ["py", "pyi"]
+filenames = []
+shebangs = ["python", "python3"]
+priority = 100
+
+[[kind]]
+id = "javascript"
+family = "javascript"
+content_family = "code"
+extensions = ["js", "mjs", "cjs", "jsx"]
+filenames = []
+shebangs = ["node", "deno", "bun"]
+priority = 100
+
+[[kind]]
+id = "typescript"
+family = "typescript"
+content_family = "code"
+extensions = ["ts", "mts", "cts", "tsx"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "css"
+family = "css"
+content_family = "code"
+extensions = ["css", "scss", "less"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "html"
+family = "html"
+content_family = "markup"
+extensions = ["html", "htm"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "rust"
+family = "rust"
+content_family = "code"
+extensions = ["rs"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "go"
+family = "go"
+content_family = "code"
+extensions = ["go"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "java"
+family = "java"
+content_family = "code"
+extensions = ["java"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "kotlin"
+family = "kotlin"
+content_family = "code"
+extensions = ["kt", "kts"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "swift"
+family = "swift"
+content_family = "code"
+extensions = ["swift"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "c"
+family = "c-cpp"
+content_family = "code"
+extensions = ["c", "h"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "cpp"
+family = "c-cpp"
+content_family = "code"
+extensions = ["cc", "cpp", "hpp"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "csharp"
+family = "csharp"
+content_family = "code"
+extensions = ["cs"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "ruby"
+family = "ruby"
+content_family = "code"
+extensions = ["rb"]
+filenames = []
+shebangs = ["ruby"]
+priority = 100
+
+[[kind]]
+id = "php"
+family = "php"
+content_family = "code"
+extensions = ["php"]
+filenames = []
+shebangs = ["php"]
+priority = 100
+
+[[kind]]
+id = "scala"
+family = "scala"
+content_family = "code"
+extensions = ["scala"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "clojure"
+family = "clojure"
+content_family = "code"
+extensions = ["clj"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "elixir"
+family = "elixir"
+content_family = "code"
+extensions = ["ex", "exs"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "erlang"
+family = "erlang"
+content_family = "code"
+extensions = ["erl"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "haskell"
+family = "haskell"
+content_family = "code"
+extensions = ["hs"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "lua"
+family = "lua"
+content_family = "code"
+extensions = ["lua"]
+filenames = []
+shebangs = ["lua"]
+priority = 100
+
+[[kind]]
+id = "julia"
+family = "julia"
+content_family = "code"
+extensions = ["jl"]
+filenames = []
+shebangs = ["julia"]
+priority = 100
+
+[[kind]]
+id = "dart"
+family = "dart"
+content_family = "code"
+extensions = ["dart"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "vue"
+family = "vue"
+content_family = "markup"
+extensions = ["vue"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "svelte"
+family = "svelte"
+content_family = "markup"
+extensions = ["svelte"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "shell"
+family = "shell"
+content_family = "code"
+extensions = ["sh", "bash", "zsh", "fish"]
+filenames = []
+shebangs = ["sh", "bash", "zsh", "fish"]
+priority = 100
+
+[[kind]]
+id = "powershell"
+family = "powershell"
+content_family = "code"
+extensions = ["ps1"]
+filenames = []
+shebangs = ["pwsh", "powershell"]
+priority = 100
+
+[[kind]]
+id = "sql"
+family = "sql"
+content_family = "code"
+extensions = ["sql"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "markdown"
+family = "markdown"
+content_family = "markup"
+extensions = ["md"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "plain-text"
+family = "plain-text"
+content_family = "prose"
+extensions = ["txt"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "restructured-text"
+family = "restructured-text"
+content_family = "markup"
+extensions = ["rst"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "asciidoc"
+family = "asciidoc"
+content_family = "markup"
+extensions = ["adoc"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "org"
+family = "org"
+content_family = "markup"
+extensions = ["org"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "pdf"
+family = "pdf"
+content_family = "binary"
+extensions = ["pdf"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "word"
+family = "word"
+content_family = "binary"
+extensions = ["doc", "docx"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "rich-text"
+family = "rich-text"
+content_family = "prose"
+extensions = ["rtf"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "open-document"
+family = "open-document"
+content_family = "binary"
+extensions = ["odt"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "epub"
+family = "epub"
+content_family = "binary"
+extensions = ["epub"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "json"
+family = "json"
+content_family = "data"
+extensions = ["json"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "yaml"
+family = "yaml"
+content_family = "data"
+extensions = ["yaml", "yml"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "toml"
+family = "toml"
+content_family = "data"
+extensions = ["toml"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "ini"
+family = "ini"
+content_family = "data"
+extensions = ["ini"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "delimited-text"
+family = "delimited-text"
+content_family = "data"
+extensions = ["csv", "tsv", "psv"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "xml"
+family = "xml"
+content_family = "markup"
+extensions = ["xml"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "parquet"
+family = "parquet"
+content_family = "data"
+extensions = ["parquet"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "arrow"
+family = "arrow"
+content_family = "data"
+extensions = ["arrow", "feather"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "avro"
+family = "avro"
+content_family = "data"
+extensions = ["avro"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "orc"
+family = "orc"
+content_family = "data"
+extensions = ["orc"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "protocol-buffers"
+family = "protocol-buffers"
+content_family = "data"
+extensions = ["proto"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "graphql"
+family = "graphql"
+content_family = "data"
+extensions = ["graphql"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "sqlite"
+family = "sqlite"
+content_family = "data"
+extensions = ["sqlite"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "log"
+family = "log-files"
+content_family = "prose"
+extensions = ["log"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "json-lines"
+family = "log-files"
+content_family = "data"
+extensions = ["jsonl", "ndjson"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "archives"
+family = "archives"
+content_family = "binary"
+extensions = ["zip", "tar", "tar.gz", "tgz", "gz", "tar.bz2", "bz2", "tar.xz", "xz", "tar.zst", "zst", "7z", "rar"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "raster-image"
+family = "images"
+content_family = "binary"
+extensions = ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "ico", "tif", "tiff", "heic"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "svg"
+family = "images"
+content_family = "markup"
+extensions = ["svg"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "video"
+family = "videos"
+content_family = "binary"
+extensions = ["mp4", "mov", "m4v", "mkv", "webm", "avi"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "audio"
+family = "audio"
+content_family = "binary"
+extensions = ["mp3", "wav", "flac", "m4a", "aac", "ogg", "opus"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "font"
+family = "fonts"
+content_family = "binary"
+extensions = ["ttf", "otf", "woff", "woff2"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "documentation-file"
+group = "docs"
+content_family = "prose"
+extensions = []
+filenames = ["readme", "license", "licence", "copying", "notice", "changelog", "authors", "contributors", "contributing", "codeowners"]
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "build-file"
+group = "code"
+content_family = "code"
+extensions = []
+filenames = ["makefile", "dockerfile", "justfile", "rakefile", "gemfile", "procfile"]
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "ambiguous-code"
+group = "code"
+content_family = "code"
+extensions = ["m", "mm", "ml", "pl", "r"]
+filenames = []
+shebangs = []
+priority = 10
+
+[[kind]]
+id = "configuration"
+group = "data"
+content_family = "data"
+extensions = ["cfg", "conf", "properties", "db"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "source-map"
+group = "data"
+content_family = "data"
+extensions = ["map"]
+filenames = []
+shebangs = []
+priority = 100

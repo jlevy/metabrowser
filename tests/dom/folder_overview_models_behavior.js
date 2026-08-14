@@ -185,13 +185,13 @@ async function importSource(relative) {
     registryRuntime,
   );
   check(
-    "Registry v1 controls group and family order",
+    "file-type definitions control group and family order",
     breakdownModel.groups.map((group) => group.id).join(",") === "media,logs,other" &&
       breakdownModel.rows.map((row) => row.key).join(",") ===
         "family:images,family:log-files,(none),",
   );
   check(
-    "singleton Registry v1 families are disclosable",
+    "singleton file-type families are disclosable",
     breakdownModel.rows[0].disclosable === true && breakdownModel.rows[0].children.length === 1,
   );
   const noExtensionRow = breakdownModel.rows.find((row) => row.key === "(none)");

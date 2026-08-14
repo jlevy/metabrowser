@@ -1,5 +1,5 @@
 /**
- * Immutable browser adapter for the server-owned File-Type Registry v1.
+ * Immutable browser adapter for the server-owned file-type definitions.
  *
  * New code consumes groups, families, kinds, and registry identity from this
  * runtime. Compatibility aliases remain on the public SDK, but the page embeds one
@@ -85,7 +85,7 @@
       "maximum extension components",
     );
     if (maxExtensionComponents !== 2) {
-      throw new TypeError("Registry v1 requires two extension components");
+      throw new TypeError("the recommended file-type profile requires two extension components");
     }
     if (!Array.isArray(raw.groups) || !Array.isArray(raw.families) || !Array.isArray(raw.kinds)) {
       throw new TypeError("FILE_TYPE_REGISTRY must contain group, family, and kind arrays");

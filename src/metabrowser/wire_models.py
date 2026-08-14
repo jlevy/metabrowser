@@ -336,7 +336,7 @@ class FileTypeRemainingBreakdown(TypedDict):
 
 
 class FileTypeBreakdown(TypedDict):
-    """Complete Registry v1 directory partition."""
+    """Complete File Rollup Format directory partition."""
 
     schema: Literal["file-type-breakdown-v1"]
     registry: FileTypeRegistryIdentity
@@ -551,7 +551,7 @@ def _sum_population_metrics(
 
 
 def validate_file_type_breakdown(raw: object, node: Mapping[str, Any]) -> None:
-    """Assert Registry v1 identity, hierarchy, bounds, and conservation."""
+    """Assert file-rollup identity, hierarchy, bounds, and conservation."""
 
     assert isinstance(raw, dict), "file-type breakdown must be an object"
     assert set(raw) == {

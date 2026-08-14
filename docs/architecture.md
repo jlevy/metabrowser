@@ -98,9 +98,9 @@ The folder plugin supplies the folder-panel schema and registry facade.
 A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
 The visible **Files** heading belongs to the built-in file-type summary identified by
 the stable `folder.file-types` panel ID. The panel is backed by the inventory rollup and
-the packaged, server-owned File-Type Registry v1. Rollups aggregate every known family
-and its complete canonical children before independently bounding only No extension
-basenames and Remaining types extensions.
+the packaged recommended definitions from File Rollup Format v0.1. Rollups aggregate
+every known family and its complete canonical children before independently bounding
+only No extension basenames and Other types extensions.
 The comparison table follows registry order across Code, Documentation, Data, Logs,
 Archives, Media, and Other.
 Every nonempty family can disclose exact extension rows, including a family with one
@@ -161,14 +161,14 @@ zero-total state without bars, a table, or a synthetic README region.
 Pending inventory remains a progress state, so an incomplete scan cannot be mistaken for
 an empty folder.
 
-## File-Type Registry and Conserved Rollups
+## File Rollup Format
 
-`data/file-types.toml` is the one reviewed declaration for classifier kinds, display
-families, display groups, analyzer content families, and metadata evidence.
-`file_type_registry.py` parses and validates it once into immutable Python values.
-The server injects the matching immutable JSON projection into browser settings;
-`static/file_type_taxonomy.js` supplies the same public classification helpers to
-navigation, Overview, Treemap, and plugins.
+`data/file-rollup-format/recommended-file-types.toml` is the reviewed declaration for
+classifier kinds, display families, display groups, analyzer content families, and
+metadata evidence. `file_type_registry.py` parses and validates it once into immutable
+Python values. The server injects the matching immutable JSON projection into browser
+settings; `static/file_type_taxonomy.js` supplies the same public classification helpers
+to navigation, Overview, Treemap, and plugins.
 The generated conformance corpus runs against both implementations, so a file cannot
 quietly change family between the server and browser.
 
@@ -176,8 +176,8 @@ Inventory entries retain observations rather than registry-derived presentation:
 basename, a normalized logical extension of at most two components, apparent bytes, and
 ignore state. `inventory_rollup.py` classifies those facts against the active registry
 while building a response.
-It emits exact `all` and `unignored` populations for files and bytes, Registry v1
-identity, the Breakdown v1 hierarchy, and transitional legacy tallies.
+It emits exact `all` and `unignored` populations for files and bytes, the definition
+registry identity, the current file-rollup hierarchy, and transitional legacy tallies.
 A breakdown is rejected when its registry identity differs from the loaded projection or
 when any root, family, fallback, or Others conservation invariant fails.
 
@@ -186,9 +186,9 @@ A registry revision changes one immutable loader value and subsequent rollups ra
 than requiring every indexed entry to be rewritten.
 Compatibility names and tuple tallies are derived from the registry during one additive
 transition; their removal is tracked as a separate cleanup after supported clients have
-migrated. The normative schemas, conformance cases, export procedure, and future `fdu`
-handoff are documented in the
-[file-type compatibility contract](project/architecture/file-types/README.md).
+migrated. The reusable semantics, recommended type definitions, schemas, conformance
+cases, and export boundary are documented in
+[File Rollup Format v0.1](project/architecture/file-rollup-format/file-rollup-format.md).
 
 ## Plugin Boundary
 

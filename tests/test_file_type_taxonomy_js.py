@@ -12,7 +12,8 @@ import pytest
 from metabrowser.file_type_filters import serialize_file_type_registry
 
 CONFORMANCE = (
-    Path(__file__).resolve().parents[1] / "src/metabrowser/data/file-types/conformance-v1.json"
+    Path(__file__).resolve().parents[1]
+    / "src/metabrowser/data/file-rollup-format/file-rollup-conformance.json"
 )
 
 

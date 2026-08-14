@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jlevy/metabrowser/schemas/file-type-breakdown-v1.json",
-  "title": "File-Type Breakdown v1",
+  "$id": "https://github.com/jlevy/metabrowser/schemas/file-rollup.schema.json",
+  "title": "File Rollup",
   "type": "object",
   "required": [
     "schema",

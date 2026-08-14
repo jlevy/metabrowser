@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jlevy/metabrowser/schemas/file-type-registry-v1.json",
-  "title": "File-Type Registry v1 Projection",
+  "$id": "https://github.com/jlevy/metabrowser/schemas/file-type-registry.schema.json",
+  "title": "Recommended File-Type Registry Projection",
   "type": "object",
   "required": [
     "schema",

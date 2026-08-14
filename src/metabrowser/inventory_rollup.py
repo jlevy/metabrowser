@@ -547,7 +547,7 @@ def _serialize_file_type_breakdown(
     remaining_limit: int,
     file_types: _FileTypePartition,
 ) -> FileTypeBreakdown:
-    """Build the conserved Registry v1 hierarchy before presentation."""
+    """Build the conserved File Rollup Format hierarchy before presentation."""
 
     registry = load_file_type_registry()
     groups = []

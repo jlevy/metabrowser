@@ -1,4 +1,4 @@
-"""Registry v1 parsing, classification, and compatibility contracts."""
+"""Recommended file-type parsing, classification, and compatibility contracts."""
 
 from __future__ import annotations
 
@@ -70,7 +70,11 @@ def test_packaged_registry_is_cached_ordered_and_self_describing() -> None:
         "other",
     ]
     assert len(registry.fingerprint) == 64
-    assert files("metabrowser").joinpath("data/file-types.toml").is_file()
+    assert (
+        files("metabrowser")
+        .joinpath("data/file-rollup-format/recommended-file-types.toml")
+        .is_file()
+    )
     projection = registry.projection()
     assert projection["schema"] == "file-type-registry-v1"
     assert projection["fingerprint"] == registry.fingerprint

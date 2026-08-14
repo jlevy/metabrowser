@@ -259,16 +259,16 @@ Useful helpers include:
   `fileTypeIcon(pathOrName)` for its host-owned SVG plus `className`;
 - `fileTypes` for the immutable semantic type catalog.
   `schema`, `schemaVersion`, `revision`, `fingerprint`, `maxExtensionComponents`, and
-  `registryIdentity` identify the loaded Registry v1; ordered `groups`, `families`, and
-  `kinds` expose its immutable descriptors.
+  `registryIdentity` identify the loaded File Rollup Format type definitions; ordered
+  `groups`, `families`, and `kinds` expose their immutable descriptors.
   `categories` remains a derived compatibility alias for `groups`. `classify(name, ext)`
   returns registry identities and evidence for one file.
   `matchExtension(ext)` returns the matching family and canonical suffix,
   `canonicalExtension(ext)` preserves unknown extensions, `categoryForFile(name, ext)`
   includes category-only filenames, and `distributionKeyForExtension(ext)` returns the
   shared family or raw palette key.
-  Compare a Breakdown v1 value’s `registry` identity before combining it with labels or
-  colors from this projection;
+  Compare a file rollup’s `registry` identity before combining it with labels or colors
+  from this projection;
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
@@ -316,7 +316,7 @@ Folder aggregate views can use these bounded inventory helpers:
   `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
   extension is the aggregate **Other** tail; `(none)` is the distinct extensionless
   category.
-- `file_type_breakdown` is the Registry v1-native result.
+- `file_type_breakdown` is the native File Rollup Format result.
   It carries matching registry identity, exact `all` and `unignored` populations,
   ordered nonempty group and family rows, complete canonical-extension children, and
   bounded No extension and Remaining types children with exact Others remainders.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jlevy/metabrowser/schemas/file-type-conformance-v1.json",
-  "title": "File-Type Conformance v1",
+  "$id": "https://github.com/jlevy/metabrowser/schemas/file-rollup-conformance.schema.json",
+  "title": "File Rollup Conformance Cases",
   "type": "object",
   "required": [
     "schema",

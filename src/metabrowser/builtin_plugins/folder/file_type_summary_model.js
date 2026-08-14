@@ -458,7 +458,7 @@ export function buildFileTypeSummaryModel(envelope, showIgnored, formatters, fil
   const percentFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
   const runtime = typeof fileTypes === "object" && fileTypes ? fileTypes : null;
   if (!envelope.breakdown || !runtime) {
-    throw new TypeError("file-type summary requires Registry v1 breakdown data");
+    throw new TypeError("file-type summary requires File Rollup Format data");
   }
   const rows = buildRegistryRows(
     envelope,

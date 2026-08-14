@@ -48,7 +48,7 @@ def test_conformance_corpus_matches_python_classification() -> None:
 
 
 def test_export_packet_is_self_contained_and_revision_pinned(tmp_path: Path) -> None:
-    destination = tmp_path / "fdu-file-types"
+    destination = tmp_path / "file-rollup-format"
     (destination / "stale").mkdir(parents=True)
     (destination / "stale" / "orphan.txt").write_text("old", encoding="utf-8")
     export_packet(destination, "abc123")
@@ -65,6 +65,19 @@ def test_export_packet_is_self_contained_and_revision_pinned(tmp_path: Path) -> 
         if path.is_file() and path.name != "manifest.json"
     }
     assert {item["path"] for item in manifest_files} == actual_paths
+    assert {
+        "recommended-file-types.toml",
+        "recommended-file-types.json",
+        "file-type-registry.schema.json",
+        "file-rollup.schema.json",
+        "file-rollup-conformance.schema.json",
+        "file-rollup-conformance.json",
+        "empty-file-rollup.json",
+        "docs/file-rollup-format.md",
+    } <= actual_paths
+    assert not any(
+        path.endswith(("registry-v1.json", "conformance-v1.json")) for path in actual_paths
+    )
     for item in manifest_files:
         assert set(item) == {"path", "sha256"}
         assert (
@@ -77,7 +90,7 @@ def test_export_packet_is_self_contained_and_revision_pinned(tmp_path: Path) -> 
 
 
 def test_verify_packet_rejects_tampering_and_unmanifested_content(tmp_path: Path) -> None:
-    destination = tmp_path / "fdu-file-types"
+    destination = tmp_path / "file-rollup-format"
     export_packet(destination, "abc123")
     manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
     tracked = destination / manifest["files"][0]["path"]
