@@ -2,7 +2,7 @@
 
 /** @type {Readonly<TreemapState>} */
 export const DEFAULT_TREEMAP_STATE = Object.freeze({
-  metric: "size",
+  metric: "files",
   includeIgnored: false,
 });
 
@@ -10,7 +10,7 @@ export const DEFAULT_TREEMAP_STATE = Object.freeze({
  * Normalize the two controls the streamlined Treemap still exposes.
  * Old preferences are intentionally read once here. Their three-state
  * ignored setting has no exact equivalent, so the redesigned control
- * starts from its requested checked default; an explicit new boolean
+ * starts from its requested unchecked default; an explicit new boolean
  * is preserved. Obsolete grouping and color keys are discarded on the
  * next save.
  *
@@ -22,7 +22,7 @@ export function sanitizeTreemapState(raw) {
     return { ...DEFAULT_TREEMAP_STATE };
   }
   const saved = /** @type {Record<string, unknown>} */ (raw);
-  const metric = saved.metric === "files" ? "files" : "size";
+  const metric = saved.metric === "size" ? "size" : DEFAULT_TREEMAP_STATE.metric;
   let includeIgnored = DEFAULT_TREEMAP_STATE.includeIgnored;
   if (typeof saved.includeIgnored === "boolean") {
     includeIgnored = saved.includeIgnored;

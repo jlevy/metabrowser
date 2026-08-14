@@ -323,11 +323,11 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   container.status = makeElement();
   container.totals = makeElement();
   container.controls = makeElement();
-  const metricChips = ["size", "files"].map((value) => {
+  const metricChips = ["files", "size"].map((value) => {
     const attributes = {
-      "aria-checked": value === "size" ? "true" : "false",
+      "aria-checked": value === "files" ? "true" : "false",
       "data-chip-value": value,
-      tabindex: value === "size" ? "0" : "-1",
+      tabindex: value === "files" ? "0" : "-1",
     };
     return {
       getAttribute(name) {
@@ -400,6 +400,15 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   check(
     "metric chooser present",
     container.controls.innerHTML.includes('data-chip-key="folder-rollup-metric"'),
+  );
+  check(
+    "metric chooser is Files then Bytes with Files selected",
+    container.controls.innerHTML.indexOf('data-chip-value="files"') <
+      container.controls.innerHTML.indexOf('data-chip-value="size"') &&
+      container.controls.innerHTML.includes(
+        'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
+      ),
+    container.controls.innerHTML,
   );
   check(
     "obsolete grouping and color choices absent",
@@ -572,7 +581,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
 
   // Metric and ignored-scope changes relayout without refetching.
   const before = fetchCalls.length;
-  const sizeMetricHtml = container.viewport.innerHTML;
+  const filesMetricHtml = container.viewport.innerHTML;
   const toolbarClick = container.controls.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
   const clickMetric = (value) => {
@@ -607,23 +616,28 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     toolbarClick({ target: button });
   };
   if (toolbarClick) {
-    clickMetric("files");
+    clickMetric("size");
     check("metric toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
       "metric toggle changes cell geometry",
-      container.viewport.innerHTML !== sizeMetricHtml,
+      container.viewport.innerHTML !== filesMetricHtml,
       "Bytes and Files produced identical markup",
     );
     check(
       "metric chooser reflects the active metric",
       container.controls.innerHTML.includes(
-        'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
+        'data-chip-value="size" role="radio" aria-checked="true" tabindex="0"',
       ),
       container.controls.innerHTML,
     );
+    clickMetric("files");
     check(
       "Files metric keeps useful formatted bytes on file leaves",
-      container.viewport.innerHTML.includes("600 B") && container.status.textContent === "",
+      container.controls.innerHTML.includes(
+        'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
+      ) &&
+        container.viewport.innerHTML.includes("600 B") &&
+        container.status.textContent === "",
       container.viewport.innerHTML,
     );
   }

@@ -7,7 +7,7 @@ const LEGACY_PREF_KEY = "folder.treemap";
 export function sanitizeFolderRollupState(raw) {
   const value = raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
   return Object.freeze({
-    metric: value.metric === "files" ? "files" : "size",
+    metric: value.metric === "size" ? "size" : "files",
     includeIgnored: value.includeIgnored === true,
   });
 }
@@ -66,8 +66,8 @@ export function createFolderRollupControls(mb) {
           layout: "joined",
           label: "Measure file rollups by",
           options: [
-            { value: "size", label: "Bytes" },
             { value: "files", label: "Files" },
+            { value: "size", label: "Bytes" },
           ],
           value: state.metric,
         }) +

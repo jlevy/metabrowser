@@ -12,32 +12,67 @@ async function main() {
   );
 
   const stored = new Map();
+  const renderedGroups = [];
   const mb = {
     prefs: {
       get: (key, fallback) => (stored.has(key) ? stored.get(key) : fallback),
       set: (key, value) => stored.set(key, value),
     },
+    filterControls: {
+      groupHtml: (options) => {
+        renderedGroups.push(options);
+        return "<span>metric</span>";
+      },
+      checkHtml: () => "<span>ignored</span>",
+      bind: () => () => {},
+    },
   };
   const state = module.createFolderRollupControls(mb);
-  if (state.get().metric !== "size" || state.get().includeIgnored !== false) {
+  if (state.get().metric !== "files" || state.get().includeIgnored !== false) {
     throw new Error(`unexpected defaults: ${JSON.stringify(state.get())}`);
   }
+  const container = {
+    innerHTML: "",
+    classList: { add() {} },
+  };
+  const unmount = state.mount(container);
+  const metricGroup = renderedGroups.at(-1);
+  if (
+    metricGroup.value !== "files" ||
+    metricGroup.options.map(({ value, label }) => `${value}:${label}`).join(",") !==
+      "files:Files,size:Bytes"
+  ) {
+    throw new Error(`unexpected metric chooser: ${JSON.stringify(metricGroup)}`);
+  }
+  unmount();
 
   const first = [];
   const second = [];
   const unsubscribeFirst = state.subscribe((value) => first.push(value));
   const unsubscribeSecond = state.subscribe((value) => second.push(value));
-  state.set({ metric: "files" });
+  state.set({ metric: "size" });
   state.set({ includeIgnored: true });
   if (
-    first.at(-1).metric !== "files" ||
+    first.at(-1).metric !== "size" ||
     second.at(-1).includeIgnored !== true ||
+    stored.get("folder.rollup").metric !== "size" ||
     stored.get("folder.rollup").includeIgnored !== true
   ) {
     throw new Error("shared controls did not synchronize or persist");
   }
   unsubscribeFirst();
   unsubscribeSecond();
+
+  const savedPrefs = new Map([["folder.rollup", { metric: "size" }]]);
+  const saved = module.createFolderRollupControls({
+    prefs: {
+      get: (key, fallback) => (savedPrefs.has(key) ? savedPrefs.get(key) : fallback),
+      set: (key, value) => savedPrefs.set(key, value),
+    },
+  });
+  if (saved.get().metric !== "size") {
+    throw new Error("an explicit saved Bytes choice was not retained");
+  }
 
   const migratedPrefs = new Map([["folder.treemap", { metric: "files", includeIgnored: true }]]);
   const migrated = module.createFolderRollupControls({

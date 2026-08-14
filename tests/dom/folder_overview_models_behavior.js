@@ -421,6 +421,11 @@ async function importSource(relative) {
     "ignored is hidden by default",
     treemapModel.sanitizeTreemapState(null).includeIgnored === false,
   );
+  check(
+    "Files is the default metric while an explicit Bytes choice is retained",
+    treemapModel.sanitizeTreemapState(null).metric === "files" &&
+      treemapModel.sanitizeTreemapState({ metric: "size" }).metric === "size",
+  );
   check("treemap parent path", treemapModel.parentPath("a/b") === "a");
   check(
     "treemap parent navigation identifies the enclosing folder",

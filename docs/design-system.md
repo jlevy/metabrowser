@@ -554,7 +554,8 @@ answers where space or file count sits and keeps folder and file cells navigable
 
 The toolbar contains the same reusable folder-rollup control mounted by File Types:
 
-- A joined, exclusive **Bytes / Files** group chooses the cell-area metric.
+- A joined, exclusive **Files / Bytes** group chooses the cell-area metric and starts on
+  Files when there is no saved preference.
 - A labelled **Show ignored** checkbox chooses scope and starts unchecked.
   Checked includes gitignored cells and dims them; unchecked removes them and switches
   folder, remainder, and status values to the rollup’s unignored totals.
