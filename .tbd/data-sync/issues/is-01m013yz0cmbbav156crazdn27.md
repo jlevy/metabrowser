@@ -3,9 +3,9 @@ type: is
 id: is-01m013yz0cmbbav156crazdn27
 title: Make entire actionable Treemap cell a pointer hit target
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 3
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
 labels:
   - browser
@@ -13,7 +13,9 @@ labels:
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-08-14T21:48:30.091Z
-updated_at: 2026-08-14T21:48:30.091Z
+updated_at: 2026-08-14T22:11:43.332Z
+closed_at: 2026-08-14T22:11:43.332Z
+close_reason: "Implemented and validated on PR #44: age is conveyed by accessible text-only OKLCH colors with markers removed, and Treemap pointer routing activates the deepest actionable full cell while preserving keyboard semantics. make verify and all GitHub CI checks pass."
 ---
 Current behavior
 
