@@ -203,13 +203,18 @@ secondary-text, and label divergences.
 
 ## Compatibility and Legacy Code
 
-**Speculative compatibility layers are forbidden.** Do not add an alias, a fallback
-branch, a shim, a deprecation window, a dual-write, or a “transitional” duplicate field
-unless a consumer that cannot be updated in the same commit actually exists today.
-“Someone might be running an older client” is not such a consumer, and neither is a
-future version of this repository.
+`tbd guidelines backward-compatibility-rules` owns the general rules: the deciding
+question, what does not count as a consumer, why versioning is not backward
+compatibility, and why an unreachable compatibility layer is worse than unused code.
+Read it rather than the summary that used to live here.
+This section records only what that guideline cannot know — the facts about this
+repository, and the standing answers it asks each project to record once.
 
-The reason is structural, not stylistic.
+**Speculative compatibility layers are forbidden.** The deciding question is whether a
+consumer exists today that cannot be updated in the same commit.
+For almost everything here, none does, and the reason is structural rather than
+stylistic.
+
 Metabrowser ships the server, the browser shell, and the built-in plugins as one
 artifact from one repository.
 The page is served uncached and every asset URL carries a content-derived version, so a
@@ -217,67 +222,53 @@ browser cannot hold an old `app.js` against a new `/api/rollup`. Settings are in
 into that same page, so the browser’s file-type definitions and the server’s are always
 the same object from the same process.
 There is no window in which the two halves disagree, so code written to survive that
-window is dead on arrival: it cannot be reached, cannot be tested honestly, and cannot
-be removed later without re-deriving the reachability argument from scratch.
-It is pure cost — more branches, more names for one concept, more surface for a reader
-to mistake for a real requirement.
+window is dead on arrival.
 
-When an internal contract changes, change it everywhere in one commit.
-Rename the field, update every caller, update the tests, and record the change in the
-changelog. A wire field, a settings key, a query parameter, and an SDK method are all
-internal contracts. Removing one is a normal edit, not a migration.
+`/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the plugin manifest, and
+the built-in plugin interfaces are therefore internal contracts.
+Change one everywhere in one commit and record it in `CHANGELOG.md`.
 
-**Versioning is not backward compatibility, and only versioning is required.** Stamping
-a payload with a version or fingerprint so a consumer can detect a mismatch and fail
-loudly is cheap and correct.
-Keeping a reader for the old shape is the expensive part, and that is what we do not do.
-The File Rollup Format carries a schema version, registry revision, and fingerprint for
-exactly this reason: a consumer that sees an unfamiliar identity refuses the payload
-rather than guessing.
-Follow the format’s Evolution section when the identity changes, and do not add a second
-reader for the previous one.
-
-The one genuinely external artifact is an exported File Rollup Format packet, which
+**The one genuinely external artifact** is an exported File Rollup Format packet, which
 leaves the repository for another implementation.
-Everything else — `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the
-plugin manifest, the built-in plugin interfaces — moves with the release.
+It carries a schema version, registry revision, and fingerprint so a consumer that sees
+an unfamiliar identity refuses the payload rather than guessing.
+Follow the format’s Evolution section when that identity changes, and do not add a
+second reader for the previous one.
 
-**Plugins are upgraded, not accommodated.** The plugin ecosystem is new and small, so
-the cheap system is a hard version gate rather than a compatibility layer per SDK
-generation. `PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract the host
-provides; a manifest declaring anything else is refused at load time with a message
-naming the required version, and `metab --doctor` reports it.
+**Plugins are upgraded, not accommodated.** `PLUGIN_SDK_VERSION` in
+`plugin_loader/manifest.py` is the contract the host provides; a manifest declaring
+anything else is refused at load time with a message naming the required version, and
+`metab --doctor` reports it.
 Bump that constant only when the contract actually breaks, update every built-in
 manifest in the same commit, and note the break in `CHANGELOG.md`. An external plugin
 updates and declares the new version; the host ships no shim for the older surface.
 
-Two things about the user’s own data still hold, and neither is a compatibility layer.
-Never require a rewrite of the served tree — those files belong to the user.
-And read persisted browser state defensively, falling back to the default when a stored
-value is absent or unusable; carry a migration only for a key some released version
+**The user’s own data is not a compatibility layer.** Never require a rewrite of the
+served tree — those files belong to the user.
+Read persisted browser state defensively, falling back to the default when a stored
+value is absent or unusable, and carry a migration only for a key some released version
 actually wrote, which today means none.
 
-If you find an existing alias or fallback whose consumer does not exist, delete it in
-the change you are already making.
-Do not file it as future cleanup: a deferred removal is how the layer becomes permanent.
-When a reviewer cannot name the consumer a branch protects, that branch is the finding.
+### Standing Compatibility Answers
 
-`tbd guidelines backward-compatibility-rules` asks every change to state its
-compatibility requirement per area and to stop and clarify when it is unspecified.
-This section is that clarification, answered once for this repository so no change has
-to ask again:
+These are this repository’s answers to the template in
+`tbd guidelines backward-compatibility-rules`, recorded once so no change has to ask
+again:
 
 | Area | Standing answer |
 | --- | --- |
 | Code types, methods, signatures | DO NOT MAINTAIN |
-| Library APIs, including `window.metabrowser` and the plugin manifest | DO NOT MAINTAIN — version gate refuses a mismatch |
-| Server APIs (`/api/*`) | DO NOT MAINTAIN |
-| Exported File Rollup Format packets | DO NOT MAINTAIN — identity stamped so a consumer fails fast |
-| Persisted browser state | DO NOT MAINTAIN — read defensively, fall back to the default |
+| Library APIs, including `window.metabrowser` | DO NOT MAINTAIN |
+| Server APIs (`/api/*`) | DO NOT MAINTAIN — the client ships in the same artifact |
+| Plugin and extension APIs | UPGRADE + GATE — `PLUGIN_SDK_VERSION` refuses a mismatch |
+| File formats, including exported packets | VERSION + FAIL FAST — identity stamped, one reader |
+| Persisted client state | DO NOT MAINTAIN — read defensively, fall back to the default |
 | Database schemas | N/A |
 
 Raise it with the maintainers if a change needs a different answer; do not assume a
 stricter one and build the layer anyway.
+Revisit the table when the deciding question’s answer changes — a first external plugin
+author, a published format, a client that starts shipping separately.
 
 ## Python
 

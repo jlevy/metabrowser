@@ -31,6 +31,9 @@ Compatibility policy:
   `metab --doctor` exits non-zero on the same problem.
   Previously the field was recorded and never compared, so a plugin written against a
   different SDK loaded and failed later inside a renderer.
+- Development guidance now defers to `tbd guidelines backward-compatibility-rules` for
+  the general rules and records only this repository’s structural facts and standing
+  per-area answers, rather than restating shared policy.
 - Removed two migrations for persisted browser state that no released version could have
   written: the treemap’s pre-prefs `metabrowser.folder.treemap` localStorage key, added
   in an untagged commit, and the theme-mode localStorage fallback, which has been
