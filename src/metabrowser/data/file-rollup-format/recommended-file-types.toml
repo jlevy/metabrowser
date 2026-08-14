@@ -1,3 +1,12 @@
+# Recommended definitions for File Rollup Format classifiers and display rollups.
+# The complete field, matching, validation, and evolution rules are documented at:
+# docs/project/architecture/file-rollup-format/file-rollup-format.md
+#
+# This registry is versioned independently from the overall format and is intentionally
+# selective rather than exhaustive. Maintainers edit this packaged source, increment
+# registry_revision for definition changes, and regenerate the checked artifacts with
+# devtools/file_type_contract.py --write. Do not edit the generated documentation copy.
+
 schema_version = 1
 registry_revision = 1
 max_extension_components = 2
