@@ -84,6 +84,22 @@ def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
     assert ".tm-seg" not in plugin_css
 
 
+def test_folder_totals_have_one_visible_heading_across_views() -> None:
+    """Overview and Treemap name the section identically, while the
+    shared table keeps its column relationships available only to
+    assistive technology rather than repeating visible chrome."""
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    totals = (folder_root / "folder_totals.js").read_text()
+    treemap = (folder_root / "treemap.js").read_text()
+    css = (folder_root / "file_type_summary.css").read_text()
+
+    assert 'label: "File Totals"' in totals
+    assert '<h2 class="tm-totals-heading">File Totals</h2>' in treemap
+    assert 'head.className = "sr-only"' in totals
+    assert ".folder-totals .sr-only" in css
+
+
 def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     """A nested folder and its descendants are flattened siblings.
 

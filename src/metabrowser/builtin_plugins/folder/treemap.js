@@ -231,7 +231,7 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       : "";
 
     container.innerHTML =
-      '<h2 class="tm-totals-heading">Totals</h2>' +
+      '<h2 class="tm-totals-heading">File Totals</h2>' +
       '<div class="tm-totals"></div>' +
       '<div class="folder-rollup-controls"></div>' +
       parentControlHtml +

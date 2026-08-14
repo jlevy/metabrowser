@@ -17,7 +17,8 @@
   font-variant-numeric: var(--tabular-numerals);
 }
 
-.file-type-summary .sr-only {
+.file-type-summary .sr-only,
+.folder-totals .sr-only {
   position: absolute;
   width: 1px;
   height: 1px;

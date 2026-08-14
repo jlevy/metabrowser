@@ -386,7 +386,11 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     container.totals.value.total_files === 4 && container.totals.value.total_size === 1050,
     JSON.stringify(container.totals.value),
   );
-  check("totals precede the treemap", container.innerHTML.includes("tm-totals-heading"));
+  check(
+    "File Totals heading precedes the treemap",
+    container.innerHTML.includes('<h2 class="tm-totals-heading">File Totals</h2>'),
+    container.innerHTML,
+  );
   check("shared controls rendered", container.innerHTML.includes("folder-rollup-controls"));
   check(
     "Treemap root omits parent navigation",

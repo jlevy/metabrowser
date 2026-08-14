@@ -706,9 +706,10 @@ Provisional rows or rectangles are never painted and then reshuffled.
 The motion is delayed briefly, respects reduced-motion preferences, and is replaced
 atomically when the complete, truncated, or failed generation arrives.
 
-Treemap repeats the fixed **Totals** context immediately above its controls and map.
-It does not make that context collapsible and does not duplicate totals or scan state in
-a footer sentence. The print action is absent when no mounted contribution is printable.
+Treemap repeats the fixed **File Totals** context immediately above its controls and
+map. It does not make that context collapsible and does not duplicate totals or scan
+state in a footer sentence.
+The print action is absent when no mounted contribution is printable.
 
 An empty folder is still a completed Overview.
 File types remains visible with the message **No files to summarize.** It renders no
