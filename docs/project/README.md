@@ -18,6 +18,7 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [Full-page HTML rendering and an explicit trust model](specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
 - [Filter controls and fine-grained navigation filtering](specs/active/plan-2026-08-09-nav-filter-controls.md)
+- [Shared file type taxonomy and bounded breakdowns](specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
 
 ## Research
 
