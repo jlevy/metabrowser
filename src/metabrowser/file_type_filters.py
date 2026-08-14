@@ -19,9 +19,6 @@ from metabrowser.file_type_registry import (
     normalize_logical_extension,
 )
 
-type FileTypeCategoryId = str
-type ClassifiedFileTypeCategoryId = str
-
 _VALID_ID = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
@@ -29,7 +26,7 @@ _VALID_ID = re.compile(r"^[a-z][a-z0-9-]*$")
 class FileTypeCategory:
     """A broad filter group plus members without a display family."""
 
-    id: FileTypeCategoryId
+    id: str
     label: str
     extra_values: tuple[str, ...]
 
@@ -40,7 +37,7 @@ class FileTypeFamily:
 
     id: str
     label: str
-    category: FileTypeCategoryId
+    category: str
     extensions: tuple[str, ...]
 
 
@@ -178,7 +175,7 @@ def canonical_extension(extension: str) -> str:
     )
 
 
-def category_for_file(name: str, extension: str) -> ClassifiedFileTypeCategoryId:
+def category_for_file(name: str, extension: str) -> str:
     """Classify a file into its registry display group."""
 
     return _REGISTRY.classify(name, extension).group_id
@@ -229,9 +226,7 @@ __all__ = [
     "FILE_TYPE_NO_EXTENSION_KEY",
     "FILE_TYPE_REMAINING_KEY",
     "FILTER_TYPE_PRESETS",
-    "ClassifiedFileTypeCategoryId",
     "FileTypeCategory",
-    "FileTypeCategoryId",
     "FileTypeFamily",
     "FileTypeFamilyMatch",
     "FilterTypePreset",

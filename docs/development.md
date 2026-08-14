@@ -247,6 +247,23 @@ the change you are already making.
 Do not file it as future cleanup: a deferred removal is how the layer becomes permanent.
 When a reviewer cannot name the consumer a branch protects, that branch is the finding.
 
+`tbd guidelines backward-compatibility-rules` asks every change to state its
+compatibility requirement per area and to stop and clarify when it is unspecified.
+This section is that clarification, answered once for this repository so no change has
+to ask again:
+
+| Area | Standing answer |
+| --- | --- |
+| Code types, methods, signatures | DO NOT MAINTAIN |
+| Library APIs, including `window.metabrowser` | DO NOT MAINTAIN |
+| Server APIs (`/api/*`) | DO NOT MAINTAIN |
+| Exported File Rollup Format packets | SUPPORT BOTH |
+| Persisted browser state | MIGRATE |
+| Database schemas | N/A |
+
+Raise it with the maintainers if a change needs a different answer; do not assume a
+stricter one and build the layer anyway.
+
 ## Python
 
 - Support the Python range declared in `pyproject.toml`.
@@ -259,12 +276,11 @@ When a reviewer cannot name the consumer a branch protects, that branch is the f
 
 Run Ruff and BasedPyright through `make lint-check` before handoff.
 BasedPyright runs in strict mode globally.
-Its remaining compatibility exceptions are scoped separately to `src` and `tests`;
-`devtools` receives the unmodified strict floor.
-The 2026-07-16 ratchet baseline is 121 suppressed source diagnostics at dynamic plugin
-and cross-module compatibility boundaries and 362 at pytest fixture and monkeypatch
-boundaries. Reduce those counts and remove an exception category when it reaches zero.
-Never add a broad global suppression.
+Its remaining exceptions are the `executionEnvironments` entries in `pyproject.toml`,
+scoped separately to `src` and `tests`; `devtools` receives the unmodified strict floor.
+Each entry names the diagnostics it suppresses, so `pyproject.toml` is the current
+statement of that debt.
+Narrow an entry when a category reaches zero, and never add a broad global suppression.
 
 ## Browser Code
 
@@ -287,20 +303,16 @@ not combine an unrelated rewrite with a release fix.
 modules automatically.
 `tsconfig.legacy.json` is an explicit allowlist of older modules that still permit
 implicit `any` while retaining strict null and other strict checks.
-The 2026-07-16 baseline is 10 files, 7,124 JavaScript lines, and 532 diagnostics when
-the allowlist is checked with `noImplicitAny` enabled.
-`text/index.js` has graduated to the strict project; move each additional file as its
-JSDoc contracts become complete.
-No new file may enter the legacy configuration as an ordinary implementation shortcut.
-An exceptional addition requires a documented architecture reason and an explicit
-follow-up; otherwise the allowlist only shrinks as JSDoc contracts become complete.
+Its `files` array is the allowlist; read it there rather than from a count in prose.
+No new file may enter it as an ordinary implementation shortcut, and a file leaves it
+once its JSDoc contracts are complete.
+To see the work remaining for a file, run
+`npx --no-install tsc --noEmit -p tsconfig.legacy.json --noImplicitAny`.
 
 Biome checks every shipped browser module, including the legacy application shell, with
 the recommended rule set.
-Its compatibility overrides are file-scoped: 244 legacy inner declarations across
-`app.js`, `charts.js`, `perf.js`, `structured/preview.js`, and `structured/tree.js`,
-plus 24 descending-specificity findings in `styles.css` at the 2026-07-16 baseline.
-Shrink each override list as those files become clean.
+Its overrides are file-scoped and listed in `biome.json`. Shrink each override list as
+those files become clean.
 Globals invoked from generated HTML retain their public names through narrow inline
 suppressions because those call sites are not visible to static analysis.
 All Biome and TypeScript commands run from `package-lock.json` with `npx --no-install`,
@@ -325,10 +337,38 @@ the code must follow, extract them into a plan under `specs/active/` instead of 
 the brief as the contract.
 The public-hygiene gate rejects references to the private guidance tree and other
 non-public residue; see `devtools/public_hygiene.py` for the enforced rules.
+`make lint-check` runs it on every change, so a release needs no separate pass.
+Run it directly only when changing repository visibility, which the ordinary gate never
+sees:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/public_hygiene.py
+```
 
 Keep documentation public-safe.
 Do not include private repository names, internal issue identifiers, personal absolute
 paths, credentials, customer data, or copied operational files.
+
+### Changing This Guidance
+
+This document and `AGENTS.md` constrain everyone who works here, so a rule has to earn
+its place the same way code does.
+
+- State the reason with the rule.
+  A reader who cannot reconstruct why a rule exists cannot tell when it stops applying,
+  and will either cargo-cult it or quietly ignore it.
+- Prefer a check over a sentence.
+  Anything a linter, type checker, test, or Make target can enforce belongs there
+  instead; guidance that restates what `make verify` already enforces only adds a second
+  place to drift.
+- Do not put numbers in prose that nothing maintains.
+  Hand-typed counts and baselines rot silently and then mislead — cite the file or the
+  command that reports the current value.
+- Delete a rule whose reason no longer holds.
+  Guidance is not append-only, and a stale restriction costs more than the absent rule
+  would.
+
+Challenging an existing rule from first principles is ordinary work, not an overstep.
 
 ## Issue Tracking
 

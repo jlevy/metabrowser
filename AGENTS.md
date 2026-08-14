@@ -78,8 +78,20 @@ pre-push gates.
 - Link to source documentation instead of duplicating long policy text.
 - Never add credentials, private organization or repository names, private issue IDs,
   personal absolute paths, customer data, or copied operational artifacts.
-- Run `uv --config-file uv.toml run --frozen python devtools/public_hygiene.py` before
-  every public release or repository-visibility change.
+
+## Changing This Guidance
+
+Do not add a rule or restriction here or in `docs/development.md` without deciding from
+first principles that it is necessary.
+See [Changing This Guidance](docs/development.md#changing-this-guidance).
+
+- State the reason with the rule, so a later reader can tell when it stops applying.
+- Prefer a check to a sentence: if `make verify` can enforce it, put it there instead of
+  restating it as guidance.
+- Never write a count or baseline into prose that nothing maintains.
+  Cite the file or command that reports the current value.
+- Delete a rule whose reason no longer holds, and treat challenging one from first
+  principles as ordinary work.
 
 ## Git
 
