@@ -3,10 +3,10 @@ type: is
 id: is-01kzyp6zfgt2xkj2wepzx6n5cq
 title: Semantic file type families across Overview and navigation
 kind: epic
-status: open
+status: closed
 priority: 2
-version: 8
-spec_path: docs/project/specs/active/plan-2026-08-13-semantic-file-type-families.md
+version: 10
+spec_path: docs/project/specs/done/plan-2026-08-13-semantic-file-type-families.md
 labels:
   - file-types
   - folder-overview
@@ -20,6 +20,8 @@ child_order_hints:
   - is-01kzyp82r1hbkx870at8tgt0xk
   - is-01kzyp89g0kfj93q870sgbaqzk
 created_at: 2026-08-13T23:09:43.787Z
-updated_at: 2026-08-13T23:10:30.914Z
+updated_at: 2026-08-14T00:21:34.056Z
+closed_at: 2026-08-14T00:21:34.055Z
+close_reason: All semantic file type family beads are implemented, validated, documented, and ready for review.
 ---
 Implement the semantic file type family plan as a reusable taxonomy shared by server tallies, the folder Files summary, navigation filters, and Treemap color identity. Preserve raw logical extensions and existing additive wire fields while adding bounded, conserved family aggregation.
