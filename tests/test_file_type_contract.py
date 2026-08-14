@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -52,11 +53,18 @@ def test_export_packet_is_self_contained_and_revision_pinned(tmp_path: Path) -> 
     manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["source_revision"] == "abc123"
     assert manifest["registry_fingerprint"] == load_file_type_registry().fingerprint
-    assert set(manifest["files"]) == {
+    manifest_files = manifest["files"]
+    actual_paths = {
         str(path.relative_to(destination))
         for path in destination.rglob("*")
         if path.is_file() and path.name != "manifest.json"
     }
+    assert {item["path"] for item in manifest_files} == actual_paths
+    for item in manifest_files:
+        assert set(item) == {"path", "sha256"}
+        assert (
+            item["sha256"] == hashlib.sha256((destination / item["path"]).read_bytes()).hexdigest()
+        )
     assert not any(
         "metabrowser.file_type" in path.read_text(encoding="utf-8")
         for path in destination.rglob("*.md")

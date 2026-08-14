@@ -45,7 +45,9 @@ uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
 
 The destination is self-contained.
 `fdu` copies or compiles only packet contents and verifies the manifest before adopting
-them; its build never reaches back into a Metabrowser checkout.
+them. Each `files` entry contains a packet-relative `path` and the lowercase hexadecimal
+`sha256` digest of that file.
+The `fdu` build never reaches back into a Metabrowser checkout.
 
 ## Semantic Mapping
 

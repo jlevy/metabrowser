@@ -115,7 +115,9 @@ uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
 
 The packet includes the TOML source, normalized projection, schemas, corpus, example,
 contract documents, and a `manifest.json` recording the source revision and registry
-identity. It has no sibling-checkout or network dependency.
+identity. Each manifest file entry records its relative path and SHA-256 digest so an
+adopter can verify the packet after transfer.
+It has no sibling-checkout or network dependency.
 
 ## Ownership and Distribution
 

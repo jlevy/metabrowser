@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -376,15 +377,20 @@ def export_packet(destination: Path, source_revision: str) -> None:
         EMPTY_BREAKDOWN_PATH,
         *SCHEMA_PATHS,
     )
-    for source in source_paths:
-        target = destination / source.name
+    packet_sources = [(source.name, source) for source in source_paths]
+    packet_sources.extend((f"docs/{source.name}", source) for source in CONTRACT_DOC_PATHS)
+    manifest_files: list[dict[str, str]] = []
+    for relative_path, source in sorted(packet_sources):
+        content = source.read_bytes()
+        target = destination / relative_path
         with atomic_output_file(target, make_parents=True) as temporary:
-            temporary.write_bytes(source.read_bytes())
-    docs_destination = destination / "docs"
-    for source in CONTRACT_DOC_PATHS:
-        target = docs_destination / source.name
-        with atomic_output_file(target, make_parents=True) as temporary:
-            temporary.write_bytes(source.read_bytes())
+            temporary.write_bytes(content)
+        manifest_files.append(
+            {
+                "path": relative_path,
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+        )
     registry = load_file_type_registry()
     manifest = {
         "schema": "file-type-adoption-packet-v1",
@@ -392,10 +398,7 @@ def export_packet(destination: Path, source_revision: str) -> None:
         "registry_schema_version": registry.schema_version,
         "registry_revision": registry.revision,
         "registry_fingerprint": registry.fingerprint,
-        "files": sorted(
-            [source.name for source in source_paths]
-            + [f"docs/{source.name}" for source in CONTRACT_DOC_PATHS]
-        ),
+        "files": manifest_files,
     }
     with atomic_output_file(destination / "manifest.json", make_parents=True) as temporary:
         temporary.write_bytes(_json_bytes(manifest))
