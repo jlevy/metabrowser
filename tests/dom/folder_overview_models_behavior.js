@@ -422,6 +422,20 @@ async function importSource(relative) {
     treemapModel.sanitizeTreemapState(null).includeIgnored === false,
   );
   check("treemap parent path", treemapModel.parentPath("a/b") === "a");
+  check(
+    "treemap parent navigation identifies the enclosing folder",
+    JSON.stringify(treemapModel.parentNavigation("src/metabrowser")) ===
+      JSON.stringify({ path: "src", label: "src/" }),
+  );
+  check(
+    "treemap parent navigation identifies the served root",
+    JSON.stringify(treemapModel.parentNavigation("src")) ===
+      JSON.stringify({ path: "/", label: "/" }),
+  );
+  check(
+    "treemap parent navigation is absent at the served root",
+    treemapModel.parentNavigation("") === null,
+  );
 
   if (failures.length) {
     console.error(`folder overview model FAILURES:\n- ${failures.join("\n- ")}`);

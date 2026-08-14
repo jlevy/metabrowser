@@ -16,7 +16,7 @@
 
 import { mountFolderTotalsView, normalizeFolderTotals } from "./folder_totals.js";
 import { layoutTree } from "./treemap_layout.js";
-import { parentPath } from "./treemap_model.js";
+import { parentNavigation } from "./treemap_model.js";
 
 /** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
@@ -221,17 +221,29 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     /** @type {number[]} */
     let actionableIndexes = [];
     let focusPos = 0;
+    const parent = parentNavigation(ctx.path || "");
+    const parentControlHtml = parent
+      ? '<div class="tm-parent-nav-row">' +
+        `<button type="button" class="btn tm-parent-nav" aria-label="Zoom out to ${mb.escapeHtml(parent.label)}"` +
+        ` title="Open ${mb.escapeHtml(parent.label)} in Treemap">` +
+        '<span class="tm-parent-nav-arrow" aria-hidden="true">↑</span>' +
+        `<span>${mb.escapeHtml(parent.label)}</span></button></div>`
+      : "";
 
     container.innerHTML =
       '<h2 class="tm-totals-heading">Totals</h2>' +
       '<div class="tm-totals"></div>' +
       '<div class="folder-rollup-controls"></div>' +
+      parentControlHtml +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
       '<div class="tm-status" role="status"></div>';
     const totalsContainer = /** @type {HTMLElement} */ (container.querySelector(".tm-totals"));
     const controlsContainer = /** @type {HTMLElement} */ (
       container.querySelector(".folder-rollup-controls")
     );
+    const parentControl = parent
+      ? /** @type {HTMLButtonElement} */ (container.querySelector(".tm-parent-nav"))
+      : null;
     const viewport = /** @type {HTMLElement} */ (container.querySelector(".tm-viewport"));
     const status = /** @type {HTMLElement} */ (container.querySelector(".tm-status"));
     const initialRaw =
@@ -250,6 +262,16 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       }
     });
     const unmountControls = rollupControls.mount(controlsContainer);
+
+    function openParent() {
+      if (parent) {
+        mb.openPath(parent.path, { viewId: TREEMAP_VIEW_ID });
+      }
+    }
+
+    if (parentControl) {
+      parentControl.addEventListener("click", openParent);
+    }
 
     /** Keep the shared exclusive-control semantics in step with the
      * controller state. filterControls.bind delegates state ownership
@@ -420,9 +442,7 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         moveFocus(focusPos - 1);
         e.preventDefault();
       } else if (key === "Backspace") {
-        if (ctx.path) {
-          mb.openPath(parentPath(ctx.path) || "/", { viewId: TREEMAP_VIEW_ID });
-        }
+        openParent();
         e.preventDefault();
       }
     });
@@ -511,6 +531,9 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       unsubscribeControls();
       unsubscribeTotals();
       unmountControls();
+      if (parentControl) {
+        parentControl.removeEventListener("click", openParent);
+      }
       window.removeEventListener("resize", onWindowResize);
       if (resizeObserver) {
         resizeObserver.disconnect();

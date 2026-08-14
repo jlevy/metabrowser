@@ -602,6 +602,11 @@ retains the complete name, counts, bytes, and modification time.
 Treemap navigation preserves the user’s spatial context.
 Activating a folder cell opens that folder with Treemap selected, and Backspace opens
 the parent with Treemap selected.
+Every non-root Treemap also places a compact labelled action immediately above the map.
+Its up arrow and enclosing folder name make the zoom-out target explicit, and activation
+opens that parent with Treemap still selected.
+The top-level target is shown as `/`; the control is omitted at the served root because
+there is no enclosing folder within the browsing scope.
 Activating a file cell opens the file’s ordinary default view.
 This uses the public navigation preference rather than simulating a tab click; an
 unavailable preferred view falls back to the destination’s declared default.

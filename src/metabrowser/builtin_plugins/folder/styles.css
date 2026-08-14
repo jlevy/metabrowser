@@ -40,6 +40,21 @@
   max-width: var(--tm-max-width);
 }
 
+.tm-parent-nav-row {
+  max-width: var(--tm-max-width);
+  margin: 0 0 10px;
+}
+
+.tm-parent-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tm-parent-nav-arrow {
+  color: var(--muted);
+}
+
 .tm-viewport {
   position: relative;
   min-height: 280px;
@@ -225,7 +240,8 @@
    interactive chrome; the host's print rules already hide the app
    shell around it. */
 @media print {
-  .folder-treemap-host > .folder-rollup-controls {
+  .folder-treemap-host > .folder-rollup-controls,
+  .tm-parent-nav-row {
     display: none;
   }
   .tm-cell {

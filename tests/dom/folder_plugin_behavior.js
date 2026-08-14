@@ -4,8 +4,8 @@
 // sandbox with a minimal DOM stub, then drives both registered views:
 // README empty state, treemap toolbar + cells from a stubbed
 // /api/rollup envelope, watchRollup refresh on inventory-change
-// events, toggle relayout without refetch, and dispose detaching the
-// listener.
+// events, parent-folder navigation, toggle relayout without refetch,
+// and dispose detaching the listeners.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -53,6 +53,9 @@ function makeElement() {
       }
       if (selector === ".folder-rollup-controls") {
         return el.controls;
+      }
+      if (selector === ".tm-parent-nav") {
+        return el.parentNav;
       }
       return null;
     },
@@ -386,6 +389,11 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   check("totals precede the treemap", container.innerHTML.includes("tm-totals-heading"));
   check("shared controls rendered", container.innerHTML.includes("folder-rollup-controls"));
   check(
+    "Treemap root omits parent navigation",
+    !container.innerHTML.includes("tm-parent-nav"),
+    container.innerHTML,
+  );
+  check(
     "metric chooser present",
     container.controls.innerHTML.includes('data-chip-key="folder-rollup-metric"'),
   );
@@ -643,6 +651,55 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
   check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
+
+  // A nested Treemap identifies its enclosing folder and navigates to
+  // that path without dropping back to the folder's default Overview.
+  const nestedContainer = makeElement();
+  nestedContainer.viewport = makeElement();
+  nestedContainer.status = makeElement();
+  nestedContainer.totals = makeElement();
+  nestedContainer.controls = makeElement();
+  nestedContainer.parentNav = makeElement();
+  sandbox.MetabrowserViewState.setActive(nestedContainer, true);
+  const nestedMounted = view.render(nestedContainer, {
+    path: "src/metabrowser",
+    kind: "folder",
+    raw: {
+      name: "metabrowser",
+      readme_path: "",
+      dir: {
+        total_files: 4,
+        total_size: 1050,
+        unignored_files: 3,
+        unignored_size: 950,
+      },
+    },
+  });
+  check(
+    "nested Treemap names the enclosing folder above the map",
+    nestedContainer.innerHTML.includes('class="btn tm-parent-nav"') &&
+      nestedContainer.innerHTML.includes('aria-label="Zoom out to src/"') &&
+      nestedContainer.innerHTML.includes(">src/</span>"),
+    nestedContainer.innerHTML,
+  );
+  const parentClick = nestedContainer.parentNav.listeners.click?.[0];
+  check("parent navigation click handler bound", typeof parentClick === "function");
+  if (parentClick) {
+    parentClick();
+    const event = openPathEvents.at(-1);
+    check(
+      "parent navigation preserves Treemap",
+      event?.path === "src" && event?.viewId === "treemap",
+      JSON.stringify(event),
+    );
+  }
+  const parentClickListeners = nestedContainer.parentNav.listeners.click?.length || 0;
+  nestedMounted.dispose();
+  check(
+    "parent navigation listener is disposed",
+    (nestedContainer.parentNav.listeners.click?.length || 0) === parentClickListeners - 1,
+    `${nestedContainer.parentNav.listeners.click?.length || 0}`,
+  );
 
   // ── watchRollup active-gate: hidden views spend no fetches ──────
   {
