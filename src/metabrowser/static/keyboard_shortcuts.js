@@ -124,7 +124,9 @@
     if (!binding || typeof binding.key !== "string") {
       throw new TypeError("Shortcut bindings require a key");
     }
-    const definition = keyDefinition(binding.key);
+    // Rejects any key the vocabulary cannot name; the definition itself is
+    // resolved again at presentation time.
+    keyDefinition(binding.key);
     const key = /^[a-z]$/i.test(binding.key) ? binding.key.toLowerCase() : binding.key;
     const sourceModifiers = binding.modifiers || {};
     const modifiers = /** @type {Record<ModifierName, ModifierPolicy>} */ ({});
@@ -135,7 +137,6 @@
       }
       modifiers[name] = policy;
     }
-    void definition;
     return Object.freeze({ key, modifiers: Object.freeze(modifiers) });
   }
 

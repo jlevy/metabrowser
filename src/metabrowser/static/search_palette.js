@@ -369,6 +369,28 @@
       syncActiveOption(scroll);
     }
 
+    /**
+     * Step the active result, wrapping at both ends.
+     *
+     * The list is bounded by maxRows and has no Home or End command — those
+     * keys stay with the query box's caret — so wrapping is what keeps the far
+     * end of the list one keystroke away.
+     *
+     * @param {number} delta
+     */
+    function moveActiveIndex(delta) {
+      if (results.length === 0) {
+        setActiveIndex(-1);
+        return;
+      }
+      if (activeIndex < 0) {
+        setActiveIndex(delta > 0 ? 0 : results.length - 1);
+        return;
+      }
+      const next = (activeIndex + delta) % results.length;
+      setActiveIndex(next < 0 ? next + results.length : next);
+    }
+
     function renderResults() {
       listbox.replaceChildren();
       for (let index = 0; index < results.length; index += 1) {
@@ -603,14 +625,6 @@
       modal?.close({ restoreFocus });
     }
 
-    /** @param {KeyboardEvent} event */
-    function handleInputKeydown(event) {
-      if (event.key === "Tab") {
-        event.preventDefault();
-        input.focus();
-      }
-    }
-
     /** @param {Event} event */
     function handleInput(event) {
       if (/** @type {{isComposing?: boolean}} */ (event).isComposing) {
@@ -666,12 +680,12 @@
           bindings: [{ key: "ArrowUp" }],
           copy: {
             action: "Previous result",
-            description: "Move to the previous Quick File result.",
+            description: "Move to the previous Quick File result, wrapping at the top.",
             hint: "Move",
           },
           group: "quick-file",
           handler: () => {
-            setActiveIndex(activeIndex < 0 ? results.length - 1 : activeIndex - 1);
+            moveActiveIndex(-1);
             return true;
           },
           id: "quick-file.previous",
@@ -685,12 +699,12 @@
           bindings: [{ key: "ArrowDown" }],
           copy: {
             action: "Next result",
-            description: "Move to the next Quick File result.",
+            description: "Move to the next Quick File result, wrapping at the bottom.",
             hint: "Move",
           },
           group: "quick-file",
           handler: () => {
-            setActiveIndex(activeIndex < 0 ? 0 : activeIndex + 1);
+            moveActiveIndex(1);
             return true;
           },
           id: "quick-file.next",
@@ -699,44 +713,12 @@
           scope: "quick-file",
           surfaces: { help: "always", "quick-file": "active" },
         }),
-        options.shortcuts.register({
-          allowInEditable: true,
-          bindings: [{ key: "Home" }],
-          copy: {
-            action: "First result",
-            description: "Move to the first mounted Quick File result.",
-            hint: "First",
-          },
-          group: "quick-file",
-          handler: () => {
-            setActiveIndex(0);
-            return true;
-          },
-          id: "quick-file.first",
-          order: 30,
-          repeat: true,
-          scope: "quick-file",
-          surfaces: { help: "always" },
-        }),
-        options.shortcuts.register({
-          allowInEditable: true,
-          bindings: [{ key: "End" }],
-          copy: {
-            action: "Last result",
-            description: "Move to the last mounted Quick File result.",
-            hint: "Last",
-          },
-          group: "quick-file",
-          handler: () => {
-            setActiveIndex(results.length - 1);
-            return true;
-          },
-          id: "quick-file.last",
-          order: 40,
-          repeat: true,
-          scope: "quick-file",
-          surfaces: { help: "always" },
-        }),
+        // Home and End deliberately have no command here. The query box is an
+        // editable combobox, so those keys belong to its caret: claiming them
+        // would take line-start and line-end away from the field, which the
+        // design system reserves for native editing behavior. The result list
+        // is bounded at maxRows and the arrow commands wrap, so the ends of the
+        // list stay one keystroke away.
         options.shortcuts.register({
           allowInEditable: true,
           bindings: [{ key: "Enter" }],
@@ -766,8 +748,10 @@
     const unregisterCommands = registerCommands();
     const unsubscribeHints = options.shortcuts.subscribe(renderShortcutHints);
     renderShortcutHints();
+    // Tab belongs to the shared modal focus trap, which cycles the query box
+    // and the dialog's Close control in both directions. A palette-local Tab
+    // handler would preventDefault before the trap ran and strand Shift+Tab.
     input.addEventListener("input", handleInput);
-    input.addEventListener("keydown", handleInputKeydown);
 
     function dispose() {
       if (disposed) {
@@ -780,7 +764,6 @@
       unsubscribeCatalog();
       unsubscribeHints();
       input.removeEventListener("input", handleInput);
-      input.removeEventListener("keydown", handleInputKeydown);
       for (const unregister of unregisterCommands) {
         unregister();
       }

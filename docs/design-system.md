@@ -301,6 +301,13 @@ Document-level commands ignore editable controls, composition, previously handle
 events, and modifiers they did not declare.
 They prevent browser behavior only after an enabled handler reports that it acted.
 
+A command may opt back into an editable target only for a key that field does not
+already own. A combobox may claim the arrow keys, `Enter`, and `Escape`, because none of
+them edit text. It may not claim `Home` or `End`: those move the caret, and taking them
+leaves the user unable to reach the start or end of what they typed.
+When a list needs first-item and last-item reach behind an editable control, its
+movement commands wrap instead of borrowing the caret keys.
+
 ### Descriptor Contract
 
 Every presented command declares:

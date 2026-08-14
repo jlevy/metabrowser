@@ -96,32 +96,98 @@ def test_every_tree_mutation_path_synchronizes_focus() -> None:
         ("_removeRenderedRows", 2600),
         ("_removeRenderedRowsImmediately", 1500),
     ):
-        assert "treeKeyboard" in _function(source, name, length), name
+        body = _function(source, name, length)
+        assert (
+            "treeKeyboard" in body or "TreeSynchronize" in body or "synchronizeTreeNow" in body
+        ), name
     assert "treeKeyboard?.prepareForMutation()" in source
-    assert "treeKeyboard?.synchronize()" in source
+
+
+def test_tree_synchronization_has_exactly_two_entry_points() -> None:
+    """Every repair goes through the scheduler or its immediate twin.
+
+    A bare treeKeyboard.synchronize() call outside those two helpers would
+    bypass the coalescing window and reintroduce a per-event tree walk.
+    """
+
+    source = _app()
+    # The two helpers are adjacent, so one slice covers both bodies exactly.
+    helpers_start = source.index("function scheduleTreeSynchronize")
+    helpers_end = source.index("\n}\n", source.index("function synchronizeTreeNow")) + len("\n}\n")
+    helpers = source[helpers_start:helpers_end]
+    assert "setTimeout(" in helpers
+    assert "clearTimeout(" in helpers
+    assert helpers.count("treeKeyboard?.synchronize(") == 2
+
+    # The optional-call form is how every real call site reaches the navigator;
+    # prose above the helpers mentions the method by name, so match the syntax.
+    outside = source[:helpers_start] + source[helpers_end:]
+    assert "?.synchronize(" not in outside
+
+
+def test_live_inventory_paths_coalesce_their_tree_synchronization() -> None:
+    """Event-driven mutations must not walk the tree once per event.
+
+    fileStoreApplySnapshot replays a whole snapshot through applyCellPatch on
+    every reconnect, so an immediate repair per entry would walk the painted
+    tree thousands of times in one turn.
+    """
+
+    source = _app()
+    for name, length in (
+        ("applyCellPatch", 6500),
+        ("_insertRowSorted", 4000),
+        ("_synchronizeDeferredTreePage", 1600),
+    ):
+        body = _function(source, name, length)
+        assert "scheduleTreeSynchronize(" in body, name
+        assert "synchronizeTreeNow()" not in body, name
+
+    filters = _function(source, "applyTreeFilters", 5000)
+    assert "scheduleTreeSynchronize()" in filters
+    assert "synchronizeTreeNow();" not in filters
 
 
 def test_animated_removal_retains_its_focus_repair_snapshot() -> None:
     source = _app()
     remove = _function(source, "_removeRenderedRows", 2800)
     assert "var removalMutation = treeKeyboard?.prepareForMutation();" in remove
-    assert "treeKeyboard?.synchronize(removalMutation);" in remove
+    assert "scheduleTreeSynchronize(removalMutation);" in remove
 
 
-def test_recursive_collapse_batches_tree_synchronization() -> None:
+def test_recursive_expand_and_collapse_batch_tree_synchronization() -> None:
+    """Both directions pay one repair for the whole walk, not one per folder."""
+
     source = _app()
     collapse = _function(source, "collapseAllDescendants", 700)
     assert "setFolderExpanded(folder, false, { synchronize: false });" in collapse
-    assert "treeKeyboard?.synchronize()" not in collapse
+    assert "synchronizeTreeNow()" not in collapse
 
-    toggle = _function(source, "toggleTreeFolder", 1200)
+    expand = _function(source, "expandAllDescendants", 700)
+    assert "setFolderExpanded(folder, true, { synchronize: false });" in expand
+    assert "synchronizeTreeNow()" not in expand
+
+    toggle = _function(source, "toggleTreeFolder", 1400)
     recursive_collapse = toggle[
         toggle.index("if (options.recursive && expanded)") : toggle.index(
             "} else if (options.recursive)"
         )
     ]
     assert "setFolderExpanded(row, false, { synchronize: false });" in recursive_collapse
-    assert toggle.count("treeKeyboard?.synchronize();") == 1
+    recursive_expand = toggle[
+        toggle.index("} else if (options.recursive)") : toggle.index("} else {")
+    ]
+    assert "setFolderExpanded(row, true, { synchronize: false });" in recursive_expand
+    assert toggle.count("synchronizeTreeNow();") == 1
+
+
+def test_lazy_load_inside_a_batched_expand_stays_batched() -> None:
+    """The deferred subtree repair honors the same opt-out as its caller."""
+
+    source = _app()
+    expanded = _function(source, "setFolderExpanded", 900)
+    lazy = expanded[expanded.index("tree-lazy-placeholder") :]
+    assert "options.synchronize !== false" in lazy
 
 
 def test_tree_focus_ring_is_token_based_and_preview_has_no_tree_listener() -> None:

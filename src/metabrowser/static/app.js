@@ -972,7 +972,7 @@ function renderFilesFromTree() {
   );
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
-  treeKeyboard?.synchronize();
+  synchronizeTreeNow();
   return true;
 }
 
@@ -1476,11 +1476,11 @@ async function loadSubtree(path, childrenEl, options) {
       markFolderKnownEmpty(childrenEl);
     }
     applyTreeFilters();
-    treeKeyboard?.synchronize();
+    synchronizeTreeNow();
     return;
   }
   childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…");
-  treeKeyboard?.synchronize();
+  synchronizeTreeNow();
   try {
     const resp = await fetch(
       `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
@@ -1504,7 +1504,7 @@ async function loadSubtree(path, childrenEl, options) {
       childrenEl.innerHTML = treeLazyLoadingHtml("Still scanning this folder…");
       startIndexProgressPolling();
       scheduleSubtreeRetry(path, childrenEl);
-      treeKeyboard?.synchronize();
+      synchronizeTreeNow();
       return;
     }
     clearSubtreeRetry(childrenEl);
@@ -1531,7 +1531,7 @@ async function loadSubtree(path, childrenEl, options) {
     // this an expand under an active filter reveals the whole folder.
     applyTreeFilters();
     reconcilePendingTallyDiagnostics();
-    treeKeyboard?.synchronize();
+    synchronizeTreeNow();
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
@@ -1539,7 +1539,7 @@ async function loadSubtree(path, childrenEl, options) {
     childrenEl.innerHTML = treeLazyFailureHtml(
       "Could not load this folder. Collapse and reopen it to try again.",
     );
-    treeKeyboard?.synchronize();
+    synchronizeTreeNow();
   }
 }
 
@@ -1673,6 +1673,55 @@ function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
 const treePane = /** @type {HTMLElement} */ (document.getElementById("tree-pane"));
 if (!treePane) {
   throw new Error("Metabrowser shell is missing #tree-pane");
+}
+
+// Coalesced roving-focus and ARIA repair for event-driven tree mutations.
+//
+// treeKeyboard.synchronize() rewrites level, position, set-size, expansion,
+// and selection on every rendered row and then re-derives the visible row
+// list, so it costs one walk of the painted tree. That is the right price for
+// a user action, but the inventory stream calls into the tree once per entry:
+// a reconnect replays a whole snapshot through applyCellPatch, and the walker
+// pushes changes for as long as it runs. Paying a full walk per event is the
+// same hazard scheduleFilterReapply() already guards against for filters.
+//
+// Bursts therefore collapse into one repair on the next task. The earliest
+// pending focus snapshot wins, because that is the one describing the tree as
+// the user last saw it; a later burst must not overwrite the anchor lineage
+// captured before the first mutation.
+var _treeSynchronizeHandle = null;
+/** @type {ReturnType<NonNullable<typeof treeKeyboard>["prepareForMutation"]> | null} */
+var _treeSynchronizeMutation = null;
+
+/** @param {ReturnType<NonNullable<typeof treeKeyboard>["prepareForMutation"]> | null} [mutationSnapshot] */
+function scheduleTreeSynchronize(mutationSnapshot) {
+  if (!treeKeyboard) {
+    return;
+  }
+  if (mutationSnapshot && !_treeSynchronizeMutation) {
+    _treeSynchronizeMutation = mutationSnapshot;
+  }
+  if (_treeSynchronizeHandle !== null) {
+    return;
+  }
+  _treeSynchronizeHandle = setTimeout(() => {
+    _treeSynchronizeHandle = null;
+    var snapshot = _treeSynchronizeMutation;
+    _treeSynchronizeMutation = null;
+    treeKeyboard?.synchronize(snapshot || undefined);
+  }, 0);
+}
+
+// A user action repairs focus in its own turn, so it must not land behind a
+// queued burst repair — and running both would walk the tree twice.
+function synchronizeTreeNow() {
+  if (_treeSynchronizeHandle !== null) {
+    clearTimeout(_treeSynchronizeHandle);
+    _treeSynchronizeHandle = null;
+  }
+  var snapshot = _treeSynchronizeMutation;
+  _treeSynchronizeMutation = null;
+  treeKeyboard?.synchronize(snapshot || undefined);
 }
 
 treePane.addEventListener(
@@ -1838,7 +1887,7 @@ async function expandAllDescendants(container) {
     if (!ch?.classList.contains("tree-children")) {
       continue;
     }
-    await setFolderExpanded(folder, true);
+    await setFolderExpanded(folder, true, { synchronize: false });
     await expandAllDescendants(ch);
   }
 }
@@ -1865,11 +1914,13 @@ function setFolderExpanded(row, expanded, options) {
   window.MetabrowserTreeExpansion.setFolderExpanded(row, children, expanded);
   row.setAttribute("aria-expanded", String(expanded));
   if (options.synchronize !== false) {
-    treeKeyboard?.synchronize();
+    synchronizeTreeNow();
   }
   if (expanded && children.querySelector(":scope > .tree-lazy-placeholder")) {
     return loadSubtree(row.dataset.path, children).then(() => {
-      treeKeyboard?.synchronize();
+      if (options.synchronize !== false) {
+        synchronizeTreeNow();
+      }
     });
   }
 }
@@ -1881,16 +1932,19 @@ async function toggleTreeFolder(row, options) {
   if (!children?.classList.contains("tree-children")) {
     return row;
   }
+  // Recursive walks defer every per-folder repair to the single synchronize
+  // below. Expand and collapse pay the same price: one walk of the visible
+  // tree for the whole operation, not one per descendant folder.
   if (options.recursive && expanded) {
     collapseAllDescendants(children);
     setFolderExpanded(row, false, { synchronize: false });
   } else if (options.recursive) {
-    await setFolderExpanded(row, true);
+    await setFolderExpanded(row, true, { synchronize: false });
     await expandAllDescendants(children);
   } else {
     await setFolderExpanded(row, !expanded);
   }
-  treeKeyboard?.synchronize();
+  synchronizeTreeNow();
   return row;
 }
 
@@ -1918,7 +1972,7 @@ function mountNextTreePage(row) {
   // A deferred page arrives without current filter decoration.
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
-  treeKeyboard?.synchronize();
+  synchronizeTreeNow();
   return firstMounted;
 }
 
@@ -1929,8 +1983,12 @@ function mountNextTreePage(row) {
 async function activateTreeRow(row, options) {
   var action = row.dataset.action;
   if (action === "select-dir") {
-    setSelectedPath(row.dataset.path);
-    void selectFile(row.dataset.path);
+    // Guarded like the select branch below: a pathless row would otherwise
+    // clear the whole selection and request the served root.
+    if (row.dataset.path) {
+      setSelectedPath(row.dataset.path);
+      void selectFile(row.dataset.path);
+    }
     return toggleTreeFolder(row, options);
   }
   if (action === "page-more") {
@@ -2595,7 +2653,7 @@ function renderRecentFromBase() {
     setSelectedPath(currentPath);
   }
   reconcilePendingTallyDiagnostics();
-  treeKeyboard?.synchronize();
+  synchronizeTreeNow();
 }
 
 const RECENT_EXPIRY_MIN_DELAY_MS = 250;
@@ -3476,7 +3534,7 @@ function _childContainerFor(row) {
 function applyTreeFilters() {
   var panel = document.getElementById("tab-files");
   if (!panel || !filterState) {
-    treeKeyboard?.synchronize();
+    scheduleTreeSynchronize();
     return;
   }
   var st = filterState.get();
@@ -3499,7 +3557,7 @@ function applyTreeFilters() {
     // "Filtered to N files" over an unfiltered tree.
     _renderFilteredTally(panel, 0, st, null);
     _renderFilterNote(panel, 0, st);
-    treeKeyboard?.synchronize();
+    scheduleTreeSynchronize();
     return;
   }
   var nowSec = Date.now() / 1000;
@@ -3584,7 +3642,10 @@ function applyTreeFilters() {
     : null;
   _renderFilteredTally(panel, shownFiles, st, recencyCount);
   _renderFilterNote(panel, unloadedFolders, st);
-  treeKeyboard?.synchronize();
+  // Scheduled, not immediate: every caller that needs focus repaired in this
+  // turn follows applyTreeFilters() with synchronizeTreeNow(), which cancels
+  // this task and runs once instead of walking the tree twice.
+  scheduleTreeSynchronize();
 }
 
 // How many files the filter is actually showing, as a second line
@@ -5276,7 +5337,7 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
     var sentinelMutation = mutationSnapshot || treeKeyboard?.prepareForMutation();
     sentinel.remove();
     pendingTreePages.delete(pageId);
-    treeKeyboard?.synchronize(sentinelMutation);
+    scheduleTreeSynchronize(sentinelMutation);
     return;
   }
   sentinel.dataset.treePosition = String(rows.length + 1);
@@ -5286,7 +5347,7 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
   if (label) {
     label.textContent = `Show ${page.nodes.length} more (${setSize} total)`;
   }
-  treeKeyboard?.synchronize(mutationSnapshot);
+  scheduleTreeSynchronize(mutationSnapshot);
 }
 
 function _removeDeferredTreePageEntries(path) {
@@ -5408,7 +5469,7 @@ function _insertRowSorted(container, entry, options) {
     mounted[metadataIndex].dataset.treePosition = String(metadataIndex + 1);
     mounted[metadataIndex].dataset.treeSetSize = String(declaredSetSize);
   }
-  treeKeyboard?.synchronize();
+  scheduleTreeSynchronize();
   return true;
 }
 
@@ -5454,7 +5515,7 @@ function applyCellPatch(entry) {
   if (!entry.path) {
     updateRootAggregatePresentation(entry);
     reconcilePendingTallyDiagnostics();
-    treeKeyboard?.synchronize();
+    scheduleTreeSynchronize();
     return;
   }
   var safePath = escapePathForSelector(entry.path);
@@ -5537,7 +5598,7 @@ function applyCellPatch(entry) {
       scheduleFilterReapply();
     }
     reconcilePendingTallyDiagnostics();
-    treeKeyboard?.synchronize();
+    scheduleTreeSynchronize();
     return;
   }
   // No row exists — try to insert one in each panel where the
@@ -5562,7 +5623,7 @@ function applyCellPatch(entry) {
   // a new file would show up regardless of the active filter.
   scheduleFilterReapply();
   reconcilePendingTallyDiagnostics();
-  treeKeyboard?.synchronize();
+  scheduleTreeSynchronize();
 }
 
 // Remove all rendered rows (in any tab panel) for *path*. For
@@ -5625,7 +5686,7 @@ function _removeRenderedRows(path) {
                 rows[j].dataset.treePosition = String(j + 1);
                 rows[j].dataset.treeSetSize = String(nextSetSize);
               }
-              treeKeyboard?.synchronize(removalMutation);
+              scheduleTreeSynchronize(removalMutation);
             }
           }
         }
@@ -5925,7 +5986,7 @@ async function revealInTree(path) {
   }
   setSelectedPath(path);
   target.scrollIntoView({ block: "nearest" });
-  treeKeyboard?.synchronize();
+  synchronizeTreeNow();
   return true;
 }
 
@@ -6031,7 +6092,26 @@ function disposeKeyboardInfrastructure() {
   shortcutRegistry = null;
 }
 
-window.addEventListener("pagehide", disposeKeyboardInfrastructure, { once: true });
+// `pagehide` also fires when the document enters the back/forward cache, and a
+// bfcache restore never re-runs DOMContentLoaded. Tearing the registry down
+// there would return the user to a page whose shortcuts, Help, Quick File, and
+// tree keys are all silently dead, so a persisted hide is left alone and the
+// matching `pageshow` rebuilds whatever an earlier real teardown removed. The
+// listener stays registered: a persisted hide can be followed by a genuine one.
+window.addEventListener("pagehide", (event) => {
+  if (/** @type {PageTransitionEvent} */ (event).persisted) {
+    return;
+  }
+  disposeKeyboardInfrastructure();
+});
+
+window.addEventListener("pageshow", (event) => {
+  if (!(/** @type {PageTransitionEvent} */ (event).persisted)) {
+    return;
+  }
+  initKeyboardInfrastructure();
+  initQuickFileFinder();
+});
 
 // Compose the application-lifetime quick-file modules at the shell boundary.
 function initQuickFileFinder() {

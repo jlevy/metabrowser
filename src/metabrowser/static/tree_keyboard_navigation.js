@@ -55,22 +55,32 @@
     return hasRole(owner, "treeitem") ? owner : null;
   }
 
-  /** @param {HTMLElement} row */
+  /**
+   * A row is navigable only when it sits under a tree root and nothing between
+   * it and the document root is hidden.
+   *
+   * The walk deliberately does not stop at the tree root. Panels, tab bodies,
+   * and the navigation pane itself can all be hidden above it, and stopping
+   * early would put rows inside a closed tab panel into the roving-focus order.
+   *
+   * @param {HTMLElement} row
+   */
   function rowIsVisible(row) {
     if (row.hidden || row.classList.contains("tree-item-filter-hidden")) {
       return false;
     }
+    let insideTree = false;
     let ancestor = /** @type {HTMLElement | null} */ (row.parentElement);
     while (ancestor) {
       if (ancestor.hidden || ancestor.style?.display === "none") {
         return false;
       }
       if (hasRole(ancestor, "tree")) {
-        return true;
+        insideTree = true;
       }
       ancestor = /** @type {HTMLElement | null} */ (ancestor.parentElement);
     }
-    return false;
+    return insideTree;
   }
 
   /** @param {HTMLElement} container */

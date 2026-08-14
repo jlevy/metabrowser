@@ -146,8 +146,8 @@ rather than adding another roving-tabindex implementation.
 | File tree | `ArrowRight` | Expand a collapsed folder; otherwise focus its first visible child |
 | File tree | `Home`, `End` | Focus the first or last visible tree row |
 | File tree | `Enter`, `Space` | Toggle a folder or open a file or symbolic link |
-| Quick File | `ArrowUp`, `ArrowDown` | Change the active result |
-| Quick File | `Home`, `End` | Move to the first or last mounted result |
+| Quick File | `ArrowUp`, `ArrowDown` | Change the active result, wrapping at both ends |
+| Quick File | `Home`, `End` | Move the query caret to the start or end of the line |
 | Quick File | `Enter` | Open the active result |
 | Quick File | `Escape` | Close and restore prior focus |
 | Help | `?`, `Escape` | Close and restore prior focus |
@@ -183,10 +183,8 @@ surface.
 | `tree.first` | `navigation` | `Home` | First item | Move focus to the first visible item in the file tree. | — |
 | `tree.last` | `navigation` | `End` | Last item | Move focus to the last visible item in the file tree. | — |
 | `tree.activate` | `navigation` | `Enter` or `Space` | Open or toggle | Open the focused file, toggle the focused folder, or show the next page. | Open or toggle |
-| `quick-file.previous` | `quick-file` | `↑` | Previous result | Move to the previous Quick File result. | Move |
-| `quick-file.next` | `quick-file` | `↓` | Next result | Move to the next Quick File result. | Move |
-| `quick-file.first` | `quick-file` | `Home` | First result | Move to the first mounted Quick File result. | — |
-| `quick-file.last` | `quick-file` | `End` | Last result | Move to the last mounted Quick File result. | — |
+| `quick-file.previous` | `quick-file` | `↑` | Previous result | Move to the previous Quick File result, wrapping at the top. | Move |
+| `quick-file.next` | `quick-file` | `↓` | Next result | Move to the next Quick File result, wrapping at the bottom. | Move |
 | `quick-file.activate` | `quick-file` | `Enter` | Open result | Open the active Quick File result. | Open |
 | `quick-file.close` | `quick-file` | `Esc` | Close Quick File | Close Quick File and restore focus to the previous control. | Close |
 | `help.close` | `help` | `?` or `Esc` | Close Help | Close Help and restore focus to the previous control. | — |
@@ -341,8 +339,11 @@ Presentation surfaces never copy key labels or command names.
 The full Help list asks for all commands marked for Help, including inactive contextual
 commands. The nav hint strip asks for commands whose hint policy is `always` plus
 commands explicitly marked for compact hints in the currently active scope.
-Home and End remain in full Help but are intentionally omitted from the constrained nav
-strip. Quick File uses the same presentation helper for its local hint row, retiring
+The tree’s Home and End remain in full Help but are intentionally omitted from the
+constrained nav strip.
+Quick File declares no Home or End command at all: its query box is an editable
+combobox, so those keys stay with the caret.
+Quick File uses the same presentation helper for its local hint row, retiring
 `HINT_GROUPS`. Descriptors that share a compact hint are coalesced only by the snapshot
 helper, so the tree can show `↑` or `↓` with “Move” without introducing a second
 grouping table.
@@ -626,13 +627,16 @@ but gains required `shortcuts` and `overlay` inputs.
 
 - Remove `OPEN_KEYS`, `HINT_GROUPS`, `hintGroup()`, `isEditableTarget()`,
   `handleGlobalKeydown()`, and the palette-owned document listener.
-- Add `registerCommands()` for `quick-file.open`, movement, first, last, activate, and
-  close descriptors. Result commands opt into the editable query target; the printable
-  global aliases do not.
+- Add `registerCommands()` for `quick-file.open`, movement, activate, and close
+  descriptors. Result commands opt into the editable query target; the printable global
+  aliases do not. The query box is an editable combobox, so `Home` and `End` stay with
+  its caret and the palette registers no first or last command; the movement commands
+  wrap instead, which keeps both ends of the bounded list one keystroke away.
 - Add `renderShortcutHints()` using the active Quick File snapshot and
   `appendBinding()`, with no local labels or key strings.
-- Keep `handleInputKeydown()` only for the palette-specific pinned-Tab behavior;
-  composition and every advertised command route through the registry.
+- Remove `handleInputKeydown()`. `Tab` belongs to the shared modal focus trap in both
+  directions; a palette-local handler preempts it and strands reverse `Tab` on the query
+  box. Composition and every advertised command route through the registry.
 - Replace direct overlay construction and the local `open()` and `close()` focus
   lifecycle with `MetabrowserOverlay.createModal()`. Palette open and close hooks still
   reset search state, cancel work, and select the query.
@@ -692,6 +696,12 @@ It does not implement key matching or walk the visible tree for each key.
   content, or return null.
   Pass it to Help and Quick File; the overlay layer remains independent of application
   selectors.
+- Tear the layer down on a real `pagehide` only.
+  A persisted `pagehide` means the document entered the back/forward cache, and a
+  bfcache restore never re-runs `DOMContentLoaded`, so disposing there would return the
+  user to a page whose shortcuts, Help, Quick File, and tree keys are all silently dead.
+  A persisted `pageshow` re-runs `initKeyboardInfrastructure()` and
+  `initQuickFileFinder()`, both of which are idempotent.
 - Add `treeRootHtml(content)` to wrap only navigable rows in
   `<div class="tree-root" role="tree" aria-label="Files">`. Summary, truncation,
   loading, error, and filter-note rows stay outside this root.
@@ -708,8 +718,8 @@ It does not implement key matching or walk the visible tree for each key.
   Preserve the position offset in `pendingTreePages` so newly mounted batches continue
   the branch numbering.
 - Add `treeRootForPanel(panel)` and `treeLevelForContainer(container)`. Update
-  `findRootReadme()`, `_findChildContainerFor()`, and root insertion selectors for the
-  new wrapper instead of adding one-off descendant selectors.
+  `_findChildContainerFor()` and root insertion selectors for the new wrapper instead of
+  adding one-off descendant selectors.
 - Extract the delegated click body into `setFolderExpanded(row, expanded)`,
   `toggleTreeFolder(row, {recursive})`, `mountNextTreePage(row)`, and
   `activateTreeRow(row)`. Pointer clicks and navigator callbacks call these same
@@ -717,12 +727,28 @@ It does not implement key matching or walk the visible tree for each key.
   Pagination activation returns the first newly mounted row so synchronization keeps
   focus on newly revealed content instead of jumping backward.
   Expansion is a no-op for a known-empty folder, which remains an ARIA end node.
-- Call `treeKeyboard.prepareForMutation()` before replacement or removal and
-  `treeKeyboard.synchronize()` after `renderFilesFromTree()`, `renderRecentFromBase()`,
-  `loadSubtree()`, pagination, and live insertion or type replacement.
-  Schedule a synchronization after animated removal completes.
-- Call `treeKeyboard.synchronize()` at both exits of `applyTreeFilters()`, after folder
-  expansion or collapse, and after `revealInTree()`. Call
+- Route every repair through exactly two helpers so no call site reaches
+  `treeKeyboard.synchronize()` directly.
+  `synchronizeTreeNow()` repairs in the current turn and cancels any queued pass;
+  `scheduleTreeSynchronize(snapshot)` coalesces a burst into one pass on the next task
+  and keeps the earliest pending focus snapshot, which is the one describing the tree as
+  the user last saw it.
+- Use `synchronizeTreeNow()` for the paths a person just triggered:
+  `renderFilesFromTree()`, `renderRecentFromBase()`, `loadSubtree()`, pagination, folder
+  expansion or collapse, and `revealInTree()`.
+- Use `scheduleTreeSynchronize()` for the paths the inventory stream drives:
+  `applyCellPatch()`, `_insertRowSorted()`, `_synchronizeDeferredTreePage()`, animated
+  removal, and both exits of `applyTreeFilters()`. A reconnect replays a whole snapshot
+  through `applyCellPatch()`, so an immediate repair per entry would walk the painted
+  tree once per file. Callers that need the repair in their own turn follow
+  `applyTreeFilters()` with `synchronizeTreeNow()`, which supersedes the queued pass
+  rather than adding a walk.
+- Recursive expand and collapse both pass `{synchronize: false}` down the walk,
+  including the lazy-load continuation inside `setFolderExpanded()`, so the walk itself
+  costs one repair rather than one per descendant folder.
+  A lazily loaded subtree still repairs around its own fetch, because its placeholder
+  and then its loaded rows each change the visible order.
+- Call `treeKeyboard.prepareForMutation()` before replacement or removal, and
   `treeKeyboard.setSelectedPath(path)` from `setSelectedPath()` so `.selected` and
   `aria-selected` change in one application turn.
 - Pass the shared registry and overlay factory into `MetabrowserSearchPalette.create()`.
@@ -737,8 +763,10 @@ Page Down, and Space therefore remain unhandled.
 `server.py:index()` adds cache-busted URLs for `keyboard_shortcuts.js`,
 `overlay_layer.js`, `keyboard_help.js`, and `tree_keyboard_navigation.js`. It emits them
 in that dependency order before `search_palette.js` and `app.js`. The template adds an
-empty `#nav-shortcut-hints` region with an accessible label immediately before
-`#index-progress`; the progress live region remains unchanged.
+empty `#nav-shortcut-hints` region immediately before `#index-progress`; the progress
+live region remains unchanged.
+The hints region carries `role="group"` together with its accessible name, because ARIA
+forbids naming a generic element and a bare `div` would drop the label.
 
 `static/types.d.ts` declares the internal registry, presentation snapshot, modal, Help,
 and tree-navigator globals used across strict modules.

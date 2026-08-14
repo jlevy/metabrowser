@@ -628,21 +628,42 @@ async function main() {
     "asynchronous reordering preserves selection identity",
     input.getAttribute("aria-activedescendant") === preservedId,
   );
-  input.dispatchEvent(fakeEvent("keydown", { key: "End", target: input }));
+  input.dispatchEvent(fakeEvent("keydown", { key: "ArrowDown", target: input }));
   check(
-    "End activates the last mounted option",
+    "ArrowDown reaches the last mounted option",
     listbox.children[2].getAttribute("aria-selected") === "true",
   );
-  input.dispatchEvent(fakeEvent("keydown", { key: "Home", target: input }));
+  input.dispatchEvent(fakeEvent("keydown", { key: "ArrowDown", target: input }));
   check(
-    "Home activates the first option",
+    "ArrowDown wraps to the first option",
     listbox.children[0].getAttribute("aria-selected") === "true",
   );
-  const tabEvent = fakeEvent("keydown", { key: "Tab", target: input });
-  input.dispatchEvent(tabEvent);
+  input.dispatchEvent(fakeEvent("keydown", { key: "ArrowUp", target: input }));
   check(
-    "Tab stays within the one-control modal",
-    tabEvent.defaultPrevented && document.activeElement === input,
+    "ArrowUp wraps to the last option",
+    listbox.children[2].getAttribute("aria-selected") === "true",
+  );
+
+  // The query box is an editable combobox, so Home and End belong to its
+  // caret. Claiming them would take line-start and line-end away from the
+  // field, and the wrapping arrows already reach both ends of the list.
+  const endEvent = fakeEvent("keydown", { key: "End", target: input });
+  input.dispatchEvent(endEvent);
+  const homeEvent = fakeEvent("keydown", { key: "Home", target: input });
+  input.dispatchEvent(homeEvent);
+  check(
+    "Home and End stay with the query caret",
+    !endEvent.defaultPrevented &&
+      !homeEvent.defaultPrevented &&
+      listbox.children[2].getAttribute("aria-selected") === "true",
+  );
+
+  // Tab belongs to the shared modal focus trap (covered in
+  // overlay_layer_behavior.js). A palette-local handler would preventDefault
+  // before the trap ran and strand Shift+Tab on the query box.
+  check(
+    "the palette installs no keydown handler on the query box",
+    (input.listeners.get("keydown") || []).length === 0,
   );
 
   input.dispatchEvent(fakeEvent("keydown", { key: "Enter", target: input }));

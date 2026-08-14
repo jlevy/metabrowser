@@ -4144,8 +4144,9 @@ pre.code-block code.hljs {
   .file-header-print,
   .settings-toggle,
   .custom-tooltip,
+  /* Covers Quick File too: its overlay is a .modal-overlay. */
   .modal-overlay,
-  .search-palette-overlay,
+  .nav-shortcut-hints,
   .index-progress,
   .loading,
   .spinner {

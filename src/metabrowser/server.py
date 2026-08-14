@@ -980,7 +980,12 @@ async def index(_request: Request) -> HTMLResponse:
           <div class="loading"><div class="spinner"></div>Loading files…</div>
         </div>
       </div>
-      <div class="nav-shortcut-hints" id="nav-shortcut-hints"
+      <!-- role="group" carries the accessible name: ARIA forbids naming a
+           generic element, so a bare div would drop the label and announce
+           the hints and their controls with no grouping context. Not a live
+           region — contextual hints change with focus, and announcing every
+           change would talk over the polite index-progress row below. -->
+      <div class="nav-shortcut-hints" id="nav-shortcut-hints" role="group"
            aria-label="Keyboard shortcuts" hidden></div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>

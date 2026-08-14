@@ -18,10 +18,13 @@ Keyboard discovery and navigation:
   early, so activating a pagination row cannot duplicate files and removals cannot
   resurrect a stale deferred entry.
   Type replacement also discards deferred pages owned by the removed subtree.
-- Recursive folder collapse batches tree synchronization once after the full operation
-  instead of re-walking the visible tree for every descendant.
+- Recursive folder expansion and collapse each batch tree synchronization once after the
+  full operation instead of re-walking the visible tree for every descendant, and live
+  inventory bursts coalesce into one pass instead of one per event.
 - Help and Quick File now share the same modal, key-presentation, focus-restoration, and
   dismissal primitives for consistent pointer and keyboard behavior.
+- Quick File result movement now wraps at both ends, and Home and End keep their normal
+  meaning in the query box.
 
 ## 0.3.0
 

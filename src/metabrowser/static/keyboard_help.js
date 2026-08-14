@@ -219,7 +219,6 @@
     const project = hostDocument.createElement("section");
     project.className = "help-project";
     const projectLink = hostDocument.createElement("a");
-    projectLink.href = PROJECT_URL;
     projectLink.setAttribute("href", PROJECT_URL);
     projectLink.setAttribute("target", "_blank");
     projectLink.setAttribute("rel", "noopener noreferrer");

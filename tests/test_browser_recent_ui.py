@@ -73,6 +73,9 @@ def test_index_template_renders_index_progress_footer() -> None:
     progress = html.index('id="index-progress"')
     hint_tag = html[hints : html.index(">", hints)]
     assert hints < progress
+    # A name needs a role that can carry it: ARIA forbids naming a generic
+    # element, so the label would be dropped from a bare div.
+    assert 'role="group"' in hint_tag
     assert 'aria-label="Keyboard shortcuts"' in hint_tag
     assert "aria-live" not in hint_tag
     assert 'id="index-progress"' in html
@@ -416,10 +419,12 @@ def test_folder_row_activation_selects_opens_and_toggles_the_folder() -> None:
     activate_start = js.index("async function activateTreeRow(row, options)")
     activate_block = js[activate_start : activate_start + 900]
     select_dir_start = activate_block.index('action === "select-dir"')
-    select_dir_block = activate_block[select_dir_start : select_dir_start + 300]
+    select_dir_block = activate_block[select_dir_start : activate_block.index('action === "page')]
     assert "setSelectedPath(row.dataset.path)" in select_dir_block
     assert "selectFile(row.dataset.path)" in select_dir_block
     assert "toggleTreeFolder(row, options)" in select_dir_block
+    # Guarded like the select branch: a pathless row must not clear selection.
+    assert "if (row.dataset.path) {" in select_dir_block
 
     # The click delegate routes every row through that one action, and the
     # chevron never becomes a second hotspot with its own semantics.
