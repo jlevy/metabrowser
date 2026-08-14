@@ -5,7 +5,7 @@ title: Publish the normative file-type compatibility packet
 kind: task
 status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - documentation
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz02ks9eygwfy31je8z907v
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T01:58:14.552Z
-updated_at: 2026-08-14T02:07:57.314Z
+updated_at: 2026-08-14T02:11:38.390Z
 closed_at: 2026-08-14T02:07:57.314Z
 close_reason: Published and verified the durable Registry v1, Interchange v1, and fdu compatibility packet; linked it from the project index and active implementation plan; and mapped the full dependency-ordered bead graph.
 ---
@@ -23,4 +23,4 @@ Create the durable Metabrowser-owned contract package under docs/project/archite
 
 ## Notes
 
-Drafted the durable compatibility directory, registry and interchange contracts, fdu adoption mapping, project index link, and bead dependency map on codex/file-type-systematization. Pending formatting, consistency review, and repository validation.
+Published the durable Registry v1, Interchange v1, and fdu compatibility packet; linked it from the project index and active plan; mapped and dependency-wired the implementation epic; and passed repository validation.

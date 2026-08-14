@@ -5,7 +5,7 @@ title: "Spec: Shared file type taxonomy and bounded breakdowns"
 kind: epic
 status: open
 priority: 2
-version: 20
+version: 21
 spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - file-types
@@ -27,10 +27,10 @@ child_order_hints:
   - is-01kzz05x3x3d6y2n9gzeq8xmqg
   - is-01kzz0681weprsdjnd151fxkhj
 created_at: 2026-08-14T01:23:15.382Z
-updated_at: 2026-08-14T02:04:20.043Z
+updated_at: 2026-08-14T02:11:38.641Z
 ---
 Deliver the Metabrowser-owned file-type registry, classification contract, conserved UI-ready breakdowns, registry-driven browser surfaces, and a versioned compatibility packet that fdu can later adopt. The linked plan defines product scope; the durable file-type contract documents define normative cross-project formats.
 
 ## Notes
 
-Planning landed through merged PR #38 at f63ab1d. Implementation remains unstarted. The clean implementation branch codex/file-type-systematization is based directly on that merge; execute Phase 1 in Metabrowser before synchronizing the reviewed registry and conformance corpus into fdu.
+Planning landed through merged PR #38 at f63ab1d. The follow-on codex/file-type-systematization branch now contains the durable compatibility packet and dependency-ordered implementation map. Implementation remains unstarted; mb-2c5u is the first actionable bead.
