@@ -704,8 +704,8 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     assert "count:" in block
     tally_start = js.index("function updateFilterTallies(data)")
     tally_block = js[tally_start : tally_start + 1800]
-    assert "registryMismatch" in tally_block
-    assert "_canonicalExtensionTally = [];" in tally_block
+    assert "registryMismatch" not in tally_block
+    assert "file_type_registry" not in tally_block
 
     render_start = js.index("function renderNavFilterBar()")
     render_block = js[render_start : render_start + 2200]

@@ -446,7 +446,6 @@
       depth: settings.ROLLUP_DEFAULT_DEPTH,
       top: settings.ROLLUP_DEFAULT_TOP,
       ext_top: settings.ROLLUP_DEFAULT_EXT_TOP,
-      type_top: settings.ROLLUP_FILE_TYPE_RAW_LIMIT,
       filename_top: settings.ROLLUP_FILE_TYPE_FILENAME_LIMIT,
       remaining_top: settings.ROLLUP_FILE_TYPE_REMAINING_LIMIT,
       ext_rank: settings.ROLLUP_DEFAULT_EXT_RANK || "bytes",
@@ -458,7 +457,7 @@
     // Core rollup endpoint for directory subtrees (see /api/rollup).
     // ``path`` may be "" for the served root. Optional opts:
     // depth / top / ext_top / filename_top / remaining_top query overrides plus
-    // legacy ``type_top`` and ``signal`` for mixed-version callers.
+    // the public ``type_top`` input alias and ``signal``.
     if (typeof path !== "string") {
       throw new Error("fetchRollup: path must be a string");
     }
@@ -472,21 +471,14 @@
         url.searchParams.set(key, String(value));
       }
     }
-    // Send both names during the compatibility window. An explicit modern
-    // option wins on new servers; an explicit legacy option still overrides
-    // defaults, and old servers receive the same effective value.
+    // Preserve the public input alias for older plugins, but emit only the
+    // canonical parameter because page assets and the server cannot be mixed.
     const remainingTop =
       options.remaining_top !== undefined
         ? options.remaining_top
         : options.type_top !== undefined
           ? options.type_top
-          : defaults.remaining_top !== undefined
-            ? defaults.remaining_top
-            : defaults.type_top;
-    const legacyTypeTop = options.type_top !== undefined ? options.type_top : remainingTop;
-    if (legacyTypeTop !== undefined && legacyTypeTop !== null) {
-      url.searchParams.set("type_top", String(legacyTypeTop));
-    }
+          : defaults.remaining_top;
     if (remainingTop !== undefined && remainingTop !== null) {
       url.searchParams.set("remaining_top", String(remainingTop));
     }

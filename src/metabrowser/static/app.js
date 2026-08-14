@@ -2845,40 +2845,25 @@ var _recencyTally = [];
 
 function updateFilterTallies(data) {
   let changed = false;
-  const identity = data.file_type_registry;
-  const runtime = window.MetabrowserFileTypeTaxonomy;
-  const registryMismatch =
-    identity &&
-    runtime &&
-    (identity.schema_version !== runtime.schemaVersion ||
-      identity.revision !== runtime.revision ||
-      identity.fingerprint !== runtime.fingerprint);
   if (Array.isArray(data.extensions)) {
     _extensionTally = data.extensions;
     changed = true;
   }
-  if (!registryMismatch && Array.isArray(data.canonical_extensions)) {
+  if (Array.isArray(data.canonical_extensions)) {
     _canonicalExtensionTally = data.canonical_extensions;
     changed = true;
   }
-  if (!registryMismatch && Array.isArray(data.type_families)) {
+  if (Array.isArray(data.type_families)) {
     _typeFamilyTally = data.type_families;
     changed = true;
   }
-  if (!registryMismatch && Array.isArray(data.type_presets)) {
+  if (Array.isArray(data.type_presets)) {
     _typePresetTally = data.type_presets;
     changed = true;
   }
   if (Array.isArray(data.recency_tallies)) {
     _recencyTally = data.recency_tallies;
     changed = true;
-  }
-  if (registryMismatch) {
-    _canonicalExtensionTally = [];
-    _typeFamilyTally = [];
-    _typePresetTally = [];
-    changed = true;
-    console.warn("Ignoring file-type tallies built with a different registry revision");
   }
   return changed;
 }
