@@ -5,7 +5,7 @@ title: Replace red file-age ramp with yellow-to-neutral freshness palette
 kind: feature
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
 labels:
   - browser
@@ -13,6 +13,6 @@ labels:
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-08-14T19:58:52.401Z
-updated_at: 2026-08-14T19:58:52.401Z
+updated_at: 2026-08-14T20:28:32.420Z
 ---
-Design and implement a coherent file-age palette without changing the existing six age thresholds or public age bucket names. Sample one continuous freshness curve from saturated golden yellow through yellow-olive and moss to a low-saturation green-gray neutral. Live aliases the under-one-minute foreground token; its label, dot, or motion conveys live state rather than a separate hue. Reserve red for destructive and error states, and keep success green semantically independent from freshness. Retune light and dark foreground and fill tokens for contrast on actual Metabrowser surfaces, remove the menu-specific age-min color workaround, update design documentation and CSS comments, and add automated contrast coverage plus behavior checks for filter and plugin-SDK mappings. This bead records the reviewed proposal only; implementation has not started.
+Design and implement one coherent, shared file-age color system across every age presentation: navigation rows, recent-filter and dropdown menus, file listings, plugins, badges, and any age-derived foreground or fill. Preserve the existing six time thresholds and public age bucket names. Add a presentation-only Live modifier in a distinct warm salmon family; all non-live ages must remain in a yellow-to-dark-neutral family with saturation and prominence decaying as age increases, never drifting into pink or red. On light surfaces, pair an accessible dark foreground with a small high-chroma marker or accent token so fresh yellow remains visibly yellow; use the same semantic pairing in dark mode. Keep destructive error red deeper and visibly separate from Live salmon, and keep success green independent. Remove menu-specific color workarounds, retune foreground and fill tokens centrally, update design documentation and CSS comments, and add automated contrast coverage plus behavior checks for filters and the plugin SDK. This bead records the reviewed proposal only; implementation has not started.
