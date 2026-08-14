@@ -1,0 +1,166 @@
+{
+  "schema": "metabrowser-markdown-link-targets-v1",
+  "sourcePath": "docs/current.md",
+  "cases": [
+    {
+      "id": "relative-file",
+      "intent": { "syntax": "markdown", "authoredTarget": "other.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/other.md" }
+    },
+    {
+      "id": "dot-relative-fragment",
+      "intent": { "syntax": "markdown", "authoredTarget": "./other.md#setup", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/other.md", "fragment": "setup" }
+    },
+    {
+      "id": "parent-file",
+      "intent": { "syntax": "markdown", "authoredTarget": "../README.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "README.md" }
+    },
+    {
+      "id": "served-root-file",
+      "intent": { "syntax": "markdown", "authoredTarget": "/CONTRIBUTING.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "CONTRIBUTING.md" }
+    },
+    {
+      "id": "served-root-folder",
+      "intent": { "syntax": "html", "authoredTarget": "/", "action": "navigate" },
+      "expected": { "status": "internal", "path": "" }
+    },
+    {
+      "id": "relative-folder",
+      "intent": { "syntax": "markdown", "authoredTarget": "guides/", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/guides/" }
+    },
+    {
+      "id": "fragment-only",
+      "intent": { "syntax": "markdown", "authoredTarget": "#configuration", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/current.md", "fragment": "configuration" }
+    },
+    {
+      "id": "query-only",
+      "intent": { "syntax": "html", "authoredTarget": "?plain=1&mode=read", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/current.md", "query": "plain=1&mode=read" }
+    },
+    {
+      "id": "query-and-unicode-fragment",
+      "intent": { "syntax": "markdown", "authoredTarget": "other.md?x=a%26b#%E9%9B%AA", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/other.md", "query": "x=a%26b", "fragment": "雪" }
+    },
+    {
+      "id": "exact-extensionless-path",
+      "intent": { "syntax": "markdown", "authoredTarget": "Guide", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/Guide" }
+    },
+    {
+      "id": "case-preserved",
+      "intent": { "syntax": "markdown", "authoredTarget": "API/HTTP.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/API/HTTP.md" }
+    },
+    {
+      "id": "spaces-unicode-percent",
+      "intent": { "syntax": "markdown", "authoredTarget": "a%20b/%E9%9B%AA%25.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/a b/雪%.md" }
+    },
+    {
+      "id": "encoded-question-and-hash-in-filename",
+      "intent": { "syntax": "markdown", "authoredTarget": "what%3F%23.md#part", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/what?#.md", "fragment": "part" }
+    },
+    {
+      "id": "double-decode-is-not-performed",
+      "intent": { "syntax": "markdown", "authoredTarget": "literal%252Fname.md", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/literal%2Fname.md" }
+    },
+    {
+      "id": "image-resource",
+      "intent": { "syntax": "markdown", "authoredTarget": "../images/map.svg", "action": "embed" },
+      "expected": { "status": "internal", "path": "images/map.svg", "mediaKind": "image" }
+    },
+    {
+      "id": "generic-resource",
+      "intent": { "syntax": "html", "authoredTarget": "../assets/report.pdf", "action": "embed" },
+      "expected": { "status": "internal", "path": "assets/report.pdf", "mediaKind": "resource" }
+    },
+    {
+      "id": "https-external",
+      "intent": { "syntax": "markdown", "authoredTarget": "https://example.com/guide?q=1#part", "action": "navigate" },
+      "expected": { "status": "external", "url": "https://example.com/guide?q=1#part" }
+    },
+    {
+      "id": "protocol-relative-external",
+      "intent": { "syntax": "html", "authoredTarget": "//cdn.example.com/file.md", "action": "navigate" },
+      "expected": { "status": "external", "url": "//cdn.example.com/file.md" }
+    },
+    {
+      "id": "mailto-external",
+      "intent": { "syntax": "markdown", "authoredTarget": "mailto:docs@example.com", "action": "navigate" },
+      "expected": { "status": "external", "url": "mailto:docs@example.com" }
+    },
+    {
+      "id": "traversal-above-root",
+      "intent": { "syntax": "markdown", "authoredTarget": "../../secret.md", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "path-escapes-served-root" }
+    },
+    {
+      "id": "encoded-traversal-above-root",
+      "intent": { "syntax": "markdown", "authoredTarget": "%2E%2E/%2E%2E/secret.md", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "path-escapes-served-root" }
+    },
+    {
+      "id": "encoded-separator",
+      "intent": { "syntax": "markdown", "authoredTarget": "a%2Fb.md", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "encoded-path-separator" }
+    },
+    {
+      "id": "encoded-backslash",
+      "intent": { "syntax": "markdown", "authoredTarget": "a%5Cb.md", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "backslash-path" }
+    },
+    {
+      "id": "duplicate-separator",
+      "intent": { "syntax": "markdown", "authoredTarget": "a//b.md", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "non-canonical-path" }
+    },
+    {
+      "id": "backslash-traversal",
+      "intent": { "syntax": "html", "authoredTarget": "..\\secret.md", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "backslash-path" }
+    },
+    {
+      "id": "nul-byte",
+      "intent": { "syntax": "markdown", "authoredTarget": "bad%00name.md", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "nul-byte" }
+    },
+    {
+      "id": "malformed-path-escape",
+      "intent": { "syntax": "markdown", "authoredTarget": "bad%2name.md", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "malformed-percent-escape" }
+    },
+    {
+      "id": "malformed-fragment-escape",
+      "intent": { "syntax": "markdown", "authoredTarget": "other.md#bad%2", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "malformed-percent-escape" }
+    },
+    {
+      "id": "javascript-scheme",
+      "intent": { "syntax": "html", "authoredTarget": "javascript:alert(1)", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "unsafe-scheme" }
+    },
+    {
+      "id": "data-scheme",
+      "intent": { "syntax": "markdown", "authoredTarget": "data:text/html,hello", "action": "embed" },
+      "expected": { "status": "unsafe", "reason": "unsafe-scheme" }
+    },
+    {
+      "id": "obsidian-scheme-not-launched",
+      "intent": { "syntax": "markdown", "authoredTarget": "obsidian://open?vault=Docs", "action": "navigate" },
+      "expected": { "status": "unsupported", "reason": "unsupported-scheme" }
+    },
+    {
+      "id": "ftp-scheme-not-launched",
+      "intent": { "syntax": "markdown", "authoredTarget": "ftp://example.com/file", "action": "navigate" },
+      "expected": { "status": "unsupported", "reason": "unsupported-scheme" }
+    }
+  ]
+}
