@@ -40,7 +40,7 @@
 //   Data fetches:
 //     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
-//     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
+//     fetchKpressRender(ctx, view, opts) — GET or bounded POST /api/kpress/render
 //     renderTextTruncationWarning(data) — visible partial-content warning
 //
 //   Navigation:
@@ -831,12 +831,27 @@
       _kpressInflight.set(dedupKey, controller);
     }
 
+    const sourceText = options?.sourceText;
+    if (sourceText !== undefined && typeof sourceText !== "string") {
+      throw new Error("fetchKpressRender: options.sourceText must be a string");
+    }
     let resp;
     try {
-      resp = await fetch(url.toString(), {
-        method: "GET",
-        signal: controller ? controller.signal : undefined,
-      });
+      const fetchOptions =
+        sourceText === undefined
+          ? { method: "GET", signal: controller ? controller.signal : undefined }
+          : {
+              body: JSON.stringify({
+                path,
+                profile,
+                source_text: sourceText,
+                view: viewId || "document",
+              }),
+              headers: { "content-type": "application/json" },
+              method: "POST",
+              signal: controller ? controller.signal : undefined,
+            };
+      resp = await fetch(url.toString(), fetchOptions);
     } finally {
       externalSignal?.removeEventListener("abort", abortFromExternal);
       if (controller && _kpressInflight.get(dedupKey) === controller) {

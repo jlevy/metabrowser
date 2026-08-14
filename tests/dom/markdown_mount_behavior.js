@@ -29,7 +29,12 @@ function makeContainer() {
   const enhancerStub =
     "export function enhanceRenderedLinks(container){return {dispose(){globalThis.__markdownEnhanceDisposals.push(container)}}}";
   const enhancerUrl = `data:text/javascript;base64,${Buffer.from(enhancerStub).toString("base64")}`;
-  const importableSource = source.replace('"./link_enhancer.js"', JSON.stringify(enhancerUrl));
+  const wikiStub =
+    "export function preprocessObsidianWiki(source){return {changed:source.includes('[[wiki]]'),source:'processed '+source}}";
+  const wikiUrl = `data:text/javascript;base64,${Buffer.from(wikiStub).toString("base64")}`;
+  const importableSource = source
+    .replace('"./link_enhancer.js"', JSON.stringify(enhancerUrl))
+    .replace('"./wiki_parser.js"', JSON.stringify(wikiUrl));
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
   );
@@ -87,6 +92,19 @@ function makeContainer() {
   const lateHandle = await lateMount;
   check("late completion ignored", !late.innerHTML.includes("too late"), late.innerHTML);
   lateHandle.dispose();
+
+  const wiki = makeContainer();
+  const wikiMount = module.mountRenderedMarkdown(
+    wiki,
+    { path: "wiki.md", raw: { content: "[[wiki]]" } },
+    mb,
+  );
+  check(
+    "wiki source sent after source-aware preprocessing",
+    requests[4].options.sourceText === "processed [[wiki]]",
+  );
+  requests[4].resolve({ html: "<article>wiki</article>", diagnostics: [] });
+  (await wikiMount).dispose();
 
   if (failures.length) {
     console.error(`markdown mount FAILURES:\n- ${failures.join("\n- ")}`);

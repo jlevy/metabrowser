@@ -1829,9 +1829,62 @@ def _read_artifact_text(artifact: ArtifactPath, max_bytes: int) -> tuple[str, in
 async def api_kpress_render(request: Request) -> JSONResponse:
     """Render a safe served-root-relative file through the KPress adapter."""
 
-    subpath = request.query_params.get("path", "")
-    view = request.query_params.get("view", "document")
-    profile = request.query_params.get("profile", "") or None
+    source_override: str | None = None
+    if getattr(request, "method", "GET") == "POST":
+        # ``JSON.stringify`` can expand one UTF-8 source byte to a six-byte
+        # JSON escape. Bound the transport independently of the decoded
+        # source cap so request-body reads cannot grow without limit.
+        request_limit = (_TEXT_PREVIEW_MAX_CHUNK_BYTES * 6) + (64 * 1024)
+        chunks: list[bytes] = []
+        request_size = 0
+        async for chunk in request.stream():
+            request_size += len(chunk)
+            if request_size > request_limit:
+                return JSONResponse(
+                    {
+                        "type": "kpress_render_error",
+                        "error": "Render request exceeds safety limits",
+                        "max_size": request_limit,
+                    },
+                    status_code=413,
+                )
+            chunks.append(chunk)
+        try:
+            body = _json.loads(b"".join(chunks))
+        except (_json.JSONDecodeError, UnicodeDecodeError) as exc:
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Invalid JSON body", "detail": str(exc)},
+                status_code=400,
+            )
+        if not isinstance(body, dict):
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Request body must be a JSON object"},
+                status_code=400,
+            )
+        subpath = body.get("path", "")
+        view = body.get("view", "document")
+        profile = body.get("profile") or None
+        source_override = body.get("source_text")
+        if not all(isinstance(value, str) for value in (subpath, view)) or not isinstance(
+            source_override, str
+        ):
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Invalid render body fields"},
+                status_code=400,
+            )
+        if len(source_override.encode()) > _TEXT_PREVIEW_MAX_CHUNK_BYTES:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Transformed source exceeds safety limits",
+                    "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+                },
+                status_code=413,
+            )
+    else:
+        subpath = request.query_params.get("path", "")
+        view = request.query_params.get("view", "document")
+        profile = request.query_params.get("profile", "") or None
 
     target = _safe_path(subpath)
     if target is None or not target.is_file():
@@ -1839,14 +1892,14 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
-    content: str | None = None
+    content: str | None = source_override
     try:
         disk_size = artifact.disk_size
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     try:
-        if artifact.is_compressed:
+        if artifact.is_compressed and source_override is None:
             content, logical_size = await asyncio.to_thread(
                 _read_artifact_text,
                 artifact,
@@ -2534,7 +2587,7 @@ routes = [
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),
     Route("/api/file", api_file),
-    Route("/api/kpress/render", api_kpress_render),
+    Route("/api/kpress/render", api_kpress_render, methods=["GET", "POST"]),
     Route("/api/kpress/export", api_kpress_export, methods=["POST"]),
     Route("/api/activity", api_activity),
     Route("/api/stream", api_stream),

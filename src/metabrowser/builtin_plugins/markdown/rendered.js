@@ -1,4 +1,5 @@
 import { enhanceRenderedLinks } from "./link_enhancer.js";
+import { preprocessObsidianWiki } from "./wiki_parser.js";
 
 let mountSequence = 0;
 
@@ -112,10 +113,18 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     '<div class="loading mb-delayed-loading"><div class="spinner"></div>Loading document…</div>';
   async function render() {
     try {
+      const raw =
+        ctx.raw && typeof ctx.raw === "object"
+          ? /** @type {Record<string, unknown>} */ (ctx.raw)
+          : {};
+      const content = typeof raw.content === "string" ? raw.content : null;
+      const wiki =
+        content !== null && raw.content_truncated !== true ? preprocessObsidianWiki(content) : null;
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {
         dedupKey: `markdown-mount-${++mountSequence}`,
         profile: "document",
         signal: controller.signal,
+        sourceText: wiki?.changed ? wiki.source : undefined,
       });
       if (!disposed && !controller.signal.aborted) {
         container.innerHTML = rendered.html;

@@ -182,6 +182,7 @@ assets in static_root:
   - manifest.toml
   - rendered.js
   - source.js
+  - wiki_parser.js
 ? 0
 ```
 
@@ -236,7 +237,8 @@ $ metab --plugin markdown --json
       "links.js",
       "manifest.toml",
       "rendered.js",
-      "source.js"
+      "source.js",
+      "wiki_parser.js"
     ]
   },
   "errors": []

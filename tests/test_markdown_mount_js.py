@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_JS = Path(__file__).resolve().parent / "dom" / "markdown_mount_behavior.js"
 RESOLVER_JS = Path(__file__).resolve().parent / "dom" / "markdown_link_resolver_behavior.js"
 ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown_link_enhancer_behavior.js"
+WIKI_PARSER_JS = Path(__file__).resolve().parent / "dom" / "markdown_wiki_parser_behavior.js"
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -63,6 +64,22 @@ def test_rendered_markdown_link_enhancer() -> None:
         f"Markdown link enhancer failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
     assert "markdown link enhancer OK" in result.stdout
+
+
+def test_source_aware_obsidian_wiki_parser() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(WIKI_PARSER_JS), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Markdown wiki parser failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "markdown wiki parser OK" in result.stdout
 
 
 def test_standard_markdown_link_fixture_matches_its_schema() -> None:

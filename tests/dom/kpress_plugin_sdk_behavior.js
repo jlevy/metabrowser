@@ -477,6 +477,42 @@ async function check_render_survives_asset_failure() {
   return { ok: true };
 }
 
+// ── Contract 7: transformed source uses bounded POST transport ──────────
+
+async function check_transformed_source_uses_post() {
+  let request = null;
+  sandbox.fetch = async (url, options) => {
+    request = { options, url };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        type: "kpress-rendered-document",
+        html: '<article class="kpress-doc">Wiki</article>',
+        assets: assetManifest(),
+      }),
+    };
+  };
+  await fetchKpressRender({ path: "wiki.md" }, "rendered", {
+    dedupKey: "wiki-source",
+    profile: "document",
+    sourceText: '<span data-mb-wiki-target="Note">Note</span>',
+  });
+  const body = JSON.parse(request?.options?.body || "null");
+  if (
+    request?.options?.method !== "POST" ||
+    request?.options?.headers?.["content-type"] !== "application/json" ||
+    body?.path !== "wiki.md" ||
+    body?.source_text !== '<span data-mb-wiki-target="Note">Note</span>'
+  ) {
+    return {
+      ok: false,
+      detail: `unexpected transformed-source request ${JSON.stringify(request)}`,
+    };
+  }
+  return { ok: true };
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -486,9 +522,10 @@ async function check_render_survives_asset_failure() {
   const assetRetry = await check_failed_kpress_assets_retry();
   const cachedStylesheet = await check_cached_stylesheet_settles();
   const assetFailureFallback = await check_render_survives_asset_failure();
+  const transformedSource = await check_transformed_source_uses_post();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource })}\n`,
   );
 
   if (
@@ -497,7 +534,8 @@ async function check_render_survives_asset_failure() {
     !errorProp.ok ||
     !assetRetry.ok ||
     !cachedStylesheet.ok ||
-    !assetFailureFallback.ok
+    !assetFailureFallback.ok ||
+    !transformedSource.ok
   ) {
     process.exit(1);
   }

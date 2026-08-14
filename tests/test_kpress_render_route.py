@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from kpress import ASSET_MANIFEST_SCHEMA_VERSION, __version__
+from starlette.testclient import TestClient
 
 from metabrowser import kpress_adapter, server
 
@@ -30,10 +31,11 @@ def _request(
     path_params: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
 ) -> Any:
-    request = Mock(spec=["query_params", "headers", "path_params"])
+    request = Mock(spec=["query_params", "headers", "method", "path_params"])
     request.query_params = _FakeQuery(query or {})
     request.path_params = path_params or {}
     request.headers = headers or {}
+    request.method = "GET"
     return request
 
 
@@ -79,6 +81,47 @@ def test_kpress_render_rejects_path_traversal(tmp_path: Path) -> None:
         server.api_kpress_render(_request(query={"path": "../outside.md", "view": "rendered"}))
     )
     assert response.status_code == 404
+
+
+def test_kpress_render_accepts_bounded_transformed_source(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Original\n")
+    try:
+        response = TestClient(server.app).post(
+            "/api/kpress/render",
+            json={
+                "path": "doc.md",
+                "view": "rendered",
+                "profile": "document",
+                "source_text": (
+                    '<span class="metabrowser-wiki-link" data-mb-wiki-target="Note">Note</span>\n'
+                ),
+            },
+        )
+    finally:
+        server._set_root_dir(Path())
+
+    assert response.status_code == 200
+    assert 'data-mb-wiki-target="Note"' in response.json()["html"]
+
+
+def test_kpress_render_rejects_oversized_transformed_source(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Original\n")
+    try:
+        response = TestClient(server.app).post(
+            "/api/kpress/render",
+            json={
+                "path": "doc.md",
+                "view": "rendered",
+                "source_text": "x" * (server._TEXT_PREVIEW_MAX_CHUNK_BYTES + 1),
+            },
+        )
+    finally:
+        server._set_root_dir(Path())
+
+    assert response.status_code == 413
+    assert response.json()["error"] == "Transformed source exceeds safety limits"
 
 
 def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch) -> None:
