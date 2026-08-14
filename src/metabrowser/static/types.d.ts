@@ -365,6 +365,10 @@ type TextBuiltins = {
 };
 
 type MarkdownBuiltins = {
+  analyzeGraph(options?: {
+    limits?: { maxFiles?: number; maxLinks?: number; maxSourceBytes?: number };
+    signal?: AbortSignal;
+  }): Promise<MarkdownGraphResult>;
   mountRendered: (
     container: HTMLElement,
     ctx: MetabrowserRenderContext,
@@ -372,6 +376,34 @@ type MarkdownBuiltins = {
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
+
+type MarkdownGraphResult = Readonly<{
+  backlinks: ReadonlyArray<Readonly<{ sources: ReadonlyArray<string>; target: string }>>;
+  complete: boolean;
+  diagnostics: ReadonlyArray<Readonly<{ code: string; path?: string }>>;
+  edges: ReadonlyArray<
+    Readonly<{
+      action: "navigate" | "embed";
+      fragment?: string;
+      source: string;
+      syntax: "markdown" | "html" | "wiki";
+      target: string;
+    }>
+  >;
+  nodes: ReadonlyArray<Readonly<{ path: string }>>;
+  sourceBytes: number;
+  unresolved: ReadonlyArray<
+    Readonly<{
+      action: "navigate" | "embed";
+      authoredTarget: string;
+      candidates?: ReadonlyArray<string>;
+      reason: string;
+      source: string;
+      status: string;
+      syntax: "markdown" | "html" | "wiki";
+    }>
+  >;
+}>;
 
 type MetabrowserBuiltins = {
   agentLog?: AgentLogBuiltins;
@@ -522,6 +554,10 @@ type MetabrowserSdk = {
   fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
   fetchCompleteText(
     ctx: MetabrowserRenderContext,
+    options?: { signal?: AbortSignal },
+  ): Promise<string>;
+  fetchText(
+    target: MetabrowserNavigationTarget,
     options?: { signal?: AbortSignal },
   ): Promise<string>;
   fileCatalog: MetabrowserPublicFileCatalogApi;

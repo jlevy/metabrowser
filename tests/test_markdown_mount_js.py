@@ -23,6 +23,7 @@ PROJECT_ADAPTER_JS = (
 GITHUB_LOCALIZER_JS = (
     Path(__file__).resolve().parent / "dom" / "markdown_github_localizer_behavior.js"
 )
+GRAPH_ANALYSIS_JS = Path(__file__).resolve().parent / "dom" / "markdown_graph_analysis_behavior.js"
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -152,6 +153,22 @@ def test_verified_github_url_localization() -> None:
         f"Markdown GitHub localizer failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
     assert "markdown GitHub localizer OK" in result.stdout
+
+
+def test_bounded_markdown_graph_analysis() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(GRAPH_ANALYSIS_JS), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Markdown graph analysis failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "markdown graph analysis OK" in result.stdout
 
 
 def test_standard_markdown_link_fixture_matches_its_schema() -> None:

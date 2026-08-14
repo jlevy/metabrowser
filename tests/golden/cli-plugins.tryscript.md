@@ -177,8 +177,10 @@ data hooks:
 
 assets in static_root:
   - github_localizer.js
+  - graph_analysis.js
   - index.js
   - link_enhancer.js
+  - link_scanner.js
   - links.js
   - manifest.toml
   - project_adapters.js
@@ -237,8 +239,10 @@ $ metab --plugin markdown --json
     "disabled_data_hooks": [],
     "assets": [
       "github_localizer.js",
+      "graph_analysis.js",
       "index.js",
       "link_enhancer.js",
+      "link_scanner.js",
       "links.js",
       "manifest.toml",
       "project_adapters.js",

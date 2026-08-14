@@ -103,6 +103,9 @@ Acceptance criteria:
 
 ### Broken Links, Backlinks, and Graph Analysis (`mb-cl0b`)
 
+**Status:** Implemented as a bounded, abortable Markdown-plugin analysis API over an
+immutable catalog snapshot and the shared standard, wiki, adapter, and GitHub resolvers.
+
 The Markdown plugin exposes a bounded asynchronous graph analyzer over immutable catalog
 snapshots and the shared resolvers.
 It returns nodes, resolved edges, unresolved edges, backlinks, diagnostics, and an

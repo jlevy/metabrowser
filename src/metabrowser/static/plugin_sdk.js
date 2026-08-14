@@ -41,6 +41,7 @@
 //     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
 //     fetchCompleteText(ctx, opts)        — bounded complete source for a text context
+//     fetchText(target, opts)             — bounded complete source for a navigation target
 //     fetchKpressRender(ctx, view, opts) — GET or bounded POST /api/kpress/render
 //     renderTextTruncationWarning(data) — visible partial-content warning
 //
@@ -289,21 +290,45 @@
     if (!Number.isSafeInteger(limit) || limit < 1) {
       throw new Error("fetchCompleteText: server did not advertise a valid source limit");
     }
-    const url = new URL("/api/file", global.location.origin);
-    url.searchParams.set("path", path);
-    url.searchParams.set("limit", String(limit));
-    const resp = await fetch(url.toString(), { signal: opts?.signal });
-    if (!resp.ok) {
-      throw new Error(`fetchCompleteText ${path}: ${resp.status}`);
-    }
-    const data = await resp.json();
-    if (data?.type !== "text" || typeof data.content !== "string") {
-      throw new Error(`fetchCompleteText ${path}: expected a text envelope`);
-    }
+    const data = await fetchTextEnvelope(path, limit, opts?.signal, "fetchCompleteText");
     if (data.content_truncated === true) {
       throw new Error(`fetchCompleteText ${path}: source exceeds the server read limit`);
     }
     return data.content;
+  }
+
+  async function fetchText(target, opts) {
+    const normalized = global.MetabrowserNavigationRoute.normalizeTarget(target);
+    const initial = await fetchTextEnvelope(normalized.path, null, opts?.signal, "fetchText");
+    if (initial.content_truncated !== true) {
+      return initial.content;
+    }
+    const limit = initial.content_max_preview_limit;
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("fetchText: server did not advertise a valid source limit");
+    }
+    const completed = await fetchTextEnvelope(normalized.path, limit, opts?.signal, "fetchText");
+    if (completed.content_truncated === true) {
+      throw new Error(`fetchText ${normalized.path}: source exceeds the server read limit`);
+    }
+    return completed.content;
+  }
+
+  async function fetchTextEnvelope(path, limit, signal, operation) {
+    const url = new URL("/api/file", global.location.origin);
+    url.searchParams.set("path", path);
+    if (limit !== null) {
+      url.searchParams.set("limit", String(limit));
+    }
+    const response = await fetch(url.toString(), { signal });
+    if (!response.ok) {
+      throw new Error(`${operation} ${path}: ${response.status}`);
+    }
+    const data = await response.json();
+    if (data?.type !== "text" || typeof data.content !== "string") {
+      throw new Error(`${operation} ${path}: expected a text envelope`);
+    }
+    return data;
   }
 
   // ── Preferences ─────────────────────────────────────────────────
@@ -1328,6 +1353,7 @@
     fetchPluginData: fetchPluginData,
     fetchJsonl: fetchJsonl,
     fetchCompleteText: fetchCompleteText,
+    fetchText: fetchText,
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
     errors: global.MetabrowserRequestErrors,

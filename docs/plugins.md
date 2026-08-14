@@ -287,6 +287,8 @@ path.
 - `fetchJsonl(path, options)` requests a normalized JSONL envelope.
 - `fetchCompleteText(ctx, options)` retrieves a bounded complete source after an initial
   text envelope reports truncation.
+- `fetchText(target, options)` retrieves bounded complete source for a canonical
+  navigation target and forwards an optional abort signal.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
@@ -303,6 +305,10 @@ path.
   known to the shell.
 - `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
   returns an unsubscribe function that the view must call from its disposer.
+- `repository` is either `null` or frozen public-safe GitHub identity for the served
+  tree: host, owner, repository name, exact revision, current branch, and served
+  subdirectory prefix.
+  It never contains a local filesystem path.
 
 Use `navigation.href()` for real anchor `href` values so browser status previews,
 copy-link, modifier clicks, new tabs, and reloads retain native behavior.
@@ -406,6 +412,10 @@ The Markdown built-in exposes
 It uses the ordinary KPress Markdown presentation and returns an instance-specific
 handle that aborts its request and disposes its own table of contents, enhanced-link
 listeners, and pending fragment work.
+`mb.builtins.markdown.analyzeGraph({signal, limits})` returns a bounded immutable
+snapshot of Markdown nodes, resolved edges, unresolved destinations, backlinks,
+diagnostics, aggregate source bytes, and an explicit completeness flag.
+It performs no live catalog subscription and does not provide visualization.
 Do not copy Markdown DOM or TOC behavior into a folder contribution.
 
 Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variables in

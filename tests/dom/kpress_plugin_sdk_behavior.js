@@ -202,7 +202,7 @@ vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
   fail("plugin_sdk.js did not expose metabrowser.fetchKpressRender");
 }
-const { fetchCompleteText, fetchKpressRender, loadKpressAssets } = sandbox.metabrowser;
+const { fetchCompleteText, fetchKpressRender, fetchText, loadKpressAssets } = sandbox.metabrowser;
 
 // ── Contract 1: _loadStylesheet waits for onload ──────────────────────────
 
@@ -589,6 +589,42 @@ async function check_complete_text_fetch() {
   return { ok: true };
 }
 
+async function check_path_text_fetch() {
+  const requests = [];
+  sandbox.fetch = async (url, options) => {
+    requests.push({ options, url });
+    return {
+      ok: true,
+      status: 200,
+      json: async () =>
+        requests.length === 1
+          ? {
+              type: "text",
+              content: "partial",
+              content_max_preview_limit: 4096,
+              content_truncated: true,
+            }
+          : { type: "text", content: "complete source", content_truncated: false },
+    };
+  };
+  const controller = new AbortController();
+  const content = await fetchText({ path: "graph.md" }, { signal: controller.signal });
+  const initial = new URL(requests[0]?.url || "http://invalid");
+  const completed = new URL(requests[1]?.url || "http://invalid");
+  if (
+    content !== "complete source" ||
+    requests.length !== 2 ||
+    initial.pathname !== "/api/file" ||
+    initial.searchParams.get("path") !== "graph.md" ||
+    initial.searchParams.has("limit") ||
+    completed.searchParams.get("limit") !== "4096" ||
+    requests.some((request) => request.options?.signal !== controller.signal)
+  ) {
+    return { ok: false, detail: `unexpected path-text requests ${JSON.stringify(requests)}` };
+  }
+  return { ok: true };
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -601,9 +637,10 @@ async function check_complete_text_fetch() {
   const transformedSource = await check_transformed_source_uses_post();
   const fileCatalog = check_file_catalog_bridge();
   const completeText = await check_complete_text_fetch();
+  const pathText = await check_path_text_fetch();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText })}\n`,
   );
 
   if (
@@ -615,7 +652,8 @@ async function check_complete_text_fetch() {
     !assetFailureFallback.ok ||
     !transformedSource.ok ||
     !fileCatalog.ok ||
-    !completeText.ok
+    !completeText.ok ||
+    !pathText.ok
   ) {
     process.exit(1);
   }
