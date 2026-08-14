@@ -20,6 +20,10 @@ function check(name, condition, detail = "failed") {
   );
   const markdown = [
     "# Wiki",
+    "## Parent",
+    "### Child",
+    "Setext &amp; `Code`",
+    "-------------------",
     "",
     "[[Note]] [[Folder/Note|Label]] [[#Heading]] [[Note#Parent#Child]] [[#^block-id]]",
     "![[asset.png|640x480]]",
@@ -31,6 +35,7 @@ function check(name, condition, detail = "failed") {
     "```",
     "",
     "Paragraph with block. ^stable-block",
+    "^standalone-block",
     "Unsafe <name> [[A&B|<Label>]]",
     "",
   ].join("\n");
@@ -38,11 +43,24 @@ function check(name, condition, detail = "failed") {
 
   check("changed", result.changed === true);
   check("target count", result.targetCount === 7, String(result.targetCount));
-  check("block count", result.blockCount === 1, String(result.blockCount));
+  check("block count", result.blockCount === 2, String(result.blockCount));
   check("bare note metadata", result.source.includes('data-mb-wiki-target="Note"'));
   check("occurrence label", result.source.includes(">Label</span>"));
   check("hierarchical heading preserved", result.source.includes("Note#Parent#Child"));
   check("named block link preserved", result.source.includes("#^block-id"));
+  check(
+    "hierarchical heading anchor",
+    result.source.includes('id="obsidian-heading-Wiki#Parent#Child"'),
+  );
+  check("short heading anchor", result.source.includes('id="obsidian-heading-Child"'));
+  check(
+    "relative hierarchical heading anchor",
+    result.source.includes('id="obsidian-heading-Parent#Child"'),
+  );
+  check(
+    "setext rendered-text heading anchor",
+    result.source.includes('id="obsidian-heading-Setext &amp; Code"'),
+  );
   check("media width", result.source.includes('data-mb-wiki-width="640"'));
   check("media height", result.source.includes('data-mb-wiki-height="480"'));
   check("escaped literal unchanged", result.source.includes(String.raw`\[[Escaped]]`));
@@ -54,8 +72,9 @@ function check(name, condition, detail = "failed") {
   check("fenced block unchanged", result.source.includes("[[Fenced]]"));
   check(
     "block marker becomes metadata",
-    result.source.includes('data-mb-wiki-block="stable-block"'),
+    result.source.includes('id="obsidian-block-stable-block" data-mb-wiki-block="stable-block"'),
   );
+  check("standalone block marker", result.source.includes('id="obsidian-block-standalone-block"'));
   check("target attribute escaped", result.source.includes('data-mb-wiki-target="A&amp;B"'));
   check("label text escaped", result.source.includes("&lt;Label&gt;"));
 

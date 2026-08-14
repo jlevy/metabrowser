@@ -5497,6 +5497,7 @@ function initQuickFileFinder() {
   }
 
   knownFileCatalog = window.MetabrowserKnownFileCatalog.create();
+  window.MetabrowserPluginHost?.attachFileCatalog(knownFileCatalog);
   if (window.MetabrowserCatalogFeed) {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,

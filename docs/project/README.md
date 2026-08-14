@@ -19,7 +19,6 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
 - [Filter controls and fine-grained navigation filtering](specs/active/plan-2026-08-09-nav-filter-controls.md)
 - [Shared file type taxonomy and bounded breakdowns](specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
-- [GitHub and Obsidian Markdown navigation](specs/active/plan-2026-08-13-markdown-link-navigation.md)
 
 ## Research
 
@@ -28,12 +27,17 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
 
+## Future Plans
+
+- [Markdown navigation extensions](specs/future/plan-2026-08-13-markdown-navigation-extensions.md)
+
 ## Done Plans
 
 - [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
 - [Flat single-command `metab` CLI](specs/done/plan-2026-07-27-metab-flat-cli.md)
 - [Folder Overview panels and file-type summary](specs/done/plan-2026-08-12-directory-file-type-summary.md)
 - [Semantic file type families](specs/done/plan-2026-08-13-semantic-file-type-families.md)
+- [GitHub and Obsidian Markdown navigation](specs/done/plan-2026-08-13-markdown-link-navigation.md)
 
 The [roadmap](../../TODO.md) is the concise status index.
 Draft architecture and plan documents record intent rather than compatibility

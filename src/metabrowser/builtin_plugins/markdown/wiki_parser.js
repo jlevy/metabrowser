@@ -1,6 +1,9 @@
 const MAX_WIKI_SOURCE_CHARACTERS = 2_000_000;
 const MAX_WIKI_TARGETS = 4096;
 const MAX_WIKI_TARGET_CHARACTERS = 16_384;
+const MAX_UNICODE_CODE_POINT = 0x10ffff;
+const MIN_UNICODE_SURROGATE = 0xd800;
+const MAX_UNICODE_SURROGATE = 0xdfff;
 
 /**
  * Convert Obsidian wiki syntax to inert, sanitizable metadata before Markdown rendering.
@@ -24,9 +27,13 @@ export function preprocessObsidianWiki(source) {
   let changed = false;
   /** @type {{character: string, length: number} | null} */
   let fence = null;
+  /** @type {string[]} */
+  const headingStack = [];
+  const anchorIds = new Set();
   const output = [];
+  const lines = source.match(/.*(?:\r\n|\n|\r|$)/g) || [];
 
-  for (const lineWithEnding of source.match(/.*(?:\r\n|\n|\r|$)/g) || []) {
+  for (const [lineIndex, lineWithEnding] of lines.entries()) {
     if (!lineWithEnding) {
       continue;
     }
@@ -53,6 +60,28 @@ export function preprocessObsidianWiki(source) {
 
     const block = findNamedBlock(line);
     const content = block ? line.slice(0, block.start).trimEnd() : line;
+    const nextLineWithEnding = lines[lineIndex + 1] || "";
+    const nextLineEnding = /\r\n$|[\n\r]$/.exec(nextLineWithEnding)?.[0] || "";
+    const nextLine = nextLineEnding
+      ? nextLineWithEnding.slice(0, -nextLineEnding.length)
+      : nextLineWithEnding;
+    const heading = findMarkdownHeading(content, nextLine);
+    if (heading) {
+      headingStack.splice(heading.level - 1);
+      headingStack[heading.level - 1] = heading.text;
+      const hierarchy = headingStack.filter(Boolean);
+      const keys = hierarchy.map((_heading, index) => hierarchy.slice(index).join("#"));
+      for (const key of keys) {
+        const id = `obsidian-heading-${key}`;
+        if (!anchorIds.has(id)) {
+          output.push(
+            `<span class="metabrowser-wiki-heading" id="${escapeAttribute(id)}"></span>${lineEnding || "\n"}`,
+          );
+          anchorIds.add(id);
+          changed = true;
+        }
+      }
+    }
     const processed = processInline(content, MAX_WIKI_TARGETS - targetCount);
     targetCount += processed.targetCount;
     changed ||= processed.changed;
@@ -60,8 +89,11 @@ export function preprocessObsidianWiki(source) {
     if (block) {
       blockCount += 1;
       changed = true;
+      const id = `obsidian-block-${block.id}`;
+      const idAttribute = anchorIds.has(id) ? "" : ` id="${escapeAttribute(id)}"`;
+      anchorIds.add(id);
       output.push(
-        `<span class="metabrowser-wiki-block" data-mb-wiki-block="${escapeAttribute(block.id)}"></span>`,
+        `<span class="metabrowser-wiki-block"${idAttribute} data-mb-wiki-block="${escapeAttribute(block.id)}"></span>`,
       );
     }
     output.push(lineEnding);
@@ -171,11 +203,54 @@ function parseMediaSize(value) {
 
 /** @param {string} line */
 function findNamedBlock(line) {
-  const match = /\s+\^([A-Za-z0-9-]+)\s*$/.exec(line);
+  const match = /(?:^|\s+)\^([A-Za-z0-9-]+)\s*$/.exec(line);
   if (!match || insideInlineCode(line, match.index)) {
     return null;
   }
   return Object.freeze({ id: match[1], start: match.index });
+}
+
+/** @param {string} line @param {string} nextLine */
+function findMarkdownHeading(line, nextLine) {
+  const match = /^ {0,3}(#{1,6})[\t ]+(.+?)[\t ]*#*[\t ]*$/.exec(line);
+  if (match) {
+    const text = headingText(match[2]);
+    return text ? Object.freeze({ level: match[1].length, text }) : null;
+  }
+  const setext = /^ {0,3}(=+|-+)[\t ]*$/.exec(nextLine);
+  if (!setext) {
+    return null;
+  }
+  const text = headingText(line);
+  return text ? Object.freeze({ level: setext[1][0] === "=" ? 1 : 2, text }) : null;
+}
+
+/** @param {string} value */
+function headingText(value) {
+  return value
+    .replace(/!?(\[([^\]]+)\])\([^)]*\)/g, "$2")
+    .replace(/!?(\[([^\]]+)\])\[[^\]]*\]/g, "$2")
+    .replace(/`+([^`]*)`+/g, "$1")
+    .replace(/<[^>]*>/g, "")
+    .replace(/[~*_]/g, "")
+    .replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~])/g, "$1")
+    .replace(/&(?:#(\d+)|#x([\dA-Fa-f]+)|amp|apos|gt|lt|quot);/g, decodeHeadingEntity)
+    .replace(/[\t ]+/g, " ")
+    .trim();
+}
+
+/** @param {string} entity @param {string | undefined} decimal @param {string | undefined} hexadecimal */
+function decodeHeadingEntity(entity, decimal, hexadecimal) {
+  const digits = decimal || hexadecimal;
+  if (digits) {
+    const codePoint = Number.parseInt(digits, hexadecimal ? 16 : 10);
+    return Number.isSafeInteger(codePoint) &&
+      codePoint <= MAX_UNICODE_CODE_POINT &&
+      (codePoint < MIN_UNICODE_SURROGATE || codePoint > MAX_UNICODE_SURROGATE)
+      ? String.fromCodePoint(codePoint)
+      : entity;
+  }
+  return { "&amp;": "&", "&apos;": "'", "&gt;": ">", "&lt;": "<", "&quot;": '"' }[entity] ?? entity;
 }
 
 /** @param {string} source @param {number} offset */

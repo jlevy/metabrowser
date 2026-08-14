@@ -1,0 +1,144 @@
+{
+  "schema": "metabrowser-obsidian-wiki-resolution-v1",
+  "sourcePath": "docs/current.md",
+  "completeSnapshot": {
+    "complete": true,
+    "files": [
+      { "path": "Folder/Guide.md" },
+      { "path": "Note.md" },
+      { "path": "archive/Nested/Unique.md" },
+      { "path": "assets/asset.png" },
+      { "path": "assets/report.pdf" },
+      { "path": "assets/song.mp3" },
+      { "path": "docs/Note.md" },
+      { "path": "docs/asset.png" },
+      { "path": "docs/current.md" },
+      { "path": "docs/雪.md" },
+      { "path": "guides/Note.md" },
+      { "path": "one/Duplicate.md" },
+      { "path": "other/Guide.md" },
+      { "path": "two/Duplicate.md" },
+      { "path": "vault/Folder/Guide.md" }
+    ]
+  },
+  "cases": [
+    {
+      "id": "same-directory-note",
+      "intent": { "authoredTarget": "Note", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/Note.md" },
+      "canonicalUrl": "/view/docs/Note.md"
+    },
+    {
+      "id": "explicit-relative-note",
+      "intent": { "authoredTarget": "../Note", "action": "navigate" },
+      "expected": { "status": "internal", "path": "Note.md" },
+      "canonicalUrl": "/view/Note.md"
+    },
+    {
+      "id": "explicit-vault-root-note",
+      "intent": { "authoredTarget": "/Note", "action": "navigate" },
+      "expected": { "status": "internal", "path": "Note.md" }
+    },
+    {
+      "id": "exact-vault-path-precedes-suffix",
+      "intent": { "authoredTarget": "Folder/Guide", "action": "navigate" },
+      "expected": { "status": "internal", "path": "Folder/Guide.md" }
+    },
+    {
+      "id": "unique-path-suffix",
+      "intent": { "authoredTarget": "Nested/Unique", "action": "navigate" },
+      "expected": { "status": "internal", "path": "archive/Nested/Unique.md" }
+    },
+    {
+      "id": "unicode-unique-basename",
+      "intent": { "authoredTarget": "雪", "action": "navigate" },
+      "expected": { "status": "internal", "path": "docs/雪.md" }
+    },
+    {
+      "id": "ambiguous-basename",
+      "intent": { "authoredTarget": "Duplicate", "action": "navigate" },
+      "expected": {
+        "status": "ambiguous",
+        "reason": "ambiguous-target",
+        "candidates": ["one/Duplicate.md", "two/Duplicate.md"]
+      }
+    },
+    {
+      "id": "missing-note",
+      "intent": { "authoredTarget": "Missing", "action": "navigate" },
+      "expected": { "status": "missing", "reason": "not-found" }
+    },
+    {
+      "id": "case-is-not-guessed",
+      "intent": { "authoredTarget": "note", "action": "navigate" },
+      "expected": { "status": "missing", "reason": "not-found" }
+    },
+    {
+      "id": "same-note-heading",
+      "intent": { "authoredTarget": "#Parent#Child", "action": "navigate" },
+      "expected": {
+        "status": "internal",
+        "path": "docs/current.md",
+        "fragment": "obsidian-heading-Parent#Child"
+      },
+      "canonicalUrl": "/view/docs/current.md#obsidian-heading-Parent%23Child"
+    },
+    {
+      "id": "cross-note-heading",
+      "intent": { "authoredTarget": "Note#Overview", "action": "navigate" },
+      "expected": {
+        "status": "internal",
+        "path": "docs/Note.md",
+        "fragment": "obsidian-heading-Overview"
+      }
+    },
+    {
+      "id": "same-note-block",
+      "intent": { "authoredTarget": "#^stable-block", "action": "navigate" },
+      "expected": {
+        "status": "internal",
+        "path": "docs/current.md",
+        "fragment": "obsidian-block-stable-block"
+      }
+    },
+    {
+      "id": "attachment-navigation",
+      "intent": { "authoredTarget": "report.pdf", "action": "navigate" },
+      "expected": { "status": "internal", "path": "assets/report.pdf" }
+    },
+    {
+      "id": "same-directory-image-embed",
+      "intent": { "authoredTarget": "asset.png", "action": "embed" },
+      "expected": { "status": "internal", "path": "docs/asset.png", "mediaKind": "image" }
+    },
+    {
+      "id": "audio-embed",
+      "intent": { "authoredTarget": "song.mp3", "action": "embed" },
+      "expected": { "status": "internal", "path": "assets/song.mp3", "mediaKind": "audio" }
+    },
+    {
+      "id": "note-transclusion-is-explicitly-future",
+      "intent": { "authoredTarget": "Note", "action": "embed" },
+      "expected": {
+        "status": "unsupported",
+        "reason": "note-transclusion-not-supported",
+        "path": "docs/Note.md"
+      }
+    },
+    {
+      "id": "relative-traversal-is-blocked",
+      "intent": { "authoredTarget": "../../Secret", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "path-escapes-served-root" }
+    },
+    {
+      "id": "backslashes-are-blocked",
+      "intent": { "authoredTarget": "..\\Secret", "action": "navigate" },
+      "expected": { "status": "unsafe", "reason": "backslash-path" }
+    },
+    {
+      "id": "invalid-block-id",
+      "intent": { "authoredTarget": "#^bad id", "action": "navigate" },
+      "expected": { "status": "unsupported", "reason": "invalid-block-id" }
+    }
+  ]
+}

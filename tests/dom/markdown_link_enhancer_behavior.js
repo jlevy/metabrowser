@@ -125,12 +125,25 @@ async function loadModule() {
     "utf8",
   );
   const linksUrl = `data:text/javascript;base64,${Buffer.from(linksSource).toString("base64")}`;
+  const wikiResolverSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_resolver.js"),
+    "utf8",
+  );
+  const wikiResolverUrl = `data:text/javascript;base64,${Buffer.from(wikiResolverSource).toString("base64")}`;
+  const wikiEnhancerSource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_enhancer.js"),
+      "utf8",
+    )
+    .replace('"./wiki_resolver.js"', JSON.stringify(wikiResolverUrl));
+  const wikiEnhancerUrl = `data:text/javascript;base64,${Buffer.from(wikiEnhancerSource).toString("base64")}`;
   const enhancerSource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/link_enhancer.js"),
       "utf8",
     )
-    .replace('"./links.js"', JSON.stringify(linksUrl));
+    .replace('"./links.js"', JSON.stringify(linksUrl))
+    .replace('"./wiki_enhancer.js"', JSON.stringify(wikiEnhancerUrl));
   return import(`data:text/javascript;base64,${Buffer.from(enhancerSource).toString("base64")}`);
 }
 

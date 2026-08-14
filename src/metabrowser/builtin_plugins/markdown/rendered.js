@@ -117,9 +117,11 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         ctx.raw && typeof ctx.raw === "object"
           ? /** @type {Record<string, unknown>} */ (ctx.raw)
           : {};
-      const content = typeof raw.content === "string" ? raw.content : null;
-      const wiki =
-        content !== null && raw.content_truncated !== true ? preprocessObsidianWiki(content) : null;
+      let content = typeof raw.content === "string" ? raw.content : null;
+      if (raw.content_truncated === true) {
+        content = await mb.fetchCompleteText(ctx, { signal: controller.signal });
+      }
+      const wiki = content !== null ? preprocessObsidianWiki(content) : null;
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {
         dedupKey: `markdown-mount-${++mountSequence}`,
         profile: "document",

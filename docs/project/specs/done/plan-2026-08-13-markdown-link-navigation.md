@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Approved
+**Status:** Complete
 
 ## Overview
 
@@ -371,14 +371,14 @@ browsed through Metabrowser without configuration.
 
 ### Phase 3: Obsidian Links and Embeds
 
-- [ ] Parse wiki-links and media wiki-embeds with source context while leaving code,
+- [x] Parse wiki-links and media wiki-embeds with source context while leaving code,
   existing links, and escaped literals unchanged.
-- [ ] Add exact-path precedence, optional note extensions, bounded unique-note lookup,
+- [x] Add exact-path precedence, optional note extensions, bounded unique-note lookup,
   pending and ambiguous results, and accessible candidate information.
-- [ ] Map same-note and cross-note heading and named-block targets to real DOM anchors.
-- [ ] Route image and media wiki-embeds safely and represent note transclusion as an
+- [x] Map same-note and cross-note heading and named-block targets to real DOM anchors.
+- [x] Route image and media wiki-embeds safely and represent note transclusion as an
   explicit future action.
-- [ ] Validate an Obsidian-style vault with duplicate basenames, spaces, Unicode,
+- [x] Validate an Obsidian-style vault with duplicate basenames, spaces, Unicode,
   headings, blocks, labels, attachments, missing notes, and ambiguous notes.
 
 Exit condition: supported `[[...]]` links select the deterministic note and location an
@@ -477,20 +477,10 @@ change baseline semantics silently.
 
 ## Future Extension Map
 
-These are separate features after the baseline, not unresolved acceptance work:
-
-| Extension | Bead | Preserved seam and trigger |
-| --- | --- | --- |
-| MkDocs, Docusaurus, Jekyll, and published root routes | `mb-d01n` | Translate source targets only after exact lookup and only from explicit or strong configuration; leave `/view/` canonical for repository browsing. |
-| Same-repository absolute GitHub URL localization | `mb-v5cz` | Map `/blob/` or `/tree/` URLs only when repository and revision identity are proven; otherwise remain external. |
-| Source-line locations | `mb-281d` | Add a source-view location type instead of overloading rendered heading fragments such as `#L14-L20`. |
-| Broken-link reports, backlinks, and graphs | `mb-cl0b` | Consume the bounded inventory and resolver results asynchronously without changing click-time semantics. |
-| Whole-note and section transclusion | `mb-55ll` | Add a rendering action with recursion, cycle, byte, time, and disposal budgets over the same resolved target. |
-| Frontmatter alias lookup | `mb-vjes` | Add a separately tested metadata index and explicit ambiguity behavior if real vaults require target-by-alias resolution. |
-| Multiple repositories or vaults | `mb-hvze` | Add explicit mounted-root identity to `NavigationTarget`; never infer a cross-root path from traversal. |
-
-Feature bead `mb-fbm2` owns evaluation of this map after the required implementation is
-measured.
+These are separate features after the baseline, not unresolved acceptance work.
+The
+[future Markdown navigation extensions plan](../future/plan-2026-08-13-markdown-navigation-extensions.md)
+maps their beads, preserved seams, and activation requirements.
 
 ## Open Questions
 

@@ -124,6 +124,29 @@ def test_kpress_render_rejects_oversized_transformed_source(tmp_path: Path) -> N
     assert response.json()["error"] == "Transformed source exceeds safety limits"
 
 
+def test_kpress_render_rejects_invalid_transformed_source_fields(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Original\n")
+    try:
+        client = TestClient(server.app)
+        invalid_profile = client.post(
+            "/api/kpress/render",
+            json={"path": "doc.md", "view": "rendered", "profile": 7, "source_text": "# Doc"},
+        )
+        invalid_encoding = client.post(
+            "/api/kpress/render",
+            content=b'{"path":"doc.md","view":"rendered","source_text":"\\ud800"}',
+            headers={"content-type": "application/json"},
+        )
+    finally:
+        server._set_root_dir(Path())
+
+    assert invalid_profile.status_code == 400
+    assert invalid_profile.json()["error"] == "Invalid render body fields"
+    assert invalid_encoding.status_code == 400
+    assert invalid_encoding.json()["error"] == "Invalid transformed source encoding"
+
+
 def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("---\ntitle: Test\n---\n# Heading\n")

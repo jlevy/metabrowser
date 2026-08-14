@@ -1,4 +1,5 @@
 import { resolveStandardTarget } from "./links.js";
+import { enhanceWikiLinks } from "./wiki_enhancer.js";
 
 const MAX_ENHANCED_TARGETS = 4096;
 const RESOURCE_ATTRIBUTES = Object.freeze([
@@ -68,6 +69,10 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     }
   }
 
+  const wiki = enhanceWikiLinks(container, sourcePath, mb, (element, target) => {
+    internalTargets.set(element, target);
+  });
+
   /** @param {Event} event */
   function handleClick(event) {
     if (!isPlainPrimaryClick(event)) {
@@ -135,6 +140,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         return;
       }
       disposed = true;
+      wiki.dispose();
       container.removeEventListener("click", handleClick);
       eventTarget.removeEventListener("metabrowser:navigation-fragment", handleFragment);
       if (scheduledFrame) {

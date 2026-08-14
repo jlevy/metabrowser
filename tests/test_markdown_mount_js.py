@@ -15,6 +15,8 @@ TEST_JS = Path(__file__).resolve().parent / "dom" / "markdown_mount_behavior.js"
 RESOLVER_JS = Path(__file__).resolve().parent / "dom" / "markdown_link_resolver_behavior.js"
 ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown_link_enhancer_behavior.js"
 WIKI_PARSER_JS = Path(__file__).resolve().parent / "dom" / "markdown_wiki_parser_behavior.js"
+WIKI_RESOLVER_JS = Path(__file__).resolve().parent / "dom" / "markdown_wiki_resolver_behavior.js"
+WIKI_ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown_wiki_enhancer_behavior.js"
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -82,11 +84,51 @@ def test_source_aware_obsidian_wiki_parser() -> None:
     assert "markdown wiki parser OK" in result.stdout
 
 
+def test_deterministic_obsidian_wiki_resolver() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(WIKI_RESOLVER_JS), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Markdown wiki resolver failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "markdown wiki resolver OK" in result.stdout
+
+
+def test_obsidian_wiki_dom_enhancer() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(WIKI_ENHANCER_JS), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Markdown wiki enhancer failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "markdown wiki enhancer OK" in result.stdout
+
+
 def test_standard_markdown_link_fixture_matches_its_schema() -> None:
     schema = json.loads((FIXTURE_ROOT / "markdown_link_resolution.schema.json").read_text())
     fixture = json.loads((FIXTURE_ROOT / "markdown_link_resolution.json").read_text())
 
     Draft202012Validator.check_schema(schema)
+    Draft202012Validator(schema).validate(fixture)
+    case_ids = [case["id"] for case in fixture["cases"]]
+    assert len(case_ids) == len(set(case_ids))
+
+
+def test_obsidian_wiki_fixture_matches_its_schema() -> None:
+    fixture = json.loads((FIXTURE_ROOT / "obsidian_wiki_resolution.json").read_text())
+    schema = json.loads((FIXTURE_ROOT / "obsidian_wiki_resolution.schema.json").read_text())
     Draft202012Validator(schema).validate(fixture)
     case_ids = [case["id"] for case in fixture["cases"]]
     assert len(case_ids) == len(set(case_ids))

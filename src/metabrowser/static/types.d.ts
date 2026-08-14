@@ -511,6 +511,11 @@ type MetabrowserSdk = {
   ): MetabrowserChartInstance;
   escapeHtml(value: string): string;
   fetchRollup(path: string, opts?: Record<string, unknown>): Promise<MetabrowserRollupEnvelope>;
+  fetchCompleteText(
+    ctx: MetabrowserRenderContext,
+    options?: { signal?: AbortSignal },
+  ): Promise<string>;
+  fileCatalog: MetabrowserPublicFileCatalogApi;
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
@@ -695,6 +700,15 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
 
 type MetabrowserKnownFileCatalogRuntime = Readonly<{
   create(): MetabrowserKnownFileCatalogApi;
+}>;
+
+type MetabrowserPublicFileCatalogApi = Readonly<{
+  snapshot(): MetabrowserKnownFileCatalogSnapshot;
+  subscribe(listener: () => void): () => void;
+}>;
+
+type MetabrowserPluginHostRuntime = Readonly<{
+  attachFileCatalog(catalog: MetabrowserKnownFileCatalogApi): () => void;
 }>;
 
 type MetabrowserCatalogFeedApi = Readonly<{
@@ -900,6 +914,7 @@ declare global {
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserNavigationRoute: MetabrowserNavigationRouteRuntime;
+    MetabrowserPluginHost: MetabrowserPluginHostRuntime;
     MetabrowserContributionRegistry: MetabrowserContributionRegistryRuntime;
     MetabrowserFormatters: MetabrowserFormatterRuntime;
     MetabrowserInventoryScope: MetabrowserInventoryScopeRuntime;

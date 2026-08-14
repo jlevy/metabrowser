@@ -34,10 +34,10 @@ file and sometimes means a heading.
 It also makes ordinary sibling and parent-relative links behave naturally in new tabs,
 on refresh, and with browser back and forward.
 
-The first implementation should cover standard Markdown links, images, headings,
-canonical routes, history, and clear broken-link states.
-Obsidian wiki links and block references should follow as a Markdown-plugin adapter.
-Rich transclusion, backlinks, and generator-specific compilation can remain later
+The implemented baseline covers standard Markdown links, images, headings, canonical
+routes, history, and clear broken-link states together with an automatic Obsidian
+Markdown-plugin adapter for wiki links, headings, named blocks, attachments, and media
+embeds. Rich transclusion, backlinks, and generator-specific compilation remain later
 capabilities without weakening the navigation contract.
 
 ## Questions Answered
@@ -119,20 +119,27 @@ introduce platform-dependent results.
 Static-site source conventions and absolute GitHub `/blob/` URLs remain adapter work
 rather than blocking the zero-configuration repository baseline.
 
-### Phase 2 Obsidian Compatibility
+### Implemented Obsidian Compatibility
 
-Obsidian compatibility will reuse the same route, navigation, safe-resource, and
+Obsidian compatibility reuses the same route, navigation, safe-resource, and
 resolved-result contracts.
-A Markdown-plugin adapter will parse self-identifying wiki syntax such as `[[Note]]`,
-`[[Note#Heading|Label]]`, and `![[asset.png]]`, then produce the same structured link
-intent used by standard anchors.
+A source-aware Markdown-plugin adapter parses self-identifying wiki syntax such as
+`[[Note]]`, `[[Note#Heading|Label]]`, and `![[asset.png]]`, then produces the same
+structured link intent used by standard anchors.
 
-Wiki targets may add optional `.md` lookup and a vault-wide basename or path-suffix
-search only when the result is unique.
+Wiki targets add optional `.md` lookup and a vault-wide basename or path-suffix search
+only when the result is unique.
 Duplicate note names remain ambiguous and are never resolved by arbitrary ordering.
-Heading targets map to the rendered document’s actual anchors.
-Image and media embeds can use the bounded safe-resource path; recursive note
+Heading and named-block targets map to stable source-derived anchors in the rendered
+document. Image and media embeds use the bounded safe-resource path; recursive note
 transclusion, backlinks, and graph indexing remain later work.
+
+Exact source-directory, explicit relative, and explicit vault-root results may resolve
+while the file catalog is still growing.
+Unique basename and path-suffix results remain visibly pending until the inventory is
+complete, after which the still-current render is enhanced or reports every viable
+ambiguity candidate.
+This avoids using discovery order as a hidden tie-breaker.
 
 Recognizing parsed wiki syntax does not change the meaning of ordinary Markdown links.
 An `.obsidian/` directory may improve vault context later, but standard

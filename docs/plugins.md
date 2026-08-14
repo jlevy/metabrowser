@@ -285,6 +285,8 @@ path.
 
 - `fetchPluginData(plugin, route, params)` calls a declared data hook.
 - `fetchJsonl(path, options)` requests a normalized JSONL envelope.
+- `fetchCompleteText(ctx, options)` retrieves a bounded complete source after an initial
+  text envelope reports truncation.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
@@ -297,6 +299,10 @@ path.
   the destination’s default when that view is unavailable.
   The preference is transient and does not change the target URL.
 - `navigation.current()` returns the current target or `null` on the landing URL.
+- `fileCatalog.snapshot()` returns an immutable, completion-aware view of files already
+  known to the shell.
+- `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
+  returns an unsubscribe function that the view must call from its disposer.
 
 Use `navigation.href()` for real anchor `href` values so browser status previews,
 copy-link, modifier clicks, new tabs, and reloads retain native behavior.

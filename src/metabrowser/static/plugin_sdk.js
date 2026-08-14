@@ -40,6 +40,7 @@
 //   Data fetches:
 //     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
+//     fetchCompleteText(ctx, opts)        — bounded complete source for a text context
 //     fetchKpressRender(ctx, view, opts) — GET or bounded POST /api/kpress/render
 //     renderTextTruncationWarning(data) — visible partial-content warning
 //
@@ -47,6 +48,8 @@
 //     navigation.href(target)            — canonical /view/ href for a target
 //     navigation.open(target, {viewId?}) — open a target, optionally preferring a view
 //     navigation.current()               — current path/query/fragment target or null
+//     fileCatalog.snapshot()              — immutable known-file inventory snapshot
+//     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
@@ -94,6 +97,45 @@
   const _stylesheetLoadTimeoutMs = 10_000;
   /** Detects cached stylesheets whose browsers expose `sheet` without a load event. */
   const _stylesheetReadyPollMs = 50;
+  const _emptyFileCatalogSnapshot = Object.freeze({
+    complete: false,
+    files: Object.freeze([]),
+    observedCount: 0,
+    revision: 0,
+    sourceSummary: Object.freeze({}),
+  });
+  /** @type {{snapshot: () => unknown, subscribe: (listener: () => void) => () => void} | null} */
+  let _attachedFileCatalog = null;
+
+  const fileCatalog = Object.freeze({
+    snapshot() {
+      return _attachedFileCatalog?.snapshot() || _emptyFileCatalogSnapshot;
+    },
+    subscribe(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("fileCatalog.subscribe: listener must be a function");
+      }
+      return _attachedFileCatalog?.subscribe(listener) || (() => {});
+    },
+  });
+
+  function attachFileCatalog(catalog) {
+    if (
+      !catalog ||
+      typeof catalog.snapshot !== "function" ||
+      typeof catalog.subscribe !== "function"
+    ) {
+      throw new TypeError("attachFileCatalog: catalog must expose snapshot and subscribe");
+    }
+    _attachedFileCatalog = catalog;
+    return () => {
+      if (_attachedFileCatalog === catalog) {
+        _attachedFileCatalog = null;
+      }
+    };
+  }
+
+  global.MetabrowserPluginHost = Object.freeze({ attachFileCatalog });
 
   function registerView(kindId, viewId, spec) {
     if (typeof kindId !== "string" || !kindId) {
@@ -201,6 +243,36 @@
       throw new Error(`fetchJsonl ${path}: expected JSONL, got type=${data.type || "?"}`);
     }
     return data;
+  }
+
+  async function fetchCompleteText(ctx, opts) {
+    const path = ctx?.path;
+    const raw = ctx?.raw && typeof ctx.raw === "object" ? ctx.raw : {};
+    if (typeof path !== "string" || !path) {
+      throw new TypeError("fetchCompleteText: ctx.path must be a non-empty string");
+    }
+    if (typeof raw.content === "string" && raw.content_truncated !== true) {
+      return raw.content;
+    }
+    const limit = raw.content_max_preview_limit;
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("fetchCompleteText: server did not advertise a valid source limit");
+    }
+    const url = new URL("/api/file", global.location.origin);
+    url.searchParams.set("path", path);
+    url.searchParams.set("limit", String(limit));
+    const resp = await fetch(url.toString(), { signal: opts?.signal });
+    if (!resp.ok) {
+      throw new Error(`fetchCompleteText ${path}: ${resp.status}`);
+    }
+    const data = await resp.json();
+    if (data?.type !== "text" || typeof data.content !== "string") {
+      throw new Error(`fetchCompleteText ${path}: expected a text envelope`);
+    }
+    if (data.content_truncated === true) {
+      throw new Error(`fetchCompleteText ${path}: source exceeds the server read limit`);
+    }
+    return data.content;
   }
 
   // ── Preferences ─────────────────────────────────────────────────
@@ -1224,6 +1296,7 @@
     escapeHtml: escapeHtml,
     fetchPluginData: fetchPluginData,
     fetchJsonl: fetchJsonl,
+    fetchCompleteText: fetchCompleteText,
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
     errors: global.MetabrowserRequestErrors,
@@ -1235,6 +1308,7 @@
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
     fileTypeIcon: fileTypeIcon,
+    fileCatalog: fileCatalog,
     navigation: global.MetabrowserNavigationRoute.navigation,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,

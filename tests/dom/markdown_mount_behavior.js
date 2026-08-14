@@ -39,12 +39,17 @@ function makeContainer() {
     `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
   );
   const requests = [];
+  const completeTextRequests = [];
   const tocDisposals = [];
   const mb = {
     escapeHtml: String,
     errors: { isAbortError: (error) => error?.name === "AbortError" },
     fetchKpressRender(_ctx, _view, options) {
       return new Promise((resolve) => requests.push({ resolve, options }));
+    },
+    async fetchCompleteText(ctx, options) {
+      completeTextRequests.push({ ctx, options });
+      return "[[wiki]]";
     },
     kpressInitToc(container) {
       return () => tocDisposals.push(container);
@@ -105,6 +110,32 @@ function makeContainer() {
   );
   requests[4].resolve({ html: "<article>wiki</article>", diagnostics: [] });
   (await wikiMount).dispose();
+
+  const truncatedWiki = makeContainer();
+  const truncatedWikiMount = module.mountRenderedMarkdown(
+    truncatedWiki,
+    {
+      path: "large-wiki.md",
+      raw: {
+        content: "[[partial",
+        content_max_preview_limit: 8_388_608,
+        content_truncated: true,
+      },
+    },
+    mb,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  check("truncated wiki requests complete source", completeTextRequests.length === 1);
+  check(
+    "complete source request is abortable",
+    completeTextRequests[0].options.signal instanceof AbortSignal,
+  );
+  check(
+    "complete wiki source is preprocessed",
+    requests[5].options.sourceText === "processed [[wiki]]",
+  );
+  requests[5].resolve({ html: "<article>large wiki</article>", diagnostics: [] });
+  (await truncatedWikiMount).dispose();
 
   if (failures.length) {
     console.error(`markdown mount FAILURES:\n- ${failures.join("\n- ")}`);

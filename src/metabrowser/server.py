@@ -1747,6 +1747,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "content_truncated": content_has_more
                     or (logical_size is not None and bytes_read < logical_size),
                     "content_preview_limit": text_limit,
+                    "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
                     "highlight_disabled": True,
                     **compression_fields,
                 },
@@ -1785,6 +1786,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "content_truncated": content_has_more
             or (logical_size is not None and bytes_read < logical_size),
             "content_preview_limit": text_limit,
+            "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             "highlight_disabled": (
                 content_has_more
                 or (logical_size is not None and bytes_read < logical_size)
@@ -1863,16 +1865,30 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             )
         subpath = body.get("path", "")
         view = body.get("view", "document")
-        profile = body.get("profile") or None
+        profile_value = body.get("profile")
+        profile = profile_value or None
         source_override = body.get("source_text")
-        if not all(isinstance(value, str) for value in (subpath, view)) or not isinstance(
-            source_override, str
+        if (
+            not all(isinstance(value, str) for value in (subpath, view))
+            or not isinstance(source_override, str)
+            or (profile is not None and not isinstance(profile, str))
         ):
             return JSONResponse(
                 {"type": "kpress_render_error", "error": "Invalid render body fields"},
                 status_code=400,
             )
-        if len(source_override.encode()) > _TEXT_PREVIEW_MAX_CHUNK_BYTES:
+        try:
+            source_size = len(source_override.encode())
+        except UnicodeEncodeError as exc:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Invalid transformed source encoding",
+                    "detail": str(exc),
+                },
+                status_code=400,
+            )
+        if source_size > _TEXT_PREVIEW_MAX_CHUNK_BYTES:
             return JSONResponse(
                 {
                     "type": "kpress_render_error",

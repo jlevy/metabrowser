@@ -202,7 +202,7 @@ vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
   fail("plugin_sdk.js did not expose metabrowser.fetchKpressRender");
 }
-const { fetchKpressRender, loadKpressAssets } = sandbox.metabrowser;
+const { fetchCompleteText, fetchKpressRender, loadKpressAssets } = sandbox.metabrowser;
 
 // ── Contract 1: _loadStylesheet waits for onload ──────────────────────────
 
@@ -513,6 +513,82 @@ async function check_transformed_source_uses_post() {
   return { ok: true };
 }
 
+// ── Contract 8: plugins get a read-only host inventory facade ────────────
+
+function check_file_catalog_bridge() {
+  const facade = sandbox.metabrowser.fileCatalog;
+  if (facade?.snapshot().complete !== false) {
+    return { ok: false, detail: "missing empty file-catalog facade" };
+  }
+  let listener = null;
+  const snapshot = Object.freeze({
+    complete: true,
+    files: Object.freeze([{ basename: "Note.md", path: "Note.md" }]),
+    observedCount: 1,
+    revision: 7,
+    sourceSummary: Object.freeze({ feed: 1 }),
+  });
+  const detach = sandbox.MetabrowserPluginHost.attachFileCatalog({
+    snapshot: () => snapshot,
+    subscribe: (nextListener) => {
+      listener = nextListener;
+      return () => {
+        listener = null;
+      };
+    },
+  });
+  let invalidations = 0;
+  const unsubscribe = facade.subscribe(() => {
+    invalidations += 1;
+  });
+  listener?.();
+  const attached = facade.snapshot();
+  unsubscribe();
+  detach();
+  if (
+    attached !== snapshot ||
+    invalidations !== 1 ||
+    listener !== null ||
+    facade.snapshot().complete !== false
+  ) {
+    return { ok: false, detail: "file-catalog bridge did not attach or dispose cleanly" };
+  }
+  return { ok: true };
+}
+
+// ── Contract 9: truncated text can be completed within the server cap ────
+
+async function check_complete_text_fetch() {
+  let request = null;
+  sandbox.fetch = async (url, options) => {
+    request = { options, url };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ type: "text", content: "complete source", content_truncated: false }),
+    };
+  };
+  const controller = new AbortController();
+  const content = await fetchCompleteText(
+    {
+      path: "large.md",
+      raw: { content: "partial", content_max_preview_limit: 4096, content_truncated: true },
+    },
+    { signal: controller.signal },
+  );
+  const url = new URL(request?.url || "http://invalid");
+  if (
+    content !== "complete source" ||
+    url.pathname !== "/api/file" ||
+    url.searchParams.get("path") !== "large.md" ||
+    url.searchParams.get("limit") !== "4096" ||
+    request?.options?.signal !== controller.signal
+  ) {
+    return { ok: false, detail: `unexpected complete-text request ${JSON.stringify(request)}` };
+  }
+  return { ok: true };
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -523,9 +599,11 @@ async function check_transformed_source_uses_post() {
   const cachedStylesheet = await check_cached_stylesheet_settles();
   const assetFailureFallback = await check_render_survives_asset_failure();
   const transformedSource = await check_transformed_source_uses_post();
+  const fileCatalog = check_file_catalog_bridge();
+  const completeText = await check_complete_text_fetch();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText })}\n`,
   );
 
   if (
@@ -535,7 +613,9 @@ async function check_transformed_source_uses_post() {
     !assetRetry.ok ||
     !cachedStylesheet.ok ||
     !assetFailureFallback.ok ||
-    !transformedSource.ok
+    !transformedSource.ok ||
+    !fileCatalog.ok ||
+    !completeText.ok
   ) {
     process.exit(1);
   }

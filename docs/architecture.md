@@ -50,6 +50,11 @@ The built-in Markdown plugin resolves standard relative and leading-slash destin
 exactly from the source document.
 It gives internal anchors canonical `/view/` URLs and maps embedded local resources
 through the bounded `/raw` endpoint.
+Its source-aware Obsidian adapter preserves escaped and code contexts, maps wiki links
+to exact paths or completion-aware unique inventory results, and creates stable heading
+and named-block anchors before rendering.
+Missing and ambiguous wiki targets remain visible; media wiki embeds reuse `/raw`, and
+whole-note transclusion remains explicit unsupported future work.
 The shell remains Markdown-dialect agnostic: the plugin intercepts only plain primary
 activation through the public navigation SDK, while modifier clicks, new tabs,
 downloads, external URLs, and ordinary not-found handling retain browser behavior.
