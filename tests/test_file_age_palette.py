@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import colorsys
+import itertools
 import math
 import re
 from pathlib import Path
@@ -13,6 +14,8 @@ FILTER_CONTROLS = ROOT / "src" / "metabrowser" / "static" / "filter_controls.js"
 DESIGN_SYSTEM = ROOT / "docs" / "design-system.md"
 
 MINIMUM_TEXT_CONTRAST = 4.5
+# Smallest OKLCH step that keeps adjacent recent tiers visibly distinct.
+MINIMUM_RECENT_STEP_DISTANCE = 0.018
 AGE_STATES = ("live", "sec", "min", "hr", "day", "wk", "old")
 AGE_BUCKETS = AGE_STATES[1:]
 AGE_SURFACES = (
@@ -108,6 +111,21 @@ def _oklch_to_srgb(value: str) -> tuple[float, float, float]:
     return srgb
 
 
+def _oklch_distance(
+    first: tuple[float, float, float, float],
+    second: tuple[float, float, float, float],
+) -> float:
+    first_angle = math.radians(first[2])
+    second_angle = math.radians(second[2])
+    first_a = first[1] * math.cos(first_angle)
+    first_b = first[1] * math.sin(first_angle)
+    second_a = second[1] * math.cos(second_angle)
+    second_b = second[1] * math.sin(second_angle)
+    return math.sqrt(
+        (first[0] - second[0]) ** 2 + (first_a - second_a) ** 2 + (first_b - second_b) ** 2
+    )
+
+
 def _color_to_srgb(value: str) -> tuple[float, float, float]:
     oklch_match = OKLCH_RE.fullmatch(value)
     if oklch_match is not None:
@@ -179,6 +197,21 @@ def test_file_age_foregrounds_meet_contrast_on_every_age_surface() -> None:
                     f"{theme} --file-age-{state} has {contrast:.2f}:1 contrast "
                     f"against {surface_token}"
                 )
+
+
+def test_light_theme_recent_age_tiers_have_a_visible_prominence_ramp() -> None:
+    css = STYLES_CSS.read_text(encoding="utf-8")
+    tokens = _tokens(_css_block(css, ":root {"))
+    recent = [_oklch(tokens[f"--file-age-{state}"]) for state in ("sec", "min", "hr")]
+
+    assert [color[0] for color in recent] == sorted((color[0] for color in recent), reverse=True), (
+        "light-theme recent ages must lose brightness as they get older"
+    )
+    for newer, older in itertools.pairwise(recent):
+        distance = _oklch_distance(newer, older)
+        assert distance >= MINIMUM_RECENT_STEP_DISTANCE, (
+            f"adjacent recent ages are visually clustered at {distance:.3f} OKLCH distance"
+        )
 
 
 def test_file_age_palette_is_a_documented_shared_primitive() -> None:

@@ -56,14 +56,15 @@ It uses a warm salmon family that remains distinct from the deeper destructive r
 from success green.
 The six elapsed-age buckets retain the existing thresholds: under one
 minute, under one hour, under one day, under one week, under one month, and older.
-They stay within a narrow yellow hue range while chroma and prominence fall
-monotonically toward a warm neutral.
+They move from gold through yellow-green while chroma and prominence fall monotonically
+toward a warm neutral.
 
 Text color is the sole age hue signal; dates and Live labels never gain a dot, swatch,
 or adjacent color cue.
-Light-theme yellow text uses a darker ochre expression of the hue to meet WCAG AA
-contrast on white and tinted surfaces without weakening the signal or introducing a
-menu-specific correction.
+Light-theme yellow text uses contrast-safe gold and ochre values on white and tinted
+surfaces. The three recent elapsed tiers descend in lightness and maintain a perceptible
+OKLCH step between neighbors, so under-one-minute, under-one-hour, and under-one-day
+files do not collapse into one muted color.
 The `.age-live` and `.age-*` classes select tokens only, so new consumers reuse the
 primitive rather than reconstructing colors.
 

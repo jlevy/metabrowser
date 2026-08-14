@@ -761,17 +761,17 @@
   /* legibility floor */
   --file-age-weight-recent: var(--weight-bold); /* live, seconds, minutes pop */
   /* Accessible foregrounds. Live is a separate state, not an elapsed
-     age bucket; sec through old keep a narrow yellow hue range while
-     chroma falls monotonically. Light-theme colors use a dark ochre
-     expression of yellow so the hue remains visible without sacrificing
-     text contrast. */
+     age bucket. Light-theme elapsed ages move from saturated gold toward
+     a darker green-grey while chroma falls monotonically. The recent
+     tiers step down in lightness and apart in hue so they remain visibly
+     distinct without sacrificing text contrast. */
   --file-age-live: oklch(54% 0.155 40.4);
-  --file-age-sec: oklch(50.6% 0.103 91.6); /* < 1 minute */
-  --file-age-min: oklch(50.5% 0.1 97.9); /* < 1 hour */
-  --file-age-hr: oklch(51% 0.096 104); /* < 1 day */
-  --file-age-day: oklch(50.5% 0.078 107.1); /* < 1 week */
-  --file-age-wk: oklch(51.8% 0.044 107.8); /* < 1 month */
-  --file-age-old: oklch(53.4% 0.007 106.6); /* ≥ 1 month */
+  --file-age-sec: oklch(53.6% 0.11 80); /* < 1 minute */
+  --file-age-min: oklch(53% 0.108 92); /* < 1 hour */
+  --file-age-hr: oklch(52% 0.105 104); /* < 1 day */
+  --file-age-day: oklch(50% 0.076 110); /* < 1 week */
+  --file-age-wk: oklch(48.8% 0.038 115); /* < 1 month */
+  --file-age-old: oklch(48% 0.006 118); /* ≥ 1 month */
 
   /* Translucent surface variants for badges and area encodings. */
   --file-age-fill-live: oklch(71% 0.151 43 / 0.22);
