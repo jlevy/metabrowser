@@ -5,11 +5,12 @@ title: Folder rollup overview and treemap improvements
 kind: epic
 status: open
 priority: 2
-version: 10
+version: 12
 labels:
   - browser
 dependencies: []
 child_order_hints:
+  - is-01m00q71z9swgdwtktedqc95k3
   - is-01m00nzbv28s9cd2qjykjfdp8w
   - is-01m00phrnxt0gptpykhzwy1s36
   - is-01m00pkn2tv46k3cr95z8m81v6
@@ -19,7 +20,7 @@ child_order_hints:
   - is-01m00prch1akzeds6rnwc4rkwy
   - is-01m00q31dkqwp66dvmy7qjnq7h
 created_at: 2026-08-14T17:44:02.752Z
-updated_at: 2026-08-14T18:04:23.256Z
+updated_at: 2026-08-14T18:05:52.066Z
 ---
 Unify the correctness, controls, hierarchy, bounded disclosure behavior, ordering, totals context, and loading presentation of folder rollup views.
 
