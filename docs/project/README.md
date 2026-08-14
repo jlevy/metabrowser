@@ -8,6 +8,7 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 ## Architecture
 
 - [Editor plugin editing contract](architecture/arch-editor-plugin-editing-contract.md)
+- [File-type compatibility contract](architecture/file-types/README.md)
 - [VS Code extension host](architecture/arch-vscode-extension-host.md)
 
 ## Active Feature Plans

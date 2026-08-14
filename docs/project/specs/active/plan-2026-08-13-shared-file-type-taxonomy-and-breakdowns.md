@@ -55,7 +55,12 @@ This plan extends the implemented
 [semantic file type family plan](../done/plan-2026-08-13-semantic-file-type-families.md)
 and the original
 [folder Files summary plan](../done/plan-2026-08-12-directory-file-type-summary.md).
-It also aligns with fdu’s
+The durable [file-type compatibility contract](../../architecture/file-types/README.md)
+is the normative cross-project handoff for registry, classification, interchange, and
+`fdu` adoption semantics.
+This plan owns design rationale, implementation order, migration, testing, and
+acceptance. Where transitional detail overlaps, the durable contract governs the
+implemented format. It also aligns with fdu’s
 [file-type registry](https://github.com/jlevy/fdu/blob/main/crates/fdu/rules/file-types.toml)
 and its role as the future high-performance rollup engine.
 
@@ -900,7 +905,7 @@ model carries the same token the filter already understands.
 - File icons remain extension or basename identities.
   Families and totals do not acquire invented icons.
 
-## fdu Integration
+## Future `fdu` Integration
 
 ### Classification
 
@@ -1037,7 +1042,7 @@ mergeable bounded summary separately; do not label an approximate top list as ex
   reviewed Metabrowser registry revision.
 - Add release notes for extension-derivation and JSONL group changes.
 
-## fdu File- and Function-Level Plan
+## Future `fdu` File- and Function-Level Plan
 
 ### Registry Compiler
 
@@ -1118,34 +1123,77 @@ metadata cases. A registry update is incomplete until all three implementations 
 
 ## Implementation Plan
 
-Use two phases because the shared contract must land before product consumers can
-reliably adopt it. Each phase uses red-green tests and may be split into separate
-repository pull requests while preserving the dependency order.
+This epic implements the reference contract in Metabrowser and publishes a complete
+adoption packet. Changes inside the `fdu` repository are a later downstream effort using
+[`fdu` compatibility](../../architecture/file-types/fdu-compatibility.md); they are not
+hidden inside a Metabrowser bead.
 
-### Phase 1: Shared Registry and Classification Contract
+### Bead Dependency Graph
 
-- [ ] Finalize registry v1 fields, group order, seed declarations, and validation rules.
-- [ ] Land the reference registry, conformance corpus, normative format documentation,
-  typed Python loader, and compatibility facade in Metabrowser.
-- [ ] Add the `file-type-registry-v1` projection and browser parity checks.
-- [ ] Sync the normalized registry and corpus into fdu; extend its TOML compiler and
-  classifier and invalidate affected caches by registry identity.
-- [ ] Align Python, Rust, and browser extension derivation and metadata matching.
-- [ ] Serialize registry identity and dynamic groups through the Metabrowser SDK.
-- [ ] Document reference ownership in Metabrowser and adoption/maintenance in fdu.
+```mermaid
+flowchart TD
+  docs["mb-7c0v Compatibility packet"] --> loader["mb-2c5u Registry loader"]
+  loader --> seed["mb-0t3d Taxonomy seed"]
+  seed --> classify["mb-qkl7 Classification"]
+  classify --> corpus["mb-45j9 Schemas and corpus"]
+  corpus --> rollup["mb-7jk7 Hierarchical rollup"]
+  rollup --> fallback["mb-cgj3 Bounded fallbacks"]
+  corpus --> sdk["mb-ihcd Registry and Breakdown SDK"]
+  rollup --> sdk
+  fallback --> overview["mb-f3ab Files Overview"]
+  sdk --> overview
+  sdk --> nav["mb-jlo8 Navigation filters"]
+  fallback --> treemap["mb-9r31 Treemap identity"]
+  sdk --> treemap
+  fallback --> migration["mb-ipxm Migration boundary"]
+  sdk --> migration
+  overview --> validate["mb-136f Validation and fdu packet"]
+  nav --> validate
+  treemap --> validate
+  migration --> validate
+```
 
-### Phase 2: Bounded Hierarchical Breakdowns
+### Bead Map
 
-- [ ] Add the portable breakdown types and conservation helpers in both projects.
-- [ ] Add complete family children and 20-child No extension and Remaining types
-  summaries with exact Others rows.
-- [ ] Make all Metabrowser family and special-parent rows disclosable when they have one
-  or more children.
-- [ ] Make navigation groups and family sections fully registry-driven.
-- [ ] Add fdu’s registry plus breakdown exports across the Rust library, CLI JSON/YAML,
-  grouped human view, and Python binding.
-- [ ] Update design, architecture, SDK, CLI, and release documentation.
-- [ ] Run both repositories’ full handoff gates and cross-project fixture comparison.
+| Order | Bead | Outcome | Blockers |
+| --- | --- | --- | --- |
+| 1 | `mb-7c0v` | Durable registry, interchange, and `fdu` compatibility documents | None |
+| 2 | `mb-2c5u` | Packaged Registry v1 source, immutable loader, validation, and compatibility facade | `mb-7c0v` |
+| 3 | `mb-0t3d` | Reconciled Code, Docs, Data, Logs, Archives, Media, and Other taxonomy | `mb-2c5u` |
+| 4 | `mb-qkl7` | Shared logical-extension and metadata-classification behavior | `mb-0t3d` |
+| 5 | `mb-45j9` | Machine schemas, conformance corpus, fingerprints, and drift tooling | `mb-qkl7` |
+| 6 | `mb-7jk7` | Typed conserved Registry v1 hierarchical directory breakdown | `mb-45j9` |
+| 7 | `mb-cgj3` | Bounded No extension and Remaining types children with exact Others | `mb-7jk7` |
+| 8 | `mb-ihcd` | Public immutable registry projection and Breakdown v1 SDK | `mb-45j9`, `mb-7jk7` |
+| 9 | `mb-f3ab` | Complete registry-driven Files Overview | `mb-cgj3`, `mb-ihcd` |
+| 10 | `mb-jlo8` | Registry-driven navigation filter hierarchy | `mb-ihcd` |
+| 11 | `mb-9r31` | Treemap identity aligned to every registry family | `mb-cgj3`, `mb-ihcd` |
+| 12 | `mb-ipxm` | Legacy wire, saved-filter, cache, and mixed-version migration boundary | `mb-cgj3`, `mb-ihcd` |
+| 13 | `mb-136f` | Full validation plus normalized, versioned `fdu` adoption packet | `mb-f3ab`, `mb-jlo8`, `mb-9r31`, `mb-ipxm` |
+
+### Phase 1: Reference Contract and Classification
+
+- [x] `mb-7c0v`: publish the durable compatibility documents.
+- [ ] `mb-2c5u`: implement and package Registry v1.
+- [ ] `mb-0t3d`: seed and reconcile the shared taxonomy.
+- [ ] `mb-qkl7`: align logical-extension derivation and metadata matching.
+- [ ] `mb-45j9`: publish schemas, conformance cases, and checked drift tooling.
+
+### Phase 2: Metabrowser Data Path and UI
+
+- [ ] `mb-7jk7`: build the conserved hierarchical rollup.
+- [ ] `mb-cgj3`: add exact bounded fallback children.
+- [ ] `mb-ihcd`: expose Registry and Breakdown v1 through the SDK.
+- [ ] `mb-f3ab`: render the complete Files Overview hierarchy.
+- [ ] `mb-jlo8`: derive navigation filters from the registry.
+- [ ] `mb-9r31`: align Treemap type identities.
+- [ ] `mb-ipxm`: complete compatibility and cache migration.
+
+### Phase 3: Validation and Downstream Handoff
+
+- [ ] `mb-136f`: validate all Metabrowser surfaces, finalize durable documentation, and
+  publish the registry, schemas, corpus, fingerprints, and captured examples that a
+  later `fdu` change adopts.
 
 ## Testing Strategy
 
