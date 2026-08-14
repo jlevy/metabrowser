@@ -1062,7 +1062,7 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
     start = js.index("var FILTER_RECENCY_OPTIONS = [")
     block = js[start : js.index("];", start)]
     for value, age in (
-        ('"live"', "age-sec"),
+        ('"live"', "age-live"),
         ('"1h"', "age-min"),
         ('"24h"', "age-hr"),
         ('"7d"', "age-day"),
@@ -1072,9 +1072,12 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
         option = block[value_start : value_start + 240]
         assert f'ageClass: "{age}"' in option, f"{value} should wear {age}"
 
-    # Scoped to the menu: the tree's ramp is contrast-audited.
+    filter_controls = _read("filter_controls.js")
+    assert "file-age-marker" in filter_controls
+
+    # The shared ramp is sufficient; no menu-only color correction may drift.
     css = _read("styles.css")
-    assert ".chip-menu-item.age-min {" in css
+    assert ".chip-menu-item.age-min {" not in css
 
 
 def test_clear_sits_with_the_dropdowns_it_undoes() -> None:

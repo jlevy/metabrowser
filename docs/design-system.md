@@ -29,13 +29,47 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 - component dimensions, radii, typography, and motion.
 
 Components consume semantic tokens.
-They should not copy HSL or hexadecimal values from another component.
+They should not copy OKLCH, HSL, or hexadecimal values from another component.
 When a new concept needs a color, add a token with a semantic name and define its
 dark-theme override alongside it.
+
+New and deliberately adjusted color families use OKLCH because its lightness and chroma
+steps are more perceptually uniform than HSL steps.
+Stable HSL families may migrate when their palette is deliberately adjusted; syntax-only
+mass conversion adds review risk without improving the interface.
 
 Plugin styles may consume host tokens.
 A plugin-specific visual language belongs in the plugin stylesheet, including any new
 domain tokens, rather than in core `styles.css`.
+
+## File Age
+
+File age is one shared primitive across navigation rows, file headers, recent-filter
+menus, Live badges, and plugin-rendered age labels.
+Each state owns three parallel OKLCH tokens in `static/styles.css`:
+
+- `--file-age-<state>` is an accessible text foreground
+- `--file-age-accent-<state>` is an opaque, high-chroma marker
+- `--file-age-fill-<state>` is a translucent surface or area fill
+
+Live is an activity state, not an elapsed-age bucket.
+It uses a warm salmon family that remains distinct from the deeper destructive red and
+from success green.
+The six elapsed-age buckets retain the existing thresholds: under one
+minute, under one hour, under one day, under one week, under one month, and older.
+They stay within a narrow yellow hue range while chroma and prominence fall
+monotonically toward a warm neutral.
+
+Light-theme yellow text must be dark to meet WCAG AA contrast on white and tinted
+surfaces. The `.file-age-marker` carries the brighter yellow beside the readable text
+instead of weakening contrast or introducing a menu-specific correction.
+Age spans render that marker directly; dropdown rows place the same marker after their
+fixed check column. The `.age-live` and `.age-*` classes select tokens only, so new
+consumers reuse the primitive rather than reconstructing colors.
+
+Adjust this family only at its token definitions, preserve the semantic ordering in both
+themes, and run `tests/test_file_age_palette.py` to verify OKLCH structure, gamut, and
+contrast across the surfaces where ages appear.
 
 ## Typography
 

@@ -2774,14 +2774,14 @@ var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || 
 // Each row wears the freshness colour the tree gives files of that
 // age, so the menu doubles as the legend for the ramp below it.
 // Longer windows take the colour of the bucket they top out at. Live
-// keeps the freshest colour and spells out its exact server-owned
-// cutoff in the accessible title.
+// is an activity state with its own salmon token and spells out its
+// exact server-owned cutoff in the accessible title.
 var FILTER_RECENCY_OPTIONS = [
   {
     value: "live",
     label: "Live",
     title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
-    ageClass: "age-sec",
+    ageClass: "age-live",
   },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
   { value: "24h", label: "Past day", ageClass: "age-hr" },
