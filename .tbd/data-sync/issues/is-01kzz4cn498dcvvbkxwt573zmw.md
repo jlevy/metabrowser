@@ -5,8 +5,8 @@ title: "Route A: Implement the NavigationTarget URL codec"
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz4dt2aa6059jzk41yszq49
 parent_id: is-01kzz03fmd769zawq6gf5d1hd7
 created_at: 2026-08-14T03:17:29.864Z
-updated_at: 2026-08-14T03:30:44.643Z
+updated_at: 2026-08-14T04:56:19.224Z
 closed_at: 2026-08-14T03:30:44.642Z
 close_reason: Implemented and verified the canonical /view/ NavigationTarget codec in f58fd28.
 ---

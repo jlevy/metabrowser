@@ -5,15 +5,15 @@ title: "Obsidian C: Map headings and named blocks to stable DOM targets"
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzz4dx62z79hwmqmec5z0kbb
 parent_id: is-01kzz03gmzn17gpzrtbs6jfh1x
 created_at: 2026-08-14T03:18:10.213Z
-updated_at: 2026-08-14T04:53:26.515Z
+updated_at: 2026-08-14T04:56:23.639Z
 closed_at: 2026-08-14T04:53:26.514Z
 close_reason: Stable heading/block targets and safe attachment/media behavior pass focused and end-to-end tests.
 ---

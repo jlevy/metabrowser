@@ -5,8 +5,8 @@ title: "Phase 1: Replace routing and establish the navigation SDK"
 kind: feature
 status: closed
 priority: 1
-version: 12
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 14
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
@@ -18,7 +18,7 @@ child_order_hints:
   - is-01kzz4dt2aa6059jzk41yszq49
   - is-01kzz4dtbr1k1339614faee95w
 created_at: 2026-08-14T02:02:35.021Z
-updated_at: 2026-08-14T03:57:12.874Z
+updated_at: 2026-08-14T04:56:18.997Z
 closed_at: 2026-08-14T03:57:12.874Z
 close_reason: Canonical /view/ routing and the structured public navigation boundary are complete across mb-b6bb, mb-xt9v, mb-ftti, and mb-pi55.
 ---

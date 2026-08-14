@@ -5,8 +5,8 @@ title: Implement end-to-end GitHub and Obsidian Markdown navigation
 kind: epic
 status: closed
 priority: 1
-version: 16
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 17
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -18,7 +18,7 @@ child_order_hints:
   - is-01kzz03gmzn17gpzrtbs6jfh1x
   - is-01kzz1vg2y797pnar5ga707mq7
 created_at: 2026-08-14T01:23:01.160Z
-updated_at: 2026-08-14T04:53:27.188Z
+updated_at: 2026-08-14T04:56:18.581Z
 closed_at: 2026-08-14T04:53:27.187Z
 close_reason: End-to-end GitHub and Obsidian Markdown navigation baseline is implemented, documented, and passes make verify.
 ---

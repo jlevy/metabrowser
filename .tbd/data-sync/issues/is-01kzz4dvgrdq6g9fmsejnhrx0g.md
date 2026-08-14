@@ -5,15 +5,15 @@ title: "GitHub B: Prove direct navigation and document the default"
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzz4dvt6208xkx40mj4rbxps
 parent_id: is-01kzz03g4npz4pma4px6mdq2s0
 created_at: 2026-08-14T03:18:09.175Z
-updated_at: 2026-08-14T04:53:25.801Z
+updated_at: 2026-08-14T04:56:22.132Z
 closed_at: 2026-08-14T04:53:25.801Z
 close_reason: GitHub-compatible fixture, integration, accessibility, history, and browsing documentation pass make verify.
 ---

@@ -5,8 +5,8 @@ title: "Phase 3B: Complete Obsidian locations, media, and fixtures"
 kind: feature
 status: closed
 priority: 1
-version: 15
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 17
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
@@ -31,7 +31,7 @@ child_order_hints:
   - is-01kzz4dwwjgch14nr5rhh2j1vm
   - is-01kzz4dx62z79hwmqmec5z0kbb
 created_at: 2026-08-14T02:02:36.062Z
-updated_at: 2026-08-14T04:53:26.967Z
+updated_at: 2026-08-14T04:56:23.411Z
 closed_at: 2026-08-14T04:53:26.966Z
 close_reason: Obsidian locations, media, and fixture feature is complete and verified.
 ---

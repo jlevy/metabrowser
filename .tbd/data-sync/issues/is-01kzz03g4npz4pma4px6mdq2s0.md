@@ -5,8 +5,8 @@ title: "Phase 2B: Prove GitHub-compatible navigation by default"
 kind: feature
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 10
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
@@ -16,7 +16,7 @@ child_order_hints:
   - is-01kzz4dv7aj7xk3d44d0h4f7fr
   - is-01kzz4dvgrdq6g9fmsejnhrx0g
 created_at: 2026-08-14T02:02:35.541Z
-updated_at: 2026-08-14T04:53:25.811Z
+updated_at: 2026-08-14T04:56:21.559Z
 closed_at: 2026-08-14T04:53:25.811Z
 close_reason: GitHub-compatible fixture, integration, accessibility, history, and browsing documentation pass make verify.
 ---

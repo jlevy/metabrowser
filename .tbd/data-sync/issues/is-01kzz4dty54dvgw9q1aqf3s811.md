@@ -5,15 +5,15 @@ title: "Links B: Enhance rendered Markdown links, resources, and fragments"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzz4dv7aj7xk3d44d0h4f7fr
 parent_id: is-01kzz03fwfcvam3ft3zvfwqx7g
 created_at: 2026-08-14T03:18:08.580Z
-updated_at: 2026-08-14T04:13:07.486Z
+updated_at: 2026-08-14T04:56:21.205Z
 closed_at: 2026-08-14T04:13:07.485Z
 close_reason: Integrated canonical link/resource enhancement and async fragment lifecycle; make verify passes.
 ---

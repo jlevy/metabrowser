@@ -5,13 +5,13 @@ title: "Obsidian E: Prove vault compatibility and finish end-to-end documentatio
 kind: task
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies: []
 parent_id: is-01kzz03gmzn17gpzrtbs6jfh1x
 created_at: 2026-08-14T03:18:10.881Z
-updated_at: 2026-08-14T04:53:26.744Z
+updated_at: 2026-08-14T04:56:24.350Z
 closed_at: 2026-08-14T04:53:26.743Z
 close_reason: Obsidian vault fixture, accessibility states, documentation, and full make verify gate are complete.
 ---

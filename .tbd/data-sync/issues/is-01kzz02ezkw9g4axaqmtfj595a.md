@@ -5,13 +5,13 @@ title: Plan GitHub-first Markdown navigation defaults
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies: []
 parent_id: is-01kzyxv1db2hhw2ncc20kdr8mp
 created_at: 2026-08-14T02:02:01.586Z
-updated_at: 2026-08-14T02:06:40.535Z
+updated_at: 2026-08-14T04:56:18.738Z
 closed_at: 2026-08-14T02:06:40.535Z
 close_reason: Research decision addendum, approved active implementation plan, roadmap and plan indexes, and dependency-wired Phase 1 and Phase 2 beads are complete; make verify passed.
 ---

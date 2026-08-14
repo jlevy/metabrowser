@@ -5,8 +5,8 @@ title: "Phase 3A: Parse Obsidian wiki-links and resolve notes"
 kind: feature
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 10
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
@@ -16,7 +16,7 @@ child_order_hints:
   - is-01kzz4dvt6208xkx40mj4rbxps
   - is-01kzz4dw3cv7ct4fm76xxw9n9r
 created_at: 2026-08-14T02:02:35.798Z
-updated_at: 2026-08-14T04:53:26.288Z
+updated_at: 2026-08-14T04:56:22.485Z
 closed_at: 2026-08-14T04:53:26.287Z
 close_reason: Obsidian syntax and note-resolution feature is complete and verified.
 ---

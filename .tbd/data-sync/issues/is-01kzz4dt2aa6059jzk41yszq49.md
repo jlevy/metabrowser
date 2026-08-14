@@ -5,15 +5,15 @@ title: "Route C: Integrate browser history and remove hash file routing"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-markdown-link-navigation.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzz4dtbr1k1339614faee95w
 parent_id: is-01kzz03fmd769zawq6gf5d1hd7
 created_at: 2026-08-14T03:18:07.689Z
-updated_at: 2026-08-14T03:49:15.059Z
+updated_at: 2026-08-14T04:56:19.924Z
 closed_at: 2026-08-14T03:49:15.058Z
 close_reason: Replaced hash-as-file routing with canonical /view/ history, popstate restoration, folder canonicalization, fragment-only no-refetch behavior, and stale-navigation guards in a119feb; make verify passes.
 ---
