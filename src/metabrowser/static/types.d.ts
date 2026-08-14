@@ -14,6 +14,18 @@ type MetabrowserOpenPathOptions = {
   viewId?: string;
 };
 
+type MetabrowserNavigationTarget = Readonly<{
+  path: string;
+  query?: string;
+  fragment?: string;
+}>;
+
+type MetabrowserNavigationRouteRuntime = Readonly<{
+  href(target: MetabrowserNavigationTarget): string;
+  normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
+  parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
+}>;
+
 type KpressAssetLoading = "classic" | "module" | "resource" | "stylesheet";
 
 type KpressAssetManifestEntry = {
@@ -849,6 +861,7 @@ declare global {
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
+    MetabrowserNavigationRoute: MetabrowserNavigationRouteRuntime;
     MetabrowserContributionRegistry: MetabrowserContributionRegistryRuntime;
     MetabrowserFormatters: MetabrowserFormatterRuntime;
     MetabrowserInventoryScope: MetabrowserInventoryScopeRuntime;

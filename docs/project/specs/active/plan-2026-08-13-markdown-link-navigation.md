@@ -121,7 +121,11 @@ for diagnostics.
 its separator and no leading slash.
 The empty string represents the served root.
 Query and fragment omit their leading punctuation and remain separate from filesystem
-lookup. Only the route formatter percent-encodes the final browser URL.
+lookup. Paths and fragments are decoded logical values.
+Query metadata keeps its URL serialization so an escaped delimiter cannot be confused
+with query structure.
+The route formatter owns final path and fragment encoding and canonicalizes query
+escapes.
 
 The Markdown plugin owns intent creation and syntax-specific resolution.
 The browser shell owns canonical URL formatting, file opening, history, and fragment
