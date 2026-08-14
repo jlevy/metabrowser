@@ -5,14 +5,16 @@ title: Separate overview File Totals and File Types sections
 kind: feature
 status: open
 priority: 2
-version: 1
+version: 2
 labels:
   - browser
   - folder-overview
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m00prch1akzeds6rnwc4rkwy
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:54:06.613Z
-updated_at: 2026-08-14T17:54:06.613Z
+updated_at: 2026-08-14T17:57:43.072Z
 ---
 Restructure the folder overview so rollup totals and the type distribution have separate, clearly scoped sections.
 

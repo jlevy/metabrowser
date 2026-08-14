@@ -5,14 +5,16 @@ title: Render folder rollup views only from complete snapshots
 kind: bug
 status: open
 priority: 1
-version: 1
+version: 2
 labels:
   - browser
   - folder-overview
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m00prch1akzeds6rnwc4rkwy
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:44:03.169Z
-updated_at: 2026-08-14T17:44:03.169Z
+updated_at: 2026-08-14T17:57:43.072Z
 ---
 Folder overview-derived views currently expose provisional rollup values while indexing, so users see zero counts and partial tables or treemap geometry that later change.
 
