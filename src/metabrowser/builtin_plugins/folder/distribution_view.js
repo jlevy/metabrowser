@@ -404,9 +404,9 @@ function updateRows(handle, rows, groupOrder) {
       const colorClass = handle.palette.classFor(row.paletteKey ?? row.key);
       const extension = row.extension || (row.key.startsWith(".") ? row.key : null);
       const iconPath = row.iconPath || (extension ? `x${extension}` : "file");
-      const fileIcon = handle.fileTypeIcon(iconPath);
-      const showIcon = row.kind !== "family";
-      rowHandle.icon.hidden = !showIcon || !fileIcon.svg;
+      const showIcon = Boolean(extension) || row.kind === "filename";
+      const fileIcon = showIcon ? handle.fileTypeIcon(iconPath) : { className: "", svg: "" };
+      rowHandle.icon.hidden = !fileIcon.svg;
       rowHandle.icon.className = `file-identity-icon ${fileIcon.className}`.trim();
       rowHandle.icon.innerHTML = fileIcon.svg;
       rowHandle.label.textContent = row.label;

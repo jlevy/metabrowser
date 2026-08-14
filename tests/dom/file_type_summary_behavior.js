@@ -427,7 +427,7 @@ function familyRow() {
     ],
   };
   const remainingTypes = {
-    ...row("", "Remaining types", "other", 2, 10, "2%", "10%"),
+    ...row("", "Other types", "other", 2, 10, "2%", "10%"),
     kind: "special",
     iconPath: "file",
     paletteKey: "",
@@ -464,22 +464,23 @@ function familyRow() {
   );
   const noExtensionParent = handle.rows.get("(none)");
   check(
-    "special parents share the disclosure and generic identity",
+    "special parents share the disclosure and remain iconless",
     noExtensionParent.disclosure.hidden === false &&
-      noExtensionParent.icon.innerHTML === '<svg data-file-icon="generic"></svg>',
+      noExtensionParent.icon.hidden === true &&
+      noExtensionParent.icon.innerHTML === "",
   );
   noExtensionParent.disclosure.listeners.click();
   check(
-    "filename and Others children use consistent icon fallbacks",
+    "exact filename children use icons while aggregate Others stays iconless",
     handle.rows.get("no-extension/README").icon.innerHTML ===
       '<svg data-file-icon="README"></svg>' &&
-      handle.rows.get("no-extension/others").icon.innerHTML ===
-        '<svg data-file-icon="generic"></svg>',
+      handle.rows.get("no-extension/others").icon.hidden === true &&
+      handle.rows.get("no-extension/others").icon.innerHTML === "",
   );
   const remainingTypesParent = handle.rows.get("");
   remainingTypesParent.disclosure.listeners.click();
   check(
-    "empty-string Remaining types key remains a valid disclosure identity",
+    "empty-string Other types key remains a valid disclosure identity",
     remainingTypesParent.disclosure.attributes["aria-expanded"] === "true" &&
       handle.rows.get("remaining-types/.bin").icon.innerHTML ===
         '<svg data-file-icon="generic"></svg>',
@@ -490,7 +491,7 @@ function familyRow() {
     rows: [
       row(".bad", '<img src=x onerror="pwned">', "other", 100, 100, "100%", "100%"),
       row("(none)", "No extension", "other", 0, 0, "0%", "0%"),
-      row("", "Remaining types", "other", 0, 0, "0%", "0%"),
+      row("", "Other types", "other", 0, 0, "0%", "0%"),
     ],
   });
   check(
@@ -498,13 +499,11 @@ function familyRow() {
     handle.rows.get(".bad").label.textContent === '<img src=x onerror="pwned">',
   );
   check(
-    "non-extension breakdown rows use the generic file icon",
-    handle.rows.get("(none)").icon.hidden === false &&
-      handle.rows.get("(none)").icon.className === "file-identity-icon" &&
-      handle.rows.get("(none)").icon.innerHTML === '<svg data-file-icon="generic"></svg>' &&
-      handle.rows.get("").icon.hidden === false &&
-      handle.rows.get("").icon.className === "file-identity-icon" &&
-      handle.rows.get("").icon.innerHTML === '<svg data-file-icon="generic"></svg>',
+    "non-extension aggregate rows remain iconless",
+    handle.rows.get("(none)").icon.hidden === true &&
+      handle.rows.get("(none)").icon.innerHTML === "" &&
+      handle.rows.get("").icon.hidden === true &&
+      handle.rows.get("").icon.innerHTML === "",
   );
   check(
     "removed rows leave the DOM map",

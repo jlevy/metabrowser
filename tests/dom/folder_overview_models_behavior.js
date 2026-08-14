@@ -51,7 +51,7 @@ async function importSource(relative) {
   const normalized = modelModule.normalizeRollupEnvelope(raw);
   check(
     "rollup tail has a distinct row label",
-    modelModule.normalizeTallyRow(["", 1, 1, 1, 1]).label === "Remaining types",
+    modelModule.normalizeTallyRow(["", 1, 1, 1, 1]).label === "Other types",
   );
   const classifyCategory = modelModule.createFileTypeCategoryClassifier([
     { id: "docs", values: [".md", ".txt"] },
@@ -233,7 +233,7 @@ async function importSource(relative) {
       noExtensionRow.children[1].label === "Others (4 more)",
   );
   check(
-    "Remaining types exposes raw extensions and a counted Others tail",
+    "Other types exposes raw extensions and a counted Others tail",
     remainingRow?.children[0].extension === ".bin" &&
       remainingRow.children[0].iconPath === "x.bin" &&
       remainingRow.children[1].label === "Others (2 more)",

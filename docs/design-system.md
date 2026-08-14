@@ -486,8 +486,8 @@ consistent interaction and leaving room for future exact-extension filtering.
 Canonical children retain exact extension icons and share their parent’s `family:<id>`
 palette key. Unknown and deliberately ambiguous extensions remain raw rows; they are not
 assigned a confident name merely to shorten the table.
-**No extension** and **Remaining types** are disclosable special parents under Other.
-No extension reveals exact basenames; Remaining types reveals raw logical extensions.
+**No extension** and **Other types** are disclosable special parents under Other.
+No extension reveals exact basenames; Other types reveals raw logical extensions.
 Each list is independently capped at 20 and adds a neutral **Others (N more)** row whose
 file and byte metrics exactly conserve the omitted children.
 A group heading is shown only when it has rows and carries no subtotal.
@@ -495,13 +495,14 @@ Type labels use the bold design-system weight as the row’s scan anchor.
 Each raw or disclosed canonical extension row leads with the shared file-identity icon
 resolved from a synthetic filename, and each basename child resolves from the basename,
 so both match navigation without weakening the text label.
-Special parents, Others, and an unknown extension such as `.bin` use the generic
-blank-page identity.
-Family parents, Total, and Ignored stay iconless because they describe aggregates rather
-than exact files. Every exact Files value uses the shared `.count` and `.count-large`
-convention, and every exact Size value uses `.size` and `.size-large`. The stronger
-weight therefore appears at the same count and byte thresholds as the navigation panel,
-including on Total and Ignored; a row role never forces a different numeric weight.
+Special parents and Others stay iconless because they describe aggregates rather than
+exact files or extensions.
+An unknown exact extension such as `.bin` uses the generic blank-page identity.
+Family parents, Total, and Ignored are likewise iconless.
+Every exact Files value uses the shared `.count` and `.count-large` convention, and
+every exact Size value uses `.size` and `.size-large`. The stronger weight therefore
+appears at the same count and byte thresholds as the navigation panel, including on
+Total and Ignored; a row role never forces a different numeric weight.
 
 A **Totals** group appears before the presentation groups and uses the neutral
 distribution color. **Total** comes first: its exact values equal the selected

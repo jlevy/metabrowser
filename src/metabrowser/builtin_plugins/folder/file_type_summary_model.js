@@ -55,7 +55,7 @@ export function normalizeTallyRow(raw) {
   const key = raw[0];
   return Object.freeze({
     key,
-    label: key === OTHER_KEY ? "Remaining types" : key === NO_EXTENSION_KEY ? "No extension" : key,
+    label: key === OTHER_KEY ? "Other types" : key === NO_EXTENSION_KEY ? "No extension" : key,
     allFiles: /** @type {number} */ (raw[1]),
     allBytes: /** @type {number} */ (raw[2]),
     unignoredFiles: /** @type {number} */ (raw[3]),
@@ -523,7 +523,7 @@ function buildRegistryRows(
         key,
         rawKey: key,
         extension: null,
-        iconPath: "file",
+        iconPath: null,
         label,
         category: "other",
         kind: "special",
@@ -553,7 +553,7 @@ function buildRegistryRows(
       specialRow(
         "remaining-types",
         OTHER_KEY,
-        "Remaining types",
+        "Other types",
         remainingTypes,
         [...remainingTypes.extensions, ...(remainingTypes.others ? [remainingTypes.others] : [])],
         "extension",
