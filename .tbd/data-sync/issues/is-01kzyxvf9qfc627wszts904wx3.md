@@ -5,7 +5,7 @@ title: "Spec: Shared file type taxonomy and bounded breakdowns"
 kind: epic
 status: closed
 priority: 2
-version: 24
+version: 26
 spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - file-types
@@ -26,8 +26,10 @@ child_order_hints:
   - is-01kzz05ksdr74fcztg1rpmj13p
   - is-01kzz05x3x3d6y2n9gzeq8xmqg
   - is-01kzz0681weprsdjnd151fxkhj
+  - is-01kzz5nacbz8rgsyr4wh0j7mr9
+  - is-01kzz5nacf7yqmqywq92t4d7tv
 created_at: 2026-08-14T01:23:15.382Z
-updated_at: 2026-08-14T03:33:57.322Z
+updated_at: 2026-08-14T03:39:42.350Z
 closed_at: 2026-08-14T03:33:43.452Z
 close_reason: All dependency-ordered implementation beads are complete. Metabrowser now owns and ships the shared semantic file-type registry, conserved bounded breakdown, registry-driven browser surfaces, compatibility transition, complete documentation, and future fdu adoption packet. Full make verify and manual browser validation passed; mb-me85 is a separately deferred cleanup after one supported transition cycle.
 ---
