@@ -89,8 +89,119 @@ for (const [name, target] of [
   check(`format rejects ${name}`, rejected);
 }
 
-if (failures.length) {
-  console.error(`navigation route FAILURES:\n- ${failures.join("\n- ")}`);
-  process.exit(1);
+function makeBrowser(pathname, search = "", hash = "") {
+  const listeners = new Map();
+  const writes = [];
+  const location = { pathname, search, hash };
+  function setUrl(value) {
+    const parsed = new URL(value, "http://metabrowser.test");
+    location.pathname = parsed.pathname;
+    location.search = parsed.search;
+    location.hash = parsed.hash;
+  }
+  const history = {
+    pushState(_state, _unused, value) {
+      writes.push(["push", value]);
+      setUrl(value);
+    },
+    replaceState(_state, _unused, value) {
+      writes.push(["replace", value]);
+      setUrl(value);
+    },
+  };
+  const eventTarget = {
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
+    removeEventListener(type, listener) {
+      if (listeners.get(type) === listener) {
+        listeners.delete(type);
+      }
+    },
+    dispatch(type) {
+      listeners.get(type)?.({ type });
+    },
+  };
+  return { eventTarget, history, listeners, location, setUrl, writes };
 }
-console.log("navigation route OK");
+
+(async () => {
+  {
+    const browser = makeBrowser("/view/docs/start.md", "?plain=1", "#intro");
+    const applied = [];
+    const controller = route.createController({
+      ...browser,
+      apply(target, context) {
+        applied.push([target, context]);
+      },
+    });
+    await controller.start();
+    equal("startup applies pathname route", applied[0][0], {
+      path: "docs/start.md",
+      query: "plain=1",
+      fragment: "intro",
+    });
+    equal("startup does not rewrite history", browser.writes, []);
+
+    await controller.open({ path: "docs/next.md" });
+    equal("user navigation pushes", browser.writes.at(-1), ["push", "/view/docs/next.md"]);
+    check("path navigation reports a fetch boundary", applied.at(-1)[1].pathChanged === true);
+    check("latest navigation context is current", applied.at(-1)[1].isCurrent());
+
+    controller.canonicalizePath("docs/next.md", true);
+    equal("folder slash canonicalization replaces", browser.writes.at(-1), [
+      "replace",
+      "/view/docs/next.md/",
+    ]);
+    equal("canonical folder is current", controller.current(), { path: "docs/next.md/" });
+
+    await controller.open({ path: "docs/next.md/", fragment: "details" });
+    equal("same-file fragment gets a real URL", browser.writes.at(-1), [
+      "push",
+      "/view/docs/next.md/#details",
+    ]);
+    check("same-file fragment avoids a fetch boundary", applied.at(-1)[1].pathChanged === false);
+    check("superseded navigation context is stale", applied.at(-2)[1].isCurrent() === false);
+
+    browser.setUrl("/view/back.md#old");
+    browser.eventTarget.dispatch("popstate");
+    await new Promise((resolve) => setImmediate(resolve));
+    equal("popstate restores from location", controller.current(), {
+      path: "back.md",
+      fragment: "old",
+    });
+
+    browser.setUrl("/");
+    browser.eventTarget.dispatch("popstate");
+    await new Promise((resolve) => setImmediate(resolve));
+    equal("back to landing clears target", controller.current(), null);
+    equal("landing callback receives null", applied.at(-1)[0], null);
+
+    controller.dispose();
+    check("dispose removes popstate", !browser.listeners.has("popstate"));
+  }
+
+  {
+    const browser = makeBrowser("/", "", "#README.md");
+    const applied = [];
+    const controller = route.createController({
+      ...browser,
+      apply(target) {
+        applied.push(target);
+      },
+    });
+    await controller.start();
+    equal("legacy hash is not a file route", controller.current(), null);
+    equal("legacy hash startup applies landing", applied, [null]);
+    controller.dispose();
+  }
+
+  if (failures.length) {
+    console.error(`navigation route FAILURES:\n- ${failures.join("\n- ")}`);
+    process.exit(1);
+  }
+  console.log("navigation route OK");
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

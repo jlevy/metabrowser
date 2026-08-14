@@ -20,7 +20,34 @@ type MetabrowserNavigationTarget = Readonly<{
   fragment?: string;
 }>;
 
+type MetabrowserNavigationApplyContext = Readonly<{
+  source: "startup" | "user" | "popstate";
+  pathChanged: boolean;
+  isCurrent(): boolean;
+  viewId?: string;
+}>;
+
+type MetabrowserNavigationController = Readonly<{
+  canonicalizePath(path: string, isFolder: boolean): void;
+  current(): MetabrowserNavigationTarget | null;
+  dispose(): void;
+  open(
+    target: MetabrowserNavigationTarget,
+    options?: { replace?: boolean; viewId?: string },
+  ): Promise<unknown>;
+  start(): Promise<unknown>;
+}>;
+
 type MetabrowserNavigationRouteRuntime = Readonly<{
+  createController(options: {
+    apply(
+      target: MetabrowserNavigationTarget | null,
+      context: MetabrowserNavigationApplyContext,
+    ): unknown;
+    eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">;
+    history?: Pick<History, "pushState" | "replaceState">;
+    location?: Pick<Location, "pathname" | "search" | "hash">;
+  }): MetabrowserNavigationController;
   href(target: MetabrowserNavigationTarget): string;
   normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;

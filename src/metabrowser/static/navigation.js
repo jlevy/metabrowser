@@ -184,5 +184,154 @@
     return value.startsWith(prefix) ? value.slice(prefix.length) : value;
   }
 
-  window.MetabrowserNavigationRoute = Object.freeze({ href, normalizeTarget, parse });
+  /**
+   * Compose route identity with browser history and application rendering.
+   *
+   * @param {{
+   *   apply: (target: Readonly<NavigationTarget> | null, context: Readonly<{source: "startup" | "user" | "popstate", pathChanged: boolean, isCurrent: () => boolean, viewId?: string}>) => unknown,
+   *   eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">,
+   *   history?: Pick<History, "pushState" | "replaceState">,
+   *   location?: Pick<Location, "pathname" | "search" | "hash">,
+   * }} options
+   */
+  function createController(options) {
+    if (!options || typeof options.apply !== "function") {
+      throw new TypeError("navigation controller requires an apply callback");
+    }
+    const browserLocation = options.location ?? window.location;
+    const browserHistory = options.history ?? window.history;
+    const eventTarget = options.eventTarget ?? window;
+    /** @type {Readonly<NavigationTarget> | null} */
+    let currentTarget = null;
+    let initialized = false;
+    let started = false;
+    let disposed = false;
+    let applyGeneration = 0;
+
+    /** @param {string} path */
+    function lookupPath(path) {
+      return path.endsWith("/") ? path.slice(0, -1) : path;
+    }
+
+    /**
+     * @param {Readonly<NavigationTarget> | null} left
+     * @param {Readonly<NavigationTarget> | null} right
+     */
+    function targetsEqual(left, right) {
+      return (
+        left === right ||
+        (!!left &&
+          !!right &&
+          left.path === right.path &&
+          left.query === right.query &&
+          left.fragment === right.fragment)
+      );
+    }
+
+    /**
+     * @param {Readonly<NavigationTarget> | null} target
+     * @param {"startup" | "user" | "popstate"} source
+     * @param {string=} viewId
+     */
+    async function applyTarget(target, source, viewId) {
+      const previous = currentTarget;
+      const generation = ++applyGeneration;
+      currentTarget = target;
+      initialized = true;
+      const pathChanged =
+        (previous ? lookupPath(previous.path) : null) !== (target ? lookupPath(target.path) : null);
+      const isCurrent = () => !disposed && generation === applyGeneration;
+      const context = viewId
+        ? Object.freeze({ isCurrent, pathChanged, source, viewId })
+        : Object.freeze({ isCurrent, pathChanged, source });
+      return options.apply(target, context);
+    }
+
+    /** @param {"startup" | "popstate"} source */
+    async function applyLocation(source) {
+      if (disposed) {
+        return;
+      }
+      const target = parse(browserLocation.pathname, browserLocation.search, browserLocation.hash);
+      if (initialized && targetsEqual(target, currentTarget)) {
+        return;
+      }
+      return applyTarget(target, source);
+    }
+
+    function handlePopstate() {
+      void applyLocation("popstate").catch((error) => {
+        console.warn("Could not restore browser navigation", error);
+      });
+    }
+
+    return Object.freeze({
+      /** @param {string} path @param {boolean} isFolder */
+      canonicalizePath(path, isFolder) {
+        const logicalPath = lookupPath(path);
+        if (!currentTarget || lookupPath(currentTarget.path) !== logicalPath) {
+          return;
+        }
+        const canonicalPath = isFolder && logicalPath ? `${logicalPath}/` : logicalPath;
+        const target = normalizeTarget({
+          path: canonicalPath,
+          query: currentTarget?.query,
+          fragment: currentTarget?.fragment,
+        });
+        if (!targetsEqual(target, currentTarget)) {
+          browserHistory.replaceState(null, "", href(target));
+          currentTarget = target;
+        }
+      },
+      current() {
+        return currentTarget;
+      },
+      dispose() {
+        if (disposed) {
+          return;
+        }
+        disposed = true;
+        applyGeneration += 1;
+        if (started) {
+          eventTarget.removeEventListener("popstate", handlePopstate);
+        }
+      },
+      /**
+       * @param {NavigationTarget} target
+       * @param {{replace?: boolean, viewId?: string}=} openOptions
+       */
+      async open(target, openOptions = {}) {
+        if (disposed) {
+          throw new Error("navigation controller is disposed");
+        }
+        const normalized = normalizeTarget(target);
+        const routeHref = href(normalized);
+        const currentHref = `${browserLocation.pathname}${browserLocation.search}${browserLocation.hash}`;
+        if (openOptions.replace) {
+          browserHistory.replaceState(null, "", routeHref);
+        } else if (routeHref !== currentHref) {
+          browserHistory.pushState(null, "", routeHref);
+        }
+        return applyTarget(normalized, "user", openOptions.viewId);
+      },
+      async start() {
+        if (disposed) {
+          throw new Error("navigation controller is disposed");
+        }
+        if (started) {
+          return;
+        }
+        started = true;
+        eventTarget.addEventListener("popstate", handlePopstate);
+        return applyLocation("startup");
+      },
+    });
+  }
+
+  window.MetabrowserNavigationRoute = Object.freeze({
+    createController,
+    href,
+    normalizeTarget,
+    parse,
+  });
 })();

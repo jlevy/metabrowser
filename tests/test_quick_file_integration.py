@@ -73,7 +73,9 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
 
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
-    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index("selectFile(")
+    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index(
+        "navigationController?.start()"
+    )
     assert loaded_block.count("initQuickFileFinder();") == 1
 
 
@@ -173,7 +175,7 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
     js = _read_app_js()
     select_file = js[
-        js.index("async function selectFile(path, skipHistory, preferredViewId)") : js.index(
+        js.index("async function selectFile(path, preferredViewId)") : js.index(
             "// ── File rendering"
         )
     ]
@@ -181,12 +183,12 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
         assert f'status: "{status}"' in select_file
     assert "resp.status === 404" in select_file
 
-    navigate = js[
-        js.index("async function navigateToPath(path, skipHistory, preferredViewId)") : js.index(
-            "function initQuickFileFinder()"
+    apply_navigation = js[
+        js.index("async function applyNavigationTarget(target, context)") : js.index(
+            "async function revealInTree(path)"
         )
     ]
-    assert "return selectFile(" in navigate
+    assert "await selectFile(path, context.viewId)" in apply_navigation
 
     init_start = js.index("function initQuickFileFinder()")
     init_block = js[init_start : init_start + 2600]
@@ -209,13 +211,13 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     assert "type MetabrowserOpenPathOptions" in types
     assert "openPath(path: string, options?: MetabrowserOpenPathOptions): void;" in types
 
-    assert "async function selectFile(path, skipHistory, preferredViewId)" in js
+    assert "async function selectFile(path, preferredViewId)" in js
     assert "function renderFile(data, preferredViewId)" in js
-    assert "async function navigateToPath(path, skipHistory, preferredViewId)" in js
+    assert "async function navigateToPath(path, preferredViewId)" in js
     listener_start = js.index('window.addEventListener("metabrowser:open-path"')
     listener = js[listener_start : listener_start + 500]
     assert "event.detail?.viewId" in listener
-    assert "navigateToPath(path, undefined, viewId)" in listener
+    assert "navigateToPath(path, viewId)" in listener
 
     render_start = js.index("function renderFile(data, preferredViewId)")
     render = js[render_start : render_start + 5000]

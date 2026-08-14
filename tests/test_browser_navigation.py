@@ -38,6 +38,22 @@ def test_navigation_target_url_codec() -> None:
     )
 
 
+def test_application_has_no_hash_as_file_router() -> None:
+    source = server.STATIC_DIR.joinpath("app.js").read_text()
+
+    for removed in (
+        "parseHashRoute",
+        "splitHashRoute",
+        "commitRoute",
+        'addEventListener("hashchange"',
+        "skipHistory",
+    ):
+        assert removed not in source
+    assert "MetabrowserNavigationRoute.createController" in source
+    assert "navigationController?.canonicalizePath" in source
+    assert 'new CustomEvent("metabrowser:navigation-fragment"' in source
+
+
 def test_direct_view_routes_serve_the_shell_for_safe_targets(tmp_path: Path) -> None:
     """Root, files, missing paths, and either folder form can be refreshed."""
 
