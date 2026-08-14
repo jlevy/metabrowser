@@ -5406,17 +5406,6 @@ function deliverNavigationFragment(target) {
       detail: { target: target },
     }),
   );
-  if (!target.fragment) {
-    return;
-  }
-  var expected = navigationController?.current();
-  requestAnimationFrame(() => {
-    var current = navigationController?.current();
-    if (!current || current.path !== expected?.path || current.fragment !== expected?.fragment) {
-      return;
-    }
-    document.getElementById(target.fragment)?.scrollIntoView({ block: "start" });
-  });
 }
 
 async function applyNavigationTarget(target, context) {

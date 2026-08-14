@@ -25,8 +25,13 @@ function makeContainer() {
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/rendered.js"),
     "utf8",
   );
+  globalThis.__markdownEnhanceDisposals = [];
+  const enhancerStub =
+    "export function enhanceRenderedLinks(container){return {dispose(){globalThis.__markdownEnhanceDisposals.push(container)}}}";
+  const enhancerUrl = `data:text/javascript;base64,${Buffer.from(enhancerStub).toString("base64")}`;
+  const importableSource = source.replace('"./link_enhancer.js"', JSON.stringify(enhancerUrl));
   const module = await import(
-    `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+    `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
   );
   const requests = [];
   const tocDisposals = [];
@@ -53,9 +58,15 @@ function makeContainer() {
   firstHandle.dispose();
   firstHandle.dispose();
   check("first disposer exactly once", tocDisposals.length === 1, String(tocDisposals.length));
+  check(
+    "first enhancer disposer exactly once",
+    globalThis.__markdownEnhanceDisposals.length === 1,
+    String(globalThis.__markdownEnhanceDisposals.length),
+  );
   check("second remains mounted", !tocDisposals.includes(second));
   secondHandle.dispose();
   check("second disposer", tocDisposals.length === 2, String(tocDisposals.length));
+  check("second enhancer disposer", globalThis.__markdownEnhanceDisposals.length === 2);
 
   const pending = makeContainer();
   const pendingHandle = module.mountRenderedMarkdown(pending, { path: "pending.md" }, mb);

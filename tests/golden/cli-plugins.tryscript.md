@@ -177,6 +177,7 @@ data hooks:
 
 assets in static_root:
   - index.js
+  - link_enhancer.js
   - links.js
   - manifest.toml
   - rendered.js
@@ -231,6 +232,7 @@ $ metab --plugin markdown --json
     "disabled_data_hooks": [],
     "assets": [
       "index.js",
+      "link_enhancer.js",
       "links.js",
       "manifest.toml",
       "rendered.js",

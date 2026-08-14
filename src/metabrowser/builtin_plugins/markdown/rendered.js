@@ -1,3 +1,5 @@
+import { enhanceRenderedLinks } from "./link_enhancer.js";
+
 let mountSequence = 0;
 
 /** @param {Array<unknown>} diagnostics @param {(value: string) => string} escapeHtml */
@@ -90,6 +92,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   let disposed = false;
   /** @type {(() => void) | null} */
   let disposeToc = null;
+  /** @type {(() => void) | null} */
+  let disposeLinks = null;
   const dispose = () => {
     if (disposed) {
       return;
@@ -97,6 +101,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposed = true;
     options.signal?.removeEventListener("abort", abort);
     controller.abort();
+    disposeLinks?.();
+    disposeLinks = null;
     disposeToc?.();
     disposeToc = null;
   };
@@ -114,6 +120,9 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       if (!disposed && !controller.signal.aborted) {
         container.innerHTML = rendered.html;
         injectDiagnostics(container, rendered.diagnostics || [], mb);
+        if (ctx.path) {
+          disposeLinks = enhanceRenderedLinks(container, ctx.path, mb).dispose;
+        }
         disposeToc = mb.kpressInitToc(container);
       }
     } catch (error) {
