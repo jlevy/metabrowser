@@ -34,7 +34,7 @@
         surrounding surface.
 
      3. Chroma is the loudness knob. Chart callouts, fresh-age
-        markers, and status dots are higher C; body text, borders,
+        text, and status dots are higher C; body text, borders,
         and surfaces are low C. OKLCH makes equal chroma and lightness
         steps more perceptually uniform than HSL. If a new token reads
         as too noisy, drop C before dropping L.
@@ -751,22 +751,20 @@
   /* File-age design system (used by every ".age-*" class and Live badge).
      Rationale: the primary affordance of the file browser is "where did
      something *just happen*?" — when runs write new files, the user's
-     eye should land on them without scanning names. A high-chroma marker
-     carries the hue on light surfaces, an accessible foreground colors
-     the value, and weight boosts the very-recent tiers. Live is a warm
-     salmon activity state. Every elapsed age stays yellow and loses
+     eye should land on them without scanning names. The text itself
+     carries the hue, and weight boosts the very-recent tiers. Live is a
+     warm salmon activity state. Every elapsed age stays yellow and loses
      chroma and prominence as it gets older. */
   --file-age-weight: var(--weight-medium); /* base — 11px labels read */
   /* as light at normal 400, */
   /* so medium (500) is the */
   /* legibility floor */
   --file-age-weight-recent: var(--weight-bold); /* live, seconds, minutes pop */
-  --file-age-marker-size: 0.55em;
-  --file-age-marker-gap: 0.4em;
-
   /* Accessible foregrounds. Live is a separate state, not an elapsed
      age bucket; sec through old keep a narrow yellow hue range while
-     chroma falls monotonically. */
+     chroma falls monotonically. Light-theme colors use a dark ochre
+     expression of yellow so the hue remains visible without sacrificing
+     text contrast. */
   --file-age-live: oklch(54% 0.155 40.4);
   --file-age-sec: oklch(50.6% 0.103 91.6); /* < 1 minute */
   --file-age-min: oklch(50.5% 0.1 97.9); /* < 1 hour */
@@ -774,16 +772,6 @@
   --file-age-day: oklch(50.5% 0.078 107.1); /* < 1 week */
   --file-age-wk: oklch(51.8% 0.044 107.8); /* < 1 month */
   --file-age-old: oklch(53.4% 0.007 106.6); /* ≥ 1 month */
-
-  /* Opaque markers preserve the visible hue on light surfaces, where
-     yellow text alone must be too dark to remain readable. */
-  --file-age-accent-live: oklch(71% 0.151 43);
-  --file-age-accent-sec: oklch(86.5% 0.177 90.4);
-  --file-age-accent-min: oklch(78.6% 0.159 97.5);
-  --file-age-accent-hr: oklch(71.4% 0.138 104);
-  --file-age-accent-day: oklch(62% 0.097 107.1);
-  --file-age-accent-wk: oklch(54.8% 0.047 107.8);
-  --file-age-accent-old: oklch(51.6% 0.006 106.6);
 
   /* Translucent surface variants for badges and area encodings. */
   --file-age-fill-live: oklch(71% 0.151 43 / 0.22);
@@ -933,14 +921,6 @@
   --file-age-day: oklch(80.6% 0.088 106.5);
   --file-age-wk: oklch(74.1% 0.043 107.4);
   --file-age-old: oklch(69.7% 0.006 106.5);
-
-  --file-age-accent-live: oklch(75.1% 0.126 43.7);
-  --file-age-accent-sec: oklch(89.1% 0.166 94.2);
-  --file-age-accent-min: oklch(85.9% 0.161 98.8);
-  --file-age-accent-hr: oklch(81.4% 0.149 104.1);
-  --file-age-accent-day: oklch(73% 0.116 107.1);
-  --file-age-accent-wk: oklch(61.7% 0.053 107.9);
-  --file-age-accent-old: oklch(55.2% 0.007 106.6);
 
   --file-age-fill-live: oklch(75.1% 0.126 43.7 / 0.26);
   --file-age-fill-sec: oklch(89.1% 0.166 94.2 / 0.42);
@@ -1994,36 +1974,27 @@ html[data-prose-font="sans"] {
   color: var(--size-color-bold);
   font-weight: var(--weight-bold);
 }
-/* File-age primitive. Each state selects one accessible foreground and
-   one high-chroma marker. Spans render their own marker; menu rows place
-   the same .file-age-marker after the fixed check column. */
+/* File-age primitive. The text color is the sole age hue signal. */
 .age-live {
   --file-age-current: var(--file-age-live);
-  --file-age-accent-current: var(--file-age-accent-live);
 }
 .age-sec {
   --file-age-current: var(--file-age-sec);
-  --file-age-accent-current: var(--file-age-accent-sec);
 }
 .age-min {
   --file-age-current: var(--file-age-min);
-  --file-age-accent-current: var(--file-age-accent-min);
 }
 .age-hr {
   --file-age-current: var(--file-age-hr);
-  --file-age-accent-current: var(--file-age-accent-hr);
 }
 .age-day {
   --file-age-current: var(--file-age-day);
-  --file-age-accent-current: var(--file-age-accent-day);
 }
 .age-wk {
   --file-age-current: var(--file-age-wk);
-  --file-age-accent-current: var(--file-age-accent-wk);
 }
 .age-old {
   --file-age-current: var(--file-age-old);
-  --file-age-accent-current: var(--file-age-accent-old);
 }
 :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   color: var(--file-age-current);
@@ -2031,22 +2002,6 @@ html[data-prose-font="sans"] {
 }
 :is(.age-live, .age-sec, .age-min) {
   font-weight: var(--file-age-weight-recent);
-}
-span:is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--file-age-marker-gap);
-}
-span:is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)::before,
-.file-age-marker {
-  width: var(--file-age-marker-size);
-  height: var(--file-age-marker-size);
-  flex: 0 0 auto;
-  border-radius: var(--radius-circle);
-  background: var(--file-age-accent-current);
-}
-span:is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)::before {
-  content: "";
 }
 .tree-children {
   margin-left: 16px;
@@ -2408,8 +2363,8 @@ span:is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)::be
   font-variant-numeric: tabular-nums;
   font-size: var(--ui-small-font-size);
 }
-/* Age menu rows inherit the same foreground and marker variables as
-   tree and header ages. There are no menu-only color corrections. */
+/* Age menu rows inherit the same foreground as tree and header ages.
+   There are no menu-only color corrections. */
 /* Labelled checkbox — the family's one deliberate break from
    button-with-aria-pressed, for a boolean whose polarity has to be
    legible. A pressed pill reading "Gitignored" does not say whether
@@ -3813,15 +3768,6 @@ pre.code-block code.hljs {
   background: var(--file-age-fill-live);
   color: var(--file-age-live);
   animation: pulse-dot 1.5s ease-in-out infinite;
-}
-.badge-live::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-circle);
-  background: var(--file-age-accent-live);
-  margin-right: 4px;
 }
 
 /* ── Charts ─────────────────────────────────────────────────── */

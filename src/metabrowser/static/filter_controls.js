@@ -245,19 +245,16 @@
         const icon = opt.icon
           ? `<span class="menu-item-icon ${esc(opt.iconClass || "")}">${opt.icon}</span>`
           : "";
-        // `ageClass` selects the shared age foreground and marker
-        // variables, so a menu row and the rows it keeps stay in sync.
+        // `ageClass` selects the shared age foreground, so a menu row
+        // and the rows it keeps stay in sync.
         const age = opt.ageClass ? ` ${esc(opt.ageClass)}` : "";
-        const ageMarker = opt.ageClass
-          ? '<span class="file-age-marker" aria-hidden="true"></span>'
-          : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +
           `${title}` +
           ` role="${rowRole}" aria-checked="${on}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
-          `${icon}${ageMarker}<span class="menu-item-label">${esc(opt.label)}</span>${count}</button>`
+          `${icon}<span class="menu-item-label">${esc(opt.label)}</span>${count}</button>`
         );
       })
       .join("");

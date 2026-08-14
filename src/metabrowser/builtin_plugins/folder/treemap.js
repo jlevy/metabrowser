@@ -53,6 +53,9 @@ export function registerTreemap(mb, palettePool, rollupControls) {
   /** @param {Record<string, any>} cell @param {TreemapState} state @param {{classFor: (key: string) => string}} palette */
   function cellClasses(cell, state, palette) {
     const cls = ["tm-cell", `tm-${cell.kind}`, "tm-type-fill", typeFillClass(cell, palette)];
+    if (cellIsActionable(cell)) {
+      cls.push("tm-actionable");
+    }
     if (cell.gitignored && state.includeIgnored) {
       cls.push("tm-ignored");
     }
@@ -129,9 +132,9 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     const aria = mb.escapeHtml(cellAriaLabel(cell, state));
     const actionable = cellIsActionable(cell);
     // A nested directory cell contains its children's cells, so the
-    // cell itself is a group and only its label strip is the button —
-    // no button-inside-button tree, and the click target matches the
-    // visible affordance.
+    // cell itself stays a group and its label is the keyboard control.
+    // Pointer routing uses the deepest outer cell instead, avoiding a
+    // nested button tree without shrinking the hit target to the label.
     const titleInteractive = actionable && cell.nested;
     const titleAttrs = titleInteractive
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
@@ -362,24 +365,6 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       return Number.isInteger(idx) && idx >= 0 && idx < cells.length ? cells[idx] : null;
     }
 
-    /**
-     * Cell for activation: only actionable elements carry data-tm-index
-     * (a nested directory's label strip, or the whole cell otherwise).
-     * @param {Element | null} el
-     * @returns {Record<string, any> | null}
-     */
-    function actionableCellForElement(el) {
-      if (!el) {
-        return null;
-      }
-      const host = /** @type {HTMLElement | null} */ (el.closest("[data-tm-index]"));
-      if (!host) {
-        return null;
-      }
-      const idx = Number(host.dataset.tmIndex);
-      return Number.isInteger(idx) && idx >= 0 && idx < cells.length ? cells[idx] : null;
-    }
-
     /** @param {Record<string, any>} cell */
     function activateCell(cell) {
       if (cell.kind === "dir" && cell.path !== ctx.path) {
@@ -410,8 +395,8 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     }
 
     viewport.addEventListener("click", (e) => {
-      const cell = actionableCellForElement(/** @type {Element} */ (e.target));
-      if (cell) {
+      const cell = cellForElement(/** @type {Element} */ (e.target));
+      if (cell && cellIsActionable(cell)) {
         activateCell(cell);
       }
     });

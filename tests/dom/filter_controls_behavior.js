@@ -314,7 +314,7 @@ const menuAged = fc.menuGroupHtml({
   menuId: "r",
 });
 assertContains("live takes the dedicated live colour", menuAged, "chip-menu-item age-live");
-assertContains("age rows include the shared color marker", menuAged, "file-age-marker");
+assertMissing("age rows use text color without a marker", menuAged, "file-age-marker");
 assertContains(
   "live explains its exact cutoff",
   menuAged,

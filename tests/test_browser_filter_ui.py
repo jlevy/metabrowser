@@ -117,6 +117,25 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     assert "display:" not in hover_block
 
 
+def test_treemap_pointer_hit_testing_uses_the_full_actionable_cell() -> None:
+    """Nested ARIA buttons stay on labels, but pointer activation uses
+    the deepest visible cell rectangle rather than that label alone."""
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    treemap = (folder_root / "treemap.js").read_text()
+    plugin_css = (folder_root / "styles.css").read_text()
+    click_start = treemap.index('viewport.addEventListener("click"')
+    click_block = treemap[click_start : treemap.index('viewport.addEventListener("mouseover"')]
+
+    assert 'cls.push("tm-actionable")' in treemap
+    assert "cellForElement" in click_block
+    assert "cellIsActionable(cell)" in click_block
+    assert "actionableCellForElement" not in click_block
+    assert ".tm-actionable {" in plugin_css
+    assert "cursor: pointer;" in plugin_css[plugin_css.index(".tm-actionable {") :]
+    assert ".tm-nested {\n  cursor: default;" not in plugin_css
+
+
 def test_single_and_multi_select_use_different_fills() -> None:
     """The fill split is the only cue that tells a user which kind of
     group they are looking at before clicking, so it is load-bearing:
@@ -1073,11 +1092,12 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
         assert f'ageClass: "{age}"' in option, f"{value} should wear {age}"
 
     filter_controls = _read("filter_controls.js")
-    assert "file-age-marker" in filter_controls
+    assert "file-age-marker" not in filter_controls
 
     # The shared ramp is sufficient; no menu-only color correction may drift.
     css = _read("styles.css")
     assert ".chip-menu-item.age-min {" not in css
+    assert ".file-age-marker" not in css
 
 
 def test_clear_sits_with_the_dropdowns_it_undoes() -> None:

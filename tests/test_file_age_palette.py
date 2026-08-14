@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STYLES_CSS = ROOT / "src" / "metabrowser" / "static" / "styles.css"
+FILTER_CONTROLS = ROOT / "src" / "metabrowser" / "static" / "filter_controls.js"
 DESIGN_SYSTEM = ROOT / "docs" / "design-system.md"
 
 MINIMUM_TEXT_CONTRAST = 4.5
@@ -145,22 +146,21 @@ def test_file_age_tokens_use_one_oklch_palette_in_both_themes() -> None:
 
     for theme, tokens in (("light", light_tokens), ("dark", dark_tokens)):
         for state in AGE_STATES:
-            for family in ("", "accent-", "fill-"):
+            for family in ("", "fill-"):
                 token = f"--file-age-{family}{state}"
                 assert token in tokens, f"{theme} theme is missing {token}"
                 _oklch(tokens[token])
 
-        for family in ("", "accent-"):
-            colors = [_oklch(tokens[f"--file-age-{family}{bucket}"]) for bucket in AGE_BUCKETS]
-            chroma = [color[1] for color in colors]
-            assert chroma == sorted(chroma, reverse=True), (
-                f"{theme} {family or 'foreground'} age chroma must fade monotonically"
-            )
-            assert all(80 <= color[2] <= 120 for color in colors), (
-                f"{theme} non-live ages must remain in the yellow family"
-            )
+        colors = [_oklch(tokens[f"--file-age-{bucket}"]) for bucket in AGE_BUCKETS]
+        chroma = [color[1] for color in colors]
+        assert chroma == sorted(chroma, reverse=True), (
+            f"{theme} foreground age chroma must fade monotonically"
+        )
+        assert all(80 <= color[2] <= 120 for color in colors), (
+            f"{theme} non-live ages must remain in the yellow family"
+        )
 
-        live_hue = _oklch(tokens["--file-age-accent-live"])[2]
+        live_hue = _oklch(tokens["--file-age-live"])[2]
         assert 25 <= live_hue <= 55, f"{theme} Live must stay warm salmon, got {live_hue}"
 
 
@@ -183,11 +183,20 @@ def test_file_age_foregrounds_meet_contrast_on_every_age_surface() -> None:
 
 def test_file_age_palette_is_a_documented_shared_primitive() -> None:
     css = STYLES_CSS.read_text(encoding="utf-8")
+    filter_controls = FILTER_CONTROLS.read_text(encoding="utf-8")
     docs = DESIGN_SYSTEM.read_text(encoding="utf-8")
+    file_age_docs = docs[
+        docs.index("## File Age") : docs.index("\n## ", docs.index("## File Age") + 1)
+    ]
 
-    assert ".file-age-marker" in css
+    assert "--file-age-accent-" not in css
+    assert "--file-age-marker-" not in css
+    assert ".file-age-marker" not in css
+    assert "file-age-marker" not in filter_controls
     assert ".chip-menu-item.age-min {" not in css
     assert "var(--file-age-fill-live)" in _css_block(css, ".badge-live {")
-    assert "var(--file-age-accent-live)" in _css_block(css, ".badge-live::before {")
+    assert ".badge-live::before" not in css
     assert "## File Age" in docs
     assert "OKLCH" in docs
+    assert "text color" in file_age_docs.lower()
+    assert "marker" not in file_age_docs.lower()

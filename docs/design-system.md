@@ -46,10 +46,9 @@ domain tokens, rather than in core `styles.css`.
 
 File age is one shared primitive across navigation rows, file headers, recent-filter
 menus, Live badges, and plugin-rendered age labels.
-Each state owns three parallel OKLCH tokens in `static/styles.css`:
+Each state owns two parallel OKLCH tokens in `static/styles.css`:
 
 - `--file-age-<state>` is an accessible text foreground
-- `--file-age-accent-<state>` is an opaque, high-chroma marker
 - `--file-age-fill-<state>` is a translucent surface or area fill
 
 Live is an activity state, not an elapsed-age bucket.
@@ -60,12 +59,13 @@ minute, under one hour, under one day, under one week, under one month, and olde
 They stay within a narrow yellow hue range while chroma and prominence fall
 monotonically toward a warm neutral.
 
-Light-theme yellow text must be dark to meet WCAG AA contrast on white and tinted
-surfaces. The `.file-age-marker` carries the brighter yellow beside the readable text
-instead of weakening contrast or introducing a menu-specific correction.
-Age spans render that marker directly; dropdown rows place the same marker after their
-fixed check column. The `.age-live` and `.age-*` classes select tokens only, so new
-consumers reuse the primitive rather than reconstructing colors.
+Text color is the sole age hue signal; dates and Live labels never gain a dot, swatch,
+or adjacent color cue.
+Light-theme yellow text uses a darker ochre expression of the hue to meet WCAG AA
+contrast on white and tinted surfaces without weakening the signal or introducing a
+menu-specific correction.
+The `.age-live` and `.age-*` classes select tokens only, so new consumers reuse the
+primitive rather than reconstructing colors.
 
 Adjust this family only at its token definitions, preserve the semantic ordering in both
 themes, and run `tests/test_file_age_palette.py` to verify OKLCH structure, gamut, and
@@ -625,6 +625,14 @@ their contrast and hue relationship remain intact.
 There is no separate label hover surface.
 It never changes stacking or display: nested folder containers and their descendant
 rectangles are flattened siblings, so raising a container would cover its children.
+
+The complete visible rectangle of every folder or file is its pointer target, including
+the uncovered header, gutter, and background of a nested folder.
+When rectangles are nested, the deepest rectangle under the pointer wins; an inert
+remainder cell does not fall through to its parent.
+The nested parent remains an ARIA group and its label remains the keyboard control, so
+full-cell pointer handling never creates an invalid button containing descendant
+buttons.
 
 Cell typography grows continuously with usable rectangle geometry.
 The scale combines the short side with the square root of area, which lets a genuinely

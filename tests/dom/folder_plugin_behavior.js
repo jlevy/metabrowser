@@ -459,6 +459,14 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     treemapStyles,
   );
   check(
+    "actionable cells expose a whole-rectangle pointer target",
+    container.viewport.innerHTML.includes("tm-cell tm-dir tm-type-fill") &&
+      container.viewport.innerHTML.includes("tm-actionable") &&
+      treemapStyles.includes(".tm-actionable {") &&
+      !treemapStyles.includes(".tm-nested {\n  cursor: default;"),
+    container.viewport.innerHTML,
+  );
+  check(
     "type fill always uses the shared palette",
     container.viewport.innerHTML.includes("tm-type-fill") &&
       container.viewport.innerHTML.includes("mb-distribution-slot-7") &&
@@ -519,25 +527,60 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     container.viewport.innerHTML,
   );
 
-  const folderIndexMatch = container.viewport.innerHTML.match(
-    /data-tm-index="(\d+)" aria-label="docs \(folder,/,
+  const folderCellMatch = container.viewport.innerHTML.match(
+    /data-tm-cell="(\d+)" data-tm-kind="dir" data-tm-path="docs"/,
   );
-  check("folder cell is actionable", !!folderIndexMatch, container.viewport.innerHTML);
+  const fileCellMatch = container.viewport.innerHTML.match(
+    /data-tm-cell="(\d+)" data-tm-kind="file" data-tm-path="a.py"/,
+  );
+  check("folder cell is actionable", !!folderCellMatch, container.viewport.innerHTML);
+  check("file cell is actionable", !!fileCellMatch, container.viewport.innerHTML);
   const cellClick = container.viewport.listeners.click?.[0];
   check("cell click handler bound", typeof cellClick === "function");
-  if (cellClick && folderIndexMatch) {
-    const folderTarget = {
-      dataset: { tmIndex: folderIndexMatch[1] },
+  const cellTarget = (index) => {
+    const target = {
+      dataset: { tmCell: index },
       closest(selector) {
-        return selector === "[data-tm-index]" ? folderTarget : null;
+        return selector === "[data-tm-cell]" ? target : null;
       },
     };
+    return target;
+  };
+  if (cellClick && folderCellMatch && fileCellMatch) {
+    const folderTarget = cellTarget(folderCellMatch[1]);
     cellClick({ target: folderTarget });
     check(
-      "folder cell keeps Treemap active",
+      "folder background keeps Treemap active",
       openPathEvents.length === 1 &&
         openPathEvents[0].path === "docs" &&
         openPathEvents[0].viewId === "treemap",
+      JSON.stringify(openPathEvents),
+    );
+
+    const folderLabel = {
+      closest(selector) {
+        return selector === "[data-tm-cell]" ? folderTarget : null;
+      },
+    };
+    cellClick({ target: folderLabel });
+    check(
+      "folder label uses the same whole-cell route",
+      openPathEvents.length === 2 && openPathEvents[1].path === "docs",
+      JSON.stringify(openPathEvents),
+    );
+
+    const childTarget = cellTarget(fileCellMatch[1]);
+    const childLabel = {
+      closest(selector) {
+        return selector === "[data-tm-cell]" ? childTarget : null;
+      },
+    };
+    cellClick({ target: childLabel });
+    check(
+      "the deepest clicked cell wins without ancestor activation",
+      openPathEvents.length === 3 &&
+        openPathEvents[2].path === "a.py" &&
+        openPathEvents[2].viewId === undefined,
       JSON.stringify(openPathEvents),
     );
   }

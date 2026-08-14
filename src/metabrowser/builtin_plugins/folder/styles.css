@@ -82,8 +82,12 @@
   border: 1px solid var(--viz-border-subtle);
   background: var(--viz-surface);
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
   transition: filter var(--viz-hover-duration) ease;
+}
+
+.tm-actionable {
+  cursor: pointer;
 }
 
 .tm-cell:hover {
@@ -125,10 +129,6 @@
   outline: 2px solid var(--link);
   outline-offset: -1px;
   box-shadow: 0 0 0 2px var(--viz-surface);
-}
-
-.tm-nested {
-  cursor: default;
 }
 
 .tm-cell-file-icon {
