@@ -722,7 +722,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     );
     check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
-      "ignored scope leaves explicit Total and Ignored context unchanged",
+      "ignored scope leaves explicit Files and Ignored context unchanged",
       JSON.stringify(container.totals.value) === totalsBeforeIgnored &&
         container.totals.metric === totalsMetricBeforeIgnored,
       JSON.stringify({ value: container.totals.value, metric: container.totals.metric }),

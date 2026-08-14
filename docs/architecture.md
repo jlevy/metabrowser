@@ -108,8 +108,10 @@ contributing extension, without adding group subtotals.
 No extension discloses exact basenames and Other types discloses raw extensions; both
 cap at 20 children and conserve their omitted values in an exact Others row.
 Each row renders count and byte shares as independently normalized inline bars beside
-their exact values. A Totals group leads with the neutral selected-population Total row
-and, when ignored files are included, follows it with the exact neutral Ignored subset.
+their exact values. A neutral two-row population summary always leads with unignored
+Files and follows with Ignored.
+The rows are disjoint, conserve the complete directory population, and use that
+population as their percentage denominator independently for file counts and bytes.
 README is another contribution whose resolver checks the folder envelope and whose
 renderer delegates to the instance-safe built-in Markdown mount.
 Using the same mount keeps Overview’s README structurally and behaviorally aligned with

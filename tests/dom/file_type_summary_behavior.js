@@ -257,8 +257,8 @@ function familyRow() {
       handle.rows.get(".md").metricValue.className === "file-type-summary-value count",
   );
   check(
-    "Total values have no unconditional bold override",
-    !styles.includes(".file-type-summary-total-row .file-type-summary-value"),
+    "Files values have no unconditional bold override",
+    !styles.includes(".file-type-summary-files-row .file-type-summary-value"),
   );
   check(
     "metric value columns keep count labels clear of bars at every breakpoint",

@@ -92,7 +92,7 @@ def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
 def test_folder_rollups_use_one_files_section_and_one_selected_metric() -> None:
     """Overview and Treemap share one Files heading and one selected metric.
 
-    Total, Ignored, and type rows must switch together instead of retaining
+    Files, Ignored, and type rows must switch together instead of retaining
     parallel Files and Size columns that compete with the chooser.
     """
 
@@ -109,6 +109,8 @@ def test_folder_rollups_use_one_files_section_and_one_selected_metric() -> None:
     assert '"folder.file-types"' in index
     assert '<h2 class="tm-totals-heading">Files</h2>' in treemap
     assert "mountFolderTotalsView" in file_types
+    assert 'filesRow = totalsRow("Files")' in totals
+    assert 'totalsRow("Total")' not in totals
     assert 'head.className = "sr-only"' in totals
     assert 'for (const label of ["Population", "Files", "Size"])' not in totals
     assert 'for (const label of ["Type", "Files", "Size"])' not in distribution

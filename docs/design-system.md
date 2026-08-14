@@ -562,11 +562,11 @@ so both match navigation without weakening the text label.
 Special parents and Others stay iconless because they describe aggregates rather than
 exact files or extensions.
 An unknown exact extension such as `.bin` uses the generic blank-page identity.
-Family parents, Total, and Ignored are likewise iconless.
+Family parents, Files, and Ignored are likewise iconless.
 Every exact Files value uses the shared `.count` and `.count-large` convention, and
 every exact byte value uses `.size` and `.size-large`. The stronger weight therefore
 appears at the same count and byte thresholds as the navigation panel, including on
-Total and Ignored; a row role never forces a different numeric weight.
+Files and Ignored; a row role never forces a different numeric weight.
 
 Rows within each subsection sort by the active Bytes or Files measure, descending.
 The other measure is the deterministic secondary key and the stable row identity is the
@@ -576,15 +576,17 @@ unpredictably.
 
 The **Files** section begins with the shared Files / Bytes control and a fixed two-row
 totals table using the neutral distribution color.
-**Total** comes first and reports the complete selected directory immediately from the
-inventory snapshot. **Ignored** follows with the exact ignored subset.
+**Files** comes first and reports the unignored population immediately from the
+inventory snapshot. **Ignored** follows with the excluded population.
+These are disjoint rows whose counts and byte sizes each sum to the complete selected
+directory. Their percentages use that complete population as the shared denominator, so
+each metric also sums to 100% when its denominator is nonzero.
 Both rows switch to the selected metric and are always present, including when ignored
 files are hidden from the type population, so scope is explicit without a separate
 notice. The **Show ignored** checkbox follows the totals and changes only the type rows
-below it; it never changes or hides the explicit Total and Ignored context.
-A populated Total track fills to 100%. When the population has files but zero bytes, the
-Bytes total remains `0 B`, `0%`, and an unfilled neutral track rather than implying a
-share of an empty byte population.
+below it; it never changes or hides the explicit Files and Ignored context.
+When the complete population has files but zero bytes, both byte rows remain `0 B`,
+`0%`, and unfilled rather than implying a share of an empty byte population.
 
 Visual Type and metric column labels are unnecessary when every metric cell keeps the
 same value-track-percentage grammar.
@@ -607,7 +609,7 @@ File types already answers which extensions make up the population, while Treema
 answers where space or file count sits and keeps folder and file cells navigable.
 
 The Files context above the map mounts the same reusable folder-rollup controls used by
-Overview. The metric control appears before Total and Ignored; the scope control appears
+Overview. The metric control appears before Files and Ignored; the scope control appears
 after them:
 
 - A joined, exclusive **Files / Bytes** group chooses the cell-area metric and starts on
@@ -619,7 +621,7 @@ after them:
 Both views observe one state object and preference key, so changing either control in
 Overview or Treemap updates the other surface without a second interpretation of scope
 or metric. The metric switches both totals rows and the map.
-Show ignored changes map membership but leaves the explicit Total and Ignored rows
+Show ignored changes map membership but leaves the explicit Files and Ignored rows
 intact.
 
 There is no separate color selector.

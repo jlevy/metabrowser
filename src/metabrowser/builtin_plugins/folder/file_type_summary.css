@@ -112,7 +112,7 @@
 }
 
 .file-type-summary-ignored-row th,
-.file-type-summary-total-row th {
+.file-type-summary-files-row th {
   font-weight: var(--weight-bold);
 }
 

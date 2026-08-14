@@ -59,21 +59,25 @@ export function buildFolderTotalsModel(totals, formatters) {
   }
   const totalFiles = totals.totalFiles ?? 0;
   const totalBytes = totals.totalBytes ?? 0;
-  const ignoredFiles = Math.max(0, totalFiles - (totals.unignoredFiles ?? 0));
-  const ignoredBytes = Math.max(0, totalBytes - (totals.unignoredBytes ?? 0));
+  const unignoredFiles = totals.unignoredFiles ?? 0;
+  const unignoredBytes = totals.unignoredBytes ?? 0;
+  const ignoredFiles = Math.max(0, totalFiles - unignoredFiles);
+  const ignoredBytes = Math.max(0, totalBytes - unignoredBytes);
+  const fileShare = share(unignoredFiles, totalFiles);
+  const byteShare = share(unignoredBytes, totalBytes);
   const ignoredFileShare = share(ignoredFiles, totalFiles);
   const ignoredByteShare = share(ignoredBytes, totalBytes);
   return Object.freeze({
     state: /** @type {const} */ ("complete"),
-    total: Object.freeze({
-      files: totalFiles,
-      bytes: totalBytes,
-      filesText: formatters.formatFileCount(totalFiles),
-      bytesText: formatters.formatSize(totalBytes),
-      fileShare: totalFiles > 0 ? 100 : 0,
-      byteShare: totalBytes > 0 ? 100 : 0,
-      filePercent: totalFiles > 0 ? "100%" : "0%",
-      bytePercent: totalBytes > 0 ? "100%" : "0%",
+    files: Object.freeze({
+      files: unignoredFiles,
+      bytes: unignoredBytes,
+      filesText: formatters.formatFileCount(unignoredFiles),
+      bytesText: formatters.formatSize(unignoredBytes),
+      fileShare,
+      byteShare,
+      filePercent: percentText(fileShare),
+      bytePercent: percentText(byteShare),
     }),
     ignored: Object.freeze({
       files: ignoredFiles,
@@ -147,7 +151,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   /** @type {HTMLTableElement | null} */
   let table = null;
   /** @type {ReturnType<typeof totalsRow> | null} */
-  let totalRow = null;
+  let filesRow = null;
   /** @type {ReturnType<typeof totalsRow> | null} */
   let ignoredRow = null;
   /** @type {HTMLTableCellElement | null} */
@@ -185,9 +189,9 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     head.append(headRow);
     const body = document.createElement("tbody");
     body.className = "file-type-summary-group file-type-summary-totals";
-    totalRow = totalsRow("Total");
+    filesRow = totalsRow("Files");
     ignoredRow = totalsRow("Ignored");
-    body.append(totalRow.tr, ignoredRow.tr);
+    body.append(filesRow.tr, ignoredRow.tr);
     table.append(columns, head, body);
     root.append(table);
   }
@@ -209,7 +213,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     const model = buildFolderTotalsModel(currentTotals, mb);
     if (model.state === "pending") {
       table = null;
-      totalRow = null;
+      filesRow = null;
       ignoredRow = null;
       metricHeader = null;
       root.innerHTML =
@@ -218,13 +222,13 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
       return;
     }
     ensureTable();
-    if (!totalRow || !ignoredRow) {
+    if (!filesRow || !ignoredRow) {
       throw new TypeError("folder totals table failed to initialize");
     }
     if (metricHeader) {
       metricHeader.textContent = currentMetric === "size" ? "Bytes" : "Files";
     }
-    updateRow(model.total, totalRow);
+    updateRow(model.files, filesRow);
     updateRow(model.ignored, ignoredRow);
   }
 
