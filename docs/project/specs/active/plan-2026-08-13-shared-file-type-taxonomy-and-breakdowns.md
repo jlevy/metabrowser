@@ -10,7 +10,7 @@
 
 Metabrowser now groups common extensions into semantic families for its folder Files
 summary, navigation filter, and Treemap colors.
-FDU independently classifies files from a build-time TOML registry and reports types,
+fdu independently classifies files from a build-time TOML registry and reports types,
 analyzer families, and raw extensions.
 The two projects already solve adjacent parts of the same problem, but their names,
 extension derivation, category semantics, and wire structures differ.
@@ -25,19 +25,19 @@ The registry separates four concepts that must not be collapsed:
 - an analyzer **content family**, such as code, prose, markup, data, or binary.
 
 This separation lets `.jsonl` appear under **Log files** while retaining structured-data
-analysis, lets SVG appear under **Images** while retaining markup analysis, and lets FDU
+analysis, lets SVG appear under **Images** while retaining markup analysis, and lets fdu
 distinguish C from C++ while Metabrowser presents one conservative C/C++ family.
 
 The design deliberately combines the strongest part of each project.
 Metabrowser’s general rollup is the product model: dual file/byte measures,
 all/unignored populations, exact conservation, semantic parents, explanatory children,
 and bounded fallback tails.
-FDU contributes the more organized declaration and classifier structure: a TOML rule
+fdu contributes the more organized declaration and classifier structure: a TOML rule
 registry, stable kind IDs, an independent content-family axis, evidence provenance, and
 build-time compilation.
-Metabrowser owns the reference product contract and documents it completely here; FDU
+Metabrowser owns the reference product contract and documents it completely here; fdu
 later adopts the same registry and exports the same UI-ready hierarchy.
-FDU’s current flat type/family report is not the template for Metabrowser’s Overview
+fdu’s current flat type/family report is not the template for Metabrowser’s Overview
 hierarchy.
 
 The same work makes every family disclosure useful even when only one extension is
@@ -55,7 +55,7 @@ This plan extends the implemented
 [semantic file type family plan](../done/plan-2026-08-13-semantic-file-type-families.md)
 and the original
 [folder Files summary plan](../done/plan-2026-08-12-directory-file-type-summary.md).
-It also aligns with FDU’s
+It also aligns with fdu’s
 [file-type registry](https://github.com/jlevy/fdu/blob/main/crates/fdu/rules/file-types.toml)
 and its role as the future high-performance rollup engine.
 
@@ -63,7 +63,7 @@ and its role as the future high-performance rollup engine.
 
 - Define one declarative, versioned TOML registry for shared file-type knowledge.
 - Establish Metabrowser’s packaged registry, typed models, and documented wire formats
-  as the reference contract, then preserve one byte-identical registry payload in FDU.
+  as the reference contract, then preserve one byte-identical registry payload in fdu.
 - Give every shared concept a stable machine ID independent of labels, icons, colors,
   and renderer names.
 - Separate classifier kinds, display families, display groups, and analyzer content
@@ -84,7 +84,7 @@ and its role as the future high-performance rollup engine.
 - Give both packages the complete group, family, child, population, and metric structure
   required by the Files UI, even when one package exposes it through an API or CLI
   rather than rendering the browser interface itself.
-- Give FDU compatible stable IDs and hierarchy exports for Rust, CLI, JSON/YAML, and
+- Give fdu compatible stable IDs and hierarchy exports for Rust, CLI, JSON/YAML, and
   Python consumers without replacing its richer content-detection evidence.
 - Keep both projects’ outputs bounded, deterministic, cache-safe, and compatible during
   rollout.
@@ -98,17 +98,17 @@ and its role as the future high-performance rollup engine.
   They consume classification but remain separate systems.
 - Making Metabrowser read file contents during inventory, rollup, navigation, or request
   handling.
-- Removing FDU’s optional shebang, modeline, signature, generated, vendored, or
+- Removing fdu’s optional shebang, modeline, signature, generated, vendored, or
   documentation detection.
 - Adding direct click-to-filter behavior to Overview rows in this change.
   Every child has a stable identity so that interaction can be added without changing
   the data model.
-- Storing an unbounded exact-basename map in every FDU directory rollup.
-  FDU may compute the explicit breakdown on demand until measurements justify another
+- Storing an unbounded exact-basename map in every fdu directory rollup.
+  fdu may compute the explicit breakdown on demand until measurements justify another
   exact structure.
 - Introducing a third repository, Git submodule, or network fetch into either build.
-- Replacing Metabrowser’s conserved hierarchical rollup with FDU’s current flat report
-  sections. FDU adapts the shared hierarchy as an additional projection.
+- Replacing Metabrowser’s conserved hierarchical rollup with fdu’s current flat report
+  sections. fdu adapts the shared hierarchy as an additional projection.
 - Making taxonomy labels a compatibility contract.
   IDs and matching behavior are the contract; labels are presentation metadata.
 
@@ -131,20 +131,20 @@ nonzero.
 
 The current design has three limitations addressed here:
 
-1. The catalog is Python source, so FDU cannot consume it directly.
+1. The catalog is Python source, so fdu cannot consume it directly.
 2. The only declared top-level groups are Docs, Code, and Data; archives, logs, and
    media fall into a mix of existing families or raw rows.
 3. No extension is one opaque row and Remaining types is one opaque aggregate after raw
    response bounding.
 
-### FDU Today
+### fdu Today
 
-FDU already has `crates/fdu/rules/file-types.toml`. `build.rs` validates a constrained
+fdu already has `crates/fdu/rules/file-types.toml`. `build.rs` validates a constrained
 TOML shape, compiles it into native Rust data, and fingerprints normalized source for
 cache and provenance invalidation.
 Runtime classification does not parse configuration.
 
-The current FDU registry is broader than Metabrowser’s. It includes common languages,
+The current fdu registry is broader than Metabrowser’s. It includes common languages,
 prose, markup, data, images, audio, video, archives, executables, fonts, and databases.
 Its `Classification` records:
 
@@ -153,16 +153,16 @@ Its `Classification` records:
 - detection source and confidence; and
 - generated, vendored, and documentation flags.
 
-FDU’s `types`, `extensions`, `families`, `languages`, and `documents` views are pure
+fdu’s `types`, `extensions`, `families`, `languages`, and `documents` views are pure
 readers over the index.
 This is valuable and should remain.
-The mismatch is semantic: FDU’s `ContentFamily` controls analysis behavior, whereas
+The mismatch is semantic: fdu’s `ContentFamily` controls analysis behavior, whereas
 Metabrowser’s category controls presentation and filtering.
 Calling both values “family” obscures cases where they must differ.
 
 ### Important Current Divergences
 
-| Concern | Metabrowser | FDU | Shared Direction |
+| Concern | Metabrowser | fdu | Shared Direction |
 | --- | --- | --- | --- |
 | Declaration | Python tuples | TOML compiled by `build.rs` | Versioned TOML |
 | Stable classified ID | Display family ID | `FileTypeId` kind | Kind plus optional display family |
@@ -172,7 +172,7 @@ Calling both values “family” obscures cases where they must differ.
 | Dotfile with suffix | All leading-dot names are extensionless | `.eslintrc.json` is `.json` | Bare dotfile has none; later dot introduces an extension |
 | Known match | Longest declared suffix | Exact derived extension | Exact compound first, then longest component suffix |
 | Filename match | Case-insensitive category extras | Exact `OsStr` | ASCII-case-insensitive declared basename |
-| Content evidence | None on inventory path | Optional bounded cascade | FDU-only evidence enriches the same result shape |
+| Content evidence | None on inventory path | Optional bounded cascade | fdu-only evidence enriches the same result shape |
 | Unknown rows | Raw extension or aggregate tail | `unknown:.ext` kind | Stable raw extension plus Remaining types placement |
 
 The changes in the last four rows are intentional compatibility changes and require
@@ -186,16 +186,16 @@ Ownership follows the concern rather than one repository wholesale:
 | --- | --- |
 | Folder breakdown hierarchy | Metabrowser’s family parents, extension children, two metrics, population scopes, and conservation |
 | Fallback cardinality | Metabrowser’s aggregate-before-bound dual-metric selection, extended to two inspectable parents |
-| Registry source format | A Metabrowser-owned reference registry using FDU’s clearer TOML array-of-tables organization |
-| Classifier identity | FDU’s stable kind IDs, source, confidence, and content-family axis |
+| Registry source format | A Metabrowser-owned reference registry using fdu’s clearer TOML array-of-tables organization |
+| Classifier identity | fdu’s stable kind IDs, source, confidence, and content-family axis |
 | Visible family/group taxonomy | Shared data reviewed for both products |
-| Runtime loading | Build-time native tables in FDU; startup-time validated data plus injected JSON in Metabrowser |
+| Runtime loading | Build-time native tables in fdu; startup-time validated data plus injected JSON in Metabrowser |
 | Human UI | Metabrowser’s design system and Overview/navigation interaction contracts |
-| CLI and embedding | FDU adapters that export the Metabrowser-defined portable breakdown model |
+| CLI and embedding | fdu adapters that export the Metabrowser-defined portable breakdown model |
 
-The shared contract is therefore not “make Metabrowser use FDU’s current output.”
+The shared contract is therefore not “make Metabrowser use fdu’s current output.”
 It is “fully specify Metabrowser’s richer rollup, registry, and typed hierarchy here
-using FDU’s cleaner classifier organization, then let FDU adopt and produce that
+using fdu’s cleaner classifier organization, then let fdu adopt and produce that
 hierarchy alongside its existing analytical reports.”
 
 ## Terminology
@@ -204,13 +204,13 @@ hierarchy alongside its existing analytical reports.”
   kind, logical extension, byte measures, modification time, and ignore state.
 - **Logical extension:** The normalized final one or two eligible suffix components,
   including the leading dot, such as `.js`, `.min.js`, or `.tar.gz`.
-- **Kind:** The most specific stable classifier result used by FDU analysis, such as
+- **Kind:** The most specific stable classifier result used by fdu analysis, such as
   `javascript`, `json-lines`, `c`, or `cpp`.
 - **Display family:** A user-facing aggregate such as JavaScript, Log files, Images, or
   C/C++. A kind may map to one display family; several kinds may share it.
 - **Display group:** A top-level presentation and filter section such as Code, Logs, or
   Media.
-- **Content family:** FDU’s analyzer class: code, prose, markup, data, binary, or
+- **Content family:** fdu’s analyzer class: code, prose, markup, data, binary, or
   unknown. It is orthogonal to display group.
 - **Canonical extension:** The declared registry extension that matched a logical
   extension. `.min.js` has logical extension `.min.js` and canonical extension `.js`.
@@ -218,7 +218,7 @@ hierarchy alongside its existing analytical reports.”
   extension, extension, shebang, modeline, content ambiguity, signature, content probe,
   or unknown.
 - **Population:** A named set over which metrics are tallied, such as `all`,
-  `unignored`, or an FDU query’s `selected` population.
+  `unignored`, or an fdu query’s `selected` population.
 - **Remaining types:** All files with a logical extension that has no display-family
   match. It is a real conserved parent, not merely the overflow from response capping.
 - **Others:** The exact aggregate child for values omitted by one 20-item child cap.
@@ -235,10 +235,10 @@ hierarchy alongside its existing analytical reports.”
 3. **Make stable IDs the interchange contract.** User-facing labels may improve without
    invalidating caches, filters, or serialized data.
 4. **Classify once from the best evidence available.** Metabrowser uses metadata-only
-   evidence. FDU may add bounded content evidence and reports which source won.
+   evidence. fdu may add bounded content evidence and reports which source won.
 5. **Retain raw identity below every aggregate.** A family does not erase the logical or
    canonical extension.
-   A display family does not erase FDU’s kind.
+   A display family does not erase fdu’s kind.
 6. **Partition before presenting hierarchy.** Top-level type families, No extension, and
    Remaining types partition the file population exactly.
    Children explain their parent and are not added to the top-level conservation sum.
@@ -264,18 +264,18 @@ The file is packaged in the wheel, parsed once during server startup, and inject
 the browser as validated data.
 It is never fetched from the network and never read on a request path.
 
-FDU later adopts the same normalized registry at `crates/fdu/rules/file-types.toml`. It
+fdu later adopts the same normalized registry at `crates/fdu/rules/file-types.toml`. It
 compiles the data into native Rust and exports compatible classification and breakdown
 values.
-FDU may propose registry improvements, but the shared payload changes through the
-Metabrowser reference contract first and is then synchronized into FDU. This direction
-is organizational, not architectural: neither project acquires a runtime dependency on
-the other.
+fdu may propose registry improvements, but the shared payload changes through the
+Metabrowser reference contract first and is then synchronized into fdu.
+This direction is organizational, not architectural: neither project acquires a runtime
+dependency on the other.
 
 The sharing workflow is deliberately small:
 
 1. Edit and validate the reference Metabrowser registry and conformance corpus.
-2. Copy their normalized forms into FDU through a checked sync command that accepts an
+2. Copy their normalized forms into fdu through a checked sync command that accepts an
    explicit source checkout or release artifact.
 3. Review the registry diff in both repositories.
 4. Assert the same schema version, registry revision, normalized fingerprint, and
@@ -283,19 +283,19 @@ The sharing workflow is deliberately small:
 
 The fingerprint is a drift and cache identity, not a security check.
 The source Git revision or release is the supply-chain pin.
-A future Metabrowser/FDU integration may replace Metabrowser’s local classifier with
-FDU’s in-process API, but the registry and wire contracts remain independently
+A future Metabrowser/fdu integration may replace Metabrowser’s local classifier with
+fdu’s in-process API, but the registry and wire contracts remain independently
 documented here so that swapping the engine does not change product semantics.
 
 ### Why TOML
 
-TOML fits the existing FDU implementation and is in Python’s standard library through
+TOML fits the existing fdu implementation and is in Python’s standard library through
 `tomllib`. The source remains readable in code review, supports ordered arrays of
 tables, and requires no browser parser because Metabrowser injects validated JSON.
 
 The first schema uses a deliberately small, standard TOML subset: integers, strings,
 booleans, string arrays, top-level scalars, and `[[group]]`, `[[family]]`, and
-`[[kind]]` tables. FDU may keep a focused build-time parser if it validates the full
+`[[kind]]` tables. fdu may keep a focused build-time parser if it validates the full
 accepted subset against shared fixtures.
 Adopting a general Rust TOML dependency is not required for this feature and would need
 a separate supply-chain review.
@@ -353,18 +353,18 @@ Registry fields have these meanings:
 | Family | `label` | UI and human-report label |
 | Family | `group` | Declared parent display group |
 | Family | `order` | Stable tie-break order within its group |
-| Kind | `id` | Stable classifier and FDU analysis key |
+| Kind | `id` | Stable classifier and fdu analysis key |
 | Kind | `family` | Optional display family; absent kinds remain in Remaining types in the extension breakdown |
 | Kind | `content_family` | Analyzer class independent of display placement |
 | Kind | `extensions` | Normalized extension matchers without a leading dot |
 | Kind | `filenames` | Exact basename matchers, ASCII-case-insensitive |
-| Kind | `shebangs` | Optional FDU interpreter aliases |
+| Kind | `shebangs` | Optional fdu interpreter aliases |
 | Kind | `priority` | Evidence tie-breaker; higher wins when a detection tier permits alternatives |
 
 An optional `family` is important.
-FDU may retain a useful analysis kind before the UI catalog decides it deserves a named
+fdu may retain a useful analysis kind before the UI catalog decides it deserves a named
 aggregate. Such files stay visible under Remaining types in Metabrowser rather than
-forcing every FDU detector into the product taxonomy.
+forcing every fdu detector into the product taxonomy.
 
 ### Validation
 
@@ -385,7 +385,7 @@ Both loaders reject the same invalid declarations:
   evidence.
 
 Validation errors name the table ID, field, value, and conflict.
-FDU fails at build time.
+fdu fails at build time.
 Metabrowser fails at process startup before opening a listening socket.
 
 ## Shared Data Model and Formats
@@ -402,7 +402,7 @@ from becoming the accidental source of truth for the others.
 | Aggregation | `file-type-breakdown-v1` JSON-compatible value | Conserved, bounded, UI-ready groups, parents, children, populations, and metrics |
 
 Metabrowser defines all four here and implements the reference Python and browser
-adapters. FDU implements equivalent Rust types and serializers.
+adapters. fdu implements equivalent Rust types and serializers.
 Language-specific types may use idiomatic names and compact representations, but their
 serialized IDs, nullability, metric meanings, ordering, and conservation rules do not
 vary.
@@ -457,7 +457,7 @@ FileFacts
 
 Path and modification metadata may exist in the host inventory but are not file-type
 classification inputs.
-FDU retains native, potentially non-Unicode names internally; machine output applies its
+fdu retains native, potentially non-Unicode names internally; machine output applies its
 established lossless filename encoding.
 Metabrowser uses its existing safe wire-path representation.
 A basename child key must round-trip through the host format rather than silently
@@ -467,7 +467,7 @@ replacing an undecodable value.
 
 `file-type-registry-v1` and `file-type-breakdown-v1` are composable values, not entire
 application responses.
-An FDU machine report that Metabrowser can ingest has this conceptual envelope:
+An fdu machine report that Metabrowser can ingest has this conceptual envelope:
 
 ```json
 {
@@ -480,7 +480,7 @@ An FDU machine report that Metabrowser can ingest has this conceptual envelope:
 ```
 
 Metabrowser may send the registry once with bootstrap settings and breakdowns on each
-rollup response; FDU may bundle both into one standalone report.
+rollup response; fdu may bundle both into one standalone report.
 The breakdown always carries registry identity, so a consumer rejects or refreshes a
 breakdown whose revision and fingerprint do not match its registry projection.
 This supports the same Files UI structure without duplicating labels, ordering, or
@@ -488,7 +488,7 @@ family membership into every directory payload.
 
 The implementations use the same type boundaries:
 
-| Portable concept | Metabrowser Python/browser | FDU Rust/Python |
+| Portable concept | Metabrowser Python/browser | fdu Rust/Python |
 | --- | --- | --- |
 | Registry | `FileTypeRegistry` / immutable `mb.fileTypes` projection | compiled `FileTypeRegistry` / serialized projection |
 | File observation | existing `FsEntry` adapted to `FileFacts` | indexed entry adapted to `FileFacts` |
@@ -538,7 +538,7 @@ Required examples are:
 | `.gitignore` | none |
 | `.eslintrc.json` | `.json` |
 
-This supersedes FDU’s `.tar`-only compound special case and Metabrowser’s rejection of
+This supersedes fdu’s `.tar`-only compound special case and Metabrowser’s rejection of
 uppercase suffixes and every leading-dot filename.
 
 ### Metadata Matching Precedence
@@ -556,7 +556,7 @@ The shared metadata cascade is deterministic:
 6. If no display-family match exists, preserve the raw logical extension for Remaining
    types.
 
-FDU may continue from the metadata cascade with bounded content evidence for unresolved
+fdu may continue from the metadata cascade with bounded content evidence for unresolved
 or explicitly ambiguous cases.
 It records the winning detection source and confidence.
 Metabrowser stops after metadata evidence.
@@ -583,14 +583,14 @@ FileClassification
 
 `group_id` falls back to `other`; `content_family` falls back to `unknown`. Metabrowser
 need not serialize every field on every tree row.
-The shape defines the adapter boundary and FDU output; memory-sensitive consumers may
+The shape defines the adapter boundary and fdu output; memory-sensitive consumers may
 retain only the stable inputs needed to rederive the rest from the immutable registry.
 
 Classification does not by itself choose a breakdown row.
 The shared breakdown routing order is:
 
 1. A file with no logical extension contributes to No extension, even if an exact
-   basename or FDU content evidence assigned a known kind.
+   basename or fdu content evidence assigned a known kind.
    Its classification remains available for analysis and filtering, while its filename
    remains visible in the extension-oriented Files summary.
 2. A file with a logical extension and a display family contributes to that family.
@@ -626,7 +626,7 @@ without a display family remains in Remaining types.
 ### Existing Families
 
 The shared registry carries forward the implemented Metabrowser families and reconciles
-them with FDU kinds:
+them with fdu kinds:
 
 - Code includes Python, JavaScript, TypeScript, CSS, HTML, Rust, Go, Java, Kotlin,
   Swift, C/C++, C#, Ruby, PHP, Scala, Clojure, Elixir, Erlang, Haskell, Lua, Julia,
@@ -636,7 +636,7 @@ them with FDU kinds:
 - Data includes JSON, YAML, TOML, INI, Delimited text, XML, Parquet, Arrow, Avro, ORC,
   Protocol Buffers, GraphQL, and SQLite.
 
-FDU may keep more granular kinds beneath these families.
+fdu may keep more granular kinds beneath these families.
 C and C++ retain distinct kind IDs but share C/C++; Sass-like stylesheet kinds may share
 CSS; and exact build-file kinds may remain separate even when their extension breakdown
 placement is No extension.
@@ -654,7 +654,7 @@ The initial Logs group contains one display family:
 
 Do not include `.out`, `.trace`, or extensionless names merely because they sometimes
 hold logs. Their meanings are too broad for metadata-only classification.
-FDU may still recognize a log from bounded content in a future registry revision.
+fdu may still recognize a log from bounded content in a future registry revision.
 
 ### Archives
 
@@ -668,7 +668,7 @@ Exact compound matches win, so `.tar.gz` is the canonical extension child when p
 A compressed non-tar artifact such as `notes.md.gz` derives `.md.gz`, then matches the
 `.gz` archive suffix while preserving `.md.gz` as its logical extension.
 
-Java archives such as `.jar`, `.war`, and `.ear` remain FDU kinds without joining this
+Java archives such as `.jar`, `.war`, and `.ear` remain fdu kinds without joining this
 display family in the first revision; they combine archive structure with executable or
 package semantics and deserve a separate review.
 
@@ -692,7 +692,7 @@ revision. They remain visible under Remaining types.
 ### Metric Values and Populations
 
 One tally carries named populations rather than baking Metabrowser’s ignored-file toggle
-or FDU’s selection grammar into the schema:
+or fdu’s selection grammar into the schema:
 
 ```json
 {
@@ -701,11 +701,11 @@ or FDU’s selection grammar into the schema:
 }
 ```
 
-Each population value requires `files` and apparent `bytes`. FDU may add
+Each population value requires `files` and apparent `bytes`. fdu may add
 `allocated_bytes`. Future additive metrics use new named fields or a separate metrics
 object; consumers ignore fields they do not understand.
 
-Metabrowser emits `all` and `unignored`. FDU emits `selected` and, when the report
+Metabrowser emits `all` and `unignored`. fdu emits `selected` and, when the report
 retains an unfiltered denominator, `all`. The enclosing host envelope documents which
 populations it supplies.
 Every row in one breakdown has the same population keys.
@@ -821,7 +821,7 @@ For each value, compute its greatest share across file count and apparent bytes 
 every emitted population.
 Metabrowser therefore scores all-file count, all apparent bytes, unignored-file count,
 and unignored apparent bytes.
-FDU applies the identical rule to `all`, `selected`, or any other populations present in
+fdu applies the identical rule to `all`, `selected`, or any other populations present in
 its breakdown. Optional allocated bytes do not affect shared ranking, which keeps child
 membership identical in consumers that only understand the required metrics.
 
@@ -900,11 +900,11 @@ model carries the same token the filter already understands.
 - File icons remain extension or basename identities.
   Families and totals do not acquire invented icons.
 
-## FDU Integration
+## fdu Integration
 
 ### Classification
 
-FDU compiles the shared groups, display families, kinds, and match tables in `build.rs`.
+fdu compiles the shared groups, display families, kinds, and match tables in `build.rs`.
 `Classification` keeps its current `file_type`, `family`, source, confidence, and flags
 for compatibility, while adding explicit shared identities:
 
@@ -919,13 +919,13 @@ placement. Cache and report code that means analyzer behavior continues to use i
 
 ### Reports and CLI
 
-FDU retains its current flat `types`, `extensions`, `families`, `languages`, and
+fdu retains its current flat `types`, `extensions`, `families`, `languages`, and
 `documents` views. Their meanings are useful and composable.
 The portable hierarchy is the Metabrowser-style conserved rollup adapted into a new
 file-type breakdown section in machine output and a grouped human view, rather than a
-flattening of Metabrowser’s model or a silent change to an existing FDU schema version.
+flattening of Metabrowser’s model or a silent change to an existing fdu schema version.
 
-The implementation should choose the shortest CLI spelling consistent with FDU’s view
+The implementation should choose the shortest CLI spelling consistent with fdu’s view
 axis, with `file-types` as the planned wire/view label.
 It must not add a one-off flag.
 The section uses the portable IDs and hierarchy above and may add `allocated_bytes` and
@@ -935,16 +935,16 @@ The Rust library exposes the typed breakdown builder.
 `fdu-py` returns the same stable structure to Python so Metabrowser can adopt it later
 without parsing terminal output.
 The CLI JSON/YAML renderer serializes that structure directly; the human renderer uses
-registry labels and FDU’s existing size formatting.
+registry labels and fdu’s existing size formatting.
 
 ### Performance and Cache Behavior
 
-The registry fingerprint remains part of FDU’s engine and content provenance.
+The registry fingerprint remains part of fdu’s engine and content provenance.
 Any rule, schema, matching, or extension-derivation change invalidates classifications
 and dependent cache data.
 
 The initial exact filename breakdown may traverse retained file entries at report time,
-as FDU’s type metrics already do.
+as fdu’s type metrics already do.
 It must not add an unbounded basename map to every ancestor rollup without measurement.
 If the view later needs an O(1) unfiltered path, evaluate an exact compact index or a
 mergeable bounded summary separately; do not label an approximate top list as exact.
@@ -1033,16 +1033,16 @@ mergeable bounded summary separately; do not label an approximate top list as ex
 - Add a normative registry and interchange-format reference in this repository; other
   design and SDK documents link to it rather than duplicating the full seed list or
   schema.
-- Document the checked synchronization and conformance process by which FDU adopts a
+- Document the checked synchronization and conformance process by which fdu adopts a
   reviewed Metabrowser registry revision.
 - Add release notes for extension-derivation and JSONL group changes.
 
-## FDU File- and Function-Level Plan
+## fdu File- and Function-Level Plan
 
 ### Registry Compiler
 
 - Replace `crates/fdu/rules/file-types.toml` through the checked synchronization path
-  with the reviewed Metabrowser registry revision, preserving FDU-only classifier facts
+  with the reviewed Metabrowser registry revision, preserving fdu-only classifier facts
   represented by the shared kind schema.
 - Extend the typed build-side records in `crates/fdu/build.rs` and keep all validation
   before code generation.
@@ -1075,7 +1075,7 @@ mergeable bounded summary separately; do not label an approximate top list as ex
   label.
 - Expose the same typed structure from `crates/fdu-py/src/lib.rs`.
 - Export `file-type-registry-v1` beside `file-type-breakdown-v1` so Metabrowser can
-  consume a self-describing FDU report without translating FDU’s flat views.
+  consume a self-describing fdu report without translating fdu’s flat views.
 - Include registry revision/fingerprint in report provenance and snapshot/content cache
   invalidation where classification affects retained results.
 
@@ -1088,7 +1088,7 @@ mergeable bounded summary separately; do not label an approximate top list as ex
 
 ## Cross-Project Conformance
 
-Metabrowser owns a small reference classification corpus and FDU vendors the same
+Metabrowser owns a small reference classification corpus and fdu vendors the same
 normalized cases. Each case contains a basename and expected metadata-only facts:
 
 - logical extension;
@@ -1108,7 +1108,7 @@ Required cases cover:
 - `.min.js`, `.d.ts`, `.js.map`, and `.tar.gz` boundaries;
 - JSON versus JSON Lines;
 - SVG’s Media/Images placement with markup content family;
-- C/C++ shared display family with distinct FDU kinds;
+- C/C++ shared display family with distinct fdu kinds;
 - unknown extension and extensionless fallback; and
 - invalid registry fixtures for every validation class.
 
@@ -1128,11 +1128,11 @@ repository pull requests while preserving the dependency order.
 - [ ] Land the reference registry, conformance corpus, normative format documentation,
   typed Python loader, and compatibility facade in Metabrowser.
 - [ ] Add the `file-type-registry-v1` projection and browser parity checks.
-- [ ] Sync the normalized registry and corpus into FDU; extend its TOML compiler and
+- [ ] Sync the normalized registry and corpus into fdu; extend its TOML compiler and
   classifier and invalidate affected caches by registry identity.
 - [ ] Align Python, Rust, and browser extension derivation and metadata matching.
 - [ ] Serialize registry identity and dynamic groups through the Metabrowser SDK.
-- [ ] Document reference ownership in Metabrowser and adoption/maintenance in FDU.
+- [ ] Document reference ownership in Metabrowser and adoption/maintenance in fdu.
 
 ### Phase 2: Bounded Hierarchical Breakdowns
 
@@ -1142,7 +1142,7 @@ repository pull requests while preserving the dependency order.
 - [ ] Make all Metabrowser family and special-parent rows disclosable when they have one
   or more children.
 - [ ] Make navigation groups and family sections fully registry-driven.
-- [ ] Add FDU’s registry plus breakdown exports across the Rust library, CLI JSON/YAML,
+- [ ] Add fdu’s registry plus breakdown exports across the Rust library, CLI JSON/YAML,
   grouped human view, and Python binding.
 - [ ] Update design, architecture, SDK, CLI, and release documentation.
 - [ ] Run both repositories’ full handoff gates and cross-project fixture comparison.
@@ -1156,7 +1156,7 @@ repository pull requests while preserving the dependency order.
   fingerprint as a security primitive.
 - Test every validation failure with one minimal fixture and a precise diagnostic.
 - Run the shared conformance corpus in Python, Rust, and browser JavaScript.
-- Test non-Unicode filename behavior on FDU’s supported native platforms.
+- Test non-Unicode filename behavior on fdu’s supported native platforms.
 - Test all two-component, case, dotfile, exact-compound, and suffix-fallback boundaries.
 
 ### Aggregation
@@ -1185,7 +1185,7 @@ repository pull requests while preserving the dependency order.
 - Test ignored-file toggling without row identity or cap-membership drift.
 - Validate wide and compact responsive layouts in light and dark themes.
 
-### FDU
+### fdu
 
 - Test build-time generation and classification without runtime TOML parsing.
 - Test existing `types`, `extensions`, `families`, `languages`, and `documents` views
@@ -1193,7 +1193,7 @@ repository pull requests while preserving the dependency order.
 - Add Rust API, CLI human, JSON, YAML, and Python binding coverage for the new
   breakdown.
 - Test report provenance and cache invalidation after a registry revision change.
-- Run the full `make check` gate in FDU and `make verify` in Metabrowser.
+- Run the full `make check` gate in fdu and `make verify` in Metabrowser.
 
 ## Backward Compatibility and Migration
 
@@ -1209,12 +1209,12 @@ repository pull requests while preserving the dependency order.
   Release notes call out saved family/group filter behavior.
 - Uppercase extensions and dotfiles with later suffixes intentionally gain recognition.
   Bare dotfiles remain extensionless.
-- FDU keeps existing flat views and `ContentFamily` semantics.
+- fdu keeps existing flat views and `ContentFamily` semantics.
   The new display fields and breakdown view are additive; any machine-schema change uses
   a new schema label.
-- FDU’s registry fingerprint invalidates cached classification results after the new
+- fdu’s registry fingerprint invalidates cached classification results after the new
   schema and derivation rules land.
-- Metabrowser retains the reference registry and contract documentation even if an FDU
+- Metabrowser retains the reference registry and contract documentation even if an fdu
   in-process engine later supplies classifications or rollups.
   Generated runtime tables may move behind that boundary without moving product
   semantics out of this repository.
@@ -1226,23 +1226,23 @@ repository pull requests while preserving the dependency order.
 2. Add the portable breakdown wire model while retaining legacy fields.
 3. Switch Metabrowser Overview and navigation to the new model and validate the browser
    manually across representative directories.
-4. Sync the reviewed registry and corpus into FDU, then add its compiler and classifier
+4. Sync the reviewed registry and corpus into fdu, then add its compiler and classifier
    support.
-5. Add FDU’s compatible registry and grouped breakdown exports across Rust, CLI machine
+5. Add fdu’s compatible registry and grouped breakdown exports across Rust, CLI machine
    and human formats, and Python.
-6. Exercise Metabrowser against captured FDU exports before selecting any direct engine
+6. Exercise Metabrowser against captured fdu exports before selecting any direct engine
    integration.
 7. Observe one compatibility cycle, then create separate cleanup beads for legacy wire
    aliases rather than removing them inside the feature rollout.
 
 Each repository lands independently green.
-Metabrowser never depends on an unpublished FDU checkout, and FDU never depends on
+Metabrowser never depends on an unpublished fdu checkout, and fdu never depends on
 Metabrowser.
 
 ## Acceptance Criteria
 
 - Metabrowser documents and ships the reference registry, classification, and breakdown
-  formats; FDU ships the same normalized registry revision and passes the same metadata
+  formats; fdu ships the same normalized registry revision and passes the same metadata
   conformance corpus.
 - The registry has explicit kinds, display families, display groups, and analyzer
   content families with stable IDs.
@@ -1250,7 +1250,7 @@ Metabrowser.
 - Code, Docs, Data, Logs, Archives, Media, and Other are registry-declared and appear in
   the same order across Metabrowser surfaces.
 - `.log`, `.jsonl`, and `.ndjson` appear under Log files; `.jsonl` and `.ndjson` retain
-  a data content family in FDU.
+  a data content family in fdu.
 - The declared archive and media formats classify into the intended display families.
 - Every nonempty family row can expand, including a family with one contributing
   extension.
@@ -1263,18 +1263,18 @@ Metabrowser.
 - Metabrowser’s navigation filters, Overview, and Treemap use one registry for matching,
   labels, group order, and family color identity.
 - The portable hierarchy retains Metabrowser’s dual-metric, population-aware,
-  aggregate-before-bound conservation rather than adopting FDU’s flat report shape.
+  aggregate-before-bound conservation rather than adopting fdu’s flat report shape.
 - Both packages expose the same nested group, family, extension, special-parent,
   population, and metric concepts needed to render the Files UI.
-- FDU exports matching registry and breakdown values through typed Rust, CLI machine,
+- fdu exports matching registry and breakdown values through typed Rust, CLI machine,
   grouped human, and Python surfaces without weakening its analysis evidence or existing
   flat views.
 - Both projects’ full handoff gates and browser/manual validation pass.
 
 ## Open Questions
 
-- When Metabrowser adopts FDU as its inventory engine, should the portable breakdown be
-  returned directly by FDU or should Metabrowser adapt lower-level FDU kind tallies?
+- When Metabrowser adopts fdu as its inventory engine, should the portable breakdown be
+  returned directly by fdu or should Metabrowser adapt lower-level fdu kind tallies?
   The registry and wire model support either path; measurements and embedding ergonomics
   should decide.
 - Should direct Overview-child activation set the navigation type filter, or should it
@@ -1288,9 +1288,9 @@ Metabrowser.
 - [Folder Overview and Files summary plan](../done/plan-2026-08-12-directory-file-type-summary.md)
 - [Metabrowser design system](../../../design-system.md)
 - [Metabrowser architecture](../../../architecture.md)
-- [FDU file-type registry](https://github.com/jlevy/fdu/blob/main/crates/fdu/rules/file-types.toml)
-- [FDU design principles](https://github.com/jlevy/fdu/blob/main/docs/project/architecture/fdu-design-principles.md)
-- [FDU rollup engine research](https://github.com/jlevy/fdu/blob/main/docs/project/research/research-2026-08-06-file-rollup-engine.md)
+- [fdu file-type registry](https://github.com/jlevy/fdu/blob/main/crates/fdu/rules/file-types.toml)
+- [fdu design principles](https://github.com/jlevy/fdu/blob/main/docs/project/architecture/fdu-design-principles.md)
+- [fdu rollup engine research](https://github.com/jlevy/fdu/blob/main/docs/project/research/research-2026-08-06-file-rollup-engine.md)
 - [GitHub Linguist classification pipeline](https://github.com/github-linguist/linguist/blob/main/docs/how-linguist-works.md)
 - [GitHub Linguist language catalog](https://github.com/github-linguist/linguist/blob/main/lib/linguist/languages.yml)
 
