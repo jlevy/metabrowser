@@ -29,7 +29,8 @@ renderers after the shell can already paint a useful first view.
 
 Opening a file follows this sequence:
 
-1. The URL hash or tree selection supplies a served-root-relative path.
+1. The canonical `/view/<path>` URL or tree selection supplies a served-root-relative
+   path. A URL fragment identifies a location inside that document, never a file.
 2. `/api/file` safely resolves the path, determines its logical extension, and runs
    plugin classifiers before built-in fallbacks.
 3. The response includes the chosen kind and the ordered view descriptors contributed by
@@ -44,6 +45,16 @@ Opening a file follows this sequence:
 Replacing the preview pane disposes mounted plugin views.
 Switching tabs does not: their DOM and captured state remain available until a different
 file replaces the pane.
+
+The built-in Markdown plugin resolves standard relative and leading-slash destinations
+exactly from the source document.
+It gives internal anchors canonical `/view/` URLs and maps embedded local resources
+through the bounded `/raw` endpoint.
+The shell remains Markdown-dialect agnostic: the plugin intercepts only plain primary
+activation through the public navigation SDK, while modifier clicks, new tabs,
+downloads, external URLs, and ordinary not-found handling retain browser behavior.
+Fragment scrolling runs only after the matching asynchronous Markdown mount completes
+and ends with that mount’s disposer.
 
 ## Folder Views and Overview Composition
 

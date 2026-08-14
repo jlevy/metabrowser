@@ -398,7 +398,8 @@ printability changes.
 The Markdown built-in exposes
 `mb.builtins.markdown.mountRendered(container, ctx, {signal})` for a document panel.
 It uses the ordinary KPress Markdown presentation and returns an instance-specific
-handle that aborts its request and disposes its own table of contents.
+handle that aborts its request and disposes its own table of contents, enhanced-link
+listeners, and pending fragment work.
 Do not copy Markdown DOM or TOC behavior into a folder contribution.
 
 Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variables in

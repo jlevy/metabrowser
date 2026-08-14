@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
+from starlette.testclient import TestClient
+
 from metabrowser import server
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "github-markdown-repo"
@@ -79,3 +81,29 @@ def test_github_fixture_contains_raw_html_media_and_exact_targets() -> None:
     ):
         assert (FIXTURE_ROOT / target).is_file(), target
     assert not (FIXTURE_ROOT / "docs/missing.md").exists()
+
+
+def test_github_fixture_canonical_urls_reload_and_resources_are_safe() -> None:
+    server._set_root_dir(FIXTURE_ROOT)
+    try:
+        client = TestClient(server.app)
+        for route in (
+            "/view/README.md",
+            "/view/docs/",
+            "/view/docs/guide.md?plain=1#installation",
+            "/view/docs/space%20name.md",
+            "/view/docs/%E9%9B%AA.md",
+            "/view/docs/100%25.md",
+            "/view/docs/what%3F%23.md",
+            "/view/docs/missing.md",
+        ):
+            response = client.get(route)
+            assert response.status_code == 200, route
+            assert "<title>Metabrowser</title>" in response.text
+
+        resource = client.get("/raw?path=assets%2Fmap.svg")
+        assert resource.status_code == 200
+        assert resource.headers["content-type"].startswith("image/svg+xml")
+        assert b"Repository map fixture" in resource.content
+    finally:
+        server._set_root_dir(Path())

@@ -359,11 +359,11 @@ select exactly one path and fragment, with no hash-as-file fallback.
 
 ### Phase 2: GitHub-Compatible Standard Links
 
-- [ ] Add exact standard-link and embedded-resource resolution to the built-in Markdown
+- [x] Add exact standard-link and embedded-resource resolution to the built-in Markdown
   renderer.
-- [ ] Produce canonical `href` and safe resource URLs while preserving native click
+- [x] Produce canonical `href` and safe resource URLs while preserving native click
   variants, asynchronous fragment scrolling, and renderer disposal.
-- [ ] Validate a GitHub-style fixture repository and the standard-link portion of the
+- [x] Validate a GitHub-style fixture repository and the standard-link portion of the
   resolution matrix; update user-facing browsing documentation.
 
 Exit condition: a repository whose same-repository Markdown links work on GitHub can be
