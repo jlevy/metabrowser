@@ -1164,7 +1164,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         ? `<span class="compression-badge" title="${esc(compressionName)} compressed">${compressionGlyph}</span>`
         : "";
       var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
-      // The index's compound-tail extension, which the type filter
+      // The index's bounded compound-tail extension, which the type filter
       // matches on. Separate from data-logical-ext, which means "inner
       // extension of a compressed artifact" and drives icon dispatch.
       var extAttr = node.ext ? ` data-ext="${esc(node.ext)}"` : "";
@@ -2835,6 +2835,10 @@ function filterHasConstraints(state) {
 /** @type {Array<[string, number, number]>} */
 var _extensionTally = [];
 /** @type {Array<[string, number, number]>} */
+var _canonicalExtensionTally = [];
+/** @type {Array<[string, number, number]>} */
+var _typeFamilyTally = [];
+/** @type {Array<[string, number, number]>} */
 var _typePresetTally = [];
 /** @type {Array<[string, number, number]>} */
 var _recencyTally = [];
@@ -2843,6 +2847,14 @@ function updateFilterTallies(data) {
   let changed = false;
   if (Array.isArray(data.extensions)) {
     _extensionTally = data.extensions;
+    changed = true;
+  }
+  if (Array.isArray(data.canonical_extensions)) {
+    _canonicalExtensionTally = data.canonical_extensions;
+    changed = true;
+  }
+  if (Array.isArray(data.type_families)) {
+    _typeFamilyTally = data.type_families;
     changed = true;
   }
   if (Array.isArray(data.type_presets)) {
@@ -2896,9 +2908,36 @@ function filterTypePresets() {
   }));
 }
 
+function filterTypeFamilies() {
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const counts = new Map(
+    _typeFamilyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
+  );
+  return (window.MetabrowserFileTypeTaxonomy?.families || [])
+    .map((family) => ({
+      id: `family:${family.id}`,
+      label: family.label,
+      values: family.extensions.slice(),
+      count: counts.get(family.id) || 0,
+    }))
+    .filter((family) => family.count > 0);
+}
+
+function filterTypePresetSections() {
+  return [
+    { id: "categories", presets: filterTypePresets() },
+    { id: "families", presets: filterTypeFamilies() },
+  ];
+}
+
+function allFilterTypePresets() {
+  return filterTypePresetSections().flatMap((section) => section.presets);
+}
+
 function filterTypeOptions() {
   const showIgnored = filterState ? filterState.get().showIgnored : true;
-  const ranked = _extensionTally
+  const source = _canonicalExtensionTally.length > 0 ? _canonicalExtensionTally : _extensionTally;
+  const ranked = source
     .map(
       (row) => /** @type {[string, number]} */ ([row[0], showIgnored ? row[1] + row[2] : row[1]]),
     )
@@ -2973,7 +3012,7 @@ function renderNavFilterBar() {
       key: "types",
       label: "File extension",
       options: filterTypeOptions(),
-      presets: filterTypePresets(),
+      presetSections: filterTypePresetSections(),
       value: st.types,
       anyLabel: "Any type",
       open: filterOpenMenu === "types",
@@ -3116,7 +3155,7 @@ function initFilterBar() {
       }
       // const, not var: the closures below need the narrowing that a
       // function-scoped binding cannot promise.
-      const preset = FILTER_TYPE_PRESETS.find((p) => p.id === presetId);
+      const preset = allFilterTypePresets().find((p) => p.id === presetId);
       if (!preset) {
         return;
       }
@@ -3263,7 +3302,7 @@ function applyTreeFilters() {
           mtime: parseTipNumber(row.dataset.tipMtime),
           size: isDir ? null : parseTipNumber(row.dataset.tipSize),
           path: path,
-          // The renderer stamps the index's compound-tail extension on
+          // The renderer stamps the index's bounded compound-tail extension on
           // every file row; matching on it keeps a compound pick
           // (".min.js") agreeing with the tally that offered it.
           ext: row.dataset.ext || "",

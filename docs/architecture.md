@@ -98,9 +98,11 @@ The folder plugin supplies the folder-panel schema and registry facade.
 A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
 The visible **Files** heading belongs to the built-in file-type summary identified by
 the stable `folder.file-types` panel ID. The panel is backed by the existing inventory
-rollup. Its semantic comparison table groups logical extensions as Documentation, Code,
-Data, or Other using the same preset vocabulary as navigation, without adding group
-totals or another server aggregation.
+rollup and one server-owned semantic file-type catalog.
+Rollups aggregate known families and their canonical children before bounding only the
+ungrouped raw tail. The comparison table groups family parents and raw extensions as
+Documentation, Code, Data, or Other; multi-child families disclose exact extension rows
+without adding category subtotals.
 Each row renders count and byte shares as independently normalized inline bars beside
 their exact values. A Totals group leads with the neutral selected-population Total row
 and, when ignored files are included, follows it with the exact neutral Ignored subset.
@@ -123,9 +125,10 @@ Layout geometry also derives bounded label and value sizes and reserves the resu
 folder-header height before nesting children.
 
 Treemap and File types acquire leases from the same per-directory category-palette pool.
-File cells key the lease by their logical extension, folder cells by `dominant_ext`, and
-remainder cells by the neutral Other key.
-This shares extension identity without coupling either renderer to sibling DOM. Visible
+File cells and folder `dominant_ext` values pass through the catalog’s
+`distributionKeyForExtension` helper, so known members share a stable `family:<id>` key;
+raw extensions remain exact and remainder cells use the neutral Other key.
+This shares semantic identity without coupling either renderer to sibling DOM. Visible
 byte and file values route through the public SDK formatters.
 File cells and exact extension rows also resolve their icon and subtype class through
 the public `fileTypeIcon()` SDK helper, the same matcher used by navigation.
@@ -206,6 +209,16 @@ not follow it, directory child containers are never created for it, and file agg
 exclude it. A live upsert may replace any shape with another at the same path, so both
 the index and browser remove the old shape before installing the new one.
 
+Regular files receive one logical extension from `fs_paths.derive_ext` at their shared
+walker/watcher construction boundary.
+The value retains at most the final two eligible suffix components: `bundle.js.map` and
+`archive.tar.gz` keep `.js.map` and `.tar.gz`, while `bundle.umd.min.js.map` and
+`types.d.ts.map` become `.js.map` and `.ts.map`. A component must be lowercase,
+alphanumeric, nonempty, and bounded in length; dotfiles remain extensionless.
+The fixed component cap prevents filenames from creating an unbounded vocabulary in
+navigation and rollup tallies while preserving common compound formats.
+Browser consumers use the indexed value instead of reparsing the full filename.
+
 The browser keeps a normalized file store.
 Tree panels and recent-file views subscribe to that store rather than maintaining
 independent copies.
@@ -233,9 +246,13 @@ source instead of decorating it.
 Gitignored visibility rides along as a request parameter because it changes what the
 response cap is spent on, not just which rows are painted.
 
-The extension tally behind the type menu comes from the index too
-(`InventoryIndex.extension_tally`), because the Quick File catalog excludes gitignored
-entries and a menu built from it would undercount everything the tree still shows.
+The category, family, canonical-extension, and raw tallies behind the type menu come
+from one complete-index pass too.
+The Quick File catalog excludes gitignored entries and a menu built from it would
+undercount everything the tree still shows.
+The chooser orders broad categories, present semantic families, and canonical/raw
+children as distinct tiers; all selections use the same longest-declared-suffix
+predicate as the rollup.
 
 ### Response Caps Are a Ranking Problem
 

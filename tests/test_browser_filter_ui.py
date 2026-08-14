@@ -698,7 +698,9 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
 
     render_start = js.index("function renderNavFilterBar()")
     render_block = js[render_start : render_start + 2200]
-    assert "presets: filterTypePresets()" in render_block
+    assert "presetSections: filterTypePresetSections()" in render_block
+    assert "function filterTypeFamilies()" in js
+    assert "_typeFamilyTally" in js
 
 
 def test_age_options_use_index_wide_tracked_and_ignored_tallies() -> None:
@@ -787,7 +789,7 @@ def test_index_wide_tallies_stay_off_the_event_loop() -> None:
     while the walk converges."""
 
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
-    start = py.index("summary = None")
+    start = py.index("navigation_tallies = None")
     end = py.index("return JSONResponse", start)
     block = py[start:end]
     assert 'inventory.entries(scope="all-known")' in block

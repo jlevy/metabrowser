@@ -122,6 +122,7 @@ from metabrowser.settings import (
     ROLLUP_DEFAULT_EXT_RANK,
     ROLLUP_DEFAULT_EXT_TOP,
     ROLLUP_DEFAULT_TOP,
+    ROLLUP_FILE_TYPE_RAW_LIMIT,
     ROLLUP_MAX_DEPTH,
     ROLLUP_MAX_EXT_TOP,
     ROLLUP_MAX_TOP,
@@ -763,6 +764,7 @@ async def index(_request: Request) -> HTMLResponse:
     contribution_registry_url = _static_asset_url("contribution_registry.js")
     resource_context_url = _static_asset_url("resource_context.js")
     view_state_url = _static_asset_url("view_state.js")
+    file_type_taxonomy_url = _static_asset_url("file_type_taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
     filter_controls_url = _static_asset_url("filter_controls.js")
@@ -999,6 +1001,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>
+  <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{filter_state_url}"></script>
   <script src="{filter_controls_url}"></script>
@@ -1098,10 +1101,7 @@ async def api_tree(request: Request) -> JSONResponse:
     # (depth=0) while the walk converges, so running it on the loop would stall
     # the event stream at the design-center index size for the same reason
     # api_catalog offloads its own pass.
-    summary = None
-    extensions = None
-    type_presets = None
-    recency_tallies = None
+    navigation_tallies = None
     # Keep the response status in the same event-loop epoch as the tree and
     # tally snapshots. The walker can finish while the O(index) worker runs;
     # reporting that newer "done" state beside partial tallies would make the
@@ -1112,7 +1112,7 @@ async def api_tree(request: Request) -> JSONResponse:
         # handing the O(index) tally pass to a worker; iterating the live dictionary
         # off-loop races the still-running walker.
         tally_entries = inventory.entries(scope="all-known")
-        summary, extensions, type_presets, recency_tallies = await asyncio.to_thread(
+        navigation_tallies = await asyncio.to_thread(
             lambda: inventory.navigation_tallies(
                 [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
                 [
@@ -1136,10 +1136,24 @@ async def api_tree(request: Request) -> JSONResponse:
             # InventoryIndex.root_summary), and the Quick File catalog
             # drops gitignored entries (see navigation_tallies). Only the
             # full-tree request needs these values.
-            "summary": summary,
-            "extensions": extensions,
-            "type_presets": type_presets,
-            "recency_tallies": recency_tallies,
+            "summary": (navigation_tallies["summary"] if navigation_tallies is not None else None),
+            "extensions": (
+                navigation_tallies["extensions"] if navigation_tallies is not None else None
+            ),
+            "canonical_extensions": (
+                navigation_tallies["canonical_extensions"]
+                if navigation_tallies is not None
+                else None
+            ),
+            "type_families": (
+                navigation_tallies["type_families"] if navigation_tallies is not None else None
+            ),
+            "type_presets": (
+                navigation_tallies["type_presets"] if navigation_tallies is not None else None
+            ),
+            "recency_tallies": (
+                navigation_tallies["recency_tallies"] if navigation_tallies is not None else None
+            ),
         }
     )
 
@@ -1148,8 +1162,8 @@ async def api_tree(request: Request) -> JSONResponse:
 async def api_rollup(request: Request) -> JSONResponse:
     """Bounded treemap rollup for a directory subtree.
 
-    `GET /api/rollup?path=&depth=&top=&ext_top=` — params clamp to the
-    ROLLUP_* settings bounds. `node` is null while the index cannot
+    `GET /api/rollup?path=&depth=&top=&ext_top=&type_top=` — params clamp
+    to the ROLLUP_* settings bounds. `node` is null while the index cannot
     serve the path yet (cold start); the client renders that as a
     pending treemap and refreshes off `/api/events` activity. Totals
     always cover the full subtree. Depth truncation is represented by
@@ -1169,6 +1183,13 @@ async def api_rollup(request: Request) -> JSONResponse:
     top = _query_bounded_int(request, "top", ROLLUP_DEFAULT_TOP, minimum=0, maximum=ROLLUP_MAX_TOP)
     ext_top = _query_bounded_int(
         request, "ext_top", ROLLUP_DEFAULT_EXT_TOP, minimum=0, maximum=ROLLUP_MAX_EXT_TOP
+    )
+    type_top = _query_bounded_int(
+        request,
+        "type_top",
+        ROLLUP_FILE_TYPE_RAW_LIMIT,
+        minimum=0,
+        maximum=ROLLUP_MAX_EXT_TOP,
     )
     try:
         ext_rank = cast(
@@ -1193,6 +1214,7 @@ async def api_rollup(request: Request) -> JSONResponse:
             depth=depth,
             top=top,
             ext_top=ext_top,
+            type_top=type_top,
             ext_rank=ext_rank,
         )
     return JSONResponse(
@@ -1201,6 +1223,9 @@ async def api_rollup(request: Request) -> JSONResponse:
             "path": subpath,
             "node": result["node"] if result is not None else None,
             "ext_tallies": result["ext_tallies"] if result is not None else [],
+            "type_tallies": (
+                result["type_tallies"] if result is not None else {"families": [], "extensions": []}
+            ),
             "index_status": inventory_status(),
             "indexed_files": inventory.files_indexed(),
             "max_files": inventory.max_files(),

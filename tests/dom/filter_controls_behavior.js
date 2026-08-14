@@ -392,6 +392,35 @@ assertContains(
 // The user picked "Docs"; say Docs rather than ".md +1".
 assertContains("an exact preset names the trigger", menuFullPreset, ">Docs<");
 
+const menuSections = fc.menuGroupHtml({
+  key: "types",
+  label: "File type",
+  options: menuOptions,
+  presetSections: [
+    { id: "categories", presets: PRESETS },
+    {
+      id: "families",
+      presets: [
+        { id: "family:javascript", label: "JavaScript", values: [".js", ".mjs"], count: 10 },
+      ],
+    },
+  ],
+  value: [".js", ".mjs"],
+  anyLabel: "Any type",
+  menuId: "m",
+});
+assertContains(
+  "preset sections keep category and family tiers distinct",
+  menuSections,
+  'data-chip-menu-section="categories"',
+);
+assertContains(
+  "semantic families are selectable parents",
+  menuSections,
+  'data-chip-preset="family:javascript"',
+);
+assertContains("an exact family names the trigger", menuSections, ">JavaScript<");
+
 // ── Escaping ───────────────────────────────────────────────────
 
 const hostile = fc.groupHtml({

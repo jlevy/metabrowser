@@ -330,6 +330,28 @@
     },
   };
 
+  // Semantic family membership is server-owned and validated before this
+  // SDK loads. The frozen facade keeps plugins on the public boundary while
+  // partial test harnesses retain conservative raw-extension behavior.
+  const fileTypes =
+    global.MetabrowserFileTypeTaxonomy ||
+    Object.freeze({
+      categories: Object.freeze([]),
+      families: Object.freeze([]),
+      matchExtension() {
+        return null;
+      },
+      canonicalExtension(extension) {
+        return typeof extension === "string" ? extension.toLowerCase() : "";
+      },
+      categoryForFile() {
+        return "other";
+      },
+      distributionKeyForExtension(extension) {
+        return typeof extension === "string" ? extension.toLowerCase() : "";
+      },
+    });
+
   // Age buckets shared with the shell's tree column. The thresholds
   // mirror app.js formatAge exactly (sec <1m, min <1h, hr <1d, day
   // <7d, wk <30d, old beyond); keep the two lists in sync so a
@@ -395,6 +417,7 @@
       depth: settings.ROLLUP_DEFAULT_DEPTH,
       top: settings.ROLLUP_DEFAULT_TOP,
       ext_top: settings.ROLLUP_DEFAULT_EXT_TOP,
+      type_top: settings.ROLLUP_FILE_TYPE_RAW_LIMIT,
       ext_rank: settings.ROLLUP_DEFAULT_EXT_RANK || "bytes",
       debounceMs: settings.ROLLUP_WATCH_DEBOUNCE_MS || ROLLUP_FALLBACK_DEBOUNCE_MS,
     };
@@ -403,7 +426,7 @@
   async function fetchRollup(path, opts) {
     // Core rollup endpoint for directory subtrees (see /api/rollup).
     // ``path`` may be "" for the served root. Optional opts:
-    // depth / top / ext_top query overrides plus ``signal`` for aborts.
+    // depth / top / ext_top / type_top query overrides plus ``signal`` for aborts.
     if (typeof path !== "string") {
       throw new Error("fetchRollup: path must be a string");
     }
@@ -411,7 +434,7 @@
     const options = opts && typeof opts === "object" ? opts : {};
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
-    for (const key of ["depth", "top", "ext_top", "ext_rank"]) {
+    for (const key of ["depth", "top", "ext_top", "type_top", "ext_rank"]) {
       const value = options[key] !== undefined ? options[key] : defaults[key];
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));
@@ -1230,6 +1253,7 @@
     perf: perf,
     prefs: prefs,
     filters: filters,
+    fileTypes: fileTypes,
     langForExtension: langForExtension,
   };
 })(typeof window !== "undefined" ? window : globalThis);

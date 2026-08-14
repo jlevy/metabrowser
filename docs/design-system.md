@@ -341,14 +341,22 @@ Fixed age windows remain in chronological order and show cumulative counts.
 Open-ended type values are ranked by frequency and capped, so the menu cuts the long
 tail rather than an arbitrary alphabetical slice.
 
-A dropdown may lead with named **presets** — shorthands standing for the full set of
-values beneath them, separated from the raw list.
+A dropdown may lead with ordered named **preset sections** — shorthands standing for the
+full set of values beneath them, with separators between semantic tiers and before the
+raw list. The navigation type chooser uses broad Docs/Code/Data categories first,
+semantic families present in the index second, and canonical/raw extension rows last.
 A preset is checked only when every value it names is selected, so a half-covered group
 never claims to be on, and a selection that is exactly one preset shows by its name
 rather than as `.md +21`.
 
-Where a row stands for a file type, it carries that type’s icon and leaves the label
-plain.
+Selecting a semantic family adds all declared canonical suffixes; selecting a broad
+category adds its category-only filenames and all family members.
+Removing a child clears its parent’s checked state.
+A known canonical suffix matches declared compound tails, while an unknown raw extension
+remains exact.
+
+Where a row stands for an exact extension, it carries that type’s icon and leaves the
+label plain. Aggregate category and family rows are text-only.
 The icon is what identifies a type everywhere else in the app, and tinting a whole
 column of labels makes the hues compete with the selected-state mark instead of helping
 anyone scan the list.
@@ -426,8 +434,8 @@ semantic table. Each metric cell presents an absolute value, a track normalized 
 metric’s population total, and a percentage.
 This keeps many categories vertically scannable and makes skew between metrics visible
 on the same row. It is distinct from the broad `ft-*` identity system: several exact
-extensions may intentionally share one file icon, while adjacent `.py`, `.pyi`, and
-`.md` row fills still need distinguishable colors.
+extensions may intentionally share one file icon, while semantic families such as
+JavaScript and YAML need stable distribution identities of their own.
 
 The component uses a bounded light/dark categorical palette, a neutral **Other** token,
 a track token, and a named track-height token.
@@ -457,24 +465,38 @@ fills need no separate circle or legend.
 Fills do not become tab stops or add duplicate tooltips and are hidden from the
 accessibility tree. Labels never rely on color or place text on a category fill.
 
-File types uses non-aggregating `DOCUMENTATION`, `CODE`, `DATA`, and `OTHER` row groups.
-Membership comes from the complete shared navigation-preset vocabulary, so one extension
-definition classifies both surfaces.
-Compound extensions inherit a recognized suffix, and every unrecognized or rollup-tail
-row falls under Other.
+File types uses non-subtotaling `DOCUMENTATION`, `CODE`, `DATA`, and `OTHER` row groups.
+Membership comes from the server-owned semantic file-type taxonomy used by rollups,
+navigation filters, and Treemap colors.
+Known canonical suffixes roll up into readable family parents such as **JavaScript**,
+**TypeScript**, **CSS**, and **YAML**. Compound extensions inherit the longest declared
+suffix: `.min.js` contributes to JavaScript’s `.js` child without rewriting the file’s
+exact logical extension.
+Indexed logical extensions contain at most two suffix components, so source maps remain
+useful `.js.map` or `.ts.map` rows without fragmenting the table into filename-specific
+`.umd.min.js.map` and `.d.ts.map` variants.
+
+Family parents are aggregate identities, so they are text-only.
+A family with two or more nonzero canonical children places the shared gray trailing
+chevron after its label, starts collapsed, and reveals indented child rows without
+changing denominators or colors.
+A singleton family keeps its readable label but has no redundant disclosure.
+Canonical children retain exact extension icons and share their parent’s `family:<id>`
+palette key. Unknown and deliberately ambiguous extensions remain raw rows; they are not
+assigned a confident name merely to shorten the table.
 The aggregate tail is labelled **Remaining types** so it is not confused with the group
 itself. A group heading is shown only when it has rows and carries no subtotal.
 Type labels use the bold design-system weight as the row’s scan anchor.
-Each exact extension row leads with the shared file-identity icon resolved from a
-synthetic filename, so it matches navigation without weakening the extension label.
-**No extension** and **Remaining types** use the same generic blank-page icon as an
-unknown extension such as `.bin`, so every type-breakdown row keeps the same identity
-slot.
-Total and Ignored stay text-only because they describe populations rather than file
-types. Every exact Files value uses the shared `.count` and `.count-large` convention,
-and every exact Size value uses `.size` and `.size-large`. The stronger weight therefore
-appears at the same count and byte thresholds as the navigation panel, including on
-Total and Ignored; a row role never forces a different numeric weight.
+Each raw or disclosed canonical extension row leads with the shared file-identity icon
+resolved from a synthetic filename, so it matches navigation without weakening the
+extension label.
+**No extension** and **Remaining types** use the same generic blank-page
+icon as an unknown extension such as `.bin`, so every type-breakdown row keeps the same
+identity slot. Total and Ignored stay text-only because they describe populations rather
+than file types. Every exact Files value uses the shared `.count` and `.count-large`
+convention, and every exact Size value uses `.size` and `.size-large`. The stronger
+weight therefore appears at the same count and byte thresholds as the navigation panel,
+including on Total and Ignored; a row role never forces a different numeric weight.
 
 A **Totals** group appears before the presentation groups and uses the neutral
 distribution color. **Total** comes first: its exact values equal the selected
@@ -512,10 +534,10 @@ The toolbar contains two controls from the shared filter-control family:
   folder, remainder, and status values to the rollup’s unignored totals.
 
 There is no separate color selector.
-Every file uses its exact extension’s mounted distribution slot, every folder uses its
-dominant extension’s slot, and remainder cells use the neutral Other slot.
-The File types panel and Treemap acquire the same per-folder palette session, so an
-extension keeps the same color across both views.
+Every file maps its exact extension through the taxonomy’s distribution key, every
+folder maps its dominant extension through the same helper, and remainder cells use the
+neutral Other slot. The File types panel and Treemap acquire the same per-folder palette
+session, so a semantic family keeps the same color across both views.
 Modification age remains available in the tooltip; it does not compete with file type as
 a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base

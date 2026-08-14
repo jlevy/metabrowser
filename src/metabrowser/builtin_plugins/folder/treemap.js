@@ -82,7 +82,8 @@ export function registerTreemap(mb, palettePool) {
    * @returns {string}
    */
   function typeFillClass(cell, palette) {
-    const key = cell.kind === "rest" ? "" : cell.ext || "(none)";
+    const extension = cell.ext || "(none)";
+    const key = cell.kind === "rest" ? "" : mb.fileTypes.distributionKeyForExtension(extension);
     return palette.classFor(key);
   }
 
@@ -529,6 +530,7 @@ export function registerTreemap(mb, palettePool) {
         Array.isArray(env.ext_tallies)
           ? env.ext_tallies
               .map((row) => (Array.isArray(row) && typeof row[0] === "string" ? row[0] : ""))
+              .map((key) => mb.fileTypes.distributionKeyForExtension(key))
               .filter((key) => key !== "")
           : [],
       );

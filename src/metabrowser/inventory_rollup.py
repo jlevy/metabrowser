@@ -7,7 +7,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from metabrowser.wire_models import ExtensionTallyRow, RollupDirNode, RollupResult
+from metabrowser.file_type_filters import FILE_TYPE_FAMILIES, family_for_extension
+from metabrowser.wire_models import (
+    ExtensionTallyRow,
+    RollupDirNode,
+    RollupResult,
+    TypeFamilyTally,
+    TypeTallies,
+)
 
 if TYPE_CHECKING:
     from metabrowser.events import FsEntry
@@ -27,10 +34,11 @@ class RollupOptions:
     top: int
     ext_top: int
     max_nodes: int
+    type_top: int = 10
     ext_rank: RollupRank = "bytes"
 
     def __post_init__(self) -> None:
-        if min(self.depth, self.top, self.ext_top, self.max_nodes) < 0:
+        if min(self.depth, self.top, self.ext_top, self.max_nodes, self.type_top) < 0:
             raise ValueError("rollup limits must be nonnegative")
         if self.ext_rank not in ("bytes", "dual"):
             raise ValueError(f"unknown extension ranking mode: {self.ext_rank!r}")
@@ -92,6 +100,7 @@ def build_rollup(
     return {
         "node": cast(RollupDirNode, root_node),
         "ext_tallies": _serialize_extension_tallies(root_aggregate, selected),
+        "type_tallies": _serialize_type_tallies(root_aggregate, options.type_top),
     }
 
 
@@ -359,6 +368,84 @@ def _serialize_extension_tallies(
             )
         )
     return rows
+
+
+def _tally_row(aggregate: _SubtreeAggregate, key: str) -> ExtensionTallyRow:
+    return (
+        key,
+        aggregate.ext_files[key],
+        aggregate.ext_bytes[key],
+        aggregate.ext_files_unignored[key],
+        aggregate.ext_bytes_unignored[key],
+    )
+
+
+def _serialize_type_tallies(aggregate: _SubtreeAggregate, raw_limit: int) -> TypeTallies:
+    """Aggregate every known family before bounding only the raw tail."""
+
+    family_children: dict[str, dict[str, list[int]]] = {}
+    raw_keys: set[str] = set()
+    for key in _all_extension_keys(aggregate):
+        match = family_for_extension(key)
+        if match is None:
+            raw_keys.add(key)
+            continue
+        canonical = match.canonical_extension
+        children = family_children.setdefault(match.family.id, {})
+        metrics = children.setdefault(canonical, [0, 0, 0, 0])
+        row = _tally_row(aggregate, key)
+        for index, value in enumerate(row[1:]):
+            metrics[index] += value
+
+    families: list[TypeFamilyTally] = []
+    for family in FILE_TYPE_FAMILIES:
+        children = family_children.get(family.id)
+        if not children:
+            continue
+        child_rows: list[ExtensionTallyRow] = [
+            (canonical, values[0], values[1], values[2], values[3])
+            for canonical, values in sorted(children.items())
+        ]
+        totals = [sum(cast(int, row[column]) for row in child_rows) for column in range(1, 5)]
+        families.append(
+            {
+                "id": family.id,
+                "all_files": totals[0],
+                "all_bytes": totals[1],
+                "unignored_files": totals[2],
+                "unignored_bytes": totals[3],
+                "extensions": child_rows,
+            }
+        )
+
+    no_extension = ROLLUP_NO_EXT_KEY in raw_keys
+    ranked_raw = _select_type_raw_keys(aggregate, raw_keys - {ROLLUP_NO_EXT_KEY}, raw_limit)
+    extensions = [_tally_row(aggregate, key) for key in ranked_raw]
+    if no_extension:
+        extensions.insert(0, _tally_row(aggregate, ROLLUP_NO_EXT_KEY))
+    omitted = raw_keys - set(ranked_raw) - {ROLLUP_NO_EXT_KEY}
+    if omitted:
+        extensions.append(
+            (
+                ROLLUP_REST_EXT_KEY,
+                sum(aggregate.ext_files[key] for key in omitted),
+                sum(aggregate.ext_bytes[key] for key in omitted),
+                sum(aggregate.ext_files_unignored[key] for key in omitted),
+                sum(aggregate.ext_bytes_unignored[key] for key in omitted),
+            )
+        )
+    return {"families": families, "extensions": extensions}
+
+
+def _select_type_raw_keys(
+    aggregate: _SubtreeAggregate,
+    keys: set[str],
+    limit: int,
+) -> list[str]:
+    return sorted(
+        keys,
+        key=lambda key: (*(-score for score in _extension_scores(aggregate, key)), key),
+    )[:limit]
 
 
 __all__ = [

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS, serialize_file_type_taxonomy
 
 # ── Server port ──────────────────────────────────────────────
 
@@ -177,8 +177,9 @@ TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 # Emitted-node bounds for the treemap rollup. Depth bounds the emitted
 # tree only (totals stay full-subtree); ``top`` caps children per
 # directory before the rest bucket; ``ext_top`` caps envelope
-# extension-tally rows before the remainder row. The route clamps
-# query params to the max values.
+# extension-tally rows before the remainder row; and ``type_top``
+# caps ungrouped semantic-summary rows. The route clamps query params
+# to the max values.
 ROLLUP_DEFAULT_DEPTH = 3
 ROLLUP_MAX_DEPTH = 6
 ROLLUP_DEFAULT_TOP = 40
@@ -187,6 +188,7 @@ ROLLUP_DEFAULT_EXT_TOP = 12
 ROLLUP_MAX_EXT_TOP = 32
 ROLLUP_DEFAULT_EXT_RANK = "bytes"
 ROLLUP_FILE_TYPE_NAMED_LIMIT = 10
+ROLLUP_FILE_TYPE_RAW_LIMIT = 10
 DISTRIBUTION_PALETTE_SLOTS = 12
 FOLDER_DISCOVERY_MAX_ENTRIES = 4_096
 
@@ -217,6 +219,7 @@ def client_settings_dict() -> dict[str, Any]:
     """
 
     return {
+        "FILE_TYPE_TAXONOMY": serialize_file_type_taxonomy(),
         "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
@@ -234,6 +237,7 @@ def client_settings_dict() -> dict[str, Any]:
         "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
         "ROLLUP_DEFAULT_EXT_RANK": ROLLUP_DEFAULT_EXT_RANK,
         "ROLLUP_FILE_TYPE_NAMED_LIMIT": ROLLUP_FILE_TYPE_NAMED_LIMIT,
+        "ROLLUP_FILE_TYPE_RAW_LIMIT": ROLLUP_FILE_TYPE_RAW_LIMIT,
         "DISTRIBUTION_PALETTE_SLOTS": DISTRIBUTION_PALETTE_SLOTS,
         "ROLLUP_WATCH_DEBOUNCE_MS": ROLLUP_WATCH_DEBOUNCE_MS,
     }
@@ -268,6 +272,7 @@ __all__ = [
     "ROLLUP_DEFAULT_EXT_TOP",
     "ROLLUP_DEFAULT_TOP",
     "ROLLUP_FILE_TYPE_NAMED_LIMIT",
+    "ROLLUP_FILE_TYPE_RAW_LIMIT",
     "ROLLUP_MAX_DEPTH",
     "ROLLUP_MAX_EXT_TOP",
     "ROLLUP_MAX_NODES",

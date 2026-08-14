@@ -257,6 +257,12 @@ Useful helpers include:
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
   `fileTypeIcon(pathOrName)` for its host-owned SVG plus `className`;
+- `fileTypes` for the immutable semantic type catalog.
+  Its `categories` and `families` descriptors are server-owned.
+  `matchExtension(ext)` returns the matching family and canonical suffix,
+  `canonicalExtension(ext)` preserves unknown extensions, `categoryForFile(name, ext)`
+  includes category-only filenames, and `distributionKeyForExtension(ext)` returns the
+  shared family or raw palette key;
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
@@ -290,8 +296,8 @@ path.
 Folder aggregate views can use these bounded inventory helpers:
 
 - `fetchRollup(path, options)` reads the in-memory subtree rollup.
-  `depth`, `top`, `ext_top`, and `ext_rank` map to `/api/rollup`; use `depth: 0`,
-  `top: 0`, and `ext_rank: "dual"` for a tally-only count-and-byte summary.
+  `depth`, `top`, `ext_top`, `type_top`, and `ext_rank` map to `/api/rollup`; use
+  `depth: 0`, `top: 0`, and `ext_rank: "dual"` for a tally-only count-and-byte summary.
 - `watchRollup(path, options, onUpdate)` performs the initial fetch and refreshes after
   relevant inventory changes.
   Supply `active` to gate hidden views and `onError` for a local failure state.
@@ -301,6 +307,10 @@ Folder aggregate views can use these bounded inventory helpers:
   `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
   extension is the aggregate **Other** tail; `(none)` is the distinct extensionless
   category.
+- `type_tallies` contains complete known family parents and canonical-extension
+  children, plus a separately bounded raw-extension list.
+  Its final empty-key raw row is **Remaining types**; family members never leak into
+  that tail.
 
 ### Folder Overview Contributions
 

@@ -125,6 +125,22 @@ const sandbox = {
 let pendingTimers = [];
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
+sandbox.MetabrowserFileTypeTaxonomy = {
+  categories: [],
+  families: [],
+  matchExtension: () => null,
+  canonicalExtension: (extension) => extension,
+  categoryForFile: () => "other",
+  distributionKeyForExtension(extension) {
+    if (extension === ".py") {
+      return "family:python";
+    }
+    if (extension === ".md") {
+      return "family:markdown";
+    }
+    return extension;
+  },
+};
 
 const fetchCalls = [];
 const envelope = {
@@ -250,8 +266,8 @@ vm.runInContext(
       return {
         sync() {}, release() {},
         classFor(key) {
-          if (key === ".py") return "mb-distribution-slot-7";
-          if (key === ".md") return "mb-distribution-slot-3";
+          if (key === "family:python") return "mb-distribution-slot-7";
+          if (key === "family:markdown") return "mb-distribution-slot-3";
           return key ? "mb-distribution-slot-1" : "mb-distribution-other";
         }
       };
