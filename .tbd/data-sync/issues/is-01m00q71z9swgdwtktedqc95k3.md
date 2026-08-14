@@ -3,9 +3,9 @@ type: is
 id: is-01m00q71z9swgdwtktedqc95k3
 title: Render folder totals immediately from the live directory index
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 4
+version: 6
 labels:
   - browser
   - inventory
@@ -19,7 +19,9 @@ dependencies:
     target: is-01m00q31dkqwp66dvmy7qjnq7h
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T18:05:43.784Z
-updated_at: 2026-08-14T18:05:44.787Z
+updated_at: 2026-08-14T19:02:46.036Z
+closed_at: 2026-08-14T19:02:46.035Z
+close_reason: Inventory and live patches now carry all/unignored directory aggregates into a revisioned read-only SDK cache; totals render from complete first-frame data without subtree work or fabricated zeros.
 ---
 Make complete directory Total and Ignored measures available synchronously when navigating between known folders so overview and treemap totals paint in the first frame without zero-to-value flicker.
 

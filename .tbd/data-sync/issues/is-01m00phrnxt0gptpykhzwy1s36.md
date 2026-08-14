@@ -3,9 +3,9 @@ type: is
 id: is-01m00phrnxt0gptpykhzwy1s36
 title: Unify folder rollup metric and ignored-file controls
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 4
+version: 5
 labels:
   - browser
   - folder-controls
@@ -18,7 +18,9 @@ dependencies:
     target: is-01m00q31dkqwp66dvmy7qjnq7h
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:54:06.139Z
-updated_at: 2026-08-14T18:03:32.132Z
+updated_at: 2026-08-14T19:02:46.544Z
+closed_at: 2026-08-14T19:02:46.542Z
+close_reason: One reusable folder-rollup controller now owns Bytes/Files, Show ignored, default-off scope, persisted migration, synchronized mounts, and disposal.
 ---
 Create one folder-rollup control and state abstraction shared by the overview File Types breakdown and the treemap.
 

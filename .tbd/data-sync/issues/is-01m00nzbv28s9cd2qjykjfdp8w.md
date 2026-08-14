@@ -3,9 +3,9 @@ type: is
 id: is-01m00nzbv28s9cd2qjykjfdp8w
 title: Render folder rollup views only from complete snapshots
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 3
+version: 4
 labels:
   - browser
   - folder-overview
@@ -16,7 +16,9 @@ dependencies:
     target: is-01m00q31dkqwp66dvmy7qjnq7h
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:44:03.169Z
-updated_at: 2026-08-14T18:03:32.132Z
+updated_at: 2026-08-14T19:02:46.310Z
+closed_at: 2026-08-14T19:02:46.309Z
+close_reason: File Types and Treemap now gate provisional rollups behind the shared delayed tally pulse and replace them only with terminal atomic snapshots.
 ---
 Folder overview-derived views currently expose provisional rollup values while indexing, so users see zero counts and partial tables or treemap geometry that later change.
 

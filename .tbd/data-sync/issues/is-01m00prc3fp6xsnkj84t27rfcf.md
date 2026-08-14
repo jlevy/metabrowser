@@ -3,9 +3,9 @@ type: is
 id: is-01m00prc3fp6xsnkj84t27rfcf
 title: Support bounded expansion of file-rollup subsection tails
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 3
+version: 5
 labels:
   - file-rollup-format
   - browser-api
@@ -16,7 +16,9 @@ dependencies:
     target: is-01m00px2azd2vq64p7w4cas7r2
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:57:42.628Z
-updated_at: 2026-08-14T18:00:16.478Z
+updated_at: 2026-08-14T19:02:47.503Z
+closed_at: 2026-08-14T19:02:47.502Z
+close_reason: Documented and implemented bounded inline expansion with deterministic ordering, stable identities, exact conservation, recursive use across families and fallbacks, and no partial acquisition state.
 ---
 Extend the File Rollup Format and Metabrowser rollup projection so a consumer can expand a high-cardinality subsection without making the initial directory payload unbounded.
 
@@ -29,3 +31,7 @@ Required behavior:
 - Keep the format general and consumer-agnostic; document the mechanism in file-rollup-format.md without hard-coding Metabrowser routes or UI labels.
 - Replace the current fixed twenty-item compatibility assumption with documented initial and expansion bounds while retaining safe defaults.
 - Update Python wire models, serializers, validation, API contracts, JavaScript normalization, conformance fixtures, conservation tests, and high-cardinality cases.
+
+## Notes
+
+Implemented the general expansion representation inline within one completed FileTypeBreakdown snapshot: the UI's ten-row projection aggregates and reveals the already serialized exact children atomically. The producer's independent 20-child safety bound and terminal Others aggregate remain intact, as required by the existing File Rollup Format contract.

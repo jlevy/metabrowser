@@ -3,9 +3,9 @@ type: is
 id: is-01m00phs4p1dvrzhgay8fqvwwr
 title: Separate overview File Totals and File Types sections
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 3
+version: 4
 labels:
   - browser
   - folder-overview
@@ -16,7 +16,9 @@ dependencies:
     target: is-01m00q31dkqwp66dvmy7qjnq7h
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:54:06.613Z
-updated_at: 2026-08-14T18:03:32.132Z
+updated_at: 2026-08-14T19:02:47.026Z
+closed_at: 2026-08-14T19:02:47.026Z
+close_reason: Overview now composes fixed File Totals, expanded-by-default File Types with scoped controls, and optional README in distinct modular panels.
 ---
 Restructure the folder overview so rollup totals and the type distribution have separate, clearly scoped sections.
 

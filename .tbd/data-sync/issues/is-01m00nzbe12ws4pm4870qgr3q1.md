@@ -3,9 +3,9 @@ type: is
 id: is-01m00nzbe12ws4pm4870qgr3q1
 title: Folder rollup overview and treemap improvements
 kind: epic
-status: open
+status: closed
 priority: 2
-version: 12
+version: 14
 labels:
   - browser
 dependencies: []
@@ -20,7 +20,9 @@ child_order_hints:
   - is-01m00prch1akzeds6rnwc4rkwy
   - is-01m00q31dkqwp66dvmy7qjnq7h
 created_at: 2026-08-14T17:44:02.752Z
-updated_at: 2026-08-14T18:05:52.066Z
+updated_at: 2026-08-14T19:02:48.484Z
+closed_at: 2026-08-14T19:02:48.483Z
+close_reason: All child behavior, design-system, data-model, documentation, TDD coverage, and full repository validation are complete.
 ---
 Unify the correctness, controls, hierarchy, bounded disclosure behavior, ordering, totals context, and loading presentation of folder rollup views.
 

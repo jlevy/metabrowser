@@ -3,9 +3,9 @@ type: is
 id: is-01m00px2azd2vq64p7w4cas7r2
 title: Sort File Types rows by the active rollup measure
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 labels:
   - browser
   - folder-overview
@@ -14,7 +14,9 @@ dependencies:
     target: is-01m00prch1akzeds6rnwc4rkwy
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T18:00:16.478Z
-updated_at: 2026-08-14T18:00:17.006Z
+updated_at: 2026-08-14T19:02:47.773Z
+closed_at: 2026-08-14T19:02:47.773Z
+close_reason: Every direct File Types list now sorts by active population/metric, the other metric, then stable identity, while keyed DOM rows and disclosure state survive reranking.
 ---
 Sort every direct-child row collection in the overview File Types hierarchy by the currently selected rollup measure.
 

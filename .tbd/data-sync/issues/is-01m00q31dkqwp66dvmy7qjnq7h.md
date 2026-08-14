@@ -3,16 +3,18 @@ type: is
 id: is-01m00q31dkqwp66dvmy7qjnq7h
 title: Show shared Totals context above the treemap
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels:
   - browser
   - treemap
 dependencies: []
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T18:03:32.132Z
-updated_at: 2026-08-14T18:03:32.132Z
+updated_at: 2026-08-14T19:02:48.248Z
+closed_at: 2026-08-14T19:02:48.247Z
+close_reason: Treemap now reuses the fixed Total/Ignored renderer above shared controls, keeps totals scope-independent, and removes routine footer copy while retaining exceptional status.
 ---
 Add the same rollup totals presentation used by the overview above the treemap and remove the redundant steady-state footer.
 

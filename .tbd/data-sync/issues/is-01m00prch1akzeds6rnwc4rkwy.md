@@ -3,16 +3,18 @@ type: is
 id: is-01m00prch1akzeds6rnwc4rkwy
 title: Add ten-row aggregate disclosures to File Types subsections
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels:
   - browser
   - folder-overview
 dependencies: []
 parent_id: is-01m00nzbe12ws4pm4870qgr3q1
 created_at: 2026-08-14T17:57:43.072Z
-updated_at: 2026-08-14T17:57:43.072Z
+updated_at: 2026-08-14T19:02:48.012Z
+closed_at: 2026-08-14T19:02:48.011Z
+close_reason: Every repeated child list now presents at most ten rows plus an exact iconless N more disclosure, recursively and accessibly.
 ---
 Apply one bounded disclosure grammar to every repeated child list in the overview File Types section.
 
