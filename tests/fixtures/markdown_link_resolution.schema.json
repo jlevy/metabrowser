@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://metabrowser.test/schemas/markdown-link-targets-v1.json",
-  "title": "Metabrowser standard Markdown link target fixtures",
+  "$id": "https://metabrowser.test/schemas/markdown-link-resolution-v1.json",
+  "title": "Metabrowser Markdown link resolution fixtures",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "sourcePath", "cases"],
   "properties": {
-    "schema": { "const": "metabrowser-markdown-link-targets-v1" },
+    "schema": { "const": "metabrowser-markdown-link-resolution-v1" },
     "sourcePath": { "type": "string", "minLength": 1 },
     "cases": {
       "type": "array",
@@ -16,6 +16,8 @@
         "required": ["id", "intent", "expected"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
+          "sourcePath": { "type": "string", "minLength": 1 },
+          "canonicalUrl": { "type": "string", "pattern": "^/(view/|raw\\?path=)" },
           "intent": {
             "type": "object",
             "additionalProperties": false,

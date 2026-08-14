@@ -66,8 +66,8 @@ def test_rendered_markdown_link_enhancer() -> None:
 
 
 def test_standard_markdown_link_fixture_matches_its_schema() -> None:
-    schema = json.loads((FIXTURE_ROOT / "markdown_link_targets.schema.json").read_text())
-    fixture = json.loads((FIXTURE_ROOT / "markdown_link_targets.json").read_text())
+    schema = json.loads((FIXTURE_ROOT / "markdown_link_resolution.schema.json").read_text())
+    fixture = json.loads((FIXTURE_ROOT / "markdown_link_resolution.json").read_text())
 
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate(fixture)

@@ -1,9 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const repoRoot = path.resolve(process.argv[2]);
 const fixture = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, "tests/fixtures/markdown_link_targets.json"), "utf8"),
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/markdown_link_resolution.json"), "utf8"),
 );
 const failures = [];
 
@@ -23,11 +24,27 @@ function equal(name, actual, expected) {
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
   );
+  const navigationContext = {
+    console,
+    window: { location: { hash: "", pathname: "/view/", search: "" } },
+  };
+  vm.runInNewContext(
+    fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/navigation.js"), "utf8"),
+    navigationContext,
+  );
 
-  equal("fixture schema", fixture.schema, "metabrowser-markdown-link-targets-v1");
+  equal("fixture schema", fixture.schema, "metabrowser-markdown-link-resolution-v1");
   for (const testCase of fixture.cases) {
-    const intent = { sourcePath: fixture.sourcePath, ...testCase.intent };
-    equal(testCase.id, module.resolveStandardTarget(intent), testCase.expected);
+    const intent = { sourcePath: testCase.sourcePath || fixture.sourcePath, ...testCase.intent };
+    const resolved = module.resolveStandardTarget(intent);
+    equal(testCase.id, resolved, testCase.expected);
+    if (testCase.canonicalUrl && resolved.status === "internal") {
+      equal(
+        `${testCase.id} canonical URL`,
+        navigationContext.window.MetabrowserNavigationRoute.href(resolved),
+        testCase.canonicalUrl,
+      );
+    }
   }
 
   for (const [name, intent] of [
