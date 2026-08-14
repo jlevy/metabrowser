@@ -342,12 +342,15 @@ Open-ended type values are ranked by frequency and capped, so the menu cuts the 
 tail rather than an arbitrary alphabetical slice.
 
 A dropdown may lead with ordered named **preset sections** — shorthands standing for the
-full set of values beneath them, with separators between semantic tiers and before the
-raw list. The navigation type chooser uses broad Docs/Code/Data categories first,
-semantic families present in the index second, and canonical/raw extension rows last.
-A preset is checked only when every value it names is selected, so a half-covered group
-never claims to be on, and a selection that is exactly one preset shows by its name
-rather than as `.md +21`.
+full set of values beneath them.
+Each nonempty section has a visible small-caps label, an ARIA-labelled group, and a
+separator between semantic tiers and before the raw list.
+The navigation type chooser uses broad group presets first, families grouped under their
+Registry v1 group labels second, and canonical/raw extension rows last.
+Empty groups and empty presets are omitted; an empty preset must never alias the Any
+state. A preset is checked only when every value it names is selected, so a half-covered
+group never claims to be on, and a selection that is exactly one preset shows by its
+name rather than as `.md +21`.
 
 Selecting a semantic family adds all declared canonical suffixes; selecting a broad
 category adds its category-only filenames and all family members.

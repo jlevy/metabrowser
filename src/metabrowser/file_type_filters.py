@@ -10,7 +10,6 @@ from metabrowser.file_type_registry import (
     FILE_TYPE_FAMILY_KEY_PREFIX,
     FILE_TYPE_NO_EXTENSION_KEY,
     FILE_TYPE_REMAINING_KEY,
-    ContentFamily,
     load_file_type_registry,
     normalize_logical_extension,
 )
@@ -54,24 +53,13 @@ class FilterTypePreset(TypedDict):
     values: tuple[str, ...]
 
 
-def _group_for_content(content_family: ContentFamily) -> str:
-    if content_family is ContentFamily.code:
-        return "code"
-    if content_family in (ContentFamily.prose, ContentFamily.markup):
-        return "docs"
-    if content_family is ContentFamily.data:
-        return "data"
-    return "other"
-
-
 _REGISTRY = load_file_type_registry()
 _EXTRA_VALUES_BY_GROUP: dict[str, list[str]] = {group.id: [] for group in _REGISTRY.groups}
 for _kind in _REGISTRY.kinds:
     if _kind.family_id is not None:
         continue
-    _group_id = _group_for_content(_kind.content_family)
-    _EXTRA_VALUES_BY_GROUP[_group_id].extend(f".{value}" for value in _kind.extensions)
-    _EXTRA_VALUES_BY_GROUP[_group_id].extend(_kind.filenames)
+    _EXTRA_VALUES_BY_GROUP[_kind.group_id].extend(f".{value}" for value in _kind.extensions)
+    _EXTRA_VALUES_BY_GROUP[_kind.group_id].extend(_kind.filenames)
 
 FILE_TYPE_CATEGORIES: tuple[FileTypeCategory, ...] = tuple(
     FileTypeCategory(
@@ -215,6 +203,8 @@ def _build_filter_type_presets() -> tuple[FilterTypePreset, ...]:
             + category.extra_values,
         }
         for category in FILE_TYPE_CATEGORIES
+        if any(family.category == category.id for family in FILE_TYPE_FAMILIES)
+        or category.extra_values
     )
 
 

@@ -906,6 +906,7 @@ priority = 100
 
 [[kind]]
 id = "documentation-file"
+group = "docs"
 content_family = "prose"
 extensions = []
 filenames = ["readme", "license", "licence", "copying", "notice", "changelog", "authors", "contributors", "contributing", "codeowners"]
@@ -914,6 +915,7 @@ priority = 100
 
 [[kind]]
 id = "build-file"
+group = "code"
 content_family = "code"
 extensions = []
 filenames = ["makefile", "dockerfile", "justfile", "rakefile", "gemfile", "procfile"]
@@ -922,6 +924,7 @@ priority = 100
 
 [[kind]]
 id = "ambiguous-code"
+group = "code"
 content_family = "code"
 extensions = ["m", "mm", "ml", "pl", "r"]
 filenames = []
@@ -930,6 +933,7 @@ priority = 10
 
 [[kind]]
 id = "configuration"
+group = "data"
 content_family = "data"
 extensions = ["cfg", "conf", "properties", "db"]
 filenames = []
@@ -938,6 +942,7 @@ priority = 100
 
 [[kind]]
 id = "source-map"
+group = "data"
 content_family = "data"
 extensions = ["map"]
 filenames = []

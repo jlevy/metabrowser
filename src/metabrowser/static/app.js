@@ -2944,14 +2944,15 @@ function filterTypePresetSections() {
   const groupPresets = filterTypePresets();
   if (groups.length === 0) {
     return [
-      { id: "groups", presets: groupPresets },
-      { id: "families", presets: filterTypeFamilies() },
+      { id: "groups", label: "Groups", presets: groupPresets },
+      { id: "families", label: "Families", presets: filterTypeFamilies() },
     ];
   }
   return [
-    { id: "groups", presets: groupPresets },
+    { id: "groups", label: "Groups", presets: groupPresets },
     ...groups.map((group) => ({
       id: `families:${group.id}`,
+      label: group.label,
       presets: filterTypeFamilies(group.id),
     })),
   ];

@@ -1,9 +1,9 @@
 /**
  * Immutable browser adapter for the server-owned File-Type Registry v1.
  *
- * The legacy taxonomy projection remains an additive fallback while mixed cached
- * assets are possible. New code consumes groups, families, kinds, and registry
- * identity from this runtime.
+ * New code consumes groups, families, kinds, and registry identity from this
+ * runtime. Compatibility aliases remain on the public SDK, but the page embeds one
+ * authoritative registry payload rather than parallel projections.
  */
 
 ((global) => {
@@ -69,96 +69,9 @@
     return extension === suffix || extension.endsWith(suffix);
   }
 
-  /** @param {string} contentFamily */
-  function fallbackGroup(contentFamily) {
-    if (contentFamily === "code") {
-      return "code";
-    }
-    if (contentFamily === "prose" || contentFamily === "markup") {
-      return "docs";
-    }
-    if (contentFamily === "data") {
-      return "data";
-    }
-    return "other";
-  }
-
-  /** Convert the short-lived taxonomy projection into Registry-like declarations. @param {unknown} rawTaxonomy */
-  function legacyRegistry(rawTaxonomy) {
-    const raw = objectValue(rawTaxonomy, "FILE_TYPE_TAXONOMY");
-    const categories = Array.isArray(raw.categories) ? raw.categories : [];
-    const families = Array.isArray(raw.families) ? raw.families : [];
-    const groups = categories.map((candidate, index) => {
-      const value = objectValue(candidate, "file type category");
-      return {
-        id: stringValue(value.id, "file type category id"),
-        label: stringValue(value.label, "file type category label"),
-        order: (index + 1) * 10,
-      };
-    });
-    if (!groups.some((group) => group.id === "other")) {
-      groups.push({ id: "other", label: "Other", order: (groups.length + 1) * 10 });
-    }
-    const kinds = [];
-    for (const candidate of families) {
-      const value = objectValue(candidate, "file type family");
-      const id = stringValue(value.id, "file type family id");
-      kinds.push({
-        id,
-        family_id: id,
-        content_family:
-          value.category === "code" ? "code" : value.category === "data" ? "data" : "prose",
-        extensions: value.extensions,
-        filenames: [],
-        shebangs: [],
-        priority: 100,
-      });
-    }
-    for (const candidate of categories) {
-      const value = objectValue(candidate, "file type category");
-      const id = stringValue(value.id, "file type category id");
-      const extras = stringArray(value.extra_values, `extra values for ${id}`);
-      const extensions = extras.filter((extra) => extra.startsWith("."));
-      const filenames = extras.filter((extra) => !extra.startsWith("."));
-      if (extensions.length || filenames.length) {
-        kinds.push({
-          id: `${id}-compatibility`,
-          family_id: null,
-          content_family: id === "code" ? "code" : id === "data" ? "data" : "prose",
-          extensions,
-          filenames,
-          shebangs: [],
-          priority: 1,
-        });
-      }
-    }
-    return {
-      schema: "file-type-registry-v1",
-      schema_version: 1,
-      revision: Number.isInteger(raw.registry_revision) ? raw.registry_revision : 1,
-      fingerprint:
-        typeof raw.registry_fingerprint === "string"
-          ? raw.registry_fingerprint
-          : "legacy-file-type-taxonomy",
-      max_extension_components: 2,
-      groups,
-      families: families.map((candidate, index) => {
-        const value = objectValue(candidate, "file type family");
-        return {
-          id: value.id,
-          label: value.label,
-          group_id: value.category,
-          order: (index + 1) * 10,
-          extensions: value.extensions,
-        };
-      }),
-      kinds,
-    };
-  }
-
-  /** @param {unknown} rawRegistry @param {unknown} rawTaxonomy */
-  function createRuntime(rawRegistry, rawTaxonomy) {
-    const raw = objectValue(rawRegistry || legacyRegistry(rawTaxonomy), "FILE_TYPE_REGISTRY");
+  /** @param {unknown} rawRegistry */
+  function createRuntime(rawRegistry) {
+    const raw = objectValue(rawRegistry, "FILE_TYPE_REGISTRY");
     if (raw.schema !== "file-type-registry-v1" || raw.schema_version !== 1) {
       throw new TypeError("unsupported file-type registry schema");
     }
@@ -232,10 +145,13 @@
       const id = stringValue(value.id, "file type kind id");
       const familyId =
         value.family_id === null ? null : stringValue(value.family_id, `family for ${id}`);
+      const groupId = stringValue(value.group_id, `group for ${id}`);
       const contentFamilyValue = stringValue(value.content_family, `content family for ${id}`);
       if (
         !VALID_ID.test(id) ||
         (familyId !== null && !familyIds.has(familyId)) ||
+        !groupIds.has(groupId) ||
+        (familyId !== null && familiesById.get(familyId)?.groupId !== groupId) ||
         !CONTENT_FAMILIES.has(contentFamilyValue)
       ) {
         throw new TypeError(`invalid file type kind: ${id}`);
@@ -268,6 +184,7 @@
       return Object.freeze({
         id,
         familyId,
+        groupId,
         contentFamily,
         extensions,
         filenames,
@@ -353,13 +270,12 @@
           registryFingerprint: fingerprint,
         });
       }
-      const family = result.kind.familyId ? familiesById.get(result.kind.familyId) : null;
       return Object.freeze({
         logicalExtension: logicalExtension || null,
         canonicalExtension: result.canonicalExtension,
         kindId: result.kind.id,
         familyId: result.kind.familyId,
-        groupId: family?.groupId ?? fallbackGroup(result.kind.contentFamily),
+        groupId: result.kind.groupId,
         contentFamily: result.kind.contentFamily,
         detectionSource: result.detectionSource,
         confidence: result.confidence,
@@ -422,6 +338,5 @@
 
   global.MetabrowserFileTypeTaxonomy = createRuntime(
     global.METABROWSER_SETTINGS?.FILE_TYPE_REGISTRY,
-    global.METABROWSER_SETTINGS?.FILE_TYPE_TAXONOMY,
   );
 })(window);

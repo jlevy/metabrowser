@@ -192,7 +192,6 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
         "logs",
         "archives",
         "media",
-        "other",
     ]
     assert body["file_type_registry"] == {
         "schema_version": 1,

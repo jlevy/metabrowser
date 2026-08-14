@@ -130,6 +130,7 @@ def test_registry_rejects_each_structural_validation_class() -> None:
 
         [[kind]]
         id = "python-copy"
+        group = "code"
         content_family = "code"
         extensions = ["py"]
         filenames = []
@@ -166,6 +167,23 @@ def test_registry_rejects_each_structural_validation_class() -> None:
         ),
         (base.replace('extensions = ["py"]', 'extensions = [".py"]'), "invalid-extension"),
         (base + duplicate_kind, "duplicate-evidence"),
+        (
+            base
+            + dedent(
+                """
+
+                [[kind]]
+                id = "standalone"
+                content_family = "code"
+                extensions = ["standalone"]
+                filenames = []
+                shebangs = []
+                priority = 1
+                """
+            ),
+            "invalid-field",
+        ),
+        (base.replace('family = "python"', 'family = "python"\ngroup = "other"'), "group-mismatch"),
         (base + empty_family, "empty-family"),
         (base.replace('extensions = ["py"]', "extensions = []"), "missing-evidence"),
     )

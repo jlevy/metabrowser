@@ -11,13 +11,15 @@ File types and folder summaries:
   semantic families under Code, Documentation, Data, Logs, Archives, Media, and Other;
   singleton families remain expandable to their exact extension.
 - The Files summary now explains extensionless and unknown populations.
-  No extension expands to exact basenames and Remaining types expands to raw logical
+  No extension expands to exact basenames and Other types expands to raw logical
   extensions; each list is capped at 20 and conserves omitted files and bytes in an
   exact Others row.
 - Logical extensions are ASCII-case-insensitive, treat bare dotfiles as extensionless,
   and retain at most two trailing components.
   This keeps `.js.map` and `.tar.gz` useful without fragmenting reports into names such
-  as `.umd.min.js.map`.
+  as `.umd.min.js.map`. This intentionally merges uppercase suffixes into their
+  lowercase identities: `README.MD` joins `.md`, `photo.PNG` joins `.png`, and `.C`
+  joins `.c` rather than retaining a case-distinct language bucket.
 - Log files include `.log`, `.jsonl`, and `.ndjson`; archives and common image, video,
   audio, and font formats gain explicit families.
   JSON Lines retains its data-analysis identity and SVG retains its markup identity
@@ -25,6 +27,8 @@ File types and folder summaries:
 - Registry, Breakdown v1, JSON Schemas, conformance cases, and a checked export tool now
   form a self-contained compatibility packet that `fdu` can adopt without a sibling
   checkout or network access.
+  Packet export prunes stale destination content, verifies exact manifest membership and
+  hashes before returning, and supports an independent `--verify` mode.
 
 ## 0.3.0
 

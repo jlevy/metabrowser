@@ -47,6 +47,10 @@ from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from metabrowser.file_type_filters import FILE_TYPE_FAMILIES, family_for_extension
 from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.settings import (
+    ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+    ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+)
 
 
 class FileNode(TypedDict, total=False):
@@ -630,7 +634,7 @@ def validate_file_type_breakdown(raw: object, node: Mapping[str, Any]) -> None:
     assert set(no_extension) == {"metrics", "filenames", "others"}
     no_extension_metrics = _validated_population_metrics(no_extension["metrics"])
     filenames = no_extension["filenames"]
-    assert isinstance(filenames, list) and len(filenames) <= 20
+    assert isinstance(filenames, list) and len(filenames) <= ROLLUP_FILE_TYPE_FILENAME_LIMIT
     no_extension_children: list[dict[str, tuple[int, int]]] = []
     seen_filenames: set[str] = set()
     for filename in filenames:
@@ -655,7 +659,10 @@ def validate_file_type_breakdown(raw: object, node: Mapping[str, Any]) -> None:
     assert set(remaining) == {"metrics", "extensions", "others"}
     remaining_metrics = _validated_population_metrics(remaining["metrics"])
     remaining_extensions = remaining["extensions"]
-    assert isinstance(remaining_extensions, list) and len(remaining_extensions) <= 20
+    assert (
+        isinstance(remaining_extensions, list)
+        and len(remaining_extensions) <= ROLLUP_FILE_TYPE_REMAINING_LIMIT
+    )
     remaining_children: list[dict[str, tuple[int, int]]] = []
     seen_remaining: set[str] = set()
     for extension in remaining_extensions:

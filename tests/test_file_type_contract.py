@@ -10,6 +10,7 @@ from devtools.file_type_contract import (
     CONFORMANCE_PATH,
     check_artifacts,
     export_packet,
+    verify_packet,
 )
 from metabrowser.file_type_registry import (
     FileTypeRegistryError,
@@ -48,7 +49,11 @@ def test_conformance_corpus_matches_python_classification() -> None:
 
 def test_export_packet_is_self_contained_and_revision_pinned(tmp_path: Path) -> None:
     destination = tmp_path / "fdu-file-types"
+    (destination / "stale").mkdir(parents=True)
+    (destination / "stale" / "orphan.txt").write_text("old", encoding="utf-8")
     export_packet(destination, "abc123")
+    verify_packet(destination)
+    assert not (destination / "stale").exists()
 
     manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["source_revision"] == "abc123"
@@ -69,3 +74,27 @@ def test_export_packet_is_self_contained_and_revision_pinned(tmp_path: Path) -> 
         "metabrowser.file_type" in path.read_text(encoding="utf-8")
         for path in destination.rglob("*.md")
     )
+
+
+def test_verify_packet_rejects_tampering_and_unmanifested_content(tmp_path: Path) -> None:
+    destination = tmp_path / "fdu-file-types"
+    export_packet(destination, "abc123")
+    manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
+    tracked = destination / manifest["files"][0]["path"]
+    original = tracked.read_bytes()
+    tracked.write_bytes(original + b"tampered")
+    try:
+        verify_packet(destination)
+    except RuntimeError as error:
+        assert "hash mismatch" in str(error)
+    else:
+        raise AssertionError("packet verification accepted a modified file")
+
+    tracked.write_bytes(original)
+    (destination / "orphan.txt").write_text("unexpected", encoding="utf-8")
+    try:
+        verify_packet(destination)
+    except RuntimeError as error:
+        assert "contents differ" in str(error)
+    else:
+        raise AssertionError("packet verification accepted an unmanifested file")

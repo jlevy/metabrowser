@@ -506,7 +506,6 @@ def test_type_presets_name_registry_display_groups() -> None:
         "Logs",
         "Archives",
         "Media",
-        "Other",
     ]
 
     settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()

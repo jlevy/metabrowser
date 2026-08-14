@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from textwrap import dedent
 from typing import cast
 
@@ -38,6 +39,8 @@ CONTRACT_DOC_PATHS = (
     REPOSITORY_ROOT / "docs" / "project" / "architecture" / "file-types" / "interchange-v1.md",
     REPOSITORY_ROOT / "docs" / "project" / "architecture" / "file-types" / "fdu-compatibility.md",
 )
+PACKET_MANIFEST_NAME = "manifest.json"
+_SHA256 = re.compile(r"^[a-f0-9]{64}$")
 
 
 def _classification_payload(classification: FileTypeClassification) -> dict[str, object]:
@@ -183,6 +186,7 @@ def _invalid_registry_cases() -> list[dict[str, str]]:
 
         [[kind]]
         id = "python-copy"
+        group = "code"
         content_family = "code"
         extensions = ["py"]
         filenames = []
@@ -249,6 +253,28 @@ def _invalid_registry_cases() -> list[dict[str, str]]:
             "invalid-extension",
         ),
         ("duplicate-evidence", base + duplicate_kind, "duplicate-evidence"),
+        (
+            "familyless-kind-without-group",
+            base
+            + dedent(
+                """
+
+                [[kind]]
+                id = "standalone"
+                content_family = "code"
+                extensions = ["standalone"]
+                filenames = []
+                shebangs = []
+                priority = 1
+                """
+            ),
+            "invalid-field",
+        ),
+        (
+            "family-group-mismatch",
+            base.replace('family = "python"', 'family = "python"\ngroup = "other"'),
+            "group-mismatch",
+        ),
         ("empty-family", base + empty_family, "empty-family"),
         (
             "missing-evidence",
@@ -369,6 +395,8 @@ def export_packet(destination: Path, source_revision: str) -> None:
     """Copy a self-contained reviewed packet to an explicit destination."""
 
     check_artifacts()
+    if destination.is_symlink() or (destination.exists() and not destination.is_dir()):
+        raise RuntimeError("file-type packet destination must be a real directory")
     destination.mkdir(parents=True, exist_ok=True)
     source_paths = (
         REGISTRY_SOURCE_PATH,
@@ -379,6 +407,8 @@ def export_packet(destination: Path, source_revision: str) -> None:
     )
     packet_sources = [(source.name, source) for source in source_paths]
     packet_sources.extend((f"docs/{source.name}", source) for source in CONTRACT_DOC_PATHS)
+    expected = {relative_path for relative_path, _source in packet_sources} | {PACKET_MANIFEST_NAME}
+    _prune_packet_destination(destination, expected)
     manifest_files: list[dict[str, str]] = []
     for relative_path, source in sorted(packet_sources):
         content = source.read_bytes()
@@ -400,8 +430,131 @@ def export_packet(destination: Path, source_revision: str) -> None:
         "registry_fingerprint": registry.fingerprint,
         "files": manifest_files,
     }
-    with atomic_output_file(destination / "manifest.json", make_parents=True) as temporary:
+    with atomic_output_file(destination / PACKET_MANIFEST_NAME, make_parents=True) as temporary:
         temporary.write_bytes(_json_bytes(manifest))
+    _prune_packet_destination(destination, expected)
+    verify_packet(destination)
+
+
+def _safe_packet_path(raw_path: object) -> PurePosixPath:
+    if not isinstance(raw_path, str) or not raw_path:
+        raise RuntimeError("file-type packet manifest contains an invalid path")
+    path = PurePosixPath(raw_path)
+    windows_path = PureWindowsPath(raw_path)
+    if (
+        "\\" in raw_path
+        or path.is_absolute()
+        or windows_path.is_absolute()
+        or bool(windows_path.drive)
+        or path.as_posix() != raw_path
+        or any(component in ("", ".", "..") for component in path.parts)
+    ):
+        raise RuntimeError(f"file-type packet manifest contains an unsafe path: {raw_path!r}")
+    return path
+
+
+def _packet_expected_directories(paths: set[str]) -> set[str]:
+    directories: set[str] = set()
+    for raw_path in paths:
+        parent = PurePosixPath(raw_path).parent
+        while parent != PurePosixPath("."):
+            directories.add(parent.as_posix())
+            parent = parent.parent
+    return directories
+
+
+def _prune_packet_destination(destination: Path, expected_files: set[str]) -> None:
+    expected_directories = _packet_expected_directories(expected_files)
+    for path in sorted(destination.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        relative = path.relative_to(destination).as_posix()
+        if path.is_symlink() or path.is_file():
+            if relative not in expected_files:
+                path.unlink()
+        elif path.is_dir() and relative not in expected_directories:
+            path.rmdir()
+
+
+def verify_packet(destination: Path) -> None:
+    """Verify manifest shape, safe paths, exact contents, and every file hash."""
+
+    if destination.is_symlink() or not destination.is_dir():
+        raise RuntimeError("file-type packet must be a real directory")
+    for path in destination.rglob("*"):
+        if path.is_symlink():
+            relative = path.relative_to(destination).as_posix()
+            raise RuntimeError(f"file-type packet contains a symbolic link: {relative!r}")
+    manifest_path = destination / PACKET_MANIFEST_NAME
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        raise RuntimeError("file-type packet manifest is missing or invalid")
+    try:
+        raw_manifest: object = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("file-type packet manifest is unreadable") from error
+    if not isinstance(raw_manifest, dict):
+        raise RuntimeError("file-type packet manifest must be an object")
+    manifest = cast(dict[str, object], raw_manifest)
+    if manifest.get("schema") != "file-type-adoption-packet-v1":
+        raise RuntimeError("file-type packet manifest has an unsupported schema")
+    if not isinstance(manifest.get("source_revision"), str) or not manifest["source_revision"]:
+        raise RuntimeError("file-type packet manifest has an invalid source revision")
+    if manifest.get("registry_schema_version") != 1:
+        raise RuntimeError("file-type packet manifest has an unsupported registry schema")
+    if (
+        not isinstance(manifest.get("registry_revision"), int)
+        or isinstance(manifest["registry_revision"], bool)
+        or cast(int, manifest["registry_revision"]) < 1
+    ):
+        raise RuntimeError("file-type packet manifest has an invalid registry revision")
+    fingerprint = manifest.get("registry_fingerprint")
+    if not isinstance(fingerprint, str) or not _SHA256.fullmatch(fingerprint):
+        raise RuntimeError("file-type packet manifest has an invalid registry fingerprint")
+    raw_files = manifest.get("files")
+    if not isinstance(raw_files, list):
+        raise RuntimeError("file-type packet manifest files must be an array")
+    files = cast(list[object], raw_files)
+
+    expected_files = {PACKET_MANIFEST_NAME}
+    for raw_item in files:
+        if not isinstance(raw_item, dict):
+            raise RuntimeError("file-type packet manifest file entry is invalid")
+        item = cast(dict[str, object], raw_item)
+        if set(item) != {"path", "sha256"}:
+            raise RuntimeError("file-type packet manifest file entry is invalid")
+        relative = _safe_packet_path(item["path"])
+        raw_path = relative.as_posix()
+        digest = item["sha256"]
+        if raw_path == PACKET_MANIFEST_NAME or raw_path in expected_files:
+            raise RuntimeError(f"file-type packet manifest path is duplicated: {raw_path!r}")
+        if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+            raise RuntimeError(f"file-type packet manifest hash is invalid: {raw_path!r}")
+        target = destination.joinpath(*relative.parts)
+        if not target.is_file() or target.is_symlink():
+            raise RuntimeError(f"file-type packet file is missing or invalid: {raw_path!r}")
+        if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+            raise RuntimeError(f"file-type packet hash mismatch: {raw_path!r}")
+        expected_files.add(raw_path)
+
+    actual_files: set[str] = set()
+    actual_directories: set[str] = set()
+    for path in destination.rglob("*"):
+        relative = path.relative_to(destination).as_posix()
+        if path.is_symlink():
+            raise RuntimeError(f"file-type packet contains a symbolic link: {relative!r}")
+        if path.is_file():
+            actual_files.add(relative)
+        elif path.is_dir():
+            actual_directories.add(relative)
+    if actual_files != expected_files:
+        extras = sorted(actual_files - expected_files)
+        missing = sorted(expected_files - actual_files)
+        raise RuntimeError(f"file-type packet contents differ: extras={extras}, missing={missing}")
+    expected_directories = _packet_expected_directories(expected_files)
+    if actual_directories != expected_directories:
+        extras = sorted(actual_directories - expected_directories)
+        missing = sorted(expected_directories - actual_directories)
+        raise RuntimeError(
+            f"file-type packet directories differ: extras={extras}, missing={missing}"
+        )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -409,6 +562,7 @@ def _parser() -> argparse.ArgumentParser:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--write", action="store_true", help="update checked generated artifacts")
     mode.add_argument("--export", type=Path, help="write an adoption packet to this directory")
+    mode.add_argument("--verify", type=Path, help="verify an existing adoption packet")
     parser.add_argument(
         "--source-revision",
         help="reviewed Metabrowser Git revision recorded in an exported packet",
@@ -422,6 +576,10 @@ def main() -> None:
         if not args.source_revision:
             raise SystemExit("--export requires --source-revision")
         export_packet(args.export, args.source_revision)
+    elif args.verify is not None:
+        if args.source_revision:
+            raise SystemExit("--source-revision is only valid with --export")
+        verify_packet(args.verify)
     elif args.write:
         write_artifacts()
     else:

@@ -63,6 +63,7 @@
       "required": [
         "id",
         "family_id",
+        "group_id",
         "content_family",
         "extensions",
         "filenames",
@@ -72,6 +73,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "family_id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "group_id": { "$ref": "#/$defs/id" },
         "content_family": {
           "enum": ["code", "prose", "markup", "data", "binary", "unknown"]
         },

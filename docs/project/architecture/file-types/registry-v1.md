@@ -38,6 +38,15 @@ shebangs = ["node", "deno", "bun"]
 priority = 100
 
 [[kind]]
+id = "build-file"
+group = "code"
+content_family = "code"
+extensions = []
+filenames = ["makefile", "dockerfile"]
+shebangs = []
+priority = 100
+
+[[kind]]
 id = "json-lines"
 family = "log-files"
 content_family = "data"
@@ -73,8 +82,9 @@ change.
 | `order` | integer | Deterministic order; unique among groups |
 
 The initial order is Code, Documentation, Data, Logs, Archives, Media, and Other.
-Other is the fallback section for No extension and Remaining types.
-It does not collect unrelated ordinary families merely to avoid a taxonomy decision.
+Other is the fallback section for the No extension and Other types UI parents; the
+interchange member for the latter remains `remaining_types`. It does not collect
+unrelated ordinary families merely to avoid a taxonomy decision.
 
 ## Family Fields
 
@@ -101,15 +111,17 @@ icon identities.
 | --- | --- | --- |
 | `id` | string | Stable classifier identity |
 | `family` | family ID or absent | Optional display placement |
+| `group` | group ID or absent | Required when `family` is absent; a family-owned kind inherits and must not contradict its family group |
 | `content_family` | enum | `code`, `prose`, `markup`, `data`, `binary`, or `unknown` |
 | `extensions` | string array | Normalized matchers without a leading dot |
 | `filenames` | string array | Exact basename matchers, compared ASCII-case-insensitively |
 | `shebangs` | string array | Optional interpreter aliases used by `fdu` |
 | `priority` | integer | Tie-breaker within one evidence tier; higher wins |
 
-A kind can exist without a display family.
-This preserves useful analyzer classification while leaving the file under Remaining
-types in an extension-oriented breakdown.
+A kind can exist without a display family, but it still has one authoritative display
+group.
+This keeps broad filtering deterministic for filename-only and raw-extension kinds
+while leaving them under Other types in an extension-oriented breakdown.
 C and C++ can retain distinct kind IDs while sharing C/C++. SVG can retain a markup
 content family while joining Images.
 JSON Lines can retain data while joining Log files.
@@ -128,7 +140,7 @@ adds these product groups:
 | Logs | Log files | `.log`, `.jsonl`, and `.ndjson`; JSON Lines retains data content |
 | Archives | Archives | Common compressed streams and containers, including exact `.tar.*` compounds |
 | Media | Images, Videos, Audio, Fonts | Common interoperable formats; SVG remains markup |
-| Other | System parents only | No extension and Remaining types are breakdown structures, not kinds |
+| Other | System parents only | No extension and Other types are breakdown structures, not kinds |
 
 The source TOML, not this table, owns the complete member list.
 New declarations should favor common, unambiguous formats.
@@ -190,8 +202,8 @@ Classification and extension breakdown placement are distinct:
 2. A file with a logical extension and family contributes to that family.
    The child key is its canonical extension when present and otherwise its logical
    extension.
-3. A file with a logical extension and no family contributes to Remaining types under
-   its logical extension.
+3. A file with a logical extension and no family contributes to `remaining_types` under
+   its logical extension; the UI labels that parent Other types.
 
 This order makes every family parent fully explainable by extension children while No
 extension remains a complete partition of extensionless files.

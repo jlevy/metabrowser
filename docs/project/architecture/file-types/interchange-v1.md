@@ -80,6 +80,7 @@ Validated TOML is projected into JSON-compatible runtime data:
     {
       "id": "javascript",
       "family_id": "javascript",
+      "group_id": "code",
       "content_family": "code",
       "extensions": [".js", ".jsx", ".mjs", ".cjs"],
       "filenames": [],

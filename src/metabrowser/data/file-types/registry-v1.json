@@ -568,7 +568,7 @@
       "order": 130
     }
   ],
-  "fingerprint": "7093a67ce890113518a9f37b6e7802b902ed120230891ec373bb5e1e0b6e06bb",
+  "fingerprint": "08c341b55028cd9b379decedff9429c5809b878ee25b11018d4f6dfae069b2c2",
   "groups": [
     {
       "id": "code",
@@ -615,6 +615,7 @@
       ],
       "family_id": "python",
       "filenames": [],
+      "group_id": "code",
       "id": "python",
       "priority": 100,
       "shebangs": [
@@ -632,6 +633,7 @@
       ],
       "family_id": "javascript",
       "filenames": [],
+      "group_id": "code",
       "id": "javascript",
       "priority": 100,
       "shebangs": [
@@ -650,6 +652,7 @@
       ],
       "family_id": "typescript",
       "filenames": [],
+      "group_id": "code",
       "id": "typescript",
       "priority": 100,
       "shebangs": []
@@ -663,6 +666,7 @@
       ],
       "family_id": "css",
       "filenames": [],
+      "group_id": "code",
       "id": "css",
       "priority": 100,
       "shebangs": []
@@ -675,6 +679,7 @@
       ],
       "family_id": "html",
       "filenames": [],
+      "group_id": "code",
       "id": "html",
       "priority": 100,
       "shebangs": []
@@ -686,6 +691,7 @@
       ],
       "family_id": "rust",
       "filenames": [],
+      "group_id": "code",
       "id": "rust",
       "priority": 100,
       "shebangs": []
@@ -697,6 +703,7 @@
       ],
       "family_id": "go",
       "filenames": [],
+      "group_id": "code",
       "id": "go",
       "priority": 100,
       "shebangs": []
@@ -708,6 +715,7 @@
       ],
       "family_id": "java",
       "filenames": [],
+      "group_id": "code",
       "id": "java",
       "priority": 100,
       "shebangs": []
@@ -720,6 +728,7 @@
       ],
       "family_id": "kotlin",
       "filenames": [],
+      "group_id": "code",
       "id": "kotlin",
       "priority": 100,
       "shebangs": []
@@ -731,6 +740,7 @@
       ],
       "family_id": "swift",
       "filenames": [],
+      "group_id": "code",
       "id": "swift",
       "priority": 100,
       "shebangs": []
@@ -743,6 +753,7 @@
       ],
       "family_id": "c-cpp",
       "filenames": [],
+      "group_id": "code",
       "id": "c",
       "priority": 100,
       "shebangs": []
@@ -756,6 +767,7 @@
       ],
       "family_id": "c-cpp",
       "filenames": [],
+      "group_id": "code",
       "id": "cpp",
       "priority": 100,
       "shebangs": []
@@ -767,6 +779,7 @@
       ],
       "family_id": "csharp",
       "filenames": [],
+      "group_id": "code",
       "id": "csharp",
       "priority": 100,
       "shebangs": []
@@ -778,6 +791,7 @@
       ],
       "family_id": "ruby",
       "filenames": [],
+      "group_id": "code",
       "id": "ruby",
       "priority": 100,
       "shebangs": [
@@ -791,6 +805,7 @@
       ],
       "family_id": "php",
       "filenames": [],
+      "group_id": "code",
       "id": "php",
       "priority": 100,
       "shebangs": [
@@ -804,6 +819,7 @@
       ],
       "family_id": "scala",
       "filenames": [],
+      "group_id": "code",
       "id": "scala",
       "priority": 100,
       "shebangs": []
@@ -815,6 +831,7 @@
       ],
       "family_id": "clojure",
       "filenames": [],
+      "group_id": "code",
       "id": "clojure",
       "priority": 100,
       "shebangs": []
@@ -827,6 +844,7 @@
       ],
       "family_id": "elixir",
       "filenames": [],
+      "group_id": "code",
       "id": "elixir",
       "priority": 100,
       "shebangs": []
@@ -838,6 +856,7 @@
       ],
       "family_id": "erlang",
       "filenames": [],
+      "group_id": "code",
       "id": "erlang",
       "priority": 100,
       "shebangs": []
@@ -849,6 +868,7 @@
       ],
       "family_id": "haskell",
       "filenames": [],
+      "group_id": "code",
       "id": "haskell",
       "priority": 100,
       "shebangs": []
@@ -860,6 +880,7 @@
       ],
       "family_id": "lua",
       "filenames": [],
+      "group_id": "code",
       "id": "lua",
       "priority": 100,
       "shebangs": [
@@ -873,6 +894,7 @@
       ],
       "family_id": "julia",
       "filenames": [],
+      "group_id": "code",
       "id": "julia",
       "priority": 100,
       "shebangs": [
@@ -886,6 +908,7 @@
       ],
       "family_id": "dart",
       "filenames": [],
+      "group_id": "code",
       "id": "dart",
       "priority": 100,
       "shebangs": []
@@ -897,6 +920,7 @@
       ],
       "family_id": "vue",
       "filenames": [],
+      "group_id": "code",
       "id": "vue",
       "priority": 100,
       "shebangs": []
@@ -908,6 +932,7 @@
       ],
       "family_id": "svelte",
       "filenames": [],
+      "group_id": "code",
       "id": "svelte",
       "priority": 100,
       "shebangs": []
@@ -922,6 +947,7 @@
       ],
       "family_id": "shell",
       "filenames": [],
+      "group_id": "code",
       "id": "shell",
       "priority": 100,
       "shebangs": [
@@ -938,6 +964,7 @@
       ],
       "family_id": "powershell",
       "filenames": [],
+      "group_id": "code",
       "id": "powershell",
       "priority": 100,
       "shebangs": [
@@ -952,6 +979,7 @@
       ],
       "family_id": "sql",
       "filenames": [],
+      "group_id": "code",
       "id": "sql",
       "priority": 100,
       "shebangs": []
@@ -963,6 +991,7 @@
       ],
       "family_id": "markdown",
       "filenames": [],
+      "group_id": "docs",
       "id": "markdown",
       "priority": 100,
       "shebangs": []
@@ -974,6 +1003,7 @@
       ],
       "family_id": "plain-text",
       "filenames": [],
+      "group_id": "docs",
       "id": "plain-text",
       "priority": 100,
       "shebangs": []
@@ -985,6 +1015,7 @@
       ],
       "family_id": "restructured-text",
       "filenames": [],
+      "group_id": "docs",
       "id": "restructured-text",
       "priority": 100,
       "shebangs": []
@@ -996,6 +1027,7 @@
       ],
       "family_id": "asciidoc",
       "filenames": [],
+      "group_id": "docs",
       "id": "asciidoc",
       "priority": 100,
       "shebangs": []
@@ -1007,6 +1039,7 @@
       ],
       "family_id": "org",
       "filenames": [],
+      "group_id": "docs",
       "id": "org",
       "priority": 100,
       "shebangs": []
@@ -1018,6 +1051,7 @@
       ],
       "family_id": "pdf",
       "filenames": [],
+      "group_id": "docs",
       "id": "pdf",
       "priority": 100,
       "shebangs": []
@@ -1030,6 +1064,7 @@
       ],
       "family_id": "word",
       "filenames": [],
+      "group_id": "docs",
       "id": "word",
       "priority": 100,
       "shebangs": []
@@ -1041,6 +1076,7 @@
       ],
       "family_id": "rich-text",
       "filenames": [],
+      "group_id": "docs",
       "id": "rich-text",
       "priority": 100,
       "shebangs": []
@@ -1052,6 +1088,7 @@
       ],
       "family_id": "open-document",
       "filenames": [],
+      "group_id": "docs",
       "id": "open-document",
       "priority": 100,
       "shebangs": []
@@ -1063,6 +1100,7 @@
       ],
       "family_id": "epub",
       "filenames": [],
+      "group_id": "docs",
       "id": "epub",
       "priority": 100,
       "shebangs": []
@@ -1074,6 +1112,7 @@
       ],
       "family_id": "json",
       "filenames": [],
+      "group_id": "data",
       "id": "json",
       "priority": 100,
       "shebangs": []
@@ -1086,6 +1125,7 @@
       ],
       "family_id": "yaml",
       "filenames": [],
+      "group_id": "data",
       "id": "yaml",
       "priority": 100,
       "shebangs": []
@@ -1097,6 +1137,7 @@
       ],
       "family_id": "toml",
       "filenames": [],
+      "group_id": "data",
       "id": "toml",
       "priority": 100,
       "shebangs": []
@@ -1108,6 +1149,7 @@
       ],
       "family_id": "ini",
       "filenames": [],
+      "group_id": "data",
       "id": "ini",
       "priority": 100,
       "shebangs": []
@@ -1121,6 +1163,7 @@
       ],
       "family_id": "delimited-text",
       "filenames": [],
+      "group_id": "data",
       "id": "delimited-text",
       "priority": 100,
       "shebangs": []
@@ -1132,6 +1175,7 @@
       ],
       "family_id": "xml",
       "filenames": [],
+      "group_id": "data",
       "id": "xml",
       "priority": 100,
       "shebangs": []
@@ -1143,6 +1187,7 @@
       ],
       "family_id": "parquet",
       "filenames": [],
+      "group_id": "data",
       "id": "parquet",
       "priority": 100,
       "shebangs": []
@@ -1155,6 +1200,7 @@
       ],
       "family_id": "arrow",
       "filenames": [],
+      "group_id": "data",
       "id": "arrow",
       "priority": 100,
       "shebangs": []
@@ -1166,6 +1212,7 @@
       ],
       "family_id": "avro",
       "filenames": [],
+      "group_id": "data",
       "id": "avro",
       "priority": 100,
       "shebangs": []
@@ -1177,6 +1224,7 @@
       ],
       "family_id": "orc",
       "filenames": [],
+      "group_id": "data",
       "id": "orc",
       "priority": 100,
       "shebangs": []
@@ -1188,6 +1236,7 @@
       ],
       "family_id": "protocol-buffers",
       "filenames": [],
+      "group_id": "data",
       "id": "protocol-buffers",
       "priority": 100,
       "shebangs": []
@@ -1199,6 +1248,7 @@
       ],
       "family_id": "graphql",
       "filenames": [],
+      "group_id": "data",
       "id": "graphql",
       "priority": 100,
       "shebangs": []
@@ -1210,6 +1260,7 @@
       ],
       "family_id": "sqlite",
       "filenames": [],
+      "group_id": "data",
       "id": "sqlite",
       "priority": 100,
       "shebangs": []
@@ -1221,6 +1272,7 @@
       ],
       "family_id": "log-files",
       "filenames": [],
+      "group_id": "logs",
       "id": "log",
       "priority": 100,
       "shebangs": []
@@ -1233,6 +1285,7 @@
       ],
       "family_id": "log-files",
       "filenames": [],
+      "group_id": "logs",
       "id": "json-lines",
       "priority": 100,
       "shebangs": []
@@ -1256,6 +1309,7 @@
       ],
       "family_id": "archives",
       "filenames": [],
+      "group_id": "archives",
       "id": "archives",
       "priority": 100,
       "shebangs": []
@@ -1277,6 +1331,7 @@
       ],
       "family_id": "images",
       "filenames": [],
+      "group_id": "media",
       "id": "raster-image",
       "priority": 100,
       "shebangs": []
@@ -1288,6 +1343,7 @@
       ],
       "family_id": "images",
       "filenames": [],
+      "group_id": "media",
       "id": "svg",
       "priority": 100,
       "shebangs": []
@@ -1304,6 +1360,7 @@
       ],
       "family_id": "videos",
       "filenames": [],
+      "group_id": "media",
       "id": "video",
       "priority": 100,
       "shebangs": []
@@ -1321,6 +1378,7 @@
       ],
       "family_id": "audio",
       "filenames": [],
+      "group_id": "media",
       "id": "audio",
       "priority": 100,
       "shebangs": []
@@ -1335,6 +1393,7 @@
       ],
       "family_id": "fonts",
       "filenames": [],
+      "group_id": "media",
       "id": "font",
       "priority": 100,
       "shebangs": []
@@ -1355,6 +1414,7 @@
         "contributing",
         "codeowners"
       ],
+      "group_id": "docs",
       "id": "documentation-file",
       "priority": 100,
       "shebangs": []
@@ -1371,6 +1431,7 @@
         "gemfile",
         "procfile"
       ],
+      "group_id": "code",
       "id": "build-file",
       "priority": 100,
       "shebangs": []
@@ -1386,6 +1447,7 @@
       ],
       "family_id": null,
       "filenames": [],
+      "group_id": "code",
       "id": "ambiguous-code",
       "priority": 10,
       "shebangs": []
@@ -1400,6 +1462,7 @@
       ],
       "family_id": null,
       "filenames": [],
+      "group_id": "data",
       "id": "configuration",
       "priority": 100,
       "shebangs": []
@@ -1411,6 +1474,7 @@
       ],
       "family_id": null,
       "filenames": [],
+      "group_id": "data",
       "id": "source-map",
       "priority": 100,
       "shebangs": []

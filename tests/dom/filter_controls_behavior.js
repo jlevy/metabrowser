@@ -397,9 +397,10 @@ const menuSections = fc.menuGroupHtml({
   label: "File type",
   options: menuOptions,
   presetSections: [
-    { id: "categories", presets: PRESETS },
+    { id: "categories", label: "Groups", presets: PRESETS },
     {
       id: "families",
+      label: "Code",
       presets: [
         { id: "family:javascript", label: "JavaScript", values: [".js", ".mjs"], count: 10 },
       ],
@@ -414,12 +415,30 @@ assertContains(
   menuSections,
   'data-chip-menu-section="categories"',
 );
+assertContains("preset sections have visible group labels", menuSections, ">Groups</div>");
+assertContains("family sections have visible group labels", menuSections, ">Code</div>");
+assertContains(
+  "preset section labels name semantic groups",
+  menuSections,
+  'role="group" aria-labelledby="m-section-0"',
+);
 assertContains(
   "semantic families are selectable parents",
   menuSections,
   'data-chip-preset="family:javascript"',
 );
 assertContains("an exact family names the trigger", menuSections, ">JavaScript<");
+
+const emptyPreset = fc.menuGroupHtml({
+  key: "types",
+  label: "File type",
+  options: menuOptions,
+  presets: [{ id: "other", label: "Other", values: [] }],
+  value: [],
+  anyLabel: "Any type",
+  menuId: "m",
+});
+assertContains("an empty preset cannot claim the empty selection", emptyPreset, ">Any type<");
 
 // ── Escaping ───────────────────────────────────────────────────
 

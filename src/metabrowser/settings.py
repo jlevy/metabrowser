@@ -22,7 +22,6 @@ from typing import Any
 from metabrowser.file_type_filters import (
     FILTER_TYPE_PRESETS,
     serialize_file_type_registry,
-    serialize_file_type_taxonomy,
 )
 
 # ── Server port ──────────────────────────────────────────────
@@ -227,7 +226,6 @@ def client_settings_dict() -> dict[str, Any]:
 
     return {
         "FILE_TYPE_REGISTRY": serialize_file_type_registry(),
-        "FILE_TYPE_TAXONOMY": serialize_file_type_taxonomy(),
         "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,

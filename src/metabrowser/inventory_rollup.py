@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from metabrowser.file_type_filters import FILE_TYPE_FAMILIES, family_for_extension
+from metabrowser.file_type_filters import FILE_TYPE_FAMILIES
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
@@ -103,6 +103,15 @@ class _SubtreeAggregate:
         self.no_ext_bytes_unignored.update(other.no_ext_bytes_unignored)
 
 
+@dataclass(frozen=True, slots=True)
+class _FileTypePartition:
+    """One registry classification pass shared by every wire projection."""
+
+    family_children: dict[str, dict[str, list[int]]]
+    remaining_keys: set[str]
+    has_no_extension: bool
+
+
 def build_rollup(
     entries: Mapping[str, FsEntry],
     children_by_parent: Mapping[str, Sequence[FsEntry]],
@@ -132,14 +141,20 @@ def build_rollup(
         options,
     )
     selected = _select_extension_keys(root_aggregate, options.ext_top, options.ext_rank)
+    file_types = _partition_file_types(root_aggregate)
     return {
         "node": cast(RollupDirNode, root_node),
         "ext_tallies": _serialize_extension_tallies(root_aggregate, selected),
-        "type_tallies": _serialize_type_tallies(root_aggregate, options.type_top),
+        "type_tallies": _serialize_type_tallies(
+            root_aggregate,
+            options.type_top,
+            file_types,
+        ),
         "file_type_breakdown": _serialize_file_type_breakdown(
             root_aggregate,
             filename_limit=options.filename_top,
             remaining_limit=options.type_top,
+            file_types=file_types,
         ),
     }
 
@@ -530,30 +545,18 @@ def _serialize_file_type_breakdown(
     *,
     filename_limit: int,
     remaining_limit: int,
+    file_types: _FileTypePartition,
 ) -> FileTypeBreakdown:
     """Build the conserved Registry v1 hierarchy before presentation."""
 
     registry = load_file_type_registry()
-    family_child_totals: dict[str, dict[str, list[int]]] = {}
-    remaining_keys: set[str] = set()
-    for key in _all_extension_keys(aggregate) - {ROLLUP_NO_EXT_KEY}:
-        classification = registry.classify("", key)
-        if classification.family_id is None:
-            remaining_keys.add(key)
-            continue
-        child_key = classification.canonical_extension or key
-        child_totals = family_child_totals.setdefault(classification.family_id, {}).setdefault(
-            child_key, [0, 0, 0, 0]
-        )
-        _add_metrics(child_totals, _extension_metrics(aggregate, key))
-
     groups = []
     for group in registry.groups:
         families: list[FileTypeFamilyBreakdown] = []
         for family in registry.families:
             if family.group_id != group.id:
                 continue
-            raw_children = family_child_totals.get(family.id)
+            raw_children = file_types.family_children.get(family.id)
             if not raw_children:
                 continue
             family_totals = [0, 0, 0, 0]
@@ -601,7 +604,7 @@ def _serialize_file_type_breakdown(
     ]
 
     selected_remaining = _select_counter_keys(
-        remaining_keys,
+        file_types.remaining_keys,
         remaining_limit,
         aggregate.ext_files,
         aggregate.ext_bytes,
@@ -615,7 +618,7 @@ def _serialize_file_type_breakdown(
     ]
     no_extension_metrics = _extension_metrics(aggregate, ROLLUP_NO_EXT_KEY)
     remaining_totals = [0, 0, 0, 0]
-    for key in remaining_keys:
+    for key in file_types.remaining_keys:
         _add_metrics(remaining_totals, _extension_metrics(aggregate, key))
     return {
         "schema": "file-type-breakdown-v1",
@@ -646,7 +649,7 @@ def _serialize_file_type_breakdown(
             "metrics": _metrics_from_totals(remaining_totals),
             "extensions": remaining_extensions,
             "others": _others_metrics(
-                remaining_keys - set(selected_remaining),
+                file_types.remaining_keys - set(selected_remaining),
                 aggregate.ext_files,
                 aggregate.ext_bytes,
                 aggregate.ext_files_unignored,
@@ -656,26 +659,41 @@ def _serialize_file_type_breakdown(
     }
 
 
-def _serialize_type_tallies(aggregate: _SubtreeAggregate, raw_limit: int) -> TypeTallies:
-    """Aggregate every known family before bounding only the raw tail."""
+def _partition_file_types(aggregate: _SubtreeAggregate) -> _FileTypePartition:
+    """Classify each distinct logical extension exactly once per rollup."""
 
+    registry = load_file_type_registry()
     family_children: dict[str, dict[str, list[int]]] = {}
-    raw_keys: set[str] = set()
-    for key in _all_extension_keys(aggregate):
-        match = family_for_extension(key)
-        if match is None:
-            raw_keys.add(key)
+    remaining_keys: set[str] = set()
+    extension_keys = _all_extension_keys(aggregate)
+    for key in extension_keys - {ROLLUP_NO_EXT_KEY}:
+        classification = registry.classify("", key)
+        if classification.family_id is None:
+            remaining_keys.add(key)
             continue
-        canonical = match.canonical_extension
-        children = family_children.setdefault(match.family.id, {})
-        metrics = children.setdefault(canonical, [0, 0, 0, 0])
-        row = _tally_row(aggregate, key)
-        for index, value in enumerate(row[1:]):
-            metrics[index] += value
+        canonical = classification.canonical_extension or key
+        totals = family_children.setdefault(classification.family_id, {}).setdefault(
+            canonical,
+            [0, 0, 0, 0],
+        )
+        _add_metrics(totals, _extension_metrics(aggregate, key))
+    return _FileTypePartition(
+        family_children=family_children,
+        remaining_keys=remaining_keys,
+        has_no_extension=ROLLUP_NO_EXT_KEY in extension_keys,
+    )
+
+
+def _serialize_type_tallies(
+    aggregate: _SubtreeAggregate,
+    raw_limit: int,
+    file_types: _FileTypePartition,
+) -> TypeTallies:
+    """Aggregate every known family before bounding only the raw tail."""
 
     families: list[TypeFamilyTally] = []
     for family in FILE_TYPE_FAMILIES:
-        children = family_children.get(family.id)
+        children = file_types.family_children.get(family.id)
         if not children:
             continue
         child_rows: list[ExtensionTallyRow] = [
@@ -694,12 +712,11 @@ def _serialize_type_tallies(aggregate: _SubtreeAggregate, raw_limit: int) -> Typ
             }
         )
 
-    no_extension = ROLLUP_NO_EXT_KEY in raw_keys
-    ranked_raw = _select_type_raw_keys(aggregate, raw_keys - {ROLLUP_NO_EXT_KEY}, raw_limit)
+    ranked_raw = _select_type_raw_keys(aggregate, file_types.remaining_keys, raw_limit)
     extensions = [_tally_row(aggregate, key) for key in ranked_raw]
-    if no_extension:
+    if file_types.has_no_extension:
         extensions.insert(0, _tally_row(aggregate, ROLLUP_NO_EXT_KEY))
-    omitted = raw_keys - set(ranked_raw) - {ROLLUP_NO_EXT_KEY}
+    omitted = file_types.remaining_keys - set(ranked_raw)
     if omitted:
         extensions.append(
             (

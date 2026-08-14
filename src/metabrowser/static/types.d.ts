@@ -79,6 +79,7 @@ type MetabrowserFileTypeFamily = Readonly<{
 type MetabrowserFileTypeKind = Readonly<{
   id: string;
   familyId: string | null;
+  groupId: MetabrowserFileTypeCategoryId;
   contentFamily: "code" | "prose" | "markup" | "data" | "binary" | "unknown";
   extensions: ReadonlyArray<string>;
   filenames: ReadonlyArray<string>;
@@ -256,6 +257,13 @@ type MetabrowserFilterHandlers = {
   onToggle?: (key: string, pressed: boolean) => void;
 };
 
+type MetabrowserFilterPreset = {
+  count?: number;
+  id: string;
+  label: string;
+  values: Array<string>;
+};
+
 type MetabrowserFilterControls = {
   bind(root: Element, handlers: MetabrowserFilterHandlers): () => void;
   checkHtml(spec: {
@@ -285,11 +293,11 @@ type MetabrowserFilterControls = {
     menuId: string;
     open?: boolean;
     options: Array<MetabrowserFilterOption>;
-    presets?: Array<{
-      count?: number;
+    presets?: Array<MetabrowserFilterPreset>;
+    presetSections?: Array<{
       id: string;
-      label: string;
-      values: Array<string>;
+      label?: string;
+      presets: Array<MetabrowserFilterPreset>;
     }>;
     select?: string;
     value: MetabrowserFilterSelection;
@@ -980,24 +988,12 @@ declare global {
         kinds: Array<{
           id: string;
           family_id: string | null;
+          group_id: string;
           content_family: string;
           extensions: Array<string>;
           filenames: Array<string>;
           shebangs: Array<string>;
           priority: number;
-        }>;
-      };
-      FILE_TYPE_TAXONOMY?: {
-        categories: Array<{
-          id: string;
-          label: string;
-          extra_values: Array<string>;
-        }>;
-        families: Array<{
-          id: string;
-          label: string;
-          category: string;
-          extensions: Array<string>;
         }>;
       };
       FILTER_TYPE_PRESETS?: Array<{

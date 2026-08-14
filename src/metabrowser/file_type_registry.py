@@ -99,6 +99,7 @@ class FileTypeKind:
 
     id: str
     family_id: str | None
+    group_id: str
     content_family: ContentFamily
     extensions: tuple[str, ...]
     filenames: tuple[str, ...]
@@ -239,16 +240,12 @@ class FileTypeRegistry:
                 registry_revision=self.revision,
                 registry_fingerprint=self.fingerprint,
             )
-        family = self.family(match.kind.family_id) if match.kind.family_id is not None else None
-        group_id = (
-            family.group_id if family is not None else _group_for_content(match.kind.content_family)
-        )
         return FileTypeClassification(
             logical_extension=extension or None,
             canonical_extension=match.canonical_extension,
             kind_id=match.kind.id,
             family_id=match.kind.family_id,
-            group_id=group_id,
+            group_id=match.kind.group_id,
             content_family=match.kind.content_family,
             detection_source=match.detection_source,
             confidence=match.confidence,
@@ -283,6 +280,7 @@ class FileTypeRegistry:
                 {
                     "id": kind.id,
                     "family_id": kind.family_id,
+                    "group_id": kind.group_id,
                     "content_family": kind.content_family.value,
                     "extensions": tuple(f".{extension}" for extension in kind.extensions),
                     "filenames": kind.filenames,
@@ -332,7 +330,12 @@ def load_file_type_registry_from_text(text: str) -> FileTypeRegistry:
 
     groups = _parse_groups(_table_list(raw, "group"))
     family_declarations = _parse_families(_table_list(raw, "family"), groups)
-    kinds = _parse_kinds(_table_list(raw, "kind"), family_declarations, max_components)
+    kinds = _parse_kinds(
+        _table_list(raw, "kind"),
+        groups,
+        family_declarations,
+        max_components,
+    )
     families = _materialize_families(family_declarations, kinds)
     fingerprint = _registry_fingerprint(
         schema_version,
@@ -511,10 +514,12 @@ def _parse_families(
 
 def _parse_kinds(
     raw_kinds: list[Mapping[str, Any]],
+    groups: tuple[FileTypeGroup, ...],
     families: tuple[_FamilyDeclaration, ...],
     max_components: int,
 ) -> tuple[FileTypeKind, ...]:
-    family_ids = {family.id for family in families}
+    group_ids = {group.id for group in groups}
+    family_groups = {family.id: family.group_id for family in families}
     ids: set[str] = set()
     extensions: dict[str, str] = {}
     filenames: dict[str, str] = {}
@@ -534,13 +539,42 @@ def _parse_kinds(
                 value=raw_family,
             )
         family_id = raw_family
-        if family_id is not None and family_id not in family_ids:
+        if family_id is not None and family_id not in family_groups:
             raise FileTypeRegistryError(
                 "unknown-family",
                 "kind references an unknown family",
                 table_id=kind_id,
                 field_name="family",
                 value=family_id,
+            )
+        raw_group = raw.get("group")
+        if raw_group is not None and not isinstance(raw_group, str):
+            raise FileTypeRegistryError(
+                "invalid-field",
+                "group must be a string when present",
+                table_id=kind_id,
+                field_name="group",
+                value=raw_group,
+            )
+        if family_id is not None:
+            group_id = family_groups[family_id]
+            if raw_group is not None and raw_group != group_id:
+                raise FileTypeRegistryError(
+                    "group-mismatch",
+                    "kind group conflicts with its family's group",
+                    table_id=kind_id,
+                    field_name="group",
+                    value=raw_group,
+                )
+        else:
+            group_id = _required_string(raw, "group", kind_id)
+        if group_id not in group_ids:
+            raise FileTypeRegistryError(
+                "unknown-group",
+                "kind references an unknown group",
+                table_id=kind_id,
+                field_name="group",
+                value=group_id,
             )
         raw_content_family = _required_string(raw, "content_family", kind_id)
         try:
@@ -611,6 +645,7 @@ def _parse_kinds(
             FileTypeKind(
                 kind_id,
                 family_id,
+                group_id,
                 content_family,
                 kind_extensions,
                 kind_filenames,
@@ -682,6 +717,7 @@ def _registry_fingerprint(
             {
                 "id": kind.id,
                 "family": kind.family_id,
+                "group": kind.group_id,
                 "content_family": kind.content_family.value,
                 "extensions": list(kind.extensions),
                 "filenames": list(kind.filenames),
@@ -698,16 +734,6 @@ def _registry_fingerprint(
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
-
-
-def _group_for_content(content_family: ContentFamily) -> str:
-    if content_family is ContentFamily.code:
-        return "code"
-    if content_family in (ContentFamily.prose, ContentFamily.markup):
-        return "docs"
-    if content_family is ContentFamily.data:
-        return "data"
-    return "other"
 
 
 __all__ = [

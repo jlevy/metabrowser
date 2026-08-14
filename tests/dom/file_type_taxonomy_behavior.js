@@ -30,6 +30,7 @@ const fallbackRegistry = {
     {
       id: "javascript",
       family_id: "javascript",
+      group_id: "code",
       content_family: "code",
       extensions: [".js", ".mjs", ".cjs", ".jsx"],
       filenames: [],
@@ -39,6 +40,7 @@ const fallbackRegistry = {
     {
       id: "typescript",
       family_id: "typescript",
+      group_id: "code",
       content_family: "code",
       extensions: [".ts"],
       filenames: [],
@@ -48,6 +50,7 @@ const fallbackRegistry = {
     {
       id: "yaml",
       family_id: "yaml",
+      group_id: "data",
       content_family: "data",
       extensions: [".yaml", ".yml"],
       filenames: [],
@@ -57,6 +60,7 @@ const fallbackRegistry = {
     {
       id: "docs-file",
       family_id: null,
+      group_id: "docs",
       content_family: "prose",
       extensions: [],
       filenames: ["readme"],
@@ -66,6 +70,7 @@ const fallbackRegistry = {
     {
       id: "code-extra",
       family_id: null,
+      group_id: "code",
       content_family: "code",
       extensions: [".m"],
       filenames: ["makefile"],
@@ -75,6 +80,7 @@ const fallbackRegistry = {
     {
       id: "data-extra",
       family_id: null,
+      group_id: "data",
       content_family: "data",
       extensions: [".db"],
       filenames: [],

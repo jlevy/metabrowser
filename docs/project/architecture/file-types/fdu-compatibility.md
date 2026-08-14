@@ -41,8 +41,13 @@ Create the reviewed packet from the Metabrowser checkout with:
 uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
   --export /explicit/destination \
   --source-revision SOURCE_GIT_REVISION
+
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
+  --verify /explicit/destination
 ```
 
+Export replaces the destination’s packet contents exactly, removing stale files and
+directories, then runs the same verification before returning.
 The destination is self-contained.
 `fdu` copies or compiles only packet contents and verifies the manifest before adopting
 them. Each `files` entry contains a packet-relative `path` and the lowercase hexadecimal
@@ -75,6 +80,8 @@ view would conflate analysis with UI organization.
 `crates/fdu/build.rs` parses and validates the synchronized TOML before code generation.
 It generates immutable tables for groups, families, kinds, extensions, basenames,
 shebangs, order, and match priority, plus normalized registry identity.
+Every compiled kind has one resolved display group: a family-owned kind inherits its
+family group, while a family-less kind declares `group` explicitly.
 
 The build must:
 
@@ -98,7 +105,7 @@ canonical extension, and registry identity.
 Content evidence can identify a kind that Metabrowser cannot identify from metadata.
 Breakdown placement still follows the shared order: extensionless files remain under No
 extension; files with an extension and display family join that family; other extension
-values join Remaining types.
+values join the Other types display parent (`remaining_types` on the wire).
 
 ## Breakdown Integration
 
