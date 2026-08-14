@@ -472,6 +472,9 @@ Known canonical suffixes roll up into readable family parents such as **JavaScri
 **TypeScript**, **CSS**, and **YAML**. Compound extensions inherit the longest declared
 suffix: `.min.js` contributes to JavaScript’s `.js` child without rewriting the file’s
 exact logical extension.
+Indexed logical extensions contain at most two suffix components, so source maps remain
+useful `.js.map` or `.ts.map` rows without fragmenting the table into filename-specific
+`.umd.min.js.map` and `.d.ts.map` variants.
 
 Family parents are aggregate identities, so they are text-only.
 A family with two or more nonzero canonical children places the shared gray trailing

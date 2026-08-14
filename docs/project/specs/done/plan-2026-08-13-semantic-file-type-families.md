@@ -8,8 +8,8 @@
 
 ## Overview
 
-Metabrowser currently treats the inventory’s most-specific logical extension as the
-visible unit in the folder Files summary and navigation type filter.
+Metabrowser treats the inventory’s bounded logical extension as the visible unit in the
+folder Files summary and navigation type filter.
 This is precise, but it fragments one recognizable language or format across rows such
 as `.js`, `.mjs`, `.cjs`, and `.min.js`.
 
@@ -71,8 +71,8 @@ folder plugin, tests, and durable documentation.
 
 Four related vocabularies currently overlap without representing the same concept:
 
-1. `FsEntry.ext` is the most-specific logical extension produced by `derive_ext`, such
-   as `.min.js`, `.d.ts`, or `.tar.gz`.
+1. `FsEntry.ext` is the bounded logical extension produced by `derive_ext`, such as
+   `.min.js`, `.d.ts`, or `.tar.gz`.
 2. `FILTER_TYPE_PRESETS` defines broad Docs, Code, and Data filters as extension and
    whole-filename tokens.
 3. `FILE_TYPES` in the browser shell chooses a file icon and subtype class.
@@ -164,8 +164,8 @@ rollup.
 
 ## Terminology
 
-- **Logical extension:** The inventory’s most-specific compound tail, such as `.min.js`
-  or `.d.ts`.
+- **Logical extension:** The inventory’s final one or two eligible suffix components,
+  such as `.min.js` or `.d.ts`.
 - **Canonical extension:** The declared family suffix that matches a logical extension.
   For example, `.min.js` canonicalizes to `.js` inside JavaScript.
 - **Family:** A stable named aggregate such as JavaScript or YAML.
@@ -239,6 +239,14 @@ Category-only filenames such as README, LICENSE, Makefile, and Dockerfile
 also remain outside semantic families.
 
 ### Matching and Canonicalization
+
+`derive_ext` bounds the input vocabulary before taxonomy matching.
+It retains at most the final two short, lowercase, alphanumeric suffix components.
+`bundle.js.map` remains `.js.map`, while `bundle.umd.min.js.map` and `types.d.ts.map`
+normalize to `.js.map` and `.ts.map`. A single `.map` remains `.map`. This cap preserves
+common compound formats without allowing descriptive filename segments to multiply raw
+tally rows. The indexed value is authoritative on every browser path; clients do not
+re-derive it from the filename when `ext` is present.
 
 Add pure Python helpers with equivalent browser behavior:
 
@@ -611,6 +619,8 @@ Use one implementation phase with red-green changes at each boundary:
 
 ### Taxonomy and Parity
 
+- Pin the logical-extension boundary: one- and two-component suffixes remain exact,
+  while longer eligible tails retain only their final two components.
 - Validate unique IDs, normalized members, category references, and deterministic
   longest-suffix matching.
 - Pin required examples: `.min.js` to JavaScript/`.js`, `.d.ts` to TypeScript/`.ts`,
@@ -666,6 +676,8 @@ Use one implementation phase with red-green changes at each boundary:
 
 ## Acceptance Criteria
 
+- Indexed logical extensions contain no more than two suffix components, including for
+  source maps and declaration source maps.
 - JavaScript, TypeScript, CSS, YAML, and Python render by readable family name in Files.
 - Known compound logical extensions contribute to one canonical family child and one
   family parent without double counting.

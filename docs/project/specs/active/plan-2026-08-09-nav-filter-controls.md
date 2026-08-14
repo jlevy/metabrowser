@@ -167,8 +167,8 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    Tinting eight row labels made the hue compete with the check mark rather than help
    anyone scan, and the icon is what identifies a type everywhere else in the app.
    Category and family entries are additive shorthands for their canonical suffixes.
-   A known suffix such as `.js` also matches declared compound tails such as `.min.js`;
-   unknown raw extensions remain exact.
+   A known suffix such as `.js` also matches declared bounded compound tails such as
+   `.min.js`; unknown raw extensions remain exact.
    Category-only entries follow the original convention — a leading dot is an extension,
    anything else a whole filename — which is what lets Docs reach `README` and
    `LICENSE`, files that carry no extension and would otherwise be unfilterable.

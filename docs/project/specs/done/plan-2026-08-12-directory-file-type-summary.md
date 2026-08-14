@@ -189,7 +189,7 @@ The data selection must account for both dimensions before the UI is trustworthy
    repository-level usefulness and the existing rollup, rather than counting only direct
    children. Within that population, file type means the same `FsEntry.ext` key as the
    type filter: lower-case leading-dot extensions such as `.py` and `.md`, including
-   canonical compound tails such as `.tar.gz`. It does not unwrap compressed files or
+   bounded compound tails such as `.tar.gz`. It does not unwrap compressed files or
    infer from contents.
    Dotfiles and other extensionless names join **No extension**. Directories and
    symlinks do not contribute to file or byte totals.

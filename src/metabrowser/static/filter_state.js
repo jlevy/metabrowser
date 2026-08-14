@@ -219,7 +219,7 @@
    * the literal ".md" / ".py" the tree shows, not an abstract family,
    * so what the menu offers is exactly what the folder contains.
    *
-   * `logicalExt` is the compound tail the index derives (".min.js",
+   * `logicalExt` is the bounded compound tail the index derives (".min.js",
    * ".runbook.md") and is what the menu's tally counts, so it must win
    * when present: reducing to the last dotted suffix would turn every
    * compound row into a plain ".js" and a compound pick would match

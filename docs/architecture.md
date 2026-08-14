@@ -209,6 +209,16 @@ not follow it, directory child containers are never created for it, and file agg
 exclude it. A live upsert may replace any shape with another at the same path, so both
 the index and browser remove the old shape before installing the new one.
 
+Regular files receive one logical extension from `fs_paths.derive_ext` at their shared
+walker/watcher construction boundary.
+The value retains at most the final two eligible suffix components: `bundle.js.map` and
+`archive.tar.gz` keep `.js.map` and `.tar.gz`, while `bundle.umd.min.js.map` and
+`types.d.ts.map` become `.js.map` and `.ts.map`. A component must be lowercase,
+alphanumeric, nonempty, and bounded in length; dotfiles remain extensionless.
+The fixed component cap prevents filenames from creating an unbounded vocabulary in
+navigation and rollup tallies while preserving common compound formats.
+Browser consumers use the indexed value instead of reparsing the full filename.
+
 The browser keeps a normalized file store.
 Tree panels and recent-file views subscribe to that store rather than maintaining
 independent copies.

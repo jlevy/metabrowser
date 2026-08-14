@@ -65,7 +65,7 @@ class FileNode(TypedDict, total=False):
     mtime: float
     # Conditional fields (server emits when applicable):
     #
-    # ``ext`` is the index's compound-tail extension (".min.js",
+    # ``ext`` is the index's bounded compound-tail extension (".min.js",
     # ".runbook.md"), the unit the navigation type filter and its tally
     # both key on. Distinct from ``logical_ext``, which means "the
     # inner extension of a compressed artifact" and drives icon

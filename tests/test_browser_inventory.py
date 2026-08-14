@@ -248,16 +248,21 @@ def test_depth_of_root_and_subpaths() -> None:
     assert _depth_of("a/b/c") == 3
 
 
-def test_ext_of_compound_tail() -> None:
+def test_ext_of_bounded_compound_tail() -> None:
     assert _ext_of("foo.runbook.md") == ".runbook.md"
     assert _ext_of("archive.tar.gz") == ".tar.gz"
+    assert _ext_of("bundle.js.map") == ".js.map"
+    assert _ext_of("bundle.map") == ".map"
+    assert _ext_of("bundle.umd.min.js.map") == ".js.map"
+    assert _ext_of("types.d.ts.map") == ".ts.map"
+    assert _ext_of("bundle.umd.min.js") == ".min.js"
     assert _ext_of("plain.txt") == ".txt"
     assert _ext_of("Makefile") == ""
     assert _ext_of(".dotfile") == ""
     assert _ext_of("Foo.With.Dots.Txt") == ""
 
 
-def test_fs_entry_factory_uses_compound_ext_for_file_observations() -> None:
+def test_fs_entry_factory_uses_bounded_compound_ext_for_file_observations() -> None:
     """Both the walker (boot scan / rewalk_subtree) and the watcher
     (file-event handler) construct entries via
     :meth:`FsEntry.for_observed_file` / :meth:`FsEntry.for_stat`. The

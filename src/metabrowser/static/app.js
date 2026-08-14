@@ -1164,7 +1164,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         ? `<span class="compression-badge" title="${esc(compressionName)} compressed">${compressionGlyph}</span>`
         : "";
       var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
-      // The index's compound-tail extension, which the type filter
+      // The index's bounded compound-tail extension, which the type filter
       // matches on. Separate from data-logical-ext, which means "inner
       // extension of a compressed artifact" and drives icon dispatch.
       var extAttr = node.ext ? ` data-ext="${esc(node.ext)}"` : "";
@@ -3302,7 +3302,7 @@ function applyTreeFilters() {
           mtime: parseTipNumber(row.dataset.tipMtime),
           size: isDir ? null : parseTipNumber(row.dataset.tipSize),
           path: path,
-          // The renderer stamps the index's compound-tail extension on
+          // The renderer stamps the index's bounded compound-tail extension on
           // every file row; matching on it keeps a compound pick
           // (".min.js") agreeing with the tally that offered it.
           ext: row.dataset.ext || "",
