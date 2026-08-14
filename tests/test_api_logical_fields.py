@@ -13,7 +13,7 @@ import gzip
 import json
 import struct
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from metabrowser import jsonl_view
 from metabrowser import server as proc_browser
@@ -175,8 +175,8 @@ def test_api_file_rejects_forged_large_gzip_preview_offset(tmp_path: Path) -> No
     proc_browser._set_root_dir(tmp_path)
 
     response = asyncio.run(
-        proc_browser.api_file(  # pyright: ignore[reportArgumentType]
-            _FakeRequest(path=source.name, offset=str(64 * 1024 * 1024), limit="1")
+        proc_browser.api_file(
+            cast(Any, _FakeRequest(path=source.name, offset=str(64 * 1024 * 1024), limit="1"))
         )
     )
     body = json.loads(bytes(response.body).decode())
@@ -192,8 +192,8 @@ def test_api_file_keeps_random_access_for_large_uncompressed_text(tmp_path: Path
     proc_browser._set_root_dir(tmp_path)
 
     response = asyncio.run(
-        proc_browser.api_file(  # pyright: ignore[reportArgumentType]
-            _FakeRequest(path=source.name, offset=str(offset), limit="4")
+        proc_browser.api_file(
+            cast(Any, _FakeRequest(path=source.name, offset=str(offset), limit="4"))
         )
     )
     body = json.loads(bytes(response.body).decode())

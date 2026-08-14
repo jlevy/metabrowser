@@ -44,8 +44,9 @@ from __future__ import annotations
 import asyncio
 import heapq
 import logging
+import threading
 import time
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Literal
@@ -65,6 +66,18 @@ from metabrowser.events import (
     StreamEvent,
     WriteToken,
 )
+from metabrowser.file_type_filters import (
+    canonical_extension,
+    category_for_file,
+    family_for_extension,
+)
+from metabrowser.inventory_rollup import (
+    RollupOptions,
+    RollupRank,
+    build_rollup,
+    group_rollup_children,
+)
+from metabrowser.settings import ROLLUP_MAX_NODES
 from metabrowser.walker import (
     DEFAULT_FIRST_RENDER_DEPTH,
     DEFAULT_MAX_DEPTH,
@@ -79,6 +92,7 @@ from metabrowser.walker import (
 from metabrowser.walker import (
     depth_of as _depth_of,
 )
+from metabrowser.wire_models import NavigationTallies, RollupResult
 
 LOG = logging.getLogger(__name__)
 
@@ -115,6 +129,16 @@ class InventoryIndex:
     ) -> None:
         self._root: Path | None = None
         self._entries: dict[str, FsEntry] = {}
+        self._rollup_cache_lock = threading.Lock()
+        self._rollup_generation = 0
+        self._rollup_cache: (
+            tuple[
+                int,
+                dict[str, FsEntry],
+                dict[str, tuple[FsEntry, ...]],
+            ]
+            | None
+        ) = None
         self._direct_child_counts: dict[str, int] = {}
         self._child_mtime_heaps: dict[str, list[tuple[int, str]]] = {}
         self._recorded_child_mtimes: dict[str, tuple[str, int]] = {}
@@ -173,7 +197,10 @@ class InventoryIndex:
         if self._walker_task is not None and not self._walker_task.done():
             self._walker_task.cancel()
         self._walker_task = None
-        self._entries.clear()
+        with self._rollup_cache_lock:
+            self._entries.clear()
+            self._rollup_generation += 1
+            self._rollup_cache = None
         self._direct_child_counts.clear()
         self._child_mtime_heaps.clear()
         self._recorded_child_mtimes.clear()
@@ -308,12 +335,7 @@ class InventoryIndex:
         *,
         now_ns: int | None = None,
         entries: Sequence[FsEntry] | None = None,
-    ) -> tuple[
-        dict[str, int],
-        list[list[object]],
-        list[list[object]],
-        list[list[object]],
-    ]:
+    ) -> NavigationTallies:
         """
         Return root, file-type, and cumulative recency tallies in one index pass.
 
@@ -330,6 +352,8 @@ class InventoryIndex:
         ]
         files = size = ignored_files = ignored_size = 0
         extension_counts: dict[str, list[int]] = {}
+        canonical_extension_counts: dict[str, list[int]] = {}
+        family_counts: dict[str, list[int]] = {}
         preset_counts: dict[str, list[int]] = {}
         recency_counts: dict[str, list[int]] = {key: [0, 0] for key, _cutoff in recency_cutoffs}
         normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
@@ -360,9 +384,22 @@ class InventoryIndex:
                     extension_counts[ext] = row
                 row[ignored_index] += 1
 
+                canonical = canonical_extension(ext)
+                canonical_row = canonical_extension_counts.setdefault(canonical, [0, 0])
+                canonical_row[ignored_index] += 1
+
+                family_match = family_for_extension(ext)
+                if family_match is not None:
+                    family_row = family_counts.setdefault(family_match.family.id, [0, 0])
+                    family_row[ignored_index] += 1
+
             name = entry.name.lower()
+            semantic_category = category_for_file(name, ext)
             for preset_id, preset_extensions, preset_names in normalized_presets:
-                if ext in preset_extensions or name in preset_names:
+                if preset_id == semantic_category or (
+                    preset_id not in ("docs", "code", "data")
+                    and (ext in preset_extensions or name in preset_names)
+                ):
                     preset_counts[preset_id][ignored_index] += 1
 
             for window_key, cutoff_ns in recency_cutoffs:
@@ -382,13 +419,34 @@ class InventoryIndex:
         extension_rows: list[list[object]] = [
             [ext, counts[0], counts[1]] for ext, counts in ranked[:limit]
         ]
+        canonical_ranked = sorted(
+            canonical_extension_counts.items(),
+            key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+        )
+        canonical_rows: list[list[object]] = [
+            [ext, counts[0], counts[1]] for ext, counts in canonical_ranked[:limit]
+        ]
+        family_rows: list[list[object]] = [
+            [family_id, counts[0], counts[1]]
+            for family_id, counts in sorted(
+                family_counts.items(),
+                key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+            )
+        ]
         preset_rows: list[list[object]] = [
             [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
         ]
         recency_rows: list[list[object]] = [
             [window_key, counts[0], counts[1]] for window_key, counts in recency_counts.items()
         ]
-        return summary, extension_rows, preset_rows, recency_rows
+        return {
+            "summary": summary,
+            "extensions": extension_rows,
+            "canonical_extensions": canonical_rows,
+            "type_families": family_rows,
+            "type_presets": preset_rows,
+            "recency_tallies": recency_rows,
+        }
 
     def file_type_tallies(
         self,
@@ -405,10 +463,8 @@ class InventoryIndex:
         at most once per preset.
         """
 
-        _summary, extension_rows, preset_rows, _recency = self.navigation_tallies(
-            presets, (), limit=limit, entries=entries
-        )
-        return extension_rows, preset_rows
+        tallies = self.navigation_tallies(presets, (), limit=limit, entries=entries)
+        return tallies["extensions"], tallies["type_presets"]
 
     def extension_tally(self, limit: int = 200) -> list[list[object]]:
         """``[ext, tracked_files, ignored_files]`` rows, most frequent first.
@@ -429,6 +485,86 @@ class InventoryIndex:
 
         rows, _presets = self.file_type_tallies((), limit=limit)
         return rows
+
+    def rollup(
+        self,
+        path: str,
+        *,
+        depth: int,
+        top: int,
+        ext_top: int,
+        type_top: int = 10,
+        ext_rank: RollupRank = "bytes",
+        max_nodes: int | None = None,
+    ) -> RollupResult | None:
+        """Return the bounded rollup for an indexed directory."""
+
+        options = RollupOptions(
+            depth=depth,
+            top=top,
+            ext_top=ext_top,
+            type_top=type_top,
+            ext_rank=ext_rank,
+            max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
+        )
+        entries, children_by_parent = self._rollup_snapshot()
+        return build_rollup(
+            entries,
+            children_by_parent,
+            path,
+            options,
+            ancestor_gitignored=self._ancestor_gitignored(path, entries),
+        )
+
+    def _rollup_snapshot(
+        self,
+    ) -> tuple[dict[str, FsEntry], dict[str, tuple[FsEntry, ...]]]:
+        """Return one immutable-by-convention snapshot per inventory generation."""
+
+        with self._rollup_cache_lock:
+            cached = self._rollup_cache
+            if cached is not None and cached[0] == self._rollup_generation:
+                return cached[1], cached[2]
+            generation = self._rollup_generation
+            entries = dict(self._entries)
+
+        children_by_parent = group_rollup_children(entries)
+        with self._rollup_cache_lock:
+            if generation == self._rollup_generation:
+                self._rollup_cache = (generation, entries, children_by_parent)
+        return entries, children_by_parent
+
+    def _replace_index_entry(self, entry: FsEntry) -> None:
+        """Store an entry and invalidate cached rollup topology atomically."""
+
+        with self._rollup_cache_lock:
+            self._entries[entry.path] = entry
+            self._rollup_generation += 1
+            self._rollup_cache = None
+
+    def _pop_index_entry(self, path: str) -> FsEntry | None:
+        """Remove an entry and invalidate cached rollup topology atomically."""
+
+        with self._rollup_cache_lock:
+            entry = self._entries.pop(path, None)
+            if entry is not None:
+                self._rollup_generation += 1
+                self._rollup_cache = None
+            return entry
+
+    def _ancestor_gitignored(self, path: str, entries: Mapping[str, FsEntry]) -> bool:
+        """Whether any strict ancestor of *path* carries the gitignore flag."""
+
+        if not path:
+            return False
+        segments = path.split("/")
+        prefix = ""
+        for segment in segments[:-1]:
+            prefix = f"{prefix}/{segment}" if prefix else segment
+            ancestor = entries.get(prefix)
+            if ancestor is not None and ancestor.gitignored:
+                return True
+        return False
 
     # ── Writes ──────────────────────────────────────────────
 
@@ -618,7 +754,7 @@ class InventoryIndex:
         removed_files = [entry for entry in removed_entries if entry.type == "file"]
         outer_parent = target.parent
         for cur in removed:
-            entry = self._entries.pop(cur, None)
+            entry = self._pop_index_entry(cur)
             if entry is not None:
                 if entry.type in ("file", "symlink"):
                     self._adjust_descendant_leaf_aggregates(
@@ -889,7 +1025,7 @@ class InventoryIndex:
                 mtime_ns=newest_mtime,
                 write_token=WriteToken(self._generation.get(path, 0)),
             )
-            self._entries[path] = repaired
+            self._replace_index_entry(repaired)
             self._pending_dirs.discard(path)
             self._record_child_mtime(repaired)
             repaired_count += 1
@@ -1018,7 +1154,7 @@ class InventoryIndex:
             self._add_direct_child(entry)
         if entry.type == "dir" and entry.total_files is not None:
             entry = replace(entry, empty=self._descendant_leaf_counts.get(entry.path, 0) == 0)
-        self._entries[entry.path] = entry
+        self._replace_index_entry(entry)
         if entry.type == "dir" and entry.total_files is None:
             self._pending_dirs.add(entry.path)
         else:
@@ -1075,7 +1211,7 @@ class InventoryIndex:
                     empty=self._descendant_leaf_counts.get(cursor, 0) == 0,
                     write_token=WriteToken(self._generation.get(cursor, 0)),
                 )
-                self._entries[cursor] = updated
+                self._replace_index_entry(updated)
                 self._record_child_mtime(updated)
                 updates.append(updated)
             if cursor == "":

@@ -1,0 +1,124 @@
+.folder-overview-host {
+  --folder-overview-document-gutter: 1rem;
+  --folder-overview-narrow-document-gutter: 1.25rem;
+  --folder-overview-wide-toc-width: 15rem;
+  --folder-overview-wide-toc-gap: 3rem;
+  --folder-overview-wide-prose-inset: 2.5rem;
+  --folder-overview-wide-card-width: calc(
+    var(--kpress-measure) +
+    2 *
+    var(--folder-overview-wide-prose-inset)
+  );
+
+  container-type: inline-size;
+}
+
+.folder-overview-stack {
+  display: grid;
+  gap: 28px;
+  width: 100%;
+}
+
+.folder-overview-panel {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.folder-overview-panel-heading {
+  margin: 0 0 14px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: 1.25;
+  text-transform: var(--label-text-transform);
+}
+
+.folder-overview-panel-toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.folder-overview-panel-toggle:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.folder-overview-panel-body {
+  min-width: 0;
+}
+
+.folder-overview-panel-body-collapsed {
+  display: none;
+}
+
+.folder-overview-panel-surface > .folder-overview-panel-heading,
+.folder-overview-panel-surface > .folder-overview-panel-body,
+.folder-overview-panel-document > .folder-overview-panel-heading {
+  width: min(calc(100% - 2 * var(--folder-overview-document-gutter)), var(--kpress-measure));
+  margin-inline: auto;
+}
+
+.folder-overview-loading {
+  min-height: 44px;
+  background: var(--tally-skeleton-bg);
+  opacity: 0.5;
+}
+
+.folder-overview-panel-error {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  color: var(--muted);
+}
+
+@container (max-width: 47.99rem) {
+  .folder-overview-panel-surface > .folder-overview-panel-heading,
+  .folder-overview-panel-surface > .folder-overview-panel-body,
+  .folder-overview-panel-document > .folder-overview-panel-heading {
+    width: calc(100% - 2 * var(--folder-overview-narrow-document-gutter));
+  }
+}
+
+@container (min-width: 75rem) {
+  .folder-overview-panel-surface > .folder-overview-panel-heading,
+  .folder-overview-panel-surface > .folder-overview-panel-body,
+  .folder-overview-panel-document > .folder-overview-panel-heading {
+    width: var(--folder-overview-wide-card-width);
+    margin-inline-start: calc(
+      var(--folder-overview-document-gutter) +
+      var(--folder-overview-wide-toc-width) +
+      var(--folder-overview-wide-toc-gap)
+    );
+    margin-inline-end: auto;
+  }
+}
+
+@media print {
+  .folder-overview-panel-surface,
+  .folder-overview-panel-error,
+  .folder-overview-loading {
+    display: none;
+  }
+
+  .folder-overview-stack {
+    display: block;
+    width: auto;
+  }
+
+  .folder-overview-panel-body-collapsed {
+    display: block;
+  }
+}

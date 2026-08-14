@@ -193,18 +193,68 @@ def test_navigation_tallies_count_each_recency_window_from_one_snapshot() -> Non
     ]
 
     index = InventoryIndex()
-    _summary, _extensions, _presets, recency = index.navigation_tallies(
+    tallies = index.navigation_tallies(
         [],
         [("live", 90.0), ("1h", 3_600.0), ("24h", 86_400.0)],
         now_ns=now_ns,
         entries=entries,
     )
 
-    assert recency == [
+    assert tallies["recency_tallies"] == [
         ["live", 1, 0],
         ["1h", 2, 1],
         ["24h", 3, 1],
     ]
+
+
+def test_navigation_tallies_share_semantic_family_and_canonical_counts() -> None:
+    entries = [
+        FsEntry.for_observed_file(
+            path="app.min.js",
+            parent="",
+            name="app.min.js",
+            size=4,
+            mtime_ns=1,
+        ),
+        FsEntry.for_observed_file(
+            path="worker.mjs",
+            parent="",
+            name="worker.mjs",
+            size=5,
+            mtime_ns=1,
+            gitignored=True,
+        ),
+        FsEntry.for_observed_file(
+            path="notes.odd",
+            parent="",
+            name="notes.odd",
+            size=6,
+            mtime_ns=1,
+        ),
+    ]
+
+    tallies = InventoryIndex().navigation_tallies(
+        [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
+        [],
+        entries=entries,
+    )
+
+    assert {row[0]: row[1:] for row in tallies["extensions"]} == {
+        ".min.js": [1, 0],
+        ".mjs": [0, 1],
+        ".odd": [1, 0],
+    }
+    assert {row[0]: row[1:] for row in tallies["canonical_extensions"]} == {
+        ".js": [1, 0],
+        ".mjs": [0, 1],
+        ".odd": [1, 0],
+    }
+    assert {row[0]: row[1:] for row in tallies["type_families"]} == {"javascript": [1, 1]}
+    assert {row[0]: row[1:] for row in tallies["type_presets"]} == {
+        "docs": [0, 0],
+        "code": [1, 1],
+        "data": [0, 0],
+    }
 
 
 def test_root_summary_is_zero_for_an_empty_root(tmp_path: Path) -> None:

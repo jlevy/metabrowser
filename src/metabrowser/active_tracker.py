@@ -60,7 +60,7 @@ def _is_trackable(entry: FsEntry) -> bool:
     ext = ""
     if "." in name_lower:
         # Match against the simple extension; the inventory's
-        # compound-tail ``ext`` field could be ``.tar.gz``,
+        # bounded compound-tail ``ext`` field could be ``.tar.gz``,
         # which doesn't appear in BROWSER_TRACKABLE_EXTS.
         idx = name_lower.rfind(".")
         ext = name_lower[idx:]

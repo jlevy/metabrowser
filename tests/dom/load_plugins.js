@@ -87,6 +87,16 @@ function load(filepath, label) {
 
 // ── 1. Plugin SDK ─────────────────────────────────────────────────
 
+for (const filename of [
+  "request_error.js",
+  "formatters.js",
+  "inventory_scope.js",
+  "contribution_registry.js",
+  "resource_context.js",
+  "view_state.js",
+]) {
+  load(path.join(repoRoot, "src", "metabrowser", "static", filename), filename);
+}
 load(path.join(repoRoot, "src", "metabrowser", "static", "plugin_sdk.js"), "plugin_sdk.js");
 load(
   path.join(repoRoot, "src", "metabrowser", "static", "filter_controls.js"),
@@ -136,10 +146,33 @@ sandbox.metabrowser.builtins = _builtinsProxy;
 
 // Wrap the existing load() so we know which plugin is executing.
 const _rawLoad = load;
-function loadPlugin(filepath, label, pluginName) {
+const _moduleCache = new Map();
+
+async function moduleFor(filepath) {
+  const resolved = path.resolve(filepath);
+  const cached = _moduleCache.get(resolved);
+  if (cached) {
+    return cached;
+  }
+  const source = fs.readFileSync(resolved, "utf-8");
+  const module = new vm.SourceTextModule(source, {
+    context: sandbox,
+    identifier: resolved,
+  });
+  _moduleCache.set(resolved, module);
+  await module.link((specifier, referencingModule) =>
+    moduleFor(path.resolve(path.dirname(referencingModule.identifier), specifier)),
+  );
+  return module;
+}
+
+async function loadPlugin(filepath, label, pluginName) {
   _currentLoadingPlugin = pluginName;
   try {
-    _rawLoad(filepath, label);
+    const module = await moduleFor(filepath);
+    await module.evaluate();
+  } catch (err) {
+    errors.push({ file: label, error: String(err?.message ? err.message : err) });
   } finally {
     _currentLoadingPlugin = null;
   }
@@ -201,142 +234,146 @@ function _extraScriptsFromManifest(manifestPath) {
 
 // ── 2. Built-in plugins (alphabetical, matching discovery order) ──
 
-const builtinRoot = path.join(repoRoot, "src", "metabrowser", "builtin_plugins");
-const builtinNames = fs
-  .readdirSync(builtinRoot)
-  .filter((name) => {
-    const stat = fs.statSync(path.join(builtinRoot, name));
-    return stat.isDirectory() && !name.startsWith("_") && !name.startsWith(".");
-  })
-  .sort();
+async function main() {
+  const builtinRoot = path.join(repoRoot, "src", "metabrowser", "builtin_plugins");
+  const builtinNames = fs
+    .readdirSync(builtinRoot)
+    .filter((name) => {
+      const stat = fs.statSync(path.join(builtinRoot, name));
+      return stat.isDirectory() && !name.startsWith("_") && !name.startsWith(".");
+    })
+    .sort();
 
-const loadedPlugins = [];
+  const loadedPlugins = [];
 
-for (const name of builtinNames) {
-  const indexPath = path.join(builtinRoot, name, "index.js");
-  const manifestPath = path.join(builtinRoot, name, "manifest.toml");
-  if (!fs.existsSync(indexPath) || !fs.existsSync(manifestPath)) {
-    continue;
-  }
-  // Load any extra_scripts the manifest declares (in order) BEFORE
-  // index.js — the shell emits <script> tags in the same order, so
-  // index.js can rely on the helpers they expose.
-  for (const extra of _extraScriptsFromManifest(manifestPath)) {
-    const extraPath = path.join(builtinRoot, name, extra);
-    if (!fs.existsSync(extraPath)) {
-      continue;
-    }
-    loadPlugin(extraPath, `builtin/${name}/${extra}`, name);
-  }
-  loadPlugin(indexPath, `builtin/${name}/index.js`, name);
-  loadedPlugins.push(name);
-}
-
-// ── 3. Extra dirs (--plugins-dir / METABROWSER_PLUGINS_DIRS) ──────
-
-for (const dir of extraDirs) {
-  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
-    continue;
-  }
-  const subdirs = fs.readdirSync(dir).sort();
-  for (const sub of subdirs) {
-    const subPath = path.join(dir, sub);
-    if (!fs.statSync(subPath).isDirectory()) {
-      continue;
-    }
-    const indexPath = path.join(subPath, "index.js");
-    const manifestPath = path.join(subPath, "manifest.toml");
+  for (const name of builtinNames) {
+    const indexPath = path.join(builtinRoot, name, "index.js");
+    const manifestPath = path.join(builtinRoot, name, "manifest.toml");
     if (!fs.existsSync(indexPath) || !fs.existsSync(manifestPath)) {
       continue;
     }
-    loadPlugin(indexPath, `extra/${sub}/index.js`, sub);
-    loadedPlugins.push(sub);
+    // Load any extra_scripts the manifest declares (in order) BEFORE
+    // index.js — the shell emits <script> tags in the same order, so
+    // index.js can rely on the helpers they expose.
+    for (const extra of _extraScriptsFromManifest(manifestPath)) {
+      const extraPath = path.join(builtinRoot, name, extra);
+      if (!fs.existsSync(extraPath)) {
+        continue;
+      }
+      loadPlugin(extraPath, `builtin/${name}/${extra}`, name);
+    }
+    await loadPlugin(indexPath, `builtin/${name}/index.js`, name);
+    loadedPlugins.push(name);
   }
-}
 
-// ── 4. Inspect the view registry ──────────────────────────────────
+  // ── 3. Extra dirs (--plugins-dir / METABROWSER_PLUGINS_DIRS) ──────
 
-const mb = sandbox.metabrowser;
-const registrations = [];
-// listViewsForKind iterates per-kind; we don't have the kind list,
-// so dig into _viewRegistry indirectly via the SDK API. Unfortunately
-// the registry is a private Map captured in the SDK closure; it's
-// not exposed on `mb`. We probe by enumerating known kinds + view ids
-// from the manifests on disk.
-function enumerateFromManifests() {
-  function readManifest(filepath) {
-    const text = fs.readFileSync(filepath, "utf-8");
-    const kinds = new Set();
-    const views = [];
-    let currentSection = null;
-    let _pluginKind = null;
-    for (const line of text.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("[[kind]]")) {
-        currentSection = "kind";
-        _pluginKind = null;
-      } else if (trimmed.startsWith("[[view]]")) {
-        currentSection = "view";
-      } else if (trimmed.startsWith("[")) {
-        currentSection = null;
-      } else {
-        const m = trimmed.match(/^id\s*=\s*"([^"]+)"/);
-        const k = trimmed.match(/^kind\s*=\s*"([^"]+)"/);
-        if (currentSection === "kind" && m) {
-          kinds.add(m[1]);
-        }
-        if (currentSection === "view") {
-          if (k) {
-            views.push({ kind: k[1] });
+  for (const dir of extraDirs) {
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+      continue;
+    }
+    const subdirs = fs.readdirSync(dir).sort();
+    for (const sub of subdirs) {
+      const subPath = path.join(dir, sub);
+      if (!fs.statSync(subPath).isDirectory()) {
+        continue;
+      }
+      const indexPath = path.join(subPath, "index.js");
+      const manifestPath = path.join(subPath, "manifest.toml");
+      if (!fs.existsSync(indexPath) || !fs.existsSync(manifestPath)) {
+        continue;
+      }
+      await loadPlugin(indexPath, `extra/${sub}/index.js`, sub);
+      loadedPlugins.push(sub);
+    }
+  }
+
+  // ── 4. Inspect the view registry ──────────────────────────────────
+
+  const mb = sandbox.metabrowser;
+  const registrations = [];
+  // listViewsForKind iterates per-kind; we don't have the kind list,
+  // so dig into _viewRegistry indirectly via the SDK API. Unfortunately
+  // the registry is a private Map captured in the SDK closure; it's
+  // not exposed on `mb`. We probe by enumerating known kinds + view ids
+  // from the manifests on disk.
+  function enumerateFromManifests() {
+    function readManifest(filepath) {
+      const text = fs.readFileSync(filepath, "utf-8");
+      const kinds = new Set();
+      const views = [];
+      let currentSection = null;
+      let _pluginKind = null;
+      for (const line of text.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("[[kind]]")) {
+          currentSection = "kind";
+          _pluginKind = null;
+        } else if (trimmed.startsWith("[[view]]")) {
+          currentSection = "view";
+        } else if (trimmed.startsWith("[")) {
+          currentSection = null;
+        } else {
+          const m = trimmed.match(/^id\s*=\s*"([^"]+)"/);
+          const k = trimmed.match(/^kind\s*=\s*"([^"]+)"/);
+          if (currentSection === "kind" && m) {
+            kinds.add(m[1]);
           }
-          if (m && views.length > 0) {
-            views[views.length - 1].id = m[1];
+          if (currentSection === "view") {
+            if (k) {
+              views.push({ kind: k[1] });
+            }
+            if (m && views.length > 0) {
+              views[views.length - 1].id = m[1];
+            }
           }
         }
       }
+      return { kinds: Array.from(kinds), views };
     }
-    return { kinds: Array.from(kinds), views };
+
+    const manifestPaths = [];
+    for (const name of builtinNames) {
+      const p = path.join(builtinRoot, name, "manifest.toml");
+      if (fs.existsSync(p)) {
+        manifestPaths.push(p);
+      }
+    }
+    const allViews = [];
+    for (const m of manifestPaths) {
+      const parsed = readManifest(m);
+      allViews.push(...parsed.views.filter((v) => v.kind && v.id));
+    }
+    return allViews;
   }
 
-  const manifestPaths = [];
-  for (const name of builtinNames) {
-    const p = path.join(builtinRoot, name, "manifest.toml");
-    if (fs.existsSync(p)) {
-      manifestPaths.push(p);
-    }
+  const declaredViews = enumerateFromManifests();
+  for (const v of declaredViews) {
+    const reg = mb.getRegisteredView(v.kind, v.id);
+    registrations.push({
+      kind: v.kind,
+      view: v.id,
+      registered: !!reg,
+    });
   }
-  const allViews = [];
-  for (const m of manifestPaths) {
-    const parsed = readManifest(m);
-    allViews.push(...parsed.views.filter((v) => v.kind && v.id));
-  }
-  return allViews;
+
+  // Violations of the render-time-only namespace rule: a plugin's top-level
+  // IIFE read mb.builtins.<key> and got undefined. Anything that resolved
+  // to a real value (e.g. unknown_jsonl reading agentLog after agent_log
+  // loaded) is fine — load-order happens to satisfy the read. The foot-gun
+  // is the undefined case, so flag only that.
+  const namespaceViolations = _builtinReads
+    .filter((r) => !r.hadValue)
+    .map((r) => ({ plugin: r.plugin, key: r.key }));
+
+  process.stdout.write(
+    `${JSON.stringify({
+      plugins: loadedPlugins,
+      registrations: registrations,
+      errors: errors,
+      namespace_violations: namespaceViolations,
+    })}\n`,
+  );
 }
 
-const declaredViews = enumerateFromManifests();
-for (const v of declaredViews) {
-  const reg = mb.getRegisteredView(v.kind, v.id);
-  registrations.push({
-    kind: v.kind,
-    view: v.id,
-    registered: !!reg,
-  });
-}
-
-// Violations of the render-time-only namespace rule: a plugin's top-level
-// IIFE read mb.builtins.<key> and got undefined. Anything that resolved
-// to a real value (e.g. unknown_jsonl reading agentLog after agent_log
-// loaded) is fine — load-order happens to satisfy the read. The foot-gun
-// is the undefined case, so flag only that.
-const namespaceViolations = _builtinReads
-  .filter((r) => !r.hadValue)
-  .map((r) => ({ plugin: r.plugin, key: r.key }));
-
-process.stdout.write(
-  `${JSON.stringify({
-    plugins: loadedPlugins,
-    registrations: registrations,
-    errors: errors,
-    namespace_violations: namespaceViolations,
-  })}\n`,
-);
+main().catch((error) => fail(String(error?.stack || error)));

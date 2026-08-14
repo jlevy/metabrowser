@@ -33,6 +33,7 @@ from metabrowser.activity import (
 from metabrowser.events import FsEntry
 from metabrowser.inventory import InventoryIndex, get_instance, reset_instance_for_tests
 from metabrowser.tree import _build_inventory_tree, inventory_has_data, inventory_status
+from metabrowser.wire_models import NavigationTallies
 
 
 def _build_fixture(root: Path) -> None:
@@ -184,6 +185,8 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
     assert body["tally_cache_status"] in ("idle", "scanning", "done", "truncated")
     assert "tree" in body
     assert [row[0] for row in body["type_presets"]] == ["docs", "code", "data"]
+    assert body["canonical_extensions"] is not None
+    assert body["type_families"] is not None
     assert [row[0] for row in body["recency_tallies"]] == [
         "live",
         "1h",
@@ -220,12 +223,7 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
             *,
             now_ns: int | None = None,
             entries: Sequence[FsEntry] | None = None,
-        ) -> tuple[
-            dict[str, int],
-            list[list[object]],
-            list[list[object]],
-            list[list[object]],
-        ]:
+        ) -> NavigationTallies:
             if entries is None:
                 raise RuntimeError("dictionary changed size during iteration")
             return super().navigation_tallies(

@@ -49,7 +49,9 @@ def test_shell_messages_explain_state_and_recovery() -> None:
 
 def test_plugin_messages_use_product_language() -> None:
     structured = _read(BUILTINS / "structured" / "index.js")
-    markdown = _read(BUILTINS / "markdown" / "index.js")
+    markdown = _read(BUILTINS / "markdown" / "index.js") + _read(
+        BUILTINS / "markdown" / "rendered.js"
+    )
     agent_log = _read(BUILTINS / "agent_log" / "index.js")
     charts = _read(STATIC / "charts.js")
 

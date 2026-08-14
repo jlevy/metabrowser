@@ -45,6 +45,118 @@ Replacing the preview pane disposes mounted plugin views.
 Switching tabs does not: their DOM and captured state remain available until a different
 file replaces the pane.
 
+## Folder Views and Overview Composition
+
+Folder views extend the same request and registry flow to directories.
+`/api/file` returns `kind: "folder"`, an ordered set of top-level folder view
+descriptors, folder aggregates, and bounded direct-child discovery facts such as
+`readme_path`. The served root and selected nested folders use the same envelope and
+rendering path.
+
+Folder information is divided by interaction level:
+
+```text
+folder
+├── Overview                         default top-level view
+│   ├── Files                        always-present file-type summary panel
+│   ├── README                       conditional document panel
+│   └── License and other panels     future plugin contributions
+├── Treemap                          peer top-level view
+└── Files listing                    future peer top-level view
+```
+
+Top-level views answer “which mode am I using?”
+and continue to use manifests plus the `(kind, view)` renderer registry.
+Overview panels answer “which useful facts apply to this folder?”
+and use a separate public panel registry.
+A future Files listing belongs beside Overview and Treemap; it does not become a large
+panel inside Overview.
+
+The built-in folder plugin owns the Overview composer, but not a hard-coded list of
+panels. It publishes the documented `mb.folderOverview` registry facade; built-in and
+installed plugins register stable panel IDs with a named placement band, accessible
+label, surface or document presentation, bounded resolver, keyed instance mount,
+disposer, and print eligibility.
+The composer validates descriptors, establishes deterministic order before asynchronous
+work finishes, and gives every contribution an independent loading, error, recovery,
+abort, and disposal boundary.
+A panel never reaches into sibling DOM or private shell state.
+The composer also renders every panel label as the same visible `h2` and aligns host
+content to the responsive Markdown document boundary.
+Each `h2` contains the shared trailing-chevron disclosure button.
+Panels begin expanded; toggling a heading changes only body visibility, so live rollup
+watches, rendered Markdown state, TOC state, and keyed panel mounts remain intact.
+In Overview, the Markdown mount keeps its ordinary document semantics, TOC, and card.
+The card retains its border and shadow at regular and wide document bands, then follows
+KPress’s standard borderless narrow layout.
+The Files summary remains a flat chrome section; its edges follow the README card when
+present and the README prose edge when the card collapses.
+
+Core supplies only generic contribution-registry, resource-context, request, formatter,
+and view-state primitives.
+The folder plugin supplies the folder-panel schema and registry facade.
+A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
+The visible **Files** heading belongs to the built-in file-type summary identified by
+the stable `folder.file-types` panel ID. The panel is backed by the existing inventory
+rollup and one server-owned semantic file-type catalog.
+Rollups aggregate known families and their canonical children before bounding only the
+ungrouped raw tail. The comparison table groups family parents and raw extensions as
+Documentation, Code, Data, or Other; multi-child families disclose exact extension rows
+without adding category subtotals.
+Each row renders count and byte shares as independently normalized inline bars beside
+their exact values. A Totals group leads with the neutral selected-population Total row
+and, when ignored files are included, follows it with the exact neutral Ignored subset.
+README is another contribution whose resolver checks the folder envelope and whose
+renderer delegates to the instance-safe built-in Markdown mount.
+Using the same mount keeps Overview’s README structurally and behaviorally aligned with
+the ordinary rendered Markdown view instead of creating a second Markdown rendering
+path. Inside either Markdown mount, Frontmatter and Diagnostics remain native `details`
+disclosures, use the same trailing-chevron design, and begin closed.
+
+Treemap consumes the same bounded rollup as a peer view but has one fixed spatial model:
+`treemap_layout.js` packs directory children, recurses only into sufficiently large
+folder cells, and conserves any culled or capped tail in a neutral remainder cell.
+The renderer flattens parent and descendant rectangles into positioned siblings;
+geometry expresses containment, while hover leaves their paint order unchanged.
+Its pure model persists only the Bytes/Files metric and the boolean ignored-file scope;
+the controller renders those through the shared segmented-control and labelled-checkbox
+primitives. The scope selects total or unignored rollup weights without another fetch.
+Layout geometry also derives bounded label and value sizes and reserves the resulting
+folder-header height before nesting children.
+
+Treemap and File types acquire leases from the same per-directory category-palette pool.
+File cells and folder `dominant_ext` values pass through the catalog’s
+`distributionKeyForExtension` helper, so known members share a stable `family:<id>` key;
+raw extensions remain exact and remainder cells use the neutral Other key.
+This shares semantic identity without coupling either renderer to sibling DOM. Visible
+byte and file values route through the public SDK formatters.
+File cells and exact extension rows also resolve their icon and subtype class through
+the public `fileTypeIcon()` SDK helper, the same matcher used by navigation.
+The shared `.file-identity-icon` primitive owns their geometry and subtype color.
+File cells use ordinary `mb.openPath` navigation; folder and parent navigation pass
+Treemap as the optional preferred destination view.
+The shell activates that view only when the destination declares it and otherwise uses
+the destination’s default.
+
+The folder-view shell refreshes a selected folder envelope for live aggregate header
+data. That one multiplexed refresh is exposed through a supported subscription so
+Overview can re-resolve panel availability when direct-child facts change without
+starting one folder request per panel.
+Aggregate panels retain their own bounded watchers when their data plane differs, and
+every subscription ends when the selected path is replaced.
+
+Tree disclosure and folder navigation share one row-activation path.
+The activation selects the folder and starts its ordinary `/api/file` request while
+synchronously toggling the row’s direct-child container.
+Repeated activation can therefore collapse the tree branch without changing the selected
+folder or replacing its Overview.
+
+Overview exists even when no optional panel applies.
+File types remains mounted for a complete empty folder and renders an explicit
+zero-total state without bars, a table, or a synthetic README region.
+Pending inventory remains a progress state, so an incomplete scan cannot be mistaken for
+an empty folder.
+
 ## Plugin Boundary
 
 Core knows only generic capabilities and built-in file kinds.
@@ -64,7 +176,9 @@ Plugins own:
 
 The stable browser-side boundary is the `window.metabrowser` API. Plugins should not
 reach into variables or functions defined privately by `app.js`. Cross-view navigation
-uses `openPath`, and plugin HTTP calls use `fetchPluginData`.
+uses `openPath`; its optional `viewId` preserves a working mode when the destination
+offers that view without changing path or history semantics.
+Plugin HTTP calls use `fetchPluginData`.
 
 ## Startup and First Paint
 
@@ -73,7 +187,9 @@ Inventory walking, ignore-file parsing, and watcher setup run without blocking t
 loop’s first response.
 
 When a URL names an initial file, `/api/file` begins independently of tree indexing.
-Without a hash, the server may seed a root `README.md` preview.
+Without a hash, the current shell may seed a root `README.md` preview.
+The folder-view contract replaces that special case with the root folder’s default
+Overview while keeping an explicitly selected README as an ordinary file view.
 Inventory endpoints return current partial state plus progress metadata instead of
 waiting for a complete walk.
 
@@ -92,6 +208,16 @@ A symbolic link is always a typed leaf, even when its target is a directory: wal
 not follow it, directory child containers are never created for it, and file aggregates
 exclude it. A live upsert may replace any shape with another at the same path, so both
 the index and browser remove the old shape before installing the new one.
+
+Regular files receive one logical extension from `fs_paths.derive_ext` at their shared
+walker/watcher construction boundary.
+The value retains at most the final two eligible suffix components: `bundle.js.map` and
+`archive.tar.gz` keep `.js.map` and `.tar.gz`, while `bundle.umd.min.js.map` and
+`types.d.ts.map` become `.js.map` and `.ts.map`. A component must be lowercase,
+alphanumeric, nonempty, and bounded in length; dotfiles remain extensionless.
+The fixed component cap prevents filenames from creating an unbounded vocabulary in
+navigation and rollup tallies while preserving common compound formats.
+Browser consumers use the indexed value instead of reparsing the full filename.
 
 The browser keeps a normalized file store.
 Tree panels and recent-file views subscribe to that store rather than maintaining
@@ -120,9 +246,13 @@ source instead of decorating it.
 Gitignored visibility rides along as a request parameter because it changes what the
 response cap is spent on, not just which rows are painted.
 
-The extension tally behind the type menu comes from the index too
-(`InventoryIndex.extension_tally`), because the Quick File catalog excludes gitignored
-entries and a menu built from it would undercount everything the tree still shows.
+The category, family, canonical-extension, and raw tallies behind the type menu come
+from one complete-index pass too.
+The Quick File catalog excludes gitignored entries and a menu built from it would
+undercount everything the tree still shows.
+The chooser orders broad categories, present semantic families, and canonical/raw
+children as distinct tiers; all selections use the same longest-declared-suffix
+predicate as the rollup.
 
 ### Response Caps Are a Ranking Problem
 
@@ -198,6 +328,7 @@ route stack.
 - [Security policy and content trust model](../SECURITY.md)
 - [Plugin authoring](plugins.md)
 - [Design system](design-system.md)
+- [Folder Overview panels and file-type summary](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
 - [End-to-end testing](e2e-testing.md)
 - [Real-time debugging](realtime-debugging.md)
 - [Development](development.md)

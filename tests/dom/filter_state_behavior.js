@@ -67,6 +67,9 @@ function makeSandbox(options) {
   if (opts.classifier) {
     sandbox.MetabrowserFileTypes = { classFor: opts.classifier };
   }
+  if (opts.taxonomy) {
+    sandbox.MetabrowserFileTypeTaxonomy = opts.taxonomy;
+  }
   sandbox.CustomEvent = class {
     constructor(type, init) {
       this.type = type;
@@ -282,6 +285,21 @@ const HOUR = 3600;
   assertEqual(
     "and does not match a plain sibling",
     state.typeMatches("a.js", [".min.js"], ".js"),
+    false,
+  );
+  const semantic = makeSandbox({
+    taxonomy: {
+      matchExtension: (extension) =>
+        extension === ".js" ? { family: { id: "javascript" } } : null,
+    },
+  }).state;
+  assertTrue(
+    "a canonical semantic child includes compound logical extensions",
+    semantic.typeMatches("a.min.js", [".js"], ".min.js"),
+  );
+  assertEqual(
+    "an unknown raw extension remains exact",
+    semantic.typeMatches("archive.tar.gz", [".gz"], ".tar.gz"),
     false,
   );
 

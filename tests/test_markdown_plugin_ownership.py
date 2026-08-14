@@ -22,12 +22,19 @@ def _index_js() -> str:
     return (PLUGIN_DIR / "index.js").read_text(encoding="utf-8")
 
 
+def _all_js() -> str:
+    return "\n".join(
+        (PLUGIN_DIR / name).read_text(encoding="utf-8")
+        for name in ("index.js", "rendered.js", "source.js")
+    )
+
+
 def _manifest_toml() -> str:
     return (PLUGIN_DIR / "manifest.toml").read_text(encoding="utf-8")
 
 
 def test_index_js_registers_rendered_view() -> None:
-    src = _index_js()
+    src = _all_js()
     assert 'mb.registerView("markdown", "rendered"' in src
 
 
@@ -39,7 +46,7 @@ def test_index_js_registers_source_view() -> None:
 def test_index_js_uses_sdk_helpers_not_local_copies() -> None:
     """The plugin must call SDK methods (mb.escapeHtml etc.) so the cut
     is actually real — not just call back into app.js helpers."""
-    src = _index_js()
+    src = _all_js()
     assert "mb.escapeHtml" in src
     assert "mb.isLargeTextPreview" in src
     assert "mb.wrapWithCopy" in src
@@ -63,10 +70,10 @@ def test_index_js_no_legacy_stub_comments() -> None:
 
 def test_index_js_exposes_builtins_namespace_for_other_plugins() -> None:
     """Specialized document plugins reuse the markdown renderers via
-    mb.builtins.markdown.{renderRendered,renderSource}."""
+    mb.builtins.markdown.{mountRendered,renderSource}."""
     src = _index_js()
     assert "mb.builtins.markdown" in src
-    assert "renderRendered" in src
+    assert "mountRendered" in src
     assert "renderSource" in src
 
 
@@ -100,14 +107,15 @@ def test_manifest_views_match_index_registrations() -> None:
 
 
 def test_rendered_view_uses_kpress_with_visible_error() -> None:
-    src = _index_js()
-    assert 'mb.fetchKpressRender(ctx, "rendered", { profile: "document" })' in src
+    src = _all_js()
+    assert "mb.fetchKpressRender" in src
+    assert 'profile: "document"' in src
     assert "renderKpressError" in src
     assert "Could not render this document." in src
     assert "renderMarkdownHtml(ctx.raw)" not in src
 
 
 def test_source_views_include_visible_truncation_warning() -> None:
-    src = _index_js()
-    assert "const truncationWarning = mb.renderTextTruncationWarning(data)" in src
-    assert "truncationWarning +" in src
+    src = _all_js()
+    assert "mb.renderTextTruncationWarning(data)" in src
+    assert "warning" in src

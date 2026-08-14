@@ -718,7 +718,7 @@ def _build_inventory_subtree(
                 "type": "file",
                 "size": entry.size,
                 "mtime": entry.mtime_ns / 1_000_000_000.0 if entry.mtime_ns else 0.0,
-                # The index's compound-tail extension (".min.js",
+                # The index's bounded compound-tail extension (".min.js",
                 # ".runbook.md"), which is the unit the nav's type
                 # filter and its tally both key on. Distinct from
                 # ``logical_ext`` below: that one means "the inner

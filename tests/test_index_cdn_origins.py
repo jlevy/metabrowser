@@ -90,14 +90,28 @@ def test_local_core_scripts_load_before_optional_assets() -> None:
     assert "metabrowser:optional-assets-loaded" in html
 
 
+def test_strict_sdk_dependencies_load_before_the_legacy_adapter() -> None:
+    html = _index_html()
+    sdk_position = html.index("/static/plugin_sdk.js")
+    for name in (
+        "request_error.js",
+        "formatters.js",
+        "inventory_scope.js",
+        "contribution_registry.js",
+        "resource_context.js",
+        "view_state.js",
+    ):
+        assert html.index(f"/static/{name}") < sdk_position
+
+
 def test_duplicate_markdown_assets_are_absent() -> None:
     html = _index_html()
     assert "dompurify" not in html.lower()
     assert "marked.min.js" not in html
 
 
-def test_index_seeds_root_readme_for_immediate_preview(tmp_path: Path) -> None:
-    """The root README preview is chosen without waiting for the tree index."""
+def test_index_starts_at_root_overview_even_when_readme_exists(tmp_path: Path) -> None:
+    """No-hash startup leaves README discovery to the root Overview."""
     previous_root = server._resolved_root_dir()
     try:
         (tmp_path / "README.md").write_text("# Fast first paint\n")
@@ -106,4 +120,4 @@ def test_index_seeds_root_readme_for_immediate_preview(tmp_path: Path) -> None:
     finally:
         server._set_root_dir(previous_root)
 
-    assert 'window.METABROWSER_INITIAL_PATH="README.md"' in html
+    assert "METABROWSER_INITIAL_PATH" not in html
