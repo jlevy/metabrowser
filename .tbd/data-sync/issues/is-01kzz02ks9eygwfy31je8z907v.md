@@ -5,8 +5,8 @@ title: Implement Registry v1 source, typed loader, and validator
 kind: feature
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - registry
   - python
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz02zvd18eqbqqqrnssr2qj
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:02:06.504Z
-updated_at: 2026-08-14T02:26:35.756Z
+updated_at: 2026-08-14T03:33:57.964Z
 closed_at: 2026-08-14T02:26:35.742Z
 close_reason: Implemented the packaged Registry v1 TOML, immutable cached loader, stable validation errors and fingerprint, registry projection, and compatibility facade; focused registry, inventory, lint, and type checks pass.
 ---

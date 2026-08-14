@@ -5,8 +5,8 @@ title: Publish the normative file-type compatibility packet
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - documentation
   - compatibility
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz02ks9eygwfy31je8z907v
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T01:58:14.552Z
-updated_at: 2026-08-14T02:11:38.390Z
+updated_at: 2026-08-14T03:33:57.758Z
 closed_at: 2026-08-14T02:07:57.314Z
 close_reason: Published and verified the durable Registry v1, Interchange v1, and fdu compatibility packet; linked it from the project index and active implementation plan; and mapped the full dependency-ordered bead graph.
 ---

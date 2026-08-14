@@ -5,15 +5,15 @@ title: Validate all surfaces and publish the fdu adoption packet
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - validation
   - cross-project
 dependencies: []
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:04:05.564Z
-updated_at: 2026-08-14T03:33:43.244Z
+updated_at: 2026-08-14T03:34:00.358Z
 closed_at: 2026-08-14T03:33:43.243Z
 close_reason: Durable architecture, design-system, SDK, release, registry, interchange, and lowercase-fdu adoption docs now match the implementation. The generated registry projection, schemas, corpus, empty and high-cardinality breakdown cases, and manifest-based export packet validate. Browser checks covered registry order, singleton/special disclosures, filters, ignored scope, Treemap controls/navigation, and an empty directory. make verify passed.
 ---

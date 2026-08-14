@@ -5,8 +5,8 @@ title: Seed and reconcile the shared display taxonomy
 kind: feature
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - registry
   - taxonomy
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz039dpehjrvpg7nm2e47ft
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:02:18.847Z
-updated_at: 2026-08-14T02:26:39.239Z
+updated_at: 2026-08-14T03:33:58.174Z
 closed_at: 2026-08-14T02:26:39.238Z
 close_reason: Moved the existing taxonomy into Registry v1 and added ordered Code, Documentation, Data, Logs, Archives, Media, and Other groups with conservative Log files, Archives, Images, Videos, Audio, and Fonts coverage; taxonomy and inventory tests pass.
 ---

@@ -5,8 +5,8 @@ title: Align logical extensions and metadata classification
 kind: feature
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - classification
   - python
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz03kns6hp4a0rzkqnbjdww
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:02:28.661Z
-updated_at: 2026-08-14T02:26:42.572Z
+updated_at: 2026-08-14T03:33:58.385Z
 closed_at: 2026-08-14T02:26:42.571Z
 close_reason: Implemented ASCII-case-folded two-component logical extensions, leading-dot behavior, basename/exact/suffix classification precedence, and portable classification fields; walker/watcher and boundary tests pass.
 ---

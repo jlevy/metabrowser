@@ -5,8 +5,8 @@ title: Drive navigation filters from the shared registry
 kind: feature
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - ui
   - navigation
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz0681weprsdjnd151fxkhj
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:03:34.965Z
-updated_at: 2026-08-14T03:14:19.275Z
+updated_at: 2026-08-14T03:33:59.700Z
 closed_at: 2026-08-14T03:14:19.274Z
 close_reason: Navigation type chooser now derives top-level group and per-group family sections, memberships, order, and tallies from Registry v1 while retaining exact extension choices.
 ---

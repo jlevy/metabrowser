@@ -5,8 +5,8 @@ title: Complete compatibility, cache, and migration boundaries
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - compatibility
   - migration
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz0681weprsdjnd151fxkhj
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:03:54.364Z
-updated_at: 2026-08-14T03:16:38.196Z
+updated_at: 2026-08-14T03:34:00.153Z
 closed_at: 2026-08-14T03:16:38.195Z
 close_reason: Retained all legacy response/settings/query/filter shapes, added new-client/old-server model fallback and old-client/new-server additive fields, pinned registry identity in navigation and rollup responses, rejected mismatched browser data safely, and created a deferred cleanup bead.
 ---

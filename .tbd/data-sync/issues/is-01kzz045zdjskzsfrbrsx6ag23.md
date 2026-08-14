@@ -5,8 +5,8 @@ title: Add bounded No extension and Remaining types children
 kind: feature
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - rollup
   - cardinality
@@ -19,7 +19,7 @@ dependencies:
     target: is-01kzz05x3x3d6y2n9gzeq8xmqg
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:02:57.900Z
-updated_at: 2026-08-14T02:48:42.958Z
+updated_at: 2026-08-14T03:33:59.039Z
 closed_at: 2026-08-14T02:48:42.957Z
 close_reason: Added independently capped 20-item No extension and Remaining types children with deterministic dual-population ranking and exact Others conservation.
 ---

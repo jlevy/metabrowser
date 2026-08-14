@@ -5,8 +5,8 @@ title: Publish schemas, conformance corpus, and drift tooling
 kind: feature
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - compatibility
   - testing
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kzz04fp7330jyn2h03m635qc
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:02:39.160Z
-updated_at: 2026-08-14T02:48:42.470Z
+updated_at: 2026-08-14T03:33:58.597Z
 closed_at: 2026-08-14T02:48:42.469Z
 close_reason: Published validated v1 schemas, generated Python/browser conformance corpus, drift check, and self-contained revision-pinned export packet.
 ---

@@ -5,8 +5,8 @@ title: Align Treemap identity with Registry v1
 kind: task
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - ui
   - treemap
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz0681weprsdjnd151fxkhj
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:03:44.812Z
-updated_at: 2026-08-14T03:14:19.788Z
+updated_at: 2026-08-14T03:33:59.933Z
 closed_at: 2026-08-14T03:14:19.786Z
 close_reason: Treemap classification and palette synchronization now use Registry v1 family/raw identities and the same Breakdown v1 palette population as Files Overview, with neutral extensionless fallback.
 ---

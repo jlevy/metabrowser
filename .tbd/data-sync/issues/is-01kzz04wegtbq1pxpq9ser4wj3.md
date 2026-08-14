@@ -5,8 +5,8 @@ title: Render the complete registry-driven Files Overview
 kind: feature
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md
 labels:
   - ui
   - overview
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzz0681weprsdjnd151fxkhj
 parent_id: is-01kzyxvf9qfc627wszts904wx3
 created_at: 2026-08-14T02:03:20.911Z
-updated_at: 2026-08-14T03:14:18.810Z
+updated_at: 2026-08-14T03:33:59.480Z
 closed_at: 2026-08-14T03:14:18.808Z
 close_reason: Files Overview now consumes Breakdown v1 directly, follows registry group/family order, discloses singleton families and bounded fallback children, preserves expansion state, icons, color identity, percentages, and responsive renderer primitives.
 ---
