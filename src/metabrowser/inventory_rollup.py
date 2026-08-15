@@ -7,7 +7,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from metabrowser.file_type_filters import FILE_TYPE_FAMILIES
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
@@ -24,8 +23,6 @@ from metabrowser.wire_models import (
     FileTypePopulationMetrics,
     RollupDirNode,
     RollupResult,
-    TypeFamilyTally,
-    TypeTallies,
 )
 
 if TYPE_CHECKING:
@@ -46,7 +43,7 @@ class RollupOptions:
     top: int
     ext_top: int
     max_nodes: int
-    type_top: int = ROLLUP_FILE_TYPE_REMAINING_LIMIT
+    remaining_top: int = ROLLUP_FILE_TYPE_REMAINING_LIMIT
     filename_top: int = ROLLUP_FILE_TYPE_FILENAME_LIMIT
     ext_rank: RollupRank = "bytes"
 
@@ -57,7 +54,7 @@ class RollupOptions:
                 self.top,
                 self.ext_top,
                 self.max_nodes,
-                self.type_top,
+                self.remaining_top,
                 self.filename_top,
             )
             < 0
@@ -65,10 +62,10 @@ class RollupOptions:
             raise ValueError("rollup limits must be nonnegative")
         if self.ext_rank not in ("bytes", "dual"):
             raise ValueError(f"unknown extension ranking mode: {self.ext_rank!r}")
-        if self.type_top > ROLLUP_FILE_TYPE_REMAINING_LIMIT:
-            raise ValueError("remaining file-type limit exceeds the compatibility contract")
+        if self.remaining_top > ROLLUP_FILE_TYPE_REMAINING_LIMIT:
+            raise ValueError("remaining file-type limit exceeds the response contract")
         if self.filename_top > ROLLUP_FILE_TYPE_FILENAME_LIMIT:
-            raise ValueError("filename file-type limit exceeds the compatibility contract")
+            raise ValueError("filename file-type limit exceeds the response contract")
 
 
 @dataclass(slots=True)
@@ -145,15 +142,10 @@ def build_rollup(
     return {
         "node": cast(RollupDirNode, root_node),
         "ext_tallies": _serialize_extension_tallies(root_aggregate, selected),
-        "type_tallies": _serialize_type_tallies(
-            root_aggregate,
-            options.type_top,
-            file_types,
-        ),
         "file_type_breakdown": _serialize_file_type_breakdown(
             root_aggregate,
             filename_limit=options.filename_top,
-            remaining_limit=options.type_top,
+            remaining_limit=options.remaining_top,
             file_types=file_types,
         ),
     }
@@ -431,16 +423,6 @@ def _serialize_extension_tallies(
     return rows
 
 
-def _tally_row(aggregate: _SubtreeAggregate, key: str) -> ExtensionTallyRow:
-    return (
-        key,
-        aggregate.ext_files[key],
-        aggregate.ext_bytes[key],
-        aggregate.ext_files_unignored[key],
-        aggregate.ext_bytes_unignored[key],
-    )
-
-
 def _population_metrics(
     all_files: int,
     all_bytes: int,
@@ -682,63 +664,6 @@ def _partition_file_types(aggregate: _SubtreeAggregate) -> _FileTypePartition:
         remaining_keys=remaining_keys,
         has_no_extension=ROLLUP_NO_EXT_KEY in extension_keys,
     )
-
-
-def _serialize_type_tallies(
-    aggregate: _SubtreeAggregate,
-    raw_limit: int,
-    file_types: _FileTypePartition,
-) -> TypeTallies:
-    """Aggregate every known family before bounding only the raw tail."""
-
-    families: list[TypeFamilyTally] = []
-    for family in FILE_TYPE_FAMILIES:
-        children = file_types.family_children.get(family.id)
-        if not children:
-            continue
-        child_rows: list[ExtensionTallyRow] = [
-            (canonical, values[0], values[1], values[2], values[3])
-            for canonical, values in sorted(children.items())
-        ]
-        totals = [sum(cast(int, row[column]) for row in child_rows) for column in range(1, 5)]
-        families.append(
-            {
-                "id": family.id,
-                "all_files": totals[0],
-                "all_bytes": totals[1],
-                "unignored_files": totals[2],
-                "unignored_bytes": totals[3],
-                "extensions": child_rows,
-            }
-        )
-
-    ranked_raw = _select_type_raw_keys(aggregate, file_types.remaining_keys, raw_limit)
-    extensions = [_tally_row(aggregate, key) for key in ranked_raw]
-    if file_types.has_no_extension:
-        extensions.insert(0, _tally_row(aggregate, ROLLUP_NO_EXT_KEY))
-    omitted = file_types.remaining_keys - set(ranked_raw)
-    if omitted:
-        extensions.append(
-            (
-                ROLLUP_REST_EXT_KEY,
-                sum(aggregate.ext_files[key] for key in omitted),
-                sum(aggregate.ext_bytes[key] for key in omitted),
-                sum(aggregate.ext_files_unignored[key] for key in omitted),
-                sum(aggregate.ext_bytes_unignored[key] for key in omitted),
-            )
-        )
-    return {"families": families, "extensions": extensions}
-
-
-def _select_type_raw_keys(
-    aggregate: _SubtreeAggregate,
-    keys: set[str],
-    limit: int,
-) -> list[str]:
-    return sorted(
-        keys,
-        key=lambda key: (*(-score for score in _extension_scores(aggregate, key)), key),
-    )[:limit]
 
 
 __all__ = [

@@ -46,9 +46,9 @@ def test_rollup_options_reject_invalid_limits_and_rank() -> None:
     with pytest.raises(ValueError):
         RollupOptions(depth=0, top=0, ext_top=0, max_nodes=-1)
     with pytest.raises(ValueError):
-        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, type_top=-1)
+        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, remaining_top=-1)
     with pytest.raises(ValueError):
-        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, type_top=21)
+        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, remaining_top=21)
     with pytest.raises(ValueError):
         RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, filename_top=21)
     with pytest.raises(ValueError):
@@ -115,7 +115,7 @@ def test_zero_top_accounts_for_omitted_children_when_depth_allows() -> None:
     }
 
 
-def test_semantic_type_tallies_aggregate_before_raw_bounding() -> None:
+def test_breakdown_aggregates_families_before_bounding_the_remaining_tail() -> None:
     files = [
         ("app.js", 10, False),
         ("bundle.min.js", 20, False),
@@ -127,30 +127,39 @@ def test_semantic_type_tallies_aggregate_before_raw_bounding() -> None:
     ]
     index = _synthetic_index(files)
 
-    result = index.rollup("", depth=0, top=0, ext_top=1, type_top=1, ext_rank="dual")
+    result = index.rollup("", depth=0, top=0, ext_top=1, remaining_top=1, ext_rank="dual")
 
     assert result is not None
-    tallies = result["type_tallies"]
-    families = {row["id"]: row for row in tallies["families"]}
-    assert families["javascript"] == {
-        "id": "javascript",
-        "all_files": 3,
-        "all_bytes": 60,
-        "unignored_files": 2,
-        "unignored_bytes": 30,
-        "extensions": [
-            (".js", 2, 30, 2, 30),
-            (".mjs", 1, 30, 0, 0),
-        ],
+    breakdown = result["file_type_breakdown"]
+    families = {
+        family["id"]: family for group in breakdown["groups"] for family in group["families"]
     }
-    assert families["typescript"]["extensions"] == [(".ts", 1, 5, 1, 5)]
-    assert tallies["extensions"][0] == ("(none)", 1, 7, 1, 7)
-    assert tallies["extensions"][-1][0] == ""
-    assert (
-        sum(row["all_files"] for row in tallies["families"])
-        + sum(row[1] for row in tallies["extensions"])
-        == result["node"]["total_files"]
-    )
+    # Compound suffixes fold into the canonical family member before any cap applies,
+    # so a low remaining_top never truncates a known family.
+    assert families["javascript"]["metrics"] == {
+        "all": {"files": 3, "bytes": 60},
+        "unignored": {"files": 2, "bytes": 30},
+    }
+    assert [child["extension"] for child in families["javascript"]["extensions"]] == [
+        ".js",
+        ".mjs",
+    ]
+    assert families["typescript"]["extensions"] == [
+        {
+            "extension": ".ts",
+            "metrics": {"all": {"files": 1, "bytes": 5}, "unignored": {"files": 1, "bytes": 5}},
+        }
+    ]
+
+    assert [row["basename"] for row in breakdown["no_extension"]["filenames"]] == ["README"]
+    remaining = breakdown["remaining_types"]
+    assert len(remaining["extensions"]) == 1
+    assert remaining["others"] is not None
+    assert remaining["others"]["omitted_distinct_values"] == 1
+
+    totals = breakdown["metrics"]["all"]
+    assert totals["files"] == result["node"]["total_files"]
+    assert totals["bytes"] == result["node"]["total_size"]
 
 
 def test_rollup_classifies_each_distinct_extension_once(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,7 +185,7 @@ def test_rollup_classifies_each_distinct_extension_once(monkeypatch: pytest.Monk
         ]
     )
 
-    result = index.rollup("", depth=0, top=0, ext_top=0, type_top=20, ext_rank="dual")
+    result = index.rollup("", depth=0, top=0, ext_top=0, remaining_top=20, ext_rank="dual")
 
     assert result is not None
     assert sorted(calls) == [".d.ts", ".js", ".min.js", ".zzz"]
@@ -192,7 +201,7 @@ def test_registry_breakdown_groups_families_and_bounds_fallback_children() -> No
     files.extend((f"unknown-{index}.x{index}", index, False) for index in range(21))
     index = _synthetic_index(files)
 
-    result = index.rollup("", depth=0, top=0, ext_top=1, type_top=20, filename_top=20)
+    result = index.rollup("", depth=0, top=0, ext_top=1, remaining_top=20, filename_top=20)
 
     assert result is not None
     breakdown = result["file_type_breakdown"]

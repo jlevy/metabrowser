@@ -123,7 +123,6 @@ from metabrowser.settings import (
     ROLLUP_DEFAULT_EXT_TOP,
     ROLLUP_DEFAULT_TOP,
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
-    ROLLUP_FILE_TYPE_RAW_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
     ROLLUP_MAX_DEPTH,
     ROLLUP_MAX_EXT_TOP,
@@ -1180,8 +1179,7 @@ async def api_rollup(request: Request) -> JSONResponse:
     """Bounded treemap rollup for a directory subtree.
 
     `GET /api/rollup?path=&depth=&top=&ext_top=&filename_top=&remaining_top=`
-    clamps parameters to the ROLLUP_* settings bounds. The legacy `type_top`
-    parameter remains an alias for `remaining_top`. `node` is null while the
+    clamps parameters to the ROLLUP_* settings bounds. `node` is null while the
     index cannot serve the path yet (cold start); the client renders that as a
     pending treemap and refreshes off `/api/events` activity. Totals always
     cover the full subtree. Depth truncation is represented by `children: null`
@@ -1201,13 +1199,6 @@ async def api_rollup(request: Request) -> JSONResponse:
     ext_top = _query_bounded_int(
         request, "ext_top", ROLLUP_DEFAULT_EXT_TOP, minimum=0, maximum=ROLLUP_MAX_EXT_TOP
     )
-    type_top = _query_bounded_int(
-        request,
-        "type_top",
-        ROLLUP_FILE_TYPE_RAW_LIMIT,
-        minimum=0,
-        maximum=ROLLUP_FILE_TYPE_REMAINING_LIMIT,
-    )
     filename_top = _query_bounded_int(
         request,
         "filename_top",
@@ -1218,7 +1209,7 @@ async def api_rollup(request: Request) -> JSONResponse:
     remaining_top = _query_bounded_int(
         request,
         "remaining_top",
-        type_top if request.query_params.get("type_top", "") else ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+        ROLLUP_FILE_TYPE_REMAINING_LIMIT,
         minimum=0,
         maximum=ROLLUP_FILE_TYPE_REMAINING_LIMIT,
     )
@@ -1245,7 +1236,7 @@ async def api_rollup(request: Request) -> JSONResponse:
             depth=depth,
             top=top,
             ext_top=ext_top,
-            type_top=remaining_top,
+            remaining_top=remaining_top,
             filename_top=filename_top,
             ext_rank=ext_rank,
         )
@@ -1255,9 +1246,6 @@ async def api_rollup(request: Request) -> JSONResponse:
             "path": subpath,
             "node": result["node"] if result is not None else None,
             "ext_tallies": result["ext_tallies"] if result is not None else [],
-            "type_tallies": (
-                result["type_tallies"] if result is not None else {"families": [], "extensions": []}
-            ),
             "file_type_breakdown": (result["file_type_breakdown"] if result is not None else None),
             "index_status": inventory_status(),
             "indexed_files": inventory.files_indexed(),

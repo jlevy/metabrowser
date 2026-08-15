@@ -1,7 +1,6 @@
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} FolderRollupState */
 
 const PREF_KEY = "folder.rollup";
-const LEGACY_PREF_KEY = "folder.treemap";
 
 /** @param {unknown} raw @returns {FolderRollupState} */
 export function sanitizeFolderRollupState(raw) {
@@ -14,13 +13,8 @@ export function sanitizeFolderRollupState(raw) {
 
 /** @param {MetabrowserPublicSdk} mb */
 export function createFolderRollupControls(mb) {
-  const currentPreference = mb.prefs.get(PREF_KEY, null);
-  const legacyPreference = currentPreference === null ? mb.prefs.get(LEGACY_PREF_KEY, null) : null;
   /** @type {FolderRollupState} */
-  let current = sanitizeFolderRollupState(currentPreference ?? legacyPreference);
-  if (currentPreference === null && legacyPreference !== null) {
-    mb.prefs.set(PREF_KEY, current);
-  }
+  let current = sanitizeFolderRollupState(mb.prefs.get(PREF_KEY, null));
   /** @type {Set<(state: FolderRollupState) => void>} */
   const subscribers = new Set();
 

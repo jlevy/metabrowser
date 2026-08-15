@@ -138,11 +138,11 @@ let pendingTimers = [];
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 sandbox.MetabrowserFileTypeTaxonomy = {
-  categories: [],
+  groups: [],
   families: [],
   matchExtension: () => null,
   canonicalExtension: (extension) => extension,
-  categoryForFile: () => "other",
+  groupForFile: () => "other",
   distributionKeyForExtension(extension) {
     if (extension === ".py") {
       return "family:python";
@@ -839,22 +839,13 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     watch.dispose();
   }
 
-  await mb.fetchRollup("legacy", { type_top: 7 });
-  const legacyUrl = new URL(fetchCalls.at(-1));
+  await mb.fetchRollup("override", { remaining_top: 9 });
+  const overrideUrl = new URL(fetchCalls.at(-1));
   check(
-    "legacy type_top input maps to the canonical parameter",
-    legacyUrl.searchParams.get("type_top") === null &&
-      legacyUrl.searchParams.get("remaining_top") === "7",
-    legacyUrl.search,
-  );
-
-  await mb.fetchRollup("modern", { remaining_top: 9 });
-  const modernUrl = new URL(fetchCalls.at(-1));
-  check(
-    "modern remaining_top emits no redundant alias",
-    modernUrl.searchParams.get("type_top") === null &&
-      modernUrl.searchParams.get("remaining_top") === "9",
-    modernUrl.search,
+    "remaining_top overrides the default and emits no alias",
+    overrideUrl.searchParams.get("type_top") === null &&
+      overrideUrl.searchParams.get("remaining_top") === "9",
+    overrideUrl.search,
   );
 
   if (failures.length > 0) {

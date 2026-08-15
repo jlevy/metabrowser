@@ -421,17 +421,9 @@ function resolveTheme(mode) {
 }
 
 function getStoredThemeMode() {
-  // Cookie is the store (shared across ports); fall back to a pre-existing
-  // localStorage value so an upgrade carries the user's prior choice forward.
-  var fromCookie = readPrefCookie(THEME_MODE_KEY);
-  if (fromCookie) {
-    return normalizeThemeMode(fromCookie);
-  }
-  try {
-    return normalizeThemeMode(localStorage.getItem(THEME_MODE_KEY) || "system");
-  } catch (_e) {
-    return "system";
-  }
+  // The cookie is the only store; it has been since before the first
+  // release, so there is no prior localStorage value to carry forward.
+  return normalizeThemeMode(readPrefCookie(THEME_MODE_KEY) || "system");
 }
 
 function themeModeIcon(mode) {

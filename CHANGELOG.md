@@ -4,6 +4,56 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+## 0.4.2
+
+Release automation:
+
+- Post-publication smoke retries now refresh the package index on every attempt, so an
+  initial negative lookup cannot remain cached while a new PyPI release propagates.
+
+## 0.4.1
+
+Folder views and navigation:
+
+- Folder Overview now paints separate nonignored Files and Ignored totals immediately,
+  with full-width composition bars segmented by semantic file family.
+  The bars reuse the File Breakdown palette and navigation tooltip, including exact file
+  and byte values, without another crawl or rollup request.
+- Files, File Breakdown, and Treemap share one Files or Bytes choice.
+  File Breakdown and Treemap also share the labelled Show ignored control.
+  Detailed views wait for a complete rollup instead of briefly rendering partial or
+  zero-valued data.
+- File Breakdown sorts each section by the selected metric and bounds repeated rows to
+  ten plus an exact, expandable **N more** row.
+  Files opens by default; the complete breakdown starts collapsed.
+- Treemap adds parent-folder navigation, full-cell pointer targets, consistent semantic
+  colors and hover feedback, and removes redundant headings and footer status text.
+- Overview sections align with the visible README card, including the responsive narrow
+  layout. Recommended File-Type Registry revision 2 moves Log files under Other while
+  retaining `.log`, `.jsonl`, and `.ndjson` membership and removes the misleading broad
+  Other filter preset.
+- File ages use centralized light and dark OKLCH tokens.
+  Live and under-one-minute entries share one bold orange treatment, newer files remain
+  vivid yellow, and age is conveyed by the text itself rather than an adjacent dot.
+
+Plugin compatibility and maintenance:
+
+- Plugin SDK versions are enforced at discovery and by `metab --doctor`, so a manifest
+  targeting a different SDK fails with an actionable message instead of breaking inside
+  a renderer. Existing Metabrowser 0.4.0 manifests that omit `sdk_version` remain
+  compatible by targeting the original SDK `0.1`; omission does not follow future host
+  versions.
+- Removed unused file-rollup compatibility fields and aliases.
+  Consume `file_type_breakdown`, `remaining_top`, `mb.fileTypes.groups`, and
+  `groupForFile`. The old `type_tallies`, `type_top`, duplicate limit settings, taxonomy
+  projection, `categories`, and `categoryForFile` surfaces had no known consumer.
+- Removed unreleased treemap-preference migration code, an unreachable theme
+  localStorage fallback, and an unused legacy treemap state sanitizer.
+- Development guidance now requires a named consumer before adding an alias, fallback,
+  shim, deprecation window, or duplicate transitional field.
+  Repository-specific rules link to the shared compatibility guidance and replace
+  drifting prose baselines with their real checks and tracked work.
+
 ## 0.4.0
 
 Folder Overview and Treemap:
@@ -55,8 +105,6 @@ Navigation, plugins, and reliability:
 - The public browser SDK adds immutable file-type definitions, bounded folder-rollup
   helpers, folder context, view-aware navigation, shared formatters and file identity,
   active-view state, and an extensible folder-panel registry.
-  Existing documented extension and rollup aliases remain available for a transition
-  release.
 - Folder rollups run off the event loop and reuse the inventory snapshot instead of
   crawling the filesystem again.
   Rapidly rebuilt directories are reconciled against the current filesystem so stale

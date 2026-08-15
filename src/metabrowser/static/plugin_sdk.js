@@ -368,7 +368,6 @@
         fingerprint: "unavailable",
       }),
       groups: Object.freeze([]),
-      categories: Object.freeze([]),
       families: Object.freeze([]),
       kinds: Object.freeze([]),
       classify(_name, extension) {
@@ -390,9 +389,6 @@
       },
       canonicalExtension(extension) {
         return typeof extension === "string" ? extension.toLowerCase() : "";
-      },
-      categoryForFile() {
-        return "other";
       },
       groupForFile() {
         return "other";
@@ -477,8 +473,8 @@
   async function fetchRollup(path, opts) {
     // Core rollup endpoint for directory subtrees (see /api/rollup).
     // ``path`` may be "" for the served root. Optional opts:
-    // depth / top / ext_top / filename_top / remaining_top query overrides plus
-    // the public ``type_top`` input alias and ``signal``.
+    // depth / top / ext_top / filename_top / remaining_top query overrides
+    // plus ``signal``.
     if (typeof path !== "string") {
       throw new Error("fetchRollup: path must be a string");
     }
@@ -486,22 +482,11 @@
     const options = opts && typeof opts === "object" ? opts : {};
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
-    for (const key of ["depth", "top", "ext_top", "filename_top", "ext_rank"]) {
+    for (const key of ["depth", "top", "ext_top", "filename_top", "remaining_top", "ext_rank"]) {
       const value = options[key] !== undefined ? options[key] : defaults[key];
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));
       }
-    }
-    // Preserve the public input alias for older plugins, but emit only the
-    // canonical parameter because page assets and the server cannot be mixed.
-    const remainingTop =
-      options.remaining_top !== undefined
-        ? options.remaining_top
-        : options.type_top !== undefined
-          ? options.type_top
-          : defaults.remaining_top;
-    if (remainingTop !== undefined && remainingTop !== null) {
-      url.searchParams.set("remaining_top", String(remainingTop));
     }
     const resp = await fetch(url.toString(), { signal: options.signal });
     if (!resp.ok) {

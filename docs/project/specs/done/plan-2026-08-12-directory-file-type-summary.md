@@ -1373,8 +1373,8 @@ The Treemap implementation stays split by responsibility:
   and `worstAspect`; it has no global registration or DOM access.
   It owns hierarchy-only packing, remainder conservation, ignored-scope weight
   selection, bounded recursion, and fluid type geometry.
-- `treemap_model.js` owns the two-field preference contract and legacy-state
-  normalization as pure functions.
+- `treemap_model.js` owns parent-path and parent-navigation calculations as pure
+  functions.
 - `treemap.js` owns shared-control markup and binding, file-type palette classes,
   formatter-backed labels and status, resize handling, view-preserving folder
   navigation, keyboard and pointer behavior, tooltip lifecycle, rollup watch, view-state
