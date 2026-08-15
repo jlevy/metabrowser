@@ -212,23 +212,27 @@ global.window = { METABROWSER_SETTINGS: {} };
       };
     },
   };
+  const totalsCompositionScopes = [];
   const mountFileTotalsPanel = new Function(
     "buildFolderTotalsComposition",
     "mountFolderTotalsView",
     "normalizeFolderTotals",
     `${fileTotalsPanelSource}\nreturn mountFileTotalsPanel;`,
   )(
-    (envelope, _fileTypes, metric) =>
-      envelope?.totals
+    (envelope, _fileTypes, metric, includeIgnored) => {
+      totalsCompositionScopes.push(includeIgnored);
+      return envelope?.totals
         ? {
             metric,
             files: { value: 8, segments: [] },
             ignored: { value: 2, segments: [] },
           }
-        : null,
+        : null;
+    },
     (_container, _totals, _mb, metric) => {
       totalsMetrics.push(metric);
       return {
+        dispose() {},
         update() {},
         updateComposition(composition) {
           totalsCompositions.push(composition);
@@ -288,11 +292,12 @@ global.window = { METABROWSER_SETTINGS: {} };
   const totalsUpdatesBeforeScopeChange = totalsMetrics.length;
   publishControls({ metric: "size", includeIgnored: true });
   check(
-    "Show ignored changes only the breakdown population",
+    "Show ignored changes the breakdown population and shared composition ordering",
     totalsMetrics.length === totalsUpdatesBeforeScopeChange &&
       summaryModelCalls.at(-1).showIgnored === true &&
-      summaryModelCalls.at(-1).metric === "size",
-    JSON.stringify({ totalsMetrics, summaryModelCalls }),
+      summaryModelCalls.at(-1).metric === "size" &&
+      totalsCompositionScopes.at(-1) === true,
+    JSON.stringify({ totalsMetrics, summaryModelCalls, totalsCompositionScopes }),
   );
   publishControls({ metric: "files", includeIgnored: true });
   check(

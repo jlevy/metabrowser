@@ -19,6 +19,7 @@ class Element {
     this.dataset = {};
     this.style = {};
     this.attributes = {};
+    this.listeners = {};
     this.scope = "";
     this.textContent = "";
     this._innerHTML = "";
@@ -39,6 +40,14 @@ class Element {
 
   setAttribute(name, value) {
     this.attributes[name] = String(value);
+  }
+
+  addEventListener(type, listener) {
+    this.listeners[type] = listener;
+  }
+
+  emit(type, event = {}) {
+    this.listeners[type]?.(event);
   }
 
   set innerHTML(value) {
@@ -69,11 +78,18 @@ global.document = { createElement: (tag) => new Element(tag) };
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
   );
+  const tooltipCalls = [];
   const mb = {
     countClass: () => "",
+    escapeHtml: (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;"),
     formatFileCount: (value) => `${value} files`,
     formatSize: (value) => `${value} B`,
     sizeClass: () => "",
+    tooltip: {
+      hide: () => tooltipCalls.push({ action: "hide" }),
+      move: (event) => tooltipCalls.push({ action: "move", event }),
+      show: (html, event) => tooltipCalls.push({ action: "show", event, html }),
+    },
   };
   const totals = module.normalizeFolderTotals({
     total_files: 100,
@@ -113,15 +129,47 @@ global.document = { createElement: (tag) => new Element(tag) };
     files: {
       value: 300,
       segments: [
-        { key: "family:python", paletteKey: "family:python", value: 180, share: 60 },
-        { key: "family:markdown", paletteKey: "family:markdown", value: 120, share: 40 },
+        {
+          key: "family:python",
+          label: "Python",
+          paletteKey: "family:python",
+          files: 18,
+          bytes: 180,
+          value: 180,
+          share: 60,
+        },
+        {
+          key: "family:markdown",
+          label: "Markdown",
+          paletteKey: "family:markdown",
+          files: 12,
+          bytes: 120,
+          value: 120,
+          share: 40,
+        },
       ],
     },
     ignored: {
       value: 200,
       segments: [
-        { key: "family:python", paletteKey: "family:python", value: 50, share: 25 },
-        { key: "family:javascript", paletteKey: "family:javascript", value: 150, share: 75 },
+        {
+          key: "family:python",
+          label: "Python",
+          paletteKey: "family:python",
+          files: 5,
+          bytes: 50,
+          value: 50,
+          share: 25,
+        },
+        {
+          key: "family:javascript",
+          label: "JavaScript",
+          paletteKey: "family:javascript",
+          files: 15,
+          bytes: 150,
+          value: 150,
+          share: 75,
+        },
       ],
     },
   };
@@ -143,6 +191,25 @@ global.document = { createElement: (tag) => new Element(tag) };
       ignoredTrack.children[0].style.width === "25%" &&
       ignoredTrack.children[1].style.width === "75%",
     `${ignoredTrack.children.length} Ignored segments`,
+  );
+  tooltipCalls.length = 0;
+  const hoverEvent = { clientX: 20, clientY: 30 };
+  filesTrack.children[0].emit("mouseover", hoverEvent);
+  filesTrack.children[0].emit("mousemove", hoverEvent);
+  filesTrack.children[0].emit("mouseout", hoverEvent);
+  check(
+    "semantic family segments reuse the shared nav tooltip",
+    tooltipCalls[0]?.action === "show" &&
+      tooltipCalls[0]?.html === "<strong>Python</strong><br>18 files · 180 B" &&
+      tooltipCalls[1]?.action === "move" &&
+      tooltipCalls[2]?.action === "hide",
+    JSON.stringify(tooltipCalls),
+  );
+  view.dispose();
+  check(
+    "disposing Files clears the shared tooltip",
+    tooltipCalls.at(-1)?.action === "hide",
+    JSON.stringify(tooltipCalls),
   );
   check(
     "ignored row reuses the shared dimmed-content token",

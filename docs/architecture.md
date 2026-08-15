@@ -126,6 +126,11 @@ The two-row Files summary always leads with unignored Files and follows with Ign
 The rows are disjoint and conserve the complete directory population.
 Each composition track normalizes its own row to 100% and segments it by the same
 top-level semantic file-type families shown in File Breakdown.
+Segment order also matches File Breakdown: registry group order first, then descending
+selected-metric value within each group for the active Show ignored scope.
+Both tracks use this one order so Files and Ignored remain directly comparable.
+Hovering a segment uses the shared body-portaled navigation tooltip with the semantic
+family name in bold and its exact disjoint-population file count and byte size below.
 The whole Ignored row uses the shared dimmed-content opacity applied to ignored
 navigation and Treemap entries.
 README is another contribution whose resolver checks the folder envelope and whose

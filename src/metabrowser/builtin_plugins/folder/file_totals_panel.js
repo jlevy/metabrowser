@@ -60,6 +60,7 @@ export function mountFileTotalsPanel(
         rollupEnvelope,
         mb.fileTypes,
         controlsState.metric,
+        controlsState.includeIgnored,
       );
       const paletteKeys = composition
         ? [
@@ -81,13 +82,15 @@ export function mountFileTotalsPanel(
     updateComposition();
   });
   const unsubscribeControls = rollupControls.subscribe((nextState) => {
-    if (nextState.metric !== controlsState.metric) {
-      controlsState = nextState;
-      totalsView.updateMetric(nextState.metric);
-      updateComposition();
-      return;
-    }
+    const metricChanged = nextState.metric !== controlsState.metric;
+    const populationChanged = nextState.includeIgnored !== controlsState.includeIgnored;
     controlsState = nextState;
+    if (metricChanged) {
+      totalsView.updateMetric(nextState.metric);
+    }
+    if (metricChanged || populationChanged) {
+      updateComposition();
+    }
   });
   const abort = () => dispose();
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -102,6 +105,7 @@ export function mountFileTotalsPanel(
     unsubscribeProjection();
     unsubscribeTotals();
     unmountMetricControls();
+    totalsView.dispose();
     projection.release();
     palette.release();
   }

@@ -90,9 +90,9 @@ async function main() {
     registry: { revision: 7, fingerprint: "registry-test" },
     totals: {
       allFiles: 13,
-      allBytes: 800,
-      unignoredFiles: 8,
-      unignoredBytes: 500,
+      allBytes: 900,
+      unignoredFiles: 7,
+      unignoredBytes: 350,
     },
     groups: [
       {
@@ -100,10 +100,17 @@ async function main() {
         families: [
           {
             id: "javascript",
-            allFiles: 7,
+            allFiles: 5,
             allBytes: 400,
-            unignoredFiles: 4,
-            unignoredBytes: 300,
+            unignoredFiles: 1,
+            unignoredBytes: 50,
+          },
+          {
+            id: "python",
+            allFiles: 2,
+            allBytes: 100,
+            unignoredFiles: 2,
+            unignoredBytes: 100,
           },
         ],
       },
@@ -145,34 +152,49 @@ async function main() {
     ],
     families: [
       { id: "javascript", label: "JavaScript", groupId: "code" },
+      { id: "python", label: "Python", groupId: "code" },
       { id: "markdown", label: "Markdown", groupId: "documentation" },
     ],
   };
-  const composition = model.buildFolderTotalsComposition(rollup, fileTypes, "size");
+  const composition = model.buildFolderTotalsComposition(rollup, fileTypes, "size", true);
   const filesSegments = composition.files.segments;
   const ignoredSegments = composition.ignored.segments;
   if (
     composition.metric !== "size" ||
-    composition.files.value !== 500 ||
-    composition.ignored.value !== 300 ||
+    composition.files.value !== 350 ||
+    composition.ignored.value !== 550 ||
     filesSegments.map((segment) => segment.label).join(",") !==
-      "JavaScript,Markdown,Other types,No extension" ||
+      "JavaScript,Python,Markdown,Other types,No extension" ||
     Math.abs(filesSegments.reduce((sum, segment) => sum + segment.share, 0) - 100) >
       SHARE_TOLERANCE ||
     Math.abs(ignoredSegments.reduce((sum, segment) => sum + segment.share, 0) - 100) >
       SHARE_TOLERANCE ||
     filesSegments[0].paletteKey !== "family:javascript" ||
+    filesSegments[0].files !== 1 ||
+    filesSegments[0].bytes !== 50 ||
     ignoredSegments.some((segment) => segment.label === "No extension")
   ) {
     throw new Error(`folder total composition is incorrect: ${JSON.stringify(composition)}`);
   }
 
-  const fileComposition = model.buildFolderTotalsComposition(rollup, fileTypes, "files");
+  const unignoredOrder = model.buildFolderTotalsComposition(rollup, fileTypes, "size", false);
   if (
-    fileComposition.files.value !== 8 ||
-    fileComposition.ignored.value !== 5 ||
-    fileComposition.files.segments.reduce((sum, segment) => sum + segment.value, 0) !== 8 ||
-    fileComposition.ignored.segments.reduce((sum, segment) => sum + segment.value, 0) !== 5
+    unignoredOrder.files.segments
+      .slice(0, 2)
+      .map((segment) => segment.label)
+      .join(",") !== "Python,JavaScript"
+  ) {
+    throw new Error(
+      `composition order did not match the unignored breakdown: ${JSON.stringify(unignoredOrder)}`,
+    );
+  }
+
+  const fileComposition = model.buildFolderTotalsComposition(rollup, fileTypes, "files", true);
+  if (
+    fileComposition.files.value !== 7 ||
+    fileComposition.ignored.value !== 6 ||
+    fileComposition.files.segments.reduce((sum, segment) => sum + segment.value, 0) !== 7 ||
+    fileComposition.ignored.segments.reduce((sum, segment) => sum + segment.value, 0) !== 6
   ) {
     throw new Error(
       `file-count composition does not conserve totals: ${JSON.stringify(fileComposition)}`,

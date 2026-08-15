@@ -1,6 +1,6 @@
 /** @typedef {{state: "pending" | "complete", totalFiles?: number, totalBytes?: number, unignoredFiles?: number, unignoredBytes?: number}} FolderTotals */
 /** @typedef {{files: number, bytes: number, filesText: string, bytesText: string}} FolderTotalsMetricRow */
-/** @typedef {{key: string, label: string, paletteKey: string, value: number, share: number}} FolderTotalsSegment */
+/** @typedef {{key: string, label: string, paletteKey: string, files: number, bytes: number, value: number, share: number}} FolderTotalsSegment */
 /** @typedef {{metric: "files" | "size", files: {value: number, segments: ReadonlyArray<FolderTotalsSegment>}, ignored: {value: number, segments: ReadonlyArray<FolderTotalsSegment>}}} FolderTotalsComposition */
 
 /** @param {unknown} value */
@@ -100,9 +100,10 @@ function populationValue(tally, metric, population) {
  * @param {ReturnType<import("./file_type_summary_model.js").normalizeRollupEnvelope> | null} envelope
  * @param {MetabrowserPublicFileTypeTaxonomyRuntime} fileTypes
  * @param {"files" | "size"} metric
+ * @param {boolean} includeIgnored
  * @returns {FolderTotalsComposition | null}
  */
-export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
+export function buildFolderTotalsComposition(envelope, fileTypes, metric, includeIgnored) {
   if (!envelope?.registry || !envelope.totals || !fileTypes) {
     return null;
   }
@@ -114,8 +115,8 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
     throw new TypeError("folder totals registry does not match the browser registry");
   }
   const selectedMetric = metric === "size" ? "size" : "files";
+  const sortPopulation = includeIgnored ? "all" : "files";
   const groups = new Map(envelope.groups.map((group) => [group.id, group]));
-  const groupOrder = new Map(fileTypes.groups.map((group, index) => [group.id, index]));
   const families = new Map(fileTypes.families.map((family) => [family.id, family]));
   /** @type {Array<{key: string, label: string, paletteKey: string, groupId: string, tally: {allFiles: number, allBytes: number, unignoredFiles: number, unignoredBytes: number}}>} */
   const candidates = [];
@@ -156,45 +157,50 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
       tally: envelope.specialTypes.remainingTypes,
     });
   }
-  candidates.sort((left, right) => {
-    const groupDifference =
-      (groupOrder.get(left.groupId) ?? Number.MAX_SAFE_INTEGER) -
-      (groupOrder.get(right.groupId) ?? Number.MAX_SAFE_INTEGER);
-    if (groupDifference !== 0) {
-      return groupDifference;
-    }
-    const primaryDifference =
-      populationValue(right.tally, selectedMetric, "all") -
-      populationValue(left.tally, selectedMetric, "all");
-    if (primaryDifference !== 0) {
-      return primaryDifference;
-    }
-    const secondaryMetric = selectedMetric === "files" ? "size" : "files";
-    return (
-      populationValue(right.tally, secondaryMetric, "all") -
-        populationValue(left.tally, secondaryMetric, "all") || left.key.localeCompare(right.key)
-    );
-  });
+  const orderedCandidates = fileTypes.groups.flatMap((group) =>
+    candidates
+      .filter((candidate) => candidate.groupId === group.id)
+      .sort((left, right) => {
+        const primaryDifference =
+          populationValue(right.tally, selectedMetric, sortPopulation) -
+          populationValue(left.tally, selectedMetric, sortPopulation);
+        if (primaryDifference !== 0) {
+          return primaryDifference;
+        }
+        const secondaryMetric = selectedMetric === "files" ? "size" : "files";
+        return (
+          populationValue(right.tally, secondaryMetric, sortPopulation) -
+            populationValue(left.tally, secondaryMetric, sortPopulation) ||
+          left.key.localeCompare(right.key)
+        );
+      }),
+  );
 
   /** @param {"files" | "ignored"} population */
   const buildPopulation = (population) => {
     const value = populationValue(totals, selectedMetric, population);
-    const segments = candidates
-      .map((candidate) => {
-        const segmentValue = populationValue(candidate.tally, selectedMetric, population);
-        return Object.freeze({
-          key: candidate.key,
-          label: candidate.label,
-          paletteKey: candidate.paletteKey,
-          value: segmentValue,
-          share: value === 0 ? 0 : (segmentValue / value) * 100,
-        });
-      })
-      .filter((segment) => segment.value > 0);
-    const segmentTotal = segments.reduce((sum, segment) => sum + segment.value, 0);
-    if (segmentTotal !== value) {
+    const populationFiles = populationValue(totals, "files", population);
+    const populationBytes = populationValue(totals, "size", population);
+    const allSegments = orderedCandidates.map((candidate) => {
+      const files = populationValue(candidate.tally, "files", population);
+      const bytes = populationValue(candidate.tally, "size", population);
+      const segmentValue = selectedMetric === "files" ? files : bytes;
+      return Object.freeze({
+        key: candidate.key,
+        label: candidate.label,
+        paletteKey: candidate.paletteKey,
+        files,
+        bytes,
+        value: segmentValue,
+        share: value === 0 ? 0 : (segmentValue / value) * 100,
+      });
+    });
+    const segmentFiles = allSegments.reduce((sum, segment) => sum + segment.files, 0);
+    const segmentBytes = allSegments.reduce((sum, segment) => sum + segment.bytes, 0);
+    if (segmentFiles !== populationFiles || segmentBytes !== populationBytes) {
       throw new TypeError(`${population} file-type segments do not conserve folder totals`);
     }
+    const segments = allSegments.filter((segment) => segment.value > 0);
     return Object.freeze({ value, segments: Object.freeze(segments) });
   };
 
@@ -310,6 +316,12 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
         fill.className = `file-type-summary-fill ${palette.classFor(segment.paletteKey)}`;
         fill.dataset.segmentKey = segment.key;
         fill.style.width = `${segment.share}%`;
+        const tooltip = `<strong>${mb.escapeHtml(segment.label)}</strong><br>${mb.formatFileCount(
+          segment.files,
+        )} · ${mb.formatSize(segment.bytes)}`;
+        fill.addEventListener("mouseover", (event) => mb.tooltip.show(tooltip, event));
+        fill.addEventListener("mousemove", (event) => mb.tooltip.move(event));
+        fill.addEventListener("mouseout", () => mb.tooltip.hide());
         return fill;
       }),
     );
@@ -328,6 +340,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   }
 
   function render() {
+    mb.tooltip.hide();
     const model = buildFolderTotalsModel(currentTotals, mb);
     if (model.state === "pending") {
       table = null;
@@ -373,6 +386,11 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     render();
   }
 
+  function dispose() {
+    mb.tooltip.hide();
+    root.replaceChildren();
+  }
+
   render();
-  return Object.freeze({ update, updateComposition, updateMetric });
+  return Object.freeze({ dispose, update, updateComposition, updateMetric });
 }

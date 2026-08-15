@@ -203,6 +203,8 @@ The data selection must account for both dimensions before the UI is trustworthy
    because each row defines its own 100% population.
    A type keeps the same color when the selected metric changes, and the rollup-tail
    Other row remains neutral.
+   The two composition tracks follow the breakdown’s registry group order and selected-
+   metric rank within each group.
 8. **The server preserves the complete semantic category population.** Known families
    retain their contributing extensions.
    No extension basenames and unknown exact extensions use independently bounded
@@ -215,9 +217,11 @@ The data selection must account for both dimensions before the UI is trustworthy
 10. **Show ignored changes the detailed population, not its context.** The shared
     labelled checkbox starts checked when no preference exists.
     Unchecking it switches File Breakdown and Treemap to unignored data.
-    The explicit Files and Ignored totals remain disjoint and visible in either scope.
-    Recency, type, and size navigation filters do not change the directory composition
-    summary.
+    It also sorts both top composition tracks against the same active breakdown
+    population, while retaining one shared segment order across the Files and Ignored
+    rows. The explicit Files and Ignored totals remain disjoint and visible in either
+    scope. Recency, type, and size navigation filters do not change the directory
+    composition summary.
 11. **Overview sections declare their own initial disclosure state.** Files and README
     start expanded; File Breakdown starts collapsed.
     The composer renders each label with the same prominent uppercase section-heading
@@ -243,6 +247,10 @@ The data selection must account for both dimensions before the UI is trustworthy
     Fills are decorative, do not become tab stops, and are hidden from the accessibility
     tree. Color is never the only path to the data.
     Type labels are bold scan anchors.
+    Top composition segments add supplemental hover-only tooltips using the shared
+    navigation primitive.
+    Each tooltip puts the semantic family name in bold, then reports that segment’s
+    exact file count and byte size for its disjoint Files or Ignored population.
     Files and Bytes tallies use the navigation panel’s shared count and byte emphasis
     classes, including the Files and Ignored rows; row roles do not override the
     magnitude-driven numeric weight.
@@ -280,6 +288,8 @@ The data selection must account for both dimensions before the UI is trustworthy
     The rows are disjoint and remain visible for either scope.
     Each nonzero row is its own 100% denominator and receives a full-width track
     segmented by the same top-level type colors as File Breakdown.
+    Segments are semantic families rather than individual extensions and use File
+    Breakdown’s group-first, active-metric ordering.
     It shows only the selected-metric tally, with no redundant percentage.
     The whole Ignored row uses the shared dimmed-content token.
     A zero-byte population truthfully uses `0 B` and no fill.
@@ -1741,7 +1751,10 @@ empty, root, and nested folders alike.
 - Files shows disjoint Files and Ignored rows whose selected-metric values conserve the
   complete directory population.
   Each nonzero row is a full-width composition segmented with File Breakdown’s colors,
-  has no percentage label, and the Ignored row is dimmed
+  has no percentage label, and the Ignored row is dimmed.
+  Both tracks share File Breakdown’s registry-group and selected-metric order, and each
+  semantic-family segment exposes the bold type name plus exact count and byte size in
+  the shared navigation tooltip
 - File Breakdown shows a fixed Type/Metric table grouped under the recommended registry
   categories, omitting empty groups and adding no group subtotals
 - Each breakdown row shows its logical type, selected-metric value,

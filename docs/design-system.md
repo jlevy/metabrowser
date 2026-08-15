@@ -520,8 +520,9 @@ the same mounted mapping when both views exist.
 The semantic table is the visual summary and the source of exact values.
 Every row names its category and reports absolute values and percentages; the colored
 fills need no separate circle or legend.
-Fills do not become tab stops or add duplicate tooltips and are hidden from the
-accessibility tree. Labels never rely on color or place text on a category fill.
+Detailed breakdown fills do not become tab stops or add duplicate tooltips and are
+hidden from the accessibility tree.
+Labels never rely on color or place text on a category fill.
 
 File types uses non-subtotaling row groups in the server registry’s order: Code,
 Documentation, Data, Logs, Archives, Media, and Other.
@@ -584,6 +585,15 @@ directory. Each row displays one absolute selected-metric tally and treats its o
 population as 100%, so no percentage column appears.
 Its full-width track is segmented by the top-level semantic file types in File Breakdown
 and reuses their mounted palette assignments.
+The segments follow registry group order and then descend by the selected Files or Bytes
+measure within each group.
+Sorting uses the population selected by Show ignored, and both Files and Ignored tracks
+keep that same order for comparison.
+Hovering a colored segment uses the shared body-portaled navigation tooltip: the bold
+semantic family name is the first line, followed by the exact file count and byte size
+for that row’s disjoint population.
+These supplemental hover tooltips do not create tab stops; the expanded File Breakdown
+remains the accessible source for the same values.
 The Ignored row dims its label, tally, track, and colors through
 `--dimmed-content-opacity`, the same token used by ignored navigation and Treemap
 entries.
@@ -601,7 +611,8 @@ The **File Breakdown** section follows Files and begins collapsed.
 It contains the full type distribution and starts with the same labelled `.filter-check`
 **Show ignored** checkbox used by navigation.
 Show ignored begins checked when there is no saved preference and changes only the
-breakdown population; it never changes or hides the explicit Files and Ignored totals.
+breakdown population and the matching top-track segment order; it never changes or hides
+the explicit Files and Ignored totals.
 File Breakdown does not render another metric chooser.
 Both sections observe the same state object, so the Files / Bytes choice in Files
 atomically updates the totals and the complete breakdown, including while the breakdown
