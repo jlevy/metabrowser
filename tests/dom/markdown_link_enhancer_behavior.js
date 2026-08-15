@@ -140,11 +140,24 @@ async function loadModule() {
     "utf8",
   );
   const wikiResolverUrl = `data:text/javascript;base64,${Buffer.from(wikiResolverSource).toString("base64")}`;
+  const wikiParserSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_parser.js"),
+    "utf8",
+  );
+  const wikiParserUrl = `data:text/javascript;base64,${Buffer.from(wikiParserSource).toString("base64")}`;
+  const transclusionSource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
+      "utf8",
+    )
+    .replace('"./wiki_parser.js"', JSON.stringify(wikiParserUrl));
+  const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
   const wikiEnhancerSource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_enhancer.js"),
       "utf8",
     )
+    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace('"./wiki_resolver.js"', JSON.stringify(wikiResolverUrl));
   const wikiEnhancerUrl = `data:text/javascript;base64,${Buffer.from(wikiEnhancerSource).toString("base64")}`;
   const enhancerSource = fs
@@ -155,6 +168,7 @@ async function loadModule() {
     .replace('"./github_localizer.js"', JSON.stringify(githubLocalizerUrl))
     .replace('"./links.js"', JSON.stringify(linksUrl))
     .replace('"./project_adapters.js"', JSON.stringify(projectAdaptersUrl))
+    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace('"./wiki_enhancer.js"', JSON.stringify(wikiEnhancerUrl));
   return import(`data:text/javascript;base64,${Buffer.from(enhancerSource).toString("base64")}`);
 }

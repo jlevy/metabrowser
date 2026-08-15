@@ -37,8 +37,9 @@ on refresh, and with browser back and forward.
 The implemented baseline covers standard Markdown links, images, headings, canonical
 routes, history, and clear broken-link states together with an automatic Obsidian
 Markdown-plugin adapter for wiki links, headings, named blocks, attachments, and media
-embeds. Rich transclusion, backlinks, and generator-specific compilation remain later
-capabilities without weakening the navigation contract.
+embeds. The extension phase adds configured static-site adapters, verified
+same-repository GitHub URL localization, bounded note transclusion, backlinks, and graph
+analysis without weakening the navigation contract.
 
 ## Questions Answered
 
@@ -131,8 +132,11 @@ Wiki targets add optional `.md` lookup and a vault-wide basename or path-suffix 
 only when the result is unique.
 Duplicate note names remain ambiguous and are never resolved by arbitrary ordering.
 Heading and named-block targets map to stable source-derived anchors in the rendered
-document. Image and media embeds use the bounded safe-resource path; recursive note
-transclusion, backlinks, and graph indexing remain later work.
+document. Image and media embeds use the bounded safe-resource path.
+Whole-note, heading-section, and named-block transclusion reuse KPress and the same
+resolved target under shared recursion, cycle, source-byte, elapsed-time, abort, and
+disposal limits. Bounded backlink and graph analysis reuse the click-time resolvers over
+an immutable catalog snapshot.
 
 Exact source-directory, explicit relative, and explicit vault-root results may resolve
 while the file catalog is still growing.

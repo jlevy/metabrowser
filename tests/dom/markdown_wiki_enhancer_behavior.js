@@ -13,6 +13,7 @@ function check(name, condition, detail = "failed") {
 class FakeElement {
   constructor(tagName, attributes = {}, textContent = "") {
     this.attributes = new Map(Object.entries(attributes));
+    this.innerHTML = "";
     this.parentElement = null;
     this.tagName = tagName.toUpperCase();
     this.textContent = textContent;
@@ -56,6 +57,18 @@ class FakeContainer extends FakeElement {
 }
 
 async function loadModule() {
+  const parserSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_parser.js"),
+    "utf8",
+  );
+  const parserUrl = `data:text/javascript;base64,${Buffer.from(parserSource).toString("base64")}`;
+  const transclusionSource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
+      "utf8",
+    )
+    .replace('"./wiki_parser.js"', JSON.stringify(parserUrl));
+  const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
   const resolverSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_resolver.js"),
     "utf8",
@@ -66,6 +79,7 @@ async function loadModule() {
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki_enhancer.js"),
       "utf8",
     )
+    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace('"./wiki_resolver.js"', JSON.stringify(resolverUrl));
   return import(`data:text/javascript;base64,${Buffer.from(enhancerSource).toString("base64")}`);
 }
@@ -120,6 +134,8 @@ async function loadModule() {
   let unsubscribeCount = 0;
   const registered = [];
   const mb = {
+    fetchKpressRender: async () => ({ html: '<article class="kpress">Embedded</article>' }),
+    fetchText: async () => "# Embedded note\n",
     fileCatalog: {
       snapshot: () => ({ complete, files }),
       subscribe: (listener) => {
@@ -162,15 +178,12 @@ async function loadModule() {
     renderedImage.getAttribute("width") === "640" && renderedImage.getAttribute("height") === "480",
   );
   check("image accessible label", renderedImage.getAttribute("alt") === "Diagram");
-  const noteFallback = container.elements[5];
-  check("note transclusion fallback link", noteFallback.tagName === "A");
+  const noteTransclusion = container.elements[5];
+  check("note transclusion region", noteTransclusion.tagName === "ASIDE");
+  await new Promise((resolve) => setImmediate(resolve));
   check(
-    "note transclusion fallback target",
-    noteFallback.getAttribute("href") === "/view/docs/Exact.md",
-  );
-  check(
-    "note transclusion explicit",
-    noteFallback.getAttribute("data-metabrowser-link-status") === "unsupported",
+    "note transclusion rendered",
+    noteTransclusion.getAttribute("data-metabrowser-transclusion-status") === "ready",
   );
 
   complete = true;
@@ -188,7 +201,7 @@ async function loadModule() {
   );
   check("missing remains visible", missing.textContent.includes("missing link"));
   check("subscription released after settling", catalogListener === null && unsubscribeCount === 1);
-  check("navigation registrations", registered.length === 3);
+  check("navigation registrations", registered.length === 2);
   handle.dispose();
   check("settled disposal is idempotent", unsubscribeCount === 1);
 

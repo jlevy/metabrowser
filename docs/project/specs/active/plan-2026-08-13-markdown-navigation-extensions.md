@@ -122,6 +122,10 @@ Acceptance criteria:
 
 ### Bounded Obsidian Transclusion (`mb-55ll`)
 
+**Status:** Implemented and verified with deterministic source selection, safe KPress
+rendering, recursive link enhancement, accessible failures, and shared lifecycle and
+resource budgets.
+
 Whole-note, heading, and named-block wiki embeds render through the existing safe KPress
 boundary after deterministic wiki resolution.
 

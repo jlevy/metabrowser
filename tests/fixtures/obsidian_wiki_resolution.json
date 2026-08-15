@@ -117,12 +117,12 @@
       "expected": { "status": "internal", "path": "assets/song.mp3", "mediaKind": "audio" }
     },
     {
-      "id": "note-transclusion-is-explicitly-future",
+      "id": "note-transclusion",
       "intent": { "authoredTarget": "Note", "action": "embed" },
       "expected": {
-        "status": "unsupported",
-        "reason": "note-transclusion-not-supported",
-        "path": "docs/Note.md"
+        "status": "internal",
+        "path": "docs/Note.md",
+        "mediaKind": "markdown"
       }
     },
     {

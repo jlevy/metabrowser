@@ -202,7 +202,7 @@ function parseMediaSize(value) {
 }
 
 /** @param {string} line */
-function findNamedBlock(line) {
+export function findNamedBlock(line) {
   const match = /(?:^|\s+)\^([A-Za-z0-9-]+)\s*$/.exec(line);
   if (!match || insideInlineCode(line, match.index)) {
     return null;
@@ -211,7 +211,7 @@ function findNamedBlock(line) {
 }
 
 /** @param {string} line @param {string} nextLine */
-function findMarkdownHeading(line, nextLine) {
+export function findMarkdownHeading(line, nextLine) {
   const match = /^ {0,3}(#{1,6})[\t ]+(.+?)[\t ]*#*[\t ]*$/.exec(line);
   if (match) {
     const text = headingText(match[2]);

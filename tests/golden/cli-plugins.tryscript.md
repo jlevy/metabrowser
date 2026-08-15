@@ -183,9 +183,11 @@ assets in static_root:
   - link_scanner.js
   - links.js
   - manifest.toml
+  - markdown.css
   - project_adapters.js
   - rendered.js
   - source.js
+  - transclusion.js
   - wiki_enhancer.js
   - wiki_parser.js
   - wiki_resolver.js
@@ -245,9 +247,11 @@ $ metab --plugin markdown --json
       "link_scanner.js",
       "links.js",
       "manifest.toml",
+      "markdown.css",
       "project_adapters.js",
       "rendered.js",
       "source.js",
+      "transclusion.js",
       "wiki_enhancer.js",
       "wiki_parser.js",
       "wiki_resolver.js"

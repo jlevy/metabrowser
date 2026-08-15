@@ -71,7 +71,8 @@ read Markdown docs.
   same exact path semantics as GitHub, including headings, spaces, Unicode, images, and
   other local resources.
   Obsidian wiki links add deterministic note, heading, named-block, attachment, and
-  media navigation, with visible missing or ambiguous states instead of guessed paths.
+  media navigation, plus bounded whole-note, heading, and block transclusion with
+  visible missing or ambiguous states instead of guessed paths.
   Each selected file has a reloadable `/view/<path>` URL, so native new-tab, copy-link,
   and browser history behavior works without configuration.
 

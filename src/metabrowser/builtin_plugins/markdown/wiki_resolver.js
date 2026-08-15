@@ -275,21 +275,13 @@ function basename(path) {
 
 /** @param {string} path @param {"navigate" | "embed"} action @param {string | undefined} fragment */
 function internalResult(path, action, fragment) {
-  if (action === "embed" && path.toLowerCase().endsWith(".md")) {
-    return Object.freeze({
-      status: /** @type {const} */ ("unsupported"),
-      reason: "note-transclusion-not-supported",
-      path,
-      ...(fragment ? { fragment } : {}),
-    });
-  }
-  /** @type {{status: "internal", path: string, fragment?: string, mediaKind?: "image" | "audio" | "video" | "resource"}} */
+  /** @type {{status: "internal", path: string, fragment?: string, mediaKind?: "markdown" | "image" | "audio" | "video" | "resource"}} */
   const result = { status: "internal", path };
   if (fragment) {
     result.fragment = fragment;
   }
   if (action === "embed") {
-    result.mediaKind = mediaKindForPath(path);
+    result.mediaKind = path.toLowerCase().endsWith(".md") ? "markdown" : mediaKindForPath(path);
   }
   return Object.freeze(result);
 }

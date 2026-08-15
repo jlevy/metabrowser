@@ -309,7 +309,10 @@
     }
     const completed = await fetchTextEnvelope(normalized.path, limit, opts?.signal, "fetchText");
     if (completed.content_truncated === true) {
-      throw new Error(`fetchText ${normalized.path}: source exceeds the server read limit`);
+      throw Object.assign(
+        new Error(`fetchText ${normalized.path}: source exceeds the server read limit`),
+        { code: "source-too-large" },
+      );
     }
     return completed.content;
   }

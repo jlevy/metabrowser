@@ -20,7 +20,7 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
- * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void}=} options
+ * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<string>}=} options
  */
 export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const eventTarget = options.eventTarget ?? window;
@@ -140,9 +140,28 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     }
   }
 
-  const wiki = enhanceWikiLinks(container, sourcePath, mb, (element, target) => {
-    internalTargets.set(element, target);
-  });
+  const wiki = enhanceWikiLinks(
+    container,
+    sourcePath,
+    mb,
+    (element, target) => {
+      internalTargets.set(element, target);
+    },
+    {
+      budget: options.transclusionBudget,
+      chain: options.transclusionChain,
+      signal: options.signal,
+      enhanceNested: (nestedContainer, nestedSourcePath, nestedOptions) =>
+        enhanceRenderedLinks(nestedContainer, nestedSourcePath, mb, {
+          cancel,
+          eventTarget,
+          schedule,
+          signal: nestedOptions.signal,
+          transclusionBudget: nestedOptions.budget,
+          transclusionChain: nestedOptions.chain,
+        }),
+    },
+  );
 
   /** @param {Event} event */
   function handleClick(event) {

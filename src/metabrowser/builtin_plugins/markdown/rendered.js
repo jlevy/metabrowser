@@ -132,7 +132,9 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         container.innerHTML = rendered.html;
         injectDiagnostics(container, rendered.diagnostics || [], mb);
         if (ctx.path) {
-          disposeLinks = enhanceRenderedLinks(container, ctx.path, mb).dispose;
+          disposeLinks = enhanceRenderedLinks(container, ctx.path, mb, {
+            signal: controller.signal,
+          }).dispose;
         }
         disposeToc = mb.kpressInitToc(container);
       }

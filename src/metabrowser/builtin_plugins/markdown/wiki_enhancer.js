@@ -1,3 +1,4 @@
+import { createTransclusionBudget, mountWikiTransclusion } from "./transclusion.js";
 import { resolveWikiTarget } from "./wiki_resolver.js";
 
 const MAX_WIKI_ELEMENTS = 4096;
@@ -10,9 +11,12 @@ const MAX_ANNOUNCED_CANDIDATES = 20;
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
  * @param {(element: Element, target: Readonly<{path: string, fragment?: string}>) => void} registerInternal
+ * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<string>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<string>, signal: AbortSignal}) => {dispose?: () => void}}=} options
  */
-export function enhanceWikiLinks(container, sourcePath, mb, registerInternal) {
+export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, options = {}) {
   const pending = new Set(boundedElements(container.querySelectorAll("[data-mb-wiki-target]")));
+  const transclusions = new Set();
+  let budget = options.budget || null;
   let disposed = false;
   /** @type {(() => void) | null} */
   let unsubscribe = null;
@@ -36,38 +40,26 @@ export function enhanceWikiLinks(container, sourcePath, mb, registerInternal) {
       }
       pending.delete(element);
       if (resolved.status === "internal") {
-        const replacement =
-          action === "embed"
-            ? createMediaElement(container, element, resolved)
-            : createNavigationAnchor(container, element, resolved, mb);
-        element.replaceWith(replacement);
-        if (action === "navigate") {
-          registerInternal(replacement, navigationTarget(resolved));
+        if (action === "embed" && resolved.mediaKind === "markdown") {
+          budget ||= createTransclusionBudget();
+          transclusions.add(
+            mountWikiTransclusion(container, element, resolved, mb, {
+              budget,
+              chain: options.chain,
+              enhanceNested: options.enhanceNested,
+              signal: options.signal,
+            }),
+          );
+        } else {
+          const replacement =
+            action === "embed"
+              ? createMediaElement(container, element, resolved)
+              : createNavigationAnchor(container, element, resolved, mb);
+          element.replaceWith(replacement);
+          if (action === "navigate") {
+            registerInternal(replacement, navigationTarget(resolved));
+          }
         }
-      } else if (
-        resolved.reason === "note-transclusion-not-supported" &&
-        "path" in resolved &&
-        typeof resolved.path === "string"
-      ) {
-        const fallbackTarget = Object.freeze({
-          path: resolved.path,
-          ...("fragment" in resolved && typeof resolved.fragment === "string"
-            ? { fragment: resolved.fragment }
-            : {}),
-        });
-        const replacement = createNavigationAnchor(container, element, fallbackTarget, mb);
-        replacement.setAttribute("data-metabrowser-link-status", resolved.status);
-        replacement.setAttribute(
-          "title",
-          "Whole-note transclusion is not supported; open the note instead.",
-        );
-        replacement.setAttribute(
-          "aria-label",
-          `${labelFor(element)}. Whole-note transclusion is not supported; open the note instead.`,
-        );
-        replacement.textContent = `${labelFor(element)} (open note)`;
-        element.replaceWith(replacement);
-        registerInternal(replacement, navigationTarget(fallbackTarget));
       } else {
         describeUnresolved(element, resolved);
       }
@@ -90,6 +82,10 @@ export function enhanceWikiLinks(container, sourcePath, mb, registerInternal) {
       }
       disposed = true;
       pending.clear();
+      for (const transclusion of transclusions) {
+        transclusion.dispose();
+      }
+      transclusions.clear();
       unsubscribe?.();
       unsubscribe = null;
     },
@@ -105,10 +101,11 @@ function createNavigationAnchor(container, source, resolved, mb) {
   return anchor;
 }
 
-/** @param {HTMLElement} container @param {Element} source @param {{path: string, fragment?: string, mediaKind?: "image" | "audio" | "video" | "resource"}} resolved */
+/** @param {HTMLElement} container @param {Element} source @param {{path: string, fragment?: string, mediaKind?: "markdown" | "image" | "audio" | "video" | "resource"}} resolved */
 function createMediaElement(container, source, resolved) {
   const document = ownerDocument(container);
-  const kind = resolved.mediaKind || "resource";
+  const kind =
+    !resolved.mediaKind || resolved.mediaKind === "markdown" ? "resource" : resolved.mediaKind;
   const resource = document.createElement(
     kind === "resource" ? "a" : kind === "image" ? "img" : kind,
   );

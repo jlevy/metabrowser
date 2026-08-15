@@ -54,7 +54,10 @@ Its source-aware Obsidian adapter preserves escaped and code contexts, maps wiki
 to exact paths or completion-aware unique inventory results, and creates stable heading
 and named-block anchors before rendering.
 Missing and ambiguous wiki targets remain visible; media wiki embeds reuse `/raw`, and
-whole-note transclusion remains explicit unsupported future work.
+note, heading, and named-block transclusion returns through KPress with shared depth,
+document, source-byte, elapsed-time, cycle, abort, and disposal limits.
+The plugin also exposes bounded immutable graph analysis through the SDK; visualization
+remains outside the resolver.
 The shell remains Markdown-dialect agnostic: the plugin intercepts only plain primary
 activation through the public navigation SDK, while modifier clicks, new tabs,
 downloads, external URLs, and ordinary not-found handling retain browser behavior.

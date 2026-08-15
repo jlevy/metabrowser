@@ -50,7 +50,7 @@
               },
               "path": { "type": "string" },
               "fragment": { "type": "string" },
-              "mediaKind": { "enum": ["image", "audio", "video", "resource"] },
+              "mediaKind": { "enum": ["markdown", "image", "audio", "video", "resource"] },
               "reason": { "type": "string" },
               "candidates": { "type": "array", "items": { "type": "string" } }
             },

@@ -411,7 +411,9 @@ The Markdown built-in exposes
 `mb.builtins.markdown.mountRendered(container, ctx, {signal})` for a document panel.
 It uses the ordinary KPress Markdown presentation and returns an instance-specific
 handle that aborts its request and disposes its own table of contents, enhanced-link
-listeners, and pending fragment work.
+listeners, pending fragment work, and any nested Obsidian transclusions.
+Note, heading, and named-block transclusions share depth, document, source-byte,
+elapsed-time, cycle, abort, and disposal limits across the mounted document.
 `mb.builtins.markdown.analyzeGraph({signal, limits})` returns a bounded immutable
 snapshot of Markdown nodes, resolved edges, unresolved destinations, backlinks,
 diagnostics, aggregate source bytes, and an explicit completeness flag.
