@@ -183,7 +183,7 @@
 }
 
 .tm-ignored {
-  opacity: 0.45;
+  opacity: var(--dimmed-content-opacity);
 }
 
 .tm-rest {

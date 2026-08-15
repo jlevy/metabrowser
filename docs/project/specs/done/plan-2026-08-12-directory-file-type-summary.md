@@ -11,39 +11,36 @@
 Metabrowser should make every folder a useful destination, not merely a container that
 redirects to a README or one specialized visualization.
 Selecting a folder opens an **Overview** tab composed from independent, ordered panels.
-The built-in **File types** panel is always present, a direct-child README contributes a
-document panel when one exists, and future capabilities such as License can contribute
-their own panels without rewriting Overview.
+The built-in **Files** and **File Breakdown** panels are always present, a direct-child
+README contributes a document panel when one exists, and future capabilities such as
+License can contribute their own panels without rewriting Overview.
 
-The File types panel adopts the compact proportional grammar that makes GitHub’s
-repository language panel useful, but describes the files Metabrowser actually indexes
-rather than inferring programming languages.
-One structured table groups rows under **Documentation**, **Code**, **Data**, and
-**Other** and compares two metrics:
-
-- **Files** shows the absolute file count, a bar normalized to total indexed files, and
-  the percentage
-- **Size** shows formatted bytes, a bar normalized to total indexed bytes, and the
-  percentage
+File Breakdown adopts the compact proportional grammar that makes GitHub’s repository
+language panel useful, but describes the files Metabrowser actually indexes rather than
+inferring programming languages.
+One selected Files or Bytes metric drives every folder rollup view.
+The structured table groups rows under the File Rollup Format groups and shows an
+absolute value, a bar normalized to the selected population, and a percentage.
 
 For example:
 
 ```text
+FILES
+Files      250 files  ████████████████████████████████████████
+Ignored     18 files  ████████████████████████████████████████
+
+FILE BREAKDOWN
 CODE
-.py     150 files  ██████       12%     10 MB  ███████████████  30%
+Python     150 files  ████████████████████████                 60%
 
 DOCUMENTATION
-.md      63 files  ██            5%      1 MB  ██                3%
-
-OTHER
-.bin      1 file   ▏          <0.1%    512 KB  █               1.5%
-
-Total   250 files  ██████████  100%     33 MB  ███████████████ 100%
+Markdown    63 files  ██████████                               25.2%
 ```
 
-The two fills on a row use the same stable type color, so the user can compare how a
-type’s prevalence changes between count and size without matching an aggregate bar to a
-separate legend. Group headings add scan structure but no new aggregation.
+The Files and Ignored tracks are separately normalized compositions segmented by the
+same stable file-type colors used below.
+Files means unignored files; Ignored is the excluded population.
+Group headings add scan structure but no new aggregation.
 The panel consumes the folder rollup’s extension tallies and live refresh path.
 It starts no second filesystem crawl.
 An empty folder still has Overview and File types; the panel shows a concise empty state
@@ -58,7 +55,8 @@ Opening `README.md` itself continues to show only the ordinary Markdown file vie
 
 ## Goals
 
-- Make count-heavy and byte-heavy file types visible at the same time
+- Make count-heavy and byte-heavy file types easy to compare through one shared,
+  immediately switchable metric
 - Use Metabrowser’s indexed logical file types, including documents, data, images,
   source, archives, and extensionless files
 - Preserve GitHub’s useful visual grammar of proportional bars and stable category
@@ -75,8 +73,9 @@ Opening `README.md` itself continues to show only the ordinary Markdown file vie
 - Reuse `/api/rollup`, `ext_tallies`, `watchRollup`, and the existing inventory event
   stream, with a bounded tally-only response
 - Keep partial, truncated, empty, zero-byte, and failed states honest
-- Keep File types and README compact, document-aligned sections with the same visible
-  heading hierarchy and shared, initially expanded disclosure behavior
+- Keep Files, File Breakdown, and README compact, document-aligned sections with the
+  same visible heading hierarchy; Files and README begin expanded and File Breakdown
+  begins collapsed
 
 ## Non-Goals
 
@@ -199,7 +198,9 @@ The data selection must account for both dimensions before the UI is trustworthy
    symlinks do not contribute to file or byte totals.
 7. **One selected metric controls every file rollup display.** The Files / Bytes chooser
    in Files switches the totals, File Breakdown, and Treemap together.
-   Each visible row has one absolute value, normalized bar, and percentage.
+   Each File Breakdown row has one absolute value, normalized bar, and percentage.
+   Files and Ignored each have one absolute value and a full-width composition track,
+   because each row defines its own 100% population.
    A type keeps the same color when the selected metric changes, and the rollup-tail
    Other row remains neutral.
 8. **The server preserves the complete semantic category population.** Known families
@@ -236,9 +237,9 @@ The data selection must account for both dimensions before the UI is trustworthy
     remain plain text. Family, No extension, Other types, Files, and Ignored parents stay
     iconless; unknown exact extension children use the generic blank-page icon, and
     Other uses a neutral token.
-13. **The table is both visual summary and exact source.** Every selected-metric cell
-    contains a right-aligned absolute value, a left-to-right proportional track, and a
-    right-aligned percentage.
+13. **File Breakdown is both visual summary and exact source.** Every selected-metric
+    cell contains a right-aligned absolute value, a left-to-right proportional track,
+    and a right-aligned percentage.
     Fills are decorative, do not become tab stops, and are hidden from the accessibility
     tree. Color is never the only path to the data.
     Type labels are bold scan anchors.
@@ -257,13 +258,17 @@ The data selection must account for both dimensions before the UI is trustworthy
     other host controls.
     README is printable, so printing Overview prints the ordinary rendered document
     without the summary or empty panel slots.
-16. **Known partial data is useful but labelled.** During scanning, the panel renders
-    percentages over indexed-so-far data and shows a quiet progressive status.
-    On terminal truncation it retains a persistent scope warning.
-    It never turns a pending rollup into an empty directory.
-17. **One watch belongs to each mounted summary.** It uses `watchRollup` with the view’s
-    active gate, aborts in-flight work on disposal, and updates keyed rows in place.
-    Hidden lazy views do not keep polling, and updates preserve keyed rows and fills.
+16. **Partial rollups do not become partial visualizations.** During scanning, File
+    Breakdown and Treemap retain their loading grammar rather than painting
+    indexed-so-far rows or rectangles.
+    On terminal truncation the completed view retains a persistent scope warning.
+    Pending data never becomes an empty directory.
+17. **One Overview watch supplies both file panels.** File Breakdown owns one
+    `watchRollup` with the view’s active gate, aborts in-flight work on disposal, and
+    updates keyed rows in place.
+    It publishes validated terminal envelopes through a ref-counted, per-directory
+    projection pool. Files subscribes to that projection, so its composition adds no
+    request and never reaches into sibling DOM.
 18. **Code, Documentation, Data, Logs, Archives, Media, and Other are presentation
     groups, not new rollups.** They reuse the shared recommended file-type definitions.
     Compound extensions inherit the longest recognized suffix.
@@ -272,9 +277,12 @@ The data selection must account for both dimensions before the UI is trustworthy
     Empty groups are omitted and group headings carry no subtotal.
 19. **Files presents stable population context.** Its Files row reports the unignored
     population and its Ignored row reports the excluded population.
-    The rows are disjoint, use the complete directory as their denominator, and remain
-    visible for either scope.
-    A zero-byte population truthfully uses `0 B`, `0%`, and no fill.
+    The rows are disjoint and remain visible for either scope.
+    Each nonzero row is its own 100% denominator and receives a full-width track
+    segmented by the same top-level type colors as File Breakdown.
+    It shows only the selected-metric tally, with no redundant percentage.
+    The whole Ignored row uses the shared dimmed-content token.
+    A zero-byte population truthfully uses `0 B` and no fill.
 20. **Treemap is the hierarchy view, with one metric and one scope choice.** It always
     lays out folders and files; the File types panel replaces the former type-grouping
     mode, and extension color replaces the former age-color mode.
@@ -326,8 +334,8 @@ File Breakdown is collapsed initially and is expanded here to show its contents:
 ```text
 FILES
 ──────────────────────────────────────────────────────────────
-Files      1,175 files ███████████████████████████████████ 94%
-Ignored       75 files ██                                          6%
+Files      1,175 files ████████████████████████████████████████
+Ignored       75 files ████████████████████████████████████████
 
 FILE BREAKDOWN
 ──────────────────────────────────────────────────────────────
@@ -615,7 +623,8 @@ The shell’s existing live folder-envelope refresh publishes updated context th
 supported SDK subscription.
 Overview re-runs panel resolvers when direct-child facts can change, reusing that
 refresh rather than starting one fetch per panel.
-The File types panel continues to use its rollup watch for aggregate updates.
+File Breakdown continues to use its rollup watch for aggregate updates and publishes
+validated terminal envelopes to the shared Files projection.
 Changing folders disposes the folder-context subscription, every panel resolver, summary
 watch, filter subscription, Retry handler, and Markdown TOC instance.
 Switching between Overview and Treemap follows the existing lazy view lifecycle.
@@ -628,8 +637,10 @@ Switching between Overview and Treemap follows the existing lazy view lifecycle.
 - Collapsing an Overview panel hides its body without disposing or remounting it.
   Frontmatter and Diagnostics retain native `details` semantics, use the same trailing
   chevron, and start collapsed.
-- The table has real column and row-group headers and no interactive rows in version
-  one. Exact values and percentages remain ordinary readable text.
+- File Breakdown has real column and row-group headers.
+  Exact values and percentages remain ordinary readable text.
+  Files retains screen-reader-only Population and active metric headers, and each
+  population row exposes its exact tally.
 - Individual visual fills are hidden from the accessibility tree because the adjacent
   text already contains the data.
 - Counts use locale formatting, correct singular/plural copy, and tabular numerals.
@@ -1285,27 +1296,40 @@ Only unitless data weights may be inline.
 
 #### `src/metabrowser/builtin_plugins/folder/file_totals_panel.js`
 
-- `createFileTotalsPanel(mb, rollupControls)` returns the required `folder.file-totals`
-  summary/surface descriptor, initially expanded.
-- `mountFileTotalsPanel(container, ctx, mb, rollupControls, options)` mounts the one
-  Files / Bytes chooser and the inventory-backed Files and Ignored rows.
+- `createFileTotalsPanel(mb, palettePool, projectionPool, rollupControls)` returns the
+  required `folder.file-totals` summary/surface descriptor, initially expanded.
+- `mountFileTotalsPanel(container, ctx, mb, palettePool, projectionPool, rollupControls, options)`
+  mounts the one Files / Bytes chooser and the inventory-backed Files and Ignored rows.
 - The panel observes the shared metric and updates immediately from directory-total
   snapshots without waiting for the detailed rollup.
+- It subscribes to the path’s latest validated rollup projection and rebuilds the two
+  independently normalized composition tracks with the shared palette.
+  A missing, stale, or incompatible projection leaves a nonzero row as one neutral
+  full-width fill.
+
+#### `src/metabrowser/builtin_plugins/folder/rollup_projection.js`
+
+- `createFolderRollupProjectionPool()` owns ref-counted sessions keyed by folder path.
+- `acquire(path)` returns a small publish, subscribe, and release lease.
+  It replays the latest projection to late subscribers and discards it after the last
+  release.
+- The pool transports already-normalized data; it does not fetch, classify, or render.
 
 #### `src/metabrowser/builtin_plugins/folder/file_type_summary.js`
 
-- `createFileTypeSummaryPanel(mb, palettePool, rollupControls)` returns the required
-  `folder.file-types` summary/surface descriptor headed File Breakdown and initially
-  collapsed.
+- `createFileTypeSummaryPanel(mb, palettePool, projectionPool, rollupControls)` returns
+  the required `folder.file-types` summary/surface descriptor headed File Breakdown and
+  initially collapsed.
 - Its resolver immediately returns `{ key: ctx.path, data: null }`; the panel is never
   absent, including for pending and empty folders.
-- `mountFileTypeSummary(container, ctx, mb, palettePool, rollupControls, options)`
-  acquires the path palette, mounts the shared **Show ignored** checkbox, observes the
-  shared metric and scope, subscribes to active-view state, and starts exactly one
-  rollup watch.
+- `mountFileTypeSummary(container, ctx, mb, palettePool, projectionPool, rollupControls, options)`
+  acquires the path palette and projection leases, mounts the shared **Show ignored**
+  checkbox, observes the shared metric and scope, subscribes to active-view state, and
+  starts exactly one rollup watch.
 - `applyEnvelope(raw)` normalizes once, rebuilds the pure model for current ignored
   scope, reserves palette slots for all named rows in the envelope, and patches the
-  distribution view.
+  distribution view. Completed and truncated envelopes with totals are also published to
+  the projection pool.
 - The shared-control subscription rebuilds from the retained normalized envelope when
   metric or ignored scope changes; it does not refetch.
 - `handleActive(active)` refreshes a stale watch when Overview becomes visible.
@@ -1631,9 +1655,9 @@ Use directories representing one type, ten types, more than ten types, thousands
 files, one dominant binary, ignored dependency trees, no README, a long README TOC, and
 an empty directory. Review ordinary and narrow preview widths in both themes.
 Confirm that the panel reads as directory chrome, the README remains visually primary,
-the two metric columns can be compared without consulting color alone, totals lead the
-breakdown, percentages read as track endpoints, and ignored-state changes do not trigger
-a new rollup request.
+Files and Bytes switch atomically, the two top composition tracks stay full width,
+percentages read as File Breakdown track endpoints, and ignored-state changes do not
+trigger a new rollup request.
 At regular and wide widths, confirm that README retains the ordinary Markdown card and
 that File types aligns to its outer edges.
 Below the card breakpoint, confirm that the card disappears and both sections align to
@@ -1714,8 +1738,10 @@ empty, root, and nested folders alike.
 - An explicitly opened README has no directory summary
 - Files owns the only Overview Files / Bytes chooser; changing it updates Files, File
   Breakdown, and Treemap through one shared state without refetching
-- Files shows disjoint neutral Files and Ignored rows whose selected-metric values and
-  percentages conserve the complete directory population
+- Files shows disjoint Files and Ignored rows whose selected-metric values conserve the
+  complete directory population.
+  Each nonzero row is a full-width composition segmented with File Breakdown’s colors,
+  has no percentage label, and the Ignored row is dimmed
 - File Breakdown shows a fixed Type/Metric table grouped under the recommended registry
   categories, omitting empty groups and adding no group subtotals
 - Each breakdown row shows its logical type, selected-metric value,

@@ -9,11 +9,22 @@ import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file_type_
  * @param {{path?: string, raw?: unknown}} context
  * @param {MetabrowserPublicSdk} mb
  * @param {SummaryPalettePool} palettePool
+ * @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool
  * @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
  * @param {{signal?: AbortSignal}} options
  */
-export function mountFileTypeSummary(container, context, mb, palettePool, rollupControls, options) {
-  const palette = palettePool.acquire(context.path || "");
+export function mountFileTypeSummary(
+  container,
+  context,
+  mb,
+  palettePool,
+  projectionPool,
+  rollupControls,
+  options,
+) {
+  const path = context.path || "";
+  const palette = palettePool.acquire(path);
+  const projection = projectionPool.acquire(path);
   let disposed = false;
   let controlsState = rollupControls.get();
   let showIgnored = controlsState.includeIgnored;
@@ -76,6 +87,12 @@ export function mountFileTypeSummary(container, context, mb, palettePool, rollup
     updateDistributionView(view, nextModel);
     envelope = nextEnvelope;
     model = nextModel;
+    if (
+      nextEnvelope.totals &&
+      (nextEnvelope.indexStatus === "done" || nextEnvelope.indexStatus === "truncated")
+    ) {
+      projection.publish(nextEnvelope);
+    }
   }
 
   const watch = mb.watchRollup(
@@ -144,6 +161,7 @@ export function mountFileTypeSummary(container, context, mb, palettePool, rollup
     unsubscribeControls();
     unmountScopeControls();
     unsubscribeActive();
+    projection.release();
     palette.release();
   }
   return Object.freeze({
@@ -151,8 +169,8 @@ export function mountFileTypeSummary(container, context, mb, palettePool, rollup
   });
 }
 
-/** @param {MetabrowserPublicSdk} mb @param {SummaryPalettePool} palettePool @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls */
-export function createFileTypeSummaryPanel(mb, palettePool, rollupControls) {
+/** @param {MetabrowserPublicSdk} mb @param {SummaryPalettePool} palettePool @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls */
+export function createFileTypeSummaryPanel(mb, palettePool, projectionPool, rollupControls) {
   return Object.freeze({
     label: "File Breakdown",
     placement: /** @type {const} */ ("summary"),
@@ -165,6 +183,14 @@ export function createFileTypeSummaryPanel(mb, palettePool, rollupControls) {
     resolve: (context) => Object.freeze({ key: context.path || "", data: null }),
     /** @param {HTMLElement} container @param {{path?: string, raw?: unknown}} context @param {unknown} _data @param {{signal?: AbortSignal}} options */
     mount: (container, context, _data, options) =>
-      mountFileTypeSummary(container, context, mb, palettePool, rollupControls, options),
+      mountFileTypeSummary(
+        container,
+        context,
+        mb,
+        palettePool,
+        projectionPool,
+        rollupControls,
+        options,
+      ),
   });
 }

@@ -576,17 +576,26 @@ Changing the metric therefore reveals the relevant skew without making equal row
 unpredictably.
 
 The **Files** section begins expanded.
-It contains the shared Files / Bytes control and a fixed two-row totals table using the
-neutral distribution color.
+It contains the shared Files / Bytes control and a fixed two-row composition table.
 **Files** comes first and reports the unignored population immediately from the
 inventory snapshot. **Ignored** follows with the excluded population.
-These are disjoint rows whose counts and byte sizes each sum to the complete selected
-directory. Their percentages use that complete population as the shared denominator, so
-each metric also sums to 100% when its denominator is nonzero.
-Both rows switch to the selected metric and are always present, including when ignored
-files are hidden from the type population, so scope is explicit without a separate
-notice. When the complete population has files but zero bytes, both byte rows remain
-`0 B`, `0%`, and unfilled rather than implying a share of an empty byte population.
+These are disjoint rows whose counts and byte sizes sum to the complete selected
+directory. Each row displays one absolute selected-metric tally and treats its own
+population as 100%, so no percentage column appears.
+Its full-width track is segmented by the top-level semantic file types in File Breakdown
+and reuses their mounted palette assignments.
+The Ignored row dims its label, tally, track, and colors through
+`--dimmed-content-opacity`, the same token used by ignored navigation and Treemap
+entries.
+
+Inventory totals render first.
+Until a compatible terminal file-type projection is available, each nonzero population
+uses one neutral full-width fill.
+The projection replaces that fill atomically with exact segments; it never changes the
+inventory-backed tally.
+A zero population renders no fill.
+If a stale projection does not conserve the current tally, the row stays neutral rather
+than showing a misleading composition.
 
 The **File Breakdown** section follows Files and begins collapsed.
 It contains the full type distribution and starts with the same labelled `.filter-check`
@@ -599,10 +608,11 @@ atomically updates the totals and the complete breakdown, including while the br
 is collapsed.
 
 Visual Type and metric column labels are unnecessary when every metric cell keeps the
-same value-track-percentage grammar.
-The semantic table retains screen-reader-only headers and updates the selected metric
-header between Files and Bytes, so assistive technology receives the relationships that
-sighted users get from alignment.
+same aligned grammar.
+File Breakdown uses value, track, and percentage; Files uses value and composition
+track. The semantic table retains screen-reader-only headers and updates the selected
+metric header between Files and Bytes, so assistive technology receives the
+relationships that sighted users get from alignment.
 
 Zero totals do not produce a colored fill, division artifact, or header-only table.
 If one metric is zero while another is not, the zero metric uses the neutral track and
@@ -780,7 +790,9 @@ selected folder and subscribe to the public directory-totals store for later rev
 Navigation must never replace a known total with a fabricated zero or a loading
 placeholder.
 
-The Files type breakdown and Treemap publish only terminal rollup generations.
+File Breakdown and Treemap render only terminal rollup generations.
+File Breakdown also publishes its validated terminal envelope to the per-directory
+projection pool used by Files.
 While a scan is pending, they keep their geometry stable and render the same
 low-contrast pulsing block used by the navigation tally.
 Provisional rows or rectangles are never painted and then reshuffled.
@@ -793,7 +805,7 @@ a footer sentence. The print action is absent when no mounted contribution is pr
 
 An empty folder is still a completed Overview.
 Files remains visible with the message **No files to summarize.** It renders no empty
-bars, percentages, table, standalone tally, or synthetic “No README” document panel.
+bars, table, standalone tally, or synthetic “No README” document panel.
 Loading, partial, empty, and failed states must remain visually and semantically
 distinct.
 

@@ -1,5 +1,7 @@
 /** @typedef {{state: "pending" | "complete", totalFiles?: number, totalBytes?: number, unignoredFiles?: number, unignoredBytes?: number}} FolderTotals */
-/** @typedef {{files: number, bytes: number, filesText: string, bytesText: string, fileShare: number, byteShare: number, filePercent: string, bytePercent: string}} FolderTotalsMetricRow */
+/** @typedef {{files: number, bytes: number, filesText: string, bytesText: string}} FolderTotalsMetricRow */
+/** @typedef {{key: string, label: string, paletteKey: string, value: number, share: number}} FolderTotalsSegment */
+/** @typedef {{metric: "files" | "size", files: {value: number, segments: ReadonlyArray<FolderTotalsSegment>}, ignored: {value: number, segments: ReadonlyArray<FolderTotalsSegment>}}} FolderTotalsComposition */
 
 /** @param {unknown} value */
 const integer = (value) =>
@@ -34,21 +36,6 @@ export function normalizeFolderTotals(raw) {
   });
 }
 
-/** @param {number} numerator @param {number} denominator */
-function share(numerator, denominator) {
-  return denominator === 0 ? 0 : (numerator / denominator) * 100;
-}
-
-/** @param {number} value */
-function percentText(value) {
-  if (value === 0) {
-    return "0%";
-  }
-  return value < 0.1
-    ? "<0.1%"
-    : `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value)}%`;
-}
-
 /**
  * @param {FolderTotals} totals
  * @param {{formatFileCount(value: number): string, formatSize(value: number): string}} formatters
@@ -63,10 +50,6 @@ export function buildFolderTotalsModel(totals, formatters) {
   const unignoredBytes = totals.unignoredBytes ?? 0;
   const ignoredFiles = Math.max(0, totalFiles - unignoredFiles);
   const ignoredBytes = Math.max(0, totalBytes - unignoredBytes);
-  const fileShare = share(unignoredFiles, totalFiles);
-  const byteShare = share(unignoredBytes, totalBytes);
-  const ignoredFileShare = share(ignoredFiles, totalFiles);
-  const ignoredByteShare = share(ignoredBytes, totalBytes);
   return Object.freeze({
     state: /** @type {const} */ ("complete"),
     files: Object.freeze({
@@ -74,20 +57,12 @@ export function buildFolderTotalsModel(totals, formatters) {
       bytes: unignoredBytes,
       filesText: formatters.formatFileCount(unignoredFiles),
       bytesText: formatters.formatSize(unignoredBytes),
-      fileShare,
-      byteShare,
-      filePercent: percentText(fileShare),
-      bytePercent: percentText(byteShare),
     }),
     ignored: Object.freeze({
       files: ignoredFiles,
       bytes: ignoredBytes,
       filesText: formatters.formatFileCount(ignoredFiles),
       bytesText: formatters.formatSize(ignoredBytes),
-      fileShare: ignoredFileShare,
-      byteShare: ignoredByteShare,
-      filePercent: percentText(ignoredFileShare),
-      bytePercent: percentText(ignoredByteShare),
     }),
   });
 }
@@ -101,15 +76,132 @@ export function selectFolderTotalsMetric(row, metric) {
     return Object.freeze({
       value: row.bytes,
       text: row.bytesText,
-      share: row.byteShare,
-      percent: row.bytePercent,
     });
   }
   return Object.freeze({
     value: row.files,
     text: row.filesText,
-    share: row.fileShare,
-    percent: row.filePercent,
+  });
+}
+
+/** @param {{allFiles: number, allBytes: number, unignoredFiles: number, unignoredBytes: number}} tally @param {"files" | "size"} metric @param {"all" | "files" | "ignored"} population */
+function populationValue(tally, metric, population) {
+  const all = metric === "files" ? tally.allFiles : tally.allBytes;
+  const unignored = metric === "files" ? tally.unignoredFiles : tally.unignoredBytes;
+  if (population === "all") {
+    return all;
+  }
+  return population === "files" ? unignored : Math.max(0, all - unignored);
+}
+
+/**
+ * Build the two independently normalized compositions shown above File Breakdown.
+ *
+ * @param {ReturnType<import("./file_type_summary_model.js").normalizeRollupEnvelope> | null} envelope
+ * @param {MetabrowserPublicFileTypeTaxonomyRuntime} fileTypes
+ * @param {"files" | "size"} metric
+ * @returns {FolderTotalsComposition | null}
+ */
+export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
+  if (!envelope?.registry || !envelope.totals || !fileTypes) {
+    return null;
+  }
+  const totals = envelope.totals;
+  if (
+    envelope.registry.revision !== fileTypes.revision ||
+    envelope.registry.fingerprint !== fileTypes.fingerprint
+  ) {
+    throw new TypeError("folder totals registry does not match the browser registry");
+  }
+  const selectedMetric = metric === "size" ? "size" : "files";
+  const groups = new Map(envelope.groups.map((group) => [group.id, group]));
+  const groupOrder = new Map(fileTypes.groups.map((group, index) => [group.id, index]));
+  const families = new Map(fileTypes.families.map((family) => [family.id, family]));
+  /** @type {Array<{key: string, label: string, paletteKey: string, groupId: string, tally: {allFiles: number, allBytes: number, unignoredFiles: number, unignoredBytes: number}}>} */
+  const candidates = [];
+  for (const group of fileTypes.groups) {
+    const rawGroup = groups.get(group.id);
+    if (!rawGroup) {
+      continue;
+    }
+    for (const tally of rawGroup.families) {
+      const family = families.get(tally.id);
+      if (!family || (family.groupId ?? family.category) !== group.id) {
+        throw new TypeError(`unknown file-type family in folder totals: ${tally.id}`);
+      }
+      candidates.push({
+        key: `family:${tally.id}`,
+        label: family.label,
+        paletteKey: `family:${tally.id}`,
+        groupId: group.id,
+        tally,
+      });
+    }
+  }
+  if (envelope.specialTypes?.noExtension) {
+    candidates.push({
+      key: "(none)",
+      label: "No extension",
+      paletteKey: "",
+      groupId: "other",
+      tally: envelope.specialTypes.noExtension,
+    });
+  }
+  if (envelope.specialTypes?.remainingTypes) {
+    candidates.push({
+      key: "",
+      label: "Other types",
+      paletteKey: "",
+      groupId: "other",
+      tally: envelope.specialTypes.remainingTypes,
+    });
+  }
+  candidates.sort((left, right) => {
+    const groupDifference =
+      (groupOrder.get(left.groupId) ?? Number.MAX_SAFE_INTEGER) -
+      (groupOrder.get(right.groupId) ?? Number.MAX_SAFE_INTEGER);
+    if (groupDifference !== 0) {
+      return groupDifference;
+    }
+    const primaryDifference =
+      populationValue(right.tally, selectedMetric, "all") -
+      populationValue(left.tally, selectedMetric, "all");
+    if (primaryDifference !== 0) {
+      return primaryDifference;
+    }
+    const secondaryMetric = selectedMetric === "files" ? "size" : "files";
+    return (
+      populationValue(right.tally, secondaryMetric, "all") -
+        populationValue(left.tally, secondaryMetric, "all") || left.key.localeCompare(right.key)
+    );
+  });
+
+  /** @param {"files" | "ignored"} population */
+  const buildPopulation = (population) => {
+    const value = populationValue(totals, selectedMetric, population);
+    const segments = candidates
+      .map((candidate) => {
+        const segmentValue = populationValue(candidate.tally, selectedMetric, population);
+        return Object.freeze({
+          key: candidate.key,
+          label: candidate.label,
+          paletteKey: candidate.paletteKey,
+          value: segmentValue,
+          share: value === 0 ? 0 : (segmentValue / value) * 100,
+        });
+      })
+      .filter((segment) => segment.value > 0);
+    const segmentTotal = segments.reduce((sum, segment) => sum + segment.value, 0);
+    if (segmentTotal !== value) {
+      throw new TypeError(`${population} file-type segments do not conserve folder totals`);
+    }
+    return Object.freeze({ value, segments: Object.freeze(segments) });
+  };
+
+  return Object.freeze({
+    metric: selectedMetric,
+    files: buildPopulation("files"),
+    ignored: buildPopulation("ignored"),
   });
 }
 
@@ -121,14 +213,9 @@ function metricCell() {
   const track = document.createElement("div");
   track.className = "file-type-summary-track";
   track.setAttribute("aria-hidden", "true");
-  const fill = document.createElement("span");
-  fill.className = "file-type-summary-fill mb-distribution-other";
-  track.append(fill);
-  const percent = document.createElement("span");
-  percent.className = "file-type-summary-percent";
-  contents.append(value, track, percent);
+  contents.append(value, track);
   cell.append(contents);
-  return { cell, fill, percent, value };
+  return { cell, track, value };
 }
 
 /** @param {string} label */
@@ -158,6 +245,10 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   let metricHeader = null;
   /** @type {FolderTotals} */
   let currentTotals = totals;
+  /** @type {FolderTotalsComposition | null} */
+  let currentComposition = null;
+  /** @type {{classFor(key: string): string} | null} */
+  let currentPalette = null;
   /** @type {"files" | "size"} */
   let currentMetric = initialMetric === "size" ? "size" : "files";
 
@@ -196,8 +287,36 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     root.append(table);
   }
 
-  /** @param {FolderTotalsMetricRow} row @param {ReturnType<typeof totalsRow>} handle */
-  function updateRow(row, handle) {
+  /** @param {ReturnType<typeof totalsRow>} handle @param {"files" | "ignored"} population @param {number} value */
+  function updateTrack(handle, population, value) {
+    const projected =
+      currentComposition?.metric === currentMetric ? currentComposition[population] : null;
+    const segments = projected?.value === value ? projected.segments : null;
+    if (value === 0) {
+      handle.metric.track.replaceChildren();
+      return;
+    }
+    if (!segments || !currentPalette) {
+      const fill = document.createElement("span");
+      fill.className = "file-type-summary-fill mb-distribution-other";
+      fill.style.width = "100%";
+      handle.metric.track.replaceChildren(fill);
+      return;
+    }
+    const palette = currentPalette;
+    handle.metric.track.replaceChildren(
+      ...segments.map((segment) => {
+        const fill = document.createElement("span");
+        fill.className = `file-type-summary-fill ${palette.classFor(segment.paletteKey)}`;
+        fill.dataset.segmentKey = segment.key;
+        fill.style.width = `${segment.share}%`;
+        return fill;
+      }),
+    );
+  }
+
+  /** @param {FolderTotalsMetricRow} row @param {ReturnType<typeof totalsRow>} handle @param {"files" | "ignored"} population */
+  function updateRow(row, handle, population) {
     const selected = selectFolderTotalsMetric(row, currentMetric);
     const displayKind = currentMetric === "files" ? "count" : "size";
     handle.metric.cell.className = `file-type-summary-metric file-type-summary-metric-${currentMetric}`;
@@ -205,8 +324,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
       currentMetric === "files" ? mb.countClass(selected.value) : mb.sizeClass(selected.value)
     }`.trim();
     handle.metric.value.textContent = selected.text;
-    handle.metric.fill.style.width = `${selected.share}%`;
-    handle.metric.percent.textContent = selected.percent;
+    updateTrack(handle, population, selected.value);
   }
 
   function render() {
@@ -228,8 +346,8 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     if (metricHeader) {
       metricHeader.textContent = currentMetric === "size" ? "Bytes" : "Files";
     }
-    updateRow(model.files, filesRow);
-    updateRow(model.ignored, ignoredRow);
+    updateRow(model.files, filesRow, "files");
+    updateRow(model.ignored, ignoredRow, "ignored");
   }
 
   /** @param {FolderTotals} nextTotals */
@@ -248,6 +366,13 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     render();
   }
 
+  /** @param {FolderTotalsComposition | null} composition @param {{classFor(key: string): string} | null} palette */
+  function updateComposition(composition, palette) {
+    currentComposition = composition;
+    currentPalette = palette;
+    render();
+  }
+
   render();
-  return Object.freeze({ update, updateMetric });
+  return Object.freeze({ update, updateComposition, updateMetric });
 }

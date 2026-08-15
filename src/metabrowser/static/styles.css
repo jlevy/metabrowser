@@ -430,6 +430,7 @@
   --hover-bg: hsl(0 0% 94%);
   --link: hsl(205 80% 40%);
   --muted: hsl(208 7% 46%);
+  --dimmed-content-opacity: 0.45;
 
   /* Selection highlight — the "current item" indicator shared by the
      file-tree nav and the embedded KPress document TOC, so both read the
@@ -2093,7 +2094,7 @@ html[data-prose-font="sans"] {
    — just faded. Hover still lights up via .tree-item:hover. */
 .tree-item.tree-item-gitignored,
 .tree-item.tree-item-empty {
-  opacity: 0.45;
+  opacity: var(--dimmed-content-opacity);
 }
 .tree-item.tree-item-gitignored:hover,
 .tree-item.tree-item-empty:hover {

@@ -81,7 +81,7 @@ global.window = { METABROWSER_SETTINGS: {} };
   const createFileTotalsPanel = new Function(
     `${fileTotalsPanelSource}\nreturn createFileTotalsPanel;`,
   )();
-  const fileTotalsPanel = createFileTotalsPanel({}, {});
+  const fileTotalsPanel = createFileTotalsPanel({}, {}, {}, {});
   check(
     "Files totals are a separate open section",
     fileTotalsPanel.label === "Files" && fileTotalsPanel.defaultExpanded === true,
@@ -90,7 +90,7 @@ global.window = { METABROWSER_SETTINGS: {} };
   const createFileTypeSummaryPanel = new Function(
     `${fileTypeSummarySource}\nreturn createFileTypeSummaryPanel;`,
   )();
-  const fileTypeSummaryPanel = createFileTypeSummaryPanel({}, {});
+  const fileTypeSummaryPanel = createFileTypeSummaryPanel({}, {}, {}, {});
   check(
     "file breakdown is a separate closed section",
     fileTypeSummaryPanel.label === "File Breakdown" &&
@@ -118,6 +118,7 @@ global.window = { METABROWSER_SETTINGS: {} };
   const controlListeners = [];
   const mountedControlParts = [];
   const totalsMetrics = [];
+  const totalsCompositions = [];
   const summaryModelCalls = [];
   const summaryBody = new Element("div");
   summaryBody.querySelector = () => null;
@@ -168,6 +169,31 @@ global.window = { METABROWSER_SETTINGS: {} };
   const summaryPalette = {
     acquire: () => ({ classFor: () => "", release() {}, sync() {} }),
   };
+  let projectedRollup;
+  const projectionListeners = [];
+  const projectionPool = {
+    acquire: () => ({
+      publish(value) {
+        projectedRollup = value;
+        for (const listener of [...projectionListeners]) {
+          listener(value);
+        }
+      },
+      subscribe(listener) {
+        projectionListeners.push(listener);
+        if (projectedRollup !== undefined) {
+          listener(projectedRollup);
+        }
+        return () => {
+          const index = projectionListeners.indexOf(listener);
+          if (index !== -1) {
+            projectionListeners.splice(index, 1);
+          }
+        };
+      },
+      release() {},
+    }),
+  };
   let sharedControlsState = { metric: "size", includeIgnored: false };
   const summaryControls = {
     get: () => sharedControlsState,
@@ -187,14 +213,26 @@ global.window = { METABROWSER_SETTINGS: {} };
     },
   };
   const mountFileTotalsPanel = new Function(
+    "buildFolderTotalsComposition",
     "mountFolderTotalsView",
     "normalizeFolderTotals",
     `${fileTotalsPanelSource}\nreturn mountFileTotalsPanel;`,
   )(
+    (envelope, _fileTypes, metric) =>
+      envelope?.totals
+        ? {
+            metric,
+            files: { value: 8, segments: [] },
+            ignored: { value: 2, segments: [] },
+          }
+        : null,
     (_container, _totals, _mb, metric) => {
       totalsMetrics.push(metric);
       return {
         update() {},
+        updateComposition(composition) {
+          totalsCompositions.push(composition);
+        },
         updateMetric(nextMetric) {
           totalsMetrics.push(nextMetric);
         },
@@ -213,12 +251,21 @@ global.window = { METABROWSER_SETTINGS: {} };
       },
     },
   };
-  mountFileTotalsPanel(new Element("div"), panelContext, summaryMb, summaryControls, {});
+  mountFileTotalsPanel(
+    new Element("div"),
+    panelContext,
+    summaryMb,
+    summaryPalette,
+    projectionPool,
+    summaryControls,
+    {},
+  );
   mountFileTypeSummary(
     new Element("div"),
     panelContext,
     summaryMb,
     summaryPalette,
+    projectionPool,
     summaryControls,
     {},
   );
@@ -262,6 +309,19 @@ global.window = { METABROWSER_SETTINGS: {} };
     "an incompatible first rollup replaces the pending skeleton with an error",
     summaryBody.innerHTML.includes("rollup data is incompatible"),
     summaryBody.innerHTML,
+  );
+  rollupApply({
+    indexStatus: "done",
+    totals: { allFiles: 10, unignoredFiles: 8 },
+    groups: [],
+    specialTypes: null,
+  });
+  check(
+    "File Breakdown projects its completed rollup into Files without another watcher",
+    totalsCompositions.at(-1)?.metric === "files" &&
+      totalsCompositions.at(-1)?.files.value === 8 &&
+      projectedRollup?.indexStatus === "done",
+    JSON.stringify({ totalsCompositions, projectedRollup }),
   );
 
   const source = fs.readFileSync(
