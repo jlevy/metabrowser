@@ -131,3 +131,52 @@ def test_plugin_classification_runs_off_the_request_event_loop(tmp_path: Path, m
     _api_file("data.json")
     assert classifier_threads
     assert classifier_threads[0] != request_thread
+
+
+def test_small_binary_reaches_the_bytes_view(tmp_path: Path) -> None:
+    """A small file with no text extension is classified by its content.
+
+    Size used to decide this: anything under 512 KiB was read as text with
+    ``errors="replace"``, so a 4 KB binary rendered as a field of U+FFFD and
+    the Bytes view was unreachable for exactly the files it exists to show.
+    """
+    server._set_root_dir(tmp_path)
+    blob = tmp_path / "small.bin"
+    blob.write_bytes(bytes(range(256)) * 16)
+    result = _api_file("small.bin")
+    assert result["kind"] == "binary"
+    assert [v["id"] for v in result["views"]] == ["bytes"]
+    # The bytes themselves never travel through the text envelope.
+    assert "content" not in result
+
+
+def test_small_extensionless_text_still_renders_as_source(tmp_path: Path) -> None:
+    """The other direction: content decides, so LICENSE and Makefile stay text."""
+    server._set_root_dir(tmp_path)
+    (tmp_path / "LICENSE").write_text("Permission is hereby granted...\n")
+    result = _api_file("LICENSE")
+    assert result["kind"] == "text"
+    assert [v["id"] for v in result["views"]] == ["source"]
+
+
+def test_large_extensionless_text_is_no_longer_forced_to_binary(tmp_path: Path) -> None:
+    """Size used to cut the other way too, above the old 512 KiB threshold."""
+    server._set_root_dir(tmp_path)
+    big = tmp_path / "CHANGELOG"
+    big.write_text("a line of ordinary text\n" * 40_000)
+    assert big.stat().st_size > 512 * 1024
+    result = _api_file("CHANGELOG")
+    assert result["kind"] == "text"
+
+
+def test_binary_content_under_a_text_extension_is_still_text(tmp_path: Path) -> None:
+    """A known text extension is trusted without reading the file.
+
+    This is what keeps the content check off the path for almost everything:
+    it is consulted only once the extension has failed to answer.
+    """
+    server._set_root_dir(tmp_path)
+    odd = tmp_path / "weird.txt"
+    odd.write_bytes(b"\x00\x01\x02\x03" * 64)
+    result = _api_file("weird.txt")
+    assert result["kind"] == "text"

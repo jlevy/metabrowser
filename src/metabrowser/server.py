@@ -82,6 +82,7 @@ from metabrowser.activity import FileActivityTracker as _FileActivityTracker
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.file_kinds import (
     FILE_KIND_DETECTORS,
@@ -429,11 +430,26 @@ from metabrowser.file_extensions import (
     BROWSER_TEXT_EXTS as _TEXT_EXTS,
 )
 
-# Files outside ``_TEXT_EXTS`` smaller than this are still tried as
-# text (`read_text(errors="replace")`). Above this we treat them as
-# binary unless they hit a known extension. 512 KiB is the
-# pre-refactor default.
-_INLINE_TEXT_FALLBACK_BYTES = 512 * 1024
+# Files outside ``_TEXT_EXTS`` are decided by looking at their content —
+# see metabrowser.content_sniff and _prefers_text_body below. Size used to
+# stand in for that check (under 512 KiB meant "try it as text"), which read
+# every small binary through `errors="replace"` and rendered it as a field of
+# U+FFFD, and refused every large extensionless text file the opposite way.
+
+
+def _prefers_text_body(target: Path) -> bool:
+    """Whether a file with no known text extension should render as text.
+
+    Only consulted once the extension has failed to answer, so the bounded
+    read inside costs nothing for the files this browser opens most.
+
+    ``UNKNOWN`` resolves to text on purpose: it means the bytes could not be
+    read at all, and the text path reports that failure with the real reason
+    where the byte view would answer a broken file with an empty dump.
+    """
+    return sniff_artifact(target) is not ContentClass.BINARY
+
+
 # Defaults live in settings.py, which is also what the client reads, so the
 # chunk size cannot drift between the two planes. See
 # docs/large-content-rendering.md for the measurements behind them.
@@ -1693,9 +1709,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
-    if ext in _TEXT_EXTS or (
-        logical_size is not None and logical_size < _INLINE_TEXT_FALLBACK_BYTES
-    ):
+    if ext in _TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target):
         try:
             content_has_more = False
             if (
@@ -1903,7 +1917,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
         )
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
-    if ext not in _TEXT_EXTS and logical_size >= _INLINE_TEXT_FALLBACK_BYTES:
+    if ext not in _TEXT_EXTS and not await asyncio.to_thread(_prefers_text_body, target):
         return JSONResponse(
             {
                 "type": "kpress_render_error",
