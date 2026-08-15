@@ -4,6 +4,30 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Binary and source previews:
+
+- Files classified `binary` now open in a new built-in **Bytes** view instead of showing
+  “No preview is available”.
+  Each byte renders as exactly one display unit: printable ASCII as itself, and every
+  other byte as uppercase hex in guillemets such as `‹00›` or `‹FF›`. Nothing is
+  decoded, so the bytes on screen are the bytes on disk.
+  Literal text takes the full-strength text color and byte codes recede to the muted
+  one; on content where the two alternate too often to mark apart, the view drops the
+  distinction for the whole file and says so.
+- Large previews load in far fewer steps.
+  The source view opens at 2 MiB and doubles per click to 8 MiB, so a 4 MiB file opens
+  in one click rather than 31 and a 16 MiB file in three rather than 127. Both views
+  append each chunk instead of rebuilding the pane, so a click costs what it loaded
+  rather than the running total.
+- Loaded bytes stay real text in the DOM, so browser find-in-page, select-all, and print
+  continue to cover everything loaded.
+
+Plugin API:
+
+- `fetchPluginData` accepts `options.signal` and rejects a non-ok response with an
+  `Error` carrying `status` and the parsed `payload`, matching `fetchKpressRender`. A
+  data hook can now explain a refusal in its body and have the caller read it.
+
 ## 0.4.2
 
 Release automation:
