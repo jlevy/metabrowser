@@ -786,6 +786,11 @@ Surface content, section headings, and document content use one responsive align
 contract and shared stack gap.
 At regular and wide Markdown breakpoints, flat surface panels and section headings align
 to the README card’s outer edges; the TOC keeps its own rail in the wide band.
+In the regular band, the target is the visible `.kpress-long-text` card rather than the
+wider `.kpress-doc` frame.
+The shared width is `min(100% - 4rem, var(--kpress-measure) - 2rem)`, which accounts for
+the frame’s floating-TOC clearance and aligns section rules, labels, tallies, and bars
+with the card border.
 Below the card breakpoint, KPress removes the card boundary and the alignment follows
 the README prose edge.
 The Overview composer mirrors those pinned KPress breakpoints so the rule remains exact

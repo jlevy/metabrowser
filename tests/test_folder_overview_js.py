@@ -38,6 +38,10 @@ def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     assert "@container (max-width: 47.99rem)" in css
     assert "@container (min-width: 75rem)" in css
     assert "--folder-overview-narrow-document-gutter: 1.25rem" in css
+    assert "--folder-overview-regular-card-width" in css
+    assert "calc(100% - 4rem)" in css
+    assert "calc(var(--kpress-measure) - 2rem)" in css
+    assert "width: var(--folder-overview-regular-card-width);" in css
     assert "--folder-overview-wide-card-width" in css
     assert ".kpress-long-text" not in css
     assert "border: none" not in css
