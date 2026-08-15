@@ -1,6 +1,5 @@
 import { mountDistributionView, updateDistributionView } from "./distribution_view.js";
 import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file_type_summary_model.js";
-import { mountFolderTotalsView, normalizeFolderTotals } from "./folder_totals.js";
 
 /** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} SummaryPalette */
 /** @typedef {{acquire: (path: string) => SummaryPalette}} SummaryPalettePool */
@@ -36,26 +35,8 @@ export function mountFileTypeSummary(container, context, mb, palettePool, rollup
     countClass: mb.countClass,
     sizeClass: mb.sizeClass,
   };
-  const metricControls = document.createElement("div");
-  const totalsContainer = document.createElement("div");
   const scopeControls = document.createElement("div");
-  container.append(metricControls, totalsContainer, scopeControls);
-  const unmountMetricControls = rollupControls.mount(metricControls, {
-    metric: true,
-    ignored: false,
-  });
-  const totalsView = mountFolderTotalsView(
-    totalsContainer,
-    totalsFromFolderEnvelope(context.raw),
-    mb,
-    controlsState.metric,
-  );
-  const unsubscribeTotals = mb.directoryTotals.subscribe(context.path || "", (next) => {
-    const normalized = normalizeFolderTotals(next);
-    if (normalized.state === "complete") {
-      totalsView.update(normalized);
-    }
-  });
+  container.append(scopeControls);
   const unmountScopeControls = rollupControls.mount(scopeControls, {
     metric: false,
     ignored: true,
@@ -137,9 +118,6 @@ export function mountFileTypeSummary(container, context, mb, palettePool, rollup
   const unsubscribeControls = rollupControls.subscribe((nextState) => {
     const metricChanged = nextState.metric !== controlsState.metric;
     controlsState = nextState;
-    if (metricChanged) {
-      totalsView.updateMetric(nextState.metric);
-    }
     if (nextState.includeIgnored !== showIgnored || metricChanged) {
       showIgnored = nextState.includeIgnored;
       render();
@@ -164,37 +142,24 @@ export function mountFileTypeSummary(container, context, mb, palettePool, rollup
     options.signal?.removeEventListener("abort", abort);
     watch.dispose();
     unsubscribeControls();
-    unsubscribeTotals();
-    unmountMetricControls();
     unmountScopeControls();
     unsubscribeActive();
     palette.release();
   }
   return Object.freeze({
     dispose,
-    /** @param {{raw?: unknown}} nextContext */
-    update(nextContext) {
-      totalsView.update(totalsFromFolderEnvelope(nextContext.raw));
-    },
   });
-}
-
-/** @param {unknown} raw */
-function totalsFromFolderEnvelope(raw) {
-  const envelope =
-    raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
-  return normalizeFolderTotals(envelope.dir);
 }
 
 /** @param {MetabrowserPublicSdk} mb @param {SummaryPalettePool} palettePool @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls */
 export function createFileTypeSummaryPanel(mb, palettePool, rollupControls) {
   return Object.freeze({
-    label: "Files",
+    label: "File Breakdown",
     placement: /** @type {const} */ ("summary"),
     presentation: /** @type {const} */ ("surface"),
     required: true,
     collapsible: true,
-    defaultExpanded: true,
+    defaultExpanded: false,
     printable: false,
     /** @param {{path?: string}} context */
     resolve: (context) => Object.freeze({ key: context.path || "", data: null }),

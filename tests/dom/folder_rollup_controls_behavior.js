@@ -32,7 +32,7 @@ async function main() {
     },
   };
   const state = module.createFolderRollupControls(mb);
-  if (state.get().metric !== "files" || state.get().includeIgnored !== false) {
+  if (state.get().metric !== "files" || state.get().includeIgnored !== true) {
     throw new Error(`unexpected defaults: ${JSON.stringify(state.get())}`);
   }
   const container = {
@@ -61,7 +61,8 @@ async function main() {
   if (
     scopeContainer.innerHTML !== "<span>ignored</span>" ||
     renderedGroups.length !== 1 ||
-    renderedChecks.at(-1).label !== "Show ignored"
+    renderedChecks.at(-1).label !== "Show ignored" ||
+    renderedChecks.at(-1).checked !== true
   ) {
     throw new Error(`scope-only mount leaked metric controls: ${scopeContainer.innerHTML}`);
   }
@@ -84,15 +85,15 @@ async function main() {
   unsubscribeFirst();
   unsubscribeSecond();
 
-  const savedPrefs = new Map([["folder.rollup", { metric: "size" }]]);
+  const savedPrefs = new Map([["folder.rollup", { metric: "size", includeIgnored: false }]]);
   const saved = module.createFolderRollupControls({
     prefs: {
       get: (key, fallback) => (savedPrefs.has(key) ? savedPrefs.get(key) : fallback),
       set: (key, value) => savedPrefs.set(key, value),
     },
   });
-  if (saved.get().metric !== "size") {
-    throw new Error("an explicit saved Bytes choice was not retained");
+  if (saved.get().metric !== "size" || saved.get().includeIgnored !== false) {
+    throw new Error("explicit saved rollup choices were not retained");
   }
 
   const migratedPrefs = new Map([["folder.treemap", { metric: "files", includeIgnored: true }]]);

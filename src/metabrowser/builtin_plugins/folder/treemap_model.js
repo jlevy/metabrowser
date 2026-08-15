@@ -3,14 +3,14 @@
 /** @type {Readonly<TreemapState>} */
 export const DEFAULT_TREEMAP_STATE = Object.freeze({
   metric: "files",
-  includeIgnored: false,
+  includeIgnored: true,
 });
 
 /**
  * Normalize the two controls the streamlined Treemap still exposes.
  * Old preferences are intentionally read once here. Their three-state
  * ignored setting has no exact equivalent, so the redesigned control
- * starts from its requested unchecked default; an explicit new boolean
+ * starts from the shared checked default; an explicit new boolean
  * is preserved. Obsolete grouping and color keys are discarded on the
  * next save.
  *

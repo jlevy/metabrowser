@@ -5,7 +5,7 @@
 //
 //   ("folder", "treemap") — squarified folder/file hierarchy from
 //       /api/rollup via mb.watchRollup: a Bytes/Files metric choice,
-//       a default-off ignored-file checkbox, shared file-type colors,
+//       a default-on ignored-file checkbox, shared file-type colors,
 //       fluid cell typography, hover tooltip, click navigation,
 //       keyboard support, pending and truncated presentations.
 //

@@ -8,7 +8,7 @@ export function sanitizeFolderRollupState(raw) {
   const value = raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
   return Object.freeze({
     metric: value.metric === "size" ? "size" : "files",
-    includeIgnored: value.includeIgnored === true,
+    includeIgnored: value.includeIgnored !== false,
   });
 }
 

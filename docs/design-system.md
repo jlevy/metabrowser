@@ -575,8 +575,9 @@ final tie-breaker. Group order remains registry-defined.
 Changing the metric therefore reveals the relevant skew without making equal rows jump
 unpredictably.
 
-The **Files** section begins with the shared Files / Bytes control and a fixed two-row
-totals table using the neutral distribution color.
+The **Files** section begins expanded.
+It contains the shared Files / Bytes control and a fixed two-row totals table using the
+neutral distribution color.
 **Files** comes first and reports the unignored population immediately from the
 inventory snapshot. **Ignored** follows with the excluded population.
 These are disjoint rows whose counts and byte sizes each sum to the complete selected
@@ -584,10 +585,18 @@ directory. Their percentages use that complete population as the shared denomina
 each metric also sums to 100% when its denominator is nonzero.
 Both rows switch to the selected metric and are always present, including when ignored
 files are hidden from the type population, so scope is explicit without a separate
-notice. The **Show ignored** checkbox follows the totals and changes only the type rows
-below it; it never changes or hides the explicit Files and Ignored context.
-When the complete population has files but zero bytes, both byte rows remain `0 B`,
-`0%`, and unfilled rather than implying a share of an empty byte population.
+notice. When the complete population has files but zero bytes, both byte rows remain
+`0 B`, `0%`, and unfilled rather than implying a share of an empty byte population.
+
+The **File Breakdown** section follows Files and begins collapsed.
+It contains the full type distribution and starts with the same labelled `.filter-check`
+**Show ignored** checkbox used by navigation.
+Show ignored begins checked when there is no saved preference and changes only the
+breakdown population; it never changes or hides the explicit Files and Ignored totals.
+File Breakdown does not render another metric chooser.
+Both sections observe the same state object, so the Files / Bytes choice in Files
+atomically updates the totals and the complete breakdown, including while the breakdown
+is collapsed.
 
 Visual Type and metric column labels are unnecessary when every metric cell keeps the
 same value-track-percentage grammar.
@@ -615,7 +624,7 @@ after them:
 
 - A joined, exclusive **Files / Bytes** group chooses the cell-area metric and starts on
   Files when there is no saved preference.
-- A labelled **Show ignored** checkbox chooses scope and starts unchecked.
+- A labelled **Show ignored** checkbox chooses scope and starts checked.
   Checked includes gitignored cells and dims them; unchecked removes them and switches
   folder, remainder, and status values to the rollup’s unignored totals.
 
@@ -706,7 +715,9 @@ Overview is one vertically ordered composition surface, not a fixed page templat
 Its panel registry lets a capability contribute a region without knowing which other
 regions are installed:
 
-- **Files** is the required, collapsible totals-and-composition panel for every folder.
+- **Files** is the required totals panel for every folder and starts expanded.
+- **File Breakdown** is the required detailed type-distribution panel and starts
+  collapsed.
 - **README** is a content panel only when a direct-child README exists.
 - License and other future panels use the same contribution contract and appear only
   when applicable.
@@ -725,14 +736,16 @@ panel body. These headings use the tab bar’s uppercase, bold, tracked sans-ser
 at the body-text size, followed by a neutral separator.
 Collapsible headings contain the shared section-disclosure trigger, with its gray
 trailing chevron and unchanged heading typography.
-Files and README start expanded and collapse in place without disposing their mounted
-contents. Files uses the stable internal panel ID `folder.file-types`; one heading and
-one metric choice own the whole file summary.
+Files and README start expanded; File Breakdown starts collapsed.
+All three collapse in place without disposing their mounted contents.
+Files uses the stable internal panel ID `folder.file-totals`, and File Breakdown retains
+`folder.file-types`. The Files panel owns the only Overview metric chooser; shared state
+applies that choice to File Breakdown and Treemap.
 
 Panel bodies use one of two presentations:
 
 - A **surface panel** receives a flat host-rendered body and chrome typography.
-  Files uses this presentation without a surrounding card.
+  Files and File Breakdown use this presentation without surrounding cards.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
   its metadata, diagnostics, TOC, breakpoints, and print behavior.

@@ -430,10 +430,10 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     container.innerHTML,
   );
   check(
-    "ignored scope defaults to an unchecked checkbox",
+    "ignored scope defaults to a checked checkbox",
     container.scopeControls.innerHTML.includes('type="checkbox"') &&
       container.scopeControls.innerHTML.includes('data-chip-check="folder-rollup-ignored"') &&
-      !container.scopeControls.innerHTML.includes(
+      container.scopeControls.innerHTML.includes(
         'data-chip-check="folder-rollup-ignored" checked',
       ) &&
       container.scopeControls.innerHTML.includes("Show ignored"),
@@ -482,7 +482,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     "type fill always uses the shared palette",
     container.viewport.innerHTML.includes("tm-type-fill") &&
       container.viewport.innerHTML.includes("mb-distribution-slot-7") &&
-      !container.viewport.innerHTML.includes("mb-distribution-slot-3"),
+      container.viewport.innerHTML.includes("mb-distribution-slot-3"),
     container.viewport.innerHTML,
   );
   check(
@@ -709,15 +709,15 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     const totalsMetricBeforeIgnored = container.totals.metric;
     toolbarChange({
       target: {
-        checked: true,
+        checked: false,
         getAttribute(name) {
           return name === "data-chip-check" ? "folder-rollup-ignored" : null;
         },
       },
     });
     check(
-      "checked ignored scope includes ignored cells without a footer summary",
-      container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
+      "unchecked ignored scope hides ignored cells without a footer summary",
+      !container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
       container.viewport.innerHTML,
     );
     check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
@@ -726,6 +726,19 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
       JSON.stringify(container.totals.value) === totalsBeforeIgnored &&
         container.totals.metric === totalsMetricBeforeIgnored,
       JSON.stringify({ value: container.totals.value, metric: container.totals.metric }),
+    );
+    toolbarChange({
+      target: {
+        checked: true,
+        getAttribute(name) {
+          return name === "data-chip-check" ? "folder-rollup-ignored" : null;
+        },
+      },
+    });
+    check(
+      "rechecking ignored scope restores ignored cells",
+      container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
+      container.viewport.innerHTML,
     );
   }
 

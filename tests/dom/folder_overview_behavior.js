@@ -64,6 +64,13 @@ global.document = { createElement: (tag) => new Element(tag) };
 global.window = { METABROWSER_SETTINGS: {} };
 
 (async () => {
+  const fileTotalsPanelSource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/file_totals_panel.js"),
+      "utf8",
+    )
+    .replace(/^import[\s\S]*?from\s+"[^"]+";\n/gm, "")
+    .replace(/^export\s+/gm, "");
   const fileTypeSummarySource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/file_type_summary.js"),
@@ -71,19 +78,44 @@ global.window = { METABROWSER_SETTINGS: {} };
     )
     .replace(/^import[\s\S]*?from\s+"[^"]+";\n/gm, "")
     .replace(/^export\s+/gm, "");
+  const createFileTotalsPanel = new Function(
+    `${fileTotalsPanelSource}\nreturn createFileTotalsPanel;`,
+  )();
+  const fileTotalsPanel = createFileTotalsPanel({}, {});
+  check(
+    "Files totals are a separate open section",
+    fileTotalsPanel.label === "Files" && fileTotalsPanel.defaultExpanded === true,
+    JSON.stringify(fileTotalsPanel),
+  );
   const createFileTypeSummaryPanel = new Function(
     `${fileTypeSummarySource}\nreturn createFileTypeSummaryPanel;`,
   )();
   const fileTypeSummaryPanel = createFileTypeSummaryPanel({}, {});
   check(
-    "built-in rollup summary uses one Files heading",
-    fileTypeSummaryPanel.label === "Files",
-    fileTypeSummaryPanel.label,
+    "file breakdown is a separate closed section",
+    fileTypeSummaryPanel.label === "File Breakdown" &&
+      fileTypeSummaryPanel.defaultExpanded === false,
+    JSON.stringify(fileTypeSummaryPanel),
+  );
+  const registrySource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/overview_registry.js"),
+    "utf8",
+  );
+  const registryModule = await import(
+    `data:text/javascript;base64,${Buffer.from(registrySource).toString("base64")}`
+  );
+  const builtInOrder = [
+    { id: "folder.file-types", placement: "summary" },
+    { id: "folder.file-totals", placement: "summary" },
+  ].sort(registryModule.comparePanels);
+  check(
+    "Files precedes File Breakdown in deterministic panel order",
+    builtInOrder.map((panel) => panel.id).join(",") === "folder.file-totals,folder.file-types",
   );
 
   let rollupApply = null;
   let rollupOptions = null;
-  let summaryControlListener = null;
+  const controlListeners = [];
   const mountedControlParts = [];
   const totalsMetrics = [];
   const summaryModelCalls = [];
@@ -94,8 +126,6 @@ global.window = { METABROWSER_SETTINGS: {} };
     "updateDistributionView",
     "buildFileTypeSummaryModel",
     "normalizeRollupEnvelope",
-    "mountFolderTotalsView",
-    "normalizeFolderTotals",
     `${fileTypeSummarySource}\nreturn mountFileTypeSummary;`,
   )(
     () => ({ body: summaryBody }),
@@ -108,16 +138,6 @@ global.window = { METABROWSER_SETTINGS: {} };
       return { state: envelope ? "ready" : "pending", metric };
     },
     (raw) => raw,
-    (_container, _totals, _mb, metric) => {
-      totalsMetrics.push(metric);
-      return {
-        update() {},
-        updateMetric(nextMetric) {
-          totalsMetrics.push(nextMetric);
-        },
-      };
-    },
-    (raw) => raw || { state: "pending" },
   );
   const summaryMb = {
     countClass: () => "",
@@ -148,38 +168,62 @@ global.window = { METABROWSER_SETTINGS: {} };
   const summaryPalette = {
     acquire: () => ({ classFor: () => "", release() {}, sync() {} }),
   };
+  let sharedControlsState = { metric: "size", includeIgnored: false };
   const summaryControls = {
-    get: () => ({ metric: "size", includeIgnored: false }),
+    get: () => sharedControlsState,
     mount(_container, parts) {
       mountedControlParts.push(parts);
       return () => {};
     },
     subscribe(listener) {
-      summaryControlListener = listener;
-      listener({ metric: "size", includeIgnored: false });
-      return () => {};
+      controlListeners.push(listener);
+      listener(sharedControlsState);
+      return () => {
+        const index = controlListeners.indexOf(listener);
+        if (index !== -1) {
+          controlListeners.splice(index, 1);
+        }
+      };
     },
   };
-  mountFileTypeSummary(
-    new Element("div"),
-    {
-      path: "",
-      raw: {
-        dir: {
-          total_files: 10,
-          total_size: 100,
-          unignored_files: 8,
-          unignored_size: 80,
+  const mountFileTotalsPanel = new Function(
+    "mountFolderTotalsView",
+    "normalizeFolderTotals",
+    `${fileTotalsPanelSource}\nreturn mountFileTotalsPanel;`,
+  )(
+    (_container, _totals, _mb, metric) => {
+      totalsMetrics.push(metric);
+      return {
+        update() {},
+        updateMetric(nextMetric) {
+          totalsMetrics.push(nextMetric);
         },
+      };
+    },
+    (raw) => raw || { state: "pending" },
+  );
+  const panelContext = {
+    path: "",
+    raw: {
+      dir: {
+        total_files: 10,
+        total_size: 100,
+        unignored_files: 8,
+        unignored_size: 80,
       },
     },
+  };
+  mountFileTotalsPanel(new Element("div"), panelContext, summaryMb, summaryControls, {});
+  mountFileTypeSummary(
+    new Element("div"),
+    panelContext,
     summaryMb,
     summaryPalette,
     summaryControls,
     {},
   );
   check(
-    "Files mounts metric controls, totals, then ignored scope as separate reusable parts",
+    "Overview mounts one metric control in Files and one ignored checkbox in File Breakdown",
     mountedControlParts.length === 2 &&
       mountedControlParts[0].metric === true &&
       mountedControlParts[0].ignored === false &&
@@ -188,8 +232,14 @@ global.window = { METABROWSER_SETTINGS: {} };
       totalsMetrics[0] === "size",
     JSON.stringify({ mountedControlParts, totalsMetrics }),
   );
+  function publishControls(nextState) {
+    sharedControlsState = nextState;
+    for (const listener of [...controlListeners]) {
+      listener(sharedControlsState);
+    }
+  }
   const totalsUpdatesBeforeScopeChange = totalsMetrics.length;
-  summaryControlListener({ metric: "size", includeIgnored: true });
+  publishControls({ metric: "size", includeIgnored: true });
   check(
     "Show ignored changes only the breakdown population",
     totalsMetrics.length === totalsUpdatesBeforeScopeChange &&
@@ -197,7 +247,7 @@ global.window = { METABROWSER_SETTINGS: {} };
       summaryModelCalls.at(-1).metric === "size",
     JSON.stringify({ totalsMetrics, summaryModelCalls }),
   );
-  summaryControlListener({ metric: "files", includeIgnored: true });
+  publishControls({ metric: "files", includeIgnored: true });
   check(
     "metric changes update totals and the breakdown together",
     totalsMetrics.at(-1) === "files" && summaryModelCalls.at(-1).metric === "files",
@@ -259,7 +309,7 @@ global.window = { METABROWSER_SETTINGS: {} };
   };
   const descriptors = [
     {
-      id: "folder.file-types",
+      id: "folder.file-totals",
       label: "Files",
       placement: "summary",
       presentation: "surface",
@@ -280,6 +330,20 @@ global.window = { METABROWSER_SETTINGS: {} };
             }
           },
         };
+      },
+    },
+    {
+      id: "folder.file-types",
+      label: "File Breakdown",
+      placement: "summary",
+      presentation: "surface",
+      collapsible: true,
+      defaultExpanded: false,
+      required: true,
+      printable: false,
+      resolve: (context) => ({ key: context.path, data: "breakdown" }),
+      mount(container) {
+        container.innerHTML = "breakdown";
       },
     },
     {
@@ -315,32 +379,37 @@ global.window = { METABROWSER_SETTINGS: {} };
   check(
     "deterministic slots",
     stack.children.map((slot) => slot.dataset.panelId).join(",") ===
-      "folder.file-types,folder.readme,example.license",
+      "folder.file-totals,folder.file-types,folder.readme,example.license",
   );
   check(
     "panels receive visible headings",
     stack.children.map((slot) => slot.children[0].children[0].textContent).join(",") ===
-      "Files,README,License",
+      "Files,File Breakdown,README,License",
   );
   check(
     "panel headings use a shared semantic level",
     stack.children.every((slot) => slot.children[0].tagName === "H2"),
   );
   check(
-    "collapsible panel headings expose disclosure buttons",
-    stack.children.every((slot) => {
+    "collapsible panel headings expose their requested default state",
+    stack.children.every((slot, index) => {
       const button = slot.children[0].children[0];
+      const expectedExpanded = index === 1 ? "false" : "true";
       return (
         button.tagName === "BUTTON" &&
         button.className.includes("section-disclosure-trigger") &&
-        button.attributes["aria-expanded"] === "true" &&
+        button.attributes["aria-expanded"] === expectedExpanded &&
         button.attributes["aria-controls"] === slot.children[1].attributes.id &&
         slot.attributes["aria-labelledby"] === button.attributes.id
       );
     }),
   );
-  check("optional panel hidden", stack.children[1].hidden === true);
-  check("synthetic panel mounted", stack.children[2].children[1].innerHTML === "MIT");
+  check(
+    "File Breakdown starts collapsed",
+    stack.children[1].children[1].className.includes("folder-overview-panel-body-collapsed"),
+  );
+  check("optional panel hidden", stack.children[2].hidden === true);
+  check("synthetic panel mounted", stack.children[3].children[1].innerHTML === "MIT");
   check(
     "print aggregation",
     printStates.some((state) => state.printable === true),

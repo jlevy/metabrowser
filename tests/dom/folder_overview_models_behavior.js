@@ -403,23 +403,23 @@ async function importSource(relative) {
   check(
     "treemap state keeps only the metric and boolean ignore scope",
     state.metric === "files" &&
-      state.includeIgnored === false &&
+      state.includeIgnored === true &&
       Object.keys(state).join(",") === "metric,includeIgnored",
     JSON.stringify(state),
   );
   check(
-    "every legacy ignored mode resets to the unchecked default",
-    treemapModel.sanitizeTreemapState({ ignored: "dimmed" }).includeIgnored === false &&
-      treemapModel.sanitizeTreemapState({ ignored: "shown" }).includeIgnored === false &&
-      treemapModel.sanitizeTreemapState({ ignored: "hidden" }).includeIgnored === false,
+    "every legacy ignored mode resets to the checked default",
+    treemapModel.sanitizeTreemapState({ ignored: "dimmed" }).includeIgnored === true &&
+      treemapModel.sanitizeTreemapState({ ignored: "shown" }).includeIgnored === true &&
+      treemapModel.sanitizeTreemapState({ ignored: "hidden" }).includeIgnored === true,
   );
   check(
     "the new ignored boolean persists",
     treemapModel.sanitizeTreemapState({ includeIgnored: false }).includeIgnored === false,
   );
   check(
-    "ignored is hidden by default",
-    treemapModel.sanitizeTreemapState(null).includeIgnored === false,
+    "ignored is shown by default",
+    treemapModel.sanitizeTreemapState(null).includeIgnored === true,
   );
   check(
     "Files is the default metric while an explicit Bytes choice is retained",

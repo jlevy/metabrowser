@@ -1,6 +1,7 @@
 // Built-in folder view and Overview contribution registration.
 
 import { createCategoryPalettePool } from "./category_palette.js";
+import { createFileTotalsPanel } from "./file_totals_panel.js";
 import { createFileTypeSummaryPanel } from "./file_type_summary.js";
 import { createOverviewView } from "./overview.js";
 import { createFolderOverviewRegistry } from "./overview_registry.js";
@@ -19,6 +20,7 @@ const palettePool = createCategoryPalettePool(
 const registry = createFolderOverviewRegistry(mb);
 const rollupControls = createFolderRollupControls(mb);
 mb.folderOverview = registry;
+registry.registerPanel("folder.file-totals", createFileTotalsPanel(mb, rollupControls));
 registry.registerPanel(
   "folder.file-types",
   createFileTypeSummaryPanel(mb, palettePool, rollupControls),
