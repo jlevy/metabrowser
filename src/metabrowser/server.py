@@ -56,6 +56,7 @@ from starlette.responses import (
     FileResponse,
     HTMLResponse,
     PlainTextResponse,
+    RedirectResponse,
     Response,
     StreamingResponse,
 )
@@ -151,7 +152,7 @@ from metabrowser.tree import (
     inventory_has_data,
     inventory_status,
 )
-from metabrowser.view_routes import decode_safe_view_path
+from metabrowser.view_routes import VIEW_ROUTE_PREFIX, decode_safe_view_path
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -948,7 +949,7 @@ async def index(_request: Request) -> HTMLResponse:
     <div class="tree-pane" id="tree-pane">
       <header class="app-header">
         <span class="header-brand">Metabrowser</span>
-        <a href="/" class="header-path" title="Jump to root">{initial_path}</a>
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" title="Jump to root">{initial_path}</a>
         <!-- Settings menu. A gear button opens a menu with two icon-segment
              choosers (theme + reading font) and a small font-set dropdown
              (#app-font-select, options from _FONT_SETS). Choices apply instantly.
@@ -1042,6 +1043,17 @@ async def view_shell(request: Request) -> Response:
     if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
     return await index(request)
+
+
+async def root_redirect(_request: Request) -> Response:
+    """Send the bare origin to the canonical served-root view.
+
+    ``/view/`` is the only route that selects a path, so the origin must not be a
+    second landing URL that renders an empty preview. The redirect is temporary so a
+    browser cannot cache it past a change to the route scheme.
+    """
+
+    return RedirectResponse(VIEW_ROUTE_PREFIX, status_code=307)
 
 
 async def _ensure_inventory_serving(subpath: str) -> bool:
@@ -2619,7 +2631,7 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
 # ── Starlette app ───────────────────────────────────────────────
 
 routes = [
-    Route("/", index),
+    Route("/", root_redirect),
     Route("/view/{path:path}", view_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),

@@ -12,8 +12,8 @@ from urllib.parse import quote, unquote_to_bytes
 
 from metabrowser.paths_safe import _safe_path
 
-_VIEW_ROUTE_PREFIX = "/view/"
-_VIEW_ROUTE_PREFIX_BYTES = _VIEW_ROUTE_PREFIX.encode()
+VIEW_ROUTE_PREFIX = "/view/"
+_VIEW_ROUTE_PREFIX_BYTES = VIEW_ROUTE_PREFIX.encode()
 _MALFORMED_ESCAPE = re.compile(rb"%(?![0-9A-Fa-f]{2})")
 
 
@@ -21,7 +21,7 @@ def format_view_href(logical_path: str) -> str:
     """Return the canonical segment-encoded route for a normalized logical path."""
 
     _validate_logical_segments(logical_path.split("/"))
-    return _VIEW_ROUTE_PREFIX + "/".join(
+    return VIEW_ROUTE_PREFIX + "/".join(
         quote(segment, safe="") for segment in logical_path.split("/")
     )
 

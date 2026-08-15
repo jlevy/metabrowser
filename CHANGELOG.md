@@ -4,6 +4,32 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Document navigation and URL scheme:
+
+- Every selected file and folder now has a canonical, reloadable `/view/<path>` URL. A
+  URL fragment identifies a location inside the selected document and never the file
+  itself, so headings, browser history, new tabs, and copy-link all work from a real
+  `href`. The previous `/#<file-path>` hash route is gone; it is not read, rewritten, or
+  redirected.
+- The bare origin `/` now redirects to `/view/`, and both the CLI startup banner and the
+  header **Jump to root** link emit that canonical route.
+  Previously the origin was a second spelling of the served root that rendered an empty
+  preview pane.
+- Standard Markdown links resolve exactly as they do on GitHub, from any nesting depth:
+  relative, `./`, `../`, and leading-slash targets, reference-style links, sanitized raw
+  HTML anchors, folders, queries, fragments, spaces, Unicode, and literal percent signs.
+  Embedded images, audio, and video route through the bounded `/raw` endpoint.
+  Missing targets keep an exact URL and fall through to the ordinary not-found state
+  rather than being guessed at by basename.
+- Obsidian wiki links work without configuration: `[[Note]]`, `[[Folder/Note]]`,
+  `[[Note|Label]]`, heading and `#^block` targets, attachments, and media embeds, plus
+  bounded whole-note, heading, and block transclusion.
+  Ambiguous and missing notes stay visible and keyboard reachable instead of resolving
+  by catalog order.
+- Plugins navigate through the documented `window.metabrowser.navigation` namespace
+  (`href`, `open`, `current`). This replaces `metabrowser.openPath` and the
+  `metabrowser:open-path` event, which are removed.
+
 ## 0.4.2
 
 Release automation:

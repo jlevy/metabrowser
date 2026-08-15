@@ -157,12 +157,14 @@ def run_serve(
     server._register_allowed_host(host)
     display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
 
-    url = f"http://{display_host}:{actual_port}"
+    # Always print a canonical `/view/` URL. The bare origin only redirects
+    # there, so emitting it would hand out a second spelling of the root.
+    logical_path = ""
     if selected_path is not None:
         logical_path = selected_path.relative_to(resolved).as_posix()
         if selected_path.is_dir() and logical_path:
             logical_path += "/"
-        url += format_view_href(logical_path)
+    url = f"http://{display_host}:{actual_port}{format_view_href(logical_path)}"
 
     typer.echo(f"Serving {resolved} at {url}")
     if server._LOADED_PLUGINS:

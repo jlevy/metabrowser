@@ -1,6 +1,6 @@
 # metab <ROOT>/walkroot --no-open
 exit: 0
 --- stdout ---
-Serving <ROOT>/walkroot at http://127.0.0.1:8411
+Serving <ROOT>/walkroot at http://127.0.0.1:8411/view/
 Plugins: agent-log, binary, folder, markdown, structured, text, unknown-jsonl
 --- stderr ---

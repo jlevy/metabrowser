@@ -129,6 +129,35 @@ def test_unprefixed_repository_paths_do_not_become_shell_routes(tmp_path: Path) 
         server._set_root_dir(Path())
 
 
+def test_bare_origin_redirects_to_the_canonical_served_root(tmp_path: Path) -> None:
+    """The origin is not a second landing URL that renders an empty preview."""
+
+    (tmp_path / "README.md").write_text("# Read me")
+    server._set_root_dir(tmp_path)
+    try:
+        client = TestClient(server.app)
+        redirect = client.get("/", follow_redirects=False)
+        assert redirect.status_code == 307
+        assert redirect.headers["location"] == "/view/"
+        followed = client.get("/")
+        assert followed.status_code == 200
+        assert "<title>Metabrowser</title>" in followed.text
+    finally:
+        server._set_root_dir(Path())
+
+
+def test_header_root_link_uses_the_canonical_view_route(tmp_path: Path) -> None:
+    """`Jump to root` must select the served root, not the bare origin."""
+
+    server._set_root_dir(tmp_path)
+    try:
+        response = TestClient(server.app).get("/view/")
+    finally:
+        server._set_root_dir(Path())
+    assert '<a href="/view/" class="header-path"' in response.text
+    assert '<a href="/" class="header-path"' not in response.text
+
+
 def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None:
     target = tmp_path / "docs" / "雪 #1%.md"
     target.parent.mkdir()
@@ -145,4 +174,22 @@ def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None
 
     assert result.exit_code == 0, result.exception
     assert "http://127.0.0.1:8411/view/docs/%E9%9B%AA%20%231%25.md" in result.output
+    server_class.assert_called_once()
+
+
+def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(
+    tmp_path: Path,
+) -> None:
+    """A bare startup prints `/view/` rather than the redirecting origin."""
+
+    (tmp_path / "README.md").write_text("# Read me")
+
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
+        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+    ):
+        result = runner.invoke(_app, [str(tmp_path), "--no-open"])
+
+    assert result.exit_code == 0, result.exception
+    assert "at http://127.0.0.1:8411/view/\n" in result.output
     server_class.assert_called_once()
