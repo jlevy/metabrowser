@@ -177,7 +177,7 @@ export function createFileTypeSummaryPanel(mb, palettePool, projectionPool, roll
     presentation: /** @type {const} */ ("surface"),
     required: true,
     collapsible: true,
-    defaultExpanded: false,
+    defaultExpanded: true,
     printable: false,
     /** @param {{path?: string}} context */
     resolve: (context) => Object.freeze({ key: context.path || "", data: null }),

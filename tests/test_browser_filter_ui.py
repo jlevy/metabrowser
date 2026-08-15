@@ -112,7 +112,7 @@ def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
     assert 'label: "Files"' in file_totals
     assert "defaultExpanded: true" in file_totals
     assert 'label: "File Breakdown"' in file_types
-    assert "defaultExpanded: false" in file_types
+    assert "defaultExpanded: true" in file_types
     assert '"folder.file-totals"' in index
     assert '"folder.file-types"' in index
     assert '<h2 class="tm-totals-heading">Files</h2>' in treemap

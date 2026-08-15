@@ -66,6 +66,18 @@
   display: none;
 }
 
+/* A collapsed panel is a heading and nothing else. The rule underlines content
+   that is not there, and the heading's trailing space is sized to stand a
+   heading off from its own body, not from the next heading — together they read
+   as an empty section rather than a closed one. The panel grid's own gap is
+   the whole separation between two collapsed headings. Expanded panels are
+   untouched. */
+.folder-overview-panel-collapsed > .folder-overview-panel-heading {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .folder-rollup-controls {
   display: flex;
   flex-wrap: wrap;

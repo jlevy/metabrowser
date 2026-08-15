@@ -31,12 +31,19 @@ export function createPanelSlot(descriptor) {
     toggle.setAttribute("id", toggleId);
     toggle.setAttribute("aria-controls", bodyId);
     let expanded = descriptor.defaultExpanded !== false;
-    toggle.setAttribute("aria-expanded", String(expanded));
-    body.classList.toggle("folder-overview-panel-body-collapsed", !expanded);
-    const toggleDisclosure = () => {
-      expanded = !expanded;
+    // The collapsed state is marked on the panel as well as the body: with the
+    // body hidden, the heading's rule and trailing space are separating a
+    // heading from the next heading rather than from any content, so the
+    // heading styling keys off the panel (see overview.css).
+    const applyExpanded = () => {
       toggle.setAttribute("aria-expanded", String(expanded));
       body.classList.toggle("folder-overview-panel-body-collapsed", !expanded);
+      slot.classList.toggle("folder-overview-panel-collapsed", !expanded);
+    };
+    applyExpanded();
+    const toggleDisclosure = () => {
+      expanded = !expanded;
+      applyExpanded();
     };
     toggle.addEventListener("click", toggleDisclosure);
     disposeDisclosure = () => toggle.removeEventListener("click", toggleDisclosure);
