@@ -284,23 +284,33 @@ an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
 
 That makes the query the one component with two authorities in it, so it is the one
 component that needs a reserved namespace.
-**Metabrowser reserves query keys beginning with `mb.`**; every other key belongs to the
-document and is passed through untouched.
-Plugins must not read or write `mb.` keys except through the navigation SDK.
+**Metabrowser reserves query keys beginning with `_mb_`**; every other key belongs to
+the document and is passed through untouched.
+Reserved keys are `snake_case`, matching this server’s existing query parameters such as
+`include_ignored` and every key on the JSON wire.
+Plugins must not read or write `_mb_` keys except through the navigation SDK.
+
+```text
+/view/docs/guide.md?_mb_view=source&plain=1#setup
+                    └── reserved ──┘ └ doc ┘
+```
 
 The seam holds under one invariant, which any future parameter must preserve:
 
-> Removing every `mb.` key from a URL yields exactly that content’s canonical URL.
+> Removing every `_mb_` key from a URL yields exactly that content’s canonical URL.
 
-The prefix is `mb.` for two reasons, one positive and one by elimination.
-It already means “Metabrowser’s own namespace” to plugin authors, who read `mb` as the
-SDK object and call facades such as `mb.folderOverview`, so one sigil carries one
-meaning across the JavaScript and URL surfaces.
-A bare `_` was rejected because this codebase already spends it on the opposite meaning
-— `/_debug/tasks` and Python privates mark surfaces that are deliberately not a
-contract, while view parameters are a documented surface people bookmark and share.
-Parameters elsewhere are namespaced by route instead: every key on `/api/*` is
-unambiguously the server’s, which is why only `/view/` needs a sigil at all.
+The prefix carries two signals because each one alone is ambiguous here.
+A leading `_` is the familiar mark for a reserved system field, but this codebase
+already spends a bare `_` on the opposite meaning: `/_debug/tasks` and Python privates
+mark surfaces that are deliberately not a contract, while view parameters are a
+documented surface people bookmark and share.
+Adding `mb` names the owner and removes that clash.
+Keeping `_` as the only separator also matches the `snake_case` keys, where a dotted
+prefix such as `mb.folder_overview` would mix two separators in one name and invite the
+occasional tooling that rewrites `.` in query keys.
+Parameters elsewhere need no sigil because they are namespaced by route: every key on
+`/api/*` is unambiguously the server’s, and only `/view/` shares its query with a
+document.
 
 Three rules keep the namespace honest as entries are added:
 
@@ -310,7 +320,7 @@ Three rules keep the namespace honest as entries are added:
 - Reserved keys are sorted for one canonical spelling, but a key is never dropped for
   matching a default. Defaults are viewer-dependent, so an omitted key means “viewer’s
   choice” while a present one means “pinned”.
-- An unrecognized `mb.` key is a visible diagnostic, never silent and never passed
+- An unrecognized `_mb_` key is a visible diagnostic, never silent and never passed
   through as document metadata.
 
 Planned entries are tracked with their features rather than reserved in advance;

@@ -55,20 +55,20 @@ equal(
   "/view/docs/a.md?value=a%26b&literal=%25",
 );
 
-// The reserved-namespace seam. `mb.` query keys belong to Metabrowser and every other
+// The reserved-namespace seam. `_mb_` query keys belong to Metabrowser and every other
 // key belongs to the document, but no presentation parameter exists yet, so the codec
 // must still treat the whole query as opaque data. Implementing the split means changing
 // these three assertions deliberately rather than discovering the change downstream.
 // See docs/architecture.md#browser-url-grammar.
 equal(
   "reserved keys are carried, not yet interpreted",
-  route.parse("/view/docs/a.md", "?mb.view=source&plain=1", ""),
-  { path: "docs/a.md", query: "mb.view=source&plain=1" },
+  route.parse("/view/docs/a.md", "?_mb_view=source&plain=1", ""),
+  { path: "docs/a.md", query: "_mb_view=source&plain=1" },
 );
 equal(
   "a query round-trips losslessly through parse and href",
-  route.href(route.parse("/view/docs/a.md", "?mb.view=source&plain=1", "#setup")),
-  "/view/docs/a.md?mb.view=source&plain=1#setup",
+  route.href(route.parse("/view/docs/a.md", "?_mb_view=source&plain=1", "#setup")),
+  "/view/docs/a.md?_mb_view=source&plain=1#setup",
 );
 // The seam's invariant: dropping reserved keys leaves the canonical content URL. It holds
 // trivially while nothing is reserved, and must keep holding once parameters land.
