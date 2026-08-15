@@ -1,13 +1,19 @@
 // Byte-to-display transform for the binary plugin's Bytes view.
 //
 // Pure and DOM-free so the contract is exhaustively testable. Each input
-// byte maps to exactly one display unit:
+// byte maps to exactly one display unit, and there are only two cases:
 //
 //   0x20-0x7E  the literal ASCII character
-//   0x00-0x1F  the matching Unicode Control Picture (U+2400 + byte)
-//   0x7F       U+2421, Symbol for Delete
-//   0x80-0xFF  uppercase hex in guillemets, such as the two bytes of a
-//              UTF-8 e-acute rendering as two separate hex tokens
+//   everything else
+//              uppercase hex in guillemets, such as `‹00›`, `‹0A›`, `‹FF›`
+//
+// Non-printables were Unicode Control Pictures (U+2400 + byte, and U+2421
+// for delete). They are typographically wrong for this surface: each is a
+// full-size glyph containing a two- or three-letter abbreviation drawn at a
+// fraction of the body size, so at the small monospace block size the label
+// is illegible and the reader cannot tell `␁` from `␈` without zooming. Hex
+// is the notation the rest of the tooling already speaks, and one form for
+// every non-printable byte means the reader learns a single convention.
 //
 // Nothing here decodes. The WHATWG Encoding Standard maps the `ascii`
 // label to Windows-1252, so TextDecoder("ascii") would turn bytes above
@@ -21,26 +27,42 @@
 // breaks lets the surface use `white-space: pre`, where layout is
 // proportional to the number of lines: the same 1 MiB lands in ~50 ms.
 
-/** Printable ASCII passes through; everything else is transformed. */
+/** Printable ASCII passes through; everything else becomes a hex code. */
 const PRINTABLE_MIN = 0x20;
 const PRINTABLE_MAX = 0x7e;
-const DELETE_BYTE = 0x7f;
-/** U+2400 SYMBOL FOR NULL starts the Control Pictures block. */
-const CONTROL_PICTURES_BASE = 0x2400;
-/** U+2421 SYMBOL FOR DELETE sits past the C0 run. */
-const DELETE_PICTURE = "␡";
 
 /**
- * Accented runs allowed per rendered chunk.
+ * Class changes allowed across the whole mounted view before the two-tone
+ * treatment is withdrawn.
  *
- * Run count tracks entropy rather than file size: high-entropy content
- * switches class roughly every 1.6 bytes, so a chunk of it yields tens of
- * thousands of runs while string-dense content yields far fewer. Past this
- * budget the accent is dropped, which loses no information — at that density
- * every token is special, so the color distinguishes nothing — and it bounds
- * the element count instead of approaching one element per byte.
+ * Run count tracks how often the content alternates between literal text and
+ * byte codes, which is a property of structure rather than of size: a
+ * string-dense artifact alternates every few hundred bytes, while
+ * high-entropy content alternates roughly every 1.6. Only code runs become
+ * elements, so a given run count costs about half that many.
+ *
+ * Set from measurement on a 7.2 MB record-structured artifact — readable
+ * fields separated by control bytes, which is the shape that alternates most
+ * per byte while still being worth coloring. Chromium 141, software raster:
+ *
+ * | Accented spans | DOM nodes | Scroll to end |
+ * | --- | --- | --- |
+ * | 87k (1 MiB loaded) | 87k | smooth, 4 ms forced layout |
+ * | 629k (7.2 MB loaded) | 630k | 97 ms |
+ * | 0 (same 7.2 MB) | 692 | 19 ms |
+ *
+ * So the elements are affordable by the megabyte and expensive by the file.
+ * This sits at roughly 200k spans, which keeps the opening view of ordinary
+ * mixed content colored — the case the treatment exists for — and withdraws
+ * before scrolling degrades. Raising it trades scroll latency for color on
+ * files large enough that the color has already stopped being scannable.
+ *
+ * The budget is spent across the view, not per chunk, because the DOM
+ * accumulates across `Load more`, and it is applied as one decision for
+ * everything mounted: a treatment that held above some line and not below it
+ * reads as a rendering fault rather than as a limit.
  */
-export const DEFAULT_ACCENT_RUN_BUDGET = 12000;
+export const DEFAULT_ACCENT_RUN_BUDGET = 400000;
 
 /** Fallback when a caller cannot measure the pane. */
 export const DEFAULT_CHARS_PER_LINE = 160;
@@ -50,10 +72,6 @@ const DISPLAY_TABLE = [];
 for (let byte = 0; byte < 256; byte += 1) {
   if (byte >= PRINTABLE_MIN && byte <= PRINTABLE_MAX) {
     DISPLAY_TABLE.push(String.fromCharCode(byte));
-  } else if (byte === DELETE_BYTE) {
-    DISPLAY_TABLE.push(DELETE_PICTURE);
-  } else if (byte < PRINTABLE_MIN) {
-    DISPLAY_TABLE.push(String.fromCharCode(CONTROL_PICTURES_BASE + byte));
   } else {
     DISPLAY_TABLE.push(`‹${byte.toString(16).toUpperCase().padStart(2, "0")}›`);
   }
@@ -140,65 +158,80 @@ export function lineRanges(bytes, charsPerLine) {
 }
 
 /**
+ * Class changes in a byte window, which is how many elements the two-tone
+ * treatment would cost.
+ *
+ * Counted without building any strings, so a caller can decide whether it can
+ * afford the treatment before paying for it.
+ *
+ * @param {Uint8Array} bytes
+ * @returns {number}
+ */
+export function countAccentRuns(bytes) {
+  if (bytes.length === 0) {
+    return 0;
+  }
+  let runs = 1;
+  let previous = isSpecialByte(bytes[0]);
+  for (let index = 1; index < bytes.length; index += 1) {
+    const special = isSpecialByte(bytes[index]);
+    if (special !== previous) {
+      runs += 1;
+      previous = special;
+    }
+  }
+  return runs;
+}
+
+/**
  * Format one byte range, coalescing adjacent same-class bytes into runs so the
  * DOM never grows to one element per byte.
  *
- * Substitute glyphs come from a fixed internal table and contain no HTML
+ * Hex codes come from a fixed internal table and contain no HTML
  * metacharacters, so only literal ASCII runs need escaping.
+ *
+ * Literal text is left unwrapped and takes the surface's own color; only code
+ * runs get an element. That is the cheaper side to wrap for the content this
+ * view exists to show, and it means the unaccented fallback below still reads
+ * correctly once the surface is told which color to default to.
  *
  * @param {Uint8Array} bytes
  * @param {number} from
  * @param {number} to
  * @param {(value: string) => string} escapeHtml
- * @param {{remaining: number, dropped: boolean}} budget
+ * @param {boolean} accent Whether to emit the two-tone elements at all.
  * @returns {string}
  */
-function formatRange(bytes, from, to, escapeHtml, budget) {
-  if (budget.dropped) {
-    // Once the accent is spent it stays spent for the rest of the chunk, so
-    // the treatment does not flicker back on partway down.
+function formatRange(bytes, from, to, escapeHtml, accent) {
+  if (!accent) {
     return escapeHtml(renderRange(bytes, from, to));
   }
   /** @type {string[]} */
   const parts = [];
   let runStart = from;
-  let runIsSpecial = false;
-  let index = from;
 
-  /** @param {number} end */
-  const flush = (end) => {
+  /**
+   * @param {number} end
+   * @param {boolean} special
+   */
+  const flush = (end, special) => {
     if (end <= runStart) {
       return;
     }
     const text = renderRange(bytes, runStart, end);
-    parts.push(
-      runIsSpecial ? `<span class="binary-byte-special">${text}</span>` : escapeHtml(text),
-    );
+    parts.push(special ? `<span class="binary-byte-code">${text}</span>` : escapeHtml(text));
     runStart = end;
   };
 
-  for (; index < to; index += 1) {
+  let runIsSpecial = from < to ? isSpecialByte(bytes[from]) : false;
+  for (let index = from; index < to; index += 1) {
     const special = isSpecialByte(bytes[index]);
-    if (index > runStart) {
-      if (special === runIsSpecial) {
-        continue;
-      }
-      flush(index);
+    if (special !== runIsSpecial) {
+      flush(index, runIsSpecial);
+      runIsSpecial = special;
     }
-    if (special && budget.remaining <= 0) {
-      break;
-    }
-    if (special) {
-      budget.remaining -= 1;
-    }
-    runIsSpecial = special;
   }
-
-  flush(index);
-  if (index < to) {
-    budget.dropped = true;
-    parts.push(escapeHtml(renderRange(bytes, index, to)));
-  }
+  flush(to, runIsSpecial);
   return parts.join("");
 }
 
@@ -210,13 +243,11 @@ function formatRange(bytes, from, to, escapeHtml, budget) {
  *
  * @param {Uint8Array} bytes
  * @param {(value: string) => string} escapeHtml
- * @param {number} [runBudget] Accented runs allowed before the accent is dropped.
- * @returns {{html: string, accentDropped: boolean}}
+ * @param {{accent?: boolean}} [options]
+ * @returns {{html: string}}
  */
-export function formatByteRuns(bytes, escapeHtml, runBudget = DEFAULT_ACCENT_RUN_BUDGET) {
-  const budget = { remaining: runBudget, dropped: false };
-  const html = formatRange(bytes, 0, bytes.length, escapeHtml, budget);
-  return { html, accentDropped: budget.dropped };
+export function formatByteRuns(bytes, escapeHtml, options) {
+  return { html: formatRange(bytes, 0, bytes.length, escapeHtml, options?.accent !== false) };
 }
 
 /**
@@ -230,24 +261,27 @@ export function formatByteRuns(bytes, escapeHtml, runBudget = DEFAULT_ACCENT_RUN
  * lines into render blocks, and the block size has to be small enough that
  * bringing one onscreen is cheap.
  *
+ * ``accent`` is the caller's decision, not this function's: whether the view
+ * can afford the two-tone treatment depends on everything mounted, not on this
+ * window, and the treatment has to be uniform across all of it.
+ *
  * @param {Uint8Array} bytes
  * @param {(value: string) => string} escapeHtml
- * @param {{charsPerLine?: number, runBudget?: number}} [options]
- * @returns {{html: string, lines: string[], accentDropped: boolean, lineCount: number}}
+ * @param {{charsPerLine?: number, accent?: boolean}} [options]
+ * @returns {{html: string, lines: string[], lineCount: number}}
  */
 export function formatByteLines(bytes, escapeHtml, options) {
   const charsPerLine = options?.charsPerLine ?? DEFAULT_CHARS_PER_LINE;
-  const budget = { remaining: options?.runBudget ?? DEFAULT_ACCENT_RUN_BUDGET, dropped: false };
+  const accent = options?.accent !== false;
   const ranges = lineRanges(bytes, charsPerLine);
   /** @type {string[]} */
   const lines = [];
   for (const [from, to] of ranges) {
-    lines.push(formatRange(bytes, from, to, escapeHtml, budget));
+    lines.push(formatRange(bytes, from, to, escapeHtml, accent));
   }
   return {
     html: lines.join("\n"),
     lines,
-    accentDropped: budget.dropped,
     lineCount: lines.length,
   };
 }

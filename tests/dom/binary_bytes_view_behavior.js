@@ -66,12 +66,29 @@ function check(name, condition, detail = "failed") {
 }
 
 function makeElement(selector) {
+  const classes = new Set();
   return {
     selector,
     innerHTML: "",
     textContent: "",
     hidden: false,
     listeners: [],
+    // The view marks the surface with the tone its unwrapped text should take,
+    // so the double has to model class state, not just markup.
+    classList: {
+      add: (name) => classes.add(name),
+      remove: (name) => classes.delete(name),
+      contains: (name) => classes.has(name),
+      toggle(name, force) {
+        const on = force === undefined ? !classes.has(name) : Boolean(force);
+        if (on) {
+          classes.add(name);
+        } else {
+          classes.delete(name);
+        }
+        return on;
+      },
+    },
     addEventListener(type, fn) {
       if (type === "click") {
         this.listeners.push(fn);
@@ -168,6 +185,9 @@ function contentOf(container) {
 }
 
 (async () => {
+  const { DEFAULT_ACCENT_RUN_BUDGET } = await importModule(
+    "src/metabrowser/builtin_plugins/binary/byte_format.js",
+  );
   const { mountBytesView, renderChunkState, decodeBase64, measureSurface } = await importModule(
     "src/metabrowser/builtin_plugins/binary/bytes_view.js",
   );
@@ -210,8 +230,8 @@ function contentOf(container) {
       contentOf(container),
     );
     check(
-      "control bytes render as control pictures",
-      contentOf(container).includes("␀"),
+      "control bytes render as hex codes, not Control Pictures",
+      contentOf(container).includes("‹00›") && !/[␀-␿]/.test(contentOf(container)),
       contentOf(container),
     );
     check("a handle with dispose is returned", typeof handle.dispose === "function");
@@ -255,6 +275,124 @@ function contentOf(container) {
       container.querySelector(".binary-bytes-more").hidden === true,
     );
     handle.dispose();
+  }
+
+  // ── Load more does not race itself ──────────────────────────────
+  //
+  // next_offset only advances when a response lands, so repeated clicks
+  // during one open request used to re-request the same window and append it
+  // once per click — the same bytes duplicated in the DOM, and duplicated
+  // again for find-in-page and select-all.
+  {
+    const { mb, requests } = makeSdk();
+    const container = makeContainer();
+    const mounted = mountBytesView(container, { path: "a.bin" }, mb);
+    requests[0].resolve(chunkEnvelope({ content_base64: base64([0x41, 0x42, 0x43, 0x44]) }));
+    await mounted;
+
+    const more = container.querySelector(".binary-bytes-more");
+    more.click();
+    more.click();
+    more.click();
+    check(
+      "clicks during an open request issue no further requests",
+      requests.length === 2,
+      String(requests.length),
+    );
+
+    requests[1].resolve(
+      chunkEnvelope({
+        offset: 4,
+        next_offset: 8,
+        has_more: false,
+        content_base64: base64([0x45, 0x46, 0x47, 0x48]),
+      }),
+    );
+    await settle();
+    const painted = contentOf(container);
+    check("the chunk is appended exactly once", painted.split("EFGH").length - 1 === 1, painted);
+    check(
+      "each loaded chunk is still one block",
+      (painted.match(/class="binary-bytes-block"/g) || []).length === 2,
+      painted,
+    );
+
+    // A click after the request settles is a normal request again, not a
+    // permanently wedged control.
+    const { mb: mb2, requests: requests2 } = makeSdk();
+    const container2 = makeContainer();
+    const mounted2 = mountBytesView(container2, { path: "b.bin" }, mb2);
+    requests2[0].resolve(chunkEnvelope({}));
+    await mounted2;
+    container2.querySelector(".binary-bytes-more").click();
+    await settle();
+    check(
+      "the guard clears once a request settles",
+      requests2.length === 2,
+      String(requests2.length),
+    );
+  }
+
+  // ── The accent is one decision for the whole view ───────────────
+  //
+  // The budget used to be spent per chunk and mid-render: the first N runs
+  // were colored and everything after them was not, so a file's treatment
+  // changed partway down and read as a rendering fault. The decision is now
+  // made against everything mounted, and withdrawing it re-renders what is
+  // already there.
+  {
+    const { mb, requests } = makeSdk();
+    const container = makeContainer();
+    // Affordable first chunk: readable text around one code byte, so the
+    // accented rendering is observable rather than vacuously absent.
+    const calm = base64([0x41, 0x42, 0xff, 0x43]);
+    // Second chunk alternates every byte, so its run count is its length.
+    // Sized from the constant so raising the budget cannot quietly turn this
+    // into a test that no longer reaches the branch it is here to cover.
+    const churn = [];
+    for (let i = 0; i < DEFAULT_ACCENT_RUN_BUDGET + 1000; i += 1) {
+      churn.push(i % 2 === 0 ? 0x41 : 0xff);
+    }
+    const mounted = mountBytesView(container, { path: "a.bin" }, mb);
+    requests[0].resolve(chunkEnvelope({ content_base64: calm }));
+    await mounted;
+    check(
+      "an affordable first chunk is accented",
+      contentOf(container).includes('<span class="binary-byte-code">') &&
+        container.querySelector(".binary-bytes-note").hidden === true,
+      contentOf(container),
+    );
+
+    container.querySelector(".binary-bytes-more").click();
+    requests[1].resolve(
+      chunkEnvelope({
+        offset: 4,
+        next_offset: 4 + churn.length,
+        logical_size: 4 + churn.length,
+        has_more: false,
+        content_base64: base64(churn),
+      }),
+    );
+    await settle();
+    const painted = contentOf(container);
+    check(
+      "blowing the budget withdraws the accent everywhere, not below a line",
+      !painted.includes("binary-byte-code"),
+      painted.slice(0, 200),
+    );
+    check(
+      "the first chunk's bytes survive the re-render",
+      painted.includes("AB‹FF›C"),
+      painted.slice(0, 200),
+    );
+    check(
+      "the surface is told to default to the code tone",
+      container.querySelector(".binary-bytes-content").classList.contains("binary-bytes-plain"),
+    );
+    check(
+      "the withdrawal is stated to the reader",
+      container.querySelector(".binary-bytes-note").hidden === false,
+    );
   }
 
   // ── File replaced between chunks ────────────────────────────────
@@ -477,14 +615,33 @@ function contentOf(container) {
       },
       mb,
     );
-    check("dropped highlighting is stated", dense.includes("Byte highlighting is off"), dense);
+    check("a withdrawn accent is stated", dense.includes("Coloring is off for this file"), dense);
+    // The note blames alternation, not the proportion of non-printable bytes:
+    // a file of readable strings punctuated by separators trips the budget
+    // while being mostly printable, and the old wording called that file
+    // "nearly every byte is non-printable".
+    check(
+      "the note does not claim the file is mostly non-printable",
+      !dense.includes("non-printable"),
+      dense,
+    );
+    check(
+      "a withdrawn accent tells the surface which tone to default to",
+      dense.includes("binary-bytes-content no-highlight binary-bytes-plain"),
+      dense,
+    );
     check("the readout reports loaded and total", dense.includes("4 B") && dense.includes("8 B"));
 
     const complete = renderChunkState(
       { status: "ready", bytesLoaded: 8, logicalSize: 8, hasMore: false, accentDropped: false },
       mb,
     );
-    check("a complete view states no note", !complete.includes("Byte highlighting is off"));
+    check("a complete view states no note", !complete.includes("Coloring is off"));
+    check(
+      "an accented view leaves the surface on its default tone",
+      !complete.includes("binary-bytes-plain"),
+      complete,
+    );
 
     // Wrapping a large run in CSS is quadratic, so the surface must not offer
     // the browser that job: lines arrive pre-broken into `white-space: pre`.

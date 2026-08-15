@@ -193,8 +193,24 @@ window that never existed on disk.
 | `SYNTAX_HIGHLIGHT_MAX_BYTES` | 512 KiB | Highlight.js, superlinear in input |
 | `BINARY_PREVIEW_MAX_BYTES` | 32 MiB | Browser memory for loaded bytes |
 | `BINARY_PREVIEW_CHUNK_BYTES` | 1 MiB | Opening latency |
-| `DEFAULT_ACCENT_RUN_BUDGET` | 12,000 runs | Element count per chunk |
+| `DEFAULT_ACCENT_RUN_BUDGET` | 60,000 runs | Element count across the mounted view |
 | `LINES_PER_BLOCK` | 128 | Deferred layout per scroll-in |
+
+A budget that degrades what the reader sees has a second requirement beyond bounding the
+resource: the degradation has to apply uniformly to everything on screen.
+The accent budget was first spent per chunk and mid-render, which bounded elements
+correctly and still produced a visible fault — a 7 MB artifact of readable strings
+rendered colored for its first eleven blocks and uncolored for the remaining
+sixty-seven, with the boundary falling wherever the budget happened to run out.
+Nothing was wrong with the bytes, so the reader could only read the change as one.
+
+The budget is therefore counted across the whole view, decided before any markup is
+emitted, and applied to every loaded chunk at once; withdrawing it re-renders what is
+already mounted from the retained bytes.
+Counting is a pass over bytes with no string building, so deciding costs far less than
+rendering does, and the re-render happens at most once per view.
+This is the general shape: **decide a degradation against everything the reader can see,
+not against the unit you happen to be processing.**
 
 ## References
 

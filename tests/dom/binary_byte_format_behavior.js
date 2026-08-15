@@ -45,12 +45,6 @@ function expectedDisplay(byte) {
   if (byte >= 0x20 && byte <= 0x7e) {
     return String.fromCharCode(byte);
   }
-  if (byte <= 0x1f) {
-    return String.fromCharCode(0x2400 + byte);
-  }
-  if (byte === 0x7f) {
-    return "␡";
-  }
   return `‹${byte.toString(16).toUpperCase().padStart(2, "0")}›`;
 }
 
@@ -66,10 +60,10 @@ function expectedDisplay(byte) {
     displayForByte,
     displayWidthForByte,
     isSpecialByte,
+    countAccentRuns,
     formatByteRuns,
     formatByteLines,
     lineRanges,
-    DEFAULT_ACCENT_RUN_BUDGET,
   } = module;
 
   // ── Display contract, exhaustively ──────────────────────────────
@@ -86,10 +80,33 @@ function expectedDisplay(byte) {
   );
 
   check("space stays a space", displayForByte(0x20) === " ", displayForByte(0x20));
-  check("line feed is a control picture", displayForByte(0x0a) === "␊");
-  check("delete is its own picture", displayForByte(0x7f) === "␡");
+  check("line feed is a hex code", displayForByte(0x0a) === "‹0A›", displayForByte(0x0a));
+  check("nul is a hex code", displayForByte(0x00) === "‹00›", displayForByte(0x00));
+  check("delete is a hex code", displayForByte(0x7f) === "‹7F›", displayForByte(0x7f));
   check("high bytes use uppercase hex", displayForByte(0xc3) === "‹C3›");
   check("high bytes pad to two digits", displayForByte(0x80) === "‹80›");
+  // Control Pictures were unreadable at the block's font size; no byte may
+  // render as one again.
+  const pictures = [];
+  for (let byte = 0; byte < 256; byte += 1) {
+    const unit = displayForByte(byte);
+    if (/[␀-␿]/.test(unit)) {
+      pictures.push(byte);
+    }
+  }
+  check("no byte renders as a Control Picture", pictures.length === 0, pictures.join(","));
+  // Every non-printable byte takes the same form, so the reader learns one.
+  const shapes = new Set();
+  for (let byte = 0; byte < 256; byte += 1) {
+    if (isSpecialByte(byte)) {
+      shapes.add(displayForByte(byte).replace(/[0-9A-F]{2}/, "XX"));
+    }
+  }
+  check(
+    "every non-printable byte uses one notation",
+    shapes.size === 1 && shapes.has("‹XX›"),
+    [...shapes].join(","),
+  );
 
   const specials = [];
   for (let byte = 0; byte < 256; byte += 1) {
@@ -100,12 +117,12 @@ function expectedDisplay(byte) {
   check("isSpecialByte matches the printable range", specials.length === 0, specials.join(","));
 
   // ── No decoding ─────────────────────────────────────────────────
-  const utf8 = formatByteRuns(Uint8Array.from([0xc3, 0xa9]), escapeHtml, 100);
+  const utf8 = formatByteRuns(Uint8Array.from([0xc3, 0xa9]), escapeHtml);
   check("UTF-8 C3 A9 renders as two hex tokens", glyphs(utf8.html) === "‹C3›‹A9›", utf8.html);
   check("UTF-8 C3 A9 never decodes to e-acute", !utf8.html.includes("é"), utf8.html);
 
   // ── Escaping ────────────────────────────────────────────────────
-  const meta = formatByteRuns(Uint8Array.from([0x3c, 0x3e, 0x26, 0x22, 0x27]), escapeHtml, 100);
+  const meta = formatByteRuns(Uint8Array.from([0x3c, 0x3e, 0x26, 0x22, 0x27]), escapeHtml);
   check(
     "printable HTML metacharacters are escaped",
     meta.html === "&lt;&gt;&amp;&quot;&#39;",
@@ -113,82 +130,80 @@ function expectedDisplay(byte) {
   );
 
   // ── Run coalescing ──────────────────────────────────────────────
-  const ordinary = formatByteRuns(new Uint8Array(10).fill(0x41), escapeHtml, 100);
-  check("an ordinary run emits no element", countSpans(ordinary.html) === 0, ordinary.html);
-  check("an ordinary run keeps its glyphs", glyphs(ordinary.html) === "A".repeat(10));
+  const ordinary = formatByteRuns(new Uint8Array(10).fill(0x41), escapeHtml);
+  check("a literal run emits no element", countSpans(ordinary.html) === 0, ordinary.html);
+  check("a literal run keeps its glyphs", glyphs(ordinary.html) === "A".repeat(10));
 
-  const special = formatByteRuns(new Uint8Array(10).fill(0xff), escapeHtml, 100);
-  check("a special run emits one element", countSpans(special.html) === 1, special.html);
-  check("a special run keeps its glyphs", glyphs(special.html) === "‹FF›".repeat(10), special.html);
+  const special = formatByteRuns(new Uint8Array(10).fill(0xff), escapeHtml);
+  check("a code run emits one element", countSpans(special.html) === 1, special.html);
+  check("a code run keeps its glyphs", glyphs(special.html) === "‹FF›".repeat(10), special.html);
+  check(
+    "only code runs are wrapped, so literal text takes the surface color",
+    special.html.includes('<span class="binary-byte-code">') && !ordinary.html.includes("<span"),
+    special.html,
+  );
 
   const mixed = formatByteRuns(
     Uint8Array.from([0x41, 0x41, 0xff, 0xff, 0x42, 0x00, 0x00]),
     escapeHtml,
-    100,
   );
   check("adjacent same-class bytes coalesce", countSpans(mixed.html) === 2, mixed.html);
-  check("mixed content keeps its glyph order", glyphs(mixed.html) === "AA‹FF›‹FF›B␀␀", mixed.html);
+  check(
+    "mixed content keeps its glyph order",
+    glyphs(mixed.html) === "AA‹FF›‹FF›B‹00›‹00›",
+    mixed.html,
+  );
 
-  const empty = formatByteRuns(new Uint8Array(0), escapeHtml, 100);
-  check("empty input renders nothing", empty.html === "" && empty.accentDropped === false);
+  const empty = formatByteRuns(new Uint8Array(0), escapeHtml);
+  check("empty input renders nothing", empty.html === "", empty.html);
 
-  // ── Accent budget ───────────────────────────────────────────────
+  // ── Run counting, which is what the view budgets against ────────
+  check("no bytes means no runs", countAccentRuns(new Uint8Array(0)) === 0);
+  check("one uniform run counts once", countAccentRuns(new Uint8Array(500).fill(0x41)) === 1);
+  check(
+    "run count follows class changes, not byte count",
+    countAccentRuns(Uint8Array.from([0x41, 0x41, 0xff, 0xff, 0x42, 0x00, 0x00])) === 4,
+    String(countAccentRuns(Uint8Array.from([0x41, 0x41, 0xff, 0xff, 0x42, 0x00, 0x00]))),
+  );
+
   const alternating = new Uint8Array(2048);
   for (let i = 0; i < alternating.length; i += 1) {
     alternating[i] = i % 2 === 0 ? 0x41 : 0xff;
   }
-  const unbudgeted = formatByteRuns(alternating, escapeHtml, Number.MAX_SAFE_INTEGER);
   check(
-    "alternating input emits one element per special byte when affordable",
-    countSpans(unbudgeted.html) === 1024,
-    String(countSpans(unbudgeted.html)),
+    "alternating input counts one run per byte",
+    countAccentRuns(alternating) === 2048,
+    String(countAccentRuns(alternating)),
   );
-  check("an affordable render keeps the accent", unbudgeted.accentDropped === false);
-
-  const budgeted = formatByteRuns(alternating, escapeHtml, 4);
-  check("budget exhaustion is reported", budgeted.accentDropped === true);
+  // The count is the element cost, so a caller can decide before paying it.
+  const accented = formatByteRuns(alternating, escapeHtml);
   check(
-    "budget exhaustion bounds the element count",
-    countSpans(budgeted.html) <= 4,
-    String(countSpans(budgeted.html)),
-  );
-  check(
-    "budget exhaustion preserves the glyph sequence",
-    glyphs(budgeted.html) === glyphs(unbudgeted.html),
-    `${glyphs(budgeted.html).slice(0, 40)} vs ${glyphs(unbudgeted.html).slice(0, 40)}`,
+    "the run count predicts the element count",
+    countSpans(accented.html) === 1024 && countAccentRuns(alternating) === 2048,
+    String(countSpans(accented.html)),
   );
 
-  const zeroBudget = formatByteRuns(alternating, escapeHtml, 0);
-  check("a zero budget emits no element", countSpans(zeroBudget.html) === 0, zeroBudget.html);
-  check(
-    "a zero budget still preserves the glyph sequence",
-    glyphs(zeroBudget.html) === glyphs(unbudgeted.html),
-  );
-
-  // Worst case at the shipped chunk size: 64 KiB alternating, default budget.
-  const pathological = new Uint8Array(64 * 1024);
-  for (let i = 0; i < pathological.length; i += 1) {
-    pathological[i] = i % 2 === 0 ? 0x41 : 0xff;
-  }
-  const shipped = formatByteRuns(pathological, escapeHtml, DEFAULT_ACCENT_RUN_BUDGET);
-  check(
-    "the shipped budget bounds a pathological chunk",
-    countSpans(shipped.html) <= DEFAULT_ACCENT_RUN_BUDGET,
-    String(countSpans(shipped.html)),
-  );
-  check(
-    "a pathological chunk still renders every byte",
-    glyphs(shipped.html).length === 32 * 1024 + 32 * 1024 * 4,
-    String(glyphs(shipped.html).length),
-  );
-
-  // Realistic mixed content stays under the budget and keeps the accent.
+  // String-dense content alternates rarely; entropy-dense content constantly.
   const realistic = new Uint8Array(64 * 1024);
   for (let i = 0; i < realistic.length; i += 1) {
     realistic[i] = i % 64 < 60 ? 0x41 : 0xff;
   }
-  const kept = formatByteRuns(realistic, escapeHtml, DEFAULT_ACCENT_RUN_BUDGET);
-  check("string-dense content keeps the accent", kept.accentDropped === false);
+  check(
+    "string-dense content costs far fewer runs than its size",
+    countAccentRuns(realistic) < realistic.length / 30,
+    String(countAccentRuns(realistic)),
+  );
+
+  // ── The unaccented rendering ────────────────────────────────────
+  //
+  // The view withdraws the treatment for everything mounted at once, so the
+  // only thing this layer owes is: no elements, identical glyphs.
+  const plain = formatByteRuns(alternating, escapeHtml, { accent: false });
+  check("an unaccented render emits no element", countSpans(plain.html) === 0, plain.html);
+  check(
+    "an unaccented render preserves the glyph sequence exactly",
+    glyphs(plain.html) === glyphs(accented.html),
+  );
 
   // ── Line breaking ───────────────────────────────────────────────
   //
@@ -261,25 +276,32 @@ function expectedDisplay(byte) {
   check(
     "line breaking preserves the whole byte sequence",
     mixedLines.html.split("\n").map(glyphs).join("") ===
-      glyphs(formatByteRuns(mixedBytes, escapeHtml, Number.MAX_SAFE_INTEGER).html),
+      glyphs(formatByteRuns(mixedBytes, escapeHtml).html),
   );
 
-  // The accent budget is per chunk, not per line, and stays dropped once spent.
+  // Line breaking and the accent are independent: the same bytes produce the
+  // same lines either way, so withdrawing the accent never reflows the file.
   const dense = new Uint8Array(4096);
   for (let i = 0; i < dense.length; i += 1) {
     dense[i] = i % 2 === 0 ? 0x41 : 0xff;
   }
-  const denseLines = formatByteLines(dense, escapeHtml, { charsPerLine: 40, runBudget: 8 });
-  check("the budget spans lines rather than resetting", denseLines.accentDropped === true);
+  const denseAccented = formatByteLines(dense, escapeHtml, { charsPerLine: 40 });
+  const densePlain = formatByteLines(dense, escapeHtml, { charsPerLine: 40, accent: false });
   check(
-    "a spent budget bounds elements across the whole chunk",
-    countSpans(denseLines.html) <= 8,
-    String(countSpans(denseLines.html)),
+    "withdrawing the accent emits no element",
+    countSpans(densePlain.html) === 0 && countSpans(denseAccented.html) > 0,
+    `${countSpans(densePlain.html)} vs ${countSpans(denseAccented.html)}`,
   );
   check(
-    "a spent budget still renders every byte",
-    denseLines.html.split("\n").map(glyphs).join("") ===
-      glyphs(formatByteRuns(dense, escapeHtml, Number.MAX_SAFE_INTEGER).html),
+    "withdrawing the accent changes no line boundary",
+    densePlain.lineCount === denseAccented.lineCount &&
+      densePlain.html.split("\n").map(glyphs).join("|") ===
+        denseAccented.html.split("\n").map(glyphs).join("|"),
+  );
+  check(
+    "an unaccented chunk still renders every byte",
+    densePlain.html.split("\n").map(glyphs).join("") ===
+      glyphs(formatByteRuns(dense, escapeHtml).html),
   );
 
   const emptyLines = formatByteLines(new Uint8Array(0), escapeHtml, { charsPerLine: 40 });

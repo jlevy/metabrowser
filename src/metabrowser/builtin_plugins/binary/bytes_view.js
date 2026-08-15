@@ -25,6 +25,7 @@
 // so two mounted copies of the view never share an offset or a fingerprint.
 
 import {
+  countAccentRuns,
   DEFAULT_ACCENT_RUN_BUDGET,
   DEFAULT_CHARS_PER_LINE,
   formatByteLines,
@@ -37,11 +38,18 @@ const UNDECODABLE_TEXT = "This file could not be decompressed.";
 const FAILED_TEXT = "Could not load these bytes.";
 const LOAD_MORE_LABEL = "Load more";
 /**
- * Shown when a chunk spends its accent budget. The glyphs are unchanged, so
- * this reports the one thing the reader would otherwise have to infer.
+ * Shown when the view drops the two-tone treatment. The glyphs are unchanged,
+ * so this reports the one thing the reader would otherwise have to infer.
+ *
+ * It says "this file", not "this section": the treatment is decided for
+ * everything mounted at once, so it is never on above the note and off below
+ * it. Earlier wording blamed the density of non-printable bytes, which is not
+ * the trigger — what costs is how often the two classes alternate, and a file
+ * of mostly readable strings punctuated by field separators alternates far
+ * more than its printable ratio suggests.
  */
 const ACCENT_NOTE =
-  "Byte highlighting is off for this section because nearly every byte is non-printable.";
+  "Coloring is off for this file: literal text and byte codes alternate too often to mark apart.";
 
 /** Fallback line box when the pane cannot be measured. */
 const FALLBACK_LINE_HEIGHT_PX = 18;
@@ -141,6 +149,10 @@ export function renderChunkState(state, mb) {
   const note = state.accentDropped ? ACCENT_NOTE : "";
   const noteHidden = state.accentDropped ? "" : " hidden";
   const moreHidden = state.hasMore ? "" : " hidden";
+  // Without the two-tone elements the surface still has to say which of the
+  // two colors the unwrapped text is. Content that spends the budget is
+  // overwhelmingly byte codes, so it defaults to the code color.
+  const plain = state.accentDropped ? " binary-bytes-plain" : "";
   return (
     '<div class="binary-bytes">' +
     '<div class="binary-bytes-controls">' +
@@ -152,7 +164,7 @@ export function renderChunkState(state, mb) {
     // highlight.js runs over this block after the chunk mounts, rewrites the
     // byte runs into hljs token spans, and both destroys the accent markup and
     // claims these bytes are source code.
-    '<pre class="code-block"><code class="binary-bytes-content no-highlight"></code></pre>' +
+    `<pre class="code-block"><code class="binary-bytes-content no-highlight${plain}"></code></pre>` +
     "</div>"
   );
 }
@@ -232,6 +244,14 @@ export async function mountBytesView(container, ctx, mb, options) {
   /** Retained so a resize can re-break lines without refetching. */
   /** @type {Uint8Array[]} */
   let loaded = [];
+  /**
+   * Class changes across everything loaded so far, and whether the two-tone
+   * treatment is still affordable. Both are view-wide: the DOM accumulates
+   * across Load more, and a treatment that applied to some chunks and not
+   * others would read as a rendering fault rather than a budget.
+   */
+  let accentRuns = 0;
+  let accentEnabled = true;
   let metrics = { charsPerLine: DEFAULT_CHARS_PER_LINE, lineHeightPx: FALLBACK_LINE_HEIGHT_PX };
   /** @type {ResizeObserver | null} */
   let resizeObserver = null;
@@ -273,11 +293,8 @@ export async function mountBytesView(container, ctx, mb, options) {
   const blocksHtml = (bytes) => {
     const run = formatByteLines(bytes, mb.escapeHtml, {
       charsPerLine: metrics.charsPerLine,
-      runBudget: DEFAULT_ACCENT_RUN_BUDGET,
+      accent: accentEnabled,
     });
-    if (run.accentDropped) {
-      state.accentDropped = true;
-    }
     /** @type {string[]} */
     const blocks = [];
     for (let index = 0; index < run.lines.length; index += LINES_PER_BLOCK) {
@@ -317,6 +334,22 @@ export async function mountBytesView(container, ctx, mb, options) {
       note.textContent = state.accentDropped ? ACCENT_NOTE : "";
       note.hidden = !state.accentDropped;
     }
+    contentEl()?.classList.toggle("binary-bytes-plain", state.accentDropped === true);
+  };
+
+  /**
+   * Re-render every loaded chunk into the mounted surface.
+   *
+   * Used both when the pane width changes and when the accent is withdrawn,
+   * because in each case the markup already mounted was built under an
+   * assumption that no longer holds.
+   */
+  const renderAllLoaded = () => {
+    const content = contentEl();
+    if (!content) {
+      return;
+    }
+    content.innerHTML = loaded.map(blocksHtml).join("");
   };
 
   /** @param {Uint8Array} bytes */
@@ -334,8 +367,9 @@ export async function mountBytesView(container, ctx, mb, options) {
       return;
     }
     metrics = measureSurface(content);
-    state.accentDropped = false;
-    content.innerHTML = loaded.map(blocksHtml).join("");
+    // The accent decision is not re-derived here: it depends on the bytes,
+    // which a resize does not change.
+    renderAllLoaded();
     syncControls();
   };
 
@@ -377,6 +411,8 @@ export async function mountBytesView(container, ctx, mb, options) {
       nextOffset = 0;
       nextChunkBytes = FIRST_CHUNK_BYTES;
       loaded = [];
+      accentRuns = 0;
+      accentEnabled = true;
       state.accentDropped = false;
       state.status = "loading";
       paint(state);
@@ -399,10 +435,26 @@ export async function mountBytesView(container, ctx, mb, options) {
     state.status = "ready";
     if (repaint) {
       loaded = [];
+      accentRuns = 0;
+      accentEnabled = true;
+      state.accentDropped = false;
       paint(state);
     }
     loaded.push(bytes);
-    appendBlock(bytes);
+
+    // Decide the treatment before emitting anything, against the whole view
+    // rather than this chunk. Withdrawing it means re-rendering what is
+    // already mounted from the retained bytes — the cost of a consistent
+    // surface, paid at most once per view.
+    accentRuns += countAccentRuns(bytes);
+    const withdrawAccent = accentEnabled && accentRuns > DEFAULT_ACCENT_RUN_BUDGET;
+    if (withdrawAccent) {
+      accentEnabled = false;
+      state.accentDropped = true;
+      renderAllLoaded();
+    } else {
+      appendBlock(bytes);
+    }
     syncControls();
     watchResize();
   };
@@ -462,7 +514,14 @@ export async function mountBytesView(container, ctx, mb, options) {
   }
 
   function onLoadMore() {
-    if (disposed || !state.hasMore) {
+    // `nextOffset` only advances once a response lands, so without this guard
+    // a second click while the first request is still open asks for the same
+    // window again and appends it a second time: the same bytes appear twice
+    // in the DOM, and find-in-page and select-all see the duplicate. Three
+    // fast clicks measured three requests at one offset and three appends.
+    // `inflight` is the request in progress, and it also covers the opening
+    // load and the restart-on-change, neither of which should race a click.
+    if (disposed || inflight || !state.hasMore) {
       return;
     }
     const limit = nextChunkBytes;

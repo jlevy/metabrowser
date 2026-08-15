@@ -4,18 +4,6 @@
    and --mono-block-font-size come from the host's `.code-block code`
    rule and this stylesheet declares no face and no size. */
 
-:root {
-  /* A transformed byte is de-emphasized structure, not status, so this sits
-     in the host --muted family rather than borrowing a status or link hue.
-     The guillemets and control pictures already identify a substitute glyph;
-     color is the supplementary cue. */
-  --binary-special-text: oklch(52% 0.03 240);
-}
-
-[data-theme="dark"] {
-  --binary-special-text: oklch(74% 0.035 240);
-}
-
 .metabrowser-binary-host {
   /* The pane's own scroll owner is enough; the bytes wrap instead. */
   padding: 0;
@@ -60,9 +48,23 @@
   overflow-x: hidden;
 }
 
+/* Two tones, and the darker one is the literal text: what a reader scans a
+   byte dump for is the readable content inside it, so that gets the host's
+   full-strength text color and the surrounding machine detail recedes.
+   Both are host tokens rather than a domain hue — this is an emphasis
+   distinction, not a status one, and --text / --muted are already the pair
+   the rest of the shell uses for it. */
 .binary-bytes-content {
   display: block;
   white-space: pre;
+  color: var(--text);
+}
+
+/* The unaccented fallback. With no per-run elements the surface still has to
+   pick one of the two tones, and content dense enough to spend the budget is
+   overwhelmingly byte codes, so it reads as codes. */
+.binary-bytes-content.binary-bytes-plain {
+  color: var(--muted);
 }
 
 /* Each loaded chunk is one block. Offscreen blocks skip layout and paint
@@ -74,7 +76,9 @@
   content-visibility: auto;
 }
 
-.binary-byte-special {
-  color: var(--binary-special-text);
-  font-weight: var(--weight-bold);
+/* Not bold: at one code per non-printable byte, weight on every code turns
+   dense stretches into a solid mass. The guillemets already mark a code as a
+   code, so color carries the rest of the distinction. */
+.binary-byte-code {
+  color: var(--muted);
 }
