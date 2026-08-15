@@ -14,6 +14,9 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
    reserve canvas for charts.
 4. **Large content degrades gracefully.** Truncation, lazy mounting, virtualization, and
    background indexing must remain visible to the user.
+   Size limits are claims about cost and must be measured, not assumed; see
+   [rendering large content](large-content-rendering.md) for the cost model, the
+   strategy ladder, and the current limits.
 5. **Light and dark themes share semantics.** Theme overrides may change contrast and
    lightness, not the meaning of a token.
 

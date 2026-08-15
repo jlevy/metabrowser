@@ -73,6 +73,7 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/contribution_registry.js",
             "metabrowser/static/resource_context.js",
             "metabrowser/static/view_state.js",
+            "metabrowser/static/source_append.js",
             # Vendored browser libraries: the offline-first page depends on
             # these shipping in the wheel (see static/vendor/manifest.json).
             "metabrowser/static/vendor/manifest.json",

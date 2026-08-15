@@ -144,6 +144,8 @@ large run is quadratic — 43 ms at 32 KiB rising to 33 s at 1 MiB — while pre
 lines in `content-visibility` blocks render the same 1 MiB in about 50 ms.
 When a limit looks arbitrary, measure before changing it, and record what was measured
 next to the constant.
+[Rendering large content](large-content-rendering.md) holds the cost model and the
+procedure for establishing the shape of a cost before setting a bound.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -129,6 +129,9 @@ from metabrowser.settings import (
     ROLLUP_MAX_EXT_TOP,
     ROLLUP_MAX_TOP,
     SLOW_OPERATION_LOG_SECONDS,
+    SYNTAX_HIGHLIGHT_MAX_BYTES,
+    TEXT_PREVIEW_CHUNK_BYTES,
+    TEXT_PREVIEW_REQUEST_MAX_BYTES,
     client_settings_dict,
 )
 from metabrowser.sse import api_stream
@@ -432,12 +435,17 @@ from metabrowser.file_extensions import (
 # binary unless they hit a known extension. 512 KiB is the
 # pre-refactor default.
 _INLINE_TEXT_FALLBACK_BYTES = 512 * 1024
-_TEXT_PREVIEW_CHUNK_BYTES = int(os.environ.get("METABROWSER_TEXT_PREVIEW_BYTES", str(128 * 1024)))
+# Defaults live in settings.py, which is also what the client reads, so the
+# chunk size cannot drift between the two planes. See
+# docs/large-content-rendering.md for the measurements behind them.
+_TEXT_PREVIEW_CHUNK_BYTES = int(
+    os.environ.get("METABROWSER_TEXT_PREVIEW_BYTES", str(TEXT_PREVIEW_CHUNK_BYTES))
+)
 _TEXT_PREVIEW_MAX_CHUNK_BYTES = int(
-    os.environ.get("METABROWSER_TEXT_PREVIEW_MAX_BYTES", str(8 * 1024 * 1024))
+    os.environ.get("METABROWSER_TEXT_PREVIEW_MAX_BYTES", str(TEXT_PREVIEW_REQUEST_MAX_BYTES))
 )
 _SYNTAX_HIGHLIGHT_MAX_BYTES = int(
-    os.environ.get("METABROWSER_HIGHLIGHT_MAX_BYTES", str(512 * 1024))
+    os.environ.get("METABROWSER_HIGHLIGHT_MAX_BYTES", str(SYNTAX_HIGHLIGHT_MAX_BYTES))
 )
 
 
@@ -767,6 +775,7 @@ async def index(_request: Request) -> HTMLResponse:
     contribution_registry_url = _static_asset_url("contribution_registry.js")
     resource_context_url = _static_asset_url("resource_context.js")
     view_state_url = _static_asset_url("view_state.js")
+    source_append_url = _static_asset_url("source_append.js")
     file_type_taxonomy_url = _static_asset_url("file_type_taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
@@ -1005,6 +1014,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>
+  <script src="{source_append_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{filter_state_url}"></script>
