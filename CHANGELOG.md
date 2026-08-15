@@ -4,6 +4,8 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+## 0.4.2
+
 Release automation:
 
 - Post-publication smoke retries now refresh the package index on every attempt, so an
