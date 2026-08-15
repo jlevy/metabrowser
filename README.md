@@ -67,6 +67,15 @@ read Markdown docs.
   highlighting, math, links, images, and print-friendly output (supported via
   [kpress](https://github.com/jlevy/kpress)).
 
+- **Repository-native document links.** Relative and served-root Markdown links use the
+  same exact path semantics as GitHub, including headings, spaces, Unicode, images, and
+  other local resources.
+  Obsidian wiki links add deterministic note, heading, named-block, attachment, and
+  media navigation, plus bounded whole-note, heading, and block transclusion with
+  visible missing or ambiguous states instead of guessed paths.
+  Each selected file has a reloadable `/view/<path>` URL, so native new-tab, copy-link,
+  and browser history behavior works without configuration.
+
 - **Broad file support.** Render common text, syntax highlighted source code, logs,
   images, and tree-parsed JSON, JSONL, and YAML. Clean support for YAML frontmatter.
 

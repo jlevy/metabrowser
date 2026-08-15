@@ -181,6 +181,7 @@ for (const filename of [
   "inventory_scope.js",
   "resource_context.js",
   "view_state.js",
+  "navigation.js",
 ]) {
   const dependencyPath = path.join(repoRoot, "src", "metabrowser", "static", filename);
   vm.runInContext(fs.readFileSync(dependencyPath, "utf-8"), sandbox, { filename });

@@ -1,3 +1,6 @@
+import { enhanceRenderedLinks } from "./link_enhancer.js";
+import { preprocessObsidianWiki } from "./wiki_parser.js";
+
 let mountSequence = 0;
 
 /** @param {Array<unknown>} diagnostics @param {(value: string) => string} escapeHtml */
@@ -90,6 +93,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   let disposed = false;
   /** @type {(() => void) | null} */
   let disposeToc = null;
+  /** @type {(() => void) | null} */
+  let disposeLinks = null;
   const dispose = () => {
     if (disposed) {
       return;
@@ -97,6 +102,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposed = true;
     options.signal?.removeEventListener("abort", abort);
     controller.abort();
+    disposeLinks?.();
+    disposeLinks = null;
     disposeToc?.();
     disposeToc = null;
   };
@@ -106,14 +113,29 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     '<div class="loading mb-delayed-loading"><div class="spinner"></div>Loading document…</div>';
   async function render() {
     try {
+      const raw =
+        ctx.raw && typeof ctx.raw === "object"
+          ? /** @type {Record<string, unknown>} */ (ctx.raw)
+          : {};
+      let content = typeof raw.content === "string" ? raw.content : null;
+      if (raw.content_truncated === true) {
+        content = await mb.fetchCompleteText(ctx, { signal: controller.signal });
+      }
+      const wiki = content !== null ? preprocessObsidianWiki(content) : null;
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {
         dedupKey: `markdown-mount-${++mountSequence}`,
         profile: "document",
         signal: controller.signal,
+        sourceText: wiki?.changed ? wiki.source : undefined,
       });
       if (!disposed && !controller.signal.aborted) {
         container.innerHTML = rendered.html;
         injectDiagnostics(container, rendered.diagnostics || [], mb);
+        if (ctx.path) {
+          disposeLinks = enhanceRenderedLinks(container, ctx.path, mb, {
+            signal: controller.signal,
+          }).dispose;
+        }
         disposeToc = mb.kpressInitToc(container);
       }
     } catch (error) {

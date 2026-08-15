@@ -21,6 +21,10 @@ Checked items below are supported today; unchecked items are planned work.
   optional persistent indexing only if measured catalog sizes require it
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
 - [ ] Define a generic writer event-log backend for append-only generated files
+- [ ] Complete the
+  [Markdown navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+  for configured static sites, verified GitHub URLs, bounded knowledge analysis,
+  transclusion, source locations, aliases, and explicit mounted roots
 - [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for
   directories containing hundreds of thousands of entries
 

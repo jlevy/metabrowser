@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
+  <title>Obsidian vault map fixture</title>
+  <rect width="320" height="180" fill="#d9c7ff" />
+  <path d="M40 90h240M160 35v110" stroke="#563d7c" stroke-width="8" />
+</svg>

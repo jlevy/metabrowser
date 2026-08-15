@@ -40,11 +40,18 @@
 //   Data fetches:
 //     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
-//     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
+//     fetchCompleteText(ctx, opts)        — bounded complete source for a text context
+//     fetchText(target, opts)             — bounded complete source for a navigation target
+//     fetchKpressRender(ctx, view, opts) — GET or bounded POST /api/kpress/render
 //     renderTextTruncationWarning(data) — visible partial-content warning
 //
 //   Navigation:
-//     openPath(path, {viewId?})          — open a path, optionally preferring a view
+//     navigation.href(target)            — canonical /view/ href for a target
+//     navigation.open(target, {viewId?}) — open a target, optionally preferring a view
+//     navigation.current()               — current path/query/fragment target or null
+//     fileCatalog.snapshot()              — immutable known-file inventory snapshot
+//     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
+//     repository                          — verified GitHub identity for the served tree
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
@@ -77,6 +84,9 @@
     // Already initialized; protect against double-load.
     return;
   }
+  if (!global.MetabrowserNavigationRoute?.navigation) {
+    throw new Error("plugin SDK requires the canonical navigation module");
+  }
 
   // Internal registry: kindId -> Map<viewId, {render, dispose?}>.
   const _viewRegistry = new Map();
@@ -89,6 +99,75 @@
   const _stylesheetLoadTimeoutMs = 10_000;
   /** Detects cached stylesheets whose browsers expose `sheet` without a load event. */
   const _stylesheetReadyPollMs = 50;
+  const _emptyFileCatalogSnapshot = Object.freeze({
+    complete: false,
+    files: Object.freeze([]),
+    observedCount: 0,
+    revision: 0,
+    sourceSummary: Object.freeze({}),
+  });
+  /** @type {{snapshot: () => unknown, subscribe: (listener: () => void) => () => void} | null} */
+  let _attachedFileCatalog = null;
+
+  const fileCatalog = Object.freeze({
+    snapshot() {
+      return _attachedFileCatalog?.snapshot() || _emptyFileCatalogSnapshot;
+    },
+    subscribe(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("fileCatalog.subscribe: listener must be a function");
+      }
+      return _attachedFileCatalog?.subscribe(listener) || (() => {});
+    },
+  });
+  const repository = normalizeRepositoryContext(global.METABROWSER_REPOSITORY_CONTEXT);
+
+  /** @param {unknown} value */
+  function normalizeRepositoryContext(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const context = /** @type {Record<string, unknown>} */ (value);
+    if (
+      context.host !== "github.com" ||
+      typeof context.owner !== "string" ||
+      !context.owner ||
+      typeof context.name !== "string" ||
+      !context.name ||
+      typeof context.revision !== "string" ||
+      !/^[0-9a-f]{40}$/i.test(context.revision) ||
+      (context.branch !== null && typeof context.branch !== "string") ||
+      typeof context.served_prefix !== "string"
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      branch: context.branch,
+      host: context.host,
+      name: context.name,
+      owner: context.owner,
+      revision: context.revision.toLowerCase(),
+      served_prefix: context.served_prefix,
+    });
+  }
+
+  function attachFileCatalog(catalog) {
+    if (
+      !catalog ||
+      typeof catalog.snapshot !== "function" ||
+      typeof catalog.subscribe !== "function"
+    ) {
+      throw new TypeError("attachFileCatalog: catalog must expose snapshot and subscribe");
+    }
+    _attachedFileCatalog = catalog;
+    return () => {
+      if (_attachedFileCatalog === catalog) {
+        _attachedFileCatalog = null;
+      }
+    };
+  }
+
+  global.MetabrowserPluginHost = Object.freeze({ attachFileCatalog });
 
   function registerView(kindId, viewId, spec) {
     if (typeof kindId !== "string" || !kindId) {
@@ -198,22 +277,61 @@
     return data;
   }
 
-  /**
-   * Request shell navigation, preferring a destination view when it exists.
-   */
-  function openPath(path, options) {
+  async function fetchCompleteText(ctx, opts) {
+    const path = ctx?.path;
+    const raw = ctx?.raw && typeof ctx.raw === "object" ? ctx.raw : {};
     if (typeof path !== "string" || !path) {
-      throw new Error("openPath: path must be a non-empty string");
+      throw new TypeError("fetchCompleteText: ctx.path must be a non-empty string");
     }
-    const viewId = options?.viewId;
-    if (viewId !== undefined && (typeof viewId !== "string" || !viewId)) {
-      throw new Error("openPath: options.viewId must be a non-empty string");
+    if (typeof raw.content === "string" && raw.content_truncated !== true) {
+      return raw.content;
     }
-    global.dispatchEvent(
-      new global.CustomEvent("metabrowser:open-path", {
-        detail: { path: path, viewId: viewId },
-      }),
-    );
+    const limit = raw.content_max_preview_limit;
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("fetchCompleteText: server did not advertise a valid source limit");
+    }
+    const data = await fetchTextEnvelope(path, limit, opts?.signal, "fetchCompleteText");
+    if (data.content_truncated === true) {
+      throw new Error(`fetchCompleteText ${path}: source exceeds the server read limit`);
+    }
+    return data.content;
+  }
+
+  async function fetchText(target, opts) {
+    const normalized = global.MetabrowserNavigationRoute.normalizeTarget(target);
+    const initial = await fetchTextEnvelope(normalized.path, null, opts?.signal, "fetchText");
+    if (initial.content_truncated !== true) {
+      return initial.content;
+    }
+    const limit = initial.content_max_preview_limit;
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("fetchText: server did not advertise a valid source limit");
+    }
+    const completed = await fetchTextEnvelope(normalized.path, limit, opts?.signal, "fetchText");
+    if (completed.content_truncated === true) {
+      throw Object.assign(
+        new Error(`fetchText ${normalized.path}: source exceeds the server read limit`),
+        { code: "source-too-large" },
+      );
+    }
+    return completed.content;
+  }
+
+  async function fetchTextEnvelope(path, limit, signal, operation) {
+    const url = new URL("/api/file", global.location.origin);
+    url.searchParams.set("path", path);
+    if (limit !== null) {
+      url.searchParams.set("limit", String(limit));
+    }
+    const response = await fetch(url.toString(), { signal });
+    if (!response.ok) {
+      throw new Error(`${operation} ${path}: ${response.status}`);
+    }
+    const data = await response.json();
+    if (data?.type !== "text" || typeof data.content !== "string") {
+      throw new Error(`${operation} ${path}: expected a text envelope`);
+    }
+    return data;
   }
 
   // ── Preferences ─────────────────────────────────────────────────
@@ -888,12 +1006,27 @@
       _kpressInflight.set(dedupKey, controller);
     }
 
+    const sourceText = options?.sourceText;
+    if (sourceText !== undefined && typeof sourceText !== "string") {
+      throw new Error("fetchKpressRender: options.sourceText must be a string");
+    }
     let resp;
     try {
-      resp = await fetch(url.toString(), {
-        method: "GET",
-        signal: controller ? controller.signal : undefined,
-      });
+      const fetchOptions =
+        sourceText === undefined
+          ? { method: "GET", signal: controller ? controller.signal : undefined }
+          : {
+              body: JSON.stringify({
+                path,
+                profile,
+                source_text: sourceText,
+                view: viewId || "document",
+              }),
+              headers: { "content-type": "application/json" },
+              method: "POST",
+              signal: controller ? controller.signal : undefined,
+            };
+      resp = await fetch(url.toString(), fetchOptions);
     } finally {
       externalSignal?.removeEventListener("abort", abortFromExternal);
       if (controller && _kpressInflight.get(dedupKey) === controller) {
@@ -1266,6 +1399,8 @@
     escapeHtml: escapeHtml,
     fetchPluginData: fetchPluginData,
     fetchJsonl: fetchJsonl,
+    fetchCompleteText: fetchCompleteText,
+    fetchText: fetchText,
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
     errors: global.MetabrowserRequestErrors,
@@ -1278,7 +1413,9 @@
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
     fileTypeIcon: fileTypeIcon,
-    openPath: openPath,
+    fileCatalog: fileCatalog,
+    navigation: global.MetabrowserNavigationRoute.navigation,
+    repository: repository,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
     loadKpressAssets: loadKpressAssets,

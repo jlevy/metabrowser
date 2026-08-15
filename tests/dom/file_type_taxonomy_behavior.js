@@ -189,6 +189,7 @@ for (const filename of [
   "inventory_scope.js",
   "resource_context.js",
   "view_state.js",
+  "navigation.js",
   "plugin_sdk.js",
 ]) {
   const moduleSource = fs.readFileSync(

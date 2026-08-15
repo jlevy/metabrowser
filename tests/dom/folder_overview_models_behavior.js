@@ -402,7 +402,7 @@ async function importSource(relative) {
   check(
     "treemap parent navigation identifies the served root",
     JSON.stringify(treemapModel.parentNavigation("src")) ===
-      JSON.stringify({ path: "/", label: "/" }),
+      JSON.stringify({ path: "", label: "/" }),
   );
   check(
     "treemap parent navigation is absent at the served root",

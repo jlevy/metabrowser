@@ -1,0 +1,23 @@
+.metabrowser-wiki-transclusion {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: var(--panel-border);
+  border-inline-start: 3px solid var(--link);
+  border-radius: var(--radius-document);
+  background: var(--hover-bg);
+}
+
+.metabrowser-wiki-transclusion[data-metabrowser-transclusion-status="loading"] {
+  color: var(--muted);
+  font-family: var(--font-sans);
+}
+
+.metabrowser-wiki-transclusion[data-metabrowser-transclusion-status="error"] {
+  border-inline-start-color: var(--status-error);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+.metabrowser-wiki-transclusion > .kpress {
+  background: transparent;
+}

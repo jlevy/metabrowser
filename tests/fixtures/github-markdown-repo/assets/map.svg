@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" role="img" aria-labelledby="title">
+  <title id="title">Repository map fixture</title>
+  <rect width="120" height="40" rx="4" fill="#ddd" />
+  <path d="M10 20h100" stroke="#555" stroke-width="2" />
+</svg>

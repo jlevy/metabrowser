@@ -41,7 +41,7 @@ def test_every_fast_renderer_uses_the_delayed_loading_utility() -> None:
 def test_shell_keeps_the_previous_preview_during_fast_fetches() -> None:
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
     select_file = app[
-        app.index("async function selectFile(path, skipHistory, preferredViewId)") : app.index(
+        app.index("async function selectFile(path, preferredViewId)") : app.index(
             "// ── File rendering"
         )
     ]

@@ -115,6 +115,7 @@ from metabrowser.paths_safe import (
 )
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
+from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     RECENT_WINDOW_SECONDS,
@@ -150,6 +151,7 @@ from metabrowser.tree import (
     inventory_has_data,
     inventory_status,
 )
+from metabrowser.view_routes import decode_safe_view_path
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -757,6 +759,7 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
+    repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     theme_state_url = _static_asset_url("theme_state.js")
     request_error_url = _static_asset_url("request_error.js")
@@ -766,6 +769,7 @@ async def index(_request: Request) -> HTMLResponse:
     contribution_registry_url = _static_asset_url("contribution_registry.js")
     resource_context_url = _static_asset_url("resource_context.js")
     view_state_url = _static_asset_url("view_state.js")
+    navigation_url = _static_asset_url("navigation.js")
     file_type_taxonomy_url = _static_asset_url("file_type_taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
@@ -788,6 +792,10 @@ async def index(_request: Request) -> HTMLResponse:
     # duplicating constants in the source.
     settings_block = (
         f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
+    )
+    repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    repository_context_block = (
+        f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
@@ -996,6 +1004,7 @@ async def index(_request: Request) -> HTMLResponse:
        highlight-toml.min.js. -->
   {perf_block}
   {settings_block}
+  {repository_context_block}
   <script src="{theme_state_url}"></script>
   <script src="{request_error_url}"></script>
   <script src="{formatters_url}"></script>
@@ -1004,6 +1013,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>
+  <script src="{navigation_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{filter_state_url}"></script>
@@ -1023,6 +1033,15 @@ async def index(_request: Request) -> HTMLResponse:
 </body>
 </html>"""
     return HTMLResponse(html)
+
+
+async def view_shell(request: Request) -> Response:
+    """Serve the SPA shell only for one safely encoded canonical view path."""
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
+        return PlainTextResponse("Invalid view path.", status_code=400)
+    return await index(request)
 
 
 async def _ensure_inventory_serving(subpath: str) -> bool:
@@ -1750,6 +1769,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "content_truncated": content_has_more
                     or (logical_size is not None and bytes_read < logical_size),
                     "content_preview_limit": text_limit,
+                    "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
                     "highlight_disabled": True,
                     **compression_fields,
                 },
@@ -1788,6 +1808,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "content_truncated": content_has_more
             or (logical_size is not None and bytes_read < logical_size),
             "content_preview_limit": text_limit,
+            "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             "highlight_disabled": (
                 content_has_more
                 or (logical_size is not None and bytes_read < logical_size)
@@ -1832,9 +1853,76 @@ def _read_artifact_text(artifact: ArtifactPath, max_bytes: int) -> tuple[str, in
 async def api_kpress_render(request: Request) -> JSONResponse:
     """Render a safe served-root-relative file through the KPress adapter."""
 
-    subpath = request.query_params.get("path", "")
-    view = request.query_params.get("view", "document")
-    profile = request.query_params.get("profile", "") or None
+    source_override: str | None = None
+    if getattr(request, "method", "GET") == "POST":
+        # ``JSON.stringify`` can expand one UTF-8 source byte to a six-byte
+        # JSON escape. Bound the transport independently of the decoded
+        # source cap so request-body reads cannot grow without limit.
+        request_limit = (_TEXT_PREVIEW_MAX_CHUNK_BYTES * 6) + (64 * 1024)
+        chunks: list[bytes] = []
+        request_size = 0
+        async for chunk in request.stream():
+            request_size += len(chunk)
+            if request_size > request_limit:
+                return JSONResponse(
+                    {
+                        "type": "kpress_render_error",
+                        "error": "Render request exceeds safety limits",
+                        "max_size": request_limit,
+                    },
+                    status_code=413,
+                )
+            chunks.append(chunk)
+        try:
+            body = _json.loads(b"".join(chunks))
+        except (_json.JSONDecodeError, UnicodeDecodeError) as exc:
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Invalid JSON body", "detail": str(exc)},
+                status_code=400,
+            )
+        if not isinstance(body, dict):
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Request body must be a JSON object"},
+                status_code=400,
+            )
+        subpath = body.get("path", "")
+        view = body.get("view", "document")
+        profile_value = body.get("profile")
+        profile = profile_value or None
+        source_override = body.get("source_text")
+        if (
+            not all(isinstance(value, str) for value in (subpath, view))
+            or not isinstance(source_override, str)
+            or (profile is not None and not isinstance(profile, str))
+        ):
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Invalid render body fields"},
+                status_code=400,
+            )
+        try:
+            source_size = len(source_override.encode())
+        except UnicodeEncodeError as exc:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Invalid transformed source encoding",
+                    "detail": str(exc),
+                },
+                status_code=400,
+            )
+        if source_size > _TEXT_PREVIEW_MAX_CHUNK_BYTES:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Transformed source exceeds safety limits",
+                    "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+                },
+                status_code=413,
+            )
+    else:
+        subpath = request.query_params.get("path", "")
+        view = request.query_params.get("view", "document")
+        profile = request.query_params.get("profile", "") or None
 
     target = _safe_path(subpath)
     if target is None or not target.is_file():
@@ -1842,14 +1930,14 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
-    content: str | None = None
+    content: str | None = source_override
     try:
         disk_size = artifact.disk_size
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     try:
-        if artifact.is_compressed:
+        if artifact.is_compressed and source_override is None:
             content, logical_size = await asyncio.to_thread(
                 _read_artifact_text,
                 artifact,
@@ -2532,11 +2620,12 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
 
 routes = [
     Route("/", index),
+    Route("/view/{path:path}", view_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),
     Route("/api/file", api_file),
-    Route("/api/kpress/render", api_kpress_render),
+    Route("/api/kpress/render", api_kpress_render, methods=["GET", "POST"]),
     Route("/api/kpress/export", api_kpress_export, methods=["POST"]),
     Route("/api/activity", api_activity),
     Route("/api/stream", api_stream),

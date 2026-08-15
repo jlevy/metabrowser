@@ -382,7 +382,7 @@ def test_folder_row_click_selects_opens_and_toggles_the_folder() -> None:
     select_dir_start = handler_block.index('action === "select-dir"')
     select_dir_block = handler_block[select_dir_start : select_dir_start + 500]
     assert "setSelectedPath(item.dataset.path)" in select_dir_block
-    assert "selectFile(item.dataset.path)" in select_dir_block
+    assert "navigateToPath(item.dataset.path" in select_dir_block
     assert "toggleTreeFolder(item, e.shiftKey)" in select_dir_block
     assert "isToggleHotspot" not in handler_block
 
@@ -452,13 +452,14 @@ def test_styles_css_drops_the_superseded_recent_chip() -> None:
 # ── Default folder route ─────────────────────────────────────
 
 
-def test_no_hash_opens_the_root_folder_overview() -> None:
-    """The stable root route replaces shell-side README discovery."""
+def test_landing_url_is_not_an_implicit_root_selection() -> None:
+    """Only canonical ``/view/`` selects root; ``/`` remains the landing view."""
+
     js = _read_app_js()
     assert "function findRootReadme()" not in js
-    assert 'var initialPath = hashRoute ? hashParts.path : "";' in js
-    assert "var initialIsDir = hashRoute ? hashParts.isDir : true;" in js
-    assert "selectFile(initialPath, true);" in js
+    assert "window.MetabrowserNavigationRoute?.parse(" in js
+    assert "navigationController?.start()" in js
+    assert "legacy hash on" in js
 
 
 # ── DOMContentLoaded wiring ─────────────────────────────────
