@@ -592,6 +592,12 @@ keep that same order for comparison.
 Hovering a colored segment uses the shared body-portaled navigation tooltip: the bold
 semantic family name is the first line, followed by the exact file count and byte size
 for that row’s disjoint population.
+Tooltip-bearing categorical marks use `--viz-data-mark-hover-filter`, the same subtle
+whole-mark brightness change used by Treemap cells.
+The filter preserves the mark’s hue and the contrast between its fill, border, and
+nested content; hover never changes geometry, stacking, or opacity.
+It transitions with the shared visualization hover timing, while reduced-motion mode
+applies the state immediately.
 These supplemental hover tooltips do not create tab stops; the expanded File Breakdown
 remains the accessible source for the same values.
 The Ignored row dims its label, tally, track, and colors through

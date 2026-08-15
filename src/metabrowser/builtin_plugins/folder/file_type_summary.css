@@ -154,7 +154,9 @@
   display: block;
   height: 100%;
   background: var(--mb-distribution-color);
-  transition: width 140ms ease;
+  transition:
+    width 140ms ease,
+    filter var(--viz-hover-duration) var(--viz-hover-ease);
 }
 
 .folder-totals .file-type-summary-track {
@@ -163,6 +165,10 @@
 
 .folder-totals .file-type-summary-fill {
   flex: 0 0 auto;
+}
+
+.folder-totals .file-type-summary-fill[data-segment-key]:hover {
+  filter: var(--viz-data-mark-hover-filter);
 }
 
 .file-type-summary-percent {

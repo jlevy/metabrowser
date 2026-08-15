@@ -135,11 +135,13 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     """
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    shared_css = (proc_browser.STATIC_DIR / "styles.css").read_text()
     plugin_css = (folder_root / "styles.css").read_text()
     hover_start = plugin_css.index(".tm-cell:hover {")
     hover_block = plugin_css[hover_start : plugin_css.index("}", hover_start)]
 
-    assert "filter: brightness(" in hover_block
+    assert "filter: var(--viz-data-mark-hover-filter);" in hover_block
+    assert "--viz-data-mark-hover-filter: brightness(1.06);" in shared_css
     assert "z-index" not in hover_block
     assert "display:" not in hover_block
 

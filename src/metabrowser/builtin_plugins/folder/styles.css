@@ -83,7 +83,7 @@
   background: var(--viz-surface);
   overflow: hidden;
   cursor: default;
-  transition: filter var(--viz-hover-duration) ease;
+  transition: filter var(--viz-hover-duration) var(--viz-hover-ease);
 }
 
 .tm-actionable {
@@ -91,7 +91,7 @@
 }
 
 .tm-cell:hover {
-  filter: brightness(1.06);
+  filter: var(--viz-data-mark-hover-filter);
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so

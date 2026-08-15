@@ -205,6 +205,13 @@ global.document = { createElement: (tag) => new Element(tag) };
       tooltipCalls[2]?.action === "hide",
     JSON.stringify(tooltipCalls),
   );
+  check(
+    "tooltip-bearing segments reuse the shared data-mark hover treatment",
+    styles.includes(".folder-totals .file-type-summary-fill[data-segment-key]:hover") &&
+      styles.includes("filter: var(--viz-data-mark-hover-filter);") &&
+      sharedStyles.includes("--viz-data-mark-hover-filter: brightness(1.06);"),
+    styles,
+  );
   view.dispose();
   check(
     "disposing Files clears the shared tooltip",

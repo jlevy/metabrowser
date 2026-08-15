@@ -645,10 +645,12 @@
      legend item, frame header, node card, toggle) shares the same ease
      + duration so hover feels consistent across the plane. Filter-darken
      is used where the element has a solid rest-color; background swap is
-     used where the rest-state is transparent. */
+     used where the rest-state is transparent. Categorical data marks use
+     a slight whole-mark brightness increase so hue and internal contrast remain. */
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
+  --viz-data-mark-hover-filter: brightness(1.06);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),

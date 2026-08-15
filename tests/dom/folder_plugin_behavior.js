@@ -467,7 +467,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     "Treemap hover is one whole-cell treatment",
     !treemapStyles.includes('.tm-cell-title[role="button"]:hover') &&
       !treemapStyles.includes("border-color: var(--viz-border-strong)") &&
-      treemapStyles.includes("filter: brightness(1.06)"),
+      treemapStyles.includes("filter: var(--viz-data-mark-hover-filter)"),
     treemapStyles,
   );
   check(
