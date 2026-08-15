@@ -764,14 +764,14 @@
   /* legibility floor */
   --file-age-weight-recent: var(--weight-bold); /* live, seconds, minutes pop */
   /* Accessible foregrounds. Live is a separate state, not an elapsed
-     age bucket. Light-theme elapsed ages move from saturated gold toward
-     a darker green-grey while chroma falls monotonically. The recent
-     tiers step down in lightness and apart in hue so they remain visibly
-     distinct without sacrificing text contrast. */
+     age bucket. Light-theme elapsed ages move from saturated amber-gold
+     toward a darker green-grey while chroma falls monotonically. The
+     recent tiers step down decisively in chroma, lightness, and hue so
+     they remain visibly distinct without sacrificing text contrast. */
   --file-age-live: oklch(54% 0.155 40.4);
-  --file-age-sec: oklch(53.6% 0.11 80); /* < 1 minute */
-  --file-age-min: oklch(53% 0.108 92); /* < 1 hour */
-  --file-age-hr: oklch(52% 0.105 104); /* < 1 day */
+  --file-age-sec: oklch(54% 0.121 65); /* < 1 minute */
+  --file-age-min: oklch(53% 0.111 75); /* < 1 hour */
+  --file-age-hr: oklch(52% 0.105 90); /* < 1 day */
   --file-age-day: oklch(50% 0.076 110); /* < 1 week */
   --file-age-wk: oklch(48.8% 0.038 115); /* < 1 month */
   --file-age-old: oklch(48% 0.006 118); /* ≥ 1 month */

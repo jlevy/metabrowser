@@ -16,6 +16,8 @@ DESIGN_SYSTEM = ROOT / "docs" / "design-system.md"
 MINIMUM_TEXT_CONTRAST = 4.5
 # Smallest OKLCH step that keeps adjacent recent tiers visibly distinct.
 MINIMUM_RECENT_STEP_DISTANCE = 0.018
+# Smallest chroma drop that keeps brighter recent tiers visibly more saturated.
+MINIMUM_RECENT_CHROMA_STEP = 0.006
 AGE_STATES = ("live", "sec", "min", "hr", "day", "wk", "old")
 AGE_BUCKETS = AGE_STATES[1:]
 AGE_SURFACES = (
@@ -174,8 +176,8 @@ def test_file_age_tokens_use_one_oklch_palette_in_both_themes() -> None:
         assert chroma == sorted(chroma, reverse=True), (
             f"{theme} foreground age chroma must fade monotonically"
         )
-        assert all(80 <= color[2] <= 120 for color in colors), (
-            f"{theme} non-live ages must remain in the yellow family"
+        assert all(60 <= color[2] <= 120 for color in colors), (
+            f"{theme} non-live ages must remain in the gold-to-yellow family"
         )
 
         live_hue = _oklch(tokens["--file-age-live"])[2]
@@ -208,6 +210,9 @@ def test_light_theme_recent_age_tiers_have_a_visible_prominence_ramp() -> None:
         "light-theme recent ages must lose brightness as they get older"
     )
     for newer, older in itertools.pairwise(recent):
+        assert newer[1] - older[1] >= MINIMUM_RECENT_CHROMA_STEP, (
+            "light-theme recent ages must lose visible saturation as they get older"
+        )
         distance = _oklch_distance(newer, older)
         assert distance >= MINIMUM_RECENT_STEP_DISTANCE, (
             f"adjacent recent ages are visually clustered at {distance:.3f} OKLCH distance"
