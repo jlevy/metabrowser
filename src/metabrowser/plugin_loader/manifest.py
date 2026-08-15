@@ -39,6 +39,11 @@ from pydantic import BaseModel, ConfigDict, Field
 # docs/development.md "Compatibility and Legacy Code".
 PLUGIN_SDK_VERSION = "0.1"
 
+# Metabrowser 0.4.0 allowed manifests to omit sdk_version. Such a manifest
+# targets the only SDK that existed under that contract. Keep this value pinned
+# when PLUGIN_SDK_VERSION changes so omission fails the ordinary mismatch gate.
+_IMPLICIT_PLUGIN_SDK_VERSION = "0.1"
+
 # ── Match predicate ────────────────────────────────────────────
 
 
@@ -217,11 +222,12 @@ class PluginInfo(BaseModel):
     display_name: str = Field(default="", description="Human-readable plugin name.")
     version: str = Field(default="0.0.0", description="Plugin version, semver-ish.")
     sdk_version: str = Field(
-        ...,
+        default=_IMPLICIT_PLUGIN_SDK_VERSION,
         description=(
             "Metabrowser plugin SDK contract version this plugin targets. "
-            "Must equal the host's PLUGIN_SDK_VERSION; the host provides no "
-            "compatibility path for other values."
+            "An omitted value targets the original SDK 0.1. The resolved value "
+            "must equal the host's PLUGIN_SDK_VERSION; the host provides no "
+            "compatibility path for older SDKs."
         ),
     )
     extra_scripts: list[str] = Field(

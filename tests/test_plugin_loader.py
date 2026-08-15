@@ -96,7 +96,7 @@ default = true
     assert manifest.view[0].id == "main"
 
 
-def test_manifest_requires_an_explicit_sdk_version(make_plugin_dir) -> None:
+def test_manifest_without_sdk_version_targets_the_original_sdk(make_plugin_dir) -> None:
     plugin_dir = make_plugin_dir(
         "sdk-default",
         """
@@ -108,8 +108,8 @@ id = "myk"
 match = { ext = ".myk" }
 """,
     )
-    with pytest.raises(ValidationError, match="sdk_version"):
-        load_manifest(plugin_dir / "manifest.toml")
+    manifest = load_manifest(plugin_dir / "manifest.toml")
+    assert manifest.plugin.sdk_version == "0.1"
 
 
 def test_manifest_rejects_a_foreign_sdk_version(make_plugin_dir) -> None:

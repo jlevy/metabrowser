@@ -241,6 +241,9 @@ second reader for the previous one.
 `plugin_loader/manifest.py` is the contract the host provides; a manifest declaring
 anything else is refused at load time with a message naming the required version, and
 `metab --doctor` reports it.
+Bare manifests accepted by Metabrowser 0.4.0 resolve to the original SDK `0.1`, a pinned
+meaning backed by known installed plugins; omission never follows the moving host
+version.
 Bump that constant only when the contract actually breaks, update every built-in
 manifest in the same commit, and note the break in `CHANGELOG.md`. An external plugin
 updates and declares the new version; the host ships no shim for the older surface.
