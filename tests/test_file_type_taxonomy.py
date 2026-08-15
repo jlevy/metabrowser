@@ -49,9 +49,12 @@ def test_unknown_and_ambiguous_extensions_remain_raw() -> None:
 
 def test_catalog_generates_compatible_presets_and_serialized_settings() -> None:
     presets = {preset["id"]: preset for preset in FILTER_TYPE_PRESETS}
-    assert tuple(presets) == ("code", "docs", "data", "logs", "archives", "media")
+    assert tuple(presets) == ("code", "docs", "data", "archives", "media")
     assert {".js", ".mjs", ".cjs", ".jsx", "makefile"} <= set(presets["code"]["values"])
     assert {".yaml", ".yml", ".db"} <= set(presets["data"]["values"])
+    log_files = next(family for family in FILE_TYPE_FAMILIES if family.id == "log-files")
+    assert log_files.category == "other"
+    assert {".log", ".jsonl", ".ndjson"} <= set(log_files.extensions)
 
     serialized = serialize_file_type_taxonomy()
     raw_families = serialized["families"]

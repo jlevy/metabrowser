@@ -114,8 +114,8 @@ Files subscribes to that projection and uses the same palette pool, which adds
 composition detail without a sibling DOM dependency or another request.
 Rollups aggregate every known family and its complete canonical children before
 independently bounding only No extension basenames and Other types extensions.
-The comparison table follows registry order across Code, Documentation, Data, Logs,
-Archives, Media, and Other.
+The comparison table follows registry order across Code, Documentation, Data, Archives,
+Media, and Other; Log files is a semantic family within Other.
 Every nonempty family can disclose exact extension rows, including a family with one
 contributing extension, without adding group subtotals.
 No extension discloses exact basenames and Other types discloses raw extensions; both

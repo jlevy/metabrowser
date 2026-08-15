@@ -583,7 +583,6 @@ def test_type_presets_name_registry_display_groups() -> None:
         "Code",
         "Documentation",
         "Data",
-        "Logs",
         "Archives",
         "Media",
     ]

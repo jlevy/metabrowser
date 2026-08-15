@@ -402,7 +402,10 @@ recommended file-type definitions’ group labels second, and canonical/raw exte
 last. Empty groups and empty presets are omitted; an empty preset must never alias the
 Any state. A preset is checked only when every value it names is selected, so a
 half-covered group never claims to be on, and a selection that is exactly one preset
-shows by its name rather than as `.md +21`.
+shows by its name rather than as `.md +21`. Other remains a family-section heading
+rather than a broad preset because its unknown extension population is open-ended and
+cannot be represented by a fixed token list.
+Named families such as Log files remain selectable within that section.
 
 Selecting a semantic family adds all declared canonical suffixes; selecting a broad
 category adds its category-only filenames and all family members.
@@ -525,17 +528,18 @@ hidden from the accessibility tree.
 Labels never rely on color or place text on a category fill.
 
 File types uses non-subtotaling row groups in the server registry’s order: Code,
-Documentation, Data, Logs, Archives, Media, and Other.
+Documentation, Data, Archives, Media, and Other.
 Empty groups are omitted.
 Membership comes from the same recommended File Rollup Format type definitions used by
 rollups, navigation filters, and Treemap colors; surfaces never maintain local extension
 lists. Known canonical suffixes roll up into readable family parents such as
 **JavaScript**, **TypeScript**, **CSS**, **YAML**, **Log files**, **Archives**, and
-**Images**. Compound extensions inherit the longest declared suffix: `.min.js`
-contributes to JavaScript’s `.js` child without rewriting the file’s exact logical
-extension. Indexed logical extensions contain at most two suffix components, so source
-maps remain useful `.js.map` or `.ts.map` rows without fragmenting the table into
-filename-specific `.umd.min.js.map` and `.d.ts.map` variants.
+**Images**. Log files is a semantic family within Other rather than a separate group.
+Compound extensions inherit the longest declared suffix: `.min.js` contributes to
+JavaScript’s `.js` child without rewriting the file’s exact logical extension.
+Indexed logical extensions contain at most two suffix components, so source maps remain
+useful `.js.map` or `.ts.map` rows without fragmenting the table into filename-specific
+`.umd.min.js.map` and `.d.ts.map` variants.
 
 Family parents are aggregate identities, so they are text-only.
 Every nonempty family places the shared gray trailing chevron after its label, starts

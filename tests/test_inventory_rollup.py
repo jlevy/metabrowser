@@ -198,7 +198,9 @@ def test_registry_breakdown_groups_families_and_bounds_fallback_children() -> No
     breakdown = result["file_type_breakdown"]
     assert breakdown["schema"] == "file-type-breakdown-v1"
     groups = {group["id"]: group for group in breakdown["groups"]}
-    log_files = groups["logs"]["families"][0]
+    log_files = next(
+        family for family in groups["other"]["families"] if family["id"] == "log-files"
+    )
     assert log_files["id"] == "log-files"
     assert {row["extension"] for row in log_files["extensions"]} == {".jsonl", ".log"}
     assert groups["media"]["families"][0]["id"] == "images"

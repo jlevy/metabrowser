@@ -277,8 +277,9 @@ The data selection must account for both dimensions before the UI is trustworthy
     It publishes validated terminal envelopes through a ref-counted, per-directory
     projection pool. Files subscribes to that projection, so its composition adds no
     request and never reaches into sibling DOM.
-18. **Code, Documentation, Data, Logs, Archives, Media, and Other are presentation
-    groups, not new rollups.** They reuse the shared recommended file-type definitions.
+18. **Code, Documentation, Data, Archives, Media, and Other are presentation groups, not
+    new rollups.** They reuse the shared recommended file-type definitions, with Log
+    files as a semantic family within Other.
     Compound extensions inherit the longest recognized suffix.
     Extensionless files and unknown extensions use the disclosable No extension and
     Other types parents under Other.

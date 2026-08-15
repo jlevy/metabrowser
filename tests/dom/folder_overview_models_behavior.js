@@ -128,12 +128,11 @@ async function importSource(relative) {
     fingerprint: "registry-seven",
     groups: [
       { id: "media", label: "Media" },
-      { id: "logs", label: "Logs" },
       { id: "other", label: "Other" },
     ],
     families: [
       { id: "images", label: "Images", groupId: "media", extensions: [".png"] },
-      { id: "log-files", label: "Log files", groupId: "logs", extensions: [".log"] },
+      { id: "log-files", label: "Log files", groupId: "other", extensions: [".log"] },
     ],
     categoryForFile: () => "other",
   };
@@ -146,7 +145,7 @@ async function importSource(relative) {
       metrics: metrics(6, 50),
       groups: [
         {
-          id: "logs",
+          id: "other",
           families: [
             {
               id: "log-files",
@@ -186,9 +185,9 @@ async function importSource(relative) {
   );
   check(
     "file-type definitions control group and family order",
-    breakdownModel.groups.map((group) => group.id).join(",") === "media,logs,other" &&
+    breakdownModel.groups.map((group) => group.id).join(",") === "media,other" &&
       breakdownModel.rows.map((row) => row.key).join(",") ===
-        "family:images,family:log-files,,(none)",
+        "family:images,,family:log-files,(none)",
   );
   check(
     "singleton file-type families are disclosable",
