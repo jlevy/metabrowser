@@ -172,6 +172,7 @@ type MetabrowserResourceContextRuntime = Readonly<{
 type MetabrowserSourceAppendRuntime = Readonly<{
   appendSourceText(root: ParentNode | null, text: string): boolean;
   nextChunkBytes(current: number, cap: number): number;
+  syncLoadMoreFooter(root: ParentNode | null, markup: string): boolean;
   syncTruncationWarning(root: ParentNode | null, markup: string): boolean;
 }>;
 
@@ -629,6 +630,7 @@ type MetabrowserSdk = {
     state: { printable: boolean; profile?: string; runtime?: string },
   ): void;
   renderTextTruncationWarning(data: Record<string, unknown>): string;
+  renderTextLoadMoreFooter(data: Record<string, unknown>): string;
   sizeClass(value: number): "" | "size-large";
   sizeHtml(value: number | null | undefined, extraClass?: string): string;
   wrapWithCopy(html: string): string;

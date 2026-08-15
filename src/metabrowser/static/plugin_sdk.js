@@ -45,7 +45,10 @@
 //                                          Error carrying .status and .payload
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
 //     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
-//     renderTextTruncationWarning(data) — visible partial-content warning
+//     renderTextTruncationWarning(data) — partial-content banner, with a
+//                                        Load more control in it
+//     renderTextLoadMoreFooter(data)    — the same control, for after the
+//                                        content (see design-system.md)
 //
 //   Navigation:
 //     openPath(path, {viewId?})          — open a path, optionally preferring a view
@@ -600,9 +603,17 @@
     return `${base + (detail ? `: ${detail}` : "")} (HTTP ${status})`;
   }
 
-  function renderTextTruncationWarning(data) {
+  /**
+   * How much of a partially-loaded payload is showing, or null when it is
+   * complete. One reading of the payload, so the banner, the footer control,
+   * and the header readout cannot disagree about whether more remains.
+   *
+   * @param {Record<string, any> | null | undefined} data
+   * @returns {{loaded: string, total: string} | null}
+   */
+  function textPreviewProgress(data) {
     if (!data) {
-      return "";
+      return null;
     }
     const totalBytes = data.size_uncompressed || data.logical_size || data.size || 0;
     const bytesRead = data.bytes_read || data.content_bytes || 0;
@@ -610,18 +621,64 @@
       !!data.content_truncated ||
       (typeof data.bytes_read === "number" && totalBytes > 0 && bytesRead < totalBytes);
     if (!truncated) {
+      return null;
+    }
+    return { loaded: formatSize(bytesRead), total: formatSize(totalBytes) };
+  }
+
+  /**
+   * The Load more control itself. Emitted at both ends of partial content —
+   * see docs/design-system.md, "Continuing partial content": a reader who has
+   * scrolled to the end of what loaded is exactly the reader who wants more,
+   * and sending them back to the top to ask for it is the whole problem.
+   *
+   * @param {"top" | "bottom"} position
+   * @returns {string}
+   */
+  function loadMoreButtonHtml(position) {
+    return (
+      `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
+      ' onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>'
+    );
+  }
+
+  function renderTextTruncationWarning(data) {
+    const progress = textPreviewProgress(data);
+    if (!progress) {
       return "";
     }
-    const loadedLabel = formatSize(bytesRead);
-    const totalLabel = formatSize(totalBytes);
     return (
       '<div class="metabrowser-source-truncation-warning" role="status">' +
-      "<strong>Content truncated.</strong> " +
+      "<span><strong>Content truncated.</strong> " +
       "Showing " +
-      escapeHtml(loadedLabel) +
+      escapeHtml(progress.loaded) +
       " of " +
-      escapeHtml(totalLabel) +
-      ". Select Load more to continue." +
+      escapeHtml(progress.total) +
+      ".</span>" +
+      // The banner used to say "Select Load more to continue" and point at a
+      // control in the pane header. Naming a control is not offering one.
+      loadMoreButtonHtml("top") +
+      "</div>"
+    );
+  }
+
+  /**
+   * Trailing companion to the banner, mounted after the content.
+   *
+   * @param {Record<string, any> | null | undefined} data
+   * @returns {string}
+   */
+  function renderTextLoadMoreFooter(data) {
+    const progress = textPreviewProgress(data);
+    if (!progress) {
+      return "";
+    }
+    return (
+      '<div class="metabrowser-source-more-footer" role="status">' +
+      `<span class="metabrowser-source-more-readout">${escapeHtml(progress.loaded)} of ${escapeHtml(
+        progress.total,
+      )}</span>` +
+      loadMoreButtonHtml("bottom") +
       "</div>"
     );
   }
@@ -1302,6 +1359,7 @@
     openPath: openPath,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
+    renderTextLoadMoreFooter: renderTextLoadMoreFooter,
     loadKpressAssets: loadKpressAssets,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,

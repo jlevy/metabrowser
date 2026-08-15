@@ -21,6 +21,22 @@ Binary and source previews:
   rather than the running total.
 - Loaded bytes stay real text in the DOM, so browser find-in-page, select-all, and print
   continue to cover everything loaded.
+- Partially-loaded content now offers **Load more at both ends**, above and below what
+  has loaded, and the partial-content banner carries the button itself rather than
+  naming a control elsewhere.
+  Reaching the end of a chunk no longer means scrolling back to the top to continue.
+  Both controls appear and retire together.
+
+File typing:
+
+- Files with no known text extension are classified by **looking at their content**
+  rather than guessing from size.
+  A small binary previously fell under a 512 KiB rule that read it as text with
+  `errors="replace"`, so it rendered as a field of `�` and could never reach the Bytes
+  view; a large extensionless text file was refused for the opposite reason.
+  Both now resolve correctly, and a compressed artifact is judged by its decompressed
+  content. The check is a single bounded read that runs only when the extension does not
+  settle the question, so it stays off the path for almost every file.
 
 Plugin API:
 

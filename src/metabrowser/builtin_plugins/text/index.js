@@ -20,29 +20,28 @@
    * @returns {string}
    */
   function renderSourceHtml(data) {
+    // Partial content is bracketed by the control that continues it: banner
+    // above, the same control below. A reader who reaches the end of what
+    // loaded should not have to scroll back up to ask for the rest.
+    // See docs/design-system.md, "Continuing partial content".
     const truncationWarning = mb.renderTextTruncationWarning(data);
-    if (mb.isLargeTextPreview(data)) {
-      return (
-        truncationWarning +
-        mb.wrapWithCopy(
-          '<pre class="code-block"><code class="plaintext no-highlight">' +
+    const loadMoreFooter = mb.renderTextLoadMoreFooter(data);
+    const code = mb.isLargeTextPreview(data)
+      ? '<pre class="code-block"><code class="plaintext no-highlight">' +
+        mb.escapeHtml(data.content || "") +
+        "</code></pre>"
+      : (() => {
+          const lang = mb.langForExtension(data.ext || "");
+          const langCls = lang ? `language-${lang}` : "plaintext";
+          return (
+            '<pre class="code-block"><code class="' +
+            langCls +
+            '">' +
             mb.escapeHtml(data.content || "") +
-            "</code></pre>",
-        )
-      );
-    }
-    const lang = mb.langForExtension(data.ext || "");
-    const langCls = lang ? `language-${lang}` : "plaintext";
-    return (
-      truncationWarning +
-      mb.wrapWithCopy(
-        '<pre class="code-block"><code class="' +
-          langCls +
-          '">' +
-          mb.escapeHtml(data.content || "") +
-          "</code></pre>",
-      )
-    );
+            "</code></pre>"
+          );
+        })();
+    return truncationWarning + mb.wrapWithCopy(code) + loadMoreFooter;
   }
 
   /**

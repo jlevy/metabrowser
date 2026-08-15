@@ -3035,7 +3035,17 @@ html[data-prose-font="sans"] {
    via show_doc_header=False (the path shows in metabrowser's file header), so
    no host CSS override is needed. */
 .metabrowser-kpress-render-error,
+/* Partial content is bracketed by the control that continues it: this banner
+   above, .metabrowser-source-more-footer below. See docs/design-system.md,
+   "Continuing partial content". The banner carries its own button because it
+   is the thing that says content is missing — naming a control elsewhere is
+   not offering one. */
 .metabrowser-source-truncation-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin: 0 0 12px;
   padding: 10px 12px;
   border: 1px solid var(--status-warning);
@@ -3044,6 +3054,25 @@ html[data-prose-font="sans"] {
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   line-height: 1.45;
+}
+
+/* The trailing companion. Quieter than the banner — it is a control, not a
+   warning, and the reader who reaches it already knows the content is
+   partial because they just read to the end of it. */
+.metabrowser-source-more-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+}
+
+.metabrowser-source-more-readout {
+  font-variant-numeric: var(--tabular-numerals);
 }
 .metabrowser-kpress-error-detail {
   margin: 8px 0 0;

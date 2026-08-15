@@ -3602,6 +3602,10 @@ async function loadMoreCurrentText() {
         document,
         window.metabrowser?.renderTextTruncationWarning?.(cached) || "",
       );
+      window.MetabrowserSourceAppend.syncLoadMoreFooter(
+        document,
+        window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
+      );
       refreshTextPreviewControls(cached);
     } else {
       renderFile(cached);

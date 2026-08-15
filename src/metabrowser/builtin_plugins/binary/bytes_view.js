@@ -157,7 +157,7 @@ export function renderChunkState(state, mb) {
     '<div class="binary-bytes">' +
     '<div class="binary-bytes-controls">' +
     `<span class="binary-bytes-readout">${readoutText(state, mb)}</span>` +
-    `<button class="btn binary-bytes-more" type="button"${moreHidden}>${LOAD_MORE_LABEL}</button>` +
+    `<button class="btn binary-bytes-more" type="button" data-position="top"${moreHidden}>${LOAD_MORE_LABEL}</button>` +
     "</div>" +
     `<div class="binary-bytes-note" role="status"${noteHidden}>${note}</div>` +
     // `no-highlight` is the shell's opt-out in highlightCode(). Without it
@@ -165,6 +165,13 @@ export function renderChunkState(state, mb) {
     // byte runs into hljs token spans, and both destroys the accent markup and
     // claims these bytes are source code.
     `<pre class="code-block"><code class="binary-bytes-content no-highlight${plain}"></code></pre>` +
+    // The trailing control. A reader who has scrolled to the end of the loaded
+    // bytes is exactly the reader who wants the next chunk, and the header
+    // control has long since scrolled away. See docs/design-system.md,
+    // "Continuing partial content".
+    '<div class="binary-bytes-footer">' +
+    `<button class="btn binary-bytes-more" type="button" data-position="bottom"${moreHidden}>${LOAD_MORE_LABEL}</button>` +
+    "</div>" +
     "</div>"
   );
 }
@@ -309,11 +316,16 @@ export async function mountBytesView(container, ctx, mb, options) {
     return blocks.join("");
   };
 
+  /** Every Load more control in the mounted view — currently head and foot. */
+  const moreButtons = () =>
+    /** @type {HTMLElement[]} */ (
+      Array.from(container.querySelectorAll?.(".binary-bytes-more") ?? [])
+    );
+
   /** @param {BytesViewState} next */
   const paint = (next) => {
     container.innerHTML = renderChunkState(next, mb);
-    const more = /** @type {HTMLElement | null} */ (container.querySelector(".binary-bytes-more"));
-    if (more) {
+    for (const more of moreButtons()) {
       more.hidden = !next.hasMore;
       more.addEventListener("click", onLoadMore);
     }
@@ -325,8 +337,7 @@ export async function mountBytesView(container, ctx, mb, options) {
     if (readout) {
       readout.textContent = readoutText(state, mb);
     }
-    const more = /** @type {HTMLElement | null} */ (container.querySelector(".binary-bytes-more"));
-    if (more) {
+    for (const more of moreButtons()) {
       more.hidden = !state.hasMore;
     }
     const note = /** @type {HTMLElement | null} */ (container.querySelector(".binary-bytes-note"));

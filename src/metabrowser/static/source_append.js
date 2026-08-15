@@ -96,9 +96,44 @@
     return true;
   }
 
+  /**
+   * Bring the trailing Load more control in line with what is now loaded.
+   *
+   * Same reason as the banner above, and the same failure if skipped — except
+   * the footer is worse to leave stale, because it is the control the reader
+   * just used. Removing it is how the view says "that was the last chunk".
+   *
+   * @param {ParentNode | null} root
+   * @param {string} markup Fresh control markup, or "" when nothing remains.
+   * @returns {boolean} Whether the footer now matches the loaded state.
+   */
+  function syncLoadMoreFooter(root, markup) {
+    if (!root) {
+      return false;
+    }
+    const existing = root.querySelector(".metabrowser-source-more-footer");
+    if (!markup) {
+      if (existing) {
+        existing.remove();
+      }
+      return true;
+    }
+    if (existing) {
+      existing.outerHTML = markup;
+      return true;
+    }
+    const host = root.querySelector(".metabrowser-source-host");
+    if (!host) {
+      return false;
+    }
+    host.insertAdjacentHTML("beforeend", markup);
+    return true;
+  }
+
   /** @type {Record<string, unknown>} */ (global).MetabrowserSourceAppend = Object.freeze({
     appendSourceText,
     nextChunkBytes,
+    syncLoadMoreFooter,
     syncTruncationWarning,
   });
 })(typeof window !== "undefined" ? window : globalThis);

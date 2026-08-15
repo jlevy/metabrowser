@@ -233,6 +233,33 @@ typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
 
+### Continuing Partial Content
+
+A view that shows part of a file offers the control that loads the rest **at both ends
+of the content**, above it and below it, whenever more remains.
+
+The reader who most wants the next chunk is the one who just finished the current one,
+and they are at the bottom.
+A single control in the pane header is out of view by then, so continuing means
+scrolling back through everything already read to reach it — the longer the content, the
+worse the cost, which is exactly backwards.
+Both controls carry the same label, act on the same state, and appear and retire
+together.
+
+Two supporting rules follow from the same reasoning:
+
+- **A notice that content is missing carries its own control.** Telling a reader that
+  more exists and pointing them elsewhere to ask for it puts the explanation and the
+  remedy in different places.
+  The partial-content banner holds a Load more button rather than naming one.
+- **Retire the control when nothing remains.** A control that cannot do anything reads
+  as a broken control, and any trailing rule or spacing it owns goes with it.
+
+Core provides both halves through `mb.renderTextTruncationWarning` and
+`mb.renderTextLoadMoreFooter`, so a plugin gets the placement by using them rather than
+by reproducing it. See [Rendering Large Content](large-content-rendering.md) for the
+loading policy behind the chunk sizes these controls request.
+
 ### Navigation Tree Folders
 
 A folder row is one activation target, including its chevron, name, and metadata.
@@ -1011,6 +1038,8 @@ When adding a component or plugin view:
 
 1. Identify the existing primitive and tokens it can reuse.
 2. Test narrow and wide panes, long paths, empty data, malformed data, and large data.
+   If the view can show part of its content, check that continuing is reachable from the
+   bottom as well as the top.
 3. Review all chrome copy and adjacent text across supported states.
 4. Check light theme, dark theme, keyboard focus, reduced motion, and print output.
 5. Verify lazy mount and disposal behavior.

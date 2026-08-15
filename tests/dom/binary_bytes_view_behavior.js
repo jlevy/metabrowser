@@ -117,18 +117,25 @@ function makeContainer() {
       html = value;
       elements = new Map();
     },
-    querySelector(selector) {
-      if (!html.includes(selector.replace(".", 'class="'))) {
-        // The double is permissive: any selector the renderer asks for is
-        // present only if the painted markup mentions its class.
-        if (!html.includes(selector.slice(1))) {
-          return null;
+    // The view mounts one Load more control at each end of the content, so it
+    // asks for all of them rather than the first. Both accessors resolve to
+    // the same element objects, or a listener attached through one would be
+    // invisible to a click delivered through the other.
+    querySelectorAll(selector) {
+      const occurrences = html.split(`class="btn ${selector.slice(1)}"`).length - 1;
+      const count = occurrences || (html.includes(selector.slice(1)) ? 1 : 0);
+      return Array.from({ length: count }, (_unused, index) => {
+        const key = `${selector}#${index}`;
+        if (!elements.has(key)) {
+          elements.set(key, makeElement(key));
         }
-      }
-      if (!elements.has(selector)) {
-        elements.set(selector, makeElement(selector));
-      }
-      return elements.get(selector);
+        return elements.get(key);
+      });
+    },
+    querySelector(selector) {
+      // The double is permissive: any selector the renderer asks for is
+      // present only if the painted markup mentions its class.
+      return this.querySelectorAll(selector)[0] ?? null;
     },
   };
 }
@@ -275,6 +282,47 @@ function contentOf(container) {
       container.querySelector(".binary-bytes-more").hidden === true,
     );
     handle.dispose();
+  }
+
+  // ── A Load more control at each end ─────────────────────────────
+  //
+  // The header control scrolls away, so a reader who reaches the end of the
+  // loaded bytes had no way to ask for more without scrolling back up.
+  {
+    const { mb, requests } = makeSdk();
+    const container = makeContainer();
+    const mounted = mountBytesView(container, { path: "a.bin" }, mb);
+    requests[0].resolve(chunkEnvelope({}));
+    await mounted;
+
+    const markup = container.innerHTML;
+    check(
+      "a control is mounted above and below the content",
+      markup.indexOf('data-position="top"') < markup.indexOf("binary-bytes-content") &&
+        markup.indexOf("binary-bytes-content") < markup.indexOf('data-position="bottom"'),
+      markup,
+    );
+    check(
+      "both controls are found together",
+      container.querySelectorAll(".binary-bytes-more").length === 2,
+      String(container.querySelectorAll(".binary-bytes-more").length),
+    );
+
+    // The trailing control must actually load, not just look like the header.
+    const buttons = container.querySelectorAll(".binary-bytes-more");
+    buttons[1].click();
+    check(
+      "the trailing control loads the next chunk",
+      requests.length === 2 && requests[1].params.offset === 4,
+      String(requests.length),
+    );
+    requests[1].resolve(chunkEnvelope({ offset: 4, next_offset: 8, has_more: false }));
+    await settle();
+    check(
+      "both controls retire together when nothing remains",
+      container.querySelectorAll(".binary-bytes-more").every((b) => b.hidden === true),
+      JSON.stringify(container.querySelectorAll(".binary-bytes-more").map((b) => b.hidden)),
+    );
   }
 
   // ── Load more does not race itself ──────────────────────────────

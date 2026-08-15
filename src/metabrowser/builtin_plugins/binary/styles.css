@@ -29,6 +29,21 @@
   font-variant-numeric: var(--tabular-numerals);
 }
 
+/* The trailing Load more control, mirroring .binary-bytes-controls at the
+   head. See docs/design-system.md, "Continuing partial content". */
+.binary-bytes-footer {
+  display: flex;
+  align-items: center;
+  padding: var(--pane-header-padding-y) var(--content-padding-x);
+  border-top: 1px solid var(--border);
+}
+
+.binary-bytes-footer:has(.binary-bytes-more[hidden]) {
+  /* Nothing left to load: the rule would otherwise sit under the last byte
+     as an unexplained line. */
+  display: none;
+}
+
 .binary-bytes-note {
   padding: var(--pane-header-padding-y) var(--content-padding-x);
   color: var(--muted);
