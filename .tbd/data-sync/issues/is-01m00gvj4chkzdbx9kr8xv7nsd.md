@@ -3,13 +3,15 @@ type: is
 id: is-01m00gvj4chkzdbx9kr8xv7nsd
 title: Forbid speculative compatibility layers and remove the file-type compat layer
 kind: chore
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-14T16:14:35.660Z
-updated_at: 2026-08-14T16:14:35.660Z
+updated_at: 2026-08-15T06:40:36.582Z
+closed_at: 2026-08-15T06:40:36.581Z
+close_reason: Implemented the compatibility policy and removed speculative rollup, SDK, settings, taxonomy, and browser-state compatibility layers. Reconciled with origin/main, made plugin sdk_version an explicit required contract, updated built-ins/docs/tests, and passed make verify (1009 passed, 1 skipped; 30 golden scenarios).
 ---
 Add a Compatibility and Legacy Code rule to docs/development.md and AGENTS.md: no alias, fallback, shim, deprecation window, or transitional duplicate field without a consumer that cannot be updated in the same commit. Metabrowser serves an uncached page with content-versioned asset URLs and inlined settings, so server/browser version skew is impossible and code guarding against it is unreachable.
 
