@@ -89,6 +89,34 @@ def test_unknown_jsonl_gets_default_log_view(tmp_path: Path) -> None:
     assert [v["id"] for v in result["views"] if v.get("default")] == ["log"]
 
 
+def test_binary_files_get_a_default_bytes_view(tmp_path: Path) -> None:
+    """A binary file must not fall through to the shell's no-preview branch.
+
+    ``VIEW_REGISTRY["binary"]`` is empty, so the view arrives purely from the
+    built-in binary plugin's manifest. While it was absent, ``views`` came back
+    empty and ``static/app.js`` painted "No preview is available for this
+    binary file".
+    """
+    server._set_root_dir(tmp_path)
+    blob = tmp_path / "opaque.bin"
+    blob.write_bytes(bytes(range(256)) * 4096)
+
+    result = _api_file("opaque.bin")
+
+    assert result["kind"] == "binary"
+    assert result["views"] == [
+        {
+            "id": "bytes",
+            "label": "Bytes",
+            "default": True,
+            "container_class": "content-body metabrowser-binary-host",
+            "printable": False,
+            "print_profile": "plain",
+            "render_runtime": "client",
+        }
+    ]
+
+
 def test_plugin_classification_runs_off_the_request_event_loop(tmp_path: Path, monkeypatch) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "data.json").write_text('{"schema":"example"}\n')

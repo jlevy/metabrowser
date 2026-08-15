@@ -101,6 +101,10 @@ Open the printed URL and verify:
 
 - first paint appears before a large tree finishes indexing;
 - Markdown, structured data, source, JSONL, image, and binary views render;
+- the binary Bytes view loads a second chunk on **Load more**, appends without
+  re-rendering the bytes already shown, and wraps without horizontal overflow at narrow
+  and wide panes in both themes;
+- a binary file above the preview ceiling reports the cutoff instead of loading;
 - changing and deleting files updates tree and recent views;
 - a direct hash path opens independently of the tree crawl;
 - light and dark themes, narrow panes, keyboard focus, and print output remain usable;

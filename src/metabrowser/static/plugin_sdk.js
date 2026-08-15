@@ -38,7 +38,11 @@
 //     chart(container, type, data, opts) — Chart.js wrapper
 //
 //   Data fetches:
-//     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
+//     fetchPluginData(plugin, route, p, opts?)
+//                                        — GET /api/plugin/<plugin>/<route>
+//                                          opts.signal aborts the request; a
+//                                          non-ok response rejects with an
+//                                          Error carrying .status and .payload
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
 //     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
 //     renderTextTruncationWarning(data) — visible partial-content warning
@@ -143,7 +147,7 @@
       .replace(/'/g, "&#39;");
   }
 
-  async function fetchPluginData(plugin, route, params) {
+  async function fetchPluginData(plugin, route, params, options) {
     if (!plugin || !route) {
       throw new Error("fetchPluginData: plugin + route are required");
     }
@@ -158,15 +162,32 @@
         }
       }
     }
-    const resp = await fetch(url.toString(), { method: "GET" });
+    const resp = await fetch(url.toString(), { method: "GET", signal: options?.signal });
     if (!resp.ok) {
-      throw new Error(`fetchPluginData ${plugin}/${route}: ${resp.status}`);
+      // A hook that answers "why not" in its body is answering usefully; a
+      // caller that only sees the status has to guess or hard-code the
+      // reason. Same shape fetchKpressRender uses for the same reason.
+      let payload = null;
+      try {
+        payload = await resp.json();
+      } catch (_e) {
+        payload = null;
+      }
+      /** @type {Error & {status?: number, payload?: unknown}} */
+      const err = new Error(`fetchPluginData ${plugin}/${route}: ${resp.status}`);
+      err.status = resp.status;
+      err.payload = payload;
+      throw err;
     }
     const data = await resp.json();
     if (data && data.type === "plugin_error") {
-      throw new Error(
+      /** @type {Error & {status?: number, payload?: unknown}} */
+      const err = new Error(
         (data.error || "Plugin data hook failed") + (data.detail ? `: ${data.detail}` : ""),
       );
+      err.status = resp.status;
+      err.payload = data;
+      throw err;
     }
     return data;
   }

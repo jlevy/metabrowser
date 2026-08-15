@@ -618,6 +618,7 @@ type MetabrowserSdk = {
     plugin: string,
     endpoint: string,
     params: Record<string, unknown>,
+    options?: { signal?: AbortSignal },
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
   filterState?: MetabrowserFilterState;

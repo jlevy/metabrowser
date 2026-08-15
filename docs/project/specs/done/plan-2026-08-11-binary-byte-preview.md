@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Implemented and validated.
 
 ## Overview
 
@@ -71,6 +71,22 @@ as present.
 - The shell mounts the default view immediately and defers others to
   `container._metabrowserMount`, so lazy mounting and `dispose` come from the existing
   contract.
+
+### Scope Boundary: Which Files Reach This View
+
+`_api_file_impl` takes the text path when
+`ext in _TEXT_EXTS or logical_size < _INLINE_TEXT_FALLBACK_BYTES` (512 KiB), so a small
+file with an unknown extension and genuinely binary content is read with
+`read_text(errors="replace")` and rendered as replacement characters by the text plugin.
+It is never classified `binary` and this view never sees it.
+The same content at 686 KB reports `kind: "binary"` and gets the Bytes view; at 19 KB it
+reports `kind: "text"`.
+
+That boundary is pre-existing classifier behavior, and moving it would reroute every
+small unknown-extension file in every served tree, so it is out of scope here.
+It does mean the first goal is only partly met: the broken-glyph case a user is most
+likely to hit is the small file.
+Bead `mb-p992` carries the options and the decision.
 
 ### Byte Rendering Constraints
 
@@ -183,17 +199,32 @@ glyph count.
 | --- | --- | --- |
 | Missing path, directory, or unreadable | 404 | `This file is no longer available.` |
 | Negative or non-integer `offset` / `limit` | 400 | `Could not load these bytes.` |
-| Logical size above the applicable ceiling | 413 | `Preview unavailable. Binary previews are limited to 20.0 MB.` |
-| Compressed window beyond the decompression budget | 416 | `Preview unavailable. Compressed previews are limited to 8.0 MB.` |
+| Logical size above the applicable ceiling | 413 | `Preview unavailable. Binary previews are limited to <ceiling>.` |
 | Decompression limit or CPU timeout | 413 | Same oversize state |
+| Requested window beyond the applicable ceiling | 416 | Same oversize state |
 | Malformed compressed stream | 422 | `This file could not be decompressed.` |
 | Zero-byte file | 200, `bytes_read: 0` | `This file is empty.` |
 | File changed between chunks | 200, new `mtime_hash` | Restart at byte zero |
+| Any other failure | — | `Could not load these bytes.` |
 
-Ceiling figures come from `mb.formatSize(max_preview_bytes)` so the copy tracks the
-constant and matches every other byte readout in the app.
+413 and 416 share one message because they differ only in whose fault the refusal is,
+which is not something to explain to a reader: 413 means the file is past the ceiling,
+416 means the request was, and a client that stops at `has_more: false` never produces
+the latter. `<ceiling>` is `mb.formatSize(max_preview_bytes)`, so the copy states the
+cutoff that actually applied — 20 MiB for a plain file, 8 MiB for a compressed one — and
+matches every other byte readout in the app.
+
+Reaching those states requires the refusal to survive the fetch, so `fetchPluginData`
+attaches `status` and the parsed body to the error it throws, the way
+`fetchKpressRender` already does.
+Without that a hook can explain a refusal in its body and no caller can read it.
+
 Warnings logged server-side include the relative path, offsets, sizes, and elapsed time,
 never raw byte content or an absolute local path.
+
+The zero-byte and empty states are defensive rather than routinely reachable: a file
+that small takes the shell’s `_INLINE_TEXT_FALLBACK_BYTES` path and is classified
+`text`, not `binary`. See the scope boundary below.
 
 ### Design System Contract
 
@@ -209,6 +240,9 @@ never raw byte content or an absolute local path.
   in OKLCH, derived from the host `--muted` family so it reads as de-emphasized
   structure rather than as status.
   Weight uses `--weight-bold`.
+- The byte surface carries `no-highlight`, the shell’s opt-out in `highlightCode()`.
+  Reusing `.code-block` otherwise opts the view into syntax highlighting, which rewrites
+  the byte runs into `hljs-*` token spans and claims these bytes are source code.
 - Byte content stays selectable; the view sets no `user-select`.
 - The view declares neither `printable` nor a `print_profile`. A bounded partial byte
   window is not a complete print projection, so the shell’s print button stays hidden.
@@ -267,8 +301,11 @@ turns into the concise inline states above.
 
 #### `src/metabrowser/builtin_plugins/binary/sidekick.py` — new
 
-The directory is an implicit namespace package, matching `agent_log/sidekick.py`; no
-`__init__.py` is added.
+The directory gains an `__init__.py`, and so does `agent_log/`. Pytest collects every
+`.py` under `src` (`python_files = ["*.py"]`), and two plugin directories shipping a
+`sidekick.py` without package markers collide on the bare basename `sidekick`. Import at
+runtime worked either way through implicit namespace packages; the marker is what keeps
+the module name unique under collection.
 
 - `BINARY_PREVIEW_MAX_BYTES`, `BINARY_PREVIEW_COMPRESSED_MAX_BYTES`,
   `BINARY_PREVIEW_CHUNK_BYTES`, `BINARY_PREVIEW_MAX_CHUNK_BYTES` — module constants read
@@ -304,6 +341,16 @@ manifest comment explaining that stays.
 Every new module sits under the fully strict `tsconfig.json` gate.
 `binary/index.js` is already absent from the legacy allowlist, and nothing is added to
 it.
+
+#### `src/metabrowser/static/plugin_sdk.js`
+
+`fetchPluginData(plugin, route, params, options?)` gains two things every data hook
+needs and none had: `options.signal` is forwarded to `fetch` so a disposed view can
+abort its request, and a non-ok response rejects with an `Error` carrying `status` and
+the parsed `payload` instead of a bare status string.
+`fetchKpressRender` already threw that shape; this is the same contract for the plugin
+data plane, and it is what makes a hook’s structured refusal readable by its caller.
+`static/types.d.ts` records the new parameter.
 
 #### `src/metabrowser/builtin_plugins/binary/byte_format.js` — new
 
