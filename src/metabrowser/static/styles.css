@@ -2700,15 +2700,6 @@ html[data-prose-font="sans"] {
   font-size: var(--ui-small-font-size);
   flex-shrink: 0;
 }
-.file-header-preview {
-  font-size: var(--ui-small-font-size);
-  color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.file-header-action {
-  flex-shrink: 0;
-}
 /* .file-header-icon (the print action) has no block of its own: it is
    entirely the .icon-btn primitive. It sits beside the copy icon and,
    across the header, the settings gear, so it must not grow chrome

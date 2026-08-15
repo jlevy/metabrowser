@@ -3510,30 +3510,6 @@ function resetTextChunkGrowth() {
   textChunkNextBytes = TEXT_PREVIEW_CHUNK_BYTES;
 }
 
-/** Refresh the header readout and Load more control in place. */
-function refreshTextPreviewControls(data) {
-  var header = document.querySelector(".file-header");
-  if (!header) {
-    return;
-  }
-  var existing = header.querySelector(".file-header-preview");
-  var button = header.querySelector(".file-header-action");
-  var markup = renderTextPreviewControls(data);
-  if (existing) {
-    existing.remove();
-  }
-  if (button) {
-    button.remove();
-  }
-  if (!markup) {
-    return;
-  }
-  var size = header.querySelector(".file-header-size");
-  if (size) {
-    size.insertAdjacentHTML("afterend", markup);
-  }
-}
-
 function showTextChunkLoadError() {
   var warning = document.querySelector(".metabrowser-source-truncation-warning");
   if (!warning) {
@@ -3606,7 +3582,6 @@ async function loadMoreCurrentText() {
         document,
         window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
       );
-      refreshTextPreviewControls(cached);
     } else {
       renderFile(cached);
     }
@@ -3959,22 +3934,6 @@ function renderBadges(data) {
   return badges;
 }
 
-function renderTextPreviewControls(data) {
-  if (data?.type !== "text" || typeof data.bytes_read !== "number") {
-    return "";
-  }
-  if (!data.content_truncated && data.bytes_read >= (data.size || 0)) {
-    return "";
-  }
-  var loaded = Math.min(data.bytes_read || 0, data.size || 0);
-  var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
-  if (data.content_truncated) {
-    html +=
-      '<button class="btn file-header-action" type="button" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
-  }
-  return html;
-}
-
 function boolData(value) {
   return value === true || value === "true" || value === "1";
 }
@@ -4170,7 +4129,6 @@ function renderFile(data, preferredViewId) {
           "</span>";
         html += badges;
         html += sizeHtml(data.size, "file-header-size");
-        html += renderTextPreviewControls(data);
         html +=
           '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
           (ICONS.print || "") +

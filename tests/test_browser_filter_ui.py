@@ -453,8 +453,13 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
     app = _read("app.js")
     css = _read("styles.css")
 
-    assert 'class="btn file-header-action"' in app
-    assert 'class="btn file-header-action" type="button"' in app
+    # The text view's Load more moved out of the file header and into the
+    # shared partial-content notice, but it is still the `.btn` primitive.
+    sdk = _read("plugin_sdk.js")
+    assert 'class="btn metabrowser-load-more"' in sdk
+    assert "file-header-action" not in app, (
+        "the header no longer restates partial progress; the notice owns it"
+    )
     assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in app
     assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in app
     assert ".btn {" in css

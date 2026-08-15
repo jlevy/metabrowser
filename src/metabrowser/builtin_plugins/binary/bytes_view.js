@@ -48,7 +48,8 @@ const FAILED_TEXT = "Could not load these bytes.";
  * more than its printable ratio suggests.
  */
 const ACCENT_NOTE =
-  "Coloring is off for this file: literal text and byte codes alternate too often to mark apart.";
+  "Coloring is off: this file switches between text and byte codes almost every " +
+  "character, so marking them apart would color nearly everything.";
 
 /** Fallback line box when the pane cannot be measured. */
 const FALLBACK_LINE_HEIGHT_PX = 18;
@@ -78,6 +79,7 @@ const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
  * @property {number} [logicalSize]
  * @property {boolean} [hasMore]
  * @property {boolean} [accentDropped]
+ * @property {boolean} [previewLimited]
  * @property {number} [maxPreviewBytes]
  */
 
@@ -94,15 +96,6 @@ export function decodeBase64(value) {
     bytes[index] = binary.charCodeAt(index) & 0xff;
   }
   return bytes;
-}
-
-/**
- * @param {BytesViewState} state
- * @param {MetabrowserPublicSdk} mb
- * @returns {string}
- */
-function readoutText(state, mb) {
-  return `${mb.formatSize(state.bytesLoaded || 0)} / ${mb.formatSize(state.logicalSize || 0)}`;
 }
 
 /**
@@ -159,17 +152,23 @@ export function renderChunkState(state, mb) {
   // text loader cannot continue it — so it wires the click itself in paint().
   // The notice stays mounted and hidden when complete, so syncControls can
   // retire it after an append without repainting the loaded bytes away.
+  //
+  // Two shapes. While more can load it offers the control; once loading has
+  // stopped at the preview cap it states that the rest is not coming, because
+  // "no button" and "you are seeing the whole file" look identical otherwise.
+  const capped = !state.hasMore && state.previewLimited === true;
   const notice = (/** @type {"top" | "bottom"} */ position) =>
     mb.partialNoticeHtml({ loaded: "", total: "" }, position, {
       useSiteClass: "binary-bytes-notice",
       action: null,
-      hidden: !state.hasMore,
+      hidden: !state.hasMore && !capped,
+      label: capped ? "Preview limit reached." : "Partial file.",
+      showControl: !capped,
     });
   return (
     '<div class="binary-bytes">' +
-    '<div class="binary-bytes-controls">' +
-    `<span class="binary-bytes-readout">${readoutText(state, mb)}</span>` +
-    "</div>" +
+    // No separate readout strip: the notice already states how much of the
+    // file is showing, and two boxes saying it at once is worse than either.
     notice("top") +
     `<div class="binary-bytes-note" role="status"${noteHidden}>${note}</div>` +
     // `no-highlight` is the shell's opt-out in highlightCode(). Without it
@@ -357,11 +356,21 @@ export async function mountBytesView(container, ctx, mb, options) {
    * @param {BytesViewState} next
    */
   const syncNotices = (next) => {
+    // Past the cap the notice stays, without its control: the reader is not
+    // seeing the whole file and nothing more is coming, which is a different
+    // thing from a file that finished loading.
+    const capped = !next.hasMore && next.previewLimited === true;
     const text = `Showing ${mb.formatSize(next.bytesLoaded || 0)} of ${mb.formatSize(
       next.logicalSize || 0,
     )}.`;
     for (const box of notices()) {
-      box.hidden = !next.hasMore;
+      box.hidden = !next.hasMore && !capped;
+    }
+    for (const label of Array.from(container.querySelectorAll?.(".partial-notice-label") ?? [])) {
+      label.textContent = capped ? "Preview limit reached." : "Partial file.";
+    }
+    for (const more of moreButtons()) {
+      more.hidden = capped;
     }
     for (const readout of Array.from(
       container.querySelectorAll?.(".partial-notice-readout") ?? [],
@@ -371,10 +380,6 @@ export async function mountBytesView(container, ctx, mb, options) {
   };
 
   const syncControls = () => {
-    const readout = container.querySelector(".binary-bytes-readout");
-    if (readout) {
-      readout.textContent = readoutText(state, mb);
-    }
     syncNotices(state);
     const note = /** @type {HTMLElement | null} */ (container.querySelector(".binary-bytes-note"));
     if (note) {
@@ -470,6 +475,7 @@ export async function mountBytesView(container, ctx, mb, options) {
     state.logicalSize = Number(data.logical_size) || 0;
     state.bytesLoaded = Number(data.next_offset) || 0;
     state.hasMore = data.has_more === true;
+    state.previewLimited = data.preview_limited === true;
     nextOffset = state.bytesLoaded;
 
     if (state.logicalSize === 0) {

@@ -179,8 +179,11 @@ function makeSdk() {
       partialNoticeHtml: (progress, position, options) =>
         `<div class="partial-notice ${options?.useSiteClass ?? ""}" ` +
         `data-position="${position}"${options?.hidden ? " hidden" : ""}>` +
+        `<strong class="partial-notice-label">${options?.label ?? "Partial file."}</strong> ` +
         `<span class="partial-notice-readout">Showing ${progress.loaded} of ${progress.total}.</span>` +
-        `<button class="btn metabrowser-load-more" type="button" data-position="${position}">Load more</button>` +
+        (options?.showControl === false
+          ? ""
+          : `<button class="btn metabrowser-load-more" type="button" data-position="${position}">Load more</button>`) +
         "</div>",
       fetchPluginData(plugin, route, params, options) {
         return new Promise((resolve, reject) => {
@@ -331,6 +334,71 @@ function contentOf(container) {
     await settle();
     check(
       "both notices retire together when nothing remains",
+      container.querySelectorAll(".binary-bytes-notice").every((n) => n.hidden === true),
+      JSON.stringify(container.querySelectorAll(".binary-bytes-notice").map((n) => n.hidden)),
+    );
+  }
+
+  // ── A file larger than the preview cap ──────────────────────────
+  //
+  // The server used to refuse these outright, so the view existed for binaries
+  // and declined the large ones with nothing to look at. It now serves a
+  // capped prefix, and the view has to distinguish "that was the whole file"
+  // from "that is all you get" — both have no Load more.
+  {
+    const { mb, requests } = makeSdk();
+    const container = makeContainer();
+    const mounted = mountBytesView(container, { path: "big.bin" }, mb);
+    requests[0].resolve(
+      chunkEnvelope({ next_offset: 4, logical_size: 999, has_more: true, preview_limited: true }),
+    );
+    await mounted;
+    check(
+      "a capped file still opens with its first chunk",
+      contentOf(container).includes("AB"),
+      contentOf(container),
+    );
+
+    container.querySelectorAll(".metabrowser-load-more")[0].click();
+    requests[1].resolve(
+      chunkEnvelope({
+        offset: 4,
+        next_offset: 8,
+        logical_size: 999,
+        has_more: false,
+        preview_limited: true,
+      }),
+    );
+    await settle();
+
+    check(
+      "the notice stays once loading stops at the cap",
+      container.querySelectorAll(".binary-bytes-notice").every((n) => n.hidden === false),
+      JSON.stringify(container.querySelectorAll(".binary-bytes-notice").map((n) => n.hidden)),
+    );
+    check(
+      "it says the limit was reached, not that the file ended",
+      container
+        .querySelectorAll(".partial-notice-label")
+        .every((l) => l.textContent === "Preview limit reached."),
+      JSON.stringify(container.querySelectorAll(".partial-notice-label").map((l) => l.textContent)),
+    );
+    check(
+      "no control is offered, because nothing more is coming",
+      container.querySelectorAll(".metabrowser-load-more").every((b) => b.hidden === true),
+      JSON.stringify(container.querySelectorAll(".metabrowser-load-more").map((b) => b.hidden)),
+    );
+  }
+
+  // ── A file that simply finishes ─────────────────────────────────
+  {
+    const { mb, requests } = makeSdk();
+    const container = makeContainer();
+    const mounted = mountBytesView(container, { path: "a.bin" }, mb);
+    requests[0].resolve(chunkEnvelope({ next_offset: 8, has_more: false, preview_limited: false }));
+    await mounted;
+    check(
+      "a complete file shows no notice at all",
       container.querySelectorAll(".binary-bytes-notice").every((n) => n.hidden === true),
       JSON.stringify(container.querySelectorAll(".binary-bytes-notice").map((n) => n.hidden)),
     );
@@ -674,7 +742,11 @@ function contentOf(container) {
       },
       mb,
     );
-    check("a withdrawn accent is stated", dense.includes("Coloring is off for this file"), dense);
+    check("a withdrawn accent is stated", dense.includes("Coloring is off"), dense);
+    // The note has to be checkable by looking at the screen. "Alternate too
+    // often" was true but abstract; two files showing the same byte count
+    // behaved differently with nothing on screen to explain which was which.
+    check("the note says what the reader can see", dense.includes("almost every character"), dense);
     // The note blames alternation, not the proportion of non-printable bytes:
     // a file of readable strings punctuated by separators trips the budget
     // while being mostly printable, and the old wording called that file
@@ -689,7 +761,14 @@ function contentOf(container) {
       dense.includes("binary-bytes-content no-highlight binary-bytes-plain"),
       dense,
     );
-    check("the readout reports loaded and total", dense.includes("4 B") && dense.includes("8 B"));
+    // Progress is stated once, in the notice. The view used to carry a second
+    // readout strip above it saying the same numbers in a second box.
+    check(
+      "progress is stated exactly once",
+      (dense.match(/partial-notice-readout/g) || []).length === 2 &&
+        !dense.includes("binary-bytes-readout"),
+      dense,
+    );
 
     const complete = renderChunkState(
       { status: "ready", bytesLoaded: 8, logicalSize: 8, hasMore: false, accentDropped: false },

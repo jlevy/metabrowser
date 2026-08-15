@@ -166,19 +166,48 @@ def test_file_exactly_at_the_ceiling_is_eligible(
     assert body["max_preview_bytes"] == 1024
 
 
-def test_file_one_byte_above_the_ceiling_is_rejected(
+def test_file_above_the_ceiling_serves_a_capped_prefix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The ceiling caps loading; it does not refuse the file.
+
+    It used to return 413 for anything larger, so the view existed for binaries
+    but declined the large ones with nothing to look at. A bound on browser
+    memory is no reason to withhold the first chunk.
+    """
     server._set_root_dir(tmp_path)
     monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_BYTES", 1024)
-    (tmp_path / "a.bin").write_bytes(b"\x00" * 1025)
+    (tmp_path / "a.bin").write_bytes(b"\x00" * 4096)
 
     status, body = _chunk("a.bin", limit=16)
 
-    assert status == 413
-    assert body["logical_size"] == 1025
+    assert status == 200
+    assert body["logical_size"] == 4096
     assert body["max_preview_bytes"] == 1024
-    assert "content_base64" not in body
+    assert body["bytes_read"] == 16
+    assert body["has_more"] is True
+    # The reader is not seeing the whole file, and never will be.
+    assert body["preview_limited"] is True
+
+
+def test_loading_stops_at_the_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`has_more` goes false at the cap even though the file continues."""
+    server._set_root_dir(tmp_path)
+    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_BYTES", 1024)
+    (tmp_path / "a.bin").write_bytes(b"\x00" * 4096)
+
+    status, body = _chunk("a.bin", offset=512, limit=4096)
+
+    assert status == 200
+    # Clipped to the ceiling rather than the requested window.
+    assert body["bytes_read"] == 512
+    assert body["next_offset"] == 1024
+    assert body["has_more"] is False
+    assert body["preview_limited"] is True
+
+    # And past the cap there is genuinely no window to serve.
+    beyond, _ = _chunk("a.bin", offset=1024, limit=16)
+    assert beyond == 416
 
 
 def test_compressed_artifacts_share_the_one_ceiling(
@@ -195,24 +224,39 @@ def test_compressed_artifacts_share_the_one_ceiling(
     (tmp_path / "big.bin.gz").write_bytes(gzip.compress(b"\x00" * 8192))
 
     eligible, body = _chunk("ok.bin.gz", limit=16)
-    oversize, _ = _chunk("big.bin.gz", limit=16)
+    oversize, big_body = _chunk("big.bin.gz", limit=16)
 
     assert eligible == 200
     assert body["max_preview_bytes"] == 4096
-    assert oversize == 413
+    assert body["preview_limited"] is False
+    # Larger than the ceiling is capped, not refused — same as a plain file.
+    assert oversize == 200
+    assert big_body["max_preview_bytes"] == 4096
+    assert big_body["preview_limited"] is True
 
 
 def test_window_past_the_ceiling_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Only a window past the *ceiling* is a range error.
+
+    Past the end of a file that fits under the ceiling there is simply nothing
+    left, which an empty chunk reports without the caller special-casing a
+    status.
+    """
     server._set_root_dir(tmp_path)
     monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_BYTES", 1024)
     monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_CHUNK_BYTES", 4096)
-    (tmp_path / "a.bin").write_bytes(b"\x00" * 512)
+    (tmp_path / "a.bin").write_bytes(b"\x00" * 4096)
 
-    status, _ = _chunk("a.bin", offset=1000, limit=25)
+    refused, _ = _chunk("a.bin", offset=1024, limit=25)
+    assert refused == 416
 
-    assert status == 416
+    (tmp_path / "small.bin").write_bytes(b"\x00" * 512)
+    past_eof, body = _chunk("small.bin", offset=600, limit=25)
+    assert past_eof == 200
+    assert body["bytes_read"] == 0
+    assert body["has_more"] is False
 
 
 def test_limit_is_clamped_to_the_per_request_maximum(
@@ -299,14 +343,22 @@ def test_malformed_gzip_reports_a_decompression_failure(tmp_path: Path) -> None:
 def test_expanding_compressed_input_is_bounded_not_buffered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A small artifact that expands past the ceiling is refused."""
+    """A small artifact that expands hugely is served bounded, not buffered.
+
+    The output bound is the requested window clipped to the ceiling, so the
+    decompressed bytes never accumulate past it however far the input expands.
+    """
     server._set_root_dir(tmp_path)
     monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_BYTES", 4096)
     (tmp_path / "bomb.bin.gz").write_bytes(gzip.compress(b"\x00" * (1 << 20)))
 
-    status, _ = _chunk("bomb.bin.gz")
+    status, body = _chunk("bomb.bin.gz")
 
-    assert status == 413
+    assert status == 200
+    assert body["logical_size"] == 1 << 20
+    # Never more than the ceiling, whatever the caller asked for.
+    assert body["bytes_read"] <= 4096
+    assert body["preview_limited"] is True
 
 
 # ── Envelope ───────────────────────────────────────────────────────

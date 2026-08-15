@@ -271,7 +271,19 @@ declares a background, border, color, or font of its own.
 Build the notice through `mb.partialNoticeHtml` rather than by hand, so a new view gets
 the markup and the placement together.
 
-Two supporting rules follow from the same reasoning:
+### State Progress Once
+
+The notice is the only place a view reports how much of a file is loaded.
+
+Both views used to carry a second readout in their pane chrome — “1.0 MB / 6.0 MB” above
+a notice reading “Showing 1.0 MB of 6.0 MB” — which is the same sentence twice in two
+boxes, and gives a reader two things to reconcile where there is only one fact.
+The file header states the file’s **size**, which is identity; the notice states
+**progress**, which is state.
+The two controls at the ends of the content are not a second statement: they bracket the
+same content so the reader meets one of them wherever they are.
+
+Three supporting rules follow from the same reasoning:
 
 - **A notice that content is missing carries its own control.** Telling a reader that
   more exists and pointing them elsewhere to ask for it puts the explanation and the
@@ -279,6 +291,14 @@ Two supporting rules follow from the same reasoning:
   The partial-content banner holds a Load more button rather than naming one.
 - **Retire the control when nothing remains.** A control that cannot do anything reads
   as a broken control, and any trailing rule or spacing it owns goes with it.
+- **A bound on loading is not a refusal to show anything.** When a view caps how much it
+  will load, it still opens the file and loads up to the cap; it then keeps the notice,
+  drops the control, and says the limit was reached.
+  “No control” and “you are seeing the whole file” look identical otherwise, and a
+  reader who cannot see the rest needs telling either way.
+  The byte view previously refused any file above its 32 MiB ceiling outright, which
+  meant the view existed for binaries and declined the large ones with nothing to look
+  at.
 
 Core provides both halves through `mb.renderTextTruncationWarning` and
 `mb.renderTextLoadMoreFooter` for views whose progress comes from `/api/file`, and

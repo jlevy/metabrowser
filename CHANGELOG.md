@@ -25,6 +25,13 @@ Binary and source previews:
   has loaded, and the notice carries the button itself rather than naming a control
   elsewhere. Reaching the end of a chunk no longer means scrolling back to the top to
   continue. Both appear and retire together.
+- Binary files larger than the preview ceiling now open and load up to it, instead of
+  refusing with “Preview unavailable”.
+  The ceiling caps how much may be loaded, not which files may be opened; at the cap the
+  notice says the limit was reached rather than silently looking like a finished file.
+- Progress is stated once.
+  Both views carried a second readout in their pane chrome saying the same thing as the
+  notice directly below it.
 - Every partial-content notice is now one style, in the source view and the Bytes view
   alike: the ordinary surface fill with a warning border, rather than an informational
   blue that meant something else elsewhere.

@@ -658,20 +658,29 @@
    * `partial-notice` is what carries the fill, border, and type, so the two
    * ends of a file and the two views cannot drift apart.
    *
+   * `showControl: false` states the condition without offering to continue —
+   * for content that is partial and will stay partial, such as a file larger
+   * than a view is willing to load. That is still a partial-content notice; a
+   * reader who cannot see the whole file needs telling either way.
+   *
    * @param {{loaded: string, total: string}} progress
    * @param {"top" | "bottom"} position
-   * @param {{useSiteClass?: string, action?: string | null, hidden?: boolean}} [options]
+   * @param {{useSiteClass?: string, action?: string | null, hidden?: boolean,
+   *          label?: string, showControl?: boolean}} [options]
    * @returns {string}
    */
   function partialNoticeHtml(progress, position, options) {
     const useSiteClass = options?.useSiteClass ? ` ${options.useSiteClass}` : "";
     const hidden = options?.hidden ? " hidden" : "";
+    const label = options?.label ?? "Partial file.";
+    const control =
+      options?.showControl === false ? "" : loadMoreButtonHtml(position, options?.action);
     return (
       `<div class="partial-notice${useSiteClass}" data-position="${position}"` +
       ` role="status"${hidden}>` +
       // The progress figures live in their own element so a view that updates
       // in place can rewrite them without taking the label with them.
-      "<span><strong>Partial file.</strong> " +
+      `<span><strong class="partial-notice-label">${escapeHtml(label)}</strong> ` +
       '<span class="partial-notice-readout">Showing ' +
       escapeHtml(progress.loaded) +
       " of " +
@@ -680,7 +689,7 @@
       // The notice carries its own button. It used to say "Select Load more to
       // continue" and point at a control in the pane header, which puts the
       // explanation and the remedy in different places.
-      loadMoreButtonHtml(position, options?.action) +
+      control +
       "</div>"
     );
   }

@@ -634,7 +634,13 @@ type MetabrowserSdk = {
   partialNoticeHtml(
     progress: { loaded: string; total: string },
     position: "top" | "bottom",
-    options?: { useSiteClass?: string; action?: string | null; hidden?: boolean },
+    options?: {
+      useSiteClass?: string;
+      action?: string | null;
+      hidden?: boolean;
+      label?: string;
+      showControl?: boolean;
+    },
   ): string;
   sizeClass(value: number): "" | "size-large";
   sizeHtml(value: number | null | undefined, extraClass?: string): string;

@@ -192,16 +192,15 @@ def chunk_handler(request: Request) -> JSONResponse:
     except OSError:
         return _unavailable(subpath)
 
-    if logical_size > ceiling:
-        return _error(
-            "Preview unavailable.",
-            413,
-            path=subpath,
-            logical_size=logical_size,
-            max_preview_bytes=ceiling,
-        )
-    if offset + limit > ceiling:
-        # The window, not just the file, is what costs a decompression pass.
+    # The ceiling caps how much may be *loaded*, not which files may be opened.
+    # It used to refuse anything larger outright, which meant the view existed
+    # for binaries but declined the large ones with nothing to look at; a bound
+    # on browser memory is no reason to withhold the first megabyte.
+    readable = min(logical_size, ceiling)
+    # Past the ceiling there is nothing loadable, which is a range error. Past
+    # the end of a file that fits under it there is simply nothing left, and
+    # an empty chunk says so without the caller special-casing a status.
+    if offset >= ceiling and offset > 0:
         return _error(
             "Preview unavailable.",
             416,
@@ -209,6 +208,7 @@ def chunk_handler(request: Request) -> JSONResponse:
             logical_size=logical_size,
             max_preview_bytes=ceiling,
         )
+    limit = min(limit, max(readable - offset, 0))
 
     try:
         payload, has_more = read_byte_chunk(artifact, offset, limit)
@@ -230,6 +230,7 @@ def chunk_handler(request: Request) -> JSONResponse:
             elapsed,
         )
 
+    next_offset = offset + len(payload)
     mtime_hash = file_mtime_hash(target)
     return JSONResponse(
         {
@@ -237,10 +238,16 @@ def chunk_handler(request: Request) -> JSONResponse:
             "path": relativize_path(str(target)) or subpath,
             "offset": offset,
             "bytes_read": len(payload),
-            "next_offset": offset + len(payload),
+            "next_offset": next_offset,
             "logical_size": logical_size,
             "max_preview_bytes": ceiling,
-            "has_more": has_more,
+            # More bytes exist *and* they are still inside the window. Past the
+            # ceiling the answer is no, so the view stops offering Load more.
+            "has_more": has_more and next_offset < readable,
+            # The file continues past what may be loaded. Distinct from
+            # `has_more`: both are false at the ceiling, and only this one
+            # tells the reader that what they see is not the whole file.
+            "preview_limited": logical_size > ceiling,
             "mtime_hash": mtime_hash,
             "content_base64": base64.b64encode(payload).decode("ascii"),
         },

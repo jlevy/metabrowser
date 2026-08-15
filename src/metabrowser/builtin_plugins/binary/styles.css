@@ -15,20 +15,6 @@
   min-width: 0;
 }
 
-.binary-bytes-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: var(--pane-header-padding-y) var(--content-padding-x);
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-}
-
-.binary-bytes-readout {
-  font-variant-numeric: var(--tabular-numerals);
-}
-
 /* The partial-content notice is the shell primitive `.partial-notice`; this
    class only exists so the view can find its own boxes. Declaring a fill,
    border, or type here would be the drift the primitive prevents —
