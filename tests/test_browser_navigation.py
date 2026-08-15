@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from metabrowser import server
 from metabrowser.cli.main import _app
+from metabrowser.view_routes import format_view_href
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROUTE_SHIM = Path(__file__).resolve().parent / "dom" / "navigation_route_behavior.js"
@@ -175,6 +176,23 @@ def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None
     assert result.exit_code == 0, result.exception
     assert "http://127.0.0.1:8411/view/docs/%E9%9B%AA%20%231%25.md" in result.output
     server_class.assert_called_once()
+
+
+def test_startup_urls_do_not_land_on_a_redirect(tmp_path: Path) -> None:
+    """Readiness probes retry a redirect, so no startup URL may point at one.
+
+    ``wait_for_http_ok_then`` opens the browser only on 2xx and gives up only on
+    4xx, so a startup URL that redirects would poll until it times out.
+    """
+
+    server._set_root_dir(tmp_path)
+    try:
+        client = TestClient(server.app)
+        for logical_path in ("", "docs/guide.md"):
+            route = format_view_href(logical_path)
+            assert client.get(route, follow_redirects=False).status_code == 200, route
+    finally:
+        server._set_root_dir(Path())
 
 
 def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(

@@ -275,16 +275,18 @@ Inventory walking, ignore-file parsing, and watcher setup run without blocking t
 loop’s first response.
 
 When a `/view/` URL names an initial file, `/api/file` begins independently of tree
-indexing. The bare `/` URL remains an unselected landing view, while `/view/` explicitly
-selects the served root.
+indexing. `/view/` selects the served root, and the bare `/` URL is not a second landing
+view: it redirects there with a temporary 307 so the served root has exactly one URL.
 URL fragments identify document locations and never file paths.
-The folder-view contract replaces that special case with the root folder’s default
-Overview while keeping an explicitly selected README as an ordinary file view.
+The root folder’s default Overview replaces the former server-picked initial README,
+which remains reachable as an ordinary file view.
 Inventory endpoints return current partial state plus progress metadata instead of
 waiting for a complete walk.
 
-The CLI opens a browser only after the index route returns an HTTP success response.
-A free TCP port alone is not considered ready.
+The CLI opens a browser only after the canonical route returns an HTTP success response.
+A free TCP port alone is not considered ready, and neither is a redirect, so every
+startup URL the CLI prints, probes, and opens is a `/view/` route rather than the
+redirecting origin.
 
 ## Live Update Model
 
