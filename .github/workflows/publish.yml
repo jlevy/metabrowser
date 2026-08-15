@@ -80,7 +80,7 @@ jobs:
       - name: Publish to PyPI
         run: uv --config-file uv.toml publish --trusted-publishing always
 
-      - name: Smoke-test the skill's pinned invocation from PyPI
+      - name: Smoke-test the published release from PyPI
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -104,5 +104,5 @@ jobs:
             printf 'Pinned invocation not ready (attempt %s); retrying...\n' "$attempt" >&2
             sleep 30
           done
-          printf 'uvx metabrowser@%s failed --help/--doctor after publish\n' "$version" >&2
+          printf 'Pinned metabrowser@%s failed --help/--doctor after publish\n' "$version" >&2
           exit 1
