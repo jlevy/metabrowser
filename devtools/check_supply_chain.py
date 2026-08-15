@@ -122,6 +122,8 @@ def _check_workflows(root: Path, errors: list[str]) -> None:
             errors.append(f"{path.name}: trusted publishing requires id-token: write")
         if re.search(r"^\s*environment:\s*\S+", text, re.MULTILINE) is None:
             errors.append(f"{path.name}: trusted publishing requires an environment")
+        if "Smoke-test" in text and "from PyPI" in text and "--refresh-package" not in text:
+            errors.append(f"{path.name}: post-publish smoke must refresh the package index")
 
 
 def verify_supply_chain(root: Path = ROOT) -> None:
