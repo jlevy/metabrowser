@@ -245,9 +245,8 @@
         const icon = opt.icon
           ? `<span class="menu-item-icon ${esc(opt.iconClass || "")}">${opt.icon}</span>`
           : "";
-        // `ageClass` tints the label from the shared freshness ramp
-        // (.age-sec … .age-wk), so a menu row and the rows it keeps
-        // read in the same colour.
+        // `ageClass` selects the shared age foreground, so a menu row
+        // and the rows it keeps stay in sync.
         const age = opt.ageClass ? ` ${esc(opt.ageClass)}` : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +

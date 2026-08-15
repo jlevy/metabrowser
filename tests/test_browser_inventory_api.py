@@ -189,7 +189,6 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
         "code",
         "docs",
         "data",
-        "logs",
         "archives",
         "media",
     ]

@@ -522,6 +522,23 @@
     );
   }
 
+  // Plugins can observe directory totals but cannot mutate the host-owned
+  // inventory projection. The fallback keeps partial SDK harnesses usable
+  // without weakening the production ownership boundary.
+  const directoryTotalsHost = global.metabrowserDirectoryTotalsStore;
+  const directoryTotals = Object.freeze({
+    get(path) {
+      return directoryTotalsHost?.get(path) ?? null;
+    },
+    subscribe(path, listener) {
+      if (directoryTotalsHost) {
+        return directoryTotalsHost.subscribe(path, listener);
+      }
+      listener(null);
+      return () => {};
+    },
+  });
+
   // Shell-surface proxies — same pattern as `icons`: plugins reach the
   // shared tooltip and file-type classifier through the SDK so they
   // never touch app.js globals directly, and get safe no-ops when the
@@ -1268,6 +1285,7 @@
     watchRollup: watchRollup,
     errors: global.MetabrowserRequestErrors,
     folderContext: folderContext,
+    directoryTotals: directoryTotals,
     viewState: viewState,
     setViewPrintState: global.MetabrowserViewState.setPrintState,
     ageBucket: ageBucket,

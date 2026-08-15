@@ -77,9 +77,10 @@ read Markdown docs.
 
 - **Folder overviews with exact file tallies.** Every directory opens with a compact
   Files summary that compares file counts and byte totals, percentages, and normalized
-  bars across semantic groups such as Code, Documentation, Data, Logs, Archives, and
-  Media. Expand a family to inspect exact extensions, or inspect bounded No extension and
-  Other types details without losing the conserved total or ignored-file subset.
+  bars across semantic groups such as Code, Documentation, Data, Archives, Media, and
+  Other. Expand a family such as Log files to inspect exact extensions, or inspect
+  bounded No extension and Other types details without losing the conserved total or
+  ignored-file subset.
 
 - **A visual Treemap for every folder.** Size the same live file hierarchy by bytes or
   file count, include or exclude ignored files, and move through nested folders without

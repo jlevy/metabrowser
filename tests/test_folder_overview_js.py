@@ -38,6 +38,10 @@ def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     assert "@container (max-width: 47.99rem)" in css
     assert "@container (min-width: 75rem)" in css
     assert "--folder-overview-narrow-document-gutter: 1.25rem" in css
+    assert "--folder-overview-regular-card-width" in css
+    assert "calc(100% - 4rem)" in css
+    assert "calc(var(--kpress-measure) - 2rem)" in css
+    assert "width: var(--folder-overview-regular-card-width);" in css
     assert "--folder-overview-wide-card-width" in css
     assert ".kpress-long-text" not in css
     assert "border: none" not in css
@@ -55,3 +59,13 @@ def test_folder_overview_uses_the_shared_section_disclosure() -> None:
     assert '.section-disclosure-trigger[aria-expanded="true"]::after' in core_css
     assert "var(--section-disclosure-chevron-color)" in core_css
     assert "var(--section-disclosure-chevron-size)" in core_css
+
+
+def test_folder_headers_share_the_tight_divider_spacing_token() -> None:
+    overview_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
+        encoding="utf-8"
+    )
+    core_css = (REPO_ROOT / "src/metabrowser/static/styles.css").read_text(encoding="utf-8")
+
+    assert "--section-heading-divider-gap: 5px" in core_css
+    assert "padding: 0 0 var(--section-heading-divider-gap)" in overview_css

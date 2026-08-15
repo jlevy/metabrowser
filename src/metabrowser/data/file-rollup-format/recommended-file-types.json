@@ -476,17 +476,6 @@
     },
     {
       "extensions": [
-        ".log",
-        ".jsonl",
-        ".ndjson"
-      ],
-      "group_id": "logs",
-      "id": "log-files",
-      "label": "Log files",
-      "order": 100
-    },
-    {
-      "extensions": [
         ".zip",
         ".tar",
         ".tar.gz",
@@ -566,9 +555,20 @@
       "id": "fonts",
       "label": "Fonts",
       "order": 130
+    },
+    {
+      "extensions": [
+        ".log",
+        ".jsonl",
+        ".ndjson"
+      ],
+      "group_id": "other",
+      "id": "log-files",
+      "label": "Log files",
+      "order": 100
     }
   ],
-  "fingerprint": "08c341b55028cd9b379decedff9429c5809b878ee25b11018d4f6dfae069b2c2",
+  "fingerprint": "a648f3f563eeaa7150a0b0b2fda310735b3a0662bd03cea84ab9424ad330900a",
   "groups": [
     {
       "id": "code",
@@ -586,24 +586,19 @@
       "order": 30
     },
     {
-      "id": "logs",
-      "label": "Logs",
-      "order": 40
-    },
-    {
       "id": "archives",
       "label": "Archives",
-      "order": 50
+      "order": 40
     },
     {
       "id": "media",
       "label": "Media",
-      "order": 60
+      "order": 50
     },
     {
       "id": "other",
       "label": "Other",
-      "order": 70
+      "order": 60
     }
   ],
   "kinds": [
@@ -1272,7 +1267,7 @@
       ],
       "family_id": "log-files",
       "filenames": [],
-      "group_id": "logs",
+      "group_id": "other",
       "id": "log",
       "priority": 100,
       "shebangs": []
@@ -1285,7 +1280,7 @@
       ],
       "family_id": "log-files",
       "filenames": [],
-      "group_id": "logs",
+      "group_id": "other",
       "id": "json-lines",
       "priority": 100,
       "shebangs": []
@@ -1481,7 +1476,7 @@
     }
   ],
   "max_extension_components": 2,
-  "revision": 1,
+  "revision": 2,
   "schema": "file-type-registry-v1",
   "schema_version": 1
 }

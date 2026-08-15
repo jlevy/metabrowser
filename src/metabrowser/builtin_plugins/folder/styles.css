@@ -12,13 +12,37 @@
   flex-direction: column;
 }
 
-.tm-toolbar {
+.tm-totals-heading {
+  max-width: var(--tm-max-width);
+  margin: 0 0 14px;
+  padding: 0 0 var(--section-heading-divider-gap);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: 1.25;
+  text-transform: var(--label-text-transform);
+}
+
+.tm-totals {
+  max-width: var(--tm-max-width);
+  margin: 0 0 18px;
+}
+
+.folder-treemap-host > .folder-rollup-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   margin: 0 0 10px;
   max-width: var(--tm-max-width);
+}
+
+.tm-parent-nav-row {
+  max-width: var(--tm-max-width);
+  margin: 0 0 10px;
 }
 
 .tm-viewport {
@@ -41,6 +65,8 @@
   align-items: center;
   justify-content: center;
   height: 100%;
+  background: var(--tally-skeleton-bg);
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 
 .tm-cell {
@@ -56,12 +82,16 @@
   border: 1px solid var(--viz-border-subtle);
   background: var(--viz-surface);
   overflow: hidden;
+  cursor: default;
+  transition: filter var(--viz-hover-duration) var(--viz-hover-ease);
+}
+
+.tm-actionable {
   cursor: pointer;
-  transition: filter var(--viz-hover-duration) ease;
 }
 
 .tm-cell:hover {
-  filter: brightness(1.06);
+  filter: var(--viz-data-mark-hover-filter);
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so
@@ -101,10 +131,6 @@
   box-shadow: 0 0 0 2px var(--viz-surface);
 }
 
-.tm-nested {
-  cursor: default;
-}
-
 .tm-cell-file-icon {
   align-self: center;
 }
@@ -139,7 +165,7 @@
 }
 
 /* Every folder/file fill shares the mounted extension palette with
-   the File Types Overview. Directory cells use their dominant type;
+   the Files Overview. Directory cells use their dominant type;
    the remainder uses the neutral Other slot. The base hue is mixed
    into the current surface so chrome text stays readable in both
    themes while the Overview bars retain the full-strength swatch. */
@@ -157,7 +183,7 @@
 }
 
 .tm-ignored {
-  opacity: 0.45;
+  opacity: var(--dimmed-content-opacity);
 }
 
 .tm-rest {
@@ -181,6 +207,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tm-loading,
   .tm-pending {
     animation: none;
     opacity: 0.75;
@@ -203,7 +230,8 @@
    interactive chrome; the host's print rules already hide the app
    shell around it. */
 @media print {
-  .tm-toolbar {
+  .folder-treemap-host > .folder-rollup-controls,
+  .tm-parent-nav-row {
     display: none;
   }
   .tm-cell {

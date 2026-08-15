@@ -59,7 +59,7 @@ suffix.
 - **Display family:** A user-facing aggregate that can contain several kinds or
   extensions, such as JavaScript, C/C++, Log files, or Images.
 - **Display group:** An ordered top-level section such as Code, Documentation, Data,
-  Logs, Archives, Media, or Other.
+  Archives, Media, or Other.
 - **Content family:** An analyzer-oriented identity such as code, prose, markup, data,
   binary, or unknown. It is independent of display placement.
 - **Population:** A named set of files measured by one rollup, such as `all`,
@@ -181,9 +181,11 @@ registry revision. Neither change automatically changes File Rollup Format v0.1.
 | `label` | string | Nonempty human label |
 | `order` | integer | Deterministic order, unique among groups |
 
-The recommended order is Code, Documentation, Data, Logs, Archives, Media, and Other.
-Other contains the structural No extension and Other types parents.
-It should not absorb ordinary known families merely to avoid a taxonomy decision.
+The recommended order is Code, Documentation, Data, Archives, Media, and Other.
+Other contains deliberately miscellaneous families such as Log files and the structural
+No extension and Other types parents.
+It should not absorb an ordinary known family merely to avoid making a taxonomy
+decision.
 
 ### Family Fields
 
@@ -233,10 +235,9 @@ They include:
 | Code | Common languages and related extensions, including JavaScript, TypeScript, CSS, and C/C++ |
 | Documentation | Common prose and markup documents |
 | Data | Structured and tabular data formats |
-| Logs | `.log`, `.jsonl`, and `.ndjson`; JSON Lines retains data content |
 | Archives | Common compressed streams and containers, including exact `.tar.*` compounds |
 | Media | Images, video, audio, and fonts; SVG retains markup content |
-| Other | Structural fallback parents rather than guessed semantic kinds |
+| Other | Log files (`.log`, `.jsonl`, and `.ndjson`) plus structural fallback parents; JSON Lines retains data content |
 
 The TOML file, not this summary, owns the complete recommended member list.
 
@@ -557,6 +558,33 @@ Others contains the exact sum of every omitted candidate and its
 `omitted_distinct_values` count.
 Optional allocated bytes do not affect ranking, so consumers supporting only the
 required metrics choose the same children.
+
+### Recommended Interactive Projection
+
+The producer bound and the display bound solve different problems.
+A conforming producer keeps up to 20 exact fallback children so consumers have a useful,
+bounded projection. An interactive renderer should show at most 10 direct children
+initially and represent the rest with one **N more** row whose metrics equal those
+hidden children. Expanding that row reveals the already-serialized children; it does not
+alter the producer’s optional Others aggregate for values beyond the 20-child
+interchange bound.
+
+Apply the 10-child presentation bound consistently to every direct list, including
+family extensions and fallback children.
+Sort each list by the selected display measure descending, then by the other required
+measure descending, then by stable identity.
+Changing the selected measure may reorder siblings but never changes classification,
+conservation, or the serialized record.
+
+### Snapshot Consistency
+
+A `FileTypeBreakdown` is one complete directory generation.
+A consumer must not combine groups, fallback children, or measures from different
+generations or present a partial generation as a completed breakdown.
+A host envelope can expose independently cached directory totals before the detailed
+breakdown is ready, provided those totals carry their own revision or snapshot boundary
+and are labelled as general directory context rather than as children of the pending
+breakdown.
 
 ### Filename Encoding
 

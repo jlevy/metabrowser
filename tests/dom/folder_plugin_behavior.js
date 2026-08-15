@@ -4,8 +4,8 @@
 // sandbox with a minimal DOM stub, then drives both registered views:
 // README empty state, treemap toolbar + cells from a stubbed
 // /api/rollup envelope, watchRollup refresh on inventory-change
-// events, toggle relayout without refetch, and dispose detaching the
-// listener.
+// events, parent-folder navigation, toggle relayout without refetch,
+// and dispose detaching the listeners.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -47,6 +47,18 @@ function makeElement() {
       }
       if (selector === ".tm-status") {
         return el.status;
+      }
+      if (selector === ".tm-totals") {
+        return el.totals;
+      }
+      if (selector === ".tm-metric-controls") {
+        return el.metricControls;
+      }
+      if (selector === ".tm-scope-controls") {
+        return el.scopeControls;
+      }
+      if (selector === ".tm-parent-nav") {
+        return el.parentNav;
       }
       return null;
     },
@@ -222,6 +234,7 @@ for (const relative of [
   "src/metabrowser/static/request_error.js",
   "src/metabrowser/static/formatters.js",
   "src/metabrowser/static/inventory_scope.js",
+  "src/metabrowser/static/directory_totals_store.js",
   "src/metabrowser/static/resource_context.js",
   "src/metabrowser/static/view_state.js",
   "src/metabrowser/static/plugin_sdk.js",
@@ -233,6 +246,7 @@ for (const relative of [
 const moduleSources = [
   "src/metabrowser/builtin_plugins/folder/treemap_layout.js",
   "src/metabrowser/builtin_plugins/folder/treemap_model.js",
+  "src/metabrowser/builtin_plugins/folder/rollup_controls.js",
 ];
 for (const relative of moduleSources) {
   const source = fs
@@ -250,6 +264,18 @@ const treemapStyles = fs.readFileSync(
   "utf8",
 );
 vm.runInContext(treemapSource, sandbox, { filename: "treemap.js" });
+vm.runInContext(
+  `function normalizeFolderTotals(value) { return value || {state: "pending"}; }
+   function mountFolderTotalsView(container, value, _mb, metric) {
+     container.value = value;
+     container.metric = metric;
+     return {
+       update(next) { container.value = next; },
+       updateMetric(next) { container.metric = next; }
+     };
+   }`,
+  sandbox,
+);
 const fileIconCalls = [];
 sandbox.MetabrowserFileTypes = {
   iconFor(name) {
@@ -272,12 +298,19 @@ vm.runInContext(
         }
       };
     }
-  });`,
+  }, createFolderRollupControls(metabrowser));`,
   sandbox,
 );
 
 const mb = sandbox.metabrowser;
 check("treemap view registered", !!mb.getRegisteredView("folder", "treemap"));
+check(
+  "public directory totals store is read-only",
+  typeof mb.directoryTotals.get === "function" &&
+    typeof mb.directoryTotals.subscribe === "function" &&
+    mb.directoryTotals.applySnapshot === undefined &&
+    mb.directoryTotals.applyChange === undefined,
+);
 const openPathEvents = [];
 sandbox.addEventListener("metabrowser:open-path", (event) => {
   openPathEvents.push(event.detail);
@@ -295,11 +328,14 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   const container = makeElement();
   container.viewport = makeElement();
   container.status = makeElement();
-  const metricChips = ["size", "files"].map((value) => {
+  container.totals = makeElement();
+  container.metricControls = makeElement();
+  container.scopeControls = makeElement();
+  const metricChips = ["files", "size"].map((value) => {
     const attributes = {
-      "aria-checked": value === "size" ? "true" : "false",
+      "aria-checked": value === "files" ? "true" : "false",
       "data-chip-value": value,
-      tabindex: value === "size" ? "0" : "-1",
+      tabindex: value === "files" ? "0" : "-1",
     };
     return {
       getAttribute(name) {
@@ -310,8 +346,8 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
       },
     };
   });
-  container.querySelectorAll = (selector) =>
-    selector === '[data-chip-group="metric"] [data-chip-value]' ? metricChips : [];
+  container.metricControls.querySelectorAll = (selector) =>
+    selector === '[data-chip-group="folder-rollup-metric"] [data-chip-value]' ? metricChips : [];
   container.viewport.textContent = "";
   Object.defineProperty(container.viewport, "textContent", {
     set() {},
@@ -330,13 +366,60 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
 
   const view = mb.getRegisteredView("folder", "treemap");
   sandbox.MetabrowserViewState.setActive(container, true);
+  sandbox.metabrowserDirectoryTotalsStore.applySnapshot([
+    {
+      path: "",
+      type: "dir",
+      total_files: null,
+      total_size: null,
+      unignored_files: null,
+      unignored_size: null,
+    },
+  ]);
   const mounted = view.render(container, {
     path: "",
     kind: "folder",
-    raw: { readme_path: "README.md" },
+    raw: {
+      readme_path: "README.md",
+      dir: {
+        total_files: 4,
+        total_size: 1050,
+        unignored_files: 3,
+        unignored_size: 950,
+      },
+    },
   });
-  check("toolbar rendered", container.innerHTML.includes("tm-toolbar"), "no toolbar");
-  check("metric chooser present", container.innerHTML.includes('data-chip-key="metric"'));
+  check(
+    "pending cache entries never replace complete first-frame totals",
+    container.totals.value.total_files === 4 &&
+      container.totals.value.total_size === 1050 &&
+      container.totals.metric === "files",
+    JSON.stringify({ value: container.totals.value, metric: container.totals.metric }),
+  );
+  check(
+    "Files heading precedes the treemap",
+    container.innerHTML.includes('<h2 class="tm-totals-heading">Files</h2>'),
+    container.innerHTML,
+  );
+  check("shared controls rendered", container.innerHTML.includes("folder-rollup-controls"));
+  check(
+    "Treemap root omits parent navigation",
+    !container.innerHTML.includes("tm-parent-nav"),
+    container.innerHTML,
+  );
+  check(
+    "metric chooser present",
+    container.metricControls.innerHTML.includes('data-chip-key="folder-rollup-metric"'),
+  );
+  check(
+    "metric chooser is Files then Bytes with Files selected",
+    container.metricControls.innerHTML.indexOf('data-chip-value="files"') <
+      container.metricControls.innerHTML.indexOf('data-chip-value="size"') &&
+      container.metricControls.innerHTML.includes(
+        'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
+      ),
+    container.metricControls.innerHTML,
+  );
   check(
     "obsolete grouping and color choices absent",
     !container.innerHTML.includes('data-chip-key="grouping"') &&
@@ -347,11 +430,14 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     container.innerHTML,
   );
   check(
-    "ignored scope is a checked checkbox",
-    container.innerHTML.includes('type="checkbox"') &&
-      container.innerHTML.includes('data-chip-check="includeIgnored" checked') &&
-      container.innerHTML.includes("Show ignored"),
-    container.innerHTML,
+    "ignored scope defaults to a checked checkbox",
+    container.scopeControls.innerHTML.includes('type="checkbox"') &&
+      container.scopeControls.innerHTML.includes('data-chip-check="folder-rollup-ignored"') &&
+      container.scopeControls.innerHTML.includes(
+        'data-chip-check="folder-rollup-ignored" checked',
+      ) &&
+      container.scopeControls.innerHTML.includes("Show ignored"),
+    container.scopeControls.innerHTML,
   );
 
   // Initial watchRollup fetch resolves through several microtasks; a
@@ -381,8 +467,16 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     "Treemap hover is one whole-cell treatment",
     !treemapStyles.includes('.tm-cell-title[role="button"]:hover') &&
       !treemapStyles.includes("border-color: var(--viz-border-strong)") &&
-      treemapStyles.includes("filter: brightness(1.06)"),
+      treemapStyles.includes("filter: var(--viz-data-mark-hover-filter)"),
     treemapStyles,
+  );
+  check(
+    "actionable cells expose a whole-rectangle pointer target",
+    container.viewport.innerHTML.includes("tm-cell tm-dir tm-type-fill") &&
+      container.viewport.innerHTML.includes("tm-actionable") &&
+      treemapStyles.includes(".tm-actionable {") &&
+      !treemapStyles.includes(".tm-nested {\n  cursor: default;"),
+    container.viewport.innerHTML,
   );
   check(
     "type fill always uses the shared palette",
@@ -409,30 +503,96 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     container.viewport.innerHTML,
   );
   check(
-    "status line totals",
-    container.status.textContent.includes("4 files"),
+    "steady-state footer is empty",
+    container.status.textContent === "",
     container.status.textContent,
   );
 
-  const folderIndexMatch = container.viewport.innerHTML.match(
-    /data-tm-index="(\d+)" aria-label="docs \(folder,/,
+  const refreshFromInventoryChange = async () => {
+    sandbox.dispatchEvent(
+      new sandbox.CustomEvent("metabrowser:inventory-change", {
+        detail: { kind: "change", paths: ["a.py"] },
+      }),
+    );
+    const refreshTimers = pendingTimers.slice();
+    pendingTimers = [];
+    for (const fn of refreshTimers) {
+      fn();
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  envelope.index_status = "scanning";
+  await refreshFromInventoryChange();
+  check(
+    "in-progress snapshots render one quiet loading block without partial cells",
+    container.viewport.innerHTML.includes("tm-loading mb-delayed-loading") &&
+      !container.viewport.innerHTML.includes("data-tm-cell"),
+    container.viewport.innerHTML,
   );
-  check("folder cell is actionable", !!folderIndexMatch, container.viewport.innerHTML);
+  envelope.index_status = "done";
+  await refreshFromInventoryChange();
+  check(
+    "completed snapshots replace loading atomically",
+    !container.viewport.innerHTML.includes("tm-loading") &&
+      container.viewport.innerHTML.includes("data-tm-cell"),
+    container.viewport.innerHTML,
+  );
+
+  const folderCellMatch = container.viewport.innerHTML.match(
+    /data-tm-cell="(\d+)" data-tm-kind="dir" data-tm-path="docs"/,
+  );
+  const fileCellMatch = container.viewport.innerHTML.match(
+    /data-tm-cell="(\d+)" data-tm-kind="file" data-tm-path="a.py"/,
+  );
+  check("folder cell is actionable", !!folderCellMatch, container.viewport.innerHTML);
+  check("file cell is actionable", !!fileCellMatch, container.viewport.innerHTML);
   const cellClick = container.viewport.listeners.click?.[0];
   check("cell click handler bound", typeof cellClick === "function");
-  if (cellClick && folderIndexMatch) {
-    const folderTarget = {
-      dataset: { tmIndex: folderIndexMatch[1] },
+  const cellTarget = (index) => {
+    const target = {
+      dataset: { tmCell: index },
       closest(selector) {
-        return selector === "[data-tm-index]" ? folderTarget : null;
+        return selector === "[data-tm-cell]" ? target : null;
       },
     };
+    return target;
+  };
+  if (cellClick && folderCellMatch && fileCellMatch) {
+    const folderTarget = cellTarget(folderCellMatch[1]);
     cellClick({ target: folderTarget });
     check(
-      "folder cell keeps Treemap active",
+      "folder background keeps Treemap active",
       openPathEvents.length === 1 &&
         openPathEvents[0].path === "docs" &&
         openPathEvents[0].viewId === "treemap",
+      JSON.stringify(openPathEvents),
+    );
+
+    const folderLabel = {
+      closest(selector) {
+        return selector === "[data-tm-cell]" ? folderTarget : null;
+      },
+    };
+    cellClick({ target: folderLabel });
+    check(
+      "folder label uses the same whole-cell route",
+      openPathEvents.length === 2 && openPathEvents[1].path === "docs",
+      JSON.stringify(openPathEvents),
+    );
+
+    const childTarget = cellTarget(fileCellMatch[1]);
+    const childLabel = {
+      closest(selector) {
+        return selector === "[data-tm-cell]" ? childTarget : null;
+      },
+    };
+    cellClick({ target: childLabel });
+    check(
+      "the deepest clicked cell wins without ancestor activation",
+      openPathEvents.length === 3 &&
+        openPathEvents[2].path === "a.py" &&
+        openPathEvents[2].viewId === undefined,
       JSON.stringify(openPathEvents),
     );
   }
@@ -455,6 +615,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   sandbox.innerHeight = 1000;
 
   // Inventory change → debounce timer → refetch.
+  const refreshStart = fetchCalls.length;
   sandbox.dispatchEvent(
     new sandbox.CustomEvent("metabrowser:inventory-change", {
       detail: { kind: "change", paths: ["a.py"] },
@@ -467,12 +628,16 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     fn();
   }
   await new Promise((resolve) => setImmediate(resolve));
-  check("refresh refetched", fetchCalls.length === 2, `${fetchCalls.length} fetches`);
+  check(
+    "refresh refetched",
+    fetchCalls.length === refreshStart + 1,
+    `${fetchCalls.length} fetches`,
+  );
 
   // Metric and ignored-scope changes relayout without refetching.
   const before = fetchCalls.length;
-  const sizeMetricHtml = container.viewport.innerHTML;
-  const toolbarClick = container.listeners.click?.[0];
+  const filesMetricHtml = container.viewport.innerHTML;
+  const toolbarClick = container.metricControls.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
   const clickMetric = (value) => {
     const group = {
@@ -483,7 +648,7 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     const button = {
       getAttribute(name) {
         if (name === "data-chip-key") {
-          return "metric";
+          return "folder-rollup-metric";
         }
         if (name === "data-chip-value") {
           return value;
@@ -506,48 +671,75 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     toolbarClick({ target: button });
   };
   if (toolbarClick) {
-    clickMetric("files");
+    clickMetric("size");
     check("metric toggle no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
+      "metric toggle updates the visible totals measure",
+      container.totals.metric === "size",
+      container.totals.metric,
+    );
+    check(
       "metric toggle changes cell geometry",
-      container.viewport.innerHTML !== sizeMetricHtml,
+      container.viewport.innerHTML !== filesMetricHtml,
       "Bytes and Files produced identical markup",
     );
     check(
       "metric chooser reflects the active metric",
-      metricChips[0].getAttribute("aria-checked") === "false" &&
-        metricChips[0].getAttribute("tabindex") === "-1" &&
-        metricChips[1].getAttribute("aria-checked") === "true" &&
-        metricChips[1].getAttribute("tabindex") === "0",
-      JSON.stringify(metricChips.map((chip) => chip.getAttribute("aria-checked"))),
+      container.metricControls.innerHTML.includes(
+        'data-chip-value="size" role="radio" aria-checked="true" tabindex="0"',
+      ),
+      container.metricControls.innerHTML,
     );
+    clickMetric("files");
     check(
       "Files metric keeps useful formatted bytes on file leaves",
-      container.viewport.innerHTML.includes("600 B") &&
-        container.status.textContent.includes("4 files"),
+      container.metricControls.innerHTML.includes(
+        'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
+      ) &&
+        container.viewport.innerHTML.includes("600 B") &&
+        container.status.textContent === "",
       container.viewport.innerHTML,
     );
   }
 
-  const toolbarChange = container.listeners.change?.[0];
+  const toolbarChange = container.scopeControls.listeners.change?.[0];
   check("ignored checkbox handler bound", typeof toolbarChange === "function");
   if (toolbarChange) {
+    const totalsBeforeIgnored = JSON.stringify(container.totals.value);
+    const totalsMetricBeforeIgnored = container.totals.metric;
     toolbarChange({
       target: {
         checked: false,
         getAttribute(name) {
-          return name === "data-chip-check" ? "includeIgnored" : null;
+          return name === "data-chip-check" ? "folder-rollup-ignored" : null;
         },
       },
     });
     check(
-      "unchecked ignored scope removes ignored cells and updates totals",
-      !container.viewport.innerHTML.includes("c.md") &&
-        container.status.textContent.includes("3 files") &&
-        container.status.textContent.includes("ignored hidden"),
-      container.status.textContent,
+      "unchecked ignored scope hides ignored cells without a footer summary",
+      !container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
+      container.viewport.innerHTML,
     );
     check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
+    check(
+      "ignored scope leaves explicit Files and Ignored context unchanged",
+      JSON.stringify(container.totals.value) === totalsBeforeIgnored &&
+        container.totals.metric === totalsMetricBeforeIgnored,
+      JSON.stringify({ value: container.totals.value, metric: container.totals.metric }),
+    );
+    toolbarChange({
+      target: {
+        checked: true,
+        getAttribute(name) {
+          return name === "data-chip-check" ? "folder-rollup-ignored" : null;
+        },
+      },
+    });
+    check(
+      "rechecking ignored scope restores ignored cells",
+      container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
+      container.viewport.innerHTML,
+    );
   }
 
   // Dispose detaches the inventory-change and window-resize listeners.
@@ -558,6 +750,59 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
   check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
+
+  // A nested Treemap identifies its enclosing folder and navigates to
+  // that path without dropping back to the folder's default Overview.
+  const nestedContainer = makeElement();
+  nestedContainer.viewport = makeElement();
+  nestedContainer.status = makeElement();
+  nestedContainer.totals = makeElement();
+  nestedContainer.metricControls = makeElement();
+  nestedContainer.scopeControls = makeElement();
+  nestedContainer.parentNav = makeElement();
+  sandbox.MetabrowserViewState.setActive(nestedContainer, true);
+  const nestedMounted = view.render(nestedContainer, {
+    path: "src/metabrowser",
+    kind: "folder",
+    raw: {
+      name: "metabrowser",
+      readme_path: "",
+      dir: {
+        total_files: 4,
+        total_size: 1050,
+        unignored_files: 3,
+        unignored_size: 950,
+      },
+    },
+  });
+  check(
+    "nested Treemap names the enclosing folder above the map",
+    nestedContainer.innerHTML.includes('class="btn parent-nav-btn tm-parent-nav"') &&
+      nestedContainer.innerHTML.includes(
+        '<span class="parent-nav-arrow" aria-hidden="true">↑</span>',
+      ) &&
+      nestedContainer.innerHTML.includes('aria-label="Zoom out to src/"') &&
+      nestedContainer.innerHTML.includes(">src/</span>"),
+    nestedContainer.innerHTML,
+  );
+  const parentClick = nestedContainer.parentNav.listeners.click?.[0];
+  check("parent navigation click handler bound", typeof parentClick === "function");
+  if (parentClick) {
+    parentClick();
+    const event = openPathEvents.at(-1);
+    check(
+      "parent navigation preserves Treemap",
+      event?.path === "src" && event?.viewId === "treemap",
+      JSON.stringify(event),
+    );
+  }
+  const parentClickListeners = nestedContainer.parentNav.listeners.click?.length || 0;
+  nestedMounted.dispose();
+  check(
+    "parent navigation listener is disposed",
+    (nestedContainer.parentNav.listeners.click?.length || 0) === parentClickListeners - 1,
+    `${nestedContainer.parentNav.listeners.click?.length || 0}`,
+  );
 
   // ── watchRollup active-gate: hidden views spend no fetches ──────
   {

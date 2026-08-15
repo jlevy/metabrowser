@@ -1,7 +1,7 @@
 export const PLACEMENT_ORDER = Object.freeze({ summary: 0, content: 1, supplemental: 2 });
 const PRESENTATIONS = new Set(["surface", "document"]);
 /** @typedef {{message: string, retryable: boolean}} PanelErrorClassification */
-/** @typedef {{label: string, placement: "summary" | "content" | "supplemental", presentation: "surface" | "document", resolve: (...args: Array<any>) => any, mount: (...args: Array<any>) => any, required?: boolean, printable?: boolean, classifyError?: (error: unknown) => PanelErrorClassification}} PanelSpec */
+/** @typedef {{label: string, placement: "summary" | "content" | "supplemental", presentation: "surface" | "document", resolve: (...args: Array<any>) => any, mount: (...args: Array<any>) => any, required?: boolean, printable?: boolean, collapsible?: boolean, defaultExpanded?: boolean, classifyError?: (error: unknown) => PanelErrorClassification}} PanelSpec */
 /** @typedef {Readonly<PanelSpec & {id: string}>} PanelDescriptor */
 
 /** @param {string} id */
@@ -33,6 +33,12 @@ export function validatePanelSpec(spec) {
   }
   if (spec.printable !== undefined && typeof spec.printable !== "boolean") {
     throw new TypeError("panel printable must be boolean");
+  }
+  if (spec.collapsible !== undefined && typeof spec.collapsible !== "boolean") {
+    throw new TypeError("panel collapsible must be boolean");
+  }
+  if (spec.defaultExpanded !== undefined && typeof spec.defaultExpanded !== "boolean") {
+    throw new TypeError("panel defaultExpanded must be boolean");
   }
   if (spec.classifyError !== undefined && typeof spec.classifyError !== "function") {
     throw new TypeError("panel classifyError must be a function");
