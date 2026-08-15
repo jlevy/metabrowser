@@ -115,6 +115,26 @@ and second line ^block-id
     cycleCode = error.code;
   }
   check("cycle rejected", cycleCode === "cycle");
+
+  check("whole-note key omits an absent fragment", module.transclusionKey("a.md") === "a.md#");
+  check(
+    "location key carries its fragment",
+    module.transclusionKey("a.md", "obsidian-heading-One") === "a.md#obsidian-heading-One",
+  );
+  // A rendered document is its own ancestor. Seeding the chain the way the
+  // top-level renderer does makes a self-embed a cycle at the first embed
+  // instead of rendering one complete duplicate before the repeat is caught.
+  let selfEmbedCode = null;
+  try {
+    module.claimTransclusion(
+      module.createTransclusionBudget({}),
+      module.transclusionKey("home.md"),
+      [module.transclusionKey("home.md")],
+    );
+  } catch (error) {
+    selfEmbedCode = error.code;
+  }
+  check("self-embed is a cycle at the first embed", selfEmbedCode === "cycle");
   const expiringBudget = module.createTransclusionBudget({ maxDurationMs: 1 });
   await new Promise((resolve) => setTimeout(resolve, 5));
   let timeoutCode = null;

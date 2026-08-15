@@ -26,14 +26,23 @@ function makeContainer() {
     "utf8",
   );
   globalThis.__markdownEnhanceDisposals = [];
+  globalThis.__markdownEnhanceCalls = [];
   const enhancerStub =
-    "export function enhanceRenderedLinks(container){return {dispose(){globalThis.__markdownEnhanceDisposals.push(container)}}}";
+    "export function enhanceRenderedLinks(container,sourcePath,mb,options){" +
+    "globalThis.__markdownEnhanceCalls.push({sourcePath,options});" +
+    "return {dispose(){globalThis.__markdownEnhanceDisposals.push(container)}}}";
   const enhancerUrl = `data:text/javascript;base64,${Buffer.from(enhancerStub).toString("base64")}`;
   const wikiStub =
     "export function preprocessObsidianWiki(source){return {changed:source.includes('[[wiki]]'),source:'processed '+source}}";
   const wikiUrl = `data:text/javascript;base64,${Buffer.from(wikiStub).toString("base64")}`;
+  // The real key builder, so the seeded chain is checked against the shared
+  // format rather than a copy of it.
+  const transclusionStub =
+    'export function transclusionKey(path,fragment){return `${path}#${fragment||""}`}';
+  const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionStub).toString("base64")}`;
   const importableSource = source
     .replace('"./link_enhancer.js"', JSON.stringify(enhancerUrl))
+    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace('"./wiki_parser.js"', JSON.stringify(wikiUrl));
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
@@ -72,6 +81,15 @@ function makeContainer() {
     "first enhancer disposer exactly once",
     globalThis.__markdownEnhanceDisposals.length === 1,
     String(globalThis.__markdownEnhanceDisposals.length),
+  );
+  // A rendered document is its own transclusion ancestor. Without this seed a
+  // note embedding itself renders one complete duplicate before the repeat is
+  // caught one level down.
+  const enhanceCall = globalThis.__markdownEnhanceCalls.find((call) => call.sourcePath === "a.md");
+  check(
+    "mount seeds its own transclusion ancestry",
+    JSON.stringify(enhanceCall?.options?.transclusionChain) === JSON.stringify(["a.md#"]),
+    JSON.stringify(globalThis.__markdownEnhanceCalls),
   );
   check("second remains mounted", !tocDisposals.includes(second));
   secondHandle.dispose();

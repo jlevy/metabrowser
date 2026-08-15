@@ -69,6 +69,20 @@ export function createTransclusionBudget(limits = {}) {
 }
 
 /**
+ * Identify one transcluded document location for cycle detection.
+ *
+ * A rendered document is its own ancestor, so the top-level renderer seeds the
+ * chain with its whole-note key. Without that seed a note embedding itself
+ * renders one complete duplicate before the repeat is detected one level down.
+ *
+ * @param {string} path
+ * @param {string=} fragment
+ */
+export function transclusionKey(path, fragment) {
+  return `${path}#${fragment || ""}`;
+}
+
+/**
  * Reserve one document and extend its immutable ancestry chain.
  *
  * @param {ReturnType<typeof createTransclusionBudget>} budget
@@ -182,7 +196,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
 
   async function render() {
     try {
-      const key = `${resolved.path}#${resolved.fragment || ""}`;
+      const key = transclusionKey(resolved.path, resolved.fragment);
       const claim = claimTransclusion(budget, key, chain);
       const remainingTime = budget.deadline - Date.now();
       if (remainingTime <= 0) {

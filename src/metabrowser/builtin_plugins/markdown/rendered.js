@@ -1,4 +1,5 @@
 import { enhanceRenderedLinks } from "./link_enhancer.js";
+import { transclusionKey } from "./transclusion.js";
 import { preprocessObsidianWiki } from "./wiki_parser.js";
 
 let mountSequence = 0;
@@ -134,6 +135,9 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         if (ctx.path) {
           disposeLinks = enhanceRenderedLinks(container, ctx.path, mb, {
             signal: controller.signal,
+            // The rendered document is its own ancestor, so a note that embeds
+            // itself is a cycle at the first embed rather than the second.
+            transclusionChain: Object.freeze([transclusionKey(ctx.path)]),
           }).dispose;
         }
         disposeToc = mb.kpressInitToc(container);
