@@ -268,6 +268,55 @@ identity or history semantics.
 exposes the selected target without leaking shell state.
 Plugin HTTP calls use `fetchPluginData`.
 
+## Browser URL Grammar
+
+A `/view/` URL answers three separate questions, and each component answers exactly one:
+
+| Component | Question | Owned by |
+| --- | --- | --- |
+| Path | Which content is selected | The served tree |
+| Query | How it is presented | The link author |
+| Fragment | Where inside the rendered document | The document |
+
+Path and fragment are implemented.
+The query slot is currently carried verbatim and never interpreted: it exists so a query
+an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
+
+That makes the query the one component with two authorities in it, so it is the one
+component that needs a reserved namespace.
+**Metabrowser reserves query keys beginning with `mb.`**; every other key belongs to the
+document and is passed through untouched.
+Plugins must not read or write `mb.` keys except through the navigation SDK.
+
+The seam holds under one invariant, which any future parameter must preserve:
+
+> Removing every `mb.` key from a URL yields exactly that content’s canonical URL.
+
+The prefix is `mb.` for two reasons, one positive and one by elimination.
+It already means “Metabrowser’s own namespace” to plugin authors, who read `mb` as the
+SDK object and call facades such as `mb.folderOverview`, so one sigil carries one
+meaning across the JavaScript and URL surfaces.
+A bare `_` was rejected because this codebase already spends it on the opposite meaning
+— `/_debug/tasks` and Python privates mark surfaces that are deliberately not a
+contract, while view parameters are a documented surface people bookmark and share.
+Parameters elsewhere are namespaced by route instead: every key on `/api/*` is
+unambiguously the server’s, which is why only `/view/` needs a sigil at all.
+
+Three rules keep the namespace honest as entries are added:
+
+- A key is reserved only when the **sender** should decide it for the recipient.
+  Viewer-owned settings such as theme and reading font stay in host-only cookies;
+  putting them in a link would override a choice the recipient made deliberately.
+- Reserved keys are sorted for one canonical spelling, but a key is never dropped for
+  matching a default. Defaults are viewer-dependent, so an omitted key means “viewer’s
+  choice” while a present one means “pinned”.
+- An unrecognized `mb.` key is a visible diagnostic, never silent and never passed
+  through as document metadata.
+
+Planned entries are tracked with their features rather than reserved in advance;
+[the extensions plan](project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+maps the first of them.
+
 ## Startup and First Paint
 
 The CLI binds before beginning expensive recursive work.

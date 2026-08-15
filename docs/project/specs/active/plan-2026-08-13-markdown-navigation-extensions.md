@@ -57,10 +57,26 @@ Invalid configuration produces diagnostics and no mounts.
 - `sourceLines`, an optional `{start, end}` location for source views.
 
 Primary-root links retain `/view/<path>`. Mounted targets use `/view/@/<root>/<path>`.
-Source locations use canonical `view=source` and `line=<start>-<end>` query metadata,
-not rendered heading fragments.
+Identity stays in the path, so a mounted root is a path sigil rather than a parameter.
+
+Presentation uses the reserved query namespace defined in the
+[browser URL grammar](../../../architecture.md#browser-url-grammar): Metabrowser owns
+keys beginning with `mb.`, and every other key remains the document’s and is passed
+through untouched. Source locations therefore use `mb.view=source` and
+`mb.lines=<start>-<end>` rather than rendered heading fragments, and rather than the
+unprefixed `view` and `line` keys an earlier draft of this plan specified.
+Unprefixed keys are not available: an authored `?view=` belongs to the document, and a
+repository whose own links carry one must not be read as issuing Metabrowser directives.
+
+Line ranges stay in the query rather than the fragment so the fragment keeps a single
+grammar, a range survives a view switch, and a Markdown heading whose id is `L14` stays
+unambiguous. Inbound GitHub `#L14-L20` permalinks are translated by the existing
+localizer at the boundary instead.
+
 The URL codec, browser history, public SDK, raw resources, complete-source reads, and
 renderers all use the same target type.
+Any parameter added here must preserve the seam’s invariant: removing every `mb.` key
+yields that content’s canonical URL.
 
 ## Implementation Work
 
@@ -145,10 +161,19 @@ Acceptance criteria:
 GitHub-style `#L14` and `#L14-L20` locations on non-Markdown source files map to the
 explicit `sourceLines` target.
 
+This is the first feature to use the reserved query namespace, so it also establishes
+the codec’s reserved-key split rather than parsing parameters at each call site.
+
 Acceptance criteria:
 
 - line ranges validate positive, ordered, bounded integers;
-- canonical URLs use source-view query metadata and round-trip through the codec;
+- canonical URLs use `mb.view=source` and `mb.lines=<start>-<end>` and round-trip
+  through the codec;
+- the codec splits reserved keys from passthrough keys once, sorts reserved keys for one
+  canonical spelling, and keeps a pinned key that matches the current default;
+- removing every `mb.` key from a source-location URL yields that file’s canonical URL;
+- an unrecognized `mb.` key reports a visible diagnostic instead of being passed through
+  as document metadata;
 - source renderers expose stable line elements, scroll to the range, and visibly mark
   it;
 - changing only the line range updates the active source view without refetching the

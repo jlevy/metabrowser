@@ -29,6 +29,12 @@ Document navigation and URL scheme:
 - Plugins navigate through the documented `window.metabrowser.navigation` namespace
   (`href`, `open`, `current`). This replaces `metabrowser.openPath` and the
   `metabrowser:open-path` event, which are removed.
+- Query strings on `/view/` URLs are carried verbatim and never interpreted, so a query
+  an author wrote survives resolution unchanged.
+  Metabrowser now reserves query keys beginning with `mb.` for future presentation
+  parameters such as a pinned view or line range; every other key belongs to the
+  document. Plugin authors should not introduce `mb.` keys of their own.
+  See the browser URL grammar in `docs/architecture.md`.
 
 ## 0.4.2
 
