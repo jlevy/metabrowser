@@ -138,6 +138,13 @@ manifest and `/static/styles.css`. Such a page holds no event stream, so the ord
 disclosure states in one pass.
 Keep these harnesses in a scratch directory; they are debugging aids, not fixtures.
 
+The same driver answers rendering-cost questions that no contract test can.
+Comparing DOM strategies for the binary Bytes view this way showed that CSS-wrapping one
+large run is quadratic — 43 ms at 32 KiB rising to 33 s at 1 MiB — while pre-broken
+lines in `content-visibility` blocks render the same 1 MiB in about 50 ms.
+When a limit looks arbitrary, measure before changing it, and record what was measured
+next to the constant.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

@@ -111,8 +111,9 @@ The view uses a full-width `<pre class="code-block"><code>` surface with no pros
 constraint. Reusing the existing `.code-block` primitive means monospace and
 `--mono-block-font-size` arrive from the already-classified `.code-block code` rule
 rather than a new `--font-mono` use site.
-The surface preserves consecutive spaces, wraps long runs at the available pane width,
-and avoids horizontal scrolling as its default layout.
+The surface preserves consecutive spaces and never scrolls horizontally, but it does not
+ask CSS to wrap: lines are broken in JavaScript at the measured pane width, for the
+reason set out under Rendering Strategy.
 
 ### Byte Display Contract
 
@@ -134,52 +135,110 @@ deliberate in the first version.
 The guillemet delimiters and the control pictures are what identify a transformed byte;
 color is supplementary, so the contract holds when the accent is absent.
 
-### Rendering Budget and Accent Degradation
+### Rendering Strategy
+
+The binding constraint is browser layout, not reading.
+Measured against Chromium 141 with software raster, so absolute numbers are pessimistic
+while the scaling shape is what matters.
+
+Letting CSS wrap one large run is quadratic, because the line breaker searches for break
+opportunities across the whole run:
+
+| Payload | Wrapped lines | Layout and paint | Growth |
+| --- | --- | --- | --- |
+| 32 KiB | 206 | 43 ms |  |
+| 64 KiB | 412 | 146 ms | 3.4x |
+| 128 KiB | 824 | 560 ms | 3.8x |
+| 256 KiB | 1,648 | 2.17 s | 3.9x |
+| 512 KiB | 3,295 | 8.41 s | 3.9x |
+| 1 MiB | 6,600 | 33.3 s | ~4x |
+
+Every doubling costs about four times as much.
+The wrap mode is not the variable: `overflow-wrap: break-word`, `anywhere`, and
+`word-break: break-all` all landed within 3% of each other at 256 KiB.
+
+Three strategies were compared at 1 MiB:
+
+| Strategy | First paint | Scroll | DOM nodes | Native find, selection, print |
+| --- | --- | --- | --- | --- |
+| One wrapped run | 33,333 ms | 32 ms | 12,006 | preserved |
+| Pre-broken lines | 633 ms | 33 ms | 16,389 | preserved |
+| Pre-broken plus `content-visibility` | 50 ms | 38 ms | 16,420 | preserved |
+| Virtualized window | 33 ms | 33 ms | 132 | lost |
+
+A virtualized window is flat at any size, 33 ms from 1 MiB through 8 GiB, and is the
+only option beyond a few tens of MB. It also gives up browser find-in-page and
+select-all over the file, needs scrollbar downscaling above Chrome’s measured 33,554,428
+px element-height clamp, and is substantially more code.
+This view takes the third row instead and keeps the native behaviors; the virtualized
+path stays available if a later need justifies the trade.
+
+So lines are broken in JavaScript, the surface uses `white-space: pre`, and the lines
+are grouped into `content-visibility: auto` blocks of 128 lines.
+
+The block, not the chunk, is the unit of deferred layout: the browser pays for a block
+when it scrolls in. One 4 MiB chunk as a single block measured 1.8 s to scroll into; at
+512 lines that fell to 204 ms and at 128 lines to 105 ms, while 64 lines regressed to
+127 ms on element overhead.
+
+Each block carries `contain-intrinsic-size` derived from its line count and the measured
+line box, so the scrollbar stays proportional while layout is skipped.
+Omitting it is the documented failure mode for this technique: scrollbar thrash and
+broken deep links.
+
+### Accent Degradation
 
 The renderer coalesces adjacent bytes of the same class into runs and emits one element
 per special run, never one element per byte.
 
-Run count is a property of the data, not of the file size.
-High-entropy content — a compressed payload, an encrypted blob, the data section of a
-media file — alternates printable and high bytes roughly every 1.6 bytes, so a 64 KiB
-chunk of it yields on the order of 25,000 runs.
-Mixed content with embedded strings, the case this view exists for, yields far fewer.
-
+Run count tracks entropy, not file size.
+High-entropy content alternates classes roughly every 1.6 bytes, so a chunk of it yields
+tens of thousands of runs, while content with embedded strings yields far fewer.
 The view therefore accents special runs while a chunk stays under
-`BINARY_ACCENT_RUN_BUDGET` (12,000 runs).
-Past that budget the remainder of that chunk renders as one plain run: the glyphs are
-byte-for-byte identical and only the accent is dropped.
-This is principled rather than a bare cost cap — at that density every token is special,
-so the accent distinguishes nothing — and it keeps the worst case at a bounded element
-count instead of one element per byte.
-The degradation is visible, as the design system requires of graceful degradation: the
-view states that byte highlighting is off for the dense region.
+`DEFAULT_ACCENT_RUN_BUDGET` (12,000 runs), and past that renders the remainder of the
+chunk as one plain run.
 
-Chunk size is 64 KiB rather than the text view’s 128 KiB because a high byte expands to
-four display characters, so an equal-byte chunk can produce four times the text view’s
-glyph count.
+The glyphs are byte-for-byte identical and only the accent is dropped, which loses
+nothing: at that density every token is special, so the color distinguishes nothing.
+The budget spans the whole chunk rather than resetting per line, and once spent it stays
+spent so the treatment does not flicker back on partway down.
+The degradation is visible, as the design system requires.
 
 ### Size and Loading Policy
 
-- `BINARY_PREVIEW_MAX_BYTES` defaults to 20 MiB and is the single server-side authority
-  for uncompressed binary-preview eligibility.
-- `BINARY_PREVIEW_COMPRESSED_MAX_BYTES` defaults to 8 MiB and bounds both eligibility
-  and the reachable window for compressed artifacts.
-  It matches the text preview’s decompression budget for the same reason: `open_binary`
-  returns a non-seekable stream, so reaching offset *N* costs decompressing *N* bytes
-  and each request restarts from zero.
-  Without this bound, walking a 20 MiB gzip in chunks would decompress about 1.3 GiB in
-  total and would start failing against the 5-second per-open CPU budget in `gz_io`.
-- `BINARY_PREVIEW_CHUNK_BYTES` defaults to 64 KiB and is clamped per request to
-  `BINARY_PREVIEW_MAX_CHUNK_BYTES` (1 MiB). Both read their defaults from the
-  environment so an operator can tune them without a code change, and neither reaches
-  into `server.py`’s private text-preview constants.
+Reading is not the constraint.
+An 8 MiB plain read measured 4.6 ms and seeking to any offset is O(1), so a plain file
+is bounded only by what the browser can hold.
+
+Compressed artifacts differ in kind but not enough to warrant their own ceiling.
+`open_binary` returns a non-seekable stream, so reaching offset *N* costs decompressing
+*N* bytes and each request restarts from zero — but gzip decodes at roughly 500 MB/s
+here, and a read at a 12 MiB offset measured 29 ms, far inside the 5-second per-open CPU
+budget in `gz_io`. The total cost of walking a compressed file is `S²/2C` for size *S*
+in chunks of *C*, so a **larger** chunk makes compressed files cheaper, not dearer.
+Both kinds therefore share one ceiling.
+
+- `BINARY_PREVIEW_MAX_BYTES` defaults to 32 MiB and is the single server-side authority
+  for eligibility, compressed or not.
+  It is a browser memory budget rather than a server one: the view keeps every loaded
+  byte as real text in the DOM so find-in-page, select-all, and print cover the whole
+  file. Loading 32 MiB to completion measured 87k DOM nodes and about 306 MB of JS heap
+  with scrolling between 22 ms and 107 ms, which is the largest size actually measured.
+- `BINARY_PREVIEW_CHUNK_BYTES` defaults to 1 MiB and is the fallback for callers that do
+  not pass a `limit`. Requests are clamped to `BINARY_PREVIEW_MAX_CHUNK_BYTES` (16 MiB).
+  Both read their defaults from the environment, and neither reaches into `server.py`’s
+  private text-preview constants.
+- The view opens with a 1 MiB request and doubles each `Load more` up to 8 MiB.
+  Formatting is main-thread work — 4 MiB measured about 550 ms against 145 ms for 1 MiB
+  — so a small first chunk keeps opening a file prompt, while growth keeps the click
+  count low: a 32 MiB file loads completely in six clicks at 120 ms to 1.2 s each.
 - Every read passes `max_output_bytes=offset + limit + 1` to `open_binary`, so a
   compressed artifact cannot expand past the window the caller asked for.
-- The data hook never returns bytes beyond the applicable ceiling, whatever query
-  parameters the caller supplies.
-- The user-facing action says `Load more`; it appends a chunk instead of rerendering the
-  bytes already mounted.
+- The data hook never returns bytes beyond the ceiling, whatever query parameters the
+  caller supplies.
+- `Load more` appends its chunk’s blocks instead of rerendering the bytes already
+  mounted. Appending into one shared surface is what made repeated clicks degrade before,
+  because every append relaid out everything already there.
 - The server is the only place the ceiling is expressed.
   The renderer always issues the first request and paints the oversize state from the
   hook’s 413 response, which reads no file content.
@@ -192,6 +251,10 @@ glyph count.
   zero rather than combining bytes from different file versions.
   The comparison is client-side, so no extra request parameter needs validating, and the
   discarded payload is bounded at one chunk.
+- Line width is measured from the mounted pane, and a debounced `ResizeObserver`
+  re-breaks the loaded bytes when the pane changes.
+  The decoded chunks are retained for that, which is also why the ceiling is a memory
+  budget.
 
 ### Errors and States
 
@@ -356,22 +419,34 @@ data plane, and it is what makes a hook’s structured refusal readable by its c
 
 Pure, DOM-free, and exported for Node tests.
 
-- `CONTROL_PICTURES` — the 0x00–0x1F table plus `␡`, built once from
-  `String.fromCharCode(0x2400 + byte)`.
+- `DISPLAY_TABLE` / `DISPLAY_WIDTH` — the 256-entry unit and column tables, built once
+  from `String.fromCharCode(0x2400 + byte)` for the C0 range.
 - `displayForByte(byte) -> string` — the four-row contract above.
+- `displayWidthForByte(byte) -> number` — 1 for a glyph, 4 for a hex token.
 - `isSpecialByte(byte) -> boolean`.
-- `formatByteRuns(bytes, escapeHtml, runBudget) -> {html, accentDropped}` — walks the
-  `Uint8Array` once, coalesces adjacent same-class bytes, emits
-  `<span class="binary-byte-special">` per special run, escapes ordinary runs through
-  the SDK escaper, and switches to a single plain run once `runBudget` is exhausted.
+- `lineRanges(bytes, charsPerLine) -> Array<[from, to]>` — byte ranges that each fit the
+  column budget, never splitting a byte’s token across a break.
+- `formatByteRuns(bytes, escapeHtml, runBudget) -> {html, accentDropped}` — one unbroken
+  run, retained for callers that own their own breaking and for the display-contract
+  tests.
+- `formatByteLines(bytes, escapeHtml, {charsPerLine, runBudget}) -> {html, lines, accentDropped, lineCount}`
+  — the shipping path.
+  Returns `lines` as well as the joined `html` because the view groups lines into render
+  blocks.
 
 #### `src/metabrowser/builtin_plugins/binary/bytes_view.js` — new
 
 - `decodeBase64(value) -> Uint8Array` — `atob` plus a byte-wise copy; no text decoder.
+- `measureSurface(surface) -> {charsPerLine, lineHeightPx}` — measures the mounted pane
+  with a hidden probe and falls back to fixed values wherever the environment cannot
+  measure, so the renderer stays usable under a container double.
 - `mountBytesView(container, ctx, mb, options) -> Promise<{dispose}>` — the lifecycle
-  described above. Takes `mb` and an optional `{signal}` by parameter, mirroring
-  `markdown/rendered.js`, so Node tests drive it with a fake SDK and no DOM globals
-  beyond the container double.
+  described above, plus the progressive chunk sizing and the debounced `ResizeObserver`
+  that re-breaks loaded bytes on a width change.
+  Takes `mb` and an optional `{signal}` by parameter, mirroring `markdown/rendered.js`.
+- `blocksHtml(bytes)` (closure) — formats one chunk into lines and groups them into
+  128-line `content-visibility: auto` blocks, each carrying a `contain-intrinsic-size`
+  derived from its line count and the measured line box.
 - `renderChunkState(state, mb) -> string` — builds the surface, the loaded/total
   readout, the `Load more` button, and the accent-dropped note from one state object, so
   every visible state is reachable in a pure test.
@@ -384,10 +459,11 @@ Replaces the placeholder IIFE with an ES module that imports `mountBytesView` an
 #### `src/metabrowser/builtin_plugins/binary/styles.css` — new
 
 `:root` and `[data-theme="dark"]` blocks for `--binary-special-text`, the
-`.metabrowser-binary-host` full-width wrapping surface
-(`white-space: pre-wrap; overflow-wrap: anywhere`), `.binary-byte-special`, and the
-control row. No color literals outside the token blocks, no font-family, no font-size
-literal.
+`.metabrowser-binary-host` surface, `.binary-bytes-content` at `white-space: pre`,
+`.binary-bytes-block` at `content-visibility: auto`, `.binary-byte-special`, and the
+control row. The surface deliberately does **not** set `pre-wrap`, `overflow-wrap`, or
+`word-break`: handing the browser a large run to wrap is the quadratic case measured
+above. No color literals outside the token blocks, no font-family, no font-size literal.
 
 ### Documentation
 
@@ -441,6 +517,13 @@ visual-regression layer.
   bytes produces one element.
 - Budget exhaustion sets `accentDropped` and stops emitting elements while leaving the
   glyph sequence identical to the unbudgeted result.
+- `displayWidthForByte` agrees with the rendered unit for all 256 values.
+- `lineRanges` packs single-column bytes to the limit and never splits a byte’s token
+  across a break.
+- No rendered line exceeds the column budget once tags are stripped, and breaking
+  changes no glyph — only where the breaks sit.
+- The accent budget spans the whole chunk rather than resetting per line, and once spent
+  stays spent.
 
 ### Node — `tests/dom/binary_bytes_view_behavior.js` + `tests/test_binary_bytes_view_js.py` — new
 
@@ -452,6 +535,12 @@ visual-regression layer.
 - Two concurrent mounts keep independent offsets and fingerprints.
 - Each documented error state renders its copy from `renderChunkState` without a network
   call.
+- Each loaded chunk becomes its own set of blocks, each declaring a
+  `contain-intrinsic-size`, so an append never relays out what is already mounted.
+- The surface markup asks CSS to wrap nowhere, which is the regression that would
+  silently restore quadratic layout.
+- `measureSurface` degrades to fixed metrics rather than throwing when the environment
+  cannot measure.
 
 ### Performance fixtures
 

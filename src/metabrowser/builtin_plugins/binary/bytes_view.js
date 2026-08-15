@@ -4,10 +4,31 @@
 // straight to a Uint8Array. Nothing here runs content through a text decoder;
 // see byte_format.js for why.
 //
+// Rendering strategy, chosen by measurement (Chromium 141, software raster):
+//
+//   one CSS-wrapped run   1 MiB in 33,333 ms   quadratic in run length
+//   pre-broken lines      1 MiB in    633 ms   proportional to line count
+//   + content-visibility  1 MiB in     50 ms   16 MiB in 671 ms
+//
+// So lines are broken in JS, the surface uses `white-space: pre`, and the
+// lines are grouped into `content-visibility: auto` blocks. Offscreen blocks
+// skip layout and paint while their `contain-intrinsic-size` keeps the
+// scrollbar honest, and appending a chunk costs only its own blocks rather
+// than relaying out everything already mounted — which is what made repeated
+// Load more degrade before.
+//
+// This keeps real text in the DOM, so browser find-in-page, select-all, and
+// print all still cover the whole loaded file — the thing a virtualized
+// window would have given up.
+//
 // One mount owns one container. State lives in this closure keyed per mount,
 // so two mounted copies of the view never share an offset or a fingerprint.
 
-import { DEFAULT_ACCENT_RUN_BUDGET, formatByteRuns } from "./byte_format.js";
+import {
+  DEFAULT_ACCENT_RUN_BUDGET,
+  DEFAULT_CHARS_PER_LINE,
+  formatByteLines,
+} from "./byte_format.js";
 
 const LOADING_TEXT = "Loading bytes…";
 const EMPTY_TEXT = "This file is empty.";
@@ -21,6 +42,27 @@ const LOAD_MORE_LABEL = "Load more";
  */
 const ACCENT_NOTE =
   "Byte highlighting is off for this section because nearly every byte is non-printable.";
+
+/** Fallback line box when the pane cannot be measured. */
+const FALLBACK_LINE_HEIGHT_PX = 18;
+/**
+ * Lines per render block. The block is the unit of deferred layout, so this
+ * trades element count against how much work one scroll-in can trigger.
+ */
+const LINES_PER_BLOCK = 128;
+/** Re-breaking on every resize tick would thrash; settle first. */
+const RESIZE_DEBOUNCE_MS = 150;
+/**
+ * Bytes requested on open. Small so the file appears promptly: formatting is
+ * main-thread work, and 4 MiB of it measured ~550 ms against ~145 ms here.
+ */
+const FIRST_CHUNK_BYTES = 1024 * 1024;
+/**
+ * Each Load more asks for twice the last chunk, up to this cap, so reaching
+ * the ceiling takes a handful of clicks rather than dozens while no single
+ * click blocks the main thread for long.
+ */
+const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
 
 /**
  * @typedef {object} BytesViewState
@@ -116,6 +158,52 @@ export function renderChunkState(state, mb) {
 }
 
 /**
+ * Columns and line box available inside the mounted surface.
+ *
+ * Falls back to fixed values wherever the environment cannot measure, so the
+ * renderer stays usable under a container double.
+ *
+ * @param {Element | null} surface
+ * @returns {{charsPerLine: number, lineHeightPx: number}}
+ */
+export function measureSurface(surface) {
+  const fallback = {
+    charsPerLine: DEFAULT_CHARS_PER_LINE,
+    lineHeightPx: FALLBACK_LINE_HEIGHT_PX,
+  };
+  if (!surface || typeof document === "undefined" || typeof getComputedStyle !== "function") {
+    return fallback;
+  }
+  const width = /** @type {HTMLElement} */ (surface).clientWidth;
+  if (!width) {
+    return fallback;
+  }
+  const probe = document.createElement("span");
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.whiteSpace = "pre";
+  probe.textContent = "0".repeat(100);
+  surface.appendChild(probe);
+  const probeWidth = probe.getBoundingClientRect().width;
+  const computed = getComputedStyle(probe);
+  const lineHeight = Number.parseFloat(computed.lineHeight);
+  const fontSize = Number.parseFloat(computed.fontSize);
+  probe.remove();
+  const charWidth = probeWidth / 100;
+  if (!charWidth || !Number.isFinite(charWidth)) {
+    return fallback;
+  }
+  return {
+    charsPerLine: Math.max(16, Math.floor(width / charWidth)),
+    lineHeightPx:
+      Number.isFinite(lineHeight) && lineHeight > 0
+        ? lineHeight
+        : (Number.isFinite(fontSize) ? fontSize : 12) * 1.5,
+  };
+}
+
+/**
  * Mount the Bytes view into ``container``.
  *
  * @param {HTMLElement} container
@@ -138,8 +226,17 @@ export async function mountBytesView(container, ctx, mb, options) {
   /** @type {string | null} */
   let fingerprint = null;
   let nextOffset = 0;
+  let nextChunkBytes = FIRST_CHUNK_BYTES;
   /** @type {AbortController | null} */
   let inflight = null;
+  /** Retained so a resize can re-break lines without refetching. */
+  /** @type {Uint8Array[]} */
+  let loaded = [];
+  let metrics = { charsPerLine: DEFAULT_CHARS_PER_LINE, lineHeightPx: FALLBACK_LINE_HEIGHT_PX };
+  /** @type {ResizeObserver | null} */
+  let resizeObserver = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let resizeTimer = null;
 
   const dispose = () => {
     if (disposed) {
@@ -147,8 +244,52 @@ export async function mountBytesView(container, ctx, mb, options) {
     }
     disposed = true;
     options?.signal?.removeEventListener("abort", dispose);
+    if (resizeTimer !== null) {
+      clearTimeout(resizeTimer);
+      resizeTimer = null;
+    }
+    resizeObserver?.disconnect();
+    resizeObserver = null;
     inflight?.abort();
     inflight = null;
+    loaded = [];
+  };
+
+  const contentEl = () => container.querySelector(".binary-bytes-content");
+
+  /**
+   * One loaded chunk as a run of `content-visibility: auto` blocks.
+   *
+   * The browser skips layout and paint for a block while it is offscreen, and
+   * pays for it when it scrolls in — so the block, not the chunk, is the unit
+   * of deferred work. A whole 4 MiB chunk in one block measured 1.8 s to
+   * scroll into; at this granularity the same jump costs tens of
+   * milliseconds. Each block's `contain-intrinsic-size` keeps the scrollbar
+   * proportional while its layout is still skipped.
+   *
+   * @param {Uint8Array} bytes
+   * @returns {string}
+   */
+  const blocksHtml = (bytes) => {
+    const run = formatByteLines(bytes, mb.escapeHtml, {
+      charsPerLine: metrics.charsPerLine,
+      runBudget: DEFAULT_ACCENT_RUN_BUDGET,
+    });
+    if (run.accentDropped) {
+      state.accentDropped = true;
+    }
+    /** @type {string[]} */
+    const blocks = [];
+    for (let index = 0; index < run.lines.length; index += LINES_PER_BLOCK) {
+      const slice = run.lines.slice(index, index + LINES_PER_BLOCK);
+      const height = Math.max(1, Math.round(slice.length * metrics.lineHeightPx));
+      blocks.push(
+        `<div class="binary-bytes-block" style="contain-intrinsic-size: auto ${height}px">` +
+          slice.join("\n") +
+          "</div>",
+      );
+    }
+    return blocks.join("");
   };
 
   /** @param {BytesViewState} next */
@@ -159,6 +300,7 @@ export async function mountBytesView(container, ctx, mb, options) {
       more.hidden = !next.hasMore;
       more.addEventListener("click", onLoadMore);
     }
+    metrics = measureSurface(contentEl());
   };
 
   const syncControls = () => {
@@ -177,12 +319,48 @@ export async function mountBytesView(container, ctx, mb, options) {
     }
   };
 
-  /** @param {string} html */
-  const appendBytes = (html) => {
-    const content = container.querySelector(".binary-bytes-content");
+  /** @param {Uint8Array} bytes */
+  const appendBlock = (bytes) => {
+    const content = contentEl();
     if (content) {
-      content.insertAdjacentHTML("beforeend", html);
+      content.insertAdjacentHTML("beforeend", blocksHtml(bytes));
     }
+  };
+
+  /** Re-break every loaded chunk after the pane width changes. */
+  const rebreak = () => {
+    const content = contentEl();
+    if (!content || loaded.length === 0) {
+      return;
+    }
+    metrics = measureSurface(content);
+    state.accentDropped = false;
+    content.innerHTML = loaded.map(blocksHtml).join("");
+    syncControls();
+  };
+
+  const watchResize = () => {
+    if (typeof ResizeObserver !== "function" || resizeObserver) {
+      return;
+    }
+    let lastWidth = 0;
+    resizeObserver = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect?.width ?? 0;
+      if (disposed || !width || Math.abs(width - lastWidth) < 1) {
+        return;
+      }
+      lastWidth = width;
+      if (resizeTimer !== null) {
+        clearTimeout(resizeTimer);
+      }
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        if (!disposed) {
+          rebreak();
+        }
+      }, RESIZE_DEBOUNCE_MS);
+    });
+    resizeObserver.observe(container);
   };
 
   /**
@@ -197,6 +375,8 @@ export async function mountBytesView(container, ctx, mb, options) {
       // what is mounted and start over.
       fingerprint = null;
       nextOffset = 0;
+      nextChunkBytes = FIRST_CHUNK_BYTES;
+      loaded = [];
       state.accentDropped = false;
       state.status = "loading";
       paint(state);
@@ -216,15 +396,15 @@ export async function mountBytesView(container, ctx, mb, options) {
     }
 
     const bytes = decodeBase64(typeof data.content_base64 === "string" ? data.content_base64 : "");
-    const run = formatByteRuns(bytes, mb.escapeHtml, DEFAULT_ACCENT_RUN_BUDGET);
-    state.accentDropped = state.accentDropped === true || run.accentDropped;
     state.status = "ready";
     if (repaint) {
+      loaded = [];
       paint(state);
-    } else {
-      syncControls();
     }
-    appendBytes(run.html);
+    loaded.push(bytes);
+    appendBlock(bytes);
+    syncControls();
+    watchResize();
   };
 
   /** @param {unknown} error */
@@ -252,7 +432,7 @@ export async function mountBytesView(container, ctx, mb, options) {
    * @param {boolean} repaint
    * @returns {Promise<void>}
    */
-  async function loadChunk(offset, repaint) {
+  async function loadChunk(offset, repaint, limit = FIRST_CHUNK_BYTES) {
     if (disposed) {
       return;
     }
@@ -262,7 +442,7 @@ export async function mountBytesView(container, ctx, mb, options) {
       const data = await mb.fetchPluginData(
         "binary",
         "chunk",
-        { path: ctx.path || "", offset: offset },
+        { path: ctx.path || "", offset: offset, limit: limit },
         { signal: controller.signal },
       );
       if (disposed) {
@@ -285,7 +465,9 @@ export async function mountBytesView(container, ctx, mb, options) {
     if (disposed || !state.hasMore) {
       return;
     }
-    void loadChunk(nextOffset, false);
+    const limit = nextChunkBytes;
+    nextChunkBytes = Math.min(nextChunkBytes * 2, MAX_CHUNK_BYTES);
+    void loadChunk(nextOffset, false, limit);
   }
 
   if (options?.signal?.aborted) {

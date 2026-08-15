@@ -168,8 +168,16 @@ function contentOf(container) {
 }
 
 (async () => {
-  const { mountBytesView, renderChunkState, decodeBase64 } = await importModule(
+  const { mountBytesView, renderChunkState, decodeBase64, measureSurface } = await importModule(
     "src/metabrowser/builtin_plugins/binary/bytes_view.js",
+  );
+
+  // ── Measurement degrades rather than throwing ───────────────────
+  const fallback = measureSurface(null);
+  check(
+    "an unmeasurable surface falls back to fixed metrics",
+    fallback.charsPerLine > 0 && fallback.lineHeightPx > 0,
+    JSON.stringify(fallback),
   );
 
   // ── Decoding ────────────────────────────────────────────────────
@@ -229,6 +237,19 @@ function contentOf(container) {
     const after = contentOf(container);
     check("mounted bytes are not re-rendered", after.startsWith(before), after);
     check("the appended chunk is visible", after.includes("CDEF"), after);
+    // Each chunk is its own content-visibility block. Appending into one
+    // shared surface is what made repeated Load more degrade quadratically:
+    // every append relaid out everything already mounted.
+    check(
+      "each loaded chunk becomes its own block",
+      (after.match(/class="binary-bytes-block"/g) || []).length === 2,
+      after.slice(0, 200),
+    );
+    check(
+      "each block declares an intrinsic size so the scrollbar stays honest",
+      (after.match(/contain-intrinsic-size/g) || []).length === 2,
+      after.slice(0, 200),
+    );
     check(
       "the exhausted control is hidden",
       container.querySelector(".binary-bytes-more").hidden === true,
@@ -464,6 +485,14 @@ function contentOf(container) {
       mb,
     );
     check("a complete view states no note", !complete.includes("Byte highlighting is off"));
+
+    // Wrapping a large run in CSS is quadratic, so the surface must not offer
+    // the browser that job: lines arrive pre-broken into `white-space: pre`.
+    check(
+      "the surface does not ask CSS to wrap",
+      !complete.includes("pre-wrap") && !complete.includes("overflow-wrap"),
+      complete,
+    );
 
     // These are bytes, not source. Without the opt-out, highlight.js runs over
     // the block after mount and rewrites the byte runs into hljs token spans.

@@ -1,12 +1,12 @@
 """Bounded byte-chunk data hook for the built-in binary plugin.
 
 Covers the contract in
-``docs/project/specs/active/plan-2026-08-11-binary-byte-preview.md``:
+``docs/project/specs/done/plan-2026-08-11-binary-byte-preview.md``:
 
 * exact bytes at offset 0, an interior offset, and the final partial chunk,
   for plain, gzip, and zlib artifacts;
-* both sides of the uncompressed ceiling, the compressed ceiling, and the
-  compressed reachable window;
+* both sides of the preview ceiling and of the reachable window, which
+  compressed and plain artifacts share;
 * served-root containment and range validation;
 * malformed and adversarially expanding compressed input;
 * the base64 transport round-tripping all 256 byte values.
@@ -153,7 +153,7 @@ def test_read_byte_chunk_reports_more_without_returning_it(tmp_path: Path) -> No
 # ── Ceilings and windows ───────────────────────────────────────────
 
 
-def test_file_exactly_at_the_uncompressed_ceiling_is_eligible(
+def test_file_exactly_at_the_ceiling_is_eligible(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     server._set_root_dir(tmp_path)
@@ -166,7 +166,7 @@ def test_file_exactly_at_the_uncompressed_ceiling_is_eligible(
     assert body["max_preview_bytes"] == 1024
 
 
-def test_file_one_byte_above_the_uncompressed_ceiling_is_rejected(
+def test_file_one_byte_above_the_ceiling_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     server._set_root_dir(tmp_path)
@@ -181,39 +181,28 @@ def test_file_one_byte_above_the_uncompressed_ceiling_is_rejected(
     assert "content_base64" not in body
 
 
-def test_compressed_ceiling_is_lower_than_the_uncompressed_one(
+def test_compressed_artifacts_share_the_one_ceiling(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A compressed artifact is bounded by the decompression budget."""
+    """Decompression is linear in the offset, so it needs no lower bound.
+
+    A compressed artifact is eligible on exactly the same terms as a plain one;
+    only its logical size decides.
+    """
     server._set_root_dir(tmp_path)
     monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_BYTES", 4096)
-    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_COMPRESSED_MAX_BYTES", 1024)
-    (tmp_path / "big.bin.gz").write_bytes(gzip.compress(b"\x00" * 2048))
+    (tmp_path / "ok.bin.gz").write_bytes(gzip.compress(b"\x00" * 2048))
+    (tmp_path / "big.bin.gz").write_bytes(gzip.compress(b"\x00" * 8192))
 
-    status, body = _chunk("big.bin.gz", limit=16)
+    eligible, body = _chunk("ok.bin.gz", limit=16)
+    oversize, _ = _chunk("big.bin.gz", limit=16)
 
-    assert status == 413
-    assert body["max_preview_bytes"] == 1024
-
-
-def test_compressed_window_past_the_budget_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """offset + limit is what costs decompression, so it is bounded too."""
-    server._set_root_dir(tmp_path)
-    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_COMPRESSED_MAX_BYTES", 1024)
-    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_CHUNK_BYTES", 4096)
-    (tmp_path / "a.bin.gz").write_bytes(gzip.compress(b"\x00" * 512))
-
-    at_budget, _ = _chunk("a.bin.gz", offset=1000, limit=24)
-    past_budget, body = _chunk("a.bin.gz", offset=1000, limit=25)
-
-    assert at_budget == 200
-    assert past_budget == 416
-    assert body["max_preview_bytes"] == 1024
+    assert eligible == 200
+    assert body["max_preview_bytes"] == 4096
+    assert oversize == 413
 
 
-def test_uncompressed_window_past_the_ceiling_is_refused(
+def test_window_past_the_ceiling_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     server._set_root_dir(tmp_path)
@@ -312,7 +301,7 @@ def test_expanding_compressed_input_is_bounded_not_buffered(
 ) -> None:
     """A small artifact that expands past the ceiling is refused."""
     server._set_root_dir(tmp_path)
-    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_COMPRESSED_MAX_BYTES", 4096)
+    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_BYTES", 4096)
     (tmp_path / "bomb.bin.gz").write_bytes(gzip.compress(b"\x00" * (1 << 20)))
 
     status, _ = _chunk("bomb.bin.gz")

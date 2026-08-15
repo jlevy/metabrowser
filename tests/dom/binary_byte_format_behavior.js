@@ -62,7 +62,15 @@ function expectedDisplay(byte) {
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
   );
-  const { displayForByte, isSpecialByte, formatByteRuns, DEFAULT_ACCENT_RUN_BUDGET } = module;
+  const {
+    displayForByte,
+    displayWidthForByte,
+    isSpecialByte,
+    formatByteRuns,
+    formatByteLines,
+    lineRanges,
+    DEFAULT_ACCENT_RUN_BUDGET,
+  } = module;
 
   // ── Display contract, exhaustively ──────────────────────────────
   const wrong = [];
@@ -181,6 +189,105 @@ function expectedDisplay(byte) {
   }
   const kept = formatByteRuns(realistic, escapeHtml, DEFAULT_ACCENT_RUN_BUDGET);
   check("string-dense content keeps the accent", kept.accentDropped === false);
+
+  // ── Line breaking ───────────────────────────────────────────────
+  //
+  // Breaks are emitted here rather than left to CSS: letting the browser wrap
+  // one large run is quadratic (2.2 s at 256 KiB, 33 s at 1 MiB measured),
+  // while `white-space: pre` over explicit lines is proportional to line count.
+
+  const widths = [];
+  for (let byte = 0; byte < 256; byte += 1) {
+    if (displayWidthForByte(byte) !== expectedDisplay(byte).length) {
+      widths.push(byte);
+    }
+  }
+  check("display width matches the rendered unit", widths.length === 0, widths.join(","));
+
+  // 1-column bytes: 10 per line at width 10.
+  const ascii = new Uint8Array(25).fill(0x41);
+  check(
+    "ranges pack single-column bytes to the limit",
+    JSON.stringify(lineRanges(ascii, 10)) ===
+      JSON.stringify([
+        [0, 10],
+        [10, 20],
+        [20, 25],
+      ]),
+    JSON.stringify(lineRanges(ascii, 10)),
+  );
+
+  // 4-column bytes: only 2 fit in 10 columns, and a token is never split.
+  const high = new Uint8Array(5).fill(0xff);
+  check(
+    "ranges never split a byte token across a break",
+    JSON.stringify(lineRanges(high, 10)) ===
+      JSON.stringify([
+        [0, 2],
+        [2, 4],
+        [4, 5],
+      ]),
+    JSON.stringify(lineRanges(high, 10)),
+  );
+
+  const lines = formatByteLines(ascii, escapeHtml, { charsPerLine: 10 });
+  check("line count is reported", lines.lineCount === 3, String(lines.lineCount));
+  check(
+    "lines are joined with newlines",
+    lines.html.split("\n").length === 3,
+    JSON.stringify(lines.html),
+  );
+  check(
+    "breaking changes no glyph, only where they sit",
+    lines.html.split("\n").join("") === "A".repeat(25),
+    lines.html,
+  );
+
+  // No line may exceed the column budget once tags are stripped.
+  const mixedBytes = new Uint8Array(4096);
+  for (let i = 0; i < mixedBytes.length; i += 1) {
+    mixedBytes[i] = i % 5 === 0 ? 0x80 + (i % 100) : 0x41 + (i % 26);
+  }
+  const mixedLines = formatByteLines(mixedBytes, escapeHtml, { charsPerLine: 80 });
+  const overLong = mixedLines.html
+    .split("\n")
+    .map((line) => glyphs(line).length)
+    .filter((len) => len > 80);
+  check(
+    "no rendered line exceeds the column budget",
+    overLong.length === 0,
+    overLong.slice(0, 5).join(","),
+  );
+  check(
+    "line breaking preserves the whole byte sequence",
+    mixedLines.html.split("\n").map(glyphs).join("") ===
+      glyphs(formatByteRuns(mixedBytes, escapeHtml, Number.MAX_SAFE_INTEGER).html),
+  );
+
+  // The accent budget is per chunk, not per line, and stays dropped once spent.
+  const dense = new Uint8Array(4096);
+  for (let i = 0; i < dense.length; i += 1) {
+    dense[i] = i % 2 === 0 ? 0x41 : 0xff;
+  }
+  const denseLines = formatByteLines(dense, escapeHtml, { charsPerLine: 40, runBudget: 8 });
+  check("the budget spans lines rather than resetting", denseLines.accentDropped === true);
+  check(
+    "a spent budget bounds elements across the whole chunk",
+    countSpans(denseLines.html) <= 8,
+    String(countSpans(denseLines.html)),
+  );
+  check(
+    "a spent budget still renders every byte",
+    denseLines.html.split("\n").map(glyphs).join("") ===
+      glyphs(formatByteRuns(dense, escapeHtml, Number.MAX_SAFE_INTEGER).html),
+  );
+
+  const emptyLines = formatByteLines(new Uint8Array(0), escapeHtml, { charsPerLine: 40 });
+  check(
+    "an empty window produces no lines",
+    emptyLines.html === "" && emptyLines.lineCount === 0,
+    JSON.stringify(emptyLines),
+  );
 
   if (failures.length) {
     console.error(`binary byte format FAILURES:\n- ${failures.join("\n- ")}`);
