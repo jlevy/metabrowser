@@ -631,6 +631,11 @@ type MetabrowserSdk = {
   ): void;
   renderTextTruncationWarning(data: Record<string, unknown>): string;
   renderTextLoadMoreFooter(data: Record<string, unknown>): string;
+  partialNoticeHtml(
+    progress: { loaded: string; total: string },
+    position: "top" | "bottom",
+    options?: { useSiteClass?: string; action?: string | null; hidden?: boolean },
+  ): string;
   sizeClass(value: number): "" | "size-large";
   sizeHtml(value: number | null | undefined, extraClass?: string): string;
   wrapWithCopy(html: string): string;

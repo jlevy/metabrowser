@@ -47,8 +47,12 @@
 //     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
 //     renderTextTruncationWarning(data) — partial-content banner, with a
 //                                        Load more control in it
-//     renderTextLoadMoreFooter(data)    — the same control, for after the
+//     renderTextLoadMoreFooter(data)    — the same notice, for after the
 //                                        content (see design-system.md)
+//     partialNoticeHtml({loaded,total}, position, useSiteClass)
+//                                        — the shared partial-content notice,
+//                                          for views that track their own
+//                                          progress rather than /api/file's
 //
 //   Navigation:
 //     openPath(path, {viewId?})          — open a path, optionally preferring a view
@@ -635,31 +639,59 @@
    * @param {"top" | "bottom"} position
    * @returns {string}
    */
-  function loadMoreButtonHtml(position) {
+  function loadMoreButtonHtml(position, action) {
+    // `action: null` means the caller wires its own listener — a view that
+    // tracks its own offsets cannot be continued by the shell's text loader.
+    const onclick = action === null ? "" : ` onclick="${action || "loadMoreCurrentText()"}"`;
     return (
       `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
-      ' onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>'
+      `${onclick} title="Load more of this file">Load more</button>`
+    );
+  }
+
+  /**
+   * The shared partial-content notice.
+   *
+   * Every surface that says "this is only part of the file" is this box, in
+   * core and in plugins alike — see docs/design-system.md, "Continuing partial
+   * content". A use-site class rides along for querying and positioning, but
+   * `partial-notice` is what carries the fill, border, and type, so the two
+   * ends of a file and the two views cannot drift apart.
+   *
+   * @param {{loaded: string, total: string}} progress
+   * @param {"top" | "bottom"} position
+   * @param {{useSiteClass?: string, action?: string | null, hidden?: boolean}} [options]
+   * @returns {string}
+   */
+  function partialNoticeHtml(progress, position, options) {
+    const useSiteClass = options?.useSiteClass ? ` ${options.useSiteClass}` : "";
+    const hidden = options?.hidden ? " hidden" : "";
+    return (
+      `<div class="partial-notice${useSiteClass}" data-position="${position}"` +
+      ` role="status"${hidden}>` +
+      // The progress figures live in their own element so a view that updates
+      // in place can rewrite them without taking the label with them.
+      "<span><strong>Partial file.</strong> " +
+      '<span class="partial-notice-readout">Showing ' +
+      escapeHtml(progress.loaded) +
+      " of " +
+      escapeHtml(progress.total) +
+      ".</span></span>" +
+      // The notice carries its own button. It used to say "Select Load more to
+      // continue" and point at a control in the pane header, which puts the
+      // explanation and the remedy in different places.
+      loadMoreButtonHtml(position, options?.action) +
+      "</div>"
     );
   }
 
   function renderTextTruncationWarning(data) {
     const progress = textPreviewProgress(data);
-    if (!progress) {
-      return "";
-    }
-    return (
-      '<div class="metabrowser-source-truncation-warning" role="status">' +
-      "<span><strong>Content truncated.</strong> " +
-      "Showing " +
-      escapeHtml(progress.loaded) +
-      " of " +
-      escapeHtml(progress.total) +
-      ".</span>" +
-      // The banner used to say "Select Load more to continue" and point at a
-      // control in the pane header. Naming a control is not offering one.
-      loadMoreButtonHtml("top") +
-      "</div>"
-    );
+    return progress
+      ? partialNoticeHtml(progress, "top", {
+          useSiteClass: "metabrowser-source-truncation-warning",
+        })
+      : "";
   }
 
   /**
@@ -670,17 +702,9 @@
    */
   function renderTextLoadMoreFooter(data) {
     const progress = textPreviewProgress(data);
-    if (!progress) {
-      return "";
-    }
-    return (
-      '<div class="metabrowser-source-more-footer" role="status">' +
-      `<span class="metabrowser-source-more-readout">${escapeHtml(progress.loaded)} of ${escapeHtml(
-        progress.total,
-      )}</span>` +
-      loadMoreButtonHtml("bottom") +
-      "</div>"
-    );
+    return progress
+      ? partialNoticeHtml(progress, "bottom", { useSiteClass: "metabrowser-source-more-footer" })
+      : "";
   }
 
   function _headOrBody() {
@@ -1360,6 +1384,7 @@
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
     renderTextLoadMoreFooter: renderTextLoadMoreFooter,
+    partialNoticeHtml: partialNoticeHtml,
     loadKpressAssets: loadKpressAssets,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,

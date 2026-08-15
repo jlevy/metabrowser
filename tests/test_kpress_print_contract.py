@@ -111,7 +111,10 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
     assert "--kpress-host-bg" not in css
     normalized_css = " ".join(css.split())
     assert ".metabrowser-kpress-host .kpress, :root .kpress-tooltip {" in normalized_css
-    assert ".metabrowser-source-truncation-warning" in css
+    # Partial-content notices print through the `.partial-notice` primitive
+    # rather than each use site, so a new one prints correctly without being
+    # named here. See tests/test_partial_notice_style.py.
+    assert ".partial-notice" in css
 
 
 def test_embedded_markdown_does_not_double_top_spacing() -> None:

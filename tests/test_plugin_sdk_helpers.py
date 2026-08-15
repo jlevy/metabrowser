@@ -96,7 +96,11 @@ def test_sdk_exports_clear_truncation_warning() -> None:
     src = _sdk_source()
     assert "renderTextTruncationWarning: renderTextTruncationWarning" in src
     assert "function renderTextTruncationWarning" in src
-    assert "Content truncated." in src
+    # The notice names the condition plainly and reports how much of the file
+    # is showing. It was "Content truncated."; "Partial file." says the same
+    # thing about the file rather than about the rendering.
+    assert "Partial file." in src
+    assert "Showing " in src
     assert "Printed output" not in src
     assert "complete source PDF" not in src
     assert "metabrowser-source-truncation-warning" in src

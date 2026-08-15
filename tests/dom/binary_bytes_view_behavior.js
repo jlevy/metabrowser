@@ -173,6 +173,15 @@ function makeSdk() {
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;"),
       formatSize: (bytes) => `${bytes} B`,
+      // Mirrors the shell's builder closely enough to assert placement and
+      // wiring; the real markup contract is covered in
+      // tests/test_partial_notice_style.py.
+      partialNoticeHtml: (progress, position, options) =>
+        `<div class="partial-notice ${options?.useSiteClass ?? ""}" ` +
+        `data-position="${position}"${options?.hidden ? " hidden" : ""}>` +
+        `<span class="partial-notice-readout">Showing ${progress.loaded} of ${progress.total}.</span>` +
+        `<button class="btn metabrowser-load-more" type="button" data-position="${position}">Load more</button>` +
+        "</div>",
       fetchPluginData(plugin, route, params, options) {
         return new Promise((resolve, reject) => {
           requests.push({ plugin, route, params, options, resolve, reject });
@@ -245,7 +254,7 @@ function contentOf(container) {
 
     // ── Load more appends ─────────────────────────────────────────
     const before = contentOf(container);
-    container.querySelector(".binary-bytes-more").click();
+    container.querySelector(".metabrowser-load-more").click();
     check("load more issues a second request", requests.length === 2, String(requests.length));
     check(
       "load more resumes at next_offset",
@@ -277,9 +286,11 @@ function contentOf(container) {
       (after.match(/contain-intrinsic-size/g) || []).length === 2,
       after.slice(0, 200),
     );
+    // The notice is what hides, taking its control with it: a box announcing
+    // a partial file over a complete one is the failure worth guarding.
     check(
-      "the exhausted control is hidden",
-      container.querySelector(".binary-bytes-more").hidden === true,
+      "the exhausted notice is hidden",
+      container.querySelector(".binary-bytes-notice").hidden === true,
     );
     handle.dispose();
   }
@@ -304,12 +315,12 @@ function contentOf(container) {
     );
     check(
       "both controls are found together",
-      container.querySelectorAll(".binary-bytes-more").length === 2,
-      String(container.querySelectorAll(".binary-bytes-more").length),
+      container.querySelectorAll(".metabrowser-load-more").length === 2,
+      String(container.querySelectorAll(".metabrowser-load-more").length),
     );
 
     // The trailing control must actually load, not just look like the header.
-    const buttons = container.querySelectorAll(".binary-bytes-more");
+    const buttons = container.querySelectorAll(".metabrowser-load-more");
     buttons[1].click();
     check(
       "the trailing control loads the next chunk",
@@ -319,9 +330,9 @@ function contentOf(container) {
     requests[1].resolve(chunkEnvelope({ offset: 4, next_offset: 8, has_more: false }));
     await settle();
     check(
-      "both controls retire together when nothing remains",
-      container.querySelectorAll(".binary-bytes-more").every((b) => b.hidden === true),
-      JSON.stringify(container.querySelectorAll(".binary-bytes-more").map((b) => b.hidden)),
+      "both notices retire together when nothing remains",
+      container.querySelectorAll(".binary-bytes-notice").every((n) => n.hidden === true),
+      JSON.stringify(container.querySelectorAll(".binary-bytes-notice").map((n) => n.hidden)),
     );
   }
 
@@ -338,7 +349,7 @@ function contentOf(container) {
     requests[0].resolve(chunkEnvelope({ content_base64: base64([0x41, 0x42, 0x43, 0x44]) }));
     await mounted;
 
-    const more = container.querySelector(".binary-bytes-more");
+    const more = container.querySelector(".metabrowser-load-more");
     more.click();
     more.click();
     more.click();
@@ -372,7 +383,7 @@ function contentOf(container) {
     const mounted2 = mountBytesView(container2, { path: "b.bin" }, mb2);
     requests2[0].resolve(chunkEnvelope({}));
     await mounted2;
-    container2.querySelector(".binary-bytes-more").click();
+    container2.querySelector(".metabrowser-load-more").click();
     await settle();
     check(
       "the guard clears once a request settles",
@@ -411,7 +422,7 @@ function contentOf(container) {
       contentOf(container),
     );
 
-    container.querySelector(".binary-bytes-more").click();
+    container.querySelector(".metabrowser-load-more").click();
     requests[1].resolve(
       chunkEnvelope({
         offset: 4,
@@ -450,7 +461,7 @@ function contentOf(container) {
     const mounted = mountBytesView(container, { path: "a.bin" }, mb);
     requests[0].resolve(chunkEnvelope({ content_base64: base64([0x41, 0x41, 0x41, 0x41]) }));
     await mounted;
-    container.querySelector(".binary-bytes-more").click();
+    container.querySelector(".metabrowser-load-more").click();
     requests[1].resolve(
       chunkEnvelope({
         offset: 4,
@@ -509,7 +520,7 @@ function contentOf(container) {
     const mounted = mountBytesView(container, { path: "a.bin" }, mb);
     requests[0].resolve(chunkEnvelope({}));
     const handle = await mounted;
-    container.querySelector(".binary-bytes-more").click();
+    container.querySelector(".metabrowser-load-more").click();
     const pendingSignal = requests[1].options.signal;
     handle.dispose();
     check("dispose aborts the in-flight request", pendingSignal.aborted === true);
@@ -549,7 +560,7 @@ function contentOf(container) {
     check("the first mount paints its own bytes", contentOf(first).includes("AAAA"));
     check("the second mount paints its own bytes", contentOf(second).includes("BBBB"));
 
-    second.querySelector(".binary-bytes-more").click();
+    second.querySelector(".metabrowser-load-more").click();
     check(
       "each mount keeps its own offset",
       requests[2].params.offset === 40,

@@ -36,7 +36,6 @@ const EMPTY_TEXT = "This file is empty.";
 const UNAVAILABLE_TEXT = "This file is no longer available.";
 const UNDECODABLE_TEXT = "This file could not be decompressed.";
 const FAILED_TEXT = "Could not load these bytes.";
-const LOAD_MORE_LABEL = "Load more";
 /**
  * Shown when the view drops the two-tone treatment. The glyphs are unchanged,
  * so this reports the one thing the reader would otherwise have to infer.
@@ -148,30 +147,40 @@ export function renderChunkState(state, mb) {
   }
   const note = state.accentDropped ? ACCENT_NOTE : "";
   const noteHidden = state.accentDropped ? "" : " hidden";
-  const moreHidden = state.hasMore ? "" : " hidden";
   // Without the two-tone elements the surface still has to say which of the
   // two colors the unwrapped text is. Content that spends the budget is
   // overwhelmingly byte codes, so it defaults to the code color.
   const plain = state.accentDropped ? " binary-bytes-plain" : "";
+  // The partial-content notice is the shell's, not this plugin's: a reader
+  // meeting a part-loaded file should see the same box here as in the source
+  // view. See docs/design-system.md, "Continuing partial content".
+  //
+  // `action: null` because this view tracks its own offsets — the shell's
+  // text loader cannot continue it — so it wires the click itself in paint().
+  // The notice stays mounted and hidden when complete, so syncControls can
+  // retire it after an append without repainting the loaded bytes away.
+  const notice = (/** @type {"top" | "bottom"} */ position) =>
+    mb.partialNoticeHtml({ loaded: "", total: "" }, position, {
+      useSiteClass: "binary-bytes-notice",
+      action: null,
+      hidden: !state.hasMore,
+    });
   return (
     '<div class="binary-bytes">' +
     '<div class="binary-bytes-controls">' +
     `<span class="binary-bytes-readout">${readoutText(state, mb)}</span>` +
-    `<button class="btn binary-bytes-more" type="button" data-position="top"${moreHidden}>${LOAD_MORE_LABEL}</button>` +
     "</div>" +
+    notice("top") +
     `<div class="binary-bytes-note" role="status"${noteHidden}>${note}</div>` +
     // `no-highlight` is the shell's opt-out in highlightCode(). Without it
     // highlight.js runs over this block after the chunk mounts, rewrites the
     // byte runs into hljs token spans, and both destroys the accent markup and
     // claims these bytes are source code.
     `<pre class="code-block"><code class="binary-bytes-content no-highlight${plain}"></code></pre>` +
-    // The trailing control. A reader who has scrolled to the end of the loaded
-    // bytes is exactly the reader who wants the next chunk, and the header
-    // control has long since scrolled away. See docs/design-system.md,
-    // "Continuing partial content".
-    '<div class="binary-bytes-footer">' +
-    `<button class="btn binary-bytes-more" type="button" data-position="bottom"${moreHidden}>${LOAD_MORE_LABEL}</button>` +
-    "</div>" +
+    // The trailing notice. A reader who has scrolled to the end of the loaded
+    // bytes is exactly the reader who wants the next chunk, and the header has
+    // long since scrolled away.
+    notice("bottom") +
     "</div>"
   );
 }
@@ -319,17 +328,46 @@ export async function mountBytesView(container, ctx, mb, options) {
   /** Every Load more control in the mounted view — currently head and foot. */
   const moreButtons = () =>
     /** @type {HTMLElement[]} */ (
-      Array.from(container.querySelectorAll?.(".binary-bytes-more") ?? [])
+      Array.from(container.querySelectorAll?.(".metabrowser-load-more") ?? [])
+    );
+
+  /** Every partial-content notice — the box each control sits in. */
+  const notices = () =>
+    /** @type {HTMLElement[]} */ (
+      Array.from(container.querySelectorAll?.(".binary-bytes-notice") ?? [])
     );
 
   /** @param {BytesViewState} next */
   const paint = (next) => {
     container.innerHTML = renderChunkState(next, mb);
     for (const more of moreButtons()) {
-      more.hidden = !next.hasMore;
       more.addEventListener("click", onLoadMore);
     }
+    syncNotices(next);
     metrics = measureSurface(contentEl());
+  };
+
+  /**
+   * Bring both notices in line with what is loaded.
+   *
+   * The notice reports progress, so it has to be refreshed on every chunk,
+   * and retired the moment nothing remains — a box saying a file is partial
+   * over a fully loaded one is worse than no box.
+   *
+   * @param {BytesViewState} next
+   */
+  const syncNotices = (next) => {
+    const text = `Showing ${mb.formatSize(next.bytesLoaded || 0)} of ${mb.formatSize(
+      next.logicalSize || 0,
+    )}.`;
+    for (const box of notices()) {
+      box.hidden = !next.hasMore;
+    }
+    for (const readout of Array.from(
+      container.querySelectorAll?.(".partial-notice-readout") ?? [],
+    )) {
+      readout.textContent = text;
+    }
   };
 
   const syncControls = () => {
@@ -337,9 +375,7 @@ export async function mountBytesView(container, ctx, mb, options) {
     if (readout) {
       readout.textContent = readoutText(state, mb);
     }
-    for (const more of moreButtons()) {
-      more.hidden = !state.hasMore;
-    }
+    syncNotices(state);
     const note = /** @type {HTMLElement | null} */ (container.querySelector(".binary-bytes-note"));
     if (note) {
       note.textContent = state.accentDropped ? ACCENT_NOTE : "";

@@ -22,10 +22,13 @@ Binary and source previews:
 - Loaded bytes stay real text in the DOM, so browser find-in-page, select-all, and print
   continue to cover everything loaded.
 - Partially-loaded content now offers **Load more at both ends**, above and below what
-  has loaded, and the partial-content banner carries the button itself rather than
-  naming a control elsewhere.
-  Reaching the end of a chunk no longer means scrolling back to the top to continue.
-  Both controls appear and retire together.
+  has loaded, and the notice carries the button itself rather than naming a control
+  elsewhere. Reaching the end of a chunk no longer means scrolling back to the top to
+  continue. Both appear and retire together.
+- Every partial-content notice is now one style, in the source view and the Bytes view
+  alike: the ordinary surface fill with a warning border, rather than an informational
+  blue that meant something else elsewhere.
+  The rule is documented in the design system and enforced by a test.
 
 File typing:
 

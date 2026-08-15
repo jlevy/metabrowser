@@ -246,6 +246,31 @@ worse the cost, which is exactly backwards.
 Both controls carry the same label, act on the same state, and appear and retire
 together.
 
+### One Notice, One Style
+
+Every surface that says “this is only part of the file” is the same box, in core and in
+plugins alike: the `.partial-notice` primitive in `static/styles.css`.
+
+Its fill is the ordinary surface — `var(--bg)`, white in the light theme — and its
+border is `var(--status-warning)`. The border alone carries “incomplete,” which is the
+single thing that distinguishes this box from the content around it.
+The fill is deliberately not a status tint: blue already means something else wherever
+it appears, and a partial load is not an informational aside.
+Reaching for `--status-info-bg` here is how the banner and the byte view drifted apart
+in the first place, one wearing an info fill with a warning border while the other
+announced the same condition with no box at all.
+
+A use site adds a class for positioning, visibility, and querying, and carries
+`.partial-notice` in the markup alongside it.
+It never restates the fill, border, or type — the same rule the
+[control families](#control-families) follow, for the same reason.
+`tests/test_partial_notice_style.py` enforces this: it fails the build if the primitive
+is redefined outside core, if its fill or border changes meaning, or if a use site
+declares a background, border, color, or font of its own.
+
+Build the notice through `mb.partialNoticeHtml` rather than by hand, so a new view gets
+the markup and the placement together.
+
 Two supporting rules follow from the same reasoning:
 
 - **A notice that content is missing carries its own control.** Telling a reader that
@@ -256,9 +281,11 @@ Two supporting rules follow from the same reasoning:
   as a broken control, and any trailing rule or spacing it owns goes with it.
 
 Core provides both halves through `mb.renderTextTruncationWarning` and
-`mb.renderTextLoadMoreFooter`, so a plugin gets the placement by using them rather than
-by reproducing it. See [Rendering Large Content](large-content-rendering.md) for the
-loading policy behind the chunk sizes these controls request.
+`mb.renderTextLoadMoreFooter` for views whose progress comes from `/api/file`, and
+`mb.partialNoticeHtml` for a view that tracks its own offsets.
+A plugin gets the placement and the style by using them rather than by reproducing them.
+See [Rendering Large Content](large-content-rendering.md) for the loading policy behind
+the chunk sizes these controls request.
 
 ### Navigation Tree Folders
 

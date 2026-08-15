@@ -3034,18 +3034,10 @@ html[data-prose-font="sans"] {
    the toggle, and the drawer. The doc <h1> header is suppressed at the source
    via show_doc_header=False (the path shows in metabrowser's file header), so
    no host CSS override is needed. */
-.metabrowser-kpress-render-error,
-/* Partial content is bracketed by the control that continues it: this banner
-   above, .metabrowser-source-more-footer below. See docs/design-system.md,
-   "Continuing partial content". The banner carries its own button because it
-   is the thing that says content is missing — naming a control elsewhere is
-   not offering one. */
-.metabrowser-source-truncation-warning {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+/* A KPress render failure. Unchanged; it kept the fill it always had, and it
+   is a different condition from partial content — the notice below no longer
+   shares this rule. */
+.metabrowser-kpress-render-error {
   margin: 0 0 12px;
   padding: 10px 12px;
   border: 1px solid var(--status-warning);
@@ -3056,22 +3048,42 @@ html[data-prose-font="sans"] {
   line-height: 1.45;
 }
 
-/* The trailing companion. Quieter than the banner — it is a control, not a
-   warning, and the reader who reaches it already knows the content is
-   partial because they just read to the end of it. */
-.metabrowser-source-more-footer {
+/* ── Partial-content notice ──────────────────────────────────
+   One primitive for every "this is only part of the file" surface, in core
+   and in plugins alike. See docs/design-system.md, "Continuing partial
+   content"; tests/test_partial_notice_style.py enforces that use sites carry
+   this class rather than rebuilding its fill, border, or type.
+
+   The fill is the ordinary surface, not a status tint: this is not an info
+   message, and --status-info-bg's blue already means something else wherever
+   it appears. The warning border alone carries "incomplete", which is the
+   one thing that distinguishes this box from the content around it. */
+.partial-notice {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  margin: 12px 0 0;
   padding: 10px 12px;
-  border-top: 1px solid var(--border);
-  color: var(--muted);
+  border: 1px solid var(--status-warning);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
+  line-height: 1.45;
 }
 
-.metabrowser-source-more-readout {
+/* The notice brackets the content, so its margin is the one thing that
+   differs between the two ends. */
+.partial-notice[data-position="top"] {
+  margin: 0 0 12px;
+}
+
+.partial-notice[data-position="bottom"] {
+  margin: 12px 0 0;
+}
+
+.partial-notice-readout {
   font-variant-numeric: var(--tabular-numerals);
 }
 .metabrowser-kpress-error-detail {
@@ -4063,8 +4075,11 @@ pre.code-block code.hljs {
     color: black;
   }
 
+  /* The notice is addressed through the primitive, not through each use site,
+     so a new partial-content surface prints correctly without being added
+     here. */
   .metabrowser-kpress-render-error,
-  .metabrowser-source-truncation-warning {
+  .partial-notice {
     break-inside: avoid;
     background: white;
     color: black;
