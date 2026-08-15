@@ -117,7 +117,7 @@ The `[plugin]` table supports:
 | `name` | yes | Stable lowercase URL and registry identifier. |
 | `display_name` | no | Human-readable diagnostics label. |
 | `version` | no | Plugin version string. |
-| `sdk_version` | yes | Browser SDK contract this plugin targets. It must equal the host’s current `PLUGIN_SDK_VERSION`; a missing or different value is refused at load time. |
+| `sdk_version` | no | Strongly recommended. Omission means the original SDK `0.1`, not the host’s current version. The resolved value must equal `PLUGIN_SDK_VERSION`. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded with the page. |
 
@@ -394,9 +394,11 @@ guarantee.
 The SDK is versioned with the release, not independently, and the version is enforced
 rather than advisory.
 `PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract this host provides.
-Every manifest must declare `sdk_version`. A missing or different value is refused when
-it loads, with a message naming the required version, and `metab --doctor` reports the
-same problem before it reaches a user.
+A manifest should declare `sdk_version`. A manifest that omits it targets the original
+SDK `0.1`, preserving manifests accepted by Metabrowser 0.4.0 without making omission
+follow a future host version.
+A different resolved value is refused when it loads, with a message naming the required
+version, and `metab --doctor` reports the same problem before it reaches a user.
 There is no negotiation and no shim for an older surface.
 
 That gate is deliberately strict because the alternative is worse.
