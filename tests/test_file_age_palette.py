@@ -16,8 +16,8 @@ MINIMUM_TEXT_CONTRAST = 4.5
 AGE_STATES = ("live", "sec", "min", "hr", "day", "wk", "old")
 AGE_BUCKETS = AGE_STATES[1:]
 APPROVED_LIGHT_AGE_PALETTE = {
-    "live": (0.66, 0.26, 55.0, 1.0),
-    "sec": (0.66, 0.26, 55.0, 1.0),
+    "live": (0.74, 0.22, 55.0, 1.0),
+    "sec": (0.74, 0.22, 55.0, 1.0),
     "min": (0.72, 0.23, 97.5, 1.0),
     "hr": (0.64, 0.2, 104.0, 1.0),
     "day": (0.56, 0.14, 107.1, 1.0),
@@ -159,6 +159,9 @@ def test_file_age_tokens_use_one_oklch_palette_in_both_themes() -> None:
                 token = f"--file-age-{family}{state}"
                 assert token in tokens, f"{theme} theme is missing {token}"
                 _oklch(_resolved_color(tokens, token))
+
+        assert tokens["--file-age-sec"] == "var(--file-age-live)"
+        assert tokens["--file-age-fill-sec"] == "var(--file-age-fill-live)"
 
         colors = [_oklch(_resolved_color(tokens, f"--file-age-{bucket}")) for bucket in AGE_BUCKETS]
         later_chroma = [color[1] for color in colors[1:]]

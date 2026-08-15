@@ -69,6 +69,8 @@ lightness modestly, and raised chroma so the labels remain dark enough for the U
 carrying the vivid color themselves.
 The `.age-live` and `.age-*` classes select tokens only, so new consumers reuse the
 primitive rather than reconstructing colors.
+The navigation age menu’s Live entry and under-one-minute labels in file rows therefore
+have identical computed color and bold weight.
 
 Adjust this family only at its token definitions, preserve the semantic ordering in both
 themes, and run `tests/test_file_age_palette.py` to verify the approved light palette,

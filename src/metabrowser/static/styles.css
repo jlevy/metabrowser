@@ -767,7 +767,7 @@
      minute bucket share the freshest reddish-orange visual. Later ages
      retain the approved swatch hues while using darker lightness and
      stronger chroma so the text stays vivid without a marker. */
-  --file-age-live: oklch(66% 0.26 55);
+  --file-age-live: oklch(74% 0.22 55);
   --file-age-sec: var(--file-age-live); /* < 1 minute */
   --file-age-min: oklch(72% 0.23 97.5); /* < 1 hour */
   --file-age-hr: oklch(64% 0.2 104); /* < 1 day */
