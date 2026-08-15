@@ -51,7 +51,7 @@ def test_application_has_no_hash_as_file_router() -> None:
     ):
         assert removed not in source
     assert "MetabrowserNavigationRoute.createController" in source
-    assert "navigationController?.canonicalizePath" in source
+    assert "navigationController.canonicalizePath" in source
     assert 'new CustomEvent("metabrowser:navigation-fragment"' in source
 
 

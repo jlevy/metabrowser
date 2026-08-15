@@ -452,14 +452,17 @@ def test_styles_css_drops_the_superseded_recent_chip() -> None:
 # ── Default folder route ─────────────────────────────────────
 
 
-def test_landing_url_is_not_an_implicit_root_selection() -> None:
-    """Only canonical ``/view/`` selects root; ``/`` remains the landing view."""
+def test_startup_selects_only_what_the_canonical_route_names() -> None:
+    """The shell never picks a root document the URL did not ask for.
+
+    ``/`` redirects to ``/view/`` at the server, so the browser only ever reads a
+    canonical route, and startup selection comes from that route alone.
+    """
 
     js = _read_app_js()
     assert "function findRootReadme()" not in js
-    assert "window.MetabrowserNavigationRoute?.parse(" in js
-    assert "navigationController?.start()" in js
-    assert "legacy hash on" in js
+    assert "window.MetabrowserNavigationRoute.parse(" in js
+    assert "navigationController.start()" in js
 
 
 # ── DOMContentLoaded wiring ─────────────────────────────────

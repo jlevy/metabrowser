@@ -344,6 +344,38 @@ There is intentionally no compatibility promise for saved hash file URLs or the 
 link-navigation SDK surface.
 All bundled code and documentation change atomically.
 
+### Backward Compatibility Requirements
+
+Decided per the shared `backward-compatibility-rules` guideline; the standing structural
+facts are in
+[Compatibility and Legacy Code](../../../development.md#compatibility-and-legacy-code).
+
+- **Internal code:** DO NOT MAINTAIN. The server, browser shell, and built-in plugins
+  ship as one artifact and the index response stamps every asset, so a browser cannot
+  pair an old script with a new route.
+  No guard, fallback, or existence check may defend a version skew the deployment cannot
+  produce.
+- **Library APIs:** N/A. Nothing imports the browser modules outside this package.
+- **Server APIs:** DO NOT MAINTAIN. `/api/*` and `/view/` are internal contracts of the
+  same artifact.
+- **Plugin and extension APIs:** UPGRADE + GATE. `PLUGIN_SDK_VERSION` already rejects a
+  mismatched manifest at load time with an actionable message.
+  `openPath` and `metabrowser:open-path` are removed rather than deprecated; built-in
+  plugins moved in the same commit.
+- **File formats:** N/A. This work reads repository files and writes none.
+- **Persisted client state:** DO NOT MAINTAIN. Hash URLs a user bookmarked are not read,
+  rewritten, or redirected; cookie-backed preferences are unaffected by routing.
+- **Database schemas:** N/A.
+
+Two consequences worth stating, because they are easy to reintroduce:
+
+- A module linked earlier in the same shell response is always present.
+  Guarding for its absence adds an untestable branch that silently degrades instead of
+  failing, so the shell composes `navigation.js` unconditionally.
+- The served root is the empty path.
+  A second spelling such as `/` existed only because the removed `openPath` reserved the
+  empty string for invalid input, and it went with it.
+
 ## Implementation Plan
 
 ### Phase 1: Canonical Route and Navigation Boundary

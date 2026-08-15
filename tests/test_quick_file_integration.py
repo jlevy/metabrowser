@@ -74,7 +74,7 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
     assert loaded_block.index("initQuickFileFinder();") < loaded_block.index(
-        "navigationController?.start()"
+        "navigationController.start()"
     )
     assert loaded_block.count("initQuickFileFinder();") == 1
 

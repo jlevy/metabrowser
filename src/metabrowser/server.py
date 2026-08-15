@@ -287,7 +287,6 @@ __all__ = [
     "_IGNORE_CACHE",
     "_activity_snapshot",
     "_cached_root_prefix",
-    "_classify_file_kind",
     "_clear_browser_caches",
     "_collect_trackable_files",
     "_collect_trackable_files_cached",
@@ -367,12 +366,6 @@ class _ProcBrowserModule(_types.ModuleType):
 
 
 _sys.modules[__name__].__class__ = _ProcBrowserModule
-
-
-def _classify_file_kind(ext: str, adapter: str | None = None) -> str:
-    """Backwards-compat alias for legacy callers; new code calls
-    :func:`metabrowser.file_kinds.classify_by_ext` directly."""
-    return classify_by_ext(ext, adapter)
 
 
 # ── Static asset directories ────────────────────────────────────

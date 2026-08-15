@@ -226,8 +226,8 @@ function makeBrowser(pathname, search = "", hash = "") {
       },
     });
     await controller.start();
-    equal("legacy hash is not a file route", controller.current(), null);
-    equal("legacy hash startup applies landing", applied, [null]);
+    equal("a hash alone selects no file", controller.current(), null);
+    equal("a hash-only landing applies no target", applied, [null]);
     controller.dispose();
   }
 

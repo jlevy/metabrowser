@@ -1741,7 +1741,7 @@ treePane.addEventListener("click", (e) => {
     navigateToPath(item.dataset.path || "");
   } else if (action === "select-dir") {
     setSelectedPath(item.dataset.path);
-    navigateToPath(item.dataset.path ? `${item.dataset.path}/` : "/");
+    navigateToPath(item.dataset.path ? `${item.dataset.path}/` : "");
     toggleTreeFolder(item, e.shiftKey);
   }
 });
@@ -3594,7 +3594,7 @@ async function selectFile(path, preferredViewId) {
       const cached = fileCache.get(path);
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
-        navigationController?.canonicalizePath(path, cached.kind === "folder");
+        navigationController.canonicalizePath(path, cached.kind === "folder");
         renderFile(cached, preferredViewId);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
@@ -3642,7 +3642,7 @@ async function selectFile(path, preferredViewId) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
-            navigationController?.canonicalizePath(path, cached.kind === "folder");
+            navigationController.canonicalizePath(path, cached.kind === "folder");
             renderFile(cached, preferredViewId);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
@@ -3681,7 +3681,7 @@ async function selectFile(path, preferredViewId) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
-          navigationController?.canonicalizePath(path, data.kind === "folder");
+          navigationController.canonicalizePath(path, data.kind === "folder");
           renderFile(data, preferredViewId);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
@@ -3740,7 +3740,7 @@ function openedFileOutcome(path, data, preview) {
 // HTML-escaped. Buttons carry the raw path in data-nav-dir and one
 // delegated listener (installed in init) reads it back via dataset.
 function navigateToFolder(path) {
-  navigateToPath(path === "" ? "/" : `${path}/`);
+  navigateToPath(path ? `${path}/` : "");
 }
 
 // Folder preview header: up control, clickable breadcrumb, aggregate
@@ -5396,7 +5396,12 @@ function startInventoryEventStream() {
 
 // ── Canonical navigation ───────────────────────────────────────
 
-var navigationController = null;
+// navigation.js is linked by the same shell response, immediately ahead of this
+// script, so the module and this controller always exist together.
+var navigationController = window.MetabrowserNavigationRoute.createController({
+  apply: applyNavigationTarget,
+});
+window.MetabrowserNavigationRoute.attachController(navigationController);
 
 function showNavigationLanding() {
   closeLiveStream();
@@ -5437,7 +5442,7 @@ async function applyNavigationTarget(target, context) {
   }
   var outcome = await selectFile(path, context.viewId);
   if (outcome.status === "opened" && context.isCurrent()) {
-    deliverNavigationFragment(navigationController?.current() || target);
+    deliverNavigationFragment(navigationController.current() || target);
   }
   return outcome;
 }
@@ -5477,17 +5482,18 @@ async function revealInTree(path) {
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function navigateToPath(path, preferredViewId) {
-  if (!navigationController) {
-    return {
-      message: "Navigation is unavailable. Refresh the page to try again.",
-      status: "error",
-    };
-  }
-  var folder = path === "/" || path.endsWith("/");
-  var normalized = path === "/" ? "" : path.replace(/\/+$/, "");
-  return navigationController.open(
-    { path: folder && normalized ? `${normalized}/` : normalized },
-    preferredViewId ? { viewId: preferredViewId } : undefined,
+  // The served root is the empty path, and only a nested folder carries a
+  // trailing slash, so both spellings arrive here already canonical.
+  var normalized = path.replace(/\/+$/, "");
+  var folder = path.endsWith("/");
+  // The route module is dialect-agnostic and types `open` as returning the
+  // apply callback's `unknown`. This shell installed that callback, so it is
+  // the one place that knows the result is an open outcome.
+  return /** @type {Promise<QuickFileOpenOutcome>} */ (
+    navigationController.open(
+      { path: folder && normalized ? `${normalized}/` : normalized },
+      preferredViewId ? { viewId: preferredViewId } : undefined,
+    )
   );
 }
 
@@ -5545,15 +5551,6 @@ function initQuickFileFinder() {
   });
 }
 
-if (window.MetabrowserNavigationRoute) {
-  navigationController = window.MetabrowserNavigationRoute.createController({
-    apply: applyNavigationTarget,
-  });
-  window.MetabrowserNavigationRoute.attachController(navigationController);
-} else {
-  console.error("Canonical navigation module is unavailable");
-}
-
 function clearBrowserFileCache(path) {
   if (path) {
     fileCache.delete(path);
@@ -5595,16 +5592,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   initFilterBar();
   initNavScrollShadow();
   initQuickFileFinder();
-  // Start the URL-pinned file fetch in parallel with the tree walk. The
-  // canonical controller reads only /view/ pathname routes; a legacy hash on
-  // the landing URL is document state, never a file identity.
-  var initialTarget = window.MetabrowserNavigationRoute?.parse(
+  // Start the URL-pinned file fetch in parallel with the tree walk. Only a
+  // /view/ pathname selects a file; a hash is document state, never identity.
+  var initialTarget = window.MetabrowserNavigationRoute.parse(
     location.pathname,
     location.search,
     location.hash,
   );
   var initialPath = initialTarget?.path.replace(/\/$/, "") || "";
-  navigationController?.start().catch((error) => {
+  navigationController.start().catch((error) => {
     console.error("Could not initialize browser navigation", error);
   });
   startIndexProgressPolling();

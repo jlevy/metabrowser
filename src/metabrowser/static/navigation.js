@@ -377,10 +377,10 @@
 
   const navigation = Object.freeze({
     current() {
-      return (
-        attachedController?.current() ??
-        parse(window.location.pathname, window.location.search, window.location.hash)
-      );
+      if (!attachedController) {
+        throw new Error("browser navigation is not initialized");
+      }
+      return attachedController.current();
     },
     href,
     /**

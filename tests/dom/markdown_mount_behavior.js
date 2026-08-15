@@ -35,10 +35,10 @@ function makeContainer() {
   const wikiStub =
     "export function preprocessObsidianWiki(source){return {changed:source.includes('[[wiki]]'),source:'processed '+source}}";
   const wikiUrl = `data:text/javascript;base64,${Buffer.from(wikiStub).toString("base64")}`;
-  // The real key builder, so the seeded chain is checked against the shared
-  // format rather than a copy of it.
-  const transclusionStub =
-    'export function transclusionKey(path,fragment){return `${path}#${fragment||""}`}';
+  // A recognizable stand-in rather than a copy of the key format: this test
+  // proves the mount seeds a chain derived from ctx.path, and
+  // markdown_transclusion_behavior.js covers the real key spelling.
+  const transclusionStub = 'export function transclusionKey(path){return "key:" + path}';
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionStub).toString("base64")}`;
   const importableSource = source
     .replace('"./link_enhancer.js"', JSON.stringify(enhancerUrl))
@@ -88,7 +88,7 @@ function makeContainer() {
   const enhanceCall = globalThis.__markdownEnhanceCalls.find((call) => call.sourcePath === "a.md");
   check(
     "mount seeds its own transclusion ancestry",
-    JSON.stringify(enhanceCall?.options?.transclusionChain) === JSON.stringify(["a.md#"]),
+    JSON.stringify(enhanceCall?.options?.transclusionChain) === JSON.stringify(["key:a.md"]),
     JSON.stringify(globalThis.__markdownEnhanceCalls),
   );
   check("second remains mounted", !tocDisposals.includes(second));
