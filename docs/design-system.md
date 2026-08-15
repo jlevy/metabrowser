@@ -61,11 +61,11 @@ toward a warm neutral.
 
 Text color is the sole age hue signal; dates and Live labels never gain a dot, swatch,
 or adjacent color cue.
-Light-theme yellow text uses contrast-safe amber-gold, gold, and ochre values on white
-and tinted surfaces.
-The three recent elapsed tiers descend in chroma and lightness and maintain a
-perceptible OKLCH step between neighbors, so under-one-minute, under-one-hour, and
-under-one-day files do not collapse into one muted color.
+Light-theme text is the OKLCH conversion of the approved reference ramp: salmon for
+Live, then the original high-saturation yellow at 48° followed by 51°, 55°, 58°, and the
+subdued 60° endpoint.
+The foreground lightness is contrast-safe on white and tinted surfaces while preserving
+those reference hues and their descending saturation.
 The `.age-live` and `.age-*` classes select tokens only, so new consumers reuse the
 primitive rather than reconstructing colors.
 

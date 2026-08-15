@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import colorsys
-import itertools
 import math
 import re
 from pathlib import Path
@@ -14,12 +13,17 @@ FILTER_CONTROLS = ROOT / "src" / "metabrowser" / "static" / "filter_controls.js"
 DESIGN_SYSTEM = ROOT / "docs" / "design-system.md"
 
 MINIMUM_TEXT_CONTRAST = 4.5
-# Smallest OKLCH step that keeps adjacent recent tiers visibly distinct.
-MINIMUM_RECENT_STEP_DISTANCE = 0.018
-# Smallest chroma drop that keeps brighter recent tiers visibly more saturated.
-MINIMUM_RECENT_CHROMA_STEP = 0.006
 AGE_STATES = ("live", "sec", "min", "hr", "day", "wk", "old")
 AGE_BUCKETS = AGE_STATES[1:]
+APPROVED_LIGHT_AGE_PALETTE = {
+    "live": (0.54, 0.155, 40.4, 1.0),
+    "sec": (0.506, 0.103, 91.6, 1.0),
+    "min": (0.505, 0.1, 97.9, 1.0),
+    "hr": (0.51, 0.096, 104.0, 1.0),
+    "day": (0.505, 0.078, 107.1, 1.0),
+    "wk": (0.518, 0.044, 107.8, 1.0),
+    "old": (0.534, 0.007, 106.6, 1.0),
+}
 AGE_SURFACES = (
     "--bg",
     "--sidebar-bg",
@@ -113,21 +117,6 @@ def _oklch_to_srgb(value: str) -> tuple[float, float, float]:
     return srgb
 
 
-def _oklch_distance(
-    first: tuple[float, float, float, float],
-    second: tuple[float, float, float, float],
-) -> float:
-    first_angle = math.radians(first[2])
-    second_angle = math.radians(second[2])
-    first_a = first[1] * math.cos(first_angle)
-    first_b = first[1] * math.sin(first_angle)
-    second_a = second[1] * math.cos(second_angle)
-    second_b = second[1] * math.sin(second_angle)
-    return math.sqrt(
-        (first[0] - second[0]) ** 2 + (first_a - second_a) ** 2 + (first_b - second_b) ** 2
-    )
-
-
 def _color_to_srgb(value: str) -> tuple[float, float, float]:
     oklch_match = OKLCH_RE.fullmatch(value)
     if oklch_match is not None:
@@ -201,22 +190,12 @@ def test_file_age_foregrounds_meet_contrast_on_every_age_surface() -> None:
                 )
 
 
-def test_light_theme_recent_age_tiers_have_a_visible_prominence_ramp() -> None:
+def test_light_theme_uses_the_approved_file_age_palette() -> None:
     css = STYLES_CSS.read_text(encoding="utf-8")
     tokens = _tokens(_css_block(css, ":root {"))
-    recent = [_oklch(tokens[f"--file-age-{state}"]) for state in ("sec", "min", "hr")]
 
-    assert [color[0] for color in recent] == sorted((color[0] for color in recent), reverse=True), (
-        "light-theme recent ages must lose brightness as they get older"
-    )
-    for newer, older in itertools.pairwise(recent):
-        assert newer[1] - older[1] >= MINIMUM_RECENT_CHROMA_STEP, (
-            "light-theme recent ages must lose visible saturation as they get older"
-        )
-        distance = _oklch_distance(newer, older)
-        assert distance >= MINIMUM_RECENT_STEP_DISTANCE, (
-            f"adjacent recent ages are visually clustered at {distance:.3f} OKLCH distance"
-        )
+    actual = {state: _oklch(tokens[f"--file-age-{state}"]) for state in AGE_STATES}
+    assert actual == APPROVED_LIGHT_AGE_PALETTE
 
 
 def test_file_age_palette_is_a_documented_shared_primitive() -> None:
