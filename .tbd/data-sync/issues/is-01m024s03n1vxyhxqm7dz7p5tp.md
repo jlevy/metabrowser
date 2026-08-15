@@ -3,15 +3,17 @@ type: is
 id: is-01m024s03n1vxyhxqm7dz7p5tp
 title: "Binary preview: small unknown-extension files never reach the Bytes view"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/done/plan-2026-08-11-binary-byte-preview.md
 labels: []
 dependencies: []
 parent_id: is-01kzt2pwbyj3rt7y2xhevg8ff5
 created_at: 2026-08-15T07:21:57.621Z
-updated_at: 2026-08-15T07:27:46.819Z
+updated_at: 2026-08-15T23:05:24.221Z
+closed_at: 2026-08-15T23:05:24.207Z
+close_reason: "Fixed by content-based classification: files with no known text extension are now decided by metabrowser.content_sniff rather than by a 512 KiB size heuristic, so a small binary reaches the Bytes view instead of rendering as U+FFFD. Covered by tests/test_content_sniff.py and the api_file classification tests."
 ---
 Found while verifying the Bytes view in a real browser.
 
