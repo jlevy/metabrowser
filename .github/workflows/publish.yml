@@ -87,13 +87,16 @@ jobs:
           version="${RELEASE_TAG#v}"
           # The just-published release is newer than the 14-day cool-off, so
           # exempt this one first-party package (dependencies keep the
-          # cool-off). Retries cover PyPI index propagation delay.
+          # cool-off). Refreshing the package on every attempt prevents uv from
+          # caching the initial negative lookup while PyPI propagates the release.
           bound="$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)"
           for attempt in $(seq 1 10); do
             if uv --config-file uv.toml tool run \
+                --refresh-package metabrowser \
                 --exclude-newer-package "metabrowser=$bound" \
                 "metabrowser@$version" --help \
               && uv --config-file uv.toml tool run \
+                --refresh-package metabrowser \
                 --exclude-newer-package "metabrowser=$bound" \
                 "metabrowser@$version" --doctor; then
               exit 0

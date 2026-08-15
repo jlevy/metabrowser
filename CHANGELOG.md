@@ -4,6 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Release automation:
+
+- Post-publication smoke retries now refresh the package index on every attempt, so an
+  initial negative lookup cannot remain cached while a new PyPI release propagates.
+
 ## 0.4.1
 
 Folder views and navigation:
