@@ -763,21 +763,21 @@
   /* so medium (500) is the */
   /* legibility floor */
   --file-age-weight-recent: var(--weight-bold); /* live, seconds, minutes pop */
-  /* Accessible foregrounds. Live is a separate state, not an elapsed
-     age bucket. The light-theme values are the OKLCH conversion of the
-     approved salmon and yellow reference ramp: elapsed ages stay in a
-     narrow gold-to-yellow family while chroma falls monotonically. */
-  --file-age-live: oklch(54% 0.155 40.4);
-  --file-age-sec: oklch(50.6% 0.103 91.6); /* < 1 minute */
-  --file-age-min: oklch(50.5% 0.1 97.9); /* < 1 hour */
-  --file-age-hr: oklch(51% 0.096 104); /* < 1 day */
-  --file-age-day: oklch(50.5% 0.078 107.1); /* < 1 week */
-  --file-age-wk: oklch(51.8% 0.044 107.8); /* < 1 month */
-  --file-age-old: oklch(53.4% 0.007 106.6); /* ≥ 1 month */
+  /* Live remains a distinct activity state, but it and the under-one-
+     minute bucket share the freshest reddish-orange visual. Later ages
+     retain the approved swatch hues while using darker lightness and
+     stronger chroma so the text stays vivid without a marker. */
+  --file-age-live: oklch(66% 0.26 55);
+  --file-age-sec: var(--file-age-live); /* < 1 minute */
+  --file-age-min: oklch(72% 0.23 97.5); /* < 1 hour */
+  --file-age-hr: oklch(64% 0.2 104); /* < 1 day */
+  --file-age-day: oklch(56% 0.14 107.1); /* < 1 week */
+  --file-age-wk: oklch(50% 0.07 107.8); /* < 1 month */
+  --file-age-old: oklch(48% 0.012 106.6); /* ≥ 1 month */
 
   /* Translucent surface variants for badges and area encodings. */
-  --file-age-fill-live: oklch(71% 0.151 43 / 0.22);
-  --file-age-fill-sec: oklch(86.5% 0.177 90.4 / 0.32);
+  --file-age-fill-live: oklch(71% 0.151 55 / 0.22);
+  --file-age-fill-sec: var(--file-age-fill-live);
   --file-age-fill-min: oklch(78.6% 0.159 97.5 / 0.28);
   --file-age-fill-hr: oklch(71.4% 0.138 104 / 0.24);
   --file-age-fill-day: oklch(62% 0.097 107.1 / 0.19);
@@ -916,16 +916,16 @@
 
   /* Dark surfaces keep the same semantics and hue families while
      raising foreground lightness and fill alpha. */
-  --file-age-live: oklch(78% 0.109 43.9);
-  --file-age-sec: oklch(91% 0.144 95.3);
+  --file-age-live: oklch(78% 0.109 55);
+  --file-age-sec: var(--file-age-live);
   --file-age-min: oklch(89% 0.136 99.4);
   --file-age-hr: oklch(86% 0.121 104);
   --file-age-day: oklch(80.6% 0.088 106.5);
   --file-age-wk: oklch(74.1% 0.043 107.4);
   --file-age-old: oklch(69.7% 0.006 106.5);
 
-  --file-age-fill-live: oklch(75.1% 0.126 43.7 / 0.26);
-  --file-age-fill-sec: oklch(89.1% 0.166 94.2 / 0.42);
+  --file-age-fill-live: oklch(75.1% 0.126 55 / 0.26);
+  --file-age-fill-sec: var(--file-age-fill-live);
   --file-age-fill-min: oklch(85.9% 0.161 98.8 / 0.36);
   --file-age-fill-hr: oklch(81.4% 0.149 104.1 / 0.3);
   --file-age-fill-day: oklch(73% 0.116 107.1 / 0.24);

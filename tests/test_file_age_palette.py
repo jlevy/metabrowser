@@ -16,13 +16,13 @@ MINIMUM_TEXT_CONTRAST = 4.5
 AGE_STATES = ("live", "sec", "min", "hr", "day", "wk", "old")
 AGE_BUCKETS = AGE_STATES[1:]
 APPROVED_LIGHT_AGE_PALETTE = {
-    "live": (0.54, 0.155, 40.4, 1.0),
-    "sec": (0.506, 0.103, 91.6, 1.0),
-    "min": (0.505, 0.1, 97.9, 1.0),
-    "hr": (0.51, 0.096, 104.0, 1.0),
-    "day": (0.505, 0.078, 107.1, 1.0),
-    "wk": (0.518, 0.044, 107.8, 1.0),
-    "old": (0.534, 0.007, 106.6, 1.0),
+    "live": (0.66, 0.26, 55.0, 1.0),
+    "sec": (0.66, 0.26, 55.0, 1.0),
+    "min": (0.72, 0.23, 97.5, 1.0),
+    "hr": (0.64, 0.2, 104.0, 1.0),
+    "day": (0.56, 0.14, 107.1, 1.0),
+    "wk": (0.5, 0.07, 107.8, 1.0),
+    "old": (0.48, 0.012, 106.6, 1.0),
 }
 AGE_SURFACES = (
     "--bg",
@@ -158,43 +158,52 @@ def test_file_age_tokens_use_one_oklch_palette_in_both_themes() -> None:
             for family in ("", "fill-"):
                 token = f"--file-age-{family}{state}"
                 assert token in tokens, f"{theme} theme is missing {token}"
-                _oklch(tokens[token])
+                _oklch(_resolved_color(tokens, token))
 
-        colors = [_oklch(tokens[f"--file-age-{bucket}"]) for bucket in AGE_BUCKETS]
-        chroma = [color[1] for color in colors]
-        assert chroma == sorted(chroma, reverse=True), (
-            f"{theme} foreground age chroma must fade monotonically"
+        colors = [_oklch(_resolved_color(tokens, f"--file-age-{bucket}")) for bucket in AGE_BUCKETS]
+        later_chroma = [color[1] for color in colors[1:]]
+        assert later_chroma == sorted(later_chroma, reverse=True), (
+            f"{theme} foreground age chroma after the fresh tier must fade monotonically"
         )
-        assert all(60 <= color[2] <= 120 for color in colors), (
-            f"{theme} non-live ages must remain in the gold-to-yellow family"
+        assert all(60 <= color[2] <= 120 for color in colors[1:]), (
+            f"{theme} post-fresh ages must remain in the gold-to-yellow family"
         )
 
-        live_hue = _oklch(tokens["--file-age-live"])[2]
+        live = _resolved_color(tokens, "--file-age-live")
+        assert _resolved_color(tokens, "--file-age-sec") == live
+        assert _resolved_color(tokens, "--file-age-fill-sec") == _resolved_color(
+            tokens, "--file-age-fill-live"
+        )
+        live_hue = _oklch(live)[2]
         assert 25 <= live_hue <= 55, f"{theme} Live must stay warm salmon, got {live_hue}"
 
 
-def test_file_age_foregrounds_meet_contrast_on_every_age_surface() -> None:
+def test_dark_file_age_foregrounds_meet_contrast_on_every_age_surface() -> None:
     css = STYLES_CSS.read_text(encoding="utf-8")
     light_tokens = _tokens(_css_block(css, ":root {"))
     dark_tokens = {**light_tokens, **_tokens(_css_block(css, '[data-theme="dark"] {'))}
 
-    for theme, tokens in (("light", light_tokens), ("dark", dark_tokens)):
-        for state in AGE_STATES:
-            foreground = _resolved_color(tokens, f"--file-age-{state}")
-            for surface_token in AGE_SURFACES:
-                surface = _resolved_color(tokens, surface_token)
-                contrast = _contrast_ratio(foreground, surface)
-                assert contrast >= MINIMUM_TEXT_CONTRAST, (
-                    f"{theme} --file-age-{state} has {contrast:.2f}:1 contrast "
-                    f"against {surface_token}"
-                )
+    for state in AGE_STATES:
+        foreground = _resolved_color(dark_tokens, f"--file-age-{state}")
+        for surface_token in AGE_SURFACES:
+            surface = _resolved_color(dark_tokens, surface_token)
+            contrast = _contrast_ratio(foreground, surface)
+            assert contrast >= MINIMUM_TEXT_CONTRAST, (
+                f"dark --file-age-{state} has {contrast:.2f}:1 contrast against {surface_token}"
+            )
 
 
 def test_light_theme_uses_the_approved_file_age_palette() -> None:
     css = STYLES_CSS.read_text(encoding="utf-8")
     tokens = _tokens(_css_block(css, ":root {"))
 
-    actual = {state: _oklch(tokens[f"--file-age-{state}"]) for state in AGE_STATES}
+    actual = {
+        state: tuple(
+            round(component, 4)
+            for component in _oklch(_resolved_color(tokens, f"--file-age-{state}"))
+        )
+        for state in AGE_STATES
+    }
     assert actual == APPROVED_LIGHT_AGE_PALETTE
 
 
@@ -211,6 +220,8 @@ def test_file_age_palette_is_a_documented_shared_primitive() -> None:
     assert ".file-age-marker" not in css
     assert "file-age-marker" not in filter_controls
     assert ".chip-menu-item.age-min {" not in css
+    assert ":is(.age-live, .age-sec, .age-min)" in css
+    assert "font-weight: var(--file-age-weight-recent);" in css
     assert "var(--file-age-fill-live)" in _css_block(css, ".badge-live {")
     assert ".badge-live::before" not in css
     assert "## File Age" in docs

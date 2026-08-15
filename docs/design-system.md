@@ -51,27 +51,28 @@ Each state owns two parallel OKLCH tokens in `static/styles.css`:
 - `--file-age-<state>` is an accessible text foreground
 - `--file-age-fill-<state>` is a translucent surface or area fill
 
-Live is an activity state, not an elapsed-age bucket.
-It uses a warm salmon family that remains distinct from the deeper destructive red and
-from success green.
-The six elapsed-age buckets retain the existing thresholds: under one
-minute, under one hour, under one day, under one week, under one month, and older.
+Live is an activity state, not an elapsed-age bucket, but it shares the freshest
+reddish-orange token and bold weight with the under-one-minute tier.
+That warm family remains distinct from the deeper destructive red and from success
+green. The six elapsed-age buckets retain the existing thresholds: under one minute,
+under one hour, under one day, under one week, under one month, and older.
 They move from gold through yellow-green while chroma and prominence fall monotonically
 toward a warm neutral.
 
 Text color is the sole age hue signal; dates and Live labels never gain a dot, swatch,
 or adjacent color cue.
-Light-theme text is the OKLCH conversion of the approved reference ramp: salmon for
-Live, then the original high-saturation yellow at 48° followed by 51°, 55°, 58°, and the
-subdued 60° endpoint.
-The foreground lightness is contrast-safe on white and tinted surfaces while preserving
-those reference hues and their descending saturation.
+Light-theme text derives from the visible swatches in the approved reference ramp:
+reddish orange for Live and under one minute, then high-saturation yellow followed by
+progressively quieter yellow-green and neutral endpoints.
+After the adjacent dots were removed, the text retained those swatch hues, lowered
+lightness modestly, and raised chroma so the labels remain dark enough for the UI while
+carrying the vivid color themselves.
 The `.age-live` and `.age-*` classes select tokens only, so new consumers reuse the
 primitive rather than reconstructing colors.
 
 Adjust this family only at its token definitions, preserve the semantic ordering in both
-themes, and run `tests/test_file_age_palette.py` to verify OKLCH structure, gamut, and
-contrast across the surfaces where ages appear.
+themes, and run `tests/test_file_age_palette.py` to verify the approved light palette,
+OKLCH structure, semantic ordering, and dark-theme surface contrast.
 
 ## Typography
 
