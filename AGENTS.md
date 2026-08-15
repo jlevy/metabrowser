@@ -24,6 +24,22 @@ isolated installed-wheel smoke tests.
 Run `make hooks-install` once per checkout to install the Lefthook pre-commit and
 pre-push gates.
 
+## Compatibility and Legacy Code
+
+**Speculative compatibility layers are forbidden.** Apply
+`tbd guidelines backward-compatibility-rules` for the general rules, and
+[Compatibility and Legacy Code](docs/development.md#compatibility-and-legacy-code) for
+this repository’s structural facts and standing answers.
+
+- Name the consumer or released data that cannot update alongside the producer, in the
+  pull request, or do not add the layer.
+- The server, browser shell, and built-in plugins ship as one artifact, so `/api/*`,
+  `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are internal
+  contracts. Change one everywhere in one commit, and note it in `CHANGELOG.md` when a
+  user or plugin author can observe the change.
+- `PLUGIN_SDK_VERSION` is a hard gate, not a compatibility layer: bump it on a break and
+  update every built-in manifest in the same commit.
+
 ## Python and Dependencies
 
 - Use uv exclusively. Never invoke raw `python` or `pip`, activate `.venv`, or add a
@@ -59,8 +75,20 @@ pre-push gates.
 - Link to source documentation instead of duplicating long policy text.
 - Never add credentials, private organization or repository names, private issue IDs,
   personal absolute paths, customer data, or copied operational artifacts.
-- Run `uv --config-file uv.toml run --frozen python devtools/public_hygiene.py` before
-  every public release or repository-visibility change.
+
+## Changing This Guidance
+
+Do not add a rule or restriction here or in `docs/development.md` without deciding from
+first principles that it is necessary.
+See [Changing This Guidance](docs/development.md#changing-this-guidance).
+
+- State the reason with the rule, so a later reader can tell when it stops applying.
+- Prefer a check to a sentence: if `make verify` can enforce it, put it there instead of
+  restating it as guidance.
+- Never write a count or baseline into prose that nothing maintains.
+  Cite the file or command that reports the current value.
+- Delete a rule whose reason no longer holds, and treat challenging one from first
+  principles as ordinary work.
 
 ## Git
 

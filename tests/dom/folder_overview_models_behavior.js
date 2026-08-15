@@ -134,7 +134,7 @@ async function importSource(relative) {
       { id: "images", label: "Images", groupId: "media", extensions: [".png"] },
       { id: "log-files", label: "Log files", groupId: "other", extensions: [".log"] },
     ],
-    categoryForFile: () => "other",
+    groupForFile: () => "other",
   };
   const breakdownEnvelope = modelModule.normalizeRollupEnvelope({
     ...raw,
@@ -393,38 +393,6 @@ async function importSource(relative) {
   first.release();
   second.release();
 
-  const state = treemapModel.sanitizeTreemapState({
-    metric: "files",
-    grouping: "type",
-    color: "age",
-    ignored: "hidden",
-  });
-  check(
-    "treemap state keeps only the metric and boolean ignore scope",
-    state.metric === "files" &&
-      state.includeIgnored === true &&
-      Object.keys(state).join(",") === "metric,includeIgnored",
-    JSON.stringify(state),
-  );
-  check(
-    "every legacy ignored mode resets to the checked default",
-    treemapModel.sanitizeTreemapState({ ignored: "dimmed" }).includeIgnored === true &&
-      treemapModel.sanitizeTreemapState({ ignored: "shown" }).includeIgnored === true &&
-      treemapModel.sanitizeTreemapState({ ignored: "hidden" }).includeIgnored === true,
-  );
-  check(
-    "the new ignored boolean persists",
-    treemapModel.sanitizeTreemapState({ includeIgnored: false }).includeIgnored === false,
-  );
-  check(
-    "ignored is shown by default",
-    treemapModel.sanitizeTreemapState(null).includeIgnored === true,
-  );
-  check(
-    "Files is the default metric while an explicit Bytes choice is retained",
-    treemapModel.sanitizeTreemapState(null).metric === "files" &&
-      treemapModel.sanitizeTreemapState({ metric: "size" }).metric === "size",
-  );
   check("treemap parent path", treemapModel.parentPath("a/b") === "a");
   check(
     "treemap parent navigation identifies the enclosing folder",

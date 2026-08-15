@@ -96,15 +96,19 @@ async function main() {
     throw new Error("explicit saved rollup choices were not retained");
   }
 
-  const migratedPrefs = new Map([["folder.treemap", { metric: "files", includeIgnored: true }]]);
-  const migrated = module.createFolderRollupControls({
+  const unrelatedPrefs = new Map([["folder.treemap", { metric: "size", includeIgnored: false }]]);
+  const fresh = module.createFolderRollupControls({
     prefs: {
-      get: (key, fallback) => (migratedPrefs.has(key) ? migratedPrefs.get(key) : fallback),
-      set: (key, value) => migratedPrefs.set(key, value),
+      get: (key, fallback) => (unrelatedPrefs.has(key) ? unrelatedPrefs.get(key) : fallback),
+      set: (key, value) => unrelatedPrefs.set(key, value),
     },
   });
-  if (migrated.get().metric !== "files" || migrated.get().includeIgnored !== true) {
-    throw new Error("legacy treemap preference was not migrated");
+  if (
+    fresh.get().metric !== "files" ||
+    fresh.get().includeIgnored !== true ||
+    unrelatedPrefs.has("folder.rollup")
+  ) {
+    throw new Error("an unrelated pre-release preference changed rollup defaults");
   }
   console.log(JSON.stringify({ ok: true }));
 }

@@ -4,6 +4,42 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Compatibility policy:
+
+- Development guidance now forbids speculative compatibility layers.
+  An alias, fallback branch, shim, deprecation window, or transitional duplicate field
+  requires a real consumer that must keep using the old contract after the change ships,
+  named in the pull request.
+  The server, browser shell, and built-in plugins ship as one artifact behind an
+  uncached page with content-versioned asset URLs, so there is no version skew for such
+  code to protect against.
+- Removed the file-type compatibility layer that policy forbids.
+  The `/api/rollup` response no longer carries `type_tallies`; consume
+  `file_type_breakdown`. The `type_top` query parameter and its `mb.fetchRollup` option
+  are gone in favor of `remaining_top`, and `RollupOptions` and `InventoryIndex.rollup`
+  take `remaining_top` rather than `type_top`.
+- Removed the `ROLLUP_FILE_TYPE_NAMED_LIMIT` and `ROLLUP_FILE_TYPE_RAW_LIMIT` browser
+  settings; use `ROLLUP_FILE_TYPE_FILENAME_LIMIT` and
+  `ROLLUP_FILE_TYPE_REMAINING_LIMIT`.
+- Removed the `file-type-taxonomy-compat-v1` settings projection and
+  `serialize_file_type_taxonomy()`, which no longer had a consumer.
+- Removed the `mb.fileTypes.categories` and `mb.fileTypes.categoryForFile` aliases; use
+  `groups` and `groupForFile`. The browser SDK carries no deprecation window and is
+  versioned with the release.
+- `sdk_version` in a plugin manifest is now required and enforced instead of advisory.
+  A manifest missing it or declaring any value other than the host’s
+  `PLUGIN_SDK_VERSION` is refused when it loads, with a message naming the requirement;
+  `metab --doctor` exits non-zero on the same problem.
+  Previously the field was recorded and never compared, so a plugin written against a
+  different SDK loaded and failed later inside a renderer.
+- Development guidance now defers to `tbd guidelines backward-compatibility-rules` for
+  the general rules and records only this repository’s structural facts and standing
+  per-area answers, rather than restating shared policy.
+- Removed two migrations for persisted browser state that no released version could have
+  written: the treemap’s pre-prefs `metabrowser.folder.treemap` localStorage key, added
+  in an untagged commit, and the theme-mode localStorage fallback, which has been
+  unreachable since cookies became the store before v0.1.0.
+
 ## 0.4.0
 
 Folder Overview and Treemap:
@@ -55,8 +91,6 @@ Navigation, plugins, and reliability:
 - The public browser SDK adds immutable file-type definitions, bounded folder-rollup
   helpers, folder context, view-aware navigation, shared formatters and file identity,
   active-view state, and an extensible folder-panel registry.
-  Existing documented extension and rollup aliases remain available for a transition
-  release.
 - Folder rollups run off the event loop and reuse the inventory snapshot instead of
   crawling the filesystem again.
   Rapidly rebuilt directories are reconciled against the current filesystem so stale

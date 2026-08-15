@@ -324,14 +324,12 @@
       maxExtensionComponents,
       registryIdentity: Object.freeze({ schemaVersion: 1, revision, fingerprint }),
       groups: frozenGroups,
-      categories: frozenGroups,
       families: frozenFamilies,
       kinds: Object.freeze(kinds),
       classify,
       matchExtension,
       canonicalExtension,
       groupForFile,
-      categoryForFile: groupForFile,
       distributionKeyForExtension,
     });
   }
