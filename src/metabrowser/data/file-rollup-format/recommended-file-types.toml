@@ -8,7 +8,7 @@
 # devtools/file_type_contract.py --write. Do not edit the generated documentation copy.
 
 schema_version = 1
-registry_revision = 1
+registry_revision = 2
 max_extension_components = 2
 
 [[group]]
@@ -27,24 +27,19 @@ label = "Data"
 order = 30
 
 [[group]]
-id = "logs"
-label = "Logs"
-order = 40
-
-[[group]]
 id = "archives"
 label = "Archives"
-order = 50
+order = 40
 
 [[group]]
 id = "media"
 label = "Media"
-order = 60
+order = 50
 
 [[group]]
 id = "other"
 label = "Other"
-order = 70
+order = 60
 
 [[family]]
 id = "python"
@@ -349,7 +344,7 @@ order = 220
 [[family]]
 id = "log-files"
 label = "Log files"
-group = "logs"
+group = "other"
 order = 100
 
 [[family]]

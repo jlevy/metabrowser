@@ -302,7 +302,7 @@ const menuAged = fc.menuGroupHtml({
     {
       value: "live",
       label: "Live",
-      ageClass: "age-sec",
+      ageClass: "age-live",
       title: "Files modified in the past 90 seconds",
       count: 12,
     },
@@ -313,7 +313,12 @@ const menuAged = fc.menuGroupHtml({
   anyValue: "all",
   menuId: "r",
 });
-assertContains("live takes the under-a-minute colour", menuAged, "chip-menu-item age-sec");
+assertContains(
+  "age-menu Live uses the shared freshest colour",
+  menuAged,
+  "chip-menu-item age-live",
+);
+assertMissing("age rows use text color without a marker", menuAged, "file-age-marker");
 assertContains(
   "live explains its exact cutoff",
   menuAged,

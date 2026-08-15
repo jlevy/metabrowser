@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────────
-   Design system — HSL color tokens + elevation tokens, no literals
+   Design system — semantic color tokens + elevation tokens, no literals
    outside :root.
 
    Every color AND every box-shadow in this app is defined ONCE as a
@@ -10,35 +10,40 @@
    tests/test_viz_css_no_literal_colors.py; the same rule applies by
    convention to the rest of the app.
 
-   Why HSL (hsl(H S% L%) / hsl(H S% L% / A))?
+   New and deliberately adjusted color families use OKLCH
+   (oklch(L% C H) / oklch(L% C H / A)). Existing HSL families stay
+   valid until their palette is deliberately adjusted; do not mass-convert a
+   stable palette merely to change syntax.
 
      1. Hue encodes *family*. Tokens that share a hue are meant to
         read as related. Example — adapter and model chips both sit
-        on ~sea-green (~160°); file-age grades walk a continuous
-        warm→cool→grey ramp (red→amber→green→blue→grey); chart
+        on ~sea-green; file-age grades keep every non-live age in a
+        yellow-to-neutral family while Live has one salmon state; chart
         threshold colors use the same info / warning / error hues
         as the status palette so dashboards and alerts speak the
         same language. To introduce a new token, pick the hue that
         places it in the right family first — do not pick a color
         that "looks nice" in isolation.
 
-     2. Lightness is the retune knob. To make a dark theme or a
-        higher-contrast variant, hold H and S roughly fixed and
+     2. Lightness is the contrast knob. To make a dark theme or a
+        higher-contrast variant, hold H and chroma roughly fixed and
         invert/shift L. A pair like "--viz-chip-adapter-bg" /
         "--viz-chip-adapter-text" is two lightness stops on one
         hue — so bg and text retune together when either is
-        adjusted. Never shift hue to dim a color; lower L.
+        adjusted. Never shift hue to dim a color; move L toward the
+        surrounding surface.
 
-     3. Saturation is the loudness knob. Chart callouts, age
-        warnings, and status dots are higher S; body text, borders,
-        and surfaces are low S. If a new token reads as too noisy,
-        drop S before dropping L.
+     3. Chroma is the loudness knob. Chart callouts, fresh-age
+        text, and status dots are higher C; body text, borders,
+        and surfaces are low C. OKLCH makes equal chroma and lightness
+        steps more perceptually uniform than HSL. If a new token reads
+        as too noisy, drop C before dropping L.
 
-     4. Alpha is L4 syntax: hsl(H S% L% / 0.5). This lets us derive
+     4. Alpha uses Color 4 syntax: oklch(L% C H / 0.5). This lets us derive
         translucent variants at the point of use (chart fills,
         annotation backgrounds) without a separate -a-20 token for
-        every color. The JS helper colorWithAlpha() in charts.js
-        applies alpha to any hsl() at runtime.
+        every color. The JS helper colorWithAlpha() in charts.js accepts
+        both OKLCH and legacy HSL while the remaining families migrate.
 
    How to add a color token: add it in :root below, next to the
    family it belongs to, with a one-line comment naming the use site
@@ -290,6 +295,7 @@
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
+  --section-heading-divider-gap: 5px;
 
   /* "Panel" envelope — the bordered, rounded frame shared by markdown
      tables and frontmatter blocks (and any future similar surface).
@@ -424,6 +430,7 @@
   --hover-bg: hsl(0 0% 94%);
   --link: hsl(205 80% 40%);
   --muted: hsl(208 7% 46%);
+  --dimmed-content-opacity: 0.45;
 
   /* Selection highlight — the "current item" indicator shared by the
      file-tree nav and the embedded KPress document TOC, so both read the
@@ -638,10 +645,12 @@
      legend item, frame header, node card, toggle) shares the same ease
      + duration so hover feels consistent across the plane. Filter-darken
      is used where the element has a solid rest-color; background swap is
-     used where the rest-state is transparent. */
+     used where the rest-state is transparent. Categorical data marks use
+     a slight whole-mark brightness increase so hue and internal contrast remain. */
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
+  --viz-data-mark-hover-filter: brightness(1.06);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -742,46 +751,38 @@
   --spinner-mini-track: hsl(0 0% 87%);
   --spinner-mini-accent: hsl(0 0% 55%);
 
-  /* File-age design system (used by the file-tree ".age-*" classes).
+  /* File-age design system (used by every ".age-*" class and Live badge).
      Rationale: the primary affordance of the file browser is "where did
      something *just happen*?" — when runs write new files, the user's
-     eye should land on them without scanning names. Color is the
-     primary signal (warm/red = seconds, cooling to grey = old); weight
-     is a secondary boost for the very-recent tiers (seconds, minutes)
-     so they also read as bold. Every ".age-*" class pulls from these
-     tokens — do not add literal hex values inline. */
+     eye should land on them without scanning names. The text itself
+     carries the hue, and weight boosts the very-recent tiers. Live is a
+     warm salmon activity state. Every elapsed age stays yellow and loses
+     chroma and prominence as it gets older. */
   --file-age-weight: var(--weight-medium); /* base — 11px labels read */
   /* as light at normal 400, */
   /* so medium (500) is the */
   /* legibility floor */
-  --file-age-weight-recent: var(--weight-bold); /* seconds + minutes pop */
+  --file-age-weight-recent: var(--weight-bold); /* live, seconds, minutes pop */
+  /* Live remains a distinct activity state, but it and the under-one-
+     minute bucket share the freshest reddish-orange visual. Later ages
+     retain the approved swatch hues while using darker lightness and
+     stronger chroma so the text stays vivid without a marker. */
+  --file-age-live: oklch(74% 0.22 55);
+  --file-age-sec: var(--file-age-live); /* < 1 minute */
+  --file-age-min: oklch(72% 0.23 97.5); /* < 1 hour */
+  --file-age-hr: oklch(64% 0.2 104); /* < 1 day */
+  --file-age-day: oklch(56% 0.14 107.1); /* < 1 week */
+  --file-age-wk: oklch(50% 0.07 107.8); /* < 1 month */
+  --file-age-old: oklch(48% 0.012 106.6); /* ≥ 1 month */
 
-  /* Freshness ramp (red → orange → dim yellow). Single-family encoding:
-     hue walks monotonically from red to yellow as age grows and
-     saturation drops from loud to quiet, so the reading is "warmer +
-     louder = newer; cooler + quieter = older" without ever crossing
-     into a different color family. Lightness sits near 30-35% so the
-     text clears WCAG AA (>= 4.5:1) not just on the page background but
-     on every tinted surface it rides: the matching --file-age-fill-*
-     wash, the ft-* washes, hover and selection tints. Dark theme has
-     matching lightened variants below. */
-  --file-age-sec: hsl(8 85% 33%); /* < 1 min — saturated red */
-  --file-age-min: hsl(22 78% 32%); /* < 1 hour — red-orange */
-  --file-age-hr: hsl(34 68% 30%); /* < 1 day — orange */
-  --file-age-day: hsl(44 55% 30%); /* < 1 week — amber */
-  --file-age-wk: hsl(50 35% 32%); /* < 1 month — dim yellow */
-  --file-age-old: hsl(52 18% 35%); /* ≥ 1 month — desaturated khaki */
-
-  /* Freshness ramp as area fills (treemap cells). Same hue walk as the
-     text ramp above but as translucent washes so cell labels keep
-     contrast; alpha fades with age so "louder = newer" holds for
-     areas. Dark theme raises alpha to survive the darker surface. */
-  --file-age-fill-sec: hsl(8 85% 52% / 0.32);
-  --file-age-fill-min: hsl(22 78% 48% / 0.28);
-  --file-age-fill-hr: hsl(34 68% 46% / 0.24);
-  --file-age-fill-day: hsl(44 55% 44% / 0.19);
-  --file-age-fill-wk: hsl(50 35% 42% / 0.14);
-  --file-age-fill-old: hsl(52 18% 40% / 0.1);
+  /* Translucent surface variants for badges and area encodings. */
+  --file-age-fill-live: oklch(71% 0.151 55 / 0.22);
+  --file-age-fill-sec: var(--file-age-fill-live);
+  --file-age-fill-min: oklch(78.6% 0.159 97.5 / 0.28);
+  --file-age-fill-hr: oklch(71.4% 0.138 104 / 0.24);
+  --file-age-fill-day: oklch(62% 0.097 107.1 / 0.19);
+  --file-age-fill-wk: oklch(54.8% 0.047 107.8 / 0.14);
+  --file-age-fill-old: oklch(51.6% 0.006 106.6 / 0.1);
 
   /* File-type design system (used everywhere a filename shows up —
      file tree, viz dep icons, drawer path rows).
@@ -913,25 +914,23 @@
   --color-syntax-deletion: hsl(355 80% 82%);
   --color-syntax-deletion-bg: hsl(355 55% 18%);
 
-  /* Freshness text ramp, lightened for dark surfaces: same hue and
-     saturation walk as the light ramp, lightness raised until every
-     bucket clears WCAG AA on its own wash, the ft-* washes, and the
-     hover/selection tints. */
-  --file-age-sec: hsl(8 85% 77%);
-  --file-age-min: hsl(22 78% 70%);
-  --file-age-hr: hsl(34 68% 62%);
-  --file-age-day: hsl(44 55% 52%);
-  --file-age-wk: hsl(50 35% 51%);
-  --file-age-old: hsl(52 18% 57%);
+  /* Dark surfaces keep the same semantics and hue families while
+     raising foreground lightness and fill alpha. */
+  --file-age-live: oklch(78% 0.109 55);
+  --file-age-sec: var(--file-age-live);
+  --file-age-min: oklch(89% 0.136 99.4);
+  --file-age-hr: oklch(86% 0.121 104);
+  --file-age-day: oklch(80.6% 0.088 106.5);
+  --file-age-wk: oklch(74.1% 0.043 107.4);
+  --file-age-old: oklch(69.7% 0.006 106.5);
 
-  /* Treemap age fills: higher alpha than light theme so the washes
-     stay legible on the dark surface. */
-  --file-age-fill-sec: hsl(8 85% 58% / 0.42);
-  --file-age-fill-min: hsl(22 78% 54% / 0.36);
-  --file-age-fill-hr: hsl(34 68% 52% / 0.3);
-  --file-age-fill-day: hsl(44 55% 50% / 0.24);
-  --file-age-fill-wk: hsl(50 35% 48% / 0.18);
-  --file-age-fill-old: hsl(52 18% 46% / 0.12);
+  --file-age-fill-live: oklch(75.1% 0.126 55 / 0.26);
+  --file-age-fill-sec: var(--file-age-fill-live);
+  --file-age-fill-min: oklch(85.9% 0.161 98.8 / 0.36);
+  --file-age-fill-hr: oklch(81.4% 0.149 104.1 / 0.3);
+  --file-age-fill-day: oklch(73% 0.116 107.1 / 0.24);
+  --file-age-fill-wk: oklch(61.7% 0.053 107.9 / 0.18);
+  --file-age-fill-old: oklch(55.2% 0.007 106.6 / 0.12);
 
   --panel-header-bg: hsl(222 17% 18%);
   --scrollbar-thumb: hsl(220 10% 36%);
@@ -1165,6 +1164,39 @@ body {
 .btn:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
+}
+/* Parent navigation is a button, not a bare icon action. Labelled and
+   icon-only forms share the same compact arrow, persistent boundary,
+   hover, and focus vocabulary through `.btn`. */
+.parent-nav-btn {
+  display: inline-flex;
+  height: var(--icon-btn-size);
+  align-items: center;
+  gap: 6px;
+  border-color: var(--viz-border-strong);
+  background: var(--viz-surface);
+}
+.parent-nav-btn-icon-only {
+  width: var(--icon-btn-size);
+  justify-content: center;
+  padding: 3px;
+}
+.parent-nav-arrow {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1;
+}
+.parent-nav-btn:hover .parent-nav-arrow,
+.parent-nav-btn:focus-visible .parent-nav-arrow {
+  color: inherit;
+}
+.parent-nav-btn[disabled] {
+  cursor: default;
+  opacity: 0.4;
+}
+.parent-nav-btn[disabled]:hover {
+  border-color: var(--viz-border-strong);
+  color: var(--text);
 }
 /* ── Section disclosures — shared trailing-chevron primitive ─────
    Section titles keep their local typography and put a quiet, em-sized
@@ -1944,29 +1976,34 @@ html[data-prose-font="sans"] {
   color: var(--size-color-bold);
   font-weight: var(--weight-bold);
 }
-/* Freshness ramp on the file tree: color (primary signal) + weight-boost
-   on the two most-recent tiers (secondary signal) so the newest files
-   read as the eye's first stop during a run. Colors + weights come from
-   --file-age-* tokens; do not inline literal hex values here. */
+/* File-age primitive. The text color is the sole age hue signal. */
+.age-live {
+  --file-age-current: var(--file-age-live);
+}
 .age-sec {
-  color: var(--file-age-sec);
-  font-weight: var(--file-age-weight-recent);
+  --file-age-current: var(--file-age-sec);
 }
 .age-min {
-  color: var(--file-age-min);
-  font-weight: var(--file-age-weight-recent);
+  --file-age-current: var(--file-age-min);
 }
 .age-hr {
-  color: var(--file-age-hr);
+  --file-age-current: var(--file-age-hr);
 }
 .age-day {
-  color: var(--file-age-day);
+  --file-age-current: var(--file-age-day);
 }
 .age-wk {
-  color: var(--file-age-wk);
+  --file-age-current: var(--file-age-wk);
 }
 .age-old {
-  color: var(--file-age-old);
+  --file-age-current: var(--file-age-old);
+}
+:is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
+  color: var(--file-age-current);
+  font-weight: var(--file-age-weight);
+}
+:is(.age-live, .age-sec, .age-min) {
+  font-weight: var(--file-age-weight-recent);
 }
 .tree-children {
   margin-left: 16px;
@@ -2058,7 +2095,7 @@ html[data-prose-font="sans"] {
    — just faded. Hover still lights up via .tree-item:hover. */
 .tree-item.tree-item-gitignored,
 .tree-item.tree-item-empty {
-  opacity: 0.45;
+  opacity: var(--dimmed-content-opacity);
 }
 .tree-item.tree-item-gitignored:hover,
 .tree-item.tree-item-empty:hover {
@@ -2328,17 +2365,8 @@ html[data-prose-font="sans"] {
   font-variant-numeric: tabular-nums;
   font-size: var(--ui-small-font-size);
 }
-/* Age rows wear the freshness ramp, so the menu is the legend for the
-   colours in the tree. The .age-* classes already colour the button;
-   this only pulls the hour row's red back a little, because Live and
-   Past hour are adjacent steps and sit next to each other here in a
-   way they never do in a file listing. Scoped to the menu on purpose:
-   the tree's ramp is contrast-audited against every surface it rides
-   (see the --file-age-* block), and this is a legibility tweak for one
-   control, not a change to what the colours mean. */
-.chip-menu-item.age-min {
-  color: color-mix(in srgb, var(--file-age-min) 72%, var(--muted));
-}
+/* Age menu rows inherit the same foreground as tree and header ages.
+   There are no menu-only color corrections. */
 /* Labelled checkbox — the family's one deliberate break from
    button-with-aria-pressed, for a boolean whose polarity has to be
    legible. A pressed pill reading "Gitignored" does not say whether
@@ -2644,14 +2672,6 @@ html[data-prose-font="sans"] {
 }
 .folder-crumb-sep {
   color: var(--muted);
-}
-.folder-up {
-  font-size: 14px;
-  line-height: 1;
-}
-.folder-up[disabled] {
-  opacity: 0.4;
-  cursor: default;
 }
 .folder-header-summary {
   display: inline-flex;
@@ -3747,18 +3767,9 @@ pre.code-block code.hljs {
 }
 
 .badge-live {
-  background: var(--status-success-soft-bg);
-  color: var(--status-success-soft-text);
+  background: var(--file-age-fill-live);
+  color: var(--file-age-live);
   animation: pulse-dot 1.5s ease-in-out infinite;
-}
-.badge-live::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-circle);
-  background: var(--status-success-dot);
-  margin-right: 4px;
 }
 
 /* ── Charts ─────────────────────────────────────────────────── */

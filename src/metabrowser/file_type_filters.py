@@ -20,6 +20,7 @@ from metabrowser.file_type_registry import (
 )
 
 _VALID_ID = re.compile(r"^[a-z][a-z0-9-]*$")
+_FALLBACK_GROUP_ID = "other"
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +193,8 @@ def distribution_key_for_extension(extension: str) -> str:
 
 
 def _build_filter_type_presets() -> tuple[FilterTypePreset, ...]:
+    """Build closed group presets; the open-ended Other group stays a section only."""
+
     return tuple(
         {
             "id": category.id,
@@ -205,8 +208,11 @@ def _build_filter_type_presets() -> tuple[FilterTypePreset, ...]:
             + category.extra_values,
         }
         for category in FILE_TYPE_CATEGORIES
-        if any(family.category == category.id for family in FILE_TYPE_FAMILIES)
-        or category.extra_values
+        if category.id != _FALLBACK_GROUP_ID
+        and (
+            any(family.category == category.id for family in FILE_TYPE_FAMILIES)
+            or category.extra_values
+        )
     )
 
 

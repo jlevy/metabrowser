@@ -1,6 +1,6 @@
 /** @typedef {{key: string, data: unknown} | null} PanelResolution */
 /** @typedef {{dispose: () => void, update?: (context: {path?: string, raw?: unknown}, data: unknown) => void | Promise<void>}} PanelHandle */
-/** @typedef {{id: string, label: string, placement: "summary" | "content" | "supplemental", presentation: "surface" | "document", printable?: boolean, required?: boolean, classifyError?: (error: unknown) => {message: string, retryable: boolean}, resolve: (context: {path?: string, raw?: unknown}, options: {signal: AbortSignal}) => PanelResolution | Promise<PanelResolution>, mount: (container: HTMLElement, context: {path?: string, raw?: unknown}, data: unknown, options: {signal?: AbortSignal}) => void | PanelHandle | Promise<void | PanelHandle>}} PanelDescriptor */
+/** @typedef {{id: string, label: string, placement: "summary" | "content" | "supplemental", presentation: "surface" | "document", collapsible?: boolean, defaultExpanded?: boolean, printable?: boolean, required?: boolean, classifyError?: (error: unknown) => {message: string, retryable: boolean}, resolve: (context: {path?: string, raw?: unknown}, options: {signal: AbortSignal}) => PanelResolution | Promise<PanelResolution>, mount: (container: HTMLElement, context: {path?: string, raw?: unknown}, data: unknown, options: {signal?: AbortSignal}) => void | PanelHandle | Promise<void | PanelHandle>}} PanelDescriptor */
 /** @typedef {{descriptor: PanelDescriptor, slot: HTMLElement, body: HTMLElement, disposeDisclosure: () => void, generation: number, resolveController: AbortController | null, mountController: AbortController | null, handle: PanelHandle | null, key: string | null, retry: (() => void) | null, mounted: boolean}} PanelRecord */
 /** @typedef {{listPanels: () => ReadonlyArray<PanelDescriptor>}} PanelRegistry */
 
@@ -16,32 +16,44 @@ export function createPanelSlot(descriptor) {
   slot.hidden = false;
   const heading = document.createElement("h2");
   heading.className = "folder-overview-panel-heading";
-  const toggle = document.createElement("button");
-  toggle.className = "folder-overview-panel-toggle section-disclosure-trigger";
-  toggle.type = "button";
-  toggle.textContent = descriptor.label;
   const toggleId = `folder-overview-panel-toggle-${slotSequence}-${idStem}`;
   const bodyId = `folder-overview-panel-body-${slotSequence}-${idStem}`;
-  toggle.setAttribute("id", toggleId);
-  toggle.setAttribute("aria-controls", bodyId);
-  toggle.setAttribute("aria-expanded", "true");
-  slot.setAttribute("aria-labelledby", toggleId);
   const body = document.createElement("div");
   body.className = "folder-overview-panel-body";
   body.setAttribute("id", bodyId);
-  let expanded = true;
-  const toggleDisclosure = () => {
-    expanded = !expanded;
+  const collapsible = descriptor.collapsible !== false;
+  let disposeDisclosure = () => {};
+  if (collapsible) {
+    const toggle = document.createElement("button");
+    toggle.className = "folder-overview-panel-toggle section-disclosure-trigger";
+    toggle.type = "button";
+    toggle.textContent = descriptor.label;
+    toggle.setAttribute("id", toggleId);
+    toggle.setAttribute("aria-controls", bodyId);
+    let expanded = descriptor.defaultExpanded !== false;
     toggle.setAttribute("aria-expanded", String(expanded));
     body.classList.toggle("folder-overview-panel-body-collapsed", !expanded);
-  };
-  toggle.addEventListener("click", toggleDisclosure);
-  heading.append(toggle);
+    const toggleDisclosure = () => {
+      expanded = !expanded;
+      toggle.setAttribute("aria-expanded", String(expanded));
+      body.classList.toggle("folder-overview-panel-body-collapsed", !expanded);
+    };
+    toggle.addEventListener("click", toggleDisclosure);
+    disposeDisclosure = () => toggle.removeEventListener("click", toggleDisclosure);
+    heading.append(toggle);
+  } else {
+    const label = document.createElement("span");
+    label.className = "folder-overview-panel-label";
+    label.textContent = descriptor.label;
+    label.setAttribute("id", toggleId);
+    heading.append(label);
+  }
+  slot.setAttribute("aria-labelledby", toggleId);
   slot.append(heading, body);
   return {
     body,
     slot,
-    disposeDisclosure: () => toggle.removeEventListener("click", toggleDisclosure),
+    disposeDisclosure,
   };
 }
 

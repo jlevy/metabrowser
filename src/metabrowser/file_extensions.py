@@ -64,7 +64,7 @@ BROWSER_TEXT_EXTS: frozenset[str] = frozenset(
         ".css",
         # Database
         ".sql",
-        # Logs (separate from .jsonl which gets structured rendering)
+        # Plain logs (.jsonl gets structured rendering)
         ".log",
         # Process marker files
         ".pid",

@@ -42,7 +42,7 @@ The registry separates four concepts that must not be collapsed:
 
 - a classifier **kind**, such as JavaScript, JSON Lines, C, or C++;
 - a user-visible **family**, such as JavaScript, Log files, or C/C++;
-- a top-level display and filter **group**, such as Code, Logs, Archives, or Media; and
+- a top-level display and filter **group**, such as Code, Archives, Media, or Other; and
 - an analyzer **content family**, such as code, prose, markup, data, or binary.
 
 This separation lets `.jsonl` appear under **Log files** while retaining structured-data
@@ -111,9 +111,10 @@ Metabrowser now ships the complete reference implementation and a self-contained
   owns the machine structures, classifier rules, conservation rules, artifact names, and
   export boundary.
 
-Legacy settings and tuple fields remain as derived additive aliases for one supported
-transition cycle. Their eventual removal is tracked separately by `mb-me85`, so the
-reference rollout does not silently break mixed server and browser assets.
+The compatibility aliases proposed by the original rollout were removed after the
+follow-up analysis documented above established that mixed server and browser assets
+cannot occur. The native registry and `file_type_breakdown` contract are the sole
+semantic file-type interface.
 
 ## Goals
 
@@ -126,8 +127,10 @@ reference rollout does not silently break mixed server and browser assets.
   families so each project can use the same facts without weakening its own model.
 - Align logical-extension derivation and matching precedence across Python, Rust, and
   browser consumers.
-- Add the top-level groups **Logs**, **Archives**, and **Media** alongside Code,
-  Documentation, and Data.
+- Add the top-level groups **Archives** and **Media** alongside Code, Documentation,
+  Data, and Other.
+- Place the **Log files** family within Other rather than giving one miscellaneous
+  family its own top-level group.
 - Define Log files from `.log`, `.jsonl`, and `.ndjson` while preserving the structured
   content class of line-delimited JSON.
 - Define common archive, image, video, audio, and font formats conservatively.
@@ -264,8 +267,8 @@ hierarchy alongside its existing analytical reports.”
   `javascript`, `json-lines`, `c`, or `cpp`.
 - **Display family:** A user-facing aggregate such as JavaScript, Log files, Images, or
   C/C++. A kind may map to one display family; several kinds may share it.
-- **Display group:** A top-level presentation and filter section such as Code, Logs, or
-  Media.
+- **Display group:** A top-level presentation and filter section such as Code, Media, or
+  Other.
 - **Content family:** fdu’s analyzer class: code, prose, markup, data, binary, or
   unknown. It is orthogonal to display group.
 - **Canonical extension:** The declared registry extension that matched a logical
@@ -671,14 +674,14 @@ The registry declares this initial order:
 | `code` | Code | Programming, styling, query, and build languages |
 | `docs` | Documentation | Human-facing prose and document formats |
 | `data` | Data | Structured records, configuration, tables, and databases |
-| `logs` | Logs | Append-oriented textual and structured logs |
 | `archives` | Archives | Compressed streams and multi-file containers |
 | `media` | Media | Images, video, audio, and fonts |
-| `other` | Other | System fallback containing No extension and Remaining types |
+| `other` | Other | Miscellaneous named families plus No extension and Remaining types |
 
-`other` is declared for ordering and labeling but is the only fallback group.
-A normal family does not target it merely to avoid making a taxonomy decision; a kind
-without a display family remains in Remaining types.
+`other` is the only fallback group and may also contain deliberately miscellaneous
+families such as Log files.
+A normal family targets it only after a taxonomy decision; a kind without a display
+family remains in Remaining types.
 
 ### Existing Families
 
@@ -701,9 +704,9 @@ placement is No extension.
 JSON changes from `.json`, `.jsonl`, and `.ndjson` to `.json` alone.
 JSON Lines and newline-delimited JSON move into Log files as required below.
 
-### Logs
+### Log Files
 
-The initial Logs group contains one display family:
+Other contains the Log files display family:
 
 | Family | Kinds | Extensions | Content family |
 | --- | --- | --- | --- |
@@ -932,16 +935,19 @@ The type chooser becomes entirely registry-driven:
 2. present display families in declared group and family order; and
 3. present canonical and raw extensions ranked by the active population.
 
-Selecting a display group selects all declared member extensions and exact filenames
-reachable through its families and kinds.
+Selecting a closed display group selects all declared member extensions and exact
+filenames reachable through its families and kinds.
+Other remains a section heading rather than a group preset because its unknown members
+cannot be enumerated as fixed filter tokens.
 Selecting a family selects all of its declared extension members.
 Selecting an extension remains exact at the canonical member level and continues to
 match declared compound tails.
 
-Logs, Archives, and Media are peer group choices rather than being hidden under Data or
-Other. Images, Videos, Audio, and Fonts appear as Media families.
-The filter continues to operate over loaded navigation rows with server-owned
-complete-index tallies.
+Archives and Media are peer group choices; Other organizes concrete family choices but
+is not itself a preset.
+Log files appears as a family within Other; Images, Videos, Audio, and Fonts appear as
+Media families. The filter continues to operate over loaded navigation rows with
+server-owned complete-index tallies.
 
 Directly clicking an Overview child to set this filter is deferred, but every child
 model carries the same token the filter already understands.
@@ -1213,7 +1219,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | 1 | `mb-7c0v` | Durable registry, interchange, and `fdu` compatibility documents | None |
 | 2 | `mb-2c5u` | Packaged Registry v1 source, immutable loader, validation, and compatibility facade | `mb-7c0v` |
-| 3 | `mb-0t3d` | Reconciled Code, Documentation, Data, Logs, Archives, Media, and Other taxonomy | `mb-2c5u` |
+| 3 | `mb-0t3d` | Reconciled Code, Documentation, Data, Archives, Media, and Other taxonomy | `mb-2c5u` |
 | 4 | `mb-qkl7` | Shared logical-extension and metadata-classification behavior | `mb-0t3d` |
 | 5 | `mb-45j9` | Machine schemas, conformance corpus, fingerprints, and drift tooling | `mb-qkl7` |
 | 6 | `mb-7jk7` | Typed conserved Registry v1 hierarchical directory breakdown | `mb-45j9` |
@@ -1277,7 +1283,7 @@ flowchart TD
 ### Metabrowser UI
 
 - Test registry-driven group order and omission of empty groups.
-- Test Logs, Archives, and Media labels, families, shared colors, and file icons.
+- Test Archives, Media, and Other labels, families, shared colors, and file icons.
 - Test singleton and multi-extension family expansion, collapse, keyboard activation,
   `aria-expanded`, and `aria-controls`.
 - Test No extension filename children, Remaining types extension children, and neutral
@@ -1307,7 +1313,7 @@ flowchart TD
   Compatibility names become derived aliases.
 - Saved filter tokens based on canonical extensions remain valid.
   Existing family IDs remain stable wherever the semantic meaning is unchanged.
-- `.jsonl` and `.ndjson` intentionally move from JSON/Data to Log files/Logs.
+- `.jsonl` and `.ndjson` intentionally move from JSON/Data to Log files/Other.
   Release notes call out saved family/group filter behavior.
 - Uppercase extensions and dotfiles with later suffixes intentionally gain recognition.
   Bare dotfiles remain extensionless.
@@ -1349,8 +1355,8 @@ Metabrowser.
 - The registry has explicit kinds, display families, display groups, and analyzer
   content families with stable IDs.
 - Logical extension derivation agrees across Python and Rust for all boundary fixtures.
-- Code, Documentation, Data, Logs, Archives, Media, and Other are registry-declared and
-  appear in the same order across Metabrowser surfaces.
+- Code, Documentation, Data, Archives, Media, and Other are registry-declared and appear
+  in the same order across Metabrowser surfaces.
 - `.log`, `.jsonl`, and `.ndjson` appear under Log files; `.jsonl` and `.ndjson` retain
   a data content family in fdu.
 - The declared archive and media formats classify into the intended display families.

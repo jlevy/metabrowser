@@ -48,11 +48,14 @@ def test_unknown_and_ambiguous_extensions_remain_raw() -> None:
 
 def test_catalog_generates_presets_for_every_populated_group() -> None:
     presets = {preset["id"]: preset for preset in FILTER_TYPE_PRESETS}
-    assert tuple(presets) == ("code", "docs", "data", "logs", "archives", "media")
+    assert tuple(presets) == ("code", "docs", "data", "archives", "media")
     assert {".js", ".mjs", ".cjs", ".jsx", "makefile"} <= set(presets["code"]["values"])
     assert {".yaml", ".yml", ".db"} <= set(presets["data"]["values"])
     # A preset with no selectable values would render as a filter that does nothing.
     assert all(preset["values"] for preset in FILTER_TYPE_PRESETS)
+    log_files = next(family for family in FILE_TYPE_FAMILIES if family.id == "log-files")
+    assert log_files.category == "other"
+    assert {".log", ".jsonl", ".ndjson"} <= set(log_files.extensions)
 
 
 def test_projected_families_track_the_registry() -> None:

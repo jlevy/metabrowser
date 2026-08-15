@@ -28,8 +28,8 @@
           "others": null
         },
         "registry": {
-          "fingerprint": "08c341b55028cd9b379decedff9429c5809b878ee25b11018d4f6dfae069b2c2",
-          "revision": 1,
+          "fingerprint": "a648f3f563eeaa7150a0b0b2fda310735b3a0662bd03cea84ab9424ad330900a",
+          "revision": 2,
           "schema_version": 1
         },
         "remaining_types": {
@@ -54,52 +54,6 @@
     {
       "expected": {
         "groups": [
-          {
-            "families": [
-              {
-                "extensions": [
-                  {
-                    "extension": ".log",
-                    "metrics": {
-                      "all": {
-                        "bytes": 80,
-                        "files": 1
-                      },
-                      "unignored": {
-                        "bytes": 0,
-                        "files": 0
-                      }
-                    }
-                  },
-                  {
-                    "extension": ".jsonl",
-                    "metrics": {
-                      "all": {
-                        "bytes": 100,
-                        "files": 1
-                      },
-                      "unignored": {
-                        "bytes": 100,
-                        "files": 1
-                      }
-                    }
-                  }
-                ],
-                "id": "log-files",
-                "metrics": {
-                  "all": {
-                    "bytes": 180,
-                    "files": 2
-                  },
-                  "unignored": {
-                    "bytes": 100,
-                    "files": 1
-                  }
-                }
-              }
-            ],
-            "id": "logs"
-          },
           {
             "families": [
               {
@@ -165,6 +119,52 @@
               }
             ],
             "id": "media"
+          },
+          {
+            "families": [
+              {
+                "extensions": [
+                  {
+                    "extension": ".log",
+                    "metrics": {
+                      "all": {
+                        "bytes": 80,
+                        "files": 1
+                      },
+                      "unignored": {
+                        "bytes": 0,
+                        "files": 0
+                      }
+                    }
+                  },
+                  {
+                    "extension": ".jsonl",
+                    "metrics": {
+                      "all": {
+                        "bytes": 100,
+                        "files": 1
+                      },
+                      "unignored": {
+                        "bytes": 100,
+                        "files": 1
+                      }
+                    }
+                  }
+                ],
+                "id": "log-files",
+                "metrics": {
+                  "all": {
+                    "bytes": 180,
+                    "files": 2
+                  },
+                  "unignored": {
+                    "bytes": 100,
+                    "files": 1
+                  }
+                }
+              }
+            ],
+            "id": "other"
           }
         ],
         "metrics": {
@@ -465,8 +465,8 @@
           }
         },
         "registry": {
-          "fingerprint": "08c341b55028cd9b379decedff9429c5809b878ee25b11018d4f6dfae069b2c2",
-          "revision": 1,
+          "fingerprint": "a648f3f563eeaa7150a0b0b2fda310735b3a0662bd03cea84ab9424ad330900a",
+          "revision": 2,
           "schema_version": 1
         },
         "remaining_types": {
@@ -2139,7 +2139,7 @@
         "content_family": "prose",
         "detection_source": "extension",
         "family_id": "log-files",
-        "group_id": "logs",
+        "group_id": "other",
         "kind_id": "log",
         "logical_extension": ".log"
       },
@@ -2153,7 +2153,7 @@
         "content_family": "data",
         "detection_source": "extension",
         "family_id": "log-files",
-        "group_id": "logs",
+        "group_id": "other",
         "kind_id": "json-lines",
         "logical_extension": ".jsonl"
       },
@@ -2167,7 +2167,7 @@
         "content_family": "data",
         "detection_source": "extension",
         "family_id": "log-files",
-        "group_id": "logs",
+        "group_id": "other",
         "kind_id": "json-lines",
         "logical_extension": ".ndjson"
       },
@@ -3240,8 +3240,8 @@
     }
   ],
   "registry": {
-    "fingerprint": "08c341b55028cd9b379decedff9429c5809b878ee25b11018d4f6dfae069b2c2",
-    "revision": 1,
+    "fingerprint": "a648f3f563eeaa7150a0b0b2fda310735b3a0662bd03cea84ab9424ad330900a",
+    "revision": 2,
     "schema_version": 1
   },
   "schema": "file-type-conformance-v1"

@@ -2766,14 +2766,15 @@ var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || 
 // Each row wears the freshness colour the tree gives files of that
 // age, so the menu doubles as the legend for the ramp below it.
 // Longer windows take the colour of the bucket they top out at. Live
-// keeps the freshest colour and spells out its exact server-owned
+// is an activity state that shares the freshest reddish-orange visual
+// with under-one-minute files and spells out its exact server-owned
 // cutoff in the accessible title.
 var FILTER_RECENCY_OPTIONS = [
   {
     value: "live",
     label: "Live",
     title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
-    ageClass: "age-sec",
+    ageClass: "age-live",
   },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
   { value: "24h", label: "Past day", ageClass: "age-hr" },
@@ -3763,10 +3764,12 @@ function renderFolderHeader(data) {
     );
   }
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
+  var parentLabel =
+    parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
   var upButton =
     parent === null
-      ? '<button type="button" class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" disabled>↑</button>'
-      : `<button type="button" class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" data-nav-dir="${esc(parent)}">↑</button>`;
+      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
+      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
   var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
   return (
     '<div class="file-header folder-header">' +
@@ -4586,6 +4589,7 @@ function fileStoreApplySnapshot(scope, entries) {
     applyCellPatch(entries[i]);
     _mirrorActiveFromFsEntry(entries[i]);
   }
+  window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
 
@@ -4615,6 +4619,7 @@ function fileStoreApplyChange(ops) {
     // active window, mirror it into that base too.
     recentBaseApplyOp(op);
   }
+  window.metabrowserDirectoryTotalsStore?.applyChange(ops);
   notifyFileStoreSubscribers({ kind: "change", ops: ops });
 }
 

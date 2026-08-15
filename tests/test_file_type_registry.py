@@ -64,7 +64,6 @@ def test_packaged_registry_is_cached_ordered_and_self_describing() -> None:
         "code",
         "docs",
         "data",
-        "logs",
         "archives",
         "media",
         "other",
@@ -93,7 +92,7 @@ def test_registry_classification_keeps_display_and_content_axes_independent() ->
     json_lines = registry.classify("events.jsonl", ".jsonl")
     assert (json_lines.family_id, json_lines.group_id, json_lines.content_family) == (
         "log-files",
-        "logs",
+        "other",
         ContentFamily.data,
     )
     svg = registry.classify("diagram.svg", ".svg")

@@ -26,9 +26,9 @@ Compatibility policy:
 - Removed the `mb.fileTypes.categories` and `mb.fileTypes.categoryForFile` aliases; use
   `groups` and `groupForFile`. The browser SDK carries no deprecation window and is
   versioned with the release.
-- `sdk_version` in a plugin manifest is now enforced instead of advisory.
-  It defaults to the host’s `PLUGIN_SDK_VERSION`, and a manifest declaring any other
-  value is refused when it loads, with a message naming the required version;
+- `sdk_version` in a plugin manifest is now required and enforced instead of advisory.
+  A manifest missing it or declaring any value other than the host’s
+  `PLUGIN_SDK_VERSION` is refused when it loads, with a message naming the requirement;
   `metab --doctor` exits non-zero on the same problem.
   Previously the field was recorded and never compared, so a plugin written against a
   different SDK loaded and failed later inside a renderer.

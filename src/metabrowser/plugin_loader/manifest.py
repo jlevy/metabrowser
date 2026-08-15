@@ -26,7 +26,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# ── SDK contract version ───────────────────────────────────────
+# SDK contract version
 
 # The browser SDK contract this host provides. A plugin declares the
 # contract it was written against and the loader rejects any other value,
@@ -217,7 +217,7 @@ class PluginInfo(BaseModel):
     display_name: str = Field(default="", description="Human-readable plugin name.")
     version: str = Field(default="0.0.0", description="Plugin version, semver-ish.")
     sdk_version: str = Field(
-        default=PLUGIN_SDK_VERSION,
+        ...,
         description=(
             "Metabrowser plugin SDK contract version this plugin targets. "
             "Must equal the host's PLUGIN_SDK_VERSION; the host provides no "

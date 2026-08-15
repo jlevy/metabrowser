@@ -85,6 +85,8 @@ def test_envelope_aggregates_come_from_inventory(tmp_path: Path) -> None:
     assert body["dir"]["state"] == "complete"
     assert body["dir"]["total_files"] == 2
     assert body["dir"]["total_size"] == 40
+    assert body["dir"]["unignored_files"] == 2
+    assert body["dir"]["unignored_size"] == 40
     assert body["dir"]["mtime"] > 0
 
 

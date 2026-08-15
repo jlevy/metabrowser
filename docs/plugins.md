@@ -66,6 +66,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
+sdk_version = "0.1"
 
 [[kind]]
 id = "hello-document"
@@ -116,7 +117,7 @@ The `[plugin]` table supports:
 | `name` | yes | Stable lowercase URL and registry identifier. |
 | `display_name` | no | Human-readable diagnostics label. |
 | `version` | no | Plugin version string. |
-| `sdk_version` | no | Browser SDK contract this plugin targets; defaults to the host’s current `PLUGIN_SDK_VERSION`. Any other value is refused at load time. |
+| `sdk_version` | yes | Browser SDK contract this plugin targets. It must equal the host’s current `PLUGIN_SDK_VERSION`; a missing or different value is refused at load time. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded with the page. |
 
@@ -304,8 +305,7 @@ Folder aggregate views can use these bounded inventory helpers:
   `depth`, `top`, `ext_top`, `filename_top`, `remaining_top`, and `ext_rank` map to
   `/api/rollup`; use `depth: 0`, `top: 0`, and `ext_rank: "dual"` for a tally-only
   count-and-byte summary.
-  Both file-type child limits default to 20 and cannot exceed 20. `type_top` remains a
-  temporary alias for `remaining_top`.
+  Both file-type child limits default to 20 and cannot exceed 20.
 - `watchRollup(path, options, onUpdate)` performs the initial fetch and refreshes after
   relevant inventory changes.
   Supply `active` to gate hidden views and `onError` for a local failure state.
@@ -394,9 +394,10 @@ guarantee.
 The SDK is versioned with the release, not independently, and the version is enforced
 rather than advisory.
 `PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract this host provides.
-A manifest whose `sdk_version` differs is refused when it loads, with a message naming
-the required version, and `metab --doctor` reports the same problem before it reaches a
-user. There is no negotiation and no shim for an older surface.
+Every manifest must declare `sdk_version`. A missing or different value is refused when
+it loads, with a message naming the required version, and `metab --doctor` reports the
+same problem before it reaches a user.
+There is no negotiation and no shim for an older surface.
 
 That gate is deliberately strict because the alternative is worse.
 A method that moves or changes shape does so in one commit across core and every
