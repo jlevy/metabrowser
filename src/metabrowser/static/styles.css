@@ -645,12 +645,19 @@
      legend item, frame header, node card, toggle) shares the same ease
      + duration so hover feels consistent across the plane. Filter-darken
      is used where the element has a solid rest-color; background swap is
-     used where the rest-state is transparent. Categorical data marks use
-     a slight whole-mark brightness increase so hue and internal contrast remain. */
+     used where the rest-state is transparent. Categorical data marks shift the
+     whole mark rather than recoloring it, so hue and internal contrast remain —
+     but the shift has to run the direction that gains contrast against the
+     page, which is opposite per theme. The light palette sits near 48%
+     lightness on a near-white page, so hover deepens it; the dark palette sits
+     near 67% on a near-black page, so hover lifts it (see the dark block). One
+     shared direction is what left hover reading as "nothing happened" on the
+     light distribution bars. The saturation nudge keeps the deepened light mark
+     from reading as merely greyer. */
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
-  --viz-data-mark-hover-filter: brightness(1.06);
+  --viz-data-mark-hover-filter: brightness(0.88) saturate(1.18);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -949,6 +956,10 @@
   --mb-distribution-category-10: hsl(15 78% 70%);
   --mb-distribution-category-11: hsl(315 55% 70%);
   --mb-distribution-category-12: hsl(166 54% 58%);
+
+  /* Lift rather than deepen: the dark categorical palette is already light
+     against a near-black page (see the light-theme note beside this token). */
+  --viz-data-mark-hover-filter: brightness(1.2) saturate(1.08);
 
   --viz-text: var(--text);
   --viz-text-muted: hsl(215 12% 68%);

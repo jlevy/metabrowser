@@ -492,7 +492,10 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
 
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
     fn_block = js[fn_start : fn_start + 2200]
-    assert 'childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…")' in fn_block
+    # No visible label for the plain case: the spinner alone says "loading",
+    # and the row it replaces already says which folder. Only the
+    # still-scanning state below earns visible copy.
+    assert "childrenEl.innerHTML = treeLazyLoadingHtml()" in fn_block
     assert 'data.tally_cache_status === "scanning"' in fn_block
     assert 'treeLazyLoadingHtml("Still scanning this folder…")' in fn_block
     assert "scheduleSubtreeRetry(path, childrenEl)" in fn_block

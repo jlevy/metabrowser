@@ -167,6 +167,10 @@ const envelope = {
     [".md", 1, 100, 0, 0],
     [".txt", 1, 50, 1, 50],
   ],
+  file_type_breakdown: {
+    groups: [{ id: "code", families: [{ id: "python" }] }],
+    remaining_types: { extensions: [{ extension: ".txt" }] },
+  },
   node: {
     name: "root",
     path: "",
@@ -257,7 +261,9 @@ for (const relative of moduleSources) {
 }
 const treemapSource = fs
   .readFileSync(path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/treemap.js"), "utf8")
-  .replace(/^import .*;$/gm, "")
+  // Spans the whole statement, so a formatter-wrapped multi-line import
+  // is stripped as completely as a single-line one.
+  .replace(/^import\s[^;]*;$/gm, "")
   .replace("export function registerTreemap", "function registerTreemap");
 const treemapStyles = fs.readFileSync(
   path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/styles.css"),
@@ -266,12 +272,25 @@ const treemapStyles = fs.readFileSync(
 vm.runInContext(treemapSource, sandbox, { filename: "treemap.js" });
 vm.runInContext(
   `function normalizeFolderTotals(value) { return value || {state: "pending"}; }
+   function normalizeRollupEnvelope(raw) {
+     if (!raw || typeof raw !== "object") { throw new TypeError("bad envelope"); }
+     return { registry: {revision: 1}, totals: {}, breakdown: raw.file_type_breakdown };
+   }
+   function buildFolderTotalsComposition(envelope, _fileTypes, metric, includeIgnored) {
+     return envelope ? {metric, includeIgnored} : null;
+   }
    function mountFolderTotalsView(container, value, _mb, metric) {
      container.value = value;
      container.metric = metric;
+     container.composition = undefined;
+     container.compositionPalette = undefined;
      return {
        update(next) { container.value = next; },
-       updateMetric(next) { container.metric = next; }
+       updateMetric(next) { container.metric = next; },
+       updateComposition(next, palette) {
+         container.composition = next;
+         container.compositionPalette = palette;
+       }
      };
    }`,
   sandbox,
@@ -444,6 +463,17 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   // host setImmediate drains the whole promise-job queue.
   await new Promise((resolve) => setImmediate(resolve));
   check("initial fetch", fetchCalls.length === 1, `${fetchCalls.length} fetches`);
+  // The tally above the map is the same component the Overview tab shows,
+  // so it has to be fed the same file-type segments and palette; without
+  // a composition it degrades to one flat neutral bar.
+  check(
+    "treemap tally carries the Overview's file-type composition",
+    container.totals.composition?.metric === "files" && !!container.totals.compositionPalette,
+    JSON.stringify({
+      composition: container.totals.composition,
+      palette: !!container.totals.compositionPalette,
+    }),
+  );
   check(
     "cells rendered",
     container.viewport.innerHTML.includes("tm-cell") &&
@@ -677,6 +707,11 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
       "metric toggle updates the visible totals measure",
       container.totals.metric === "size",
       container.totals.metric,
+    );
+    check(
+      "metric toggle recomposes the tally segments",
+      container.totals.composition?.metric === "size",
+      JSON.stringify(container.totals.composition),
     );
     check(
       "metric toggle changes cell geometry",

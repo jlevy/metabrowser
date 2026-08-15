@@ -141,7 +141,13 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     hover_block = plugin_css[hover_start : plugin_css.index("}", hover_start)]
 
     assert "filter: var(--viz-data-mark-hover-filter);" in hover_block
-    assert "--viz-data-mark-hover-filter: brightness(1.06);" in shared_css
+    # The direction that gains contrast against the page flips between themes,
+    # so the token is declared for the light palette and again for the dark one.
+    # Pinning the declarations rather than their values leaves the filter free
+    # to be adjusted without editing this test.
+    dark_start = shared_css.index('[data-theme="dark"] {')
+    assert "--viz-data-mark-hover-filter:" in shared_css[:dark_start]
+    assert "--viz-data-mark-hover-filter:" in shared_css[dark_start:]
     assert "z-index" not in hover_block
     assert "display:" not in hover_block
 

@@ -1122,7 +1122,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         // cap. Render a placeholder; click-to-expand fetches the
         // subtree via /api/tree?path=...
         parts.push(
-          '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+          '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
             '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
             "</div>",
         );
@@ -1206,13 +1206,15 @@ function renderTreeNodes(nodes, isRoot, options) {
 const subtreeCache = new Map();
 const subtreeRetryTimers = new WeakMap();
 
+// A spinner alone says "loading"; the surrounding row already says what
+// is loading, so the generic label is left to screen readers. Callers
+// pass visible copy only for a state a spinner cannot express on its own
+// (see the still-scanning case in loadSubtree).
 function treeLazyLoadingHtml(message) {
   return (
-    '<div class="tree-lazy-placeholder" role="status" aria-live="polite">' +
+    '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-live="polite">' +
     '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
-    "<span>" +
-    esc(message || "Loading folder…") +
-    "</span>" +
+    (message ? `<span>${esc(message)}</span>` : '<span class="sr-only">Loading folder…</span>') +
     "</div>"
   );
 }
@@ -1324,7 +1326,7 @@ async function loadSubtree(path, childrenEl, options) {
     );
     return;
   }
-  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…");
+  childrenEl.innerHTML = treeLazyLoadingHtml();
   try {
     const resp = await fetch(
       `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
@@ -3613,7 +3615,8 @@ async function selectFile(path, skipHistory, preferredViewId) {
         disposeActivePluginViews();
         stopFolderHeaderSubscription();
         preview.innerHTML =
-          '<div class="loading mb-delayed-loading"><div class="spinner"></div>Loading file…</div>';
+          '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+          '<span class="sr-only">Loading file…</span></div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
       if (selectFileAbortController) {
@@ -4858,7 +4861,7 @@ function _buildRowHtml(entry, options) {
       dirChip +
       "</div>" +
       '<div class="tree-children" style="display:none">' +
-      '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+      '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
       '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
       "</div>" +
       "</div>"
