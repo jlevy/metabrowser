@@ -276,18 +276,37 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 ## Documentation
 
-- [Installation](docs/installation.md)
-- [Plugin authoring](docs/plugins.md)
-- [Architecture](docs/architecture.md)
+Using Metabrowser:
+
+- [Installation](docs/installation.md) — uv setup, upgrades, and the agent skill
+- [Changelog](CHANGELOG.md) — what changed in each release
+- [Roadmap](TODO.md) — what is planned next
+
+Extending it:
+
+- [Plugin authoring](docs/plugins.md) — manifest schema, browser SDK, and data hooks
+- [Architecture](docs/architecture.md) — request flow, URL grammar, and plugin
+  boundaries
+- [Design system](docs/design-system.md) — tokens, layout bands, and component rules
 - [File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md)
-- [Design system](docs/design-system.md)
-- [Development](docs/development.md)
-- [End-to-end testing](docs/e2e-testing.md)
-- [Real-time debugging](docs/realtime-debugging.md)
-- [Publishing](docs/publishing.md)
-- [Project design and plans](docs/project/README.md)
-- [Security policy](SECURITY.md)
-- [Roadmap](TODO.md)
+  — the shared file-type and rollup contract
+
+Working on it:
+
+- [Contributing](CONTRIBUTING.md) — how to propose and land a change
+- [Development](docs/development.md) — everyday commands and the `make verify` gate
+- [End-to-end testing](docs/e2e-testing.md) — which test layer proves what
+- [Real-time debugging](docs/realtime-debugging.md) — a stable transcript of tree and
+  filter behavior
+- [Publishing](docs/publishing.md) — the tag-driven release path
+- [Project design and plans](docs/project/README.md) — specs, research briefs, and
+  architecture notes
+
+Policies:
+
+- [Security policy](SECURITY.md) — reporting and the served-root trust boundary
+- [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency review and the cool-off
+  rules
 
 ## License
 
