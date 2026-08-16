@@ -15,10 +15,10 @@ and the file tree cannot receive keyboard focus at all.
 
 This plan introduces one internal shortcut registry that is the source of truth for
 dispatch, the full Help dialog, and compact contextual hints.
-A persistent hint strip at the bottom of the navigation pane always advertises `?` for
-Help and `T` or `/` for Quick File.
-When focus is in the file tree, the strip adds the selected high-value commands that are
-actually available there.
+A persistent hint strip at the bottom of the navigation pane advertises `?` for Help and
+`T` for Quick File — the two commands a reader has no way to guess.
+It stays at that: tree commands live in Help rather than in the strip, and each command
+shows one preferred key rather than every alias it answers to.
 The index-progress row remains in the same footer stack immediately below the hints.
 
 The same work gives the file tree complete, conventional keyboard navigation.
@@ -36,8 +36,8 @@ there.
 - Apply the [design-system](../../../design-system.md) contracts for canonical key
   names, shortcut grammar, Help copy, modal anatomy, tokens, focus, and overlay
   lifecycle on every surface
-- Always show the Help and Quick File hints at the bottom of the navigation pane
-- Add situational tree-navigation hints only while those commands are available
+- Always show the Help and Quick File hints at the bottom of the navigation pane, one
+  preferred key each, and nothing else
 - Make every rendered file-tree row reachable and operable with a conventional ARIA tree
   keyboard model
 - Preserve native browser scrolling and text-entry behavior outside an active
@@ -120,16 +120,19 @@ rather than adding another roving-tabindex implementation.
    `textarea`, `select`, or contenteditable targets, during IME composition, or after
    another handler has prevented the event.
    Typing `?`, `/`, or `t` in Quick File or a plugin control inserts text normally.
-4. **The hint strip tells the truth about focus.** Help and Quick File are global and
-   always shown. Tree commands appear only while a tree row owns focus.
-   Moving focus to the filter bar, header, preview, or a dialog removes those contextual
-   hints.
+4. **The hint strip earns its line.** It carries only `?` for Help and `T` for Quick
+   File, each shown as a single preferred key.
+   Tree commands are omitted on purpose: arrows in a file tree are what a reader tries
+   first without being told, so a permanent reminder spends space to teach nothing.
+   Help remains the complete reference, including the aliases the strip does not name.
 5. **Tree keys stay in the tree.** Arrow keys, Home, End, Enter, and Space are claimed
    only for a focused tree row.
    The same keys in the preview retain default browser behavior, including arrow, Page
    Up, Page Down, Home, End, and Space scrolling.
-6. **Selection follows focus.** Moving the roving focus with arrows, Home, or End opens
-   the row it lands on, so skimming a tree costs one keypress per row instead of two.
+   Jump-to-edge is bound to Shift+Arrow as well as Home and End, because a Mac laptop
+   has no Home key and fn+Left is not a shortcut anyone discovers.
+6. **Selection follows focus.** Moving the roving focus with arrows, Shift+Arrow, Home,
+   or End opens the row it lands on, so skimming costs one keypress per row, not two.
    Browsing is the common case, and a confirm keystroke bought nothing once opening was
    fast enough to be effectively free.
    Enter and Space are therefore action keys rather than view keys: they change a
@@ -149,7 +152,7 @@ rather than adding another roving-tabindex implementation.
 | File tree | `ArrowUp`, `ArrowDown` | Open the previous or next visible tree row |
 | File tree | `ArrowLeft` | Collapse an expanded folder; otherwise open its parent |
 | File tree | `ArrowRight` | Expand a collapsed folder; otherwise open its first visible child |
-| File tree | `Home`, `End` | Open the first or last visible tree row |
+| File tree | `Shift`+`↑`, `Shift`+`↓` (or `Home`, `End`) | Open the first or last visible tree row |
 | File tree | `Enter`, `Space` | Toggle a folder or show the next page |
 | Quick File | `ArrowUp`, `ArrowDown` | Change the active result, wrapping at both ends |
 | Quick File | `Home`, `End` | Move the query caret to the start or end of the line |
@@ -181,12 +184,12 @@ surface.
 | --- | --- | --- | --- | --- | --- |
 | `help.open` | `anywhere` | `?` | Help | Open Help for a description of Metabrowser and all keyboard shortcuts. | Help |
 | `quick-file.open` | `anywhere` | `T` or `/` | Quick File | Find and open a file from the current folder. | Quick File |
-| `tree.previous` | `navigation` | `↑` | Previous item | Open the previous visible item in the file tree. | Browse |
-| `tree.next` | `navigation` | `↓` | Next item | Open the next visible item in the file tree. | Browse |
+| `tree.previous` | `navigation` | `↑` | Previous item | Open the previous visible item in the file tree. | — |
+| `tree.next` | `navigation` | `↓` | Next item | Open the next visible item in the file tree. | — |
 | `tree.parent-or-collapse` | `navigation` | `←` | Parent or collapse | Collapse the focused folder or open its parent item. | Navigate folders |
 | `tree.child-or-expand` | `navigation` | `→` | Child or expand | Expand the focused folder or open its first visible child. | Navigate folders |
-| `tree.first` | `navigation` | `Home` | First item | Open the first visible item in the file tree. | — |
-| `tree.last` | `navigation` | `End` | Last item | Open the last visible item in the file tree. | — |
+| `tree.first` | `navigation` | `Shift`+`↑` or `Home` | First item | Open the first visible item in the file tree. | — |
+| `tree.last` | `navigation` | `Shift`+`↓` or `End` | Last item | Open the last visible item in the file tree. | — |
 | `tree.activate` | `navigation` | `Enter` or `Space` | Toggle folder | Expand or collapse the focused folder, or show the next page. | Toggle folder |
 | `quick-file.previous` | `quick-file` | `↑` | Previous result | Move to the previous Quick File result, wrapping at the top. | Move |
 | `quick-file.next` | `quick-file` | `↓` | Next result | Move to the next Quick File result, wrapping at the bottom. | Move |
@@ -211,11 +214,11 @@ The contracts are implementation requirements, not visual guidance.
 
 The binding formatter maps semantic keys to canonical keycap and spoken forms plus an
 ARIA form when the physical shortcut is representable accurately.
-For this release the visible vocabulary is `?`, `/`, `T`, `↑`, `↓`, `←`, `→`, `Home`,
-`End`, `Enter`, `Space`, and `Esc`; the spoken form expands symbols and abbreviations.
-Because `?` and `/` are matched as produced characters, their physical chords vary by
-keyboard layout and are omitted from `aria-keyshortcuts`; the layout-stable `T` alias is
-advertised for Quick File.
+For this release the visible vocabulary is `?`, `/`, `T`, `↑`, `↓`, `←`, `→`, `Shift`,
+`Home`, `End`, `Enter`, `Space`, and `Esc`; the spoken form expands symbols and
+abbreviations. Because `?` and `/` are matched as produced characters, their physical
+chords vary by keyboard layout and are omitted from `aria-keyshortcuts`; the
+layout-stable `T` alias is advertised for Quick File.
 Alternatives use the word “or,” so Quick File is shown as `T` or `/`, never as adjacent
 keycaps or with a slash used as a separator.
 Keycaps use `.kbd`; call sites neither write display labels nor apply key styling.
@@ -342,10 +345,15 @@ query target; printable global commands do not inherit that exception.
 
 Presentation surfaces never copy key labels or command names.
 The full Help list asks for all commands marked for Help, including inactive contextual
-commands. The nav hint strip asks for commands whose hint policy is `always` plus
-commands explicitly marked for compact hints in the currently active scope.
-The tree’s Home and End remain in full Help but are intentionally omitted from the
-constrained nav strip.
+commands.
+The nav hint strip carries only the two commands a reader cannot guess: `?` for
+Help and `T` for Quick File.
+Tree commands are registered, dispatched, and listed in full Help, but claim no space in
+the strip — arrows in a file tree are the first thing anyone tries unprompted, so
+advertising them permanently costs a line and teaches nothing.
+The strip also shows a single preferred key per command rather than every alias, so
+Quick File reads `T` there while Help still documents `/`. The alias stays bound, and
+`aria-keyshortcuts` still announces both.
 Quick File declares no Home or End command at all: its query box is an editable
 combobox, so those keys stay with the caret.
 Quick File uses the same presentation helper for its local hint row, retiring
@@ -404,10 +412,7 @@ The index template gains `#nav-shortcut-hints` immediately before `#index-progre
 ┌─────────────────────────────────────────┐
 │ …scrolling file tree…                   │
 ├─────────────────────────────────────────┤
-│ [?] Help   [T] or [/] Quick File        │  always
-│ [↑] or [↓] Browse                       │  while a tree row has focus
-│ [←] or [→] Navigate folders             │
-│ [Enter] or [Space] Toggle folder        │
+│ [?] Help   [T] Quick File               │  always
 ├─────────────────────────────────────────┤
 │ ◌ Scanning 8,192 files…                 │  only while indexing
 └─────────────────────────────────────────┘
@@ -486,7 +491,8 @@ Folder behavior matches the conventional tree model:
 - Left on an expanded folder collapses it and leaves focus on the folder.
 - Left on a collapsed folder or leaf moves to its parent when one is rendered.
 - Up and Down traverse the flattened visible order, opening each row they land on.
-- Home and End move to the first and last visible item, opening it.
+- Shift+Up and Shift+Down move to the first and last visible item, opening it.
+  Home and End do the same on keyboards that have them.
 - Enter or Space toggles a folder or mounts a pagination row, and never opens.
 
 Clicking a row also makes it the roving anchor, so pointer and keyboard use continue

@@ -11,6 +11,7 @@
   /**
    * @typedef {object} BindingPresentation
    * @property {string} ariaKeyshortcuts
+   * @property {BindingPresentation} [preferred]
    * @property {string} spoken
    * @property {readonly Readonly<{keys: readonly string[], separators: readonly string[]}>[]} visible
    */
@@ -212,11 +213,20 @@
         }),
       });
     });
+    const preferred = alternatives[0];
     return Object.freeze({
       ariaKeyshortcuts: alternatives
         .map((alternative) => alternative.aria)
         .filter(Boolean)
         .join(" "),
+      // The first binding is the one a surface shows when it has room for a
+      // single key. Aliases stay bound and stay listed in Help; a compact
+      // surface just names one way in rather than spelling out every way.
+      preferred: Object.freeze({
+        ariaKeyshortcuts: preferred.aria,
+        spoken: preferred.spoken,
+        visible: Object.freeze([preferred.visible]),
+      }),
       spoken: alternatives.map((alternative) => alternative.spoken).join(" or "),
       visible: Object.freeze(alternatives.map((alternative) => alternative.visible)),
     });

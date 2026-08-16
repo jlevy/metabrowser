@@ -480,7 +480,7 @@
           order: 10,
           repeat: true,
           scope: "tree",
-          surfaces: { help: "always", nav: "active" },
+          surfaces: { help: "always" },
         }),
         options.shortcuts.register({
           bindings: [{ key: "ArrowDown" }],
@@ -495,7 +495,7 @@
           order: 20,
           repeat: true,
           scope: "tree",
-          surfaces: { help: "always", nav: "active" },
+          surfaces: { help: "always" },
         }),
         options.shortcuts.register({
           bindings: [{ key: "ArrowLeft" }],
@@ -510,7 +510,7 @@
           order: 30,
           repeat: true,
           scope: "tree",
-          surfaces: { help: "always", nav: "active" },
+          surfaces: { help: "always" },
         }),
         options.shortcuts.register({
           bindings: [{ key: "ArrowRight" }],
@@ -525,10 +525,15 @@
           order: 40,
           repeat: true,
           scope: "tree",
-          surfaces: { help: "always", nav: "active" },
+          surfaces: { help: "always" },
         }),
         options.shortcuts.register({
-          bindings: [{ key: "Home" }],
+          // Shift+Arrow leads because a Mac laptop has no Home key: reaching
+          // it means fn+Left, which is not a shortcut a reader will find.
+          // Home stays bound for the keyboards that have it, and because the
+          // ARIA tree pattern specifies it. Plain ArrowUp forbids modifiers by
+          // default, so the two never collide.
+          bindings: [{ key: "ArrowUp", modifiers: { shift: "require" } }, { key: "Home" }],
           copy: {
             action: "First item",
             description: "Open the first visible item in the file tree.",
@@ -543,7 +548,7 @@
           surfaces: { help: "always" },
         }),
         options.shortcuts.register({
-          bindings: [{ key: "End" }],
+          bindings: [{ key: "ArrowDown", modifiers: { shift: "require" } }, { key: "End" }],
           copy: {
             action: "Last item",
             description: "Open the last visible item in the file tree.",
@@ -569,7 +574,7 @@
           id: "tree.activate",
           order: 70,
           scope: "tree",
-          surfaces: { help: "always", nav: "active" },
+          surfaces: { help: "always" },
         }),
       ];
     }

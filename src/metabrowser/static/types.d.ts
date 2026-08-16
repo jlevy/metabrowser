@@ -1072,6 +1072,7 @@ type MetabrowserShortcutBinding = Readonly<{
 
 type MetabrowserBindingPresentation = Readonly<{
   ariaKeyshortcuts: string;
+  preferred?: MetabrowserBindingPresentation;
   spoken: string;
   visible: ReadonlyArray<
     Readonly<{ keys: ReadonlyArray<string>; separators: ReadonlyArray<string> }>

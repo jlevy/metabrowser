@@ -282,6 +282,21 @@ check(
   "Quick File exposes representable alias",
   hintButtons[1].getAttribute("aria-keyshortcuts") === "T",
 );
+// The strip names one way in. `/` stays bound and stays in Help; spelling out
+// every alias in a permanent one-line reminder is what made it verbose.
+check(
+  "compact strip shows only the preferred key",
+  hintButtons[1].querySelectorAll(".kbd").length === 1 &&
+    hintButtons[1].querySelector(".kbd").textContent === "T",
+);
+check(
+  "the alias is not dropped, only unadvertised",
+  hintButtons[1].textContent.indexOf("/") === -1 &&
+    shortcuts
+      .snapshot("help")
+      .flatMap((group) => group.commands)
+      .find((command) => command.id === "quick-file.open").bindings.visible.length === 2,
+);
 hintButtons[1].dispatchEvent({ type: "click" });
 check("Quick File button invokes registry", quickOpenCount === 1);
 

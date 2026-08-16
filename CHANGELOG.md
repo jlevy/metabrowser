@@ -60,8 +60,15 @@ Keyboard discovery and navigation:
 - Press `?` or use the visible Help control to open a concise product description, the
   project link, and the complete shortcut list, all generated from the same binding
   registry that dispatches commands.
-- The navigation footer now keeps Help and Quick File hints visible above indexing
-  progress and adds situational tree commands when a tree row has focus.
+- The navigation footer keeps Help and Quick File hints visible above indexing progress.
+  The strip names one preferred key per command and stops there — `? Help` and
+  `T Quick File`. Tree arrows are the first thing anyone tries unprompted, so they stay
+  in Help rather than spending a permanent line; `/` still opens Quick File and is still
+  documented there.
+- Jump-to-edge in the tree is now `Shift`+`↑` and `Shift`+`↓` as well as Home and End,
+  which a Mac laptop keyboard does not have.
+- The GitHub link in Help uses the accent color every other link uses, instead of the
+  browser’s default blue.
 - The file tree now follows the conventional accessible keyboard model: arrow keys,
   Home, End, Enter, and Space move, expand, collapse, and activate rows while preserving
   native scrolling in the preview pane.

@@ -3680,6 +3680,16 @@ pre.code-block code.hljs {
 .help-description p + p {
   margin-top: 6px;
 }
+/* The shell sets no global anchor color, so an unclassed link falls through to
+   the user agent's default blue instead of the accent every other link uses. */
+.help-project a {
+  color: var(--link);
+}
+.help-project a:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
+}
 .help-section-heading,
 .help-shortcut-heading {
   color: var(--text);

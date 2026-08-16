@@ -366,7 +366,18 @@ check(
 
 folder.focus();
 container.dispatch("focusin", { target: folder });
-check("tree scope exposes contextual nav hints", shortcuts.snapshot("nav").length === 1);
+// Arrows in a file tree are the one thing a reader will try unprompted, so
+// advertising them costs strip space and teaches nothing. The commands stay
+// registered, stay dispatched, and stay listed in Help — they are simply not
+// worth a permanent line at the bottom of the navigation pane.
+check("tree commands stay out of the compact strip", shortcuts.snapshot("nav").length === 0);
+check(
+  "tree commands remain discoverable in Help",
+  shortcuts
+    .snapshot("help")
+    .flatMap((group) => group.commands)
+    .filter((command) => command.id.startsWith("tree.")).length === 7,
+);
 
 let event = keyboardEvent("ArrowDown", folder, { repeat: true });
 document.dispatch(event);
@@ -389,6 +400,28 @@ check(
   navigationCalls.at(-1) === "folder:src" &&
     navigationCalls.filter((id) => id === "folder:src").length === 1,
 );
+
+// A Mac laptop has no Home or End key, so without these the tree has no
+// jump-to-edge reachable on the keyboard most readers actually have.
+event = keyboardEvent("ArrowDown", folder, { shiftKey: true });
+document.dispatch(event);
+check(
+  "Shift+Down jumps to the last visible row",
+  event.defaultPrevented && document.activeElement === page,
+);
+event = keyboardEvent("ArrowUp", page, { shiftKey: true });
+document.dispatch(event);
+check(
+  "Shift+Up jumps to the first visible row",
+  event.defaultPrevented && document.activeElement === folder,
+);
+// Plain arrows forbid modifiers, so the jump bindings cannot shadow movement.
+event = keyboardEvent("ArrowDown", folder);
+document.dispatch(event);
+check("unmodified Down still steps by one", document.activeElement === empty);
+// Hand the folder back to the expansion checks below in the state they expect.
+folder.focus();
+container.dispatch("focusin", { target: folder });
 
 const beforeExpand = navigationCalls.length;
 event = keyboardEvent("ArrowRight", folder);

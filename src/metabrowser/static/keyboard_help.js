@@ -2,7 +2,7 @@
 
 (() => {
   const PROJECT_URL = "https://github.com/jlevy/metabrowser";
-  /** @typedef {{ariaKeyshortcuts: string, spoken: string, visible: readonly {keys: readonly string[], separators: readonly string[]}[]}} HelpBindingPresentation */
+  /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, spoken: string, visible: readonly {keys: readonly string[], separators: readonly string[]}[]}} HelpBindingPresentation */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} HelpControlBinding */
   /**
    * @typedef {object} HelpCommandPresentation
@@ -174,7 +174,10 @@
       }
       const binding = hostDocument.createElement("span");
       binding.className = "nav-shortcut-binding";
-      appendBinding(binding, presentation.bindings);
+      // The strip is a reminder, not the reference. It names one way in; Help
+      // carries the aliases. aria-keyshortcuts below still advertises all of
+      // them, because every alias really does work.
+      appendBinding(binding, presentation.bindings.preferred || presentation.bindings);
       const label = hostDocument.createElement("span");
       label.className = "nav-shortcut-label";
       label.textContent = presentation.copy.hint;
