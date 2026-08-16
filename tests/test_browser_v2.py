@@ -123,7 +123,30 @@ def test_charts_cache_invalidates_when_file_grows(tmp_path: Path) -> None:
 
 def test_etag_is_stable_for_unchanged_file_hash() -> None:
     """Browser-server restarts should not change ETags for unchanged files."""
-    assert proc_browser._etag_for("abc123") == '"abc123"'
+    assert proc_browser._etag_for("abc123") == proc_browser._etag_for("abc123")
+    assert proc_browser._etag_for("abc123").endswith('-abc123"')
+
+
+def test_etag_is_scoped_to_the_build() -> None:
+    """A rendering change has to invalidate what clients cached.
+
+    The body is a function of the file *and* of how this version renders it.
+    Keying on the file alone made every rendering change invisible to a client
+    that had already cached the file: when small binaries moved from the text
+    fallback to the Bytes view, a cached browser kept replaying a field of
+    U+FFFD, because the mtime had not changed and the server answered 304 to
+    its revalidation.
+    """
+    from metabrowser.http_caching import BUILD_TAG, build_scoped_etag
+
+    assert BUILD_TAG and BUILD_TAG in proc_browser._etag_for("abc123")
+    # Quoted per RFC 7232, and the salt cannot break that quoting.
+    tag = build_scoped_etag("abc123")
+    assert tag.startswith('"') and tag.endswith('"') and tag.count('"') == 2
+
+    # A different build yields a different validator for the same file.
+    other = f'"{"0" * len(BUILD_TAG)}-abc123"'
+    assert other != tag
 
 
 def test_api_file_emits_etag_header_and_304s_on_match(tmp_path: Path) -> None:

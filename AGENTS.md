@@ -61,6 +61,10 @@ this repository’s structural facts and standing answers.
 - Plugins use the documented `window.metabrowser` SDK. Do not reach into private
   `app.js` globals.
 - Give new renderer state a disposal path and test lazy mounting and replacement.
+- Measure before bounding.
+  A size limit is a claim about cost: establish the shape of that cost in a real
+  browser, set the limit at a size you measured, and record the measurement beside the
+  constant. See [rendering large content](docs/large-content-rendering.md).
 - Use design tokens instead of local color literals in core components.
 - Run Biome and TypeScript check-JS through the Make targets for browser changes.
 - Keep new browser modules under the fully strict `tsconfig.json` gate.

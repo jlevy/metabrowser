@@ -14,6 +14,9 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
    reserve canvas for charts.
 4. **Large content degrades gracefully.** Truncation, lazy mounting, virtualization, and
    background indexing must remain visible to the user.
+   Size limits are claims about cost and must be measured, not assumed; see
+   [rendering large content](large-content-rendering.md) for the cost model, the
+   strategy ladder, and the current limits.
 5. **Light and dark themes share semantics.** Theme overrides may change contrast and
    lightness, not the meaning of a token.
 6. **Everything is effortlessly fast.** Speed is a product requirement, not an
@@ -235,6 +238,94 @@ primitive class in the markup and must not recreate the primitive’s border, fi
 typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
+
+### Continuing Partial Content
+
+A view that shows part of a file offers the control that loads the rest **at both ends
+of the content**, above it and below it, whenever more remains.
+
+The reader who most wants the next chunk is the one who just finished the current one,
+and they are at the bottom.
+A single control in the pane header is out of view by then, so continuing means
+scrolling back through everything already read to reach it — the longer the content, the
+worse the cost, which is exactly backwards.
+Both controls carry the same label, act on the same state, and appear and retire
+together.
+
+### Notices
+
+A **notice** is any box the app draws to say something *about* the content it is
+showing: that a file is only partly loaded, that a document could not be rendered.
+They are one primitive, `.notice` in `static/styles.css`, in core and in plugins alike.
+
+Its fill is always the ordinary surface — `var(--bg)`, white in the light theme — and
+**severity is carried by the border alone**, as one `[data-severity]` override:
+
+| Severity | Border | Means |
+| --- | --- | --- |
+| (none) | `var(--border)` | Neutral; the box is a container, not a signal |
+| `warning` | `var(--status-warning)` | Incomplete, capped, or degraded — the content is fine as far as it goes |
+| `error` | `var(--status-error)` | The thing could not be done at all |
+
+One tone per box, and it is the one on the edge.
+Tinting the fill is how these drifted, twice: the partial-content banner wore an
+info-blue fill with a warning border while the byte view announced the same condition
+with no box at all, and the KPress render error wore that same blue under an orange
+border — an error announcing itself in the color of an aside, beneath a border naming
+the wrong severity. A tint token such as `--status-info-bg` exists for surfaces that
+genuinely mean “informational”; it is never a message box’s fill.
+
+A use site carries `.notice` in the markup alongside its own class, and owns only
+**layout and position** — how it arranges its contents and where it sits.
+It never restates the fill, border, or type, the same rule the
+[control families](#control-families) follow, for the same reason.
+Layout is deliberately not shared: a one-line notice with a button and a stacked render
+error with a detail block have nothing useful in common there.
+
+`tests/test_notice_style.py` enforces all of it.
+It fails the build if the primitive is redefined outside core, if its fill stops being
+the surface, if a severity does anything but set a border color, if a use site declares
+its own background, border, color, or font, or if any stylesheet uses a status tint as a
+box fill.
+
+Build a partial-content notice through `mb.partialNoticeHtml` rather than by hand, so a
+new view gets the markup, the severity, and the placement together.
+
+### State Progress Once
+
+The notice is the only place a view reports how much of a file is loaded.
+
+Both views used to carry a second readout in their pane chrome — “1.0 MB / 6.0 MB” above
+a notice reading “Showing 1.0 MB of 6.0 MB” — which is the same sentence twice in two
+boxes, and gives a reader two things to reconcile where there is only one fact.
+The file header states the file’s **size**, which is identity; the notice states
+**progress**, which is state.
+The two controls at the ends of the content are not a second statement: they bracket the
+same content so the reader meets one of them wherever they are.
+
+Three supporting rules follow from the same reasoning:
+
+- **A notice that content is missing carries its own control.** Telling a reader that
+  more exists and pointing them elsewhere to ask for it puts the explanation and the
+  remedy in different places.
+  The partial-content banner holds a Load more button rather than naming one.
+- **Retire the control when nothing remains.** A control that cannot do anything reads
+  as a broken control, and any trailing rule or spacing it owns goes with it.
+- **A bound on loading is not a refusal to show anything.** When a view caps how much it
+  will load, it still opens the file and loads up to the cap; it then keeps the notice,
+  drops the control, and says the limit was reached.
+  “No control” and “you are seeing the whole file” look identical otherwise, and a
+  reader who cannot see the rest needs telling either way.
+  The byte view previously refused any file above its 32 MiB ceiling outright, which
+  meant the view existed for binaries and declined the large ones with nothing to look
+  at.
+
+Core provides both halves through `mb.renderTextTruncationWarning` and
+`mb.renderTextLoadMoreFooter` for views whose progress comes from `/api/file`, and
+`mb.partialNoticeHtml` for a view that tracks its own offsets.
+A plugin gets the placement and the style by using them rather than by reproducing them.
+See [Rendering Large Content](large-content-rendering.md) for the loading policy behind
+the chunk sizes these controls request.
 
 ### Navigation Tree Folders
 
@@ -1034,6 +1125,8 @@ When adding a component or plugin view:
 
 1. Identify the existing primitive and tokens it can reuse.
 2. Test narrow and wide panes, long paths, empty data, malformed data, and large data.
+   If the view can show part of its content, check that continuing is reachable from the
+   bottom as well as the top.
 3. Review all chrome copy and adjacent text across supported states.
 4. Check light theme, dark theme, keyboard focus, reduced motion, and print output.
 5. Verify lazy mount and disposal behavior.

@@ -18,8 +18,12 @@ import re
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "metabrowser" / "static"
-AGENT_LOG_STYLES_CSS = STATIC_DIR.parent / "builtin_plugins" / "agent_log" / "styles.css"
-STYLE_FILES = (STATIC_DIR / "styles.css", AGENT_LOG_STYLES_CSS)
+PLUGINS_DIR = STATIC_DIR.parent / "builtin_plugins"
+AGENT_LOG_STYLES_CSS = PLUGINS_DIR / "agent_log" / "styles.css"
+# The Bytes view renders inside the shared `.code-block` surface, so it
+# inherits the classified monospace rule instead of declaring its own.
+BINARY_STYLES_CSS = PLUGINS_DIR / "binary" / "styles.css"
+STYLE_FILES = (STATIC_DIR / "styles.css", AGENT_LOG_STYLES_CSS, BINARY_STYLES_CSS)
 SEARCH_PALETTE_JS = STATIC_DIR / "search_palette.js"
 
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)

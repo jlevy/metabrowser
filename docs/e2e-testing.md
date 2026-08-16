@@ -101,6 +101,10 @@ Open the printed URL and verify:
 
 - first paint appears before a large tree finishes indexing;
 - Markdown, structured data, source, JSONL, image, and binary views render;
+- the binary Bytes view loads a second chunk on **Load more**, appends without
+  re-rendering the bytes already shown, and wraps without horizontal overflow at narrow
+  and wide panes in both themes;
+- a binary file above the preview ceiling reports the cutoff instead of loading;
 - changing and deleting files updates tree and recent views;
 - a direct hash path opens independently of the tree crawl;
 - light and dark themes, narrow panes, keyboard focus, and print output remain usable;
@@ -133,6 +137,15 @@ manifest and `/static/styles.css`. Such a page holds no event stream, so the ord
 `--virtual-time-budget` screenshot works, and it can be rendered at several widths and
 disclosure states in one pass.
 Keep these harnesses in a scratch directory; they are debugging aids, not fixtures.
+
+The same driver answers rendering-cost questions that no contract test can.
+Comparing DOM strategies for the binary Bytes view this way showed that CSS-wrapping one
+large run is quadratic — 43 ms at 32 KiB rising to 33 s at 1 MiB — while pre-broken
+lines in `content-visibility` blocks render the same 1 MiB in about 50 ms.
+When a limit looks arbitrary, measure before changing it, and record what was measured
+next to the constant.
+[Rendering large content](large-content-rendering.md) holds the cost model and the
+procedure for establishing the shape of a cost before setting a bound.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

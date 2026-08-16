@@ -38,10 +38,21 @@
 //     chart(container, type, data, opts) — Chart.js wrapper
 //
 //   Data fetches:
-//     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
+//     fetchPluginData(plugin, route, p, opts?)
+//                                        — GET /api/plugin/<plugin>/<route>
+//                                          opts.signal aborts the request; a
+//                                          non-ok response rejects with an
+//                                          Error carrying .status and .payload
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
 //     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
-//     renderTextTruncationWarning(data) — visible partial-content warning
+//     renderTextTruncationWarning(data) — partial-content banner, with a
+//                                        Load more control in it
+//     renderTextLoadMoreFooter(data)    — the same notice, for after the
+//                                        content (see design-system.md)
+//     partialNoticeHtml({loaded,total}, position, useSiteClass)
+//                                        — the shared partial-content notice,
+//                                          for views that track their own
+//                                          progress rather than /api/file's
 //
 //   Navigation:
 //     openPath(path, {viewId?})          — open a path, optionally preferring a view
@@ -143,7 +154,7 @@
       .replace(/'/g, "&#39;");
   }
 
-  async function fetchPluginData(plugin, route, params) {
+  async function fetchPluginData(plugin, route, params, options) {
     if (!plugin || !route) {
       throw new Error("fetchPluginData: plugin + route are required");
     }
@@ -158,15 +169,32 @@
         }
       }
     }
-    const resp = await fetch(url.toString(), { method: "GET" });
+    const resp = await fetch(url.toString(), { method: "GET", signal: options?.signal });
     if (!resp.ok) {
-      throw new Error(`fetchPluginData ${plugin}/${route}: ${resp.status}`);
+      // A hook that answers "why not" in its body is answering usefully; a
+      // caller that only sees the status has to guess or hard-code the
+      // reason. Same shape fetchKpressRender uses for the same reason.
+      let payload = null;
+      try {
+        payload = await resp.json();
+      } catch (_e) {
+        payload = null;
+      }
+      /** @type {Error & {status?: number, payload?: unknown}} */
+      const err = new Error(`fetchPluginData ${plugin}/${route}: ${resp.status}`);
+      err.status = resp.status;
+      err.payload = payload;
+      throw err;
     }
     const data = await resp.json();
     if (data && data.type === "plugin_error") {
-      throw new Error(
+      /** @type {Error & {status?: number, payload?: unknown}} */
+      const err = new Error(
         (data.error || "Plugin data hook failed") + (data.detail ? `: ${data.detail}` : ""),
       );
+      err.status = resp.status;
+      err.payload = data;
+      throw err;
     }
     return data;
   }
@@ -579,9 +607,17 @@
     return `${base + (detail ? `: ${detail}` : "")} (HTTP ${status})`;
   }
 
-  function renderTextTruncationWarning(data) {
+  /**
+   * How much of a partially-loaded payload is showing, or null when it is
+   * complete. One reading of the payload, so the banner, the footer control,
+   * and the header readout cannot disagree about whether more remains.
+   *
+   * @param {Record<string, any> | null | undefined} data
+   * @returns {{loaded: string, total: string} | null}
+   */
+  function textPreviewProgress(data) {
     if (!data) {
-      return "";
+      return null;
     }
     const totalBytes = data.size_uncompressed || data.logical_size || data.size || 0;
     const bytesRead = data.bytes_read || data.content_bytes || 0;
@@ -589,20 +625,95 @@
       !!data.content_truncated ||
       (typeof data.bytes_read === "number" && totalBytes > 0 && bytesRead < totalBytes);
     if (!truncated) {
-      return "";
+      return null;
     }
-    const loadedLabel = formatSize(bytesRead);
-    const totalLabel = formatSize(totalBytes);
+    return { loaded: formatSize(bytesRead), total: formatSize(totalBytes) };
+  }
+
+  /**
+   * The Load more control itself. Emitted at both ends of partial content —
+   * see docs/design-system.md, "Continuing partial content": a reader who has
+   * scrolled to the end of what loaded is exactly the reader who wants more,
+   * and sending them back to the top to ask for it is the whole problem.
+   *
+   * @param {"top" | "bottom"} position
+   * @returns {string}
+   */
+  function loadMoreButtonHtml(position, action) {
+    // `action: null` means the caller wires its own listener — a view that
+    // tracks its own offsets cannot be continued by the shell's text loader.
+    const onclick = action === null ? "" : ` onclick="${action || "loadMoreCurrentText()"}"`;
     return (
-      '<div class="metabrowser-source-truncation-warning" role="status">' +
-      "<strong>Content truncated.</strong> " +
-      "Showing " +
-      escapeHtml(loadedLabel) +
+      `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
+      `${onclick} title="Load more of this file">Load more</button>`
+    );
+  }
+
+  /**
+   * The shared partial-content notice.
+   *
+   * Every surface that says "this is only part of the file" is this box, in
+   * core and in plugins alike — see docs/design-system.md, "Continuing partial
+   * content". A use-site class rides along for querying and positioning, but
+   * `partial-notice` is what carries the fill, border, and type, so the two
+   * ends of a file and the two views cannot drift apart.
+   *
+   * `showControl: false` states the condition without offering to continue —
+   * for content that is partial and will stay partial, such as a file larger
+   * than a view is willing to load. That is still a partial-content notice; a
+   * reader who cannot see the whole file needs telling either way.
+   *
+   * @param {{loaded: string, total: string}} progress
+   * @param {"top" | "bottom"} position
+   * @param {{useSiteClass?: string, action?: string | null, hidden?: boolean,
+   *          label?: string, showControl?: boolean}} [options]
+   * @returns {string}
+   */
+  function partialNoticeHtml(progress, position, options) {
+    const useSiteClass = options?.useSiteClass ? ` ${options.useSiteClass}` : "";
+    const hidden = options?.hidden ? " hidden" : "";
+    const label = options?.label ?? "Partial file.";
+    const control =
+      options?.showControl === false ? "" : loadMoreButtonHtml(position, options?.action);
+    return (
+      `<div class="notice partial-notice${useSiteClass}" data-severity="warning"` +
+      ` data-position="${position}" role="status"${hidden}>` +
+      // The progress figures live in their own element so a view that updates
+      // in place can rewrite them without taking the label with them.
+      `<span><strong class="partial-notice-label">${escapeHtml(label)}</strong> ` +
+      '<span class="partial-notice-readout">Showing ' +
+      escapeHtml(progress.loaded) +
       " of " +
-      escapeHtml(totalLabel) +
-      ". Select Load more to continue." +
+      escapeHtml(progress.total) +
+      ".</span></span>" +
+      // The notice carries its own button. It used to say "Select Load more to
+      // continue" and point at a control in the pane header, which puts the
+      // explanation and the remedy in different places.
+      control +
       "</div>"
     );
+  }
+
+  function renderTextTruncationWarning(data) {
+    const progress = textPreviewProgress(data);
+    return progress
+      ? partialNoticeHtml(progress, "top", {
+          useSiteClass: "metabrowser-source-truncation-warning",
+        })
+      : "";
+  }
+
+  /**
+   * Trailing companion to the banner, mounted after the content.
+   *
+   * @param {Record<string, any> | null | undefined} data
+   * @returns {string}
+   */
+  function renderTextLoadMoreFooter(data) {
+    const progress = textPreviewProgress(data);
+    return progress
+      ? partialNoticeHtml(progress, "bottom", { useSiteClass: "metabrowser-source-more-footer" })
+      : "";
   }
 
   function _headOrBody() {
@@ -1287,6 +1398,8 @@
     openPath: openPath,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
+    renderTextLoadMoreFooter: renderTextLoadMoreFooter,
+    partialNoticeHtml: partialNoticeHtml,
     loadKpressAssets: loadKpressAssets,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,
