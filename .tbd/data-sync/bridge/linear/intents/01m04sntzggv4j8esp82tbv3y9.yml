@@ -12,44 +12,6 @@ ops:
       priority: 2
       status: open
       title: Post-v0.1 MetaBrowser core roadmap
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-08aj
-          children: 18
-          created_at: 2026-07-16T16:48:44.719Z
-          dependencies: []
-          internal_id: is-01kxnx985gd2k5epmcswersqdk
-          kind: epic
-          labels:
-            - roadmap
-          parent_id: null
-          priority: 2
-          ready_children: 18
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-08-07T00:57:59.957Z
-        subtitle: open · P2
-        title: mb-08aj · epic
-        url: tbd://bead/mb-08aj
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnx985gd2k5epmcswersqdk
-    external_id: 4bf23327-faca-40ed-b28b-0b3870993e50
-    kind: upsert_attachments
-  - bead_id: is-01kxnx985gd2k5epmcswersqdk
-    block: |-
-      ⟦tbd⟧
-      `mb-08aj` · epic · open · P2
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 18 (18 ready)
-      Bead: `tbd show mb-08aj`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 4bf23327-faca-40ed-b28b-0b3870993e50
-    kind: splice_description
   - bead_id: is-01kxj67pctmr4k4mdmvd45cnq5
     client_id: ee3b3ac9-0c58-436c-847c-6749ae00c491
     kind: create_issue
@@ -63,43 +25,6 @@ ops:
       priority: 2
       status: open
       title: Support transparent bounded Zstandard artifacts
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-epis
-          children: 0
-          created_at: 2026-07-15T06:08:13.209Z
-          dependencies: []
-          internal_id: is-01kxj67pctmr4k4mdmvd45cnq5
-          kind: feature
-          labels: []
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-17T20:20:44.602Z
-        subtitle: open · P2
-        title: mb-epis · feature
-        url: tbd://bead/mb-epis
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxj67pctmr4k4mdmvd45cnq5
-    external_id: ee3b3ac9-0c58-436c-847c-6749ae00c491
-    kind: upsert_attachments
-  - bead_id: is-01kxj67pctmr4k4mdmvd45cnq5
-    block: |-
-      ⟦tbd⟧
-      `mb-epis` · feature · open · P2
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-epis`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: ee3b3ac9-0c58-436c-847c-6749ae00c491
-    kind: splice_description
   - bead_id: is-01kxj6mq90b884fzynz50bjcbj
     client_id: b7f881bd-ed3b-40ed-a31e-0dc6fbb493e7
     kind: create_issue
@@ -112,43 +37,6 @@ ops:
       priority: 3
       status: open
       title: Evaluate additional transparent compression formats
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-min4
-          children: 0
-          created_at: 2026-07-15T06:15:20.095Z
-          dependencies: []
-          internal_id: is-01kxj6mq90b884fzynz50bjcbj
-          kind: feature
-          labels: []
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 3
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-17T20:20:44.930Z
-        subtitle: open · P3
-        title: mb-min4 · feature
-        url: tbd://bead/mb-min4
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxj6mq90b884fzynz50bjcbj
-    external_id: b7f881bd-ed3b-40ed-a31e-0dc6fbb493e7
-    kind: upsert_attachments
-  - bead_id: is-01kxj6mq90b884fzynz50bjcbj
-    block: |-
-      ⟦tbd⟧
-      `mb-min4` · feature · open · P3
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-min4`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: b7f881bd-ed3b-40ed-a31e-0dc6fbb493e7
-    kind: splice_description
   - bead_id: is-01kxj6mrvpkqnkn274rhy3mg2j
     client_id: 48e8dd27-0205-4ace-ba06-3973c5d3c94c
     kind: create_issue
@@ -161,43 +49,6 @@ ops:
       priority: 3
       status: open
       title: Support safe archive and container browsing
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-p7ts
-          children: 0
-          created_at: 2026-07-15T06:15:21.716Z
-          dependencies: []
-          internal_id: is-01kxj6mrvpkqnkn274rhy3mg2j
-          kind: feature
-          labels: []
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 3
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-17T20:20:45.134Z
-        subtitle: open · P3
-        title: mb-p7ts · feature
-        url: tbd://bead/mb-p7ts
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxj6mrvpkqnkn274rhy3mg2j
-    external_id: 48e8dd27-0205-4ace-ba06-3973c5d3c94c
-    kind: upsert_attachments
-  - bead_id: is-01kxj6mrvpkqnkn274rhy3mg2j
-    block: |-
-      ⟦tbd⟧
-      `mb-p7ts` · feature · open · P3
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-p7ts`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 48e8dd27-0205-4ace-ba06-3973c5d3c94c
-    kind: splice_description
   - bead_id: is-01kxnvq1y0qwm9p57jcj37q09b
     client_id: 4adbc1fb-afe9-4f50-9f55-e8ff34227388
     kind: create_issue
@@ -213,45 +64,6 @@ ops:
       priority: 3
       status: open
       title: "PR #3 review D: add a strict Content Security Policy"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-gluj
-          children: 0
-          created_at: 2026-07-16T16:21:19.936Z
-          dependencies: []
-          internal_id: is-01kxnvq1y0qwm9p57jcj37q09b
-          kind: task
-          labels:
-            - pr-review
-            - security
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 3
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-08-07T00:58:42.807Z
-        subtitle: open · P3
-        title: mb-gluj · task
-        url: tbd://bead/mb-gluj
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnvq1y0qwm9p57jcj37q09b
-    external_id: 4adbc1fb-afe9-4f50-9f55-e8ff34227388
-    kind: upsert_attachments
-  - bead_id: is-01kxnvq1y0qwm9p57jcj37q09b
-    block: |-
-      ⟦tbd⟧
-      `mb-gluj` · task · open · P3
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-gluj`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 4adbc1fb-afe9-4f50-9f55-e8ff34227388
-    kind: splice_description
   - bead_id: is-01kxnww26n70vegt5rxxnn2kca
     client_id: 8fc405b1-c150-4848-aa57-4bf7f1046655
     kind: create_issue
@@ -267,46 +79,6 @@ ops:
       priority: 3
       status: open
       title: Ratchet remaining Python strict-type debt
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-hmwo
-          children: 0
-          created_at: 2026-07-16T16:41:32.628Z
-          dependencies: []
-          internal_id: is-01kxnww26n70vegt5rxxnn2kca
-          kind: chore
-          labels:
-            - tooling
-            - types
-            - ratchet
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 3
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-17T20:20:52.187Z
-        subtitle: open · P3
-        title: mb-hmwo · chore
-        url: tbd://bead/mb-hmwo
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnww26n70vegt5rxxnn2kca
-    external_id: 8fc405b1-c150-4848-aa57-4bf7f1046655
-    kind: upsert_attachments
-  - bead_id: is-01kxnww26n70vegt5rxxnn2kca
-    block: |-
-      ⟦tbd⟧
-      `mb-hmwo` · chore · open · P3
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-hmwo`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 8fc405b1-c150-4848-aa57-4bf7f1046655
-    kind: splice_description
   - bead_id: is-01kxnww2f3ggbt0grdkf7spdt4
     client_id: 5169c336-d301-4100-9653-ce96dd092cec
     kind: create_issue
@@ -321,46 +93,6 @@ ops:
       priority: 3
       status: open
       title: Ratchet legacy browser JavaScript to noImplicitAny
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-ffo9
-          children: 0
-          created_at: 2026-07-16T16:41:32.898Z
-          dependencies: []
-          internal_id: is-01kxnww2f3ggbt0grdkf7spdt4
-          kind: chore
-          labels:
-            - tooling
-            - typescript
-            - ratchet
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 3
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-17T20:20:52.388Z
-        subtitle: open · P3
-        title: mb-ffo9 · chore
-        url: tbd://bead/mb-ffo9
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnww2f3ggbt0grdkf7spdt4
-    external_id: 5169c336-d301-4100-9653-ce96dd092cec
-    kind: upsert_attachments
-  - bead_id: is-01kxnww2f3ggbt0grdkf7spdt4
-    block: |-
-      ⟦tbd⟧
-      `mb-ffo9` · chore · open · P3
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-ffo9`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 5169c336-d301-4100-9653-ce96dd092cec
-    kind: splice_description
   - bead_id: is-01kxnww2qv3mt7v5j17059bwpc
     client_id: 548aa569-c8d3-4796-9230-906592cb0796
     kind: create_issue
@@ -376,46 +108,6 @@ ops:
       priority: 3
       status: open
       title: Remove scoped Biome legacy rule exceptions
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-q1wo
-          children: 0
-          created_at: 2026-07-16T16:41:33.178Z
-          dependencies: []
-          internal_id: is-01kxnww2qv3mt7v5j17059bwpc
-          kind: chore
-          labels:
-            - tooling
-            - biome
-            - ratchet
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 3
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-17T20:20:52.580Z
-        subtitle: open · P3
-        title: mb-q1wo · chore
-        url: tbd://bead/mb-q1wo
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnww2qv3mt7v5j17059bwpc
-    external_id: 548aa569-c8d3-4796-9230-906592cb0796
-    kind: upsert_attachments
-  - bead_id: is-01kxnww2qv3mt7v5j17059bwpc
-    block: |-
-      ⟦tbd⟧
-      `mb-q1wo` · chore · open · P3
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-q1wo`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 548aa569-c8d3-4796-9230-906592cb0796
-    kind: splice_description
   - bead_id: is-01kxnx9vtb13p6z8mewgsm2t75
     client_id: fb70400d-cf16-4be7-b0c6-8ff45c3730da
     kind: create_issue
@@ -429,45 +121,6 @@ ops:
       priority: 2
       status: open
       title: Modularize the browser shell and reader assets
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-0b2h
-          children: 0
-          created_at: 2026-07-16T16:49:04.842Z
-          dependencies: []
-          internal_id: is-01kxnx9vtb13p6z8mewgsm2t75
-          kind: epic
-          labels:
-            - browser
-            - architecture
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-16T16:49:04.842Z
-        subtitle: open · P2
-        title: mb-0b2h · epic
-        url: tbd://bead/mb-0b2h
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnx9vtb13p6z8mewgsm2t75
-    external_id: fb70400d-cf16-4be7-b0c6-8ff45c3730da
-    kind: upsert_attachments
-  - bead_id: is-01kxnx9vtb13p6z8mewgsm2t75
-    block: |-
-      ⟦tbd⟧
-      `mb-0b2h` · epic · open · P2
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-0b2h`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: fb70400d-cf16-4be7-b0c6-8ff45c3730da
-    kind: splice_description
   - bead_id: is-01kxnx9w3arnbavydarqg1xjya
     client_id: 9201e8b4-6c43-400f-a8c1-f694f5c4e195
     kind: create_issue
@@ -480,45 +133,6 @@ ops:
       priority: 2
       status: open
       title: Add browser-grade DOM and payload contract coverage
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-bdso
-          children: 0
-          created_at: 2026-07-16T16:49:05.129Z
-          dependencies: []
-          internal_id: is-01kxnx9w3arnbavydarqg1xjya
-          kind: task
-          labels:
-            - browser
-            - testing
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-16T16:49:05.129Z
-        subtitle: open · P2
-        title: mb-bdso · task
-        url: tbd://bead/mb-bdso
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnx9w3arnbavydarqg1xjya
-    external_id: 9201e8b4-6c43-400f-a8c1-f694f5c4e195
-    kind: upsert_attachments
-  - bead_id: is-01kxnx9w3arnbavydarqg1xjya
-    block: |-
-      ⟦tbd⟧
-      `mb-bdso` · task · open · P2
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-bdso`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 9201e8b4-6c43-400f-a8c1-f694f5c4e195
-    kind: splice_description
   - bead_id: is-01kxnx9waq2h69ey9kb0mcg5hq
     client_id: d2579248-d47f-40b5-b4d8-79ff0a9d7dcb
     kind: create_issue
@@ -534,45 +148,6 @@ ops:
       priority: 2
       status: open
       title: Quick file finder and search providers
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-qlsx
-          children: 3
-          created_at: 2026-07-16T16:49:05.366Z
-          dependencies: []
-          internal_id: is-01kxnx9waq2h69ey9kb0mcg5hq
-          kind: feature
-          labels:
-            - search
-            - scalability
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
-          status: open
-          updated_at: 2026-08-09T18:03:27.124Z
-        subtitle: open · P2
-        title: mb-qlsx · feature
-        url: tbd://bead/mb-qlsx
-      - subtitle: plan spec
-        title: plan-2026-07-17-scalable-file-search.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
-    bead_id: is-01kxnx9waq2h69ey9kb0mcg5hq
-    external_id: d2579248-d47f-40b5-b4d8-79ff0a9d7dcb
-    kind: upsert_attachments
-  - bead_id: is-01kxnx9waq2h69ey9kb0mcg5hq
-    block: |-
-      ⟦tbd⟧
-      `mb-qlsx` · feature · open · P2
-      Spec: [plan-2026-07-17-scalable-file-search.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
-      Children: 3 (0 ready)
-      Bead: `tbd show mb-qlsx`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: d2579248-d47f-40b5-b4d8-79ff0a9d7dcb
-    kind: splice_description
   - bead_id: is-01kxnx9whay0pcjvvqk0s3k785
     client_id: 455d47a1-b9ed-4da0-a5e5-be31bcf0b4a2
     kind: create_issue
@@ -585,44 +160,6 @@ ops:
       priority: 2
       status: open
       title: Support multiplexed fair tail streaming
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-apni
-          children: 0
-          created_at: 2026-07-16T16:49:05.578Z
-          dependencies: []
-          internal_id: is-01kxnx9whay0pcjvvqk0s3k785
-          kind: feature
-          labels:
-            - streaming
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-16T16:49:05.578Z
-        subtitle: open · P2
-        title: mb-apni · feature
-        url: tbd://bead/mb-apni
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnx9whay0pcjvvqk0s3k785
-    external_id: 455d47a1-b9ed-4da0-a5e5-be31bcf0b4a2
-    kind: upsert_attachments
-  - bead_id: is-01kxnx9whay0pcjvvqk0s3k785
-    block: |-
-      ⟦tbd⟧
-      `mb-apni` · feature · open · P2
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-apni`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 455d47a1-b9ed-4da0-a5e5-be31bcf0b4a2
-    kind: splice_description
   - bead_id: is-01kxnx9wqvz9cy9h4qphq1078a
     client_id: 9bb812dc-1b93-47da-aa5b-1b140f267b4c
     kind: create_issue
@@ -635,45 +172,6 @@ ops:
       priority: 2
       status: open
       title: Add a generic writer event-log backend
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-4dka
-          children: 0
-          created_at: 2026-07-16T16:49:05.787Z
-          dependencies: []
-          internal_id: is-01kxnx9wqvz9cy9h4qphq1078a
-          kind: feature
-          labels:
-            - indexing
-            - plugins
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-16T16:49:05.787Z
-        subtitle: open · P2
-        title: mb-4dka · feature
-        url: tbd://bead/mb-4dka
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnx9wqvz9cy9h4qphq1078a
-    external_id: 9bb812dc-1b93-47da-aa5b-1b140f267b4c
-    kind: upsert_attachments
-  - bead_id: is-01kxnx9wqvz9cy9h4qphq1078a
-    block: |-
-      ⟦tbd⟧
-      `mb-4dka` · feature · open · P2
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-4dka`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 9bb812dc-1b93-47da-aa5b-1b140f267b4c
-    kind: splice_description
   - bead_id: is-01kxnx9wyz9tb4yttg2rp3nrf3
     client_id: a8292724-e972-46d8-aee7-80efaa83ebb4
     kind: create_issue
@@ -686,45 +184,6 @@ ops:
       priority: 2
       status: open
       title: Prove large-directory startup and interaction budgets
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-7l9k
-          children: 0
-          created_at: 2026-07-16T16:49:06.015Z
-          dependencies: []
-          internal_id: is-01kxnx9wyz9tb4yttg2rp3nrf3
-          kind: task
-          labels:
-            - performance
-            - scalability
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: TODO.md
-          status: open
-          updated_at: 2026-07-16T16:49:06.015Z
-        subtitle: open · P2
-        title: mb-7l9k · task
-        url: tbd://bead/mb-7l9k
-      - subtitle: plan spec
-        title: TODO.md
-        url: https://github.com/jlevy/metabrowser/blob/main/TODO.md
-    bead_id: is-01kxnx9wyz9tb4yttg2rp3nrf3
-    external_id: a8292724-e972-46d8-aee7-80efaa83ebb4
-    kind: upsert_attachments
-  - bead_id: is-01kxnx9wyz9tb4yttg2rp3nrf3
-    block: |-
-      ⟦tbd⟧
-      `mb-7l9k` · task · open · P2
-      Spec: [TODO.md](https://github.com/jlevy/metabrowser/blob/main/TODO.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-7l9k`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: a8292724-e972-46d8-aee7-80efaa83ebb4
-    kind: splice_description
   - bead_id: is-01kxnx9xbpjegdatwmrn71gv1y
     client_id: 01b1281b-3420-41bd-9c26-15187f664191
     kind: create_issue
@@ -737,45 +196,6 @@ ops:
       priority: 3
       status: open
       title: Design editor-capable plugin lifecycle extensions
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-i80r
-          children: 0
-          created_at: 2026-07-16T16:49:06.422Z
-          dependencies: []
-          internal_id: is-01kxnx9xbpjegdatwmrn71gv1y
-          kind: feature
-          labels:
-            - plugins
-            - editing
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 3
-          ready_children: 0
-          spec_path: docs/project/architecture/arch-editor-plugin-editing-contract.md
-          status: open
-          updated_at: 2026-07-17T21:14:28.530Z
-        subtitle: open · P3
-        title: mb-i80r · feature
-        url: tbd://bead/mb-i80r
-      - subtitle: plan spec
-        title: arch-editor-plugin-editing-contract.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/architecture/arch-editor-plugin-editing-contract.md
-    bead_id: is-01kxnx9xbpjegdatwmrn71gv1y
-    external_id: 01b1281b-3420-41bd-9c26-15187f664191
-    kind: upsert_attachments
-  - bead_id: is-01kxnx9xbpjegdatwmrn71gv1y
-    block: |-
-      ⟦tbd⟧
-      `mb-i80r` · feature · open · P3
-      Spec: [arch-editor-plugin-editing-contract.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/architecture/arch-editor-plugin-editing-contract.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-i80r`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 01b1281b-3420-41bd-9c26-15187f664191
-    kind: splice_description
   - bead_id: is-01kxnxdnrcd3p2ghhgb50j5t3x
     client_id: 8a7791a1-c98a-47c3-a6b9-152452af4050
     kind: create_issue
@@ -787,43 +207,6 @@ ops:
       priority: 2
       status: open
       title: Add opt-in trusted-local file editing
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-wcb0
-          children: 0
-          created_at: 2026-07-16T16:51:09.708Z
-          dependencies: []
-          internal_id: is-01kxnxdnrcd3p2ghhgb50j5t3x
-          kind: feature
-          labels: []
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md
-          status: open
-          updated_at: 2026-08-07T00:36:02.287Z
-        subtitle: open · P2
-        title: mb-wcb0 · feature
-        url: tbd://bead/mb-wcb0
-      - subtitle: plan spec
-        title: plan-2026-07-16-trusted-local-file-editing.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md
-    bead_id: is-01kxnxdnrcd3p2ghhgb50j5t3x
-    external_id: 8a7791a1-c98a-47c3-a6b9-152452af4050
-    kind: upsert_attachments
-  - bead_id: is-01kxnxdnrcd3p2ghhgb50j5t3x
-    block: |-
-      ⟦tbd⟧
-      `mb-wcb0` · feature · open · P2
-      Spec: [plan-2026-07-16-trusted-local-file-editing.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-wcb0`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 8a7791a1-c98a-47c3-a6b9-152452af4050
-    kind: splice_description
   - bead_id: is-01kxnxdp06yjcb57d62y03kv1m
     client_id: 036f4bb2-e240-412d-a8c6-fa6547a2c03c
     kind: create_issue
@@ -834,43 +217,6 @@ ops:
       priority: 2
       status: open
       title: Expose scan progress and recent directories
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-f42e
-          children: 0
-          created_at: 2026-07-16T16:51:09.957Z
-          dependencies: []
-          internal_id: is-01kxnxdp06yjcb57d62y03kv1m
-          kind: feature
-          labels: []
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md
-          status: open
-          updated_at: 2026-07-17T21:14:28.277Z
-        subtitle: open · P2
-        title: mb-f42e · feature
-        url: tbd://bead/mb-f42e
-      - subtitle: plan spec
-        title: plan-2026-07-16-scanning-state-and-recent-directories.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md
-    bead_id: is-01kxnxdp06yjcb57d62y03kv1m
-    external_id: 036f4bb2-e240-412d-a8c6-fa6547a2c03c
-    kind: upsert_attachments
-  - bead_id: is-01kxnxdp06yjcb57d62y03kv1m
-    block: |-
-      ⟦tbd⟧
-      `mb-f42e` · feature · open · P2
-      Spec: [plan-2026-07-16-scanning-state-and-recent-directories.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-f42e`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 036f4bb2-e240-412d-a8c6-fa6547a2c03c
-    kind: splice_description
   - bead_id: is-01kxry30twkcz9sg4ecahcg63j
     client_id: 8abea237-409f-4114-b118-4efa20f438b3
     kind: create_issue
@@ -882,41 +228,6 @@ ops:
       status: open
       title: "Platform A1: plugin sub-router mount (path params, full methods, honest status
         codes)"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-xzj3
-          children: 0
-          created_at: 2026-07-17T21:00:32.476Z
-          dependencies:
-            - target: is-01kxse0vfwwkcq1a6mfdx6v9ad
-              type: blocks
-          internal_id: is-01kxry30twkcz9sg4ecahcg63j
-          kind: feature
-          labels: []
-          parent_id: is-01kxry18kdjj6xk8nkz4bs4ba6
-          priority: 1
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-18T01:39:19.987Z
-        subtitle: open · P1
-        title: mb-xzj3 · feature
-        url: tbd://bead/mb-xzj3
-    bead_id: is-01kxry30twkcz9sg4ecahcg63j
-    external_id: 8abea237-409f-4114-b118-4efa20f438b3
-    kind: upsert_attachments
-  - bead_id: is-01kxry30twkcz9sg4ecahcg63j
-    block: |-
-      ⟦tbd⟧
-      `mb-xzj3` · feature · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-xzj3`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 8abea237-409f-4114-b118-4efa20f438b3
-    kind: splice_description
   - bead_id: is-01kxry3135peyv0t9xedrxsavz
     client_id: cd17ecaf-ed4e-44db-86ba-855c34def907
     kind: create_issue
@@ -927,41 +238,6 @@ ops:
       status: open
       title: "Platform A2: SDK data-plane v2 — POST bodies, streaming/NDJSON, SSE helper wired
         to view disposal"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-7uta
-          children: 0
-          created_at: 2026-07-17T21:00:32.741Z
-          dependencies:
-            - target: is-01kxse0vt4cyng7mvtr3hk2rct
-              type: blocks
-          internal_id: is-01kxry3135peyv0t9xedrxsavz
-          kind: feature
-          labels: []
-          parent_id: is-01kxry18kdjj6xk8nkz4bs4ba6
-          priority: 1
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-18T01:39:20.841Z
-        subtitle: open · P1
-        title: mb-7uta · feature
-        url: tbd://bead/mb-7uta
-    bead_id: is-01kxry3135peyv0t9xedrxsavz
-    external_id: cd17ecaf-ed4e-44db-86ba-855c34def907
-    kind: upsert_attachments
-  - bead_id: is-01kxry3135peyv0t9xedrxsavz
-    block: |-
-      ⟦tbd⟧
-      `mb-7uta` · feature · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-7uta`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: cd17ecaf-ed4e-44db-86ba-855c34def907
-    kind: splice_description
   - bead_id: is-01kxry31b7bpyxphe66g7gr64t
     client_id: 33bb512a-82cb-4713-8dc5-74f8d677d894
     kind: create_issue
@@ -973,41 +249,6 @@ ops:
       status: open
       title: "Platform A3: expose file-change event subscription/emission to installed plugins
         via plugin_api"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-t1wt
-          children: 0
-          created_at: 2026-07-17T21:00:32.999Z
-          dependencies:
-            - target: is-01kxse0wddy6je24t1dm5caber
-              type: blocks
-          internal_id: is-01kxry31b7bpyxphe66g7gr64t
-          kind: feature
-          labels: []
-          parent_id: is-01kxry18kdjj6xk8nkz4bs4ba6
-          priority: 1
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-18T01:39:21.595Z
-        subtitle: open · P1
-        title: mb-t1wt · feature
-        url: tbd://bead/mb-t1wt
-    bead_id: is-01kxry31b7bpyxphe66g7gr64t
-    external_id: 33bb512a-82cb-4713-8dc5-74f8d677d894
-    kind: upsert_attachments
-  - bead_id: is-01kxry31b7bpyxphe66g7gr64t
-    block: |-
-      ⟦tbd⟧
-      `mb-t1wt` · feature · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-t1wt`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 33bb512a-82cb-4713-8dc5-74f8d677d894
-    kind: splice_description
   - bead_id: is-01kxry31k2e62styhj8t59jj12
     client_id: b2c972be-cc9e-4692-b3ca-d041777ec425
     kind: create_issue
@@ -1019,41 +260,6 @@ ops:
       status: open
       title: "Platform A4: core bounded async subprocess runner (timeout, output caps,
         sanitized env, cancel-on-disconnect)"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-y1ax
-          children: 0
-          created_at: 2026-07-17T21:00:33.250Z
-          dependencies:
-            - target: is-01kxse0vfwwkcq1a6mfdx6v9ad
-              type: blocks
-          internal_id: is-01kxry31k2e62styhj8t59jj12
-          kind: feature
-          labels: []
-          parent_id: is-01kxry18kdjj6xk8nkz4bs4ba6
-          priority: 1
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-18T01:39:19.713Z
-        subtitle: open · P1
-        title: mb-y1ax · feature
-        url: tbd://bead/mb-y1ax
-    bead_id: is-01kxry31k2e62styhj8t59jj12
-    external_id: b2c972be-cc9e-4692-b3ca-d041777ec425
-    kind: upsert_attachments
-  - bead_id: is-01kxry31k2e62styhj8t59jj12
-    block: |-
-      ⟦tbd⟧
-      `mb-y1ax` · feature · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-y1ax`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: b2c972be-cc9e-4692-b3ca-d041777ec425
-    kind: splice_description
   - bead_id: is-01kxry31tw40txkbzctzv1mtsd
     client_id: 28ee38a5-1006-44dd-a6a0-814e434a8190
     kind: create_issue
@@ -1065,41 +271,6 @@ ops:
       status: open
       title: "Platform A5: repo-scoped plugin surface — [[tool]] mount point for non-file
         views"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-uh6p
-          children: 0
-          created_at: 2026-07-17T21:00:33.500Z
-          dependencies:
-            - target: is-01kxse0vt4cyng7mvtr3hk2rct
-              type: blocks
-          internal_id: is-01kxry31tw40txkbzctzv1mtsd
-          kind: feature
-          labels: []
-          parent_id: is-01kxry18kdjj6xk8nkz4bs4ba6
-          priority: 1
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-18T01:39:20.523Z
-        subtitle: open · P1
-        title: mb-uh6p · feature
-        url: tbd://bead/mb-uh6p
-    bead_id: is-01kxry31tw40txkbzctzv1mtsd
-    external_id: 28ee38a5-1006-44dd-a6a0-814e434a8190
-    kind: upsert_attachments
-  - bead_id: is-01kxry31tw40txkbzctzv1mtsd
-    block: |-
-      ⟦tbd⟧
-      `mb-uh6p` · feature · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-uh6p`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 28ee38a5-1006-44dd-a6a0-814e434a8190
-    kind: splice_description
   - bead_id: is-01kxry3234hgx9hgphz1xsqsmk
     client_id: 206e5eb6-d6d6-4397-8bcd-99383c4fb52c
     kind: create_issue
@@ -1109,41 +280,6 @@ ops:
       priority: 2
       status: open
       title: "Platform A6: expose MtimeCache (or generation-keyed cache) through plugin_api"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-osqu
-          children: 0
-          created_at: 2026-07-17T21:00:33.764Z
-          dependencies:
-            - target: is-01kxse0wddy6je24t1dm5caber
-              type: blocks
-          internal_id: is-01kxry3234hgx9hgphz1xsqsmk
-          kind: feature
-          labels: []
-          parent_id: is-01kxry18kdjj6xk8nkz4bs4ba6
-          priority: 2
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-18T01:39:21.846Z
-        subtitle: open · P2
-        title: mb-osqu · feature
-        url: tbd://bead/mb-osqu
-    bead_id: is-01kxry3234hgx9hgphz1xsqsmk
-    external_id: 206e5eb6-d6d6-4397-8bcd-99383c4fb52c
-    kind: upsert_attachments
-  - bead_id: is-01kxry3234hgx9hgphz1xsqsmk
-    block: |-
-      ⟦tbd⟧
-      `mb-osqu` · feature · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-osqu`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 206e5eb6-d6d6-4397-8bcd-99383c4fb52c
-    kind: splice_description
   - bead_id: is-01kxrygx61r5j6rakwqtq7dh74
     client_id: eafd0be0-c2a0-416c-b4e5-b5f56d593db2
     kind: create_issue
@@ -1155,45 +291,6 @@ ops:
       priority: 3
       status: open
       title: Build VS Code extension host
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-x4y5
-          children: 0
-          created_at: 2026-07-17T21:08:07.489Z
-          dependencies: []
-          internal_id: is-01kxrygx61r5j6rakwqtq7dh74
-          kind: feature
-          labels:
-            - editor
-            - integration
-          parent_id: is-01kxnx985gd2k5epmcswersqdk
-          priority: 3
-          ready_children: 0
-          spec_path: docs/project/architecture/arch-vscode-extension-host.md
-          status: open
-          updated_at: 2026-07-17T21:14:28.786Z
-        subtitle: open · P3
-        title: mb-x4y5 · feature
-        url: tbd://bead/mb-x4y5
-      - subtitle: plan spec
-        title: arch-vscode-extension-host.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/architecture/arch-vscode-extension-host.md
-    bead_id: is-01kxrygx61r5j6rakwqtq7dh74
-    external_id: eafd0be0-c2a0-416c-b4e5-b5f56d593db2
-    kind: upsert_attachments
-  - bead_id: is-01kxrygx61r5j6rakwqtq7dh74
-    block: |-
-      ⟦tbd⟧
-      `mb-x4y5` · feature · open · P3
-      Spec: [arch-vscode-extension-host.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/architecture/arch-vscode-extension-host.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-x4y5`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: eafd0be0-c2a0-416c-b4e5-b5f56d593db2
-    kind: splice_description
   - bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
     client_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
     kind: create_issue
@@ -1205,40 +302,6 @@ ops:
       priority: 1
       status: open
       title: "Git diff view: staged delivery of the Changes surface and comparison API"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-ypme
-          children: 7
-          created_at: 2026-07-18T01:38:43.961Z
-          dependencies: []
-          internal_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-          kind: epic
-          labels:
-            - diff
-          parent_id: null
-          priority: 1
-          ready_children: 1
-          spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
-          status: open
-          updated_at: 2026-07-18T02:46:00.145Z
-        subtitle: open · P1
-        title: mb-ypme · epic
-        url: tbd://bead/mb-ypme
-    bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-    external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
-    kind: upsert_attachments
-  - bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-    block: |-
-      ⟦tbd⟧
-      `mb-ypme` · epic · open · P1
-      Children: 7 (1 ready)
-      Bead: `tbd show mb-ypme`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
-    kind: splice_description
   - bead_id: is-01kxse0v48bnzvcya9vpxh4s06
     client_id: 30aeb3d3-bb47-459b-bc77-4d3a3a47f3eb
     kind: create_issue
@@ -1252,42 +315,6 @@ ops:
       priority: 1
       status: open
       title: "Diff P0: golden Git fixture repos, adapter contract harness, and baselines"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-78y7
-          children: 0
-          created_at: 2026-07-18T01:38:58.312Z
-          dependencies:
-            - target: is-01kxse0vfwwkcq1a6mfdx6v9ad
-              type: blocks
-          internal_id: is-01kxse0v48bnzvcya9vpxh4s06
-          kind: task
-          labels:
-            - diff
-          parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-          priority: 1
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
-          status: open
-          updated_at: 2026-07-18T01:39:20.253Z
-        subtitle: open · P1
-        title: mb-78y7 · task
-        url: tbd://bead/mb-78y7
-    bead_id: is-01kxse0v48bnzvcya9vpxh4s06
-    external_id: 30aeb3d3-bb47-459b-bc77-4d3a3a47f3eb
-    kind: upsert_attachments
-  - bead_id: is-01kxse0v48bnzvcya9vpxh4s06
-    block: |-
-      ⟦tbd⟧
-      `mb-78y7` · task · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-78y7`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 30aeb3d3-bb47-459b-bc77-4d3a3a47f3eb
-    kind: splice_description
   - bead_id: is-01kxse0vfwwkcq1a6mfdx6v9ad
     client_id: 9f2f8636-4e15-42cd-adfd-e7574e92171d
     kind: create_issue
@@ -1301,44 +328,6 @@ ops:
       priority: 1
       status: open
       title: "Diff P1: hardened Git adapter and comparison service (uncommitted view)"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-dqot
-          children: 0
-          created_at: 2026-07-18T01:38:58.684Z
-          dependencies:
-            - target: is-01kxse0w3xhsyhbksdbn2kt33e
-              type: blocks
-            - target: is-01kxse0vt4cyng7mvtr3hk2rct
-              type: blocks
-          internal_id: is-01kxse0vfwwkcq1a6mfdx6v9ad
-          kind: feature
-          labels:
-            - diff
-          parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-          priority: 1
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
-          status: open
-          updated_at: 2026-07-18T01:39:21.091Z
-        subtitle: open · P1
-        title: mb-dqot · feature
-        url: tbd://bead/mb-dqot
-    bead_id: is-01kxse0vfwwkcq1a6mfdx6v9ad
-    external_id: 9f2f8636-4e15-42cd-adfd-e7574e92171d
-    kind: upsert_attachments
-  - bead_id: is-01kxse0vfwwkcq1a6mfdx6v9ad
-    block: |-
-      ⟦tbd⟧
-      `mb-dqot` · feature · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-dqot`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 9f2f8636-4e15-42cd-adfd-e7574e92171d
-    kind: splice_description
   - bead_id: is-01kxse0vt4cyng7mvtr3hk2rct
     client_id: a18941f9-1b80-42ad-b5da-eaa77ec485e9
     kind: create_issue
@@ -1352,42 +341,6 @@ ops:
       priority: 1
       status: open
       title: "Diff P1: Changes nav surface and per-file diff renderer"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-qatc
-          children: 0
-          created_at: 2026-07-18T01:38:59.012Z
-          dependencies:
-            - target: is-01kxse0wddy6je24t1dm5caber
-              type: blocks
-          internal_id: is-01kxse0vt4cyng7mvtr3hk2rct
-          kind: feature
-          labels:
-            - diff
-          parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-          priority: 1
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
-          status: open
-          updated_at: 2026-07-18T01:39:21.343Z
-        subtitle: open · P1
-        title: mb-qatc · feature
-        url: tbd://bead/mb-qatc
-    bead_id: is-01kxse0vt4cyng7mvtr3hk2rct
-    external_id: a18941f9-1b80-42ad-b5da-eaa77ec485e9
-    kind: upsert_attachments
-  - bead_id: is-01kxse0vt4cyng7mvtr3hk2rct
-    block: |-
-      ⟦tbd⟧
-      `mb-qatc` · feature · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-qatc`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: a18941f9-1b80-42ad-b5da-eaa77ec485e9
-    kind: splice_description
   - bead_id: is-01kxse0w3xhsyhbksdbn2kt33e
     client_id: fedfa275-330a-4a89-a928-512efc3ff45d
     kind: create_issue
@@ -1400,42 +353,6 @@ ops:
       priority: 2
       status: open
       title: "Diff P2: comparison presets, history browsing, and content-at-revision"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-8bjd
-          children: 0
-          created_at: 2026-07-18T01:38:59.325Z
-          dependencies:
-            - target: is-01kxse0wpvpg9vx64phcr3bh8s
-              type: blocks
-          internal_id: is-01kxse0w3xhsyhbksdbn2kt33e
-          kind: feature
-          labels:
-            - diff
-          parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
-          status: open
-          updated_at: 2026-07-18T01:39:22.100Z
-        subtitle: open · P2
-        title: mb-8bjd · feature
-        url: tbd://bead/mb-8bjd
-    bead_id: is-01kxse0w3xhsyhbksdbn2kt33e
-    external_id: fedfa275-330a-4a89-a928-512efc3ff45d
-    kind: upsert_attachments
-  - bead_id: is-01kxse0w3xhsyhbksdbn2kt33e
-    block: |-
-      ⟦tbd⟧
-      `mb-8bjd` · feature · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-8bjd`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: fedfa275-330a-4a89-a928-512efc3ff45d
-    kind: splice_description
   - bead_id: is-01kxse0wddy6je24t1dm5caber
     client_id: be7a39d5-c9b6-4a86-8008-0af0fff8de65
     kind: create_issue
@@ -1448,42 +365,6 @@ ops:
       priority: 2
       status: open
       title: "Diff P2: split view, intraline, highlight enrichment, context expansion"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-hhmb
-          children: 0
-          created_at: 2026-07-18T01:38:59.628Z
-          dependencies:
-            - target: is-01kxse0wpvpg9vx64phcr3bh8s
-              type: blocks
-          internal_id: is-01kxse0wddy6je24t1dm5caber
-          kind: feature
-          labels:
-            - diff
-          parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
-          status: open
-          updated_at: 2026-07-18T01:39:22.354Z
-        subtitle: open · P2
-        title: mb-hhmb · feature
-        url: tbd://bead/mb-hhmb
-    bead_id: is-01kxse0wddy6je24t1dm5caber
-    external_id: be7a39d5-c9b6-4a86-8008-0af0fff8de65
-    kind: upsert_attachments
-  - bead_id: is-01kxse0wddy6je24t1dm5caber
-    block: |-
-      ⟦tbd⟧
-      `mb-hhmb` · feature · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-hhmb`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: be7a39d5-c9b6-4a86-8008-0af0fff8de65
-    kind: splice_description
   - bead_id: is-01kxse0wpvpg9vx64phcr3bh8s
     client_id: 1f7bf3e6-0c7f-4a6e-b747-082187c56ecd
     kind: create_issue
@@ -1498,40 +379,6 @@ ops:
       priority: 2
       status: open
       title: "Diff P3: multi-file review surface and renderer library decision gate"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-k0x3
-          children: 0
-          created_at: 2026-07-18T01:38:59.931Z
-          dependencies: []
-          internal_id: is-01kxse0wpvpg9vx64phcr3bh8s
-          kind: feature
-          labels:
-            - diff
-          parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
-          status: open
-          updated_at: 2026-07-18T01:38:59.931Z
-        subtitle: open · P2
-        title: mb-k0x3 · feature
-        url: tbd://bead/mb-k0x3
-    bead_id: is-01kxse0wpvpg9vx64phcr3bh8s
-    external_id: 1f7bf3e6-0c7f-4a6e-b747-082187c56ecd
-    kind: upsert_attachments
-  - bead_id: is-01kxse0wpvpg9vx64phcr3bh8s
-    block: |-
-      ⟦tbd⟧
-      `mb-k0x3` · feature · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-k0x3`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 1f7bf3e6-0c7f-4a6e-b747-082187c56ecd
-    kind: splice_description
   - bead_id: is-01kxshfx0fhzyccg1wwtdv7c6b
     client_id: 66d2a207-9a94-44a8-afcb-f3a252eb2229
     kind: create_issue
@@ -1547,40 +394,6 @@ ops:
       status: open
       title: Extend vendor pipeline with esbuild single-entry ESM bundling (workers, ESM-only
         libs)
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-725d
-          children: 0
-          created_at: 2026-07-18T02:39:37.485Z
-          dependencies: []
-          internal_id: is-01kxshfx0fhzyccg1wwtdv7c6b
-          kind: feature
-          labels:
-            - build
-          parent_id: null
-          priority: 2
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-18T02:39:37.485Z
-        subtitle: open · P2
-        title: mb-725d · feature
-        url: tbd://bead/mb-725d
-    bead_id: is-01kxshfx0fhzyccg1wwtdv7c6b
-    external_id: 66d2a207-9a94-44a8-afcb-f3a252eb2229
-    kind: upsert_attachments
-  - bead_id: is-01kxshfx0fhzyccg1wwtdv7c6b
-    block: |-
-      ⟦tbd⟧
-      `mb-725d` · feature · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-725d`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 66d2a207-9a94-44a8-afcb-f3a252eb2229
-    kind: splice_description
   - bead_id: is-01kxsvxrrzqt4c60d15em6jrqe
     client_id: 848e45cb-da5f-42e2-a71a-be8cc27389f4
     kind: create_issue
@@ -1597,40 +410,6 @@ ops:
       status: open
       title: "Stand up the standard front-end toolchain: TypeScript + Vite + Vitest
         contributor plane"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-h31g
-          children: 0
-          created_at: 2026-07-18T05:41:57.651Z
-          dependencies: []
-          internal_id: is-01kxsvxrrzqt4c60d15em6jrqe
-          kind: feature
-          labels:
-            - build
-          parent_id: null
-          priority: 1
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-18T05:41:57.651Z
-        subtitle: open · P1
-        title: mb-h31g · feature
-        url: tbd://bead/mb-h31g
-    bead_id: is-01kxsvxrrzqt4c60d15em6jrqe
-    external_id: 848e45cb-da5f-42e2-a71a-be8cc27389f4
-    kind: upsert_attachments
-  - bead_id: is-01kxsvxrrzqt4c60d15em6jrqe
-    block: |-
-      ⟦tbd⟧
-      `mb-h31g` · feature · open · P1
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-h31g`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 848e45cb-da5f-42e2-a71a-be8cc27389f4
-    kind: splice_description
   - bead_id: is-01kxz2z9v1bbfcfmqstffkhvxp
     client_id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc
     kind: create_issue
@@ -1641,39 +420,6 @@ ops:
       priority: 1
       status: open
       title: Folder views and treemap overview
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-u5sm
-          children: 56
-          created_at: 2026-07-20T06:21:20.085Z
-          dependencies: []
-          internal_id: is-01kxz2z9v1bbfcfmqstffkhvxp
-          kind: epic
-          labels: []
-          parent_id: null
-          priority: 1
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
-          status: open
-          updated_at: 2026-08-15T05:09:10.135Z
-        subtitle: open · P1
-        title: mb-u5sm · epic
-        url: tbd://bead/mb-u5sm
-    bead_id: is-01kxz2z9v1bbfcfmqstffkhvxp
-    external_id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc
-    kind: upsert_attachments
-  - bead_id: is-01kxz2z9v1bbfcfmqstffkhvxp
-    block: |-
-      ⟦tbd⟧
-      `mb-u5sm` · epic · open · P1
-      Children: 56 (0 ready)
-      Bead: `tbd show mb-u5sm`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc
-    kind: splice_description
   - bead_id: is-01ky070wk6z56ghjc9wyhf0sye
     client_id: 2966f32d-9498-4efd-95bb-ee77e5c5d062
     kind: create_issue
@@ -1689,39 +435,6 @@ ops:
       priority: 1
       status: open
       title: Unified filtering across navigation and folder views
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-tyvd
-          children: 3
-          created_at: 2026-07-20T16:51:20.795Z
-          dependencies: []
-          internal_id: is-01ky070wk6z56ghjc9wyhf0sye
-          kind: epic
-          labels: []
-          parent_id: null
-          priority: 1
-          ready_children: 1
-          spec_path: docs/project/specs/active/plan-2026-07-20-unified-filtering.md
-          status: open
-          updated_at: 2026-08-01T05:51:52.544Z
-        subtitle: open · P1
-        title: mb-tyvd · epic
-        url: tbd://bead/mb-tyvd
-    bead_id: is-01ky070wk6z56ghjc9wyhf0sye
-    external_id: 2966f32d-9498-4efd-95bb-ee77e5c5d062
-    kind: upsert_attachments
-  - bead_id: is-01ky070wk6z56ghjc9wyhf0sye
-    block: |-
-      ⟦tbd⟧
-      `mb-tyvd` · epic · open · P1
-      Children: 3 (1 ready)
-      Bead: `tbd show mb-tyvd`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 2966f32d-9498-4efd-95bb-ee77e5c5d062
-    kind: splice_description
   - bead_id: is-01ky071dj04cfxc3gdq6z74xe0
     client_id: a686753d-cd6a-468c-b561-ea7336b89acd
     kind: create_issue
@@ -1737,41 +450,6 @@ ops:
       priority: 2
       status: open
       title: "P2: complete filter hide mode across nav and folder views"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-0tu2
-          children: 0
-          created_at: 2026-07-20T16:51:38.175Z
-          dependencies:
-            - target: is-01ky071dz7zqcfxgxf97pc9vfn
-              type: blocks
-          internal_id: is-01ky071dj04cfxc3gdq6z74xe0
-          kind: task
-          labels: []
-          parent_id: is-01ky070wk6z56ghjc9wyhf0sye
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-20-unified-filtering.md
-          status: open
-          updated_at: 2026-08-01T05:51:52.760Z
-        subtitle: open · P2
-        title: mb-0tu2 · task
-        url: tbd://bead/mb-0tu2
-    bead_id: is-01ky071dj04cfxc3gdq6z74xe0
-    external_id: a686753d-cd6a-468c-b561-ea7336b89acd
-    kind: upsert_attachments
-  - bead_id: is-01ky071dj04cfxc3gdq6z74xe0
-    block: |-
-      ⟦tbd⟧
-      `mb-0tu2` · task · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-0tu2`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: a686753d-cd6a-468c-b561-ea7336b89acd
-    kind: splice_description
   - bead_id: is-01ky071dz7zqcfxgxf97pc9vfn
     client_id: b81d0c3c-95f1-4942-bd2c-554169f43a57
     kind: create_issue
@@ -1785,39 +463,6 @@ ops:
       priority: 2
       status: open
       title: "P3: retire the Recent tab behind the Recent preset"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-wta0
-          children: 0
-          created_at: 2026-07-20T16:51:38.599Z
-          dependencies: []
-          internal_id: is-01ky071dz7zqcfxgxf97pc9vfn
-          kind: task
-          labels: []
-          parent_id: is-01ky070wk6z56ghjc9wyhf0sye
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-20-unified-filtering.md
-          status: open
-          updated_at: 2026-07-23T22:28:38.599Z
-        subtitle: open · P2
-        title: mb-wta0 · task
-        url: tbd://bead/mb-wta0
-    bead_id: is-01ky071dz7zqcfxgxf97pc9vfn
-    external_id: b81d0c3c-95f1-4942-bd2c-554169f43a57
-    kind: upsert_attachments
-  - bead_id: is-01ky071dz7zqcfxgxf97pc9vfn
-    block: |-
-      ⟦tbd⟧
-      `mb-wta0` · task · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-wta0`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: b81d0c3c-95f1-4942-bd2c-554169f43a57
-    kind: splice_description
   - bead_id: is-01kyjfkbmpv1sxeka2rcbazy70
     client_id: 2f6c78dc-7e7a-4ed8-adb9-00d2ec586432
     kind: create_issue
@@ -1830,39 +475,6 @@ ops:
       priority: 3
       status: open
       title: Derive CLI mode/option metadata from one declarative table
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-1t99
-          children: 0
-          created_at: 2026-07-27T19:07:34.422Z
-          dependencies: []
-          internal_id: is-01kyjfkbmpv1sxeka2rcbazy70
-          kind: chore
-          labels: []
-          parent_id: null
-          priority: 3
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-27T19:07:34.422Z
-        subtitle: open · P3
-        title: mb-1t99 · chore
-        url: tbd://bead/mb-1t99
-    bead_id: is-01kyjfkbmpv1sxeka2rcbazy70
-    external_id: 2f6c78dc-7e7a-4ed8-adb9-00d2ec586432
-    kind: upsert_attachments
-  - bead_id: is-01kyjfkbmpv1sxeka2rcbazy70
-    block: |-
-      ⟦tbd⟧
-      `mb-1t99` · chore · open · P3
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-1t99`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 2f6c78dc-7e7a-4ed8-adb9-00d2ec586432
-    kind: splice_description
   - bead_id: is-01kyjyyvyeyv4w8efxgxcf3h7g
     client_id: 1434375c-de30-4a72-8d68-dbb68115ba2b
     kind: create_issue
@@ -1933,40 +545,6 @@ ops:
       priority: 2
       status: open
       title: Upstream tryscript fixes from the metabrowser golden migration
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-th8a
-          children: 0
-          created_at: 2026-07-27T23:36:00.205Z
-          dependencies: []
-          internal_id: is-01kyjyyvyeyv4w8efxgxcf3h7g
-          kind: task
-          labels:
-            - tryscript
-          parent_id: null
-          priority: 2
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-07-27T23:36:00.205Z
-        subtitle: open · P2
-        title: mb-th8a · task
-        url: tbd://bead/mb-th8a
-    bead_id: is-01kyjyyvyeyv4w8efxgxcf3h7g
-    external_id: 1434375c-de30-4a72-8d68-dbb68115ba2b
-    kind: upsert_attachments
-  - bead_id: is-01kyjyyvyeyv4w8efxgxcf3h7g
-    block: |-
-      ⟦tbd⟧
-      `mb-th8a` · task · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-th8a`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 1434375c-de30-4a72-8d68-dbb68115ba2b
-    kind: splice_description
   - bead_id: is-01kyxybpctnfvcbj8eh629hab0
     client_id: 9ec87dfa-bdb5-4285-94a6-3f1d4e7b62d9
     kind: create_issue
@@ -1989,45 +567,6 @@ ops:
       priority: 2
       status: deferred
       title: "P2: add complete server filename search provider"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-3arq
-          children: 0
-          created_at: 2026-08-01T05:57:10.681Z
-          dependencies:
-            - target: is-01kyxybvqnw3fmmzhs3hnqhtxr
-              type: blocks
-          internal_id: is-01kyxybpctnfvcbj8eh629hab0
-          kind: task
-          labels: []
-          parent_id: is-01kxnx9waq2h69ey9kb0mcg5hq
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
-          status: deferred
-          updated_at: 2026-08-09T18:03:26.527Z
-        subtitle: deferred · P2
-        title: mb-3arq · task
-        url: tbd://bead/mb-3arq
-      - subtitle: plan spec
-        title: plan-2026-07-17-scalable-file-search.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
-    bead_id: is-01kyxybpctnfvcbj8eh629hab0
-    external_id: 9ec87dfa-bdb5-4285-94a6-3f1d4e7b62d9
-    kind: upsert_attachments
-  - bead_id: is-01kyxybpctnfvcbj8eh629hab0
-    block: |-
-      ⟦tbd⟧
-      `mb-3arq` · task · deferred · P2
-      Spec: [plan-2026-07-17-scalable-file-search.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-3arq`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 9ec87dfa-bdb5-4285-94a6-3f1d4e7b62d9
-    kind: splice_description
   - bead_id: is-01kyxybvqnw3fmmzhs3hnqhtxr
     client_id: 02436c90-f79d-4b6e-84e1-f38d97b897e7
     kind: create_issue
@@ -2042,43 +581,6 @@ ops:
       priority: 2
       status: open
       title: "P3: add bounded full-text search provider"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-wzy6
-          children: 0
-          created_at: 2026-08-01T05:57:16.148Z
-          dependencies: []
-          internal_id: is-01kyxybvqnw3fmmzhs3hnqhtxr
-          kind: task
-          labels: []
-          parent_id: is-01kxnx9waq2h69ey9kb0mcg5hq
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
-          status: open
-          updated_at: 2026-08-01T05:57:16.148Z
-        subtitle: open · P2
-        title: mb-wzy6 · task
-        url: tbd://bead/mb-wzy6
-      - subtitle: plan spec
-        title: plan-2026-07-17-scalable-file-search.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
-    bead_id: is-01kyxybvqnw3fmmzhs3hnqhtxr
-    external_id: 02436c90-f79d-4b6e-84e1-f38d97b897e7
-    kind: upsert_attachments
-  - bead_id: is-01kyxybvqnw3fmmzhs3hnqhtxr
-    block: |-
-      ⟦tbd⟧
-      `mb-wzy6` · task · open · P2
-      Spec: [plan-2026-07-17-scalable-file-search.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-wzy6`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 02436c90-f79d-4b6e-84e1-f38d97b897e7
-    kind: splice_description
   - bead_id: is-01kz2je0bep6bnk4bajjjfzp7a
     client_id: bb3dffb2-7ca5-4e6d-8520-5f11a55eb40c
     kind: create_issue
@@ -2092,39 +594,6 @@ ops:
       priority: 2
       status: open
       title: Flaky event-loop stall test under full-suite load
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-087n
-          children: 0
-          created_at: 2026-08-03T01:04:55.662Z
-          dependencies: []
-          internal_id: is-01kz2je0bep6bnk4bajjjfzp7a
-          kind: bug
-          labels: []
-          parent_id: null
-          priority: 2
-          ready_children: 0
-          spec_path: null
-          status: open
-          updated_at: 2026-08-11T16:57:07.764Z
-        subtitle: open · P2
-        title: mb-087n · bug
-        url: tbd://bead/mb-087n
-    bead_id: is-01kz2je0bep6bnk4bajjjfzp7a
-    external_id: bb3dffb2-7ca5-4e6d-8520-5f11a55eb40c
-    kind: upsert_attachments
-  - bead_id: is-01kz2je0bep6bnk4bajjjfzp7a
-    block: |-
-      ⟦tbd⟧
-      `mb-087n` · bug · open · P2
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-087n`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: bb3dffb2-7ca5-4e6d-8520-5f11a55eb40c
-    kind: splice_description
   - bead_id: is-01kzctbcaqqptq2v4mydcwgvzs
     client_id: 01ac05ee-899f-410e-9948-efa3e2753f08
     kind: create_issue
@@ -2141,45 +610,6 @@ ops:
       status: open
       title: "Menu and overlay primitives: anchored placement, action menu, action registry,
         inline edit"
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-ojvf
-          children: 0
-          created_at: 2026-08-07T00:35:42.550Z
-          dependencies:
-            - target: is-01kzctbjy7z530930gzmvakxws
-              type: blocks
-          internal_id: is-01kzctbcaqqptq2v4mydcwgvzs
-          kind: feature
-          labels: []
-          parent_id: null
-          priority: 1
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
-          status: open
-          updated_at: 2026-08-13T03:13:19.713Z
-        subtitle: open · P1
-        title: mb-ojvf · feature
-        url: tbd://bead/mb-ojvf
-      - subtitle: plan spec
-        title: plan-2026-08-06-menu-primitives-and-file-actions.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
-    bead_id: is-01kzctbcaqqptq2v4mydcwgvzs
-    external_id: 01ac05ee-899f-410e-9948-efa3e2753f08
-    kind: upsert_attachments
-  - bead_id: is-01kzctbcaqqptq2v4mydcwgvzs
-    block: |-
-      ⟦tbd⟧
-      `mb-ojvf` · feature · open · P1
-      Spec: [plan-2026-08-06-menu-primitives-and-file-actions.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-ojvf`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 01ac05ee-899f-410e-9948-efa3e2753f08
-    kind: splice_description
   - bead_id: is-01kzctbjy7z530930gzmvakxws
     client_id: 188ffcb9-98fa-4aca-822b-c76718108e6c
     kind: create_issue
@@ -2193,43 +623,6 @@ ops:
       priority: 2
       status: open
       title: Gated rename and trash via POST /api/mutate with nav context-menu actions
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-0d6a
-          children: 0
-          created_at: 2026-08-07T00:35:49.318Z
-          dependencies: []
-          internal_id: is-01kzctbjy7z530930gzmvakxws
-          kind: feature
-          labels: []
-          parent_id: null
-          priority: 2
-          ready_children: 0
-          spec_path: docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
-          status: open
-          updated_at: 2026-08-13T03:13:20.038Z
-        subtitle: open · P2
-        title: mb-0d6a · feature
-        url: tbd://bead/mb-0d6a
-      - subtitle: plan spec
-        title: plan-2026-08-06-menu-primitives-and-file-actions.md
-        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
-    bead_id: is-01kzctbjy7z530930gzmvakxws
-    external_id: 188ffcb9-98fa-4aca-822b-c76718108e6c
-    kind: upsert_attachments
-  - bead_id: is-01kzctbjy7z530930gzmvakxws
-    block: |-
-      ⟦tbd⟧
-      `mb-0d6a` · feature · open · P2
-      Spec: [plan-2026-08-06-menu-primitives-and-file-actions.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
-      Children: 0 (0 ready)
-      Bead: `tbd show mb-0d6a`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 188ffcb9-98fa-4aca-822b-c76718108e6c
-    kind: splice_description
   - bead_id: is-01kzctqt5s7te6w75jm5pvg6g7
     client_id: 4d050c3e-9bbe-48bb-9342-75daa56bd295
     kind: create_issue
@@ -2240,39 +633,6 @@ ops:
       priority: 1
       status: open
       title: Git graph nav panel and Git API
-  - attachments:
-      - metadata:
-          assignee: null
-          bead_id: mb-02na
-          children: 20
-          created_at: 2026-08-07T00:42:29.944Z
-          dependencies: []
-          internal_id: is-01kzctqt5s7te6w75jm5pvg6g7
-          kind: epic
-          labels: []
-          parent_id: null
-          priority: 1
-          ready_children: 1
-          spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
-          status: open
-          updated_at: 2026-08-12T03:29:13.566Z
-        subtitle: open · P1
-        title: mb-02na · epic
-        url: tbd://bead/mb-02na
-    bead_id: is-01kzctqt5s7te6w75jm5pvg6g7
-    external_id: 4d050c3e-9bbe-48bb-9342-75daa56bd295
-    kind: upsert_attachments
-  - bead_id: is-01kzctqt5s7te6w75jm5pvg6g7
-    block: |-
-      ⟦tbd⟧
-      `mb-02na` · epic · open · P1
-      Children: 20 (1 ready)
-      Bead: `tbd show mb-02na`
-
-      Mirrored by tbd. Edits inside this block are overwritten.
-      ⟦/tbd⟧
-    external_id: 4d050c3e-9bbe-48bb-9342-75daa56bd295
-    kind: splice_description
   - bead_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
     client_id: efc46703-5aa2-49d6-8195-546330186e9c
     kind: create_issue
