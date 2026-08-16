@@ -16,6 +16,12 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
    background indexing must remain visible to the user.
 5. **Light and dark themes share semantics.** Theme overrides may change contrast and
    lightness, not the meaning of a token.
+6. **Everything is effortlessly fast.** Speed is a product requirement, not an
+   optimization to get to later, and a visible loading state is a failure to plan rather
+   than a neutral way to spend time.
+   Prefetch whatever the reader is plausibly about to ask for — the subfolders in view,
+   the next surface of the selected file — unless the cost is real and known.
+   Where waiting is unavoidable, [Motion](#motion) governs what may appear and when.
 
 ## Token Layers
 
@@ -887,12 +893,23 @@ Avoid looping animation except for active progress indicators.
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
 
-Transient loading chrome has a 30ms quiet period through the shared
-`.mb-delayed-loading` utility.
+Transient loading chrome has a quiet period through the shared `.mb-delayed-loading`
+utility, whose length is `--loading-state-delay` in `styles.css`.
 The placeholder reserves its final layout immediately but stays invisible long enough
 for synchronous work and fast local requests to replace it before paint.
-Apply this utility to view- and panel-level loading placeholders; do not add independent
-timers at each renderer.
+
+**Nothing announces loading inside the quiet period.**
+This holds at every grain, not only for view- and panel-level placeholders: a subtree
+expanding under the cursor is exactly the case where the request usually beats the eye,
+and a spinner that appears and vanishes reads as a glitch rather than as progress.
+A spinner is the strongest form and has no reason to exist before the quiet period ends;
+below it, the most that may appear is the neutral pulsing block used by the navigation
+tally.
+Apply the utility rather than adding independent timers at each renderer.
+
+The shell's own preview swap adds a longer wait on top (`LOADING_INDICATOR_DELAY_MS`),
+keeping the previous file on screen instead of blanking it — a different mechanism for a
+different problem, and not a reason to skip the utility.
 
 The shell separately retains the previous preview during a fast file-envelope request.
 Ready content always wins immediately: do not add a minimum spinner duration, crossfade,
@@ -905,6 +922,16 @@ They must not borrow link, status, file-type, or chart colors because a spinner 
 activity, not meaning.
 Prefer the shared spinner classes; custom sizes must still use the shared spinner tokens
 and keyframe.
+
+### Spinners Carry No Visible Label
+
+A spinner beside the words “Loading folder…” says the same thing twice: the surface being
+replaced already says which folder, and the spinner already says it is loading.
+Keep the label for screen readers (`sr-only`) and show the spinner alone.
+
+Visible copy is for a state the spinner cannot express on its own — a scan still running
+behind an empty result, an index that failed — and it says what that state is rather than
+that something is loading.
 
 ## Text Selection
 

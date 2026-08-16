@@ -369,9 +369,11 @@
   /* Transitions */
   --transition-fast: 150ms ease;
   /* Transient loading chrome stays quiet through work that finishes within
-     roughly two frames. The placeholder still reserves its layout while
-     hidden, so revealing it later cannot move ready content. */
-  --loading-state-delay: 30ms;
+     about three frames, which covers a cached subtree expansion and most
+     local requests. The placeholder still reserves its layout while hidden,
+     so revealing it later cannot move ready content. Nothing announces
+     loading inside this window; see "Motion" in docs/design-system.md. */
+  --loading-state-delay: 50ms;
   /* Theme crossfade — applied to the major page surfaces so flipping
      light↔dark glides instead of snapping. Gated behind html.theme-anim
      (added by app.js one frame after first paint) so it never fires on
