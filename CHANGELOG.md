@@ -4,6 +4,8 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+## 0.5.0
+
 Document navigation and URL scheme:
 
 - Every selected file and folder now has a canonical, reloadable `/view/<path>` URL. A
@@ -69,16 +71,19 @@ Keyboard discovery and navigation:
   which a Mac laptop keyboard does not have.
 - The GitHub link in Help uses the accent color every other link uses, instead of the
   browser’s default blue.
-- The file tree now follows the conventional accessible keyboard model: arrow keys,
-  Home, End, Enter, and Space move, expand, collapse, and activate rows while preserving
-  native scrolling in the preview pane.
+- Every file-tree row is now reachable and operable from the keyboard.
+  The tree carries the conventional ARIA roving-focus model — one tab stop,
+  `aria-level`, `aria-posinset`, `aria-setsize`, and disclosure state — and focus
+  survives filtering, live updates, lazy subtree loads, and pagination.
+  The preview pane keeps native browser scrolling, so arrow, Page Up, Page Down, Home,
+  End, and Space still scroll there.
 - An expanded folder no longer flickers shut when navigation reaches something inside
   it. Revealing a path treated a folder as unloaded whenever any descendant still carried
   a lazy stub, so it refetched a folder whose rows were already on screen and swapped
   them for a loading placeholder before restoring them.
   The check now looks only at the folder’s own direct children.
-- Selection follows focus in the tree: arrow keys, Home, and End open the row they land
-  on, so skimming costs one keypress per row rather than two.
+- Selection follows focus in the tree: arrows, `Shift`+arrows, Home, and End open the
+  row they land on, so skimming costs one keypress per row rather than two.
   Enter and Space are action keys rather than view keys — they expand or collapse a
   folder, or mount a deferred page, and no longer open a file.
   Skimming replaces the route instead of pushing it, so Back returns to wherever the
