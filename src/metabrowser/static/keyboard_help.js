@@ -148,7 +148,9 @@
       let record = records.get(key);
       if (!record) {
         const element = hostDocument.createElement(actionable ? "button" : "span");
-        element.className = actionable ? "btn nav-shortcut-action" : "nav-shortcut-hint";
+        // Deliberately not `.btn`: the keycap inside is the affordance, and a
+        // button chrome here would box the key and its label a second time.
+        element.className = actionable ? "nav-shortcut-action" : "nav-shortcut-hint";
         if (actionable) {
           element.setAttribute("type", "button");
           const listener = () => invoke(presentation.id, { trigger: element });

@@ -1742,12 +1742,31 @@ html.theme-anim .menu {
 .nav-shortcut-action,
 .nav-shortcut-hint {
   gap: 4px;
-}
-.nav-shortcut-action {
-  color: var(--muted);
-}
-.nav-shortcut-hint {
   padding: 3px 0;
+}
+/* A shortcut hint carries exactly two boxes: the strip that groups every
+   shortcut behind one border, and the keycap that says "this is a key". A
+   button chrome around the key and its label would be a third, nested box
+   restating what the other two already say. An actionable hint is therefore a
+   bare button whose visible affordance is the keycap it contains. */
+.nav-shortcut-action {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.nav-shortcut-action:hover {
+  color: var(--link);
+}
+.nav-shortcut-action:hover .kbd {
+  border-color: var(--link);
+  color: var(--link);
+}
+.nav-shortcut-action:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
 }
 
 .index-progress[hidden] {
