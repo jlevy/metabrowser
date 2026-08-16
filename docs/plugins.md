@@ -66,7 +66,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "hello-document"
@@ -311,13 +311,48 @@ path.
   A non-ok response rejects with an `Error` carrying `status` and the parsed `payload`,
   so a hook’s structured refusal stays readable by its caller.
 - `fetchJsonl(path, options)` requests a normalized JSONL envelope.
+- `fetchCompleteText(ctx, options)` retrieves a bounded complete source after an initial
+  text envelope reports truncation.
+- `fetchText(target, options)` retrieves bounded complete source for a canonical
+  navigation target and forwards an optional abort signal.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
-- `openPath(path, options?)` asks the shell to navigate without reaching into private
-  `app.js` functions. Pass `{ viewId }` to prefer a view declared by the destination; the
-  shell uses the destination’s default when that view is unavailable.
-  The preference is transient and does not change the path route.
+- `navigation.href(target)` returns the canonical `/view/` URL for a
+  `{ path, query?, fragment? }` target.
+  Paths are served-root-relative, use `/` separators, and have no leading slash; the
+  empty path selects the served root.
+- `navigation.open(target, options?)` performs normal user navigation and returns a
+  promise. Pass `{ viewId }` to prefer a view declared by the destination; the shell uses
+  the destination’s default when that view is unavailable.
+  The preference is transient and does not change the target URL.
+- `navigation.current()` returns the current target or `null` on the landing URL.
+- `fileCatalog.snapshot()` returns an immutable, completion-aware view of files already
+  known to the shell.
+- `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
+  returns an unsubscribe function that the view must call from its disposer.
+- `repository` is either `null` or frozen public-safe GitHub identity for the served
+  tree: host, owner, repository name, exact revision, current branch, and served
+  subdirectory prefix.
+  It never contains a local filesystem path.
+
+Use `navigation.href()` for real anchor `href` values so browser status previews,
+copy-link, modifier clicks, new tabs, and reloads retain native behavior.
+An unmodified in-app activation may then call `navigation.open()`:
+
+```javascript
+const target = { path: "docs/guide.md", fragment: "setup" };
+const link = document.createElement("a");
+link.href = mb.navigation.href(target);
+link.textContent = "Setup guide";
+link.addEventListener("click", (event) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  event.preventDefault();
+  void mb.navigation.open(target);
+});
+```
 
 Folder aggregate views can use these bounded inventory helpers:
 
@@ -404,7 +439,14 @@ printability changes.
 The Markdown built-in exposes
 `mb.builtins.markdown.mountRendered(container, ctx, {signal})` for a document panel.
 It uses the ordinary KPress Markdown presentation and returns an instance-specific
-handle that aborts its request and disposes its own table of contents.
+handle that aborts its request and disposes its own table of contents, enhanced-link
+listeners, pending fragment work, and any nested Obsidian transclusions.
+Note, heading, and named-block transclusions share depth, document, source-byte,
+elapsed-time, cycle, abort, and disposal limits across the mounted document.
+`mb.builtins.markdown.analyzeGraph({signal, limits})` returns a bounded immutable
+snapshot of Markdown nodes, resolved edges, unresolved destinations, backlinks,
+diagnostics, aggregate source bytes, and an explicit completeness flag.
+It performs no live catalog subscription and does not provide visualization.
 Do not copy Markdown DOM or TOC behavior into a folder contribution.
 
 Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variables in
@@ -415,8 +457,9 @@ The SDK is versioned with the release, not independently, and the version is enf
 rather than advisory.
 `PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract this host provides.
 A manifest should declare `sdk_version`. A manifest that omits it targets the original
-SDK `0.1`, preserving manifests accepted by Metabrowser 0.4.0 without making omission
-follow a future host version.
+SDK `0.1` and nothing later, so omission never silently follows the host forward onto a
+contract the plugin was not written against; once the host moves past `0.1`, an omitted
+value is refused like any other stale one.
 A different resolved value is refused when it loads, with a message naming the required
 version, and `metab --doctor` reports the same problem before it reaches a user.
 There is no negotiation and no shim for an older surface.

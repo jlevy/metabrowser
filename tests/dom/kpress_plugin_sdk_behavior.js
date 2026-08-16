@@ -188,6 +188,7 @@ for (const filename of [
   "inventory_scope.js",
   "resource_context.js",
   "view_state.js",
+  "navigation.js",
 ]) {
   const dependencyPath = path.join(repoRoot, "src", "metabrowser", "static", filename);
   vm.runInContext(fs.readFileSync(dependencyPath, "utf-8"), sandbox, { filename });
@@ -201,7 +202,7 @@ vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
   fail("plugin_sdk.js did not expose metabrowser.fetchKpressRender");
 }
-const { fetchKpressRender, loadKpressAssets } = sandbox.metabrowser;
+const { fetchCompleteText, fetchKpressRender, fetchText, loadKpressAssets } = sandbox.metabrowser;
 
 // ── Contract 1: _loadStylesheet waits for onload ──────────────────────────
 
@@ -476,6 +477,154 @@ async function check_render_survives_asset_failure() {
   return { ok: true };
 }
 
+// ── Contract 7: transformed source uses bounded POST transport ──────────
+
+async function check_transformed_source_uses_post() {
+  let request = null;
+  sandbox.fetch = async (url, options) => {
+    request = { options, url };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        type: "kpress-rendered-document",
+        html: '<article class="kpress-doc">Wiki</article>',
+        assets: assetManifest(),
+      }),
+    };
+  };
+  await fetchKpressRender({ path: "wiki.md" }, "rendered", {
+    dedupKey: "wiki-source",
+    profile: "document",
+    sourceText: '<span data-mb-wiki-target="Note">Note</span>',
+  });
+  const body = JSON.parse(request?.options?.body || "null");
+  if (
+    request?.options?.method !== "POST" ||
+    request?.options?.headers?.["content-type"] !== "application/json" ||
+    body?.path !== "wiki.md" ||
+    body?.source_text !== '<span data-mb-wiki-target="Note">Note</span>'
+  ) {
+    return {
+      ok: false,
+      detail: `unexpected transformed-source request ${JSON.stringify(request)}`,
+    };
+  }
+  return { ok: true };
+}
+
+// ── Contract 8: plugins get a read-only host inventory facade ────────────
+
+function check_file_catalog_bridge() {
+  const facade = sandbox.metabrowser.fileCatalog;
+  if (facade?.snapshot().complete !== false) {
+    return { ok: false, detail: "missing empty file-catalog facade" };
+  }
+  let listener = null;
+  const snapshot = Object.freeze({
+    complete: true,
+    files: Object.freeze([{ basename: "Note.md", path: "Note.md" }]),
+    observedCount: 1,
+    revision: 7,
+    sourceSummary: Object.freeze({ feed: 1 }),
+  });
+  const detach = sandbox.MetabrowserPluginHost.attachFileCatalog({
+    snapshot: () => snapshot,
+    subscribe: (nextListener) => {
+      listener = nextListener;
+      return () => {
+        listener = null;
+      };
+    },
+  });
+  let invalidations = 0;
+  const unsubscribe = facade.subscribe(() => {
+    invalidations += 1;
+  });
+  listener?.();
+  const attached = facade.snapshot();
+  unsubscribe();
+  detach();
+  if (
+    attached !== snapshot ||
+    invalidations !== 1 ||
+    listener !== null ||
+    facade.snapshot().complete !== false
+  ) {
+    return { ok: false, detail: "file-catalog bridge did not attach or dispose cleanly" };
+  }
+  return { ok: true };
+}
+
+// ── Contract 9: truncated text can be completed within the server cap ────
+
+async function check_complete_text_fetch() {
+  let request = null;
+  sandbox.fetch = async (url, options) => {
+    request = { options, url };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ type: "text", content: "complete source", content_truncated: false }),
+    };
+  };
+  const controller = new AbortController();
+  const content = await fetchCompleteText(
+    {
+      path: "large.md",
+      raw: { content: "partial", content_max_preview_limit: 4096, content_truncated: true },
+    },
+    { signal: controller.signal },
+  );
+  const url = new URL(request?.url || "http://invalid");
+  if (
+    content !== "complete source" ||
+    url.pathname !== "/api/file" ||
+    url.searchParams.get("path") !== "large.md" ||
+    url.searchParams.get("limit") !== "4096" ||
+    request?.options?.signal !== controller.signal
+  ) {
+    return { ok: false, detail: `unexpected complete-text request ${JSON.stringify(request)}` };
+  }
+  return { ok: true };
+}
+
+async function check_path_text_fetch() {
+  const requests = [];
+  sandbox.fetch = async (url, options) => {
+    requests.push({ options, url });
+    return {
+      ok: true,
+      status: 200,
+      json: async () =>
+        requests.length === 1
+          ? {
+              type: "text",
+              content: "partial",
+              content_max_preview_limit: 4096,
+              content_truncated: true,
+            }
+          : { type: "text", content: "complete source", content_truncated: false },
+    };
+  };
+  const controller = new AbortController();
+  const content = await fetchText({ path: "graph.md" }, { signal: controller.signal });
+  const initial = new URL(requests[0]?.url || "http://invalid");
+  const completed = new URL(requests[1]?.url || "http://invalid");
+  if (
+    content !== "complete source" ||
+    requests.length !== 2 ||
+    initial.pathname !== "/api/file" ||
+    initial.searchParams.get("path") !== "graph.md" ||
+    initial.searchParams.has("limit") ||
+    completed.searchParams.get("limit") !== "4096" ||
+    requests.some((request) => request.options?.signal !== controller.signal)
+  ) {
+    return { ok: false, detail: `unexpected path-text requests ${JSON.stringify(requests)}` };
+  }
+  return { ok: true };
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -485,9 +634,13 @@ async function check_render_survives_asset_failure() {
   const assetRetry = await check_failed_kpress_assets_retry();
   const cachedStylesheet = await check_cached_stylesheet_settles();
   const assetFailureFallback = await check_render_survives_asset_failure();
+  const transformedSource = await check_transformed_source_uses_post();
+  const fileCatalog = check_file_catalog_bridge();
+  const completeText = await check_complete_text_fetch();
+  const pathText = await check_path_text_fetch();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText })}\n`,
   );
 
   if (
@@ -496,7 +649,11 @@ async function check_render_survives_asset_failure() {
     !errorProp.ok ||
     !assetRetry.ok ||
     !cachedStylesheet.ok ||
-    !assetFailureFallback.ok
+    !assetFailureFallback.ok ||
+    !transformedSource.ok ||
+    !fileCatalog.ok ||
+    !completeText.ok ||
+    !pathText.ok
   ) {
     process.exit(1);
   }

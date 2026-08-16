@@ -9,10 +9,69 @@ type MetabrowserViewSpec = {
   dispose?: (container: HTMLElement) => void;
 };
 
-type MetabrowserOpenPathOptions = {
+type MetabrowserNavigationOpenOptions = {
   /** Activate this view when the destination declares it; otherwise use its default. */
   viewId?: string;
 };
+
+type MetabrowserNavigationApi = Readonly<{
+  current(): MetabrowserNavigationTarget | null;
+  href(target: MetabrowserNavigationTarget): string;
+  open(
+    target: MetabrowserNavigationTarget,
+    options?: MetabrowserNavigationOpenOptions,
+  ): Promise<void>;
+}>;
+
+type MetabrowserNavigationTarget = Readonly<{
+  path: string;
+  query?: string;
+  fragment?: string;
+}>;
+
+type MetabrowserRepositoryContext = Readonly<{
+  branch: string | null;
+  host: "github.com";
+  name: string;
+  owner: string;
+  revision: string;
+  served_prefix: string;
+}>;
+
+type MetabrowserNavigationApplyContext = Readonly<{
+  source: "startup" | "user" | "popstate";
+  pathChanged: boolean;
+  isCurrent(): boolean;
+  viewId?: string;
+}>;
+
+type MetabrowserNavigationController = Readonly<{
+  canonicalizePath(path: string, isFolder: boolean): void;
+  current(): MetabrowserNavigationTarget | null;
+  dispose(): void;
+  open(
+    target: MetabrowserNavigationTarget,
+    options?: { replace?: boolean; viewId?: string },
+  ): Promise<unknown>;
+  start(): Promise<unknown>;
+}>;
+
+type MetabrowserNavigationRouteRuntime = Readonly<{
+  attachController(controller: MetabrowserNavigationController): () => void;
+  createController(options: {
+    apply(
+      target: MetabrowserNavigationTarget | null,
+      context: MetabrowserNavigationApplyContext,
+    ): unknown;
+    eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">;
+    history?: Pick<History, "pushState" | "replaceState">;
+    location?: Pick<Location, "pathname" | "search" | "hash">;
+  }): MetabrowserNavigationController;
+  href(target: MetabrowserNavigationTarget): string;
+  navigation: MetabrowserNavigationApi;
+  normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
+  parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
+}>;
 
 type KpressAssetLoading = "classic" | "module" | "resource" | "stylesheet";
 
@@ -359,6 +418,10 @@ type TextBuiltins = {
 };
 
 type MarkdownBuiltins = {
+  analyzeGraph(options?: {
+    limits?: { maxFiles?: number; maxLinks?: number; maxSourceBytes?: number };
+    signal?: AbortSignal;
+  }): Promise<MarkdownGraphResult>;
   mountRendered: (
     container: HTMLElement,
     ctx: MetabrowserRenderContext,
@@ -369,6 +432,34 @@ type MarkdownBuiltins = {
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
+
+type MarkdownGraphResult = Readonly<{
+  backlinks: ReadonlyArray<Readonly<{ sources: ReadonlyArray<string>; target: string }>>;
+  complete: boolean;
+  diagnostics: ReadonlyArray<Readonly<{ code: string; path?: string }>>;
+  edges: ReadonlyArray<
+    Readonly<{
+      action: "navigate" | "embed";
+      fragment?: string;
+      source: string;
+      syntax: "markdown" | "html" | "wiki";
+      target: string;
+    }>
+  >;
+  nodes: ReadonlyArray<Readonly<{ path: string }>>;
+  sourceBytes: number;
+  unresolved: ReadonlyArray<
+    Readonly<{
+      action: "navigate" | "embed";
+      authoredTarget: string;
+      candidates?: ReadonlyArray<string>;
+      reason: string;
+      source: string;
+      status: string;
+      syntax: "markdown" | "html" | "wiki";
+    }>
+  >;
+}>;
 
 type MetabrowserBuiltins = {
   agentLog?: AgentLogBuiltins;
@@ -584,6 +675,15 @@ type MetabrowserSdk = {
   ): MetabrowserChartInstance;
   escapeHtml(value: string): string;
   fetchRollup(path: string, opts?: MetabrowserRollupOptions): Promise<MetabrowserRollupEnvelope>;
+  fetchCompleteText(
+    ctx: MetabrowserRenderContext,
+    options?: { signal?: AbortSignal },
+  ): Promise<string>;
+  fetchText(
+    target: MetabrowserNavigationTarget,
+    options?: { signal?: AbortSignal },
+  ): Promise<string>;
+  fileCatalog: MetabrowserPublicFileCatalogApi;
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
@@ -625,7 +725,8 @@ type MetabrowserSdk = {
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
-  openPath(path: string, options?: MetabrowserOpenPathOptions): void;
+  navigation: MetabrowserNavigationApi;
+  repository: MetabrowserRepositoryContext | null;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
   setViewPrintState(
@@ -781,6 +882,15 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
 
 type MetabrowserKnownFileCatalogRuntime = Readonly<{
   create(): MetabrowserKnownFileCatalogApi;
+}>;
+
+type MetabrowserPublicFileCatalogApi = Readonly<{
+  snapshot(): MetabrowserKnownFileCatalogSnapshot;
+  subscribe(listener: () => void): () => void;
+}>;
+
+type MetabrowserPluginHostRuntime = Readonly<{
+  attachFileCatalog(catalog: MetabrowserKnownFileCatalogApi): () => void;
 }>;
 
 type MetabrowserCatalogFeedApi = Readonly<{
@@ -985,6 +1095,8 @@ declare global {
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
+    MetabrowserNavigationRoute: MetabrowserNavigationRouteRuntime;
+    MetabrowserPluginHost: MetabrowserPluginHostRuntime;
     MetabrowserContributionRegistry: MetabrowserContributionRegistryRuntime;
     MetabrowserFormatters: MetabrowserFormatterRuntime;
     MetabrowserInventoryScope: MetabrowserInventoryScopeRuntime;
@@ -1003,6 +1115,7 @@ declare global {
       move(event: MouseEvent): void;
       show(html: string, event: MouseEvent): void;
     };
+    METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SETTINGS?: {
       FILE_TYPE_REGISTRY?: {
         schema: "file-type-registry-v1";

@@ -39,7 +39,8 @@ the two halves are forbidden — see
 
 Opening a file follows this sequence:
 
-1. The URL hash or tree selection supplies a served-root-relative path.
+1. The canonical `/view/<path>` URL or tree selection supplies a served-root-relative
+   path. A URL fragment identifies a location inside that document, never a file.
 2. `/api/file` safely resolves the path, determines its logical extension, and runs
    plugin classifiers before built-in fallbacks.
 3. The response includes the chosen kind and the ordered view descriptors contributed by
@@ -54,6 +55,24 @@ Opening a file follows this sequence:
 Replacing the preview pane disposes mounted plugin views.
 Switching tabs does not: their DOM and captured state remain available until a different
 file replaces the pane.
+
+The built-in Markdown plugin resolves standard relative and leading-slash destinations
+exactly from the source document.
+It gives internal anchors canonical `/view/` URLs and maps embedded local resources
+through the bounded `/raw` endpoint.
+Its source-aware Obsidian adapter preserves escaped and code contexts, maps wiki links
+to exact paths or completion-aware unique inventory results, and creates stable heading
+and named-block anchors before rendering.
+Missing and ambiguous wiki targets remain visible; media wiki embeds reuse `/raw`, and
+note, heading, and named-block transclusion returns through KPress with shared depth,
+document, source-byte, elapsed-time, cycle, abort, and disposal limits.
+The plugin also exposes bounded immutable graph analysis through the SDK; visualization
+remains outside the resolver.
+The shell remains Markdown-dialect agnostic: the plugin intercepts only plain primary
+activation through the public navigation SDK, while modifier clicks, new tabs,
+downloads, external URLs, and ordinary not-found handling retain browser behavior.
+Fragment scrolling runs only after the matching asynchronous Markdown mount completes
+and ends with that mount’s disposer.
 
 ## Folder Views and Overview Composition
 
@@ -170,8 +189,8 @@ byte and file values route through the public SDK formatters.
 File cells and exact extension rows also resolve their icon and subtype class through
 the public `fileTypeIcon()` SDK helper, the same matcher used by navigation.
 The shared `.file-identity-icon` primitive owns their geometry and subtype color.
-File cells use ordinary `mb.openPath` navigation; folder and parent navigation pass
-Treemap as the optional preferred destination view.
+File cells use ordinary `mb.navigation.open({ path })` navigation; folder and parent
+navigation pass Treemap as the optional preferred destination view.
 The shell activates that view only when the destination declares it and otherwise uses
 the destination’s default.
 
@@ -242,9 +261,106 @@ Plugins own:
 
 The stable browser-side boundary is the `window.metabrowser` API. Plugins should not
 reach into variables or functions defined privately by `app.js`. Cross-view navigation
-uses `openPath`; its optional `viewId` preserves a working mode when the destination
-offers that view without changing path or history semantics.
+uses `navigation.open({ path, query?, fragment? }, { viewId? })`; the optional `viewId`
+preserves a working mode when the destination offers that view without changing resource
+identity or history semantics.
+`navigation.href()` supplies canonical `/view/` links, and `navigation.current()`
+exposes the selected target without leaking shell state.
 Plugin HTTP calls use `fetchPluginData`.
+
+## Browser URL Grammar
+
+A `/view/` URL answers three separate questions, and each component answers exactly one:
+
+| Component | Question | Owned by |
+| --- | --- | --- |
+| Path | Which content is selected | The served tree |
+| Query | How it is presented | The link author |
+| Fragment | Where inside the rendered document | The document |
+
+Path and fragment are implemented.
+The query slot is currently carried verbatim and never interpreted: it exists so a query
+an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
+
+That makes the query the one component with two authorities in it, so it is the one
+component that needs a reserved namespace.
+**Metabrowser reserves query keys beginning with `_mb_`**; every other key belongs to
+the document and is passed through untouched.
+Reserved keys are `snake_case`, matching this server’s existing query parameters such as
+`include_ignored` and every key on the JSON wire.
+Plugins must not read or write `_mb_` keys except through the navigation SDK.
+
+```text
+/view/docs/guide.md?_mb_view=source&plain=1#setup
+                    └── reserved ──┘ └ doc ┘
+```
+
+The seam holds under one invariant, which any future parameter must preserve:
+
+> Removing every `_mb_` key from a URL yields exactly that content’s canonical URL.
+
+The prefix carries two signals because each one alone is ambiguous here.
+A leading `_` is the familiar mark for a reserved system field, but this codebase
+already spends a bare `_` on the opposite meaning: `/_debug/tasks` and Python privates
+mark surfaces that are deliberately not a contract, while view parameters are a
+documented surface people bookmark and share.
+Adding `mb` names the owner and removes that clash.
+Keeping `_` as the only separator also matches the `snake_case` keys, where a dotted
+prefix such as `mb.folder_overview` would mix two separators in one name and invite the
+occasional tooling that rewrites `.` in query keys.
+Parameters elsewhere need no sigil because they are namespaced by route: every key on
+`/api/*` is unambiguously the server’s, and only `/view/` shares its query with a
+document.
+
+Three rules keep the namespace honest as entries are added:
+
+- A key is reserved only when the **sender** should decide it for the recipient.
+  Viewer-owned settings such as theme and reading font stay in host-only cookies;
+  putting them in a link would override a choice the recipient made deliberately.
+- Reserved keys are sorted for one canonical spelling, but a key is never dropped for
+  matching a default. Defaults are viewer-dependent, so an omitted key means “viewer’s
+  choice” while a present one means “pinned”.
+- An unrecognized `_mb_` key is a visible diagnostic, never silent and never passed
+  through as document metadata.
+
+Planned entries are tracked with their features rather than reserved in advance;
+[the extensions plan](project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+maps the first of them.
+
+## Markdown Link Resolution
+
+The Markdown plugin decides *what* an authored link points at; the shell decides *how*
+that target is spelled as a `/view/` URL. The resolvers are pure — no I/O, no preflight
+— so every decision is testable against a catalog snapshot, and route knowledge never
+leaks into the plugin nor dialect knowledge into the shell.
+
+One authored target passes through these layers in order:
+
+1. **Scheme dispatch** (`builtin_plugins/markdown/links.js`). `http`, `https`, `mailto`,
+   and `tel` stay external; unsafe schemes are disabled with a visible reason rather
+   than removed silently.
+2. **Exact standard resolution** (same module).
+   Relative, `./`, `../`, and leading-slash targets resolve GitHub-style from the source
+   document. A missing target keeps its exact URL and falls through to the ordinary
+   not-found state — nothing guesses by basename.
+   Embedded media routes through the bounded `/raw` endpoint.
+3. **Verified GitHub localization** (`github_localizer.js`). An absolute
+   `github.com/<owner>/<name>/blob|tree/<ref>/<path>` URL opens locally only when
+   repository identity proves it names the served working tree: origin remote, branch or
+   exact revision, and served subdirectory must all match.
+   Identity comes from `repository_context.py`, a bounded read of Git metadata at first
+   paint that never invokes Git and exposes no local paths.
+   Anything unproven stays an ordinary outbound link.
+4. **Published-route adapters** (`project_adapters.js`). When an MkDocs, Docusaurus, or
+   Jekyll config sits at the served root, a root-relative published-site route such as
+   `/guide/` falls back to the source document behind it — only after exact resolution
+   fails, so a real file at that path always wins.
+5. **Wiki resolution** (`wiki_resolver.js`), for `[[...]]` targets: exact path, then the
+   source directory, then a *unique* catalog match.
+   Ambiguous and missing notes render visibly and keyboard-reachable with their
+   candidate paths; a name that is unique in a half-built catalog stays `pending` until
+   completeness proves it, because resolving by catalog order would make link targets
+   depend on walk order.
 
 ## Startup and First Paint
 
@@ -252,15 +368,19 @@ The CLI binds before beginning expensive recursive work.
 Inventory walking, ignore-file parsing, and watcher setup run without blocking the event
 loop’s first response.
 
-When a URL names an initial file, `/api/file` begins independently of tree indexing.
-Without a hash, the current shell may seed a root `README.md` preview.
-The folder-view contract replaces that special case with the root folder’s default
-Overview while keeping an explicitly selected README as an ordinary file view.
+When a `/view/` URL names an initial file, `/api/file` begins independently of tree
+indexing. `/view/` selects the served root, and the bare `/` URL is not a second landing
+view: it redirects there with a temporary 307 so the served root has exactly one URL.
+URL fragments identify document locations and never file paths.
+The root folder’s default Overview replaces the former server-picked initial README,
+which remains reachable as an ordinary file view.
 Inventory endpoints return current partial state plus progress metadata instead of
 waiting for a complete walk.
 
-The CLI opens a browser only after the index route returns an HTTP success response.
-A free TCP port alone is not considered ready.
+The CLI opens a browser only after the canonical route returns an HTTP success response.
+A free TCP port alone is not considered ready, and neither is a redirect, so every
+startup URL the CLI prints, probes, and opens is a `/view/` route rather than the
+redirecting origin.
 
 ## Live Update Model
 

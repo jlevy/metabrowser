@@ -241,6 +241,7 @@ for (const relative of [
   "src/metabrowser/static/directory_totals_store.js",
   "src/metabrowser/static/resource_context.js",
   "src/metabrowser/static/view_state.js",
+  "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin_sdk.js",
   "src/metabrowser/static/filter_controls.js",
 ]) {
@@ -330,20 +331,27 @@ check(
     mb.directoryTotals.applySnapshot === undefined &&
     mb.directoryTotals.applyChange === undefined,
 );
-const openPathEvents = [];
-sandbox.addEventListener("metabrowser:open-path", (event) => {
-  openPathEvents.push(event.detail);
+const navigationCalls = [];
+sandbox.MetabrowserNavigationRoute.attachController({
+  current() {
+    return null;
+  },
+  open(target, options) {
+    navigationCalls.push({ target, options });
+    return Promise.resolve();
+  },
 });
-let invalidViewRejected = false;
-try {
-  mb.openPath("docs", { viewId: "" });
-} catch (error) {
-  invalidViewRejected = error.message.includes("options.viewId");
-}
-check("openPath rejects an empty preferred view", invalidViewRejected);
 
 // ── Treemap view: toolbar, cells, refresh, toggle, dispose ──────
 (async () => {
+  let invalidViewRejected = false;
+  try {
+    await mb.navigation.open({ path: "docs" }, { viewId: "" });
+  } catch (error) {
+    invalidViewRejected = error.message.includes("options.viewId");
+  }
+  check("navigation rejects an empty preferred view", invalidViewRejected);
+
   const container = makeElement();
   container.viewport = makeElement();
   container.status = makeElement();
@@ -593,10 +601,10 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     cellClick({ target: folderTarget });
     check(
       "folder background keeps Treemap active",
-      openPathEvents.length === 1 &&
-        openPathEvents[0].path === "docs" &&
-        openPathEvents[0].viewId === "treemap",
-      JSON.stringify(openPathEvents),
+      navigationCalls.length === 1 &&
+        navigationCalls[0].target.path === "docs" &&
+        navigationCalls[0].options.viewId === "treemap",
+      JSON.stringify(navigationCalls),
     );
 
     const folderLabel = {
@@ -607,8 +615,8 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     cellClick({ target: folderLabel });
     check(
       "folder label uses the same whole-cell route",
-      openPathEvents.length === 2 && openPathEvents[1].path === "docs",
-      JSON.stringify(openPathEvents),
+      navigationCalls.length === 2 && navigationCalls[1].target.path === "docs",
+      JSON.stringify(navigationCalls),
     );
 
     const childTarget = cellTarget(fileCellMatch[1]);
@@ -620,10 +628,10 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
     cellClick({ target: childLabel });
     check(
       "the deepest clicked cell wins without ancestor activation",
-      openPathEvents.length === 3 &&
-        openPathEvents[2].path === "a.py" &&
-        openPathEvents[2].viewId === undefined,
-      JSON.stringify(openPathEvents),
+      navigationCalls.length === 3 &&
+        navigationCalls[2].target.path === "a.py" &&
+        navigationCalls[2].options?.viewId === undefined,
+      JSON.stringify(navigationCalls),
     );
   }
 
@@ -824,11 +832,11 @@ check("openPath rejects an empty preferred view", invalidViewRejected);
   check("parent navigation click handler bound", typeof parentClick === "function");
   if (parentClick) {
     parentClick();
-    const event = openPathEvents.at(-1);
+    const call = navigationCalls.at(-1);
     check(
       "parent navigation preserves Treemap",
-      event?.path === "src" && event?.viewId === "treemap",
-      JSON.stringify(event),
+      call?.target.path === "src" && call?.options?.viewId === "treemap",
+      JSON.stringify(call),
     );
   }
   const parentClickListeners = nestedContainer.parentNav.listeners.click?.length || 0;

@@ -85,6 +85,9 @@ for (const filename of [
   "contribution_registry.js",
   "resource_context.js",
   "view_state.js",
+  // The SDK requires the canonical navigation module, exactly as the shell
+  // links it immediately ahead of plugin_sdk.js in the same response.
+  "navigation.js",
   "plugin_sdk.js",
 ]) {
   load(filename);

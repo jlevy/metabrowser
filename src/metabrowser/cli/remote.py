@@ -36,6 +36,7 @@ from metabrowser.server_utils import (
     remote_port_probe_script,
 )
 from metabrowser.settings import DEFAULT_BROWSER_PORT
+from metabrowser.view_routes import VIEW_ROUTE_PREFIX
 
 
 def _open_browser(url: str) -> None:
@@ -152,7 +153,9 @@ def run_remote(
         project=effective_project,
     )
 
-    url = f"http://localhost:{local_port}"
+    # The canonical served-root route, not the bare origin: the origin only
+    # redirects there, and the readiness probe treats a redirect as not-yet-ready.
+    url = f"http://localhost:{local_port}{VIEW_ROUTE_PREFIX}"
     typer.echo(f"Connecting to {host} and starting metab...")
     typer.echo(f"Tunnel: localhost:{local_port} → {host}:{remote_port}")
     typer.echo(f"Browser URL: {url}")

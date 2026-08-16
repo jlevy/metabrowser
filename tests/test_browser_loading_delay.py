@@ -172,7 +172,7 @@ def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:
 def test_shell_keeps_the_previous_preview_during_fast_fetches() -> None:
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
     select_file = app[
-        app.index("async function selectFile(path, skipHistory, preferredViewId)") : app.index(
+        app.index("async function selectFile(path, preferredViewId)") : app.index(
             "// ── File rendering"
         )
     ]

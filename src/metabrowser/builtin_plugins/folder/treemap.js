@@ -312,7 +312,7 @@ export function registerTreemap(mb, palettePool, rollupControls) {
 
     function openParent() {
       if (parent) {
-        mb.openPath(parent.path, { viewId: TREEMAP_VIEW_ID });
+        void mb.navigation.open({ path: parent.path }, { viewId: TREEMAP_VIEW_ID });
       }
     }
 
@@ -412,9 +412,9 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     /** @param {Record<string, any>} cell */
     function activateCell(cell) {
       if (cell.kind === "dir" && cell.path !== ctx.path) {
-        mb.openPath(cell.path, { viewId: TREEMAP_VIEW_ID });
+        void mb.navigation.open({ path: cell.path }, { viewId: TREEMAP_VIEW_ID });
       } else if (cell.kind === "file") {
-        mb.openPath(cell.path);
+        void mb.navigation.open({ path: cell.path });
       }
       // rest / ext cells have no navigation target.
     }

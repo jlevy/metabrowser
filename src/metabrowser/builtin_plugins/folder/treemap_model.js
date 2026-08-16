@@ -6,9 +6,9 @@ export function parentPath(path) {
 
 /**
  * Visible parent target for Treemap zoom-out navigation.
- * Canonical folder paths are root-relative and use an empty string for
- * the served root. The route uses `/` for that root because openPath
- * reserves the empty string for invalid input.
+ * Canonical navigation paths are root-relative and use an empty string
+ * for the served root, so the target path is empty there while the
+ * button still reads `/`.
  *
  * @param {string} path
  * @returns {{path: string, label: string} | null}
@@ -19,7 +19,7 @@ export function parentNavigation(path) {
   }
   const parent = parentPath(path);
   if (!parent) {
-    return { path: "/", label: "/" };
+    return { path: "", label: "/" };
   }
   const segment = parent.slice(parent.lastIndexOf("/") + 1);
   return { path: parent, label: `${segment}/` };

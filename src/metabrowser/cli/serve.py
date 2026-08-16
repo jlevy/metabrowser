@@ -17,7 +17,6 @@ import webbrowser
 from pathlib import Path
 from types import FrameType
 from typing import override
-from urllib.parse import quote
 
 import typer
 import uvicorn
@@ -29,6 +28,7 @@ from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import find_available_local_port, port_search_range
+from metabrowser.view_routes import format_view_href
 
 
 def _open_browser(url: str) -> None:
@@ -135,8 +135,7 @@ def run_serve(
         str(plugin_dir) for plugin_dir in extra_plugin_dirs
     )
 
-    if path:
-        validate_contained_path(resolved, path)
+    selected_path = validate_contained_path(resolved, path) if path else None
 
     # Server import performs logging setup and plugin discovery. Keep it after
     # dotenv loading, CLI log-level application, and plugin-dir merging so all
@@ -158,9 +157,14 @@ def run_serve(
     server._register_allowed_host(host)
     display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
 
-    url = f"http://{display_host}:{actual_port}"
-    if path:
-        url += f"#{quote(path)}"
+    # Always print a canonical `/view/` URL. The bare origin only redirects
+    # there, so emitting it would hand out a second spelling of the root.
+    logical_path = ""
+    if selected_path is not None:
+        logical_path = selected_path.relative_to(resolved).as_posix()
+        if selected_path.is_dir() and logical_path:
+            logical_path += "/"
+    url = f"http://{display_host}:{actual_port}{format_view_href(logical_path)}"
 
     typer.echo(f"Serving {resolved} at {url}")
     if server._LOADED_PLUGINS:

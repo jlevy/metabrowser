@@ -77,7 +77,7 @@ def test_manifest_minimum_fields(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p1"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "myk"
@@ -97,6 +97,14 @@ default = true
 
 
 def test_manifest_without_sdk_version_targets_the_original_sdk(make_plugin_dir) -> None:
+    """Omission resolves to the original SDK, so it ages out with every bump.
+
+    A 0.4.0-era manifest that omits the field targets ``0.1`` and nothing later.
+    Once the host moves past ``0.1`` that resolved value fails the ordinary
+    mismatch gate, which is the point: omission must not silently follow the
+    host forward onto a contract the plugin was never written against.
+    """
+
     plugin_dir = make_plugin_dir(
         "sdk-default",
         """
@@ -108,8 +116,8 @@ id = "myk"
 match = { ext = ".myk" }
 """,
     )
-    manifest = load_manifest(plugin_dir / "manifest.toml")
-    assert manifest.plugin.sdk_version == "0.1"
+    with pytest.raises(ValueError, match=r"targets browser SDK '0\.1'"):
+        load_manifest(plugin_dir / "manifest.toml")
 
 
 def test_manifest_rejects_a_foreign_sdk_version(make_plugin_dir) -> None:
@@ -137,7 +145,7 @@ def test_manifest_rejects_empty_match(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p2"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "myk"
@@ -154,7 +162,7 @@ def test_manifest_rejects_duplicate_view_ids(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p3"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "myk"
@@ -180,7 +188,7 @@ def test_manifest_rejects_multiple_defaults(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p4"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "myk"
@@ -208,7 +216,7 @@ def test_manifest_rejects_bad_sidekick(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p5"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "myk"
@@ -273,7 +281,7 @@ def test_discovery_reports_manifest_missing_index_js(make_plugin_dir, tmp_path: 
         """
 [plugin]
 name = "broken"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "x"
@@ -299,7 +307,7 @@ def test_discovery_finds_extra_dir_plugin(make_plugin_dir, tmp_path: Path) -> No
         """
 [plugin]
 name = "myplug"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "myk"
@@ -320,7 +328,7 @@ def test_entry_point_calls_documented_plugin_dir_factory(
         """
 [plugin]
 name = "entrypoint-plugin"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "entrypoint-kind"

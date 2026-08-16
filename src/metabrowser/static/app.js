@@ -1847,10 +1847,10 @@ treePane.addEventListener("click", (e) => {
   const action = item.dataset.action;
   if (action === "select") {
     setSelectedPath(item.dataset.path);
-    selectFile(item.dataset.path);
+    navigateToPath(item.dataset.path || "");
   } else if (action === "select-dir") {
     setSelectedPath(item.dataset.path);
-    selectFile(item.dataset.path);
+    navigateToPath(item.dataset.path ? `${item.dataset.path}/` : "");
     toggleTreeFolder(item, e.shiftKey);
   }
 });
@@ -3708,7 +3708,7 @@ var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function selectFile(path, skipHistory, preferredViewId) {
+async function selectFile(path, preferredViewId) {
   return _perf.measureAsync(
     "selectFile",
     async () => {
@@ -3719,8 +3719,6 @@ async function selectFile(path, skipHistory, preferredViewId) {
       // opening a file never inherits the last file's appetite.
       resetTextChunkGrowth();
       currentPath = path;
-      // The route write happens once, after the response identifies
-      // whether the path is a file or a folder — see commitRoute.
       const preview = document.getElementById("preview-pane");
       if (!preview) {
         return {
@@ -3737,7 +3735,7 @@ async function selectFile(path, skipHistory, preferredViewId) {
       const cached = fileCache.get(path);
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
-        commitRoute(path, cached.kind === "folder", skipHistory);
+        navigationController.canonicalizePath(path, cached.kind === "folder");
         renderFile(cached, preferredViewId);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
@@ -3786,7 +3784,7 @@ async function selectFile(path, skipHistory, preferredViewId) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
-            commitRoute(path, cached.kind === "folder", skipHistory);
+            navigationController.canonicalizePath(path, cached.kind === "folder");
             renderFile(cached, preferredViewId);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
@@ -3825,7 +3823,7 @@ async function selectFile(path, skipHistory, preferredViewId) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
-          commitRoute(path, data.kind === "folder", skipHistory);
+          navigationController.canonicalizePath(path, data.kind === "folder");
           renderFile(data, preferredViewId);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
@@ -3859,7 +3857,7 @@ async function selectFile(path, skipHistory, preferredViewId) {
             };
       }
     },
-    { path: path, preferred_view: preferredViewId || "", skip_history: !!skipHistory },
+    { path: path, preferred_view: preferredViewId || "" },
   );
 }
 
@@ -3884,7 +3882,7 @@ function openedFileOutcome(path, data, preview) {
 // HTML-escaped. Buttons carry the raw path in data-nav-dir and one
 // delegated listener (installed in init) reads it back via dataset.
 function navigateToFolder(path) {
-  navigateToPath(path === "" ? "/" : `${path}/`);
+  navigateToPath(path ? `${path}/` : "");
 }
 
 // Folder preview header: up control, clickable breadcrumb, aggregate
@@ -5522,71 +5520,57 @@ function startInventoryEventStream() {
   _createInventoryEventSource();
 }
 
-// ── Hash routing ──────────────────────────────────────────────
+// ── Canonical navigation ───────────────────────────────────────
 
-function parseHashRoute() {
-  var hash = location.hash;
-  if (!hash || hash === "#") {
-    return "";
+// navigation.js is linked by the same shell response, immediately ahead of this
+// script, so the module and this controller always exist together.
+var navigationController = window.MetabrowserNavigationRoute.createController({
+  apply: applyNavigationTarget,
+});
+window.MetabrowserNavigationRoute.attachController(navigationController);
+
+function showNavigationLanding() {
+  closeLiveStream();
+  currentPath = "";
+  setSelectedPath(null);
+  disposeActivePluginViews();
+  stopFolderHeaderSubscription();
+  const preview = document.getElementById("preview-pane");
+  if (preview) {
+    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
   }
-  var raw = decodeURIComponent(hash.slice(1));
-  // A trailing slash marks a directory route ("#src/", root as "#/").
-  // Directory fragments skip the in-doc-anchor heuristic below — a bare
-  // top-level folder name would otherwise be rejected for having no
-  // extension. The returned route keeps the marker; callers strip it.
-  var isDirRoute = /\/$/.test(raw);
-  var frag = raw.replace(/\/+$/, "");
-  if (isDirRoute) {
-    return `${frag}/`;
-  }
-  if (!frag) {
-    return "";
-  }
-  // The URL hash doubles as a file deep-link (#<path>) and as in-document
-  // anchors inside an embedded KPress document (#section, #fn-note). Only treat
-  // a fragment as a file path when it looks like one — a directory separator or
-  // a file extension. Otherwise it is an in-doc anchor the browser scrolls
-  // natively, and opening a file named by the fragment would 404.
-  if (frag.indexOf("/") === -1 && !/\.[A-Za-z0-9]{1,8}$/.test(frag)) {
-    return "";
-  }
-  return frag;
 }
 
-// Split a parseHashRoute() result into {path, isDir}. "#/" yields the
-// served root: {path: "", isDir: true}.
-/** @param {string} route */
-function splitHashRoute(route) {
-  if (route.endsWith("/")) {
-    return { path: route.replace(/\/+$/, ""), isDir: true };
-  }
-  return { path: route, isDir: false };
+function deliverNavigationFragment(target) {
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:navigation-fragment", {
+      detail: { target: target },
+    }),
+  );
 }
 
-// ── Route writing ───────────────────────────────────────────────
-//
-// One writer for the location hash, called once per navigation after
-// the response has identified the path as file or folder. Directories
-// carry a trailing slash (the served root is "#/") so parseHashRoute
-// can tell them from in-document anchors. History semantics: a route
-// CHANGE pushes an entry (browser Back retraces zooms and file opens);
-// re-writing the same route — canonicalization, refreshes, popstate/
-// hashchange-driven renders — replaces in place.
-
-/** @type {{path: string, isDir: boolean} | null} */
-var lastWrittenRoute = null;
-
-/** @param {string} path @param {boolean} isDir @param {boolean | undefined} skipHistory */
-function commitRoute(path, isDir, skipHistory) {
-  var frag = isDir ? (path ? `${encodeURIComponent(path)}/` : "/") : encodeURIComponent(path);
-  var routeChanged =
-    !lastWrittenRoute || lastWrittenRoute.path !== path || lastWrittenRoute.isDir !== isDir;
-  if (!skipHistory && routeChanged) {
-    history.pushState(null, "", `#${frag}`);
-  } else {
-    history.replaceState(null, "", `#${frag}`);
+async function applyNavigationTarget(target, context) {
+  if (!target) {
+    showNavigationLanding();
+    return { status: "cancelled" };
   }
-  lastWrittenRoute = { path: path, isDir: isDir };
+  var path = target.path.replace(/\/$/, "");
+  if (!context.pathChanged) {
+    deliverNavigationFragment(target);
+    return {
+      focusTarget: document.getElementById("preview-pane") || undefined,
+      status: "opened",
+    };
+  }
+  await revealInTree(path);
+  if (!context.isCurrent()) {
+    return { status: "cancelled" };
+  }
+  var outcome = await selectFile(path, context.viewId);
+  if (outcome.status === "opened" && context.isCurrent()) {
+    deliverNavigationFragment(navigationController.current() || target);
+  }
+  return outcome;
 }
 
 // Expand tree folders along ``path`` (loading lazy subtrees as needed)
@@ -5623,25 +5607,20 @@ async function revealInTree(path) {
 }
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function navigateToPath(path, skipHistory, preferredViewId) {
-  // selectFile owns the route write (commitRoute) once the response
-  // identifies file vs folder. skipHistory is set by history-driven
-  // callers (popstate, hashchange, init) whose entries already exist;
-  // user-initiated callers (breadcrumbs, treemap cells, plugin
-  // openPath) leave it unset so route changes push entries. A plugin
-  // may also prefer one of the destination's declared views; rendering
-  // falls back to the ordinary default if that view is unavailable.
-  if (path === "" || path === "/") {
-    setSelectedPath(null);
-    return selectFile("", skipHistory, preferredViewId);
-  }
-  var route = splitHashRoute(path);
-  var normalized = route.path.replace(/\/+$/, "");
-  // Reveal is best-effort: a row past the pagination cap (or a folder
-  // route) may not resolve to a DOM node, but the preview should still
-  // open — selectFile handles files and folders alike.
-  await revealInTree(normalized);
-  return selectFile(normalized, skipHistory, preferredViewId);
+async function navigateToPath(path, preferredViewId) {
+  // The served root is the empty path, and only a nested folder carries a
+  // trailing slash, so both spellings arrive here already canonical.
+  var normalized = path.replace(/\/+$/, "");
+  var folder = path.endsWith("/");
+  // The route module is dialect-agnostic and types `open` as returning the
+  // apply callback's `unknown`. This shell installed that callback, so it is
+  // the one place that knows the result is an open outcome.
+  return /** @type {Promise<QuickFileOpenOutcome>} */ (
+    navigationController.open(
+      { path: folder && normalized ? `${normalized}/` : normalized },
+      preferredViewId ? { viewId: preferredViewId } : undefined,
+    )
+  );
 }
 
 // Compose the application-lifetime quick-file modules at the shell boundary.
@@ -5660,6 +5639,7 @@ function initQuickFileFinder() {
   }
 
   knownFileCatalog = window.MetabrowserKnownFileCatalog.create();
+  window.MetabrowserPluginHost?.attachFileCatalog(knownFileCatalog);
   if (window.MetabrowserCatalogFeed) {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,
@@ -5696,42 +5676,6 @@ function initQuickFileFinder() {
     },
   });
 }
-
-// One handler serves both history traversal (popstate) and manual hash
-// edits (hashchange); Back/Forward over our pushed entries fires both,
-// and the currentPath guard makes the second firing a no-op.
-/** @param {Event} event */
-function handleRouteChange(event) {
-  var route = parseHashRoute();
-  if (!route) {
-    // An empty route on hashchange is an in-document anchor (#section)
-    // the browser scrolls natively — leave it alone. On popstate it
-    // means Back reached the initial pre-navigation entry: restore the
-    // landing view instead of leaving the stale preview in place.
-    if (event.type === "popstate" && lastWrittenRoute) {
-      navigateToPath("/", true);
-    }
-    return;
-  }
-  var parts = splitHashRoute(route);
-  if (parts.path !== currentPath) {
-    navigateToPath(route, true);
-  }
-}
-
-window.addEventListener("hashchange", handleRouteChange);
-window.addEventListener("popstate", handleRouteChange);
-
-window.addEventListener("metabrowser:open-path", (event) => {
-  if (!(event instanceof CustomEvent)) {
-    return;
-  }
-  var path = event.detail?.path;
-  var viewId = typeof event.detail?.viewId === "string" ? event.detail.viewId : undefined;
-  if (typeof path === "string" && path) {
-    navigateToPath(path, undefined, viewId);
-  }
-});
 
 function clearBrowserFileCache(path) {
   if (path) {
@@ -5774,18 +5718,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   initFilterBar();
   initNavScrollShadow();
   initQuickFileFinder();
-  // Fire the URL-pinned file fetch in parallel with the tree walk: the
-  // two requests don't depend on each other, so a deep-link's preview
-  // can render as soon as /api/file lands instead of waiting for the
-  // full tree to come back. revealInTree below still waits on the
-  // tree because it queries DOM the renderer just produced.
-  var hashRoute = parseHashRoute();
-  var hashParts = splitHashRoute(hashRoute);
-  var initialPath = hashRoute ? hashParts.path : "";
-  var initialIsDir = hashRoute ? hashParts.isDir : true;
-  if (hashRoute || initialIsDir) {
-    selectFile(initialPath, true);
-  }
+  // Start the URL-pinned file fetch in parallel with the tree walk. Only a
+  // /view/ pathname selects a file; a hash is document state, never identity.
+  var initialTarget = window.MetabrowserNavigationRoute.parse(
+    location.pathname,
+    location.search,
+    location.hash,
+  );
+  var initialPath = initialTarget?.path.replace(/\/$/, "") || "";
+  navigationController.start().catch((error) => {
+    console.error("Could not initialize browser navigation", error);
+  });
   startIndexProgressPolling();
   // The tree fetch always runs: it supplies the header path and root
   // aggregates before any later recency selection repaints the panel
