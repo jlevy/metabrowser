@@ -355,7 +355,10 @@ type MarkdownBuiltins = {
   mountRendered: (
     container: HTMLElement,
     ctx: MetabrowserRenderContext,
-    options?: { signal?: AbortSignal },
+    /** `includeToc: "off"` for a document embedded in host navigation that is
+     * already the reader's way around it; omitted leaves the decision to
+     * KPress' own thresholds. */
+    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off" },
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };

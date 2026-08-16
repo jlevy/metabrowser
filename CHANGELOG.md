@@ -19,6 +19,16 @@ Speed and loading states:
   States a spinner cannot express on its own, such as a scan still running, keep their
   visible copy.
 
+Documents:
+
+- The README embedded in a folder’s Overview no longer renders its own table of
+  contents. The panel stack around it is already the reader’s way through the folder, so
+  a second navigation inside the embed competed with it.
+  Opening the same README as a file is unchanged.
+- Markdown documents need to be both sectioned and long before they get a table of
+  contents, rather than sectioned alone, so a short note with a few headings no longer
+  gets a sidebar listing sections already on screen (KPress 0.3.3).
+
 Folder views:
 
 - Treemap’s file tally is segmented by file type with the same structure, colors, and

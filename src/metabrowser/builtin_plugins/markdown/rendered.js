@@ -77,7 +77,7 @@ export function renderKpressError(error, mb) {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off"}} [options]
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
@@ -110,6 +110,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {
         dedupKey: `markdown-mount-${++mountSequence}`,
         profile: "document",
+        includeToc: options.includeToc,
         signal: controller.signal,
       });
       if (!disposed && !controller.signal.aborted) {

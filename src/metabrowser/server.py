@@ -1836,6 +1836,21 @@ async def api_kpress_render(request: Request) -> JSONResponse:
     subpath = request.query_params.get("path", "")
     view = request.query_params.get("view", "document")
     profile = request.query_params.get("profile", "") or None
+    # A document embedded in Metabrowser's own navigation (the folder
+    # Overview's README) asks for no TOC of its own. Closed choice: an
+    # unrecognized value is rejected here rather than silently rendering the
+    # other layout. KPress validates it again at its request boundary.
+    include_toc = request.query_params.get("toc", "auto")
+    if include_toc not in ("auto", "on", "off"):
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "Invalid toc",
+                "detail": f"Invalid toc: {include_toc!r}; expected 'auto', 'on', or 'off'",
+                "diagnostics": [],
+            },
+            status_code=400,
+        )
 
     target = _safe_path(subpath)
     if target is None or not target.is_file():
@@ -1946,6 +1961,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             frontmatter=frontmatter,
             frontmatter_error=frontmatter_error,
             profile=profile,
+            include_toc=include_toc,
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
