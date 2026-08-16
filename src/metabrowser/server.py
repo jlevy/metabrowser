@@ -99,6 +99,7 @@ from metabrowser.gz_io import (
     ArtifactDecompressionLimitError,
     ArtifactPath,
 )
+from metabrowser.http_caching import build_scoped_etag, matches_if_none_match
 from metabrowser.inventory import get_instance as get_inventory
 from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
@@ -414,8 +415,16 @@ def _etag_for(mtime_hash: str) -> str:
     Strong ETags are quoted per RFC 7232. The token is stable across
     browser-server restarts for unchanged files so dev-loop restarts do not
     force clients to re-download every cached payload.
+
+    It also carries this build's identity, because the body is a function of
+    the file *and* of how this version renders it. Keying on the file alone
+    made every rendering change invisible to a client that had already cached
+    the file: after small binaries moved from the text fallback to the Bytes
+    view, a cached browser kept replaying a field of U+FFFD, because the
+    file's mtime had not changed and the server answered 304 to its
+    revalidation. The salt is what makes an upgrade invalidate exactly once.
     """
-    return f'"{mtime_hash}"'
+    return build_scoped_etag(mtime_hash)
 
 
 # File-extension sets used by ``api_file`` to decide which branch to
@@ -1663,7 +1672,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
     # bytewise against the full ETag including the process-epoch suffix
     # so a server restart guarantees a fresh body even if the file is
     # untouched.
-    if text_offset == 0 and request.headers.get("if-none-match") == etag:
+    if text_offset == 0 and matches_if_none_match(request, etag):
         return Response(status_code=304, headers=etag_headers)
 
     # JSONL gets parsed into structured events (single-pass streaming).
@@ -2204,7 +2213,7 @@ async def kpress_static_asset(request: Request) -> Response:
             # asset changes.
             "Cache-Control": "no-cache",
         }
-    if request.headers.get("if-none-match", "") == asset.etag:
+    if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
     return Response(
         content=asset.content,

@@ -36,6 +36,7 @@ from typing import IO, TYPE_CHECKING, Any
 from starlette.responses import JSONResponse
 from strif import file_mtime_hash
 
+from metabrowser.http_caching import build_scoped_etag
 from metabrowser.plugin_api import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -251,5 +252,5 @@ def chunk_handler(request: Request) -> JSONResponse:
             "mtime_hash": mtime_hash,
             "content_base64": base64.b64encode(payload).decode("ascii"),
         },
-        headers={"ETag": f'"{mtime_hash}"'},
+        headers={"ETag": build_scoped_etag(mtime_hash)},
     )
