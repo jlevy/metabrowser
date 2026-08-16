@@ -107,6 +107,8 @@ class FsEntry:
     # dir aggregates — None while the walker has not yet finalized
     total_files: int | None = None
     total_size: int | None = None
+    unignored_files: int | None = None
+    unignored_size: int | None = None
     newest_mtime_ns: int | None = None
     empty: bool | None = None
     gitignored: bool = False

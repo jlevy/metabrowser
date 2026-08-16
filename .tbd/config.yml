@@ -1,7 +1,8 @@
-tbd_format: f06
+tbd_format: f07
 tbd_version: 0.4.2
 # tbd_upgrades: tbd versions that have run `tbd setup` in this repo (oldest first);
 # tbd_version above is the most recent. Informational; updated automatically by setup.
+# tbd_fallback_version is the one exact registry fallback for format-incompatible launchers.
 tbd_upgrades:
   - version: 0.4.0
     at: 2026-07-14T15:38:08.538Z
@@ -64,6 +65,7 @@ docs_cache:
     shortcuts/standard/revise-all-architecture-docs.md: internal:shortcuts/standard/revise-all-architecture-docs.md
     shortcuts/standard/revise-architecture-doc.md: internal:shortcuts/standard/revise-architecture-doc.md
     shortcuts/standard/setup-github-cli.md: internal:shortcuts/standard/setup-github-cli.md
+    shortcuts/standard/setup-linear.md: internal:shortcuts/standard/setup-linear.md
     shortcuts/standard/suggest-upstream-improvements.md: internal:shortcuts/standard/suggest-upstream-improvements.md
     shortcuts/standard/sync-failure-recovery.md: internal:shortcuts/standard/sync-failure-recovery.md
     shortcuts/standard/update-specs-status.md: internal:shortcuts/standard/update-specs-status.md

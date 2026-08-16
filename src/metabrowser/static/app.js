@@ -20,7 +20,12 @@ const TREE_AUTO_EXPAND_ROW_HEIGHT_PROPERTY = "--tree-auto-expand-row-height";
 const FILE_PREFETCH_HOVER_DELAY_MS = 250;
 const FILE_PREFETCH_MAX_BYTES = 512 * 1024;
 const FILE_PREFETCH_MAX_CONCURRENT = 1;
-const TEXT_PREVIEW_CHUNK_BYTES = 128 * 1024;
+// Chunking comes from settings.py so the two planes cannot drift; see
+// docs/large-content-rendering.md for the measurements behind the sizes.
+const TEXT_PREVIEW_CHUNK_BYTES =
+  window.METABROWSER_SETTINGS?.TEXT_PREVIEW_CHUNK_BYTES || 2 * 1024 * 1024;
+const TEXT_PREVIEW_MAX_CHUNK_BYTES =
+  window.METABROWSER_SETTINGS?.TEXT_PREVIEW_MAX_CHUNK_BYTES || 8 * 1024 * 1024;
 
 // Optional perf instrumentation. perf.js installs window.metabrowserPerf
 // with measure/measureAsync helpers and a fetch wrapper; if it isn't
@@ -416,17 +421,9 @@ function resolveTheme(mode) {
 }
 
 function getStoredThemeMode() {
-  // Cookie is the store (shared across ports); fall back to a pre-existing
-  // localStorage value so an upgrade carries the user's prior choice forward.
-  var fromCookie = readPrefCookie(THEME_MODE_KEY);
-  if (fromCookie) {
-    return normalizeThemeMode(fromCookie);
-  }
-  try {
-    return normalizeThemeMode(localStorage.getItem(THEME_MODE_KEY) || "system");
-  } catch (_e) {
-    return "system";
-  }
+  // The cookie is the only store; it has been since before the first
+  // release, so there is no prior localStorage value to carry forward.
+  return normalizeThemeMode(readPrefCookie(THEME_MODE_KEY) || "system");
 }
 
 function themeModeIcon(mode) {
@@ -973,6 +970,7 @@ function renderFilesFromTree() {
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
   synchronizeTreeNow();
+  scheduleSubtreePrefetch();
   return true;
 }
 
@@ -1216,7 +1214,8 @@ function renderTreeNodes(nodes, isRoot, options) {
           // cap. Render a placeholder; click-to-expand fetches the
           // subtree via /api/tree?path=...
           parts.push(
-            '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+            '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+              ' role="status" aria-label="Loading">' +
               '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
               "</div>",
           );
@@ -1337,13 +1336,15 @@ function renderTreeNodes(nodes, isRoot, options) {
 const subtreeCache = new Map();
 const subtreeRetryTimers = new WeakMap();
 
+// A spinner alone says "loading"; the surrounding row already says what
+// is loading, so the generic label is left to screen readers. Callers
+// pass visible copy only for a state a spinner cannot express on its own
+// (see the still-scanning case in loadSubtree).
 function treeLazyLoadingHtml(message) {
   return (
-    '<div class="tree-lazy-placeholder" role="status" aria-live="polite">' +
+    '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-live="polite">' +
     '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
-    "<span>" +
-    esc(message || "Loading folder…") +
-    "</span>" +
+    (message ? `<span>${esc(message)}</span>` : '<span class="sr-only">Loading folder…</span>') +
     "</div>"
   );
 }
@@ -1454,6 +1455,51 @@ function markFolderKnownEmpty(childrenEl) {
   childrenEl.remove();
 }
 
+// One request per path, shared by the click that expands a folder and the
+// idle sweep that warms it. A click landing on a prefetch already in flight
+// joins it instead of racing a second identical fetch.
+const subtreeRequests = new Map();
+
+function fetchSubtree(path) {
+  const existing = subtreeRequests.get(path);
+  if (existing) {
+    return existing;
+  }
+  const request = (async () => {
+    const resp = await fetch(
+      `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
+      { cache: "no-store" },
+    );
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const data = await _perf.measureAsync(
+      "apiTreeSubtree:json",
+      () => resp.json(),
+      responsePerfMeta(resp, path),
+    );
+    if (!Array.isArray(data.tree)) {
+      throw new Error("Malformed tree response");
+    }
+    knownFileCatalog?.observeLazyTree(data.tree);
+    // A folder whose scan has not reached it yet reports empty; caching that
+    // would answer every later expansion with a folder that has contents.
+    const scanning = data.tree.length === 0 && data.tally_cache_status === "scanning";
+    if (!scanning) {
+      subtreeCache.set(path, data.tree);
+    }
+    return { tree: data.tree, scanning: scanning };
+  })();
+  subtreeRequests.set(path, request);
+  const forget = () => {
+    if (subtreeRequests.get(path) === request) {
+      subtreeRequests.delete(path);
+    }
+  };
+  request.then(forget, forget);
+  return request;
+}
+
 async function loadSubtree(path, childrenEl, options) {
   options = options || treeRenderOptionsForElement(childrenEl);
   treeKeyboard?.prepareForMutation();
@@ -1477,29 +1523,15 @@ async function loadSubtree(path, childrenEl, options) {
     }
     applyTreeFilters();
     synchronizeTreeNow();
+    scheduleSubtreePrefetch();
     return;
   }
-  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…");
+  childrenEl.innerHTML = treeLazyLoadingHtml();
   synchronizeTreeNow();
   try {
-    const resp = await fetch(
-      `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
-      { cache: "no-store" },
-    );
-    if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status}`);
-    }
-    const data = await _perf.measureAsync(
-      "apiTreeSubtree:json",
-      () => resp.json(),
-      responsePerfMeta(resp, path),
-    );
-    if (!Array.isArray(data.tree)) {
-      throw new Error("Malformed tree response");
-    }
-    var tree = data.tree;
-    knownFileCatalog?.observeLazyTree(tree);
-    if (tree.length === 0 && data.tally_cache_status === "scanning") {
+    const result = await fetchSubtree(path);
+    var tree = result.tree;
+    if (result.scanning) {
       treeKeyboard?.prepareForMutation();
       childrenEl.innerHTML = treeLazyLoadingHtml("Still scanning this folder…");
       startIndexProgressPolling();
@@ -1508,7 +1540,6 @@ async function loadSubtree(path, childrenEl, options) {
       return;
     }
     clearSubtreeRetry(childrenEl);
-    subtreeCache.set(path, tree);
     treeKeyboard?.prepareForMutation();
     _perf.measure(
       "renderTreeNodes:subtree",
@@ -1532,6 +1563,7 @@ async function loadSubtree(path, childrenEl, options) {
     applyTreeFilters();
     reconcilePendingTallyDiagnostics();
     synchronizeTreeNow();
+    scheduleSubtreePrefetch();
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
@@ -1540,6 +1572,75 @@ async function loadSubtree(path, childrenEl, options) {
       "Could not load this folder. Collapse and reopen it to try again.",
     );
     synchronizeTreeNow();
+  }
+}
+
+// ── Subtree prefetch ────────────────────────────────────────────
+//
+// Expanding a folder should be instant, which means the subtree is
+// already in hand before the click (see "Everything is effortlessly
+// fast" in docs/design-system.md). The rendered tree names its own
+// candidates: every unexpanded folder past the server's depth cap
+// carries a lazy stub, and those are exactly the folders a reader can
+// open next. The sweep runs when the browser is idle, a few at a time,
+// so warming the tree never competes with the request a reader is
+// actually waiting on.
+const SUBTREE_PREFETCH_MAX_CONCURRENT = 3;
+const SUBTREE_PREFETCH_MAX_PER_SWEEP = 32;
+const SUBTREE_PREFETCH_IDLE_TIMEOUT_MS = 2000;
+let subtreePrefetchScheduled = false;
+
+function pendingSubtreePaths() {
+  const paths = [];
+  const stubs = treePane.querySelectorAll("[data-tree-lazy-stub]");
+  for (let index = 0; index < stubs.length; index += 1) {
+    if (paths.length >= SUBTREE_PREFETCH_MAX_PER_SWEEP) {
+      break;
+    }
+    // Stub -> .tree-children -> the .tree-folder row that owns the path.
+    const folder = /** @type {HTMLElement | null} */ (
+      stubs[index].parentElement?.previousElementSibling ?? null
+    );
+    const path = folder?.dataset?.path;
+    if (path && !subtreeCache.has(path) && !subtreeRequests.has(path)) {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+async function prefetchPendingSubtrees() {
+  const paths = pendingSubtreePaths();
+  let next = 0;
+  const worker = async () => {
+    while (next < paths.length) {
+      const path = paths[next];
+      next += 1;
+      try {
+        await fetchSubtree(path);
+      } catch (_error) {
+        // Best-effort: a failed warm-up costs nothing, and the expansion
+        // that needs this folder reports its own failure.
+      }
+    }
+  };
+  const lanes = Math.min(SUBTREE_PREFETCH_MAX_CONCURRENT, paths.length);
+  await Promise.all(Array.from({ length: lanes }, worker));
+}
+
+function scheduleSubtreePrefetch() {
+  if (subtreePrefetchScheduled) {
+    return;
+  }
+  subtreePrefetchScheduled = true;
+  const run = () => {
+    subtreePrefetchScheduled = false;
+    void prefetchPendingSubtrees();
+  };
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(run, { timeout: SUBTREE_PREFETCH_IDLE_TIMEOUT_MS });
+  } else {
+    setTimeout(run, 200);
   }
 }
 
@@ -1987,7 +2088,8 @@ async function activateTreeRow(row, options) {
     // clear the whole selection and request the served root.
     if (row.dataset.path) {
       setSelectedPath(row.dataset.path);
-      void selectFile(row.dataset.path);
+      // Trailing slash marks a folder in the canonical /view/ route.
+      void navigateToPath(`${row.dataset.path}/`);
     }
     return toggleTreeFolder(row, options);
   }
@@ -1996,7 +2098,7 @@ async function activateTreeRow(row, options) {
   }
   if (action === "select" && row.dataset.path) {
     setSelectedPath(row.dataset.path);
-    void selectFile(row.dataset.path);
+    void navigateToPath(row.dataset.path);
   }
   return row;
 }
@@ -3042,14 +3144,15 @@ var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || 
 // Each row wears the freshness colour the tree gives files of that
 // age, so the menu doubles as the legend for the ramp below it.
 // Longer windows take the colour of the bucket they top out at. Live
-// keeps the freshest colour and spells out its exact server-owned
+// is an activity state that shares the freshest reddish-orange visual
+// with under-one-minute files and spells out its exact server-owned
 // cutoff in the accessible title.
 var FILTER_RECENCY_OPTIONS = [
   {
     value: "live",
     label: "Live",
     title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
-    ageClass: "age-sec",
+    ageClass: "age-live",
   },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
   { value: "24h", label: "Past day", ageClass: "age-hr" },
@@ -3788,6 +3891,16 @@ function cachePut(cache, key, value, maxSize, onEvict) {
 }
 
 var textChunkLoadInFlight = false;
+/**
+ * Bytes the next Load more will request. Each click doubles up to the cap, so
+ * reaching a large file takes a handful of clicks rather than dozens while no
+ * single click stalls the main thread.
+ */
+var textChunkNextBytes = TEXT_PREVIEW_CHUNK_BYTES;
+
+function resetTextChunkGrowth() {
+  textChunkNextBytes = TEXT_PREVIEW_CHUNK_BYTES;
+}
 
 function showTextChunkLoadError() {
   var warning = document.querySelector(".metabrowser-source-truncation-warning");
@@ -3813,6 +3926,7 @@ async function loadMoreCurrentText() {
   textChunkLoadInFlight = true;
   var path = currentPath;
   var offset = cached.bytes_read || 0;
+  var requested = textChunkNextBytes;
   try {
     var resp = await fetch(
       "/api/file?path=" +
@@ -3820,7 +3934,7 @@ async function loadMoreCurrentText() {
         "&offset=" +
         encodeURIComponent(String(offset)) +
         "&limit=" +
-        encodeURIComponent(String(TEXT_PREVIEW_CHUNK_BYTES)),
+        encodeURIComponent(String(requested)),
     );
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status}`);
@@ -3844,7 +3958,25 @@ async function loadMoreCurrentText() {
     cached.bytes_read = chunk.bytes_read || cached.bytes_read;
     cached.content_truncated = !!chunk.content_truncated;
     cached.highlight_disabled = true;
-    renderFile(cached);
+    textChunkNextBytes = window.MetabrowserSourceAppend.nextChunkBytes(
+      requested,
+      TEXT_PREVIEW_MAX_CHUNK_BYTES,
+    );
+    if (window.MetabrowserSourceAppend.appendSourceText(document, chunk.content || "")) {
+      // The append skipped the plugin's render, so the banner it emitted still
+      // reports the byte counts from the previous chunk. Sync it rather than
+      // leaving a "content truncated" notice over a fully loaded file.
+      window.MetabrowserSourceAppend.syncTruncationWarning(
+        document,
+        window.metabrowser?.renderTextTruncationWarning?.(cached) || "",
+      );
+      window.MetabrowserSourceAppend.syncLoadMoreFooter(
+        document,
+        window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
+      );
+    } else {
+      renderFile(cached);
+    }
   } catch (e) {
     console.warn("Failed to load text chunk", e);
     if (currentPath === path) {
@@ -3864,16 +3996,17 @@ var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function selectFile(path, skipHistory, preferredViewId) {
+async function selectFile(path, preferredViewId) {
   return _perf.measureAsync(
     "selectFile",
     async () => {
       // Always close any prior live stream — switching files (or reopening
       // the same file) starts fresh.
       closeLiveStream();
+      // Chunk growth is per file: a fresh selection starts small again so
+      // opening a file never inherits the last file's appetite.
+      resetTextChunkGrowth();
       currentPath = path;
-      // The route write happens once, after the response identifies
-      // whether the path is a file or a folder — see commitRoute.
       const preview = document.getElementById("preview-pane");
       if (!preview) {
         return {
@@ -3890,7 +4023,7 @@ async function selectFile(path, skipHistory, preferredViewId) {
       const cached = fileCache.get(path);
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
-        commitRoute(path, cached.kind === "folder", skipHistory);
+        navigationController.canonicalizePath(path, cached.kind === "folder");
         renderFile(cached, preferredViewId);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
@@ -3907,7 +4040,8 @@ async function selectFile(path, skipHistory, preferredViewId) {
         disposeActivePluginViews();
         stopFolderHeaderSubscription();
         preview.innerHTML =
-          '<div class="loading mb-delayed-loading"><div class="spinner"></div>Loading file…</div>';
+          '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+          '<span class="sr-only">Loading file…</span></div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
       if (selectFileAbortController) {
@@ -3938,7 +4072,7 @@ async function selectFile(path, skipHistory, preferredViewId) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
-            commitRoute(path, cached.kind === "folder", skipHistory);
+            navigationController.canonicalizePath(path, cached.kind === "folder");
             renderFile(cached, preferredViewId);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
@@ -3977,7 +4111,7 @@ async function selectFile(path, skipHistory, preferredViewId) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
-          commitRoute(path, data.kind === "folder", skipHistory);
+          navigationController.canonicalizePath(path, data.kind === "folder");
           renderFile(data, preferredViewId);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
@@ -4011,7 +4145,7 @@ async function selectFile(path, skipHistory, preferredViewId) {
             };
       }
     },
-    { path: path, preferred_view: preferredViewId || "", skip_history: !!skipHistory },
+    { path: path, preferred_view: preferredViewId || "" },
   );
 }
 
@@ -4036,7 +4170,7 @@ function openedFileOutcome(path, data, preview) {
 // HTML-escaped. Buttons carry the raw path in data-nav-dir and one
 // delegated listener (installed in init) reads it back via dataset.
 function navigateToFolder(path) {
-  navigateToPath(path === "" ? "/" : `${path}/`);
+  navigateToPath(path ? `${path}/` : "");
 }
 
 // Folder preview header: up control, clickable breadcrumb, aggregate
@@ -4058,10 +4192,12 @@ function renderFolderHeader(data) {
     );
   }
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
+  var parentLabel =
+    parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
   var upButton =
     parent === null
-      ? '<button type="button" class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" disabled>↑</button>'
-      : `<button type="button" class="file-header-icon folder-up" title="Up" aria-label="Up to parent folder" data-nav-dir="${esc(parent)}">↑</button>`;
+      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
+      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
   var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
   return (
     '<div class="file-header folder-header">' +
@@ -4187,22 +4323,6 @@ function renderBadges(data) {
       '">Frontmatter error</span>';
   }
   return badges;
-}
-
-function renderTextPreviewControls(data) {
-  if (data?.type !== "text" || typeof data.bytes_read !== "number") {
-    return "";
-  }
-  if (!data.content_truncated && data.bytes_read >= (data.size || 0)) {
-    return "";
-  }
-  var loaded = Math.min(data.bytes_read || 0, data.size || 0);
-  var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
-  if (data.content_truncated) {
-    html +=
-      '<button class="btn file-header-action" type="button" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
-  }
-  return html;
 }
 
 function boolData(value) {
@@ -4400,7 +4520,6 @@ function renderFile(data, preferredViewId) {
           "</span>";
         html += badges;
         html += sizeHtml(data.size, "file-header-size");
-        html += renderTextPreviewControls(data);
         html +=
           '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
           (ICONS.print || "") +
@@ -4881,6 +5000,7 @@ function fileStoreApplySnapshot(scope, entries) {
     applyCellPatch(entries[i]);
     _mirrorActiveFromFsEntry(entries[i]);
   }
+  window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
 
@@ -4911,6 +5031,7 @@ function fileStoreApplyChange(ops) {
     // active window, mirror it into that base too.
     recentBaseApplyOp(op);
   }
+  window.metabrowserDirectoryTotalsStore?.applyChange(ops);
   notifyFileStoreSubscribers({ kind: "change", ops: ops });
 }
 
@@ -5172,7 +5293,8 @@ function _buildRowHtml(entry, options) {
         ? '<div class="tree-children" id="' +
           groupId +
           '" role="group" style="display:none">' +
-          '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+          '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+          ' role="status" aria-label="Loading">' +
           '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
           "</div>" +
           "</div>"
@@ -5591,7 +5713,8 @@ function applyCellPatch(entry) {
             row.insertAdjacentHTML(
               "afterend",
               `<div class="tree-children" id="${groupId}" role="group" style="display:none">` +
-                '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+                '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+                ' role="status" aria-label="Loading">' +
                 '<span class="spinner spinner-sm" aria-hidden="true"></span></div></div>',
             );
             row.setAttribute("aria-expanded", "false");
@@ -5900,71 +6023,57 @@ function startInventoryEventStream() {
   _createInventoryEventSource();
 }
 
-// ── Hash routing ──────────────────────────────────────────────
+// ── Canonical navigation ───────────────────────────────────────
 
-function parseHashRoute() {
-  var hash = location.hash;
-  if (!hash || hash === "#") {
-    return "";
+// navigation.js is linked by the same shell response, immediately ahead of this
+// script, so the module and this controller always exist together.
+var navigationController = window.MetabrowserNavigationRoute.createController({
+  apply: applyNavigationTarget,
+});
+window.MetabrowserNavigationRoute.attachController(navigationController);
+
+function showNavigationLanding() {
+  closeLiveStream();
+  currentPath = "";
+  setSelectedPath(null);
+  disposeActivePluginViews();
+  stopFolderHeaderSubscription();
+  const preview = document.getElementById("preview-pane");
+  if (preview) {
+    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
   }
-  var raw = decodeURIComponent(hash.slice(1));
-  // A trailing slash marks a directory route ("#src/", root as "#/").
-  // Directory fragments skip the in-doc-anchor heuristic below — a bare
-  // top-level folder name would otherwise be rejected for having no
-  // extension. The returned route keeps the marker; callers strip it.
-  var isDirRoute = /\/$/.test(raw);
-  var frag = raw.replace(/\/+$/, "");
-  if (isDirRoute) {
-    return `${frag}/`;
-  }
-  if (!frag) {
-    return "";
-  }
-  // The URL hash doubles as a file deep-link (#<path>) and as in-document
-  // anchors inside an embedded KPress document (#section, #fn-note). Only treat
-  // a fragment as a file path when it looks like one — a directory separator or
-  // a file extension. Otherwise it is an in-doc anchor the browser scrolls
-  // natively, and opening a file named by the fragment would 404.
-  if (frag.indexOf("/") === -1 && !/\.[A-Za-z0-9]{1,8}$/.test(frag)) {
-    return "";
-  }
-  return frag;
 }
 
-// Split a parseHashRoute() result into {path, isDir}. "#/" yields the
-// served root: {path: "", isDir: true}.
-/** @param {string} route */
-function splitHashRoute(route) {
-  if (route.endsWith("/")) {
-    return { path: route.replace(/\/+$/, ""), isDir: true };
-  }
-  return { path: route, isDir: false };
+function deliverNavigationFragment(target) {
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:navigation-fragment", {
+      detail: { target: target },
+    }),
+  );
 }
 
-// ── Route writing ───────────────────────────────────────────────
-//
-// One writer for the location hash, called once per navigation after
-// the response has identified the path as file or folder. Directories
-// carry a trailing slash (the served root is "#/") so parseHashRoute
-// can tell them from in-document anchors. History semantics: a route
-// CHANGE pushes an entry (browser Back retraces zooms and file opens);
-// re-writing the same route — canonicalization, refreshes, popstate/
-// hashchange-driven renders — replaces in place.
-
-/** @type {{path: string, isDir: boolean} | null} */
-var lastWrittenRoute = null;
-
-/** @param {string} path @param {boolean} isDir @param {boolean | undefined} skipHistory */
-function commitRoute(path, isDir, skipHistory) {
-  var frag = isDir ? (path ? `${encodeURIComponent(path)}/` : "/") : encodeURIComponent(path);
-  var routeChanged =
-    !lastWrittenRoute || lastWrittenRoute.path !== path || lastWrittenRoute.isDir !== isDir;
-  if (!skipHistory && routeChanged) {
-    history.pushState(null, "", `#${frag}`);
-  } else {
-    history.replaceState(null, "", `#${frag}`);
+async function applyNavigationTarget(target, context) {
+  if (!target) {
+    showNavigationLanding();
+    return { status: "cancelled" };
   }
-  lastWrittenRoute = { path: path, isDir: isDir };
+  var path = target.path.replace(/\/$/, "");
+  if (!context.pathChanged) {
+    deliverNavigationFragment(target);
+    return {
+      focusTarget: document.getElementById("preview-pane") || undefined,
+      status: "opened",
+    };
+  }
+  await revealInTree(path);
+  if (!context.isCurrent()) {
+    return { status: "cancelled" };
+  }
+  var outcome = await selectFile(path, context.viewId);
+  if (outcome.status === "opened" && context.isCurrent()) {
+    deliverNavigationFragment(navigationController.current() || target);
+  }
+  return outcome;
 }
 
 // Expand tree folders along ``path`` (loading lazy subtrees as needed)
@@ -6004,25 +6113,20 @@ async function revealInTree(path) {
 }
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function navigateToPath(path, skipHistory, preferredViewId) {
-  // selectFile owns the route write (commitRoute) once the response
-  // identifies file vs folder. skipHistory is set by history-driven
-  // callers (popstate, hashchange, init) whose entries already exist;
-  // user-initiated callers (breadcrumbs, treemap cells, plugin
-  // openPath) leave it unset so route changes push entries. A plugin
-  // may also prefer one of the destination's declared views; rendering
-  // falls back to the ordinary default if that view is unavailable.
-  if (path === "" || path === "/") {
-    setSelectedPath(null);
-    return selectFile("", skipHistory, preferredViewId);
-  }
-  var route = splitHashRoute(path);
-  var normalized = route.path.replace(/\/+$/, "");
-  // Reveal is best-effort: a row past the pagination cap (or a folder
-  // route) may not resolve to a DOM node, but the preview should still
-  // open — selectFile handles files and folders alike.
-  await revealInTree(normalized);
-  return selectFile(normalized, skipHistory, preferredViewId);
+async function navigateToPath(path, preferredViewId) {
+  // The served root is the empty path, and only a nested folder carries a
+  // trailing slash, so both spellings arrive here already canonical.
+  var normalized = path.replace(/\/+$/, "");
+  var folder = path.endsWith("/");
+  // The route module is dialect-agnostic and types `open` as returning the
+  // apply callback's `unknown`. This shell installed that callback, so it is
+  // the one place that knows the result is an open outcome.
+  return /** @type {Promise<QuickFileOpenOutcome>} */ (
+    navigationController.open(
+      { path: folder && normalized ? `${normalized}/` : normalized },
+      preferredViewId ? { viewId: preferredViewId } : undefined,
+    )
+  );
 }
 
 // Compose application keyboard infrastructure at the shell boundary.
@@ -6144,6 +6248,7 @@ function initQuickFileFinder() {
   }
 
   knownFileCatalog = window.MetabrowserKnownFileCatalog.create();
+  window.MetabrowserPluginHost?.attachFileCatalog(knownFileCatalog);
   if (window.MetabrowserCatalogFeed) {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,
@@ -6183,42 +6288,6 @@ function initQuickFileFinder() {
     shortcuts: shortcutRegistry,
   });
 }
-
-// One handler serves both history traversal (popstate) and manual hash
-// edits (hashchange); Back/Forward over our pushed entries fires both,
-// and the currentPath guard makes the second firing a no-op.
-/** @param {Event} event */
-function handleRouteChange(event) {
-  var route = parseHashRoute();
-  if (!route) {
-    // An empty route on hashchange is an in-document anchor (#section)
-    // the browser scrolls natively — leave it alone. On popstate it
-    // means Back reached the initial pre-navigation entry: restore the
-    // landing view instead of leaving the stale preview in place.
-    if (event.type === "popstate" && lastWrittenRoute) {
-      navigateToPath("/", true);
-    }
-    return;
-  }
-  var parts = splitHashRoute(route);
-  if (parts.path !== currentPath) {
-    navigateToPath(route, true);
-  }
-}
-
-window.addEventListener("hashchange", handleRouteChange);
-window.addEventListener("popstate", handleRouteChange);
-
-window.addEventListener("metabrowser:open-path", (event) => {
-  if (!(event instanceof CustomEvent)) {
-    return;
-  }
-  var path = event.detail?.path;
-  var viewId = typeof event.detail?.viewId === "string" ? event.detail.viewId : undefined;
-  if (typeof path === "string" && path) {
-    navigateToPath(path, undefined, viewId);
-  }
-});
 
 function clearBrowserFileCache(path) {
   if (path) {
@@ -6262,18 +6331,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavScrollShadow();
   initKeyboardInfrastructure();
   initQuickFileFinder();
-  // Fire the URL-pinned file fetch in parallel with the tree walk: the
-  // two requests don't depend on each other, so a deep-link's preview
-  // can render as soon as /api/file lands instead of waiting for the
-  // full tree to come back. revealInTree below still waits on the
-  // tree because it queries DOM the renderer just produced.
-  var hashRoute = parseHashRoute();
-  var hashParts = splitHashRoute(hashRoute);
-  var initialPath = hashRoute ? hashParts.path : "";
-  var initialIsDir = hashRoute ? hashParts.isDir : true;
-  if (hashRoute || initialIsDir) {
-    selectFile(initialPath, true);
-  }
+  // Start the URL-pinned file fetch in parallel with the tree walk. Only a
+  // /view/ pathname selects a file; a hash is document state, never identity.
+  var initialTarget = window.MetabrowserNavigationRoute.parse(
+    location.pathname,
+    location.search,
+    location.hash,
+  );
+  var initialPath = initialTarget?.path.replace(/\/$/, "") || "";
+  navigationController.start().catch((error) => {
+    console.error("Could not initialize browser navigation", error);
+  });
   startIndexProgressPolling();
   // The tree fetch always runs: it supplies the header path and root
   // aggregates before any later recency selection repaints the panel

@@ -95,6 +95,20 @@ def test_reports_a_missing_node_version_file(tmp_path: Path) -> None:
         verify_supply_chain(tmp_path)
 
 
+def test_publish_smoke_retries_must_refresh_the_package_index(tmp_path: Path) -> None:
+    _write_repository(tmp_path)
+    workflow = tmp_path / ".github" / "workflows" / "publish.yml"
+    workflow.write_text(
+        workflow.read_text(encoding="utf-8")
+        + "      - name: Smoke-test the package from PyPI\n"
+        + "        run: uv tool run example@1.2.3 --help\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="post-publish smoke must refresh"):
+        verify_supply_chain(tmp_path)
+
+
 def test_reports_uv_action_and_publish_errors(tmp_path: Path) -> None:
     _write_repository(tmp_path)
     (tmp_path / "uv.toml").write_text('exclude-newer = "7 days"\n', encoding="utf-8")

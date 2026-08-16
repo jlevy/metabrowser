@@ -80,7 +80,9 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
 
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
-    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index("selectFile(")
+    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index(
+        "navigationController.start()"
+    )
     assert loaded_block.count("initQuickFileFinder();") == 1
 
 
@@ -118,14 +120,14 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     assert "knownFileCatalog?.observeInitialTree(data.tree)" in load_tree
     assert load_tree.index("observeInitialTree") < load_tree.index('"renderTreeNodes:root"')
 
-    load_subtree = js[
-        js.index("async function loadSubtree(path, childrenEl, options)") : js.index(
-            "// ── Custom tooltip"
-        )
+    # Lazily fetched rows are observed in fetchSubtree, so a subtree pulled in
+    # by the idle prefetch reaches the catalog the same as an expanded one.
+    fetch_subtree = js[
+        js.index("function fetchSubtree(path)") : js.index("async function loadSubtree(")
     ]
-    assert "knownFileCatalog?.observeLazyTree(tree)" in load_subtree
-    assert load_subtree.index("observeLazyTree") < load_subtree.index(
-        "subtreeCache.set(path, tree)"
+    assert "knownFileCatalog?.observeLazyTree(data.tree)" in fetch_subtree
+    assert fetch_subtree.index("observeLazyTree") < fetch_subtree.index(
+        "subtreeCache.set(path, data.tree)"
     )
 
     recent = js[
@@ -205,7 +207,7 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
     js = _read_app_js()
     select_file = js[
-        js.index("async function selectFile(path, skipHistory, preferredViewId)") : js.index(
+        js.index("async function selectFile(path, preferredViewId)") : js.index(
             "// ── File rendering"
         )
     ]
@@ -213,12 +215,12 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
         assert f'status: "{status}"' in select_file
     assert "resp.status === 404" in select_file
 
-    navigate = js[
-        js.index("async function navigateToPath(path, skipHistory, preferredViewId)") : js.index(
-            "function initQuickFileFinder()"
+    apply_navigation = js[
+        js.index("async function applyNavigationTarget(target, context)") : js.index(
+            "async function revealInTree(path)"
         )
     ]
-    assert "return selectFile(" in navigate
+    assert "await selectFile(path, context.viewId)" in apply_navigation
 
     init_start = js.index("function initQuickFileFinder()")
     init_block = js[init_start : init_start + 2600]
@@ -236,18 +238,16 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
         proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
     ).read_text()
 
-    assert "function openPath(path, options)" in sdk
-    assert "viewId: viewId" in sdk
-    assert "type MetabrowserOpenPathOptions" in types
-    assert "openPath(path: string, options?: MetabrowserOpenPathOptions): void;" in types
+    assert "navigation: global.MetabrowserNavigationRoute.navigation" in sdk
+    assert "function openPath(" not in sdk
+    assert "type MetabrowserNavigationOpenOptions" in types
+    assert "navigation: MetabrowserNavigationApi;" in types
 
-    assert "async function selectFile(path, skipHistory, preferredViewId)" in js
+    assert "async function selectFile(path, preferredViewId)" in js
     assert "function renderFile(data, preferredViewId)" in js
-    assert "async function navigateToPath(path, skipHistory, preferredViewId)" in js
-    listener_start = js.index('window.addEventListener("metabrowser:open-path"')
-    listener = js[listener_start : listener_start + 500]
-    assert "event.detail?.viewId" in listener
-    assert "navigateToPath(path, undefined, viewId)" in listener
+    assert "async function navigateToPath(path, preferredViewId)" in js
+    assert "MetabrowserNavigationRoute.attachController(navigationController)" in js
+    assert "metabrowser:open-path" not in js
 
     render_start = js.index("function renderFile(data, preferredViewId)")
     render = js[render_start : render_start + 5000]
@@ -255,7 +255,7 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     assert "views.find((view) => view.default)" in render
 
     assert 'const TREEMAP_VIEW_ID = "treemap";' in treemap
-    assert "mb.openPath(cell.path, { viewId: TREEMAP_VIEW_ID })" in treemap
+    assert "mb.navigation.open({ path: cell.path }, { viewId: TREEMAP_VIEW_ID })" in treemap
 
 
 def test_local_quick_file_modules_define_no_search_endpoint() -> None:

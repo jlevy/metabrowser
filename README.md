@@ -67,6 +67,15 @@ read Markdown docs.
   highlighting, math, links, images, and print-friendly output (supported via
   [kpress](https://github.com/jlevy/kpress)).
 
+- **Repository-native document links.** Relative and served-root Markdown links use the
+  same exact path semantics as GitHub, including headings, spaces, Unicode, images, and
+  other local resources.
+  Obsidian wiki links add deterministic note, heading, named-block, attachment, and
+  media navigation, plus bounded whole-note, heading, and block transclusion with
+  visible missing or ambiguous states instead of guessed paths.
+  Each selected file has a reloadable `/view/<path>` URL, so native new-tab, copy-link,
+  and browser history behavior works without configuration.
+
 - **Broad file support.** Render common text, syntax highlighted source code, logs,
   images, and tree-parsed JSON, JSONL, and YAML. Clean support for YAML frontmatter.
 
@@ -77,9 +86,10 @@ read Markdown docs.
 
 - **Folder overviews with exact file tallies.** Every directory opens with a compact
   Files summary that compares file counts and byte totals, percentages, and normalized
-  bars across semantic groups such as Code, Documentation, Data, Logs, Archives, and
-  Media. Expand a family to inspect exact extensions, or inspect bounded No extension and
-  Other types details without losing the conserved total or ignored-file subset.
+  bars across semantic groups such as Code, Documentation, Data, Archives, Media, and
+  Other. Expand a family such as Log files to inspect exact extensions, or inspect
+  bounded No extension and Other types details without losing the conserved total or
+  ignored-file subset.
 
 - **A visual Treemap for every folder.** Size the same live file hierarchy by bytes or
   file count, include or exclude ignored files, and move through nested folders without
@@ -275,18 +285,39 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 ## Documentation
 
-- [Installation](docs/installation.md)
-- [Plugin authoring](docs/plugins.md)
-- [Architecture](docs/architecture.md)
+Using Metabrowser:
+
+- [Installation](docs/installation.md) — uv setup, upgrades, and the agent skill
+- [Changelog](CHANGELOG.md) — what changed in each release
+- [Roadmap](TODO.md) — what is planned next
+
+Extending it:
+
+- [Plugin authoring](docs/plugins.md) — manifest schema, browser SDK, and data hooks
+- [Architecture](docs/architecture.md) — request flow, URL grammar, and plugin
+  boundaries
+- [Design system](docs/design-system.md) — tokens, layout bands, and component rules
 - [File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md)
-- [Design system](docs/design-system.md)
-- [Development](docs/development.md)
-- [End-to-end testing](docs/e2e-testing.md)
-- [Real-time debugging](docs/realtime-debugging.md)
-- [Publishing](docs/publishing.md)
-- [Project design and plans](docs/project/README.md)
-- [Security policy](SECURITY.md)
-- [Roadmap](TODO.md)
+  — the shared file-type and rollup contract
+- [Rendering large content](docs/large-content-rendering.md) — the cost model and limit
+  rules every content view shares
+
+Working on it:
+
+- [Contributing](CONTRIBUTING.md) — how to propose and land a change
+- [Development](docs/development.md) — everyday commands and the `make verify` gate
+- [End-to-end testing](docs/e2e-testing.md) — which test layer proves what
+- [Real-time debugging](docs/realtime-debugging.md) — a stable transcript of tree and
+  filter behavior
+- [Publishing](docs/publishing.md) — the tag-driven release path
+- [Project design and plans](docs/project/README.md) — specs, research briefs, and
+  architecture notes
+
+Policies:
+
+- [Security policy](SECURITY.md) — reporting and the served-root trust boundary
+- [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency review and the cool-off
+  rules
 
 ## License
 

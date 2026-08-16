@@ -68,10 +68,11 @@ def test_rollup_route_envelope_and_wire_shape(tmp_path: Path) -> None:
     assert node["total_files"] == 2
     assert isinstance(body["ext_tallies"], list)
     assert body["ext_tallies"][0][0] in (".py", ".md")
-    assert {family["id"] for family in body["type_tallies"]["families"]} == {
-        "markdown",
-        "python",
-    }
+    assert {
+        family["id"]
+        for group in body["file_type_breakdown"]["groups"]
+        for family in group["families"]
+    } == {"markdown", "python"}
 
 
 def test_rollup_route_runs_aggregation_off_the_event_loop(tmp_path: Path, monkeypatch) -> None:
@@ -124,7 +125,7 @@ def test_rollup_route_clamps_params(tmp_path: Path) -> None:
             "depth": "999",
             "top": "999999",
             "ext_top": "-3",
-            "type_top": "-3",
+            "remaining_top": "-3",
         },
     )
     node = body["node"]
@@ -134,8 +135,10 @@ def test_rollup_route_clamps_params(tmp_path: Path) -> None:
     assert len(node["children"]) == 5 <= ROLLUP_MAX_TOP
     # ext_top clamps to zero: only the remainder row remains.
     assert all(row[0] == "" for row in body["ext_tallies"])
-    assert body["type_tallies"]["families"] == []
-    assert [row[0] for row in body["type_tallies"]["extensions"]] == [""]
+    # remaining_top clamps to zero: the tail collapses into the exact Others row.
+    remaining = body["file_type_breakdown"]["remaining_types"]
+    assert remaining["extensions"] == []
+    assert remaining["others"]["omitted_distinct_values"] == 5
 
 
 def test_rollup_route_supports_summary_only_dual_rank(tmp_path: Path) -> None:
@@ -174,4 +177,4 @@ def test_rollup_route_cold_index_returns_null_node(tmp_path: Path) -> None:
         validate_rollup_node(body["node"])
     else:
         assert body["ext_tallies"] == []
-        assert body["type_tallies"] == {"families": [], "extensions": []}
+        assert body["file_type_breakdown"] is None

@@ -23,7 +23,7 @@ import pytest
 
 from metabrowser import server
 from metabrowser.plugin_loader.discovery import LoadedPlugin
-from metabrowser.plugin_loader.manifest import PluginManifest
+from metabrowser.plugin_loader.manifest import PLUGIN_SDK_VERSION, PluginManifest
 
 
 def _build_manifest(
@@ -33,6 +33,7 @@ def _build_manifest(
     return {
         "plugin": {
             "name": "fixture",
+            "sdk_version": PLUGIN_SDK_VERSION,
             "extra_scripts": extra_scripts or [],
             "extra_styles": extra_styles or [],
         },
@@ -79,6 +80,7 @@ def test_index_emits_extra_scripts_in_declared_order(tmp_path: Path) -> None:
         {
             "plugin": {
                 "name": "fixture",
+                "sdk_version": PLUGIN_SDK_VERSION,
                 "extra_scripts": ["alpha.js", "beta.js"],
                 "extra_styles": ["palette.css"],
             }

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "sourcePath", "completeSnapshot", "cases"],
+  "properties": {
+    "schema": { "const": "metabrowser-obsidian-wiki-resolution-v1" },
+    "sourcePath": { "type": "string", "minLength": 1 },
+    "completeSnapshot": {
+      "type": "object",
+      "required": ["complete", "files"],
+      "properties": {
+        "complete": { "const": true },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": { "path": { "type": "string", "minLength": 1 } },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "intent", "expected"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "sourcePath": { "type": "string", "minLength": 1 },
+          "canonicalUrl": { "type": "string", "pattern": "^/view/" },
+          "intent": {
+            "type": "object",
+            "required": ["authoredTarget", "action"],
+            "properties": {
+              "authoredTarget": { "type": "string" },
+              "action": { "enum": ["navigate", "embed"] }
+            },
+            "additionalProperties": false
+          },
+          "expected": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "enum": ["internal", "pending", "missing", "ambiguous", "unsafe", "unsupported"]
+              },
+              "path": { "type": "string" },
+              "fragment": { "type": "string" },
+              "mediaKind": { "enum": ["markdown", "image", "audio", "video", "resource"] },
+              "reason": { "type": "string" },
+              "candidates": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

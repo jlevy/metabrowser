@@ -56,6 +56,7 @@ from starlette.responses import (
     FileResponse,
     HTMLResponse,
     PlainTextResponse,
+    RedirectResponse,
     Response,
     StreamingResponse,
 )
@@ -82,6 +83,7 @@ from metabrowser.activity import FileActivityTracker as _FileActivityTracker
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.file_kinds import (
     FILE_KIND_DETECTORS,
@@ -98,6 +100,7 @@ from metabrowser.gz_io import (
     ArtifactDecompressionLimitError,
     ArtifactPath,
 )
+from metabrowser.http_caching import build_scoped_etag, matches_if_none_match
 from metabrowser.inventory import get_instance as get_inventory
 from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
@@ -115,6 +118,7 @@ from metabrowser.paths_safe import (
 )
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
+from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     RECENT_WINDOW_SECONDS,
@@ -123,12 +127,14 @@ from metabrowser.settings import (
     ROLLUP_DEFAULT_EXT_TOP,
     ROLLUP_DEFAULT_TOP,
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
-    ROLLUP_FILE_TYPE_RAW_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
     ROLLUP_MAX_DEPTH,
     ROLLUP_MAX_EXT_TOP,
     ROLLUP_MAX_TOP,
     SLOW_OPERATION_LOG_SECONDS,
+    SYNTAX_HIGHLIGHT_MAX_BYTES,
+    TEXT_PREVIEW_CHUNK_BYTES,
+    TEXT_PREVIEW_REQUEST_MAX_BYTES,
     client_settings_dict,
 )
 from metabrowser.sse import api_stream
@@ -151,6 +157,7 @@ from metabrowser.tree import (
     inventory_has_data,
     inventory_status,
 )
+from metabrowser.view_routes import VIEW_ROUTE_PREFIX, decode_safe_view_path
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -285,7 +292,6 @@ __all__ = [
     "_IGNORE_CACHE",
     "_activity_snapshot",
     "_cached_root_prefix",
-    "_classify_file_kind",
     "_clear_browser_caches",
     "_collect_trackable_files",
     "_collect_trackable_files_cached",
@@ -367,12 +373,6 @@ class _ProcBrowserModule(_types.ModuleType):
 _sys.modules[__name__].__class__ = _ProcBrowserModule
 
 
-def _classify_file_kind(ext: str, adapter: str | None = None) -> str:
-    """Backwards-compat alias for legacy callers; new code calls
-    :func:`metabrowser.file_kinds.classify_by_ext` directly."""
-    return classify_by_ext(ext, adapter)
-
-
 # ── Static asset directories ────────────────────────────────────
 #
 # CSS / JS bundles are served as plain static files (Starlette's
@@ -411,8 +411,16 @@ def _etag_for(mtime_hash: str) -> str:
     Strong ETags are quoted per RFC 7232. The token is stable across
     browser-server restarts for unchanged files so dev-loop restarts do not
     force clients to re-download every cached payload.
+
+    It also carries this build's identity, because the body is a function of
+    the file *and* of how this version renders it. Keying on the file alone
+    made every rendering change invisible to a client that had already cached
+    the file: after small binaries moved from the text fallback to the Bytes
+    view, a cached browser kept replaying a field of U+FFFD, because the
+    file's mtime had not changed and the server answered 304 to its
+    revalidation. The salt is what makes an upgrade invalidate exactly once.
     """
-    return f'"{mtime_hash}"'
+    return build_scoped_etag(mtime_hash)
 
 
 # File-extension sets used by ``api_file`` to decide which branch to
@@ -427,17 +435,37 @@ from metabrowser.file_extensions import (
     BROWSER_TEXT_EXTS as _TEXT_EXTS,
 )
 
-# Files outside ``_TEXT_EXTS`` smaller than this are still tried as
-# text (`read_text(errors="replace")`). Above this we treat them as
-# binary unless they hit a known extension. 512 KiB is the
-# pre-refactor default.
-_INLINE_TEXT_FALLBACK_BYTES = 512 * 1024
-_TEXT_PREVIEW_CHUNK_BYTES = int(os.environ.get("METABROWSER_TEXT_PREVIEW_BYTES", str(128 * 1024)))
+# Files outside ``_TEXT_EXTS`` are decided by looking at their content —
+# see metabrowser.content_sniff and _prefers_text_body below. Size used to
+# stand in for that check (under 512 KiB meant "try it as text"), which read
+# every small binary through `errors="replace"` and rendered it as a field of
+# U+FFFD, and refused every large extensionless text file the opposite way.
+
+
+def _prefers_text_body(target: Path) -> bool:
+    """Whether a file with no known text extension should render as text.
+
+    Only consulted once the extension has failed to answer, so the bounded
+    read inside costs nothing for the files this browser opens most.
+
+    ``UNKNOWN`` resolves to text on purpose: it means the bytes could not be
+    read at all, and the text path reports that failure with the real reason
+    where the byte view would answer a broken file with an empty dump.
+    """
+    return sniff_artifact(target) is not ContentClass.BINARY
+
+
+# Defaults live in settings.py, which is also what the client reads, so the
+# chunk size cannot drift between the two planes. See
+# docs/large-content-rendering.md for the measurements behind them.
+_TEXT_PREVIEW_CHUNK_BYTES = int(
+    os.environ.get("METABROWSER_TEXT_PREVIEW_BYTES", str(TEXT_PREVIEW_CHUNK_BYTES))
+)
 _TEXT_PREVIEW_MAX_CHUNK_BYTES = int(
-    os.environ.get("METABROWSER_TEXT_PREVIEW_MAX_BYTES", str(8 * 1024 * 1024))
+    os.environ.get("METABROWSER_TEXT_PREVIEW_MAX_BYTES", str(TEXT_PREVIEW_REQUEST_MAX_BYTES))
 )
 _SYNTAX_HIGHLIGHT_MAX_BYTES = int(
-    os.environ.get("METABROWSER_HIGHLIGHT_MAX_BYTES", str(512 * 1024))
+    os.environ.get("METABROWSER_HIGHLIGHT_MAX_BYTES", str(SYNTAX_HIGHLIGHT_MAX_BYTES))
 )
 
 
@@ -758,14 +786,18 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
+    repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     theme_state_url = _static_asset_url("theme_state.js")
     request_error_url = _static_asset_url("request_error.js")
     formatters_url = _static_asset_url("formatters.js")
     inventory_scope_url = _static_asset_url("inventory_scope.js")
+    directory_totals_store_url = _static_asset_url("directory_totals_store.js")
     contribution_registry_url = _static_asset_url("contribution_registry.js")
     resource_context_url = _static_asset_url("resource_context.js")
     view_state_url = _static_asset_url("view_state.js")
+    navigation_url = _static_asset_url("navigation.js")
+    source_append_url = _static_asset_url("source_append.js")
     file_type_taxonomy_url = _static_asset_url("file_type_taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
@@ -792,6 +824,10 @@ async def index(_request: Request) -> HTMLResponse:
     # duplicating constants in the source.
     settings_block = (
         f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
+    )
+    repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    repository_context_block = (
+        f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
@@ -944,7 +980,7 @@ async def index(_request: Request) -> HTMLResponse:
     <div class="tree-pane" id="tree-pane">
       <header class="app-header">
         <span class="header-brand">Metabrowser</span>
-        <a href="/" class="header-path" title="Jump to root">{initial_path}</a>
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" title="Jump to root">{initial_path}</a>
         <!-- Settings menu. A gear button opens a menu with two icon-segment
              choosers (theme + reading font) and a small font-set dropdown
              (#app-font-select, options from _FONT_SETS). Choices apply instantly.
@@ -979,7 +1015,8 @@ async def index(_request: Request) -> HTMLResponse:
       <div class="nav-filter-bar" id="nav-filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
-          <div class="loading"><div class="spinner"></div>Loading files…</div>
+          <div class="loading mb-delayed-loading"><div class="spinner"></div><span
+            class="sr-only">Loading files…</span></div>
         </div>
       </div>
       <!-- role="group" carries the accessible name: ARIA forbids naming a
@@ -1007,13 +1044,17 @@ async def index(_request: Request) -> HTMLResponse:
        highlight-toml.min.js. -->
   {perf_block}
   {settings_block}
+  {repository_context_block}
   <script src="{theme_state_url}"></script>
   <script src="{request_error_url}"></script>
   <script src="{formatters_url}"></script>
   <script src="{inventory_scope_url}"></script>
+  <script src="{directory_totals_store_url}"></script>
   <script src="{contribution_registry_url}"></script>
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>
+  <script src="{navigation_url}"></script>
+  <script src="{source_append_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{filter_state_url}"></script>
@@ -1037,6 +1078,26 @@ async def index(_request: Request) -> HTMLResponse:
 </body>
 </html>"""
     return HTMLResponse(html)
+
+
+async def view_shell(request: Request) -> Response:
+    """Serve the SPA shell only for one safely encoded canonical view path."""
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
+        return PlainTextResponse("Invalid view path.", status_code=400)
+    return await index(request)
+
+
+async def root_redirect(_request: Request) -> Response:
+    """Send the bare origin to the canonical served-root view.
+
+    ``/view/`` is the only route that selects a path, so the origin must not be a
+    second landing URL that renders an empty preview. The redirect is temporary so a
+    browser cannot cache it past a change to the route scheme.
+    """
+
+    return RedirectResponse(VIEW_ROUTE_PREFIX, status_code=307)
 
 
 async def _ensure_inventory_serving(subpath: str) -> bool:
@@ -1183,8 +1244,7 @@ async def api_rollup(request: Request) -> JSONResponse:
     """Bounded treemap rollup for a directory subtree.
 
     `GET /api/rollup?path=&depth=&top=&ext_top=&filename_top=&remaining_top=`
-    clamps parameters to the ROLLUP_* settings bounds. The legacy `type_top`
-    parameter remains an alias for `remaining_top`. `node` is null while the
+    clamps parameters to the ROLLUP_* settings bounds. `node` is null while the
     index cannot serve the path yet (cold start); the client renders that as a
     pending treemap and refreshes off `/api/events` activity. Totals always
     cover the full subtree. Depth truncation is represented by `children: null`
@@ -1204,13 +1264,6 @@ async def api_rollup(request: Request) -> JSONResponse:
     ext_top = _query_bounded_int(
         request, "ext_top", ROLLUP_DEFAULT_EXT_TOP, minimum=0, maximum=ROLLUP_MAX_EXT_TOP
     )
-    type_top = _query_bounded_int(
-        request,
-        "type_top",
-        ROLLUP_FILE_TYPE_RAW_LIMIT,
-        minimum=0,
-        maximum=ROLLUP_FILE_TYPE_REMAINING_LIMIT,
-    )
     filename_top = _query_bounded_int(
         request,
         "filename_top",
@@ -1221,7 +1274,7 @@ async def api_rollup(request: Request) -> JSONResponse:
     remaining_top = _query_bounded_int(
         request,
         "remaining_top",
-        type_top if request.query_params.get("type_top", "") else ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+        ROLLUP_FILE_TYPE_REMAINING_LIMIT,
         minimum=0,
         maximum=ROLLUP_FILE_TYPE_REMAINING_LIMIT,
     )
@@ -1248,7 +1301,7 @@ async def api_rollup(request: Request) -> JSONResponse:
             depth=depth,
             top=top,
             ext_top=ext_top,
-            type_top=remaining_top,
+            remaining_top=remaining_top,
             filename_top=filename_top,
             ext_rank=ext_rank,
         )
@@ -1258,9 +1311,6 @@ async def api_rollup(request: Request) -> JSONResponse:
             "path": subpath,
             "node": result["node"] if result is not None else None,
             "ext_tallies": result["ext_tallies"] if result is not None else [],
-            "type_tallies": (
-                result["type_tallies"] if result is not None else {"families": [], "extensions": []}
-            ),
             "file_type_breakdown": (result["file_type_breakdown"] if result is not None else None),
             "index_status": inventory_status(),
             "indexed_files": inventory.files_indexed(),
@@ -1468,6 +1518,8 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
     )
     total_files = entry.total_files if entry is not None else None
     total_size = entry.total_size if entry is not None else None
+    unignored_files = entry.unignored_files if entry is not None else None
+    unignored_size = entry.unignored_size if entry is not None else None
     newest_ns = entry.newest_mtime_ns if entry is not None else None
     payload: dict[str, Any] = {
         "type": "folder",
@@ -1478,6 +1530,8 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
         "dir": {
             "total_files": total_files,
             "total_size": total_size,
+            "unignored_files": unignored_files,
+            "unignored_size": unignored_size,
             "mtime": newest_ns / 1_000_000_000.0 if newest_ns is not None else None,
             "gitignored": bool(entry.gitignored) if entry is not None else False,
             "state": "pending" if total_files is None else "complete",
@@ -1621,8 +1675,6 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             }
         )
     mtime_hash = file_mtime_hash(target)
-    etag = _etag_for(mtime_hash)
-    etag_headers = {"etag": etag, "cache-control": "no-cache"}
     compression_fields = (
         _compression_envelope_fields(artifact, logical_size)
         if logical_size is not None
@@ -1653,12 +1705,18 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         requested_text_offset if logical_size is None else min(requested_text_offset, logical_size)
     )
 
+    # The window is part of what the body is, so it is part of the validator,
+    # and the tag can only be built once the window is known. Keyed on the file
+    # alone, one tag covered every chunk, and the 304 path had to be fenced off
+    # to `text_offset == 0` to stay correct — the knowledge lived in a guard at
+    # one call site instead of in the tag.
+    etag = _etag_for(f"{mtime_hash}-{text_offset}-{text_limit}")
+    etag_headers = {"etag": etag, "cache-control": "no-cache"}
+
     # 304 short-circuit. Repeat clicks on an unchanged file return zero
-    # bytes — meaningful over an SSH tunnel and free locally. We compare
-    # bytewise against the full ETag including the process-epoch suffix
-    # so a server restart guarantees a fresh body even if the file is
-    # untouched.
-    if text_offset == 0 and request.headers.get("if-none-match") == etag:
+    # bytes — meaningful over an SSH tunnel and free locally. Every chunk can
+    # take this path now, not only the first.
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=etag_headers)
 
     # JSONL gets parsed into structured events (single-pass streaming).
@@ -1704,9 +1762,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
-    if ext in _TEXT_EXTS or (
-        logical_size is not None and logical_size < _INLINE_TEXT_FALLBACK_BYTES
-    ):
+    if ext in _TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target):
         try:
             content_has_more = False
             if (
@@ -1771,6 +1827,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "content_truncated": content_has_more
                     or (logical_size is not None and bytes_read < logical_size),
                     "content_preview_limit": text_limit,
+                    "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
                     "highlight_disabled": True,
                     **compression_fields,
                 },
@@ -1809,6 +1866,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "content_truncated": content_has_more
             or (logical_size is not None and bytes_read < logical_size),
             "content_preview_limit": text_limit,
+            "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             "highlight_disabled": (
                 content_has_more
                 or (logical_size is not None and bytes_read < logical_size)
@@ -1853,9 +1911,93 @@ def _read_artifact_text(artifact: ArtifactPath, max_bytes: int) -> tuple[str, in
 async def api_kpress_render(request: Request) -> JSONResponse:
     """Render a safe served-root-relative file through the KPress adapter."""
 
-    subpath = request.query_params.get("path", "")
-    view = request.query_params.get("view", "document")
-    profile = request.query_params.get("profile", "") or None
+    source_override: str | None = None
+    if getattr(request, "method", "GET") == "POST":
+        # ``JSON.stringify`` can expand one UTF-8 source byte to a six-byte
+        # JSON escape. Bound the transport independently of the decoded
+        # source cap so request-body reads cannot grow without limit.
+        request_limit = (_TEXT_PREVIEW_MAX_CHUNK_BYTES * 6) + (64 * 1024)
+        chunks: list[bytes] = []
+        request_size = 0
+        async for chunk in request.stream():
+            request_size += len(chunk)
+            if request_size > request_limit:
+                return JSONResponse(
+                    {
+                        "type": "kpress_render_error",
+                        "error": "Render request exceeds safety limits",
+                        "max_size": request_limit,
+                    },
+                    status_code=413,
+                )
+            chunks.append(chunk)
+        try:
+            body = _json.loads(b"".join(chunks))
+        except (_json.JSONDecodeError, UnicodeDecodeError) as exc:
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Invalid JSON body", "detail": str(exc)},
+                status_code=400,
+            )
+        if not isinstance(body, dict):
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Request body must be a JSON object"},
+                status_code=400,
+            )
+        subpath = body.get("path", "")
+        view = body.get("view", "document")
+        profile_value = body.get("profile")
+        profile = profile_value or None
+        source_override = body.get("source_text")
+        if (
+            not all(isinstance(value, str) for value in (subpath, view))
+            or not isinstance(source_override, str)
+            or (profile is not None and not isinstance(profile, str))
+        ):
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Invalid render body fields"},
+                status_code=400,
+            )
+        try:
+            source_size = len(source_override.encode())
+        except UnicodeEncodeError as exc:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Invalid transformed source encoding",
+                    "detail": str(exc),
+                },
+                status_code=400,
+            )
+        if source_size > _TEXT_PREVIEW_MAX_CHUNK_BYTES:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Transformed source exceeds safety limits",
+                    "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+                },
+                status_code=413,
+            )
+    else:
+        subpath = request.query_params.get("path", "")
+        view = request.query_params.get("view", "document")
+        profile = request.query_params.get("profile", "") or None
+    # A document embedded in Metabrowser's own navigation (the folder
+    # Overview's README) asks for no TOC of its own. Closed choice: an
+    # unrecognized value is rejected here rather than silently rendering the
+    # other layout. KPress validates it again at its request boundary.
+    # The SDK carries ``toc`` on the query string for GET and POST alike, so
+    # it is read here, after the method branch, rather than from the body.
+    include_toc = request.query_params.get("toc", "auto")
+    if include_toc not in ("auto", "on", "off"):
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "Invalid toc",
+                "detail": f"Invalid toc: {include_toc!r}; expected 'auto', 'on', or 'off'",
+                "diagnostics": [],
+            },
+            status_code=400,
+        )
 
     target = _safe_path(subpath)
     if target is None or not target.is_file():
@@ -1863,14 +2005,14 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
-    content: str | None = None
+    content: str | None = source_override
     try:
         disk_size = artifact.disk_size
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     try:
-        if artifact.is_compressed:
+        if artifact.is_compressed and source_override is None:
             content, logical_size = await asyncio.to_thread(
                 _read_artifact_text,
                 artifact,
@@ -1914,7 +2056,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
         )
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
-    if ext not in _TEXT_EXTS and logical_size >= _INLINE_TEXT_FALLBACK_BYTES:
+    if ext not in _TEXT_EXTS and not await asyncio.to_thread(_prefers_text_body, target):
         return JSONResponse(
             {
                 "type": "kpress_render_error",
@@ -1966,6 +2108,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             frontmatter=frontmatter,
             frontmatter_error=frontmatter_error,
             profile=profile,
+            include_toc=include_toc,
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -2201,7 +2344,7 @@ async def kpress_static_asset(request: Request) -> Response:
             # asset changes.
             "Cache-Control": "no-cache",
         }
-    if request.headers.get("if-none-match", "") == asset.etag:
+    if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
     return Response(
         content=asset.content,
@@ -2552,12 +2695,13 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
 # ── Starlette app ───────────────────────────────────────────────
 
 routes = [
-    Route("/", index),
+    Route("/", root_redirect),
+    Route("/view/{path:path}", view_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),
     Route("/api/file", api_file),
-    Route("/api/kpress/render", api_kpress_render),
+    Route("/api/kpress/render", api_kpress_render, methods=["GET", "POST"]),
     Route("/api/kpress/export", api_kpress_export, methods=["POST"]),
     Route("/api/activity", api_activity),
     Route("/api/stream", api_stream),

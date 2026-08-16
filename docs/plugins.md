@@ -66,6 +66,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
+sdk_version = "0.2"
 
 [[kind]]
 id = "hello-document"
@@ -116,7 +117,7 @@ The `[plugin]` table supports:
 | `name` | yes | Stable lowercase URL and registry identifier. |
 | `display_name` | no | Human-readable diagnostics label. |
 | `version` | no | Plugin version string. |
-| `sdk_version` | no | Browser SDK contract version; defaults to `"0.1"`. |
+| `sdk_version` | no | Strongly recommended. Omission means the original SDK `0.1`, not the host’s current version. The resolved value must equal `PLUGIN_SDK_VERSION`. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded with the page. |
 
@@ -207,6 +208,23 @@ Keep handlers defensive:
 - avoid blocking the event loop with synchronous filesystem work;
 - keep domain imports inside the plugin package.
 
+A synchronous `def` handler already runs off the event loop: the dispatcher sends it
+through Starlette’s threadpool, the same way Starlette offloads its own sync endpoints.
+Reach for `async def` only when the handler awaits something.
+
+A hook may serve a large resource in bounded pieces rather than refusing it.
+The built-in binary plugin’s `chunk` route is the worked example: it reads a bounded
+window of a file’s logical bytes, reports `next_offset`, `has_more`, and the ceiling
+that applied, and carries a fingerprint so its view can tell a continued read from a
+changed file. See
+[Bounded binary byte preview](project/specs/active/plan-2026-08-11-binary-byte-preview.md)
+for the size policy and the reasoning behind the compressed-artifact bound.
+
+Explain a refusal in the response body, not only in the status code.
+`fetchPluginData` rejects with an `Error` carrying `status` and the parsed `payload`, so
+a view can turn `413` plus a `max_preview_bytes` field into a state naming the exact
+cutoff instead of hard-coding the limit in JavaScript.
+
 ## Browser SDK
 
 The supported API is available as `window.metabrowser`.
@@ -261,11 +279,10 @@ Useful helpers include:
   `schema`, `schemaVersion`, `revision`, `fingerprint`, `maxExtensionComponents`, and
   `registryIdentity` identify the loaded File Rollup Format type definitions; ordered
   `groups`, `families`, and `kinds` expose their immutable descriptors.
-  `categories` remains a derived compatibility alias for `groups`. `classify(name, ext)`
-  returns registry identities and evidence for one file.
+  `classify(name, ext)` returns registry identities and evidence for one file.
   `matchExtension(ext)` returns the matching family and canonical suffix,
-  `canonicalExtension(ext)` preserves unknown extensions, `categoryForFile(name, ext)`
-  includes category-only filenames, and `distributionKeyForExtension(ext)` returns the
+  `canonicalExtension(ext)` preserves unknown extensions, `groupForFile(name, ext)`
+  includes whole-filename evidence, and `distributionKeyForExtension(ext)` returns the
   shared family or raw palette key.
   Compare a file rollup’s `registry` identity before combining it with labels or colors
   from this projection;
@@ -289,15 +306,53 @@ path.
 
 ### Data and Navigation
 
-- `fetchPluginData(plugin, route, params)` calls a declared data hook.
+- `fetchPluginData(plugin, route, params, options?)` calls a declared data hook.
+  Pass `{ signal }` so a disposed view aborts its request.
+  A non-ok response rejects with an `Error` carrying `status` and the parsed `payload`,
+  so a hook’s structured refusal stays readable by its caller.
 - `fetchJsonl(path, options)` requests a normalized JSONL envelope.
+- `fetchCompleteText(ctx, options)` retrieves a bounded complete source after an initial
+  text envelope reports truncation.
+- `fetchText(target, options)` retrieves bounded complete source for a canonical
+  navigation target and forwards an optional abort signal.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
-- `openPath(path, options?)` asks the shell to navigate without reaching into private
-  `app.js` functions. Pass `{ viewId }` to prefer a view declared by the destination; the
-  shell uses the destination’s default when that view is unavailable.
-  The preference is transient and does not change the path route.
+- `navigation.href(target)` returns the canonical `/view/` URL for a
+  `{ path, query?, fragment? }` target.
+  Paths are served-root-relative, use `/` separators, and have no leading slash; the
+  empty path selects the served root.
+- `navigation.open(target, options?)` performs normal user navigation and returns a
+  promise. Pass `{ viewId }` to prefer a view declared by the destination; the shell uses
+  the destination’s default when that view is unavailable.
+  The preference is transient and does not change the target URL.
+- `navigation.current()` returns the current target or `null` on the landing URL.
+- `fileCatalog.snapshot()` returns an immutable, completion-aware view of files already
+  known to the shell.
+- `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
+  returns an unsubscribe function that the view must call from its disposer.
+- `repository` is either `null` or frozen public-safe GitHub identity for the served
+  tree: host, owner, repository name, exact revision, current branch, and served
+  subdirectory prefix.
+  It never contains a local filesystem path.
+
+Use `navigation.href()` for real anchor `href` values so browser status previews,
+copy-link, modifier clicks, new tabs, and reloads retain native behavior.
+An unmodified in-app activation may then call `navigation.open()`:
+
+```javascript
+const target = { path: "docs/guide.md", fragment: "setup" };
+const link = document.createElement("a");
+link.href = mb.navigation.href(target);
+link.textContent = "Setup guide";
+link.addEventListener("click", (event) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  event.preventDefault();
+  void mb.navigation.open(target);
+});
+```
 
 Folder aggregate views can use these bounded inventory helpers:
 
@@ -305,8 +360,7 @@ Folder aggregate views can use these bounded inventory helpers:
   `depth`, `top`, `ext_top`, `filename_top`, `remaining_top`, and `ext_rank` map to
   `/api/rollup`; use `depth: 0`, `top: 0`, and `ext_rank: "dual"` for a tally-only
   count-and-byte summary.
-  Both file-type child limits default to 20 and cannot exceed 20. `type_top` remains a
-  temporary alias for `remaining_top`.
+  Both file-type child limits default to 20 and cannot exceed 20.
 - `watchRollup(path, options, onUpdate)` performs the initial fetch and refreshes after
   relevant inventory changes.
   Supply `active` to gate hidden views and `onError` for a local failure state.
@@ -321,9 +375,6 @@ Folder aggregate views can use these bounded inventory helpers:
   ordered nonempty group and family rows, complete canonical-extension children, and
   bounded No extension and `remaining_types` children with exact Others remainders; the
   latter is presented as **Other types** in the built-in UI.
-- `type_tallies` is a transitional compatibility projection.
-  New code consumes `file_type_breakdown`; its final empty-key raw row is presented as
-  **Other types**.
 
 ### Folder Overview Contributions
 
@@ -388,12 +439,38 @@ printability changes.
 The Markdown built-in exposes
 `mb.builtins.markdown.mountRendered(container, ctx, {signal})` for a document panel.
 It uses the ordinary KPress Markdown presentation and returns an instance-specific
-handle that aborts its request and disposes its own table of contents.
+handle that aborts its request and disposes its own table of contents, enhanced-link
+listeners, pending fragment work, and any nested Obsidian transclusions.
+Note, heading, and named-block transclusions share depth, document, source-byte,
+elapsed-time, cycle, abort, and disposal limits across the mounted document.
+`mb.builtins.markdown.analyzeGraph({signal, limits})` returns a bounded immutable
+snapshot of Markdown nodes, resolved edges, unresolved destinations, backlinks,
+diagnostics, aggregate source bytes, and an explicit completeness flag.
+It performs no live catalog subscription and does not provide visualization.
 Do not copy Markdown DOM or TOC behavior into a folder contribution.
 
 Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variables in
 `app.js` are implementation details and may change without a plugin compatibility
 guarantee.
+
+The SDK is versioned with the release, not independently, and the version is enforced
+rather than advisory.
+`PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract this host provides.
+A manifest should declare `sdk_version`. A manifest that omits it targets the original
+SDK `0.1` and nothing later, so omission never silently follows the host forward onto a
+contract the plugin was not written against; once the host moves past `0.1`, an omitted
+value is refused like any other stale one.
+A different resolved value is refused when it loads, with a message naming the required
+version, and `metab --doctor` reports the same problem before it reaches a user.
+There is no negotiation and no shim for an older surface.
+
+That gate is deliberately strict because the alternative is worse.
+A method that moves or changes shape does so in one commit across core and every
+built-in plugin; the constant is bumped only when the contract actually breaks, and the
+break is recorded in `CHANGELOG.md`. An external plugin updates against the release it
+targets and sets its `sdk_version` to match.
+A young plugin ecosystem is cheaper to upgrade than to carry.
+See [Compatibility and Legacy Code](development.md#compatibility-and-legacy-code).
 
 ## Packaging a Python Plugin
 

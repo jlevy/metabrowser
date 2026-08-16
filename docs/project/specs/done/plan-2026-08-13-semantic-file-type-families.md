@@ -599,7 +599,7 @@ documented rollup contract.
     mapping.
 - `docs/plugins.md`
   - document `mb.fileTypes`, additive rollup fields, and `type_top`.
-- `docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md`
+- `docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md`
   - add an implementation addendum for the hierarchical type chooser.
 
 ## Implementation Plan
@@ -717,7 +717,7 @@ examples above as the minimum and ambiguous extensions excluded by default.
 - [Folder Overview panels and file-type summary](plan-2026-08-12-directory-file-type-summary.md)
 - [GitHub Linguist classification pipeline](https://github.com/github-linguist/linguist/blob/main/docs/how-linguist-works.md)
 - [GitHub Linguist language catalog](https://github.com/github-linguist/linguist/blob/main/lib/linguist/languages.yml)
-- [Filter controls and fine-grained navigation filtering](../active/plan-2026-08-09-nav-filter-controls.md)
+- [Filter controls and fine-grained navigation filtering](plan-2026-08-09-nav-filter-controls.md)
 - [Design system](../../../design-system.md)
 - [Architecture](../../../architecture.md)
 - [Plugin API](../../../plugins.md)

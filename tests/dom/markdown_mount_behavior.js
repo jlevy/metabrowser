@@ -25,16 +25,40 @@ function makeContainer() {
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/rendered.js"),
     "utf8",
   );
+  globalThis.__markdownEnhanceDisposals = [];
+  globalThis.__markdownEnhanceCalls = [];
+  const enhancerStub =
+    "export function enhanceRenderedLinks(container,sourcePath,mb,options){" +
+    "globalThis.__markdownEnhanceCalls.push({sourcePath,options});" +
+    "return {dispose(){globalThis.__markdownEnhanceDisposals.push(container)}}}";
+  const enhancerUrl = `data:text/javascript;base64,${Buffer.from(enhancerStub).toString("base64")}`;
+  const wikiStub =
+    "export function preprocessObsidianWiki(source){return {changed:source.includes('[[wiki]]'),source:'processed '+source}}";
+  const wikiUrl = `data:text/javascript;base64,${Buffer.from(wikiStub).toString("base64")}`;
+  // A recognizable stand-in rather than a copy of the key format: this test
+  // proves the mount seeds a chain derived from ctx.path, and
+  // markdown_transclusion_behavior.js covers the real key spelling.
+  const transclusionStub = 'export function transclusionKey(path){return "key:" + path}';
+  const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionStub).toString("base64")}`;
+  const importableSource = source
+    .replace('"./link_enhancer.js"', JSON.stringify(enhancerUrl))
+    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
+    .replace('"./wiki_parser.js"', JSON.stringify(wikiUrl));
   const module = await import(
-    `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+    `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
   );
   const requests = [];
+  const completeTextRequests = [];
   const tocDisposals = [];
   const mb = {
     escapeHtml: String,
     errors: { isAbortError: (error) => error?.name === "AbortError" },
     fetchKpressRender(_ctx, _view, options) {
       return new Promise((resolve) => requests.push({ resolve, options }));
+    },
+    async fetchCompleteText(ctx, options) {
+      completeTextRequests.push({ ctx, options });
+      return "[[wiki]]";
     },
     kpressInitToc(container) {
       return () => tocDisposals.push(container);
@@ -53,9 +77,24 @@ function makeContainer() {
   firstHandle.dispose();
   firstHandle.dispose();
   check("first disposer exactly once", tocDisposals.length === 1, String(tocDisposals.length));
+  check(
+    "first enhancer disposer exactly once",
+    globalThis.__markdownEnhanceDisposals.length === 1,
+    String(globalThis.__markdownEnhanceDisposals.length),
+  );
+  // A rendered document is its own transclusion ancestor. Without this seed a
+  // note embedding itself renders one complete duplicate before the repeat is
+  // caught one level down.
+  const enhanceCall = globalThis.__markdownEnhanceCalls.find((call) => call.sourcePath === "a.md");
+  check(
+    "mount seeds its own transclusion ancestry",
+    JSON.stringify(enhanceCall?.options?.transclusionChain) === JSON.stringify(["key:a.md"]),
+    JSON.stringify(globalThis.__markdownEnhanceCalls),
+  );
   check("second remains mounted", !tocDisposals.includes(second));
   secondHandle.dispose();
   check("second disposer", tocDisposals.length === 2, String(tocDisposals.length));
+  check("second enhancer disposer", globalThis.__markdownEnhanceDisposals.length === 2);
 
   const pending = makeContainer();
   const pendingHandle = module.mountRenderedMarkdown(pending, { path: "pending.md" }, mb);
@@ -76,6 +115,45 @@ function makeContainer() {
   const lateHandle = await lateMount;
   check("late completion ignored", !late.innerHTML.includes("too late"), late.innerHTML);
   lateHandle.dispose();
+
+  const wiki = makeContainer();
+  const wikiMount = module.mountRenderedMarkdown(
+    wiki,
+    { path: "wiki.md", raw: { content: "[[wiki]]" } },
+    mb,
+  );
+  check(
+    "wiki source sent after source-aware preprocessing",
+    requests[4].options.sourceText === "processed [[wiki]]",
+  );
+  requests[4].resolve({ html: "<article>wiki</article>", diagnostics: [] });
+  (await wikiMount).dispose();
+
+  const truncatedWiki = makeContainer();
+  const truncatedWikiMount = module.mountRenderedMarkdown(
+    truncatedWiki,
+    {
+      path: "large-wiki.md",
+      raw: {
+        content: "[[partial",
+        content_max_preview_limit: 8_388_608,
+        content_truncated: true,
+      },
+    },
+    mb,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  check("truncated wiki requests complete source", completeTextRequests.length === 1);
+  check(
+    "complete source request is abortable",
+    completeTextRequests[0].options.signal instanceof AbortSignal,
+  );
+  check(
+    "complete wiki source is preprocessed",
+    requests[5].options.sourceText === "processed [[wiki]]",
+  );
+  requests[5].resolve({ html: "<article>large wiki</article>", diagnostics: [] });
+  (await truncatedWikiMount).dispose();
 
   if (failures.length) {
     console.error(`markdown mount FAILURES:\n- ${failures.join("\n- ")}`);

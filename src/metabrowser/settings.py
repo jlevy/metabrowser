@@ -36,6 +36,27 @@ DEFAULT_BROWSER_PORT = 8411
 # Routine details stay behind DEBUG without obscuring failures.
 SLOW_OPERATION_LOG_SECONDS = 2.0
 
+# ── Text preview chunking ────────────────────────────────────
+
+# See docs/large-content-rendering.md for the cost model these come from.
+#
+# The source view puts real text in a `white-space: pre` surface, so the
+# browser never searches for wrap opportunities and layout is proportional
+# to line count. Measured in Chromium 141: scrolling stays at ~33 ms at every
+# size tried, and a single 2M-character minified line paints in ~70 ms. The
+# old 128 KiB chunk was therefore costing 31 clicks to open a 4 MiB source
+# file for no measured benefit.
+TEXT_PREVIEW_CHUNK_BYTES = 2 * 1024 * 1024
+# Each Load more asks for twice the last chunk, capped here, so reaching a
+# large file takes a handful of clicks while no single click stalls.
+TEXT_PREVIEW_MAX_CHUNK_BYTES = 8 * 1024 * 1024
+# Hard clamp on one request, which also bounds the decompression window for a
+# compressed artifact.
+TEXT_PREVIEW_REQUEST_MAX_BYTES = 16 * 1024 * 1024
+# Highlight.js is superlinear in input and is the one genuinely expensive
+# step in this path, so it stays off above this regardless of chunk size.
+SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
+
 # ── InventoryIndex walker ────────────────────────────────────
 
 INVENTORY_FIRST_RENDER_DEPTH = 2
@@ -192,9 +213,6 @@ ROLLUP_MAX_EXT_TOP = 32
 ROLLUP_DEFAULT_EXT_RANK = "bytes"
 ROLLUP_FILE_TYPE_FILENAME_LIMIT = 20
 ROLLUP_FILE_TYPE_REMAINING_LIMIT = 20
-# Additive aliases for browser assets that predate the explicit fallback names.
-ROLLUP_FILE_TYPE_NAMED_LIMIT = ROLLUP_FILE_TYPE_FILENAME_LIMIT
-ROLLUP_FILE_TYPE_RAW_LIMIT = ROLLUP_FILE_TYPE_REMAINING_LIMIT
 DISTRIBUTION_PALETTE_SLOTS = 12
 FOLDER_DISCOVERY_MAX_ENTRIES = 4_096
 
@@ -242,12 +260,12 @@ def client_settings_dict() -> dict[str, Any]:
         "ROLLUP_DEFAULT_TOP": ROLLUP_DEFAULT_TOP,
         "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
         "ROLLUP_DEFAULT_EXT_RANK": ROLLUP_DEFAULT_EXT_RANK,
-        "ROLLUP_FILE_TYPE_NAMED_LIMIT": ROLLUP_FILE_TYPE_NAMED_LIMIT,
-        "ROLLUP_FILE_TYPE_RAW_LIMIT": ROLLUP_FILE_TYPE_RAW_LIMIT,
         "ROLLUP_FILE_TYPE_FILENAME_LIMIT": ROLLUP_FILE_TYPE_FILENAME_LIMIT,
         "ROLLUP_FILE_TYPE_REMAINING_LIMIT": ROLLUP_FILE_TYPE_REMAINING_LIMIT,
         "DISTRIBUTION_PALETTE_SLOTS": DISTRIBUTION_PALETTE_SLOTS,
         "ROLLUP_WATCH_DEBOUNCE_MS": ROLLUP_WATCH_DEBOUNCE_MS,
+        "TEXT_PREVIEW_CHUNK_BYTES": TEXT_PREVIEW_CHUNK_BYTES,
+        "TEXT_PREVIEW_MAX_CHUNK_BYTES": TEXT_PREVIEW_MAX_CHUNK_BYTES,
     }
 
 
@@ -258,17 +276,17 @@ __all__ = [
     "DEFAULT_EXECUTOR_WORKERS",
     "DISTRIBUTION_PALETTE_SLOTS",
     "FOLDER_DISCOVERY_MAX_ENTRIES",
+    "INDEX_PROGRESS_POLL_MS",
+    "INDEX_PROGRESS_UPDATE_FILES",
     "INVENTORY_FIRST_RENDER_DEPTH",
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_FILES",
     "INVENTORY_REFRESH_TTL_S",
     "INVENTORY_WALKER_EMIT_BATCH",
-    "INDEX_PROGRESS_POLL_MS",
-    "INDEX_PROGRESS_UPDATE_FILES",
+    "LIVE_FILE_WINDOW_S",
     "PENDING_TALLY_DIAGNOSTIC_DELAY_MS",
     "PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES",
     "PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT",
-    "LIVE_FILE_WINDOW_S",
     "RECENT_CLUSTER_PCT",
     "RECENT_DEFAULT_LIMIT",
     "RECENT_DEFAULT_WINDOW",
@@ -279,8 +297,6 @@ __all__ = [
     "ROLLUP_DEFAULT_EXT_RANK",
     "ROLLUP_DEFAULT_EXT_TOP",
     "ROLLUP_DEFAULT_TOP",
-    "ROLLUP_FILE_TYPE_NAMED_LIMIT",
-    "ROLLUP_FILE_TYPE_RAW_LIMIT",
     "ROLLUP_FILE_TYPE_FILENAME_LIMIT",
     "ROLLUP_FILE_TYPE_REMAINING_LIMIT",
     "ROLLUP_MAX_DEPTH",
@@ -292,6 +308,10 @@ __all__ = [
     "SSE_HEARTBEAT_INTERVAL_S",
     "SSE_PER_CONNECTION_QUEUE_SIZE",
     "SSE_RING_BUFFER_CAPACITY",
+    "SYNTAX_HIGHLIGHT_MAX_BYTES",
+    "TEXT_PREVIEW_CHUNK_BYTES",
+    "TEXT_PREVIEW_MAX_CHUNK_BYTES",
+    "TEXT_PREVIEW_REQUEST_MAX_BYTES",
     "TREE_AUTO_EXPAND_FALLBACK_ROWS",
     "client_settings_dict",
 ]

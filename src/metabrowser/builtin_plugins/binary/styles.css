@@ -1,0 +1,78 @@
+/* Binary plugin — the Bytes fallback preview.
+   Consumes host tokens; the only new colors are the two domain tokens
+   below. The surface is a shared <pre class="code-block">, so monospace
+   and --mono-block-font-size come from the host's `.code-block code`
+   rule and this stylesheet declares no face and no size. */
+
+.metabrowser-binary-host {
+  /* The pane's own scroll owner is enough; the bytes wrap instead. */
+  padding: 0;
+}
+
+.binary-bytes {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The partial-content notice is the shell primitive `.partial-notice`; this
+   class only exists so the view can find its own boxes. Declaring a fill,
+   border, or type here would be the drift the primitive prevents —
+   tests/test_notice_style.py fails the build if it appears. */
+.binary-bytes-notice[hidden] {
+  display: none;
+}
+
+.binary-bytes-note {
+  padding: var(--pane-header-padding-y) var(--content-padding-x);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.binary-bytes-note[hidden] {
+  display: none;
+}
+
+/* Lines are broken in JS at the measured pane width, so the surface uses
+   `pre` rather than `pre-wrap`. Letting CSS wrap one large run is quadratic:
+   the browser searches for break opportunities across the whole run, which
+   measured 2.2 s at 256 KiB and 33 s at 1 MiB. With explicit breaks the same
+   1 MiB lays out in tens of milliseconds. */
+.binary-bytes .code-block {
+  overflow-x: hidden;
+}
+
+/* Two tones, and the darker one is the literal text: what a reader scans a
+   byte dump for is the readable content inside it, so that gets the host's
+   full-strength text color and the surrounding machine detail recedes.
+   Both are host tokens rather than a domain hue — this is an emphasis
+   distinction, not a status one, and --text / --muted are already the pair
+   the rest of the shell uses for it. */
+.binary-bytes-content {
+  display: block;
+  white-space: pre;
+  color: var(--text);
+}
+
+/* The unaccented fallback. With no per-run elements the surface still has to
+   pick one of the two tones, and content dense enough to spend the budget is
+   overwhelmingly byte codes, so it reads as codes. */
+.binary-bytes-content.binary-bytes-plain {
+  color: var(--muted);
+}
+
+/* Each loaded chunk is one block. Offscreen blocks skip layout and paint
+   while their inline contain-intrinsic-size keeps the scrollbar proportional,
+   so appending a chunk costs one block rather than relaying out the whole
+   file. The height is layout data measured from the content, like the inline
+   percentage widths the distribution components emit. */
+.binary-bytes-block {
+  content-visibility: auto;
+}
+
+/* Not bold: at one code per non-printable byte, weight on every code turns
+   dense stretches into a solid mass. The guillemets already mark a code as a
+   code, so color carries the rest of the distinction. */
+.binary-byte-code {
+  color: var(--muted);
+}

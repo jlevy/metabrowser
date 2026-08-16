@@ -6,11 +6,12 @@ from typing import Any
 
 import pytest
 
+from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.wire_models import (
     validate_extension_tallies,
+    validate_file_type_breakdown,
     validate_rollup_envelope,
     validate_rollup_result,
-    validate_type_tallies,
 )
 
 
@@ -31,6 +32,48 @@ def _node() -> dict[str, object]:
     }
 
 
+def _metrics(
+    all_files: int, all_bytes: int, unignored_files: int, unignored_bytes: int
+) -> dict[str, Any]:
+    return {
+        "all": {"files": all_files, "bytes": all_bytes},
+        "unignored": {"files": unignored_files, "bytes": unignored_bytes},
+    }
+
+
+def _breakdown() -> dict[str, Any]:
+    """Two Python files plus one ignored unknown extension, conserved to the root."""
+
+    registry = load_file_type_registry()
+    return {
+        "schema": "file-type-breakdown-v1",
+        "registry": {
+            "schema_version": registry.schema_version,
+            "revision": registry.revision,
+            "fingerprint": registry.fingerprint,
+        },
+        "metrics": _metrics(3, 12, 2, 7),
+        "groups": [
+            {
+                "id": "code",
+                "families": [
+                    {
+                        "id": "python",
+                        "metrics": _metrics(2, 7, 2, 7),
+                        "extensions": [{"extension": ".py", "metrics": _metrics(2, 7, 2, 7)}],
+                    }
+                ],
+            }
+        ],
+        "no_extension": {"metrics": _metrics(0, 0, 0, 0), "filenames": [], "others": None},
+        "remaining_types": {
+            "metrics": _metrics(1, 5, 0, 0),
+            "extensions": [{"extension": ".unknown", "metrics": _metrics(1, 5, 0, 0)}],
+            "others": None,
+        },
+    }
+
+
 def test_extension_tallies_require_exact_unique_nonnegative_rows() -> None:
     validate_extension_tallies([[".py", 2, 7, 2, 7], ["", 1, 5, 0, 0]])
 
@@ -48,22 +91,10 @@ def test_extension_tallies_require_exact_unique_nonnegative_rows() -> None:
 
 
 def test_rollup_result_requires_tallies_to_sum_to_root() -> None:
-    result = {
+    result: dict[str, Any] = {
         "node": _node(),
         "ext_tallies": [[".py", 2, 7, 2, 7], ["", 1, 5, 0, 0]],
-        "type_tallies": {
-            "families": [
-                {
-                    "id": "python",
-                    "all_files": 2,
-                    "all_bytes": 7,
-                    "unignored_files": 2,
-                    "unignored_bytes": 7,
-                    "extensions": [[".py", 2, 7, 2, 7]],
-                }
-            ],
-            "extensions": [["", 1, 5, 0, 0]],
-        },
+        "file_type_breakdown": _breakdown(),
     }
     validate_rollup_result(result)
 
@@ -72,28 +103,18 @@ def test_rollup_result_requires_tallies_to_sum_to_root() -> None:
         validate_rollup_result(result)
 
 
-def test_semantic_type_tallies_require_conserved_known_families() -> None:
-    rows: dict[str, Any] = {
-        "families": [
-            {
-                "id": "javascript",
-                "all_files": 2,
-                "all_bytes": 7,
-                "unignored_files": 1,
-                "unignored_bytes": 5,
-                "extensions": [[".js", 1, 5, 1, 5], [".mjs", 1, 2, 0, 0]],
-            }
-        ],
-        "extensions": [["(none)", 1, 5, 1, 2]],
-    }
-    validate_type_tallies(rows, _node())
+def test_breakdown_requires_conserved_known_families() -> None:
+    validate_file_type_breakdown(_breakdown(), _node())
 
-    invalid = {
-        **rows,
-        "families": [{**rows["families"][0], "all_files": 3}],
-    }
+    inflated = _breakdown()
+    inflated["groups"][0]["families"][0]["metrics"] = _metrics(3, 7, 2, 7)
     with pytest.raises(AssertionError):
-        validate_type_tallies(invalid, _node())
+        validate_file_type_breakdown(inflated, _node())
+
+    stale = _breakdown()
+    stale["registry"]["fingerprint"] = "stale"
+    with pytest.raises(AssertionError):
+        validate_file_type_breakdown(stale, _node())
 
 
 def test_rollup_envelope_accepts_honest_cold_state() -> None:
@@ -103,7 +124,7 @@ def test_rollup_envelope_accepts_honest_cold_state() -> None:
             "path": "nested",
             "node": None,
             "ext_tallies": [],
-            "type_tallies": {"families": [], "extensions": []},
+            "file_type_breakdown": None,
             "index_status": "scanning",
             "indexed_files": 0,
             "max_files": 500_000,
@@ -118,7 +139,7 @@ def test_rollup_envelope_accepts_honest_cold_state() -> None:
                 "path": "nested",
                 "node": None,
                 "ext_tallies": [[".py", 1, 1, 1, 1]],
-                "type_tallies": {"families": [], "extensions": []},
+                "file_type_breakdown": None,
                 "index_status": "scanning",
                 "indexed_files": 0,
                 "max_files": 500_000,

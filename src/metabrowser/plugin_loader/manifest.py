@@ -26,6 +26,24 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# SDK contract version
+
+# The browser SDK contract this host provides. A plugin declares the
+# contract it was written against and the loader rejects any other value,
+# so an SDK break surfaces as one clear message at load time instead of a
+# mystery failure inside a renderer.
+#
+# Bump this only when the contract actually breaks, and update every
+# built-in manifest in the same commit. The host ships no shims for older
+# values: an external plugin is expected to update and declare it. See
+# docs/development.md "Compatibility and Legacy Code".
+PLUGIN_SDK_VERSION = "0.2"
+
+# Metabrowser 0.4.0 allowed manifests to omit sdk_version. Such a manifest
+# targets the only SDK that existed under that contract. Keep this value pinned
+# when PLUGIN_SDK_VERSION changes so omission fails the ordinary mismatch gate.
+_IMPLICIT_PLUGIN_SDK_VERSION = "0.1"
+
 # ── Match predicate ────────────────────────────────────────────
 
 
@@ -204,8 +222,13 @@ class PluginInfo(BaseModel):
     display_name: str = Field(default="", description="Human-readable plugin name.")
     version: str = Field(default="0.0.0", description="Plugin version, semver-ish.")
     sdk_version: str = Field(
-        default="0.1",
-        description="Metabrowser plugin SDK contract version this plugin targets.",
+        default=_IMPLICIT_PLUGIN_SDK_VERSION,
+        description=(
+            "Metabrowser plugin SDK contract version this plugin targets. "
+            "An omitted value targets the original SDK 0.1. The resolved value "
+            "must equal the host's PLUGIN_SDK_VERSION; the host provides no "
+            "compatibility path for older SDKs."
+        ),
     )
     extra_scripts: list[str] = Field(
         default_factory=list,
@@ -248,6 +271,17 @@ class PluginManifest(BaseModel):
         loader, not here.
         """
         problems: list[str] = []
+
+        # An SDK break is enforced, not absorbed. Refusing the plugin here
+        # names the required version so the author can update, instead of
+        # letting it load and fail later against a surface that moved.
+        if self.plugin.sdk_version != PLUGIN_SDK_VERSION:
+            problems.append(
+                f"plugin '{self.plugin.name}' targets browser SDK "
+                f"{self.plugin.sdk_version!r}, but this Metabrowser provides "
+                f"{PLUGIN_SDK_VERSION!r}; update the plugin for the current SDK "
+                "and set sdk_version accordingly"
+            )
 
         # Each kind needs a non-empty match predicate.
         for kr in self.kind:

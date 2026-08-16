@@ -38,13 +38,31 @@
 //     chart(container, type, data, opts) — Chart.js wrapper
 //
 //   Data fetches:
-//     fetchPluginData(plugin, route, p)  — GET /api/plugin/<plugin>/<route>
+//     fetchPluginData(plugin, route, p, opts?)
+//                                        — GET /api/plugin/<plugin>/<route>
+//                                          opts.signal aborts the request; a
+//                                          non-ok response rejects with an
+//                                          Error carrying .status and .payload
 //     fetchJsonl(path, opts)             — GET /api/file?path=... (JSONL envelope)
-//     fetchKpressRender(ctx, view, opts) — GET /api/kpress/render?path=...
-//     renderTextTruncationWarning(data) — visible partial-content warning
+//     fetchCompleteText(ctx, opts)       — bounded complete source for a text context
+//     fetchText(target, opts)            — bounded complete source for a navigation target
+//     fetchKpressRender(ctx, view, opts) — GET or bounded POST /api/kpress/render
+//     renderTextTruncationWarning(data) — partial-content banner, with a
+//                                        Load more control in it
+//     renderTextLoadMoreFooter(data)    — the same notice, for after the
+//                                        content (see design-system.md)
+//     partialNoticeHtml({loaded,total}, position, useSiteClass)
+//                                        — the shared partial-content notice,
+//                                          for views that track their own
+//                                          progress rather than /api/file's
 //
 //   Navigation:
-//     openPath(path, {viewId?})          — open a path, optionally preferring a view
+//     navigation.href(target)            — canonical /view/ href for a target
+//     navigation.open(target, {viewId?}) — open a target, optionally preferring a view
+//     navigation.current()               — current path/query/fragment target or null
+//     fileCatalog.snapshot()              — immutable known-file inventory snapshot
+//     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
+//     repository                          — verified GitHub identity for the served tree
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
@@ -77,6 +95,9 @@
     // Already initialized; protect against double-load.
     return;
   }
+  if (!global.MetabrowserNavigationRoute?.navigation) {
+    throw new Error("plugin SDK requires the canonical navigation module");
+  }
 
   // Internal registry: kindId -> Map<viewId, {render, dispose?}>.
   const _viewRegistry = new Map();
@@ -89,6 +110,75 @@
   const _stylesheetLoadTimeoutMs = 10_000;
   /** Detects cached stylesheets whose browsers expose `sheet` without a load event. */
   const _stylesheetReadyPollMs = 50;
+  const _emptyFileCatalogSnapshot = Object.freeze({
+    complete: false,
+    files: Object.freeze([]),
+    observedCount: 0,
+    revision: 0,
+    sourceSummary: Object.freeze({}),
+  });
+  /** @type {{snapshot: () => unknown, subscribe: (listener: () => void) => () => void} | null} */
+  let _attachedFileCatalog = null;
+
+  const fileCatalog = Object.freeze({
+    snapshot() {
+      return _attachedFileCatalog?.snapshot() || _emptyFileCatalogSnapshot;
+    },
+    subscribe(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("fileCatalog.subscribe: listener must be a function");
+      }
+      return _attachedFileCatalog?.subscribe(listener) || (() => {});
+    },
+  });
+  const repository = normalizeRepositoryContext(global.METABROWSER_REPOSITORY_CONTEXT);
+
+  /** @param {unknown} value */
+  function normalizeRepositoryContext(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const context = /** @type {Record<string, unknown>} */ (value);
+    if (
+      context.host !== "github.com" ||
+      typeof context.owner !== "string" ||
+      !context.owner ||
+      typeof context.name !== "string" ||
+      !context.name ||
+      typeof context.revision !== "string" ||
+      !/^[0-9a-f]{40}$/i.test(context.revision) ||
+      (context.branch !== null && typeof context.branch !== "string") ||
+      typeof context.served_prefix !== "string"
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      branch: context.branch,
+      host: context.host,
+      name: context.name,
+      owner: context.owner,
+      revision: context.revision.toLowerCase(),
+      served_prefix: context.served_prefix,
+    });
+  }
+
+  function attachFileCatalog(catalog) {
+    if (
+      !catalog ||
+      typeof catalog.snapshot !== "function" ||
+      typeof catalog.subscribe !== "function"
+    ) {
+      throw new TypeError("attachFileCatalog: catalog must expose snapshot and subscribe");
+    }
+    _attachedFileCatalog = catalog;
+    return () => {
+      if (_attachedFileCatalog === catalog) {
+        _attachedFileCatalog = null;
+      }
+    };
+  }
+
+  global.MetabrowserPluginHost = Object.freeze({ attachFileCatalog });
 
   function registerView(kindId, viewId, spec) {
     if (typeof kindId !== "string" || !kindId) {
@@ -143,7 +233,7 @@
       .replace(/'/g, "&#39;");
   }
 
-  async function fetchPluginData(plugin, route, params) {
+  async function fetchPluginData(plugin, route, params, options) {
     if (!plugin || !route) {
       throw new Error("fetchPluginData: plugin + route are required");
     }
@@ -158,15 +248,32 @@
         }
       }
     }
-    const resp = await fetch(url.toString(), { method: "GET" });
+    const resp = await fetch(url.toString(), { method: "GET", signal: options?.signal });
     if (!resp.ok) {
-      throw new Error(`fetchPluginData ${plugin}/${route}: ${resp.status}`);
+      // A hook that answers "why not" in its body is answering usefully; a
+      // caller that only sees the status has to guess or hard-code the
+      // reason. Same shape fetchKpressRender uses for the same reason.
+      let payload = null;
+      try {
+        payload = await resp.json();
+      } catch (_e) {
+        payload = null;
+      }
+      /** @type {Error & {status?: number, payload?: unknown}} */
+      const err = new Error(`fetchPluginData ${plugin}/${route}: ${resp.status}`);
+      err.status = resp.status;
+      err.payload = payload;
+      throw err;
     }
     const data = await resp.json();
     if (data && data.type === "plugin_error") {
-      throw new Error(
+      /** @type {Error & {status?: number, payload?: unknown}} */
+      const err = new Error(
         (data.error || "Plugin data hook failed") + (data.detail ? `: ${data.detail}` : ""),
       );
+      err.status = resp.status;
+      err.payload = data;
+      throw err;
     }
     return data;
   }
@@ -198,22 +305,61 @@
     return data;
   }
 
-  /**
-   * Request shell navigation, preferring a destination view when it exists.
-   */
-  function openPath(path, options) {
+  async function fetchCompleteText(ctx, opts) {
+    const path = ctx?.path;
+    const raw = ctx?.raw && typeof ctx.raw === "object" ? ctx.raw : {};
     if (typeof path !== "string" || !path) {
-      throw new Error("openPath: path must be a non-empty string");
+      throw new TypeError("fetchCompleteText: ctx.path must be a non-empty string");
     }
-    const viewId = options?.viewId;
-    if (viewId !== undefined && (typeof viewId !== "string" || !viewId)) {
-      throw new Error("openPath: options.viewId must be a non-empty string");
+    if (typeof raw.content === "string" && raw.content_truncated !== true) {
+      return raw.content;
     }
-    global.dispatchEvent(
-      new global.CustomEvent("metabrowser:open-path", {
-        detail: { path: path, viewId: viewId },
-      }),
-    );
+    const limit = raw.content_max_preview_limit;
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("fetchCompleteText: server did not advertise a valid source limit");
+    }
+    const data = await fetchTextEnvelope(path, limit, opts?.signal, "fetchCompleteText");
+    if (data.content_truncated === true) {
+      throw new Error(`fetchCompleteText ${path}: source exceeds the server read limit`);
+    }
+    return data.content;
+  }
+
+  async function fetchText(target, opts) {
+    const normalized = global.MetabrowserNavigationRoute.normalizeTarget(target);
+    const initial = await fetchTextEnvelope(normalized.path, null, opts?.signal, "fetchText");
+    if (initial.content_truncated !== true) {
+      return initial.content;
+    }
+    const limit = initial.content_max_preview_limit;
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("fetchText: server did not advertise a valid source limit");
+    }
+    const completed = await fetchTextEnvelope(normalized.path, limit, opts?.signal, "fetchText");
+    if (completed.content_truncated === true) {
+      throw Object.assign(
+        new Error(`fetchText ${normalized.path}: source exceeds the server read limit`),
+        { code: "source-too-large" },
+      );
+    }
+    return completed.content;
+  }
+
+  async function fetchTextEnvelope(path, limit, signal, operation) {
+    const url = new URL("/api/file", global.location.origin);
+    url.searchParams.set("path", path);
+    if (limit !== null) {
+      url.searchParams.set("limit", String(limit));
+    }
+    const response = await fetch(url.toString(), { signal });
+    if (!response.ok) {
+      throw new Error(`${operation} ${path}: ${response.status}`);
+    }
+    const data = await response.json();
+    if (data?.type !== "text" || typeof data.content !== "string") {
+      throw new Error(`${operation} ${path}: expected a text envelope`);
+    }
+    return data;
   }
 
   // ── Preferences ─────────────────────────────────────────────────
@@ -347,7 +493,6 @@
         fingerprint: "unavailable",
       }),
       groups: Object.freeze([]),
-      categories: Object.freeze([]),
       families: Object.freeze([]),
       kinds: Object.freeze([]),
       classify(_name, extension) {
@@ -369,9 +514,6 @@
       },
       canonicalExtension(extension) {
         return typeof extension === "string" ? extension.toLowerCase() : "";
-      },
-      categoryForFile() {
-        return "other";
       },
       groupForFile() {
         return "other";
@@ -456,8 +598,8 @@
   async function fetchRollup(path, opts) {
     // Core rollup endpoint for directory subtrees (see /api/rollup).
     // ``path`` may be "" for the served root. Optional opts:
-    // depth / top / ext_top / filename_top / remaining_top query overrides plus
-    // the public ``type_top`` input alias and ``signal``.
+    // depth / top / ext_top / filename_top / remaining_top query overrides
+    // plus ``signal``.
     if (typeof path !== "string") {
       throw new Error("fetchRollup: path must be a string");
     }
@@ -465,22 +607,11 @@
     const options = opts && typeof opts === "object" ? opts : {};
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
-    for (const key of ["depth", "top", "ext_top", "filename_top", "ext_rank"]) {
+    for (const key of ["depth", "top", "ext_top", "filename_top", "remaining_top", "ext_rank"]) {
       const value = options[key] !== undefined ? options[key] : defaults[key];
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));
       }
-    }
-    // Preserve the public input alias for older plugins, but emit only the
-    // canonical parameter because page assets and the server cannot be mixed.
-    const remainingTop =
-      options.remaining_top !== undefined
-        ? options.remaining_top
-        : options.type_top !== undefined
-          ? options.type_top
-          : defaults.remaining_top;
-    if (remainingTop !== undefined && remainingTop !== null) {
-      url.searchParams.set("remaining_top", String(remainingTop));
     }
     const resp = await fetch(url.toString(), { signal: options.signal });
     if (!resp.ok) {
@@ -521,6 +652,23 @@
       onUpdate,
     );
   }
+
+  // Plugins can observe directory totals but cannot mutate the host-owned
+  // inventory projection. The fallback keeps partial SDK harnesses usable
+  // without weakening the production ownership boundary.
+  const directoryTotalsHost = global.metabrowserDirectoryTotalsStore;
+  const directoryTotals = Object.freeze({
+    get(path) {
+      return directoryTotalsHost?.get(path) ?? null;
+    },
+    subscribe(path, listener) {
+      if (directoryTotalsHost) {
+        return directoryTotalsHost.subscribe(path, listener);
+      }
+      listener(null);
+      return () => {};
+    },
+  });
 
   // Shell-surface proxies — same pattern as `icons`: plugins reach the
   // shared tooltip and file-type classifier through the SDK so they
@@ -577,9 +725,17 @@
     return `${base + (detail ? `: ${detail}` : "")} (HTTP ${status})`;
   }
 
-  function renderTextTruncationWarning(data) {
+  /**
+   * How much of a partially-loaded payload is showing, or null when it is
+   * complete. One reading of the payload, so the banner, the footer control,
+   * and the header readout cannot disagree about whether more remains.
+   *
+   * @param {Record<string, any> | null | undefined} data
+   * @returns {{loaded: string, total: string} | null}
+   */
+  function textPreviewProgress(data) {
     if (!data) {
-      return "";
+      return null;
     }
     const totalBytes = data.size_uncompressed || data.logical_size || data.size || 0;
     const bytesRead = data.bytes_read || data.content_bytes || 0;
@@ -587,20 +743,95 @@
       !!data.content_truncated ||
       (typeof data.bytes_read === "number" && totalBytes > 0 && bytesRead < totalBytes);
     if (!truncated) {
-      return "";
+      return null;
     }
-    const loadedLabel = formatSize(bytesRead);
-    const totalLabel = formatSize(totalBytes);
+    return { loaded: formatSize(bytesRead), total: formatSize(totalBytes) };
+  }
+
+  /**
+   * The Load more control itself. Emitted at both ends of partial content —
+   * see docs/design-system.md, "Continuing partial content": a reader who has
+   * scrolled to the end of what loaded is exactly the reader who wants more,
+   * and sending them back to the top to ask for it is the whole problem.
+   *
+   * @param {"top" | "bottom"} position
+   * @returns {string}
+   */
+  function loadMoreButtonHtml(position, action) {
+    // `action: null` means the caller wires its own listener — a view that
+    // tracks its own offsets cannot be continued by the shell's text loader.
+    const onclick = action === null ? "" : ` onclick="${action || "loadMoreCurrentText()"}"`;
     return (
-      '<div class="metabrowser-source-truncation-warning" role="status">' +
-      "<strong>Content truncated.</strong> " +
-      "Showing " +
-      escapeHtml(loadedLabel) +
+      `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
+      `${onclick} title="Load more of this file">Load more</button>`
+    );
+  }
+
+  /**
+   * The shared partial-content notice.
+   *
+   * Every surface that says "this is only part of the file" is this box, in
+   * core and in plugins alike — see docs/design-system.md, "Continuing partial
+   * content". A use-site class rides along for querying and positioning, but
+   * `partial-notice` is what carries the fill, border, and type, so the two
+   * ends of a file and the two views cannot drift apart.
+   *
+   * `showControl: false` states the condition without offering to continue —
+   * for content that is partial and will stay partial, such as a file larger
+   * than a view is willing to load. That is still a partial-content notice; a
+   * reader who cannot see the whole file needs telling either way.
+   *
+   * @param {{loaded: string, total: string}} progress
+   * @param {"top" | "bottom"} position
+   * @param {{useSiteClass?: string, action?: string | null, hidden?: boolean,
+   *          label?: string, showControl?: boolean}} [options]
+   * @returns {string}
+   */
+  function partialNoticeHtml(progress, position, options) {
+    const useSiteClass = options?.useSiteClass ? ` ${options.useSiteClass}` : "";
+    const hidden = options?.hidden ? " hidden" : "";
+    const label = options?.label ?? "Partial file.";
+    const control =
+      options?.showControl === false ? "" : loadMoreButtonHtml(position, options?.action);
+    return (
+      `<div class="notice partial-notice${useSiteClass}" data-severity="warning"` +
+      ` data-position="${position}" role="status"${hidden}>` +
+      // The progress figures live in their own element so a view that updates
+      // in place can rewrite them without taking the label with them.
+      `<span><strong class="partial-notice-label">${escapeHtml(label)}</strong> ` +
+      '<span class="partial-notice-readout">Showing ' +
+      escapeHtml(progress.loaded) +
       " of " +
-      escapeHtml(totalLabel) +
-      ". Select Load more to continue." +
+      escapeHtml(progress.total) +
+      ".</span></span>" +
+      // The notice carries its own button. It used to say "Select Load more to
+      // continue" and point at a control in the pane header, which puts the
+      // explanation and the remedy in different places.
+      control +
       "</div>"
     );
+  }
+
+  function renderTextTruncationWarning(data) {
+    const progress = textPreviewProgress(data);
+    return progress
+      ? partialNoticeHtml(progress, "top", {
+          useSiteClass: "metabrowser-source-truncation-warning",
+        })
+      : "";
+  }
+
+  /**
+   * Trailing companion to the banner, mounted after the content.
+   *
+   * @param {Record<string, any> | null | undefined} data
+   * @returns {string}
+   */
+  function renderTextLoadMoreFooter(data) {
+    const progress = textPreviewProgress(data);
+    return progress
+      ? partialNoticeHtml(progress, "bottom", { useSiteClass: "metabrowser-source-more-footer" })
+      : "";
   }
 
   function _headOrBody() {
@@ -869,6 +1100,12 @@
     if (profile) {
       url.searchParams.set("profile", profile);
     }
+    // "off" for a document embedded in host navigation that is already the
+    // reader's way around it; omitted means KPress' own thresholds decide.
+    const includeToc = options?.includeToc;
+    if (includeToc) {
+      url.searchParams.set("toc", includeToc);
+    }
     const dedupKey = options?.dedupKey || path;
     const previous = _kpressInflight.get(dedupKey);
     if (previous) {
@@ -886,12 +1123,27 @@
       _kpressInflight.set(dedupKey, controller);
     }
 
+    const sourceText = options?.sourceText;
+    if (sourceText !== undefined && typeof sourceText !== "string") {
+      throw new Error("fetchKpressRender: options.sourceText must be a string");
+    }
     let resp;
     try {
-      resp = await fetch(url.toString(), {
-        method: "GET",
-        signal: controller ? controller.signal : undefined,
-      });
+      const fetchOptions =
+        sourceText === undefined
+          ? { method: "GET", signal: controller ? controller.signal : undefined }
+          : {
+              body: JSON.stringify({
+                path,
+                profile,
+                source_text: sourceText,
+                view: viewId || "document",
+              }),
+              headers: { "content-type": "application/json" },
+              method: "POST",
+              signal: controller ? controller.signal : undefined,
+            };
+      resp = await fetch(url.toString(), fetchOptions);
     } finally {
       externalSignal?.removeEventListener("abort", abortFromExternal);
       if (controller && _kpressInflight.get(dedupKey) === controller) {
@@ -1264,10 +1516,13 @@
     escapeHtml: escapeHtml,
     fetchPluginData: fetchPluginData,
     fetchJsonl: fetchJsonl,
+    fetchCompleteText: fetchCompleteText,
+    fetchText: fetchText,
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
     errors: global.MetabrowserRequestErrors,
     folderContext: folderContext,
+    directoryTotals: directoryTotals,
     viewState: viewState,
     setViewPrintState: global.MetabrowserViewState.setPrintState,
     ageBucket: ageBucket,
@@ -1275,9 +1530,13 @@
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
     fileTypeIcon: fileTypeIcon,
-    openPath: openPath,
+    fileCatalog: fileCatalog,
+    navigation: global.MetabrowserNavigationRoute.navigation,
+    repository: repository,
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
+    renderTextLoadMoreFooter: renderTextLoadMoreFooter,
+    partialNoticeHtml: partialNoticeHtml,
     loadKpressAssets: loadKpressAssets,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,

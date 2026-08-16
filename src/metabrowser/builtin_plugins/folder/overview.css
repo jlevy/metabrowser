@@ -1,6 +1,9 @@
 .folder-overview-host {
-  --folder-overview-document-gutter: 1rem;
   --folder-overview-narrow-document-gutter: 1.25rem;
+  /* Mirror KPress's visible regular-band content card, not its wider article
+     frame: the frame reserves 2rem per side for the floating TOC control. */
+  --folder-overview-regular-card-width: min(calc(100% - 4rem), calc(var(--kpress-measure) - 2rem));
+  --folder-overview-wide-document-gutter: 1rem;
   --folder-overview-wide-toc-width: 15rem;
   --folder-overview-wide-toc-gap: 3rem;
   --folder-overview-wide-prose-inset: 2.5rem;
@@ -27,7 +30,7 @@
 
 .folder-overview-panel-heading {
   margin: 0 0 14px;
-  padding: 0 0 8px;
+  padding: 0 0 var(--section-heading-divider-gap);
   border-bottom: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font-sans);
@@ -63,10 +66,30 @@
   display: none;
 }
 
+/* A collapsed panel is a heading and nothing else. The rule underlines content
+   that is not there, and the heading's trailing space is sized to stand a
+   heading off from its own body, not from the next heading — together they read
+   as an empty section rather than a closed one. The panel grid's own gap is
+   the whole separation between two collapsed headings. Expanded panels are
+   untouched. */
+.folder-overview-panel-collapsed > .folder-overview-panel-heading {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.folder-rollup-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 12px;
+}
+
 .folder-overview-panel-surface > .folder-overview-panel-heading,
 .folder-overview-panel-surface > .folder-overview-panel-body,
 .folder-overview-panel-document > .folder-overview-panel-heading {
-  width: min(calc(100% - 2 * var(--folder-overview-document-gutter)), var(--kpress-measure));
+  width: var(--folder-overview-regular-card-width);
   margin-inline: auto;
 }
 
@@ -98,7 +121,7 @@
   .folder-overview-panel-document > .folder-overview-panel-heading {
     width: var(--folder-overview-wide-card-width);
     margin-inline-start: calc(
-      var(--folder-overview-document-gutter) +
+      var(--folder-overview-wide-document-gutter) +
       var(--folder-overview-wide-toc-width) +
       var(--folder-overview-wide-toc-gap)
     );

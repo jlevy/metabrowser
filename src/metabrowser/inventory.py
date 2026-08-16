@@ -150,6 +150,8 @@ class InventoryIndex:
         self._pending_dirs: set[str] = set()
         self._descendant_file_counts: dict[str, int] = {}
         self._descendant_file_sizes: dict[str, int] = {}
+        self._descendant_unignored_file_counts: dict[str, int] = {}
+        self._descendant_unignored_file_sizes: dict[str, int] = {}
         self._descendant_leaf_counts: dict[str, int] = {}
         self._walker_dir_generations: dict[str, int] = {}
         self._generation: dict[str, int] = {}
@@ -212,6 +214,8 @@ class InventoryIndex:
         self._pending_dirs.clear()
         self._descendant_file_counts.clear()
         self._descendant_file_sizes.clear()
+        self._descendant_unignored_file_counts.clear()
+        self._descendant_unignored_file_sizes.clear()
         self._descendant_leaf_counts.clear()
         self._walker_dir_generations.clear()
         self._generation.clear()
@@ -505,7 +509,7 @@ class InventoryIndex:
         depth: int,
         top: int,
         ext_top: int,
-        type_top: int = ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+        remaining_top: int = ROLLUP_FILE_TYPE_REMAINING_LIMIT,
         filename_top: int = ROLLUP_FILE_TYPE_FILENAME_LIMIT,
         ext_rank: RollupRank = "bytes",
         max_nodes: int | None = None,
@@ -516,7 +520,7 @@ class InventoryIndex:
             depth=depth,
             top=top,
             ext_top=ext_top,
-            type_top=type_top,
+            remaining_top=remaining_top,
             filename_top=filename_top,
             ext_rank=ext_rank,
             max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
@@ -711,19 +715,30 @@ class InventoryIndex:
         if current_subtree is not None and current_subtree.type == "dir":
             previous_files = 0
             previous_size = 0
+            previous_unignored_files = 0
+            previous_unignored_size = 0
             if previous_subtree is not None:
                 if previous_subtree.type == "file":
                     previous_files = 1
                     previous_size = previous_subtree.size
+                    if not previous_subtree.gitignored:
+                        previous_unignored_files = 1
+                        previous_unignored_size = previous_subtree.size
                 else:
                     previous_files = previous_subtree.total_files or 0
                     previous_size = previous_subtree.total_size or 0
+                    previous_unignored_files = previous_subtree.unignored_files or 0
+                    previous_unignored_size = previous_subtree.unignored_size or 0
             current_files = current_subtree.total_files or 0
             current_size = current_subtree.total_size or 0
+            current_unignored_files = current_subtree.unignored_files or 0
+            current_unignored_size = current_subtree.unignored_size or 0
             aggregate_updates = self._update_ancestor_aggregates(
                 parent=current_subtree.parent,
                 delta_files=current_files - previous_files,
                 delta_size=current_size - previous_size,
+                delta_unignored_files=current_unignored_files - previous_unignored_files,
+                delta_unignored_size=current_unignored_size - previous_unignored_size,
             )
             if aggregate_updates:
                 self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in aggregate_updates)))
@@ -766,6 +781,7 @@ class InventoryIndex:
             removed = [path]
         removed_entries = [self._entries[cur] for cur in removed]
         removed_files = [entry for entry in removed_entries if entry.type == "file"]
+        removed_unignored_files = [entry for entry in removed_files if not entry.gitignored]
         outer_parent = target.parent
         for cur in removed:
             entry = self._pop_index_entry(cur)
@@ -782,6 +798,12 @@ class InventoryIndex:
                         delta_files=-1,
                         delta_size=-entry.size,
                     )
+                    if not entry.gitignored:
+                        self._adjust_descendant_unignored_file_aggregates(
+                            parent=entry.parent,
+                            delta_files=-1,
+                            delta_size=-entry.size,
+                        )
                 elif entry.type == "dir":
                     self._pending_dirs.discard(entry.path)
                     self._child_mtime_heaps.pop(entry.path, None)
@@ -795,6 +817,8 @@ class InventoryIndex:
             parent=outer_parent,
             delta_files=-len(removed_files),
             delta_size=-sum(entry.size for entry in removed_files),
+            delta_unignored_files=-len(removed_unignored_files),
+            delta_unignored_size=-sum(entry.size for entry in removed_unignored_files),
         )
         ops: list[FsChangeOp] = [FsRemove(path=cur) for cur in removed]
         ops.extend(FsUpsert(entry=entry) for entry in aggregate_updates)
@@ -1034,6 +1058,8 @@ class InventoryIndex:
                 existing,
                 total_files=self._descendant_file_counts.get(path, 0),
                 total_size=self._descendant_file_sizes.get(path, 0),
+                unignored_files=self._descendant_unignored_file_counts.get(path, 0),
+                unignored_size=self._descendant_unignored_file_sizes.get(path, 0),
                 newest_mtime_ns=newest_mtime,
                 empty=self._descendant_leaf_counts.get(path, 0) == 0,
                 mtime_ns=newest_mtime,
@@ -1161,6 +1187,36 @@ class InventoryIndex:
                     delta_files=1,
                     delta_size=incoming_file.size,
                 )
+        existing_unignored_file = (
+            existing_file if existing_file is not None and not existing_file.gitignored else None
+        )
+        incoming_unignored_file = (
+            incoming_file if incoming_file is not None and not incoming_file.gitignored else None
+        )
+        if (
+            existing_unignored_file is not None
+            and incoming_unignored_file is not None
+            and existing_unignored_file.parent == incoming_unignored_file.parent
+        ):
+            if existing_unignored_file.size != incoming_unignored_file.size:
+                self._adjust_descendant_unignored_file_aggregates(
+                    parent=incoming_unignored_file.parent,
+                    delta_files=0,
+                    delta_size=incoming_unignored_file.size - existing_unignored_file.size,
+                )
+        else:
+            if existing_unignored_file is not None:
+                self._adjust_descendant_unignored_file_aggregates(
+                    parent=existing_unignored_file.parent,
+                    delta_files=-1,
+                    delta_size=-existing_unignored_file.size,
+                )
+            if incoming_unignored_file is not None:
+                self._adjust_descendant_unignored_file_aggregates(
+                    parent=incoming_unignored_file.parent,
+                    delta_files=1,
+                    delta_size=incoming_unignored_file.size,
+                )
         if existing is None:
             self._add_direct_child(entry)
         elif existing.parent != entry.parent:
@@ -1194,6 +1250,12 @@ class InventoryIndex:
             delta_files=int(new_file is not None) - int(old_file is not None),
             delta_size=(new_file.size if new_file is not None else 0)
             - (old_file.size if old_file is not None else 0),
+            delta_unignored_files=int(new_file is not None and not new_file.gitignored)
+            - int(old_file is not None and not old_file.gitignored),
+            delta_unignored_size=(
+                new_file.size if new_file is not None and not new_file.gitignored else 0
+            )
+            - (old_file.size if old_file is not None and not old_file.gitignored else 0),
         )
         ops = [FsUpsert(entry=stored)]
         ops.extend(FsUpsert(entry=ancestor) for ancestor in aggregate_updates)
@@ -1205,6 +1267,8 @@ class InventoryIndex:
         parent: str,
         delta_files: int,
         delta_size: int,
+        delta_unignored_files: int,
+        delta_unignored_size: int,
     ) -> list[FsEntry]:
         updates: list[FsEntry] = []
         cursor = parent
@@ -1217,10 +1281,22 @@ class InventoryIndex:
                 and existing.total_size is not None
             ):
                 newest_mtime_ns = self._direct_child_newest(cursor)
+                current_unignored_files = (
+                    existing.unignored_files
+                    if existing.unignored_files is not None
+                    else existing.total_files
+                )
+                current_unignored_size = (
+                    existing.unignored_size
+                    if existing.unignored_size is not None
+                    else existing.total_size
+                )
                 updated = replace(
                     existing,
                     total_files=max(0, existing.total_files + delta_files),
                     total_size=max(0, existing.total_size + delta_size),
+                    unignored_files=max(0, current_unignored_files + delta_unignored_files),
+                    unignored_size=max(0, current_unignored_size + delta_unignored_size),
                     newest_mtime_ns=newest_mtime_ns,
                     empty=self._descendant_leaf_counts.get(cursor, 0) == 0,
                     write_token=WriteToken(self._generation.get(cursor, 0)),
@@ -1274,6 +1350,30 @@ class InventoryIndex:
                 self._descendant_file_counts[cursor] = file_count
                 self._descendant_file_sizes[cursor] = max(
                     0, self._descendant_file_sizes.get(cursor, 0) + delta_size
+                )
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+
+    def _adjust_descendant_unignored_file_aggregates(
+        self,
+        *,
+        parent: str,
+        delta_files: int,
+        delta_size: int,
+    ) -> None:
+        """Adjust tracked-file counts and sizes for every ancestor."""
+
+        cursor = parent
+        while True:
+            file_count = self._descendant_unignored_file_counts.get(cursor, 0) + delta_files
+            if file_count <= 0:
+                self._descendant_unignored_file_counts.pop(cursor, None)
+                self._descendant_unignored_file_sizes.pop(cursor, None)
+            else:
+                self._descendant_unignored_file_counts[cursor] = file_count
+                self._descendant_unignored_file_sizes[cursor] = max(
+                    0, self._descendant_unignored_file_sizes.get(cursor, 0) + delta_size
                 )
             if cursor == "":
                 break

@@ -21,7 +21,7 @@ $ metab --plugins
 NAME           SOURCE   KINDS       VIEWS  HOOKS
 -------------  -------  ----------  -----  ------
 agent-log      builtin  agent-log   3      charts
-binary         builtin  -           0      -
+binary         builtin  -           1      chunk
 folder         builtin  -           2      -
 markdown       builtin  markdown    2      -
 structured     builtin  structured  2      parsed
@@ -63,9 +63,13 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/binary",
       "kinds": [],
-      "views": [],
-      "view_count": 0,
-      "data_hooks": [],
+      "views": [
+        "bytes"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "chunk"
+      ],
       "disabled_data_hooks": []
     },
     {
@@ -161,7 +165,7 @@ $ metab --plugin markdown
 name:         markdown
 display_name: Markdown
 version:      0.0.1
-sdk_version:  0.1
+sdk_version:  0.2
 source:       builtin
 static_root:  [BUILTIN]/markdown
 
@@ -176,10 +180,21 @@ data hooks:
   (none)
 
 assets in static_root:
+  - github_localizer.js
+  - graph_analysis.js
   - index.js
+  - link_enhancer.js
+  - link_scanner.js
+  - links.js
   - manifest.toml
+  - markdown.css
+  - project_adapters.js
   - rendered.js
   - source.js
+  - transclusion.js
+  - wiki_enhancer.js
+  - wiki_parser.js
+  - wiki_resolver.js
 ? 0
 ```
 
@@ -192,7 +207,7 @@ $ metab --plugin markdown --json
     "name": "markdown",
     "display_name": "Markdown",
     "version": "0.0.1",
-    "sdk_version": "0.1",
+    "sdk_version": "0.2",
     "source": "builtin",
     "static_root": "[BUILTIN]/markdown",
     "kinds": [
@@ -229,10 +244,21 @@ $ metab --plugin markdown --json
     "data_hooks": [],
     "disabled_data_hooks": [],
     "assets": [
+      "github_localizer.js",
+      "graph_analysis.js",
       "index.js",
+      "link_enhancer.js",
+      "link_scanner.js",
+      "links.js",
       "manifest.toml",
+      "markdown.css",
+      "project_adapters.js",
       "rendered.js",
-      "source.js"
+      "source.js",
+      "transclusion.js",
+      "wiki_enhancer.js",
+      "wiki_parser.js",
+      "wiki_resolver.js"
     ]
   },
   "errors": []

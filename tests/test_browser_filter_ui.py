@@ -61,19 +61,73 @@ def test_chip_family_is_defined_in_core_styles() -> None:
 
 
 def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
-    """Treemap has one exclusive metric and one polarity-bearing
-    boolean, so both must use the existing control primitives."""
+    """One reusable owner renders the metric and scope controls.
+
+    Files and Treemap mount the same stateful component, so neither view
+    can fork its labels, accessibility semantics, defaults, or preference key.
+    """
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
-    source = (folder_root / "treemap.js").read_text()
+    controls = (folder_root / "rollup_controls.js").read_text()
+    treemap = (folder_root / "treemap.js").read_text()
+    file_totals = (folder_root / "file_totals_panel.js").read_text()
+    file_types = (folder_root / "file_type_summary.js").read_text()
     plugin_css = (folder_root / "styles.css").read_text()
 
-    assert "filterControls.groupHtml" in source
-    assert 'label: "Treemap area"' in source
-    assert "filterControls.checkHtml" in source
-    assert 'label: "Show ignored"' in source
-    assert "segmentHtml" not in source
+    assert "filterControls.groupHtml" in controls
+    assert 'label: "Measure file rollups by"' in controls
+    assert "filterControls.checkHtml" in controls
+    assert 'label: "Show ignored"' in controls
+    assert "includeIgnored: value.includeIgnored !== false" in controls
+    for source in (treemap, file_totals):
+        assert "rollupControls.mount(metricControls" in source
+        assert "metric: true" in source
+        assert "ignored: false" in source
+    for source in (treemap, file_types):
+        assert "rollupControls.mount(scopeControls" in source
+        assert "metric: false" in source
+        assert "ignored: true" in source
+    assert "rollupControls.mount(metricControls" not in file_types
+    assert "rollupControls.mount(scopeControls" not in file_totals
+    assert "segmentHtml" not in controls
     assert ".tm-seg" not in plugin_css
+
+
+def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
+    """Overview separates totals from details but keeps one selected metric.
+
+    Files, Ignored, and type rows must switch together instead of retaining
+    parallel Files and Size columns that compete with the chooser.
+    """
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    index = (folder_root / "index.js").read_text()
+    totals = (folder_root / "folder_totals.js").read_text()
+    file_totals = (folder_root / "file_totals_panel.js").read_text()
+    file_types = (folder_root / "file_type_summary.js").read_text()
+    distribution = (folder_root / "distribution_view.js").read_text()
+    treemap = (folder_root / "treemap.js").read_text()
+
+    assert 'label: "Files"' in file_totals
+    assert "defaultExpanded: true" in file_totals
+    assert 'label: "File Breakdown"' in file_types
+    assert "defaultExpanded: true" in file_types
+    assert '"folder.file-totals"' in index
+    assert '"folder.file-types"' in index
+    assert '<h2 class="tm-totals-heading">Files</h2>' in treemap
+    assert "mountFolderTotalsView" in file_totals
+    assert "mountFolderTotalsView" not in file_types
+    assert 'filesRow = totalsRow("Files")' in totals
+    assert 'totalsRow("Total")' not in totals
+    assert 'head.className = "sr-only"' in totals
+    assert 'for (const label of ["Population", "Files", "Size"])' not in totals
+    assert 'for (const label of ["Type", "Files", "Size"])' not in distribution
+    assert "metricHeader" in distribution
+    # The totals table hides its header row with `sr-only`, which is defined in
+    # the shared stylesheet rather than here. It used to be scoped to this
+    # plugin's own ancestors, which silently left the same class inert
+    # everywhere else; see test_browser_loading_delay.py.
+    assert ".sr-only" in (proc_browser.STATIC_DIR / "styles.css").read_text()
 
 
 def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
@@ -84,13 +138,40 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     """
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    shared_css = (proc_browser.STATIC_DIR / "styles.css").read_text()
     plugin_css = (folder_root / "styles.css").read_text()
     hover_start = plugin_css.index(".tm-cell:hover {")
     hover_block = plugin_css[hover_start : plugin_css.index("}", hover_start)]
 
-    assert "filter: brightness(" in hover_block
+    assert "filter: var(--viz-data-mark-hover-filter);" in hover_block
+    # The direction that gains contrast against the page flips between themes,
+    # so the token is declared for the light palette and again for the dark one.
+    # Pinning the declarations rather than their values leaves the filter free
+    # to be adjusted without editing this test.
+    dark_start = shared_css.index('[data-theme="dark"] {')
+    assert "--viz-data-mark-hover-filter:" in shared_css[:dark_start]
+    assert "--viz-data-mark-hover-filter:" in shared_css[dark_start:]
     assert "z-index" not in hover_block
     assert "display:" not in hover_block
+
+
+def test_treemap_pointer_hit_testing_uses_the_full_actionable_cell() -> None:
+    """Nested ARIA buttons stay on labels, but pointer activation uses
+    the deepest visible cell rectangle rather than that label alone."""
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    treemap = (folder_root / "treemap.js").read_text()
+    plugin_css = (folder_root / "styles.css").read_text()
+    click_start = treemap.index('viewport.addEventListener("click"')
+    click_block = treemap[click_start : treemap.index('viewport.addEventListener("mouseover"')]
+
+    assert 'cls.push("tm-actionable")' in treemap
+    assert "cellForElement" in click_block
+    assert "cellIsActionable(cell)" in click_block
+    assert "actionableCellForElement" not in click_block
+    assert ".tm-actionable {" in plugin_css
+    assert "cursor: pointer;" in plugin_css[plugin_css.index(".tm-actionable {") :]
+    assert ".tm-nested {\n  cursor: default;" not in plugin_css
 
 
 def test_single_and_multi_select_use_different_fills() -> None:
@@ -381,10 +462,23 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
     app = _read("app.js")
     css = _read("styles.css")
 
-    assert 'class="btn file-header-action"' in app
-    assert 'class="btn file-header-action" type="button"' in app
+    # The text view's Load more moved out of the file header and into the
+    # shared partial-content notice, but it is still the `.btn` primitive.
+    sdk = _read("plugin_sdk.js")
+    assert 'class="btn metabrowser-load-more"' in sdk
+    assert "file-header-action" not in app, (
+        "the header no longer restates partial progress; the notice owns it"
+    )
+    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in app
+    assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in app
     assert ".btn {" in css
     assert ".btn:focus-visible {" in css
+    assert ".parent-nav-btn {" in css
+    assert ".parent-nav-btn-icon-only {" in css
+    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-btn-icon-only {")]
+    assert "height: var(--icon-btn-size);" in parent_nav
+    assert "border-color: var(--viz-border-strong);" in parent_nav
+    assert 'aria-label="Open parent folder ${esc(parentLabel)}"' in app
 
 
 def test_every_core_button_declares_non_submit_behavior() -> None:
@@ -503,7 +597,6 @@ def test_type_presets_name_registry_display_groups() -> None:
         "Code",
         "Documentation",
         "Data",
-        "Logs",
         "Archives",
         "Media",
     ]
@@ -1030,7 +1123,7 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
     start = js.index("var FILTER_RECENCY_OPTIONS = [")
     block = js[start : js.index("];", start)]
     for value, age in (
-        ('"live"', "age-sec"),
+        ('"live"', "age-live"),
         ('"1h"', "age-min"),
         ('"24h"', "age-hr"),
         ('"7d"', "age-day"),
@@ -1040,9 +1133,13 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
         option = block[value_start : value_start + 240]
         assert f'ageClass: "{age}"' in option, f"{value} should wear {age}"
 
-    # Scoped to the menu: the tree's ramp is contrast-audited.
+    filter_controls = _read("filter_controls.js")
+    assert "file-age-marker" not in filter_controls
+
+    # The shared ramp is sufficient; no menu-only color correction may drift.
     css = _read("styles.css")
-    assert ".chip-menu-item.age-min {" in css
+    assert ".chip-menu-item.age-min {" not in css
+    assert ".file-age-marker" not in css
 
 
 def test_clear_sits_with_the_dropdowns_it_undoes() -> None:

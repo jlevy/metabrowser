@@ -154,7 +154,6 @@ def test_file_type_tallies_match_preset_filter_semantics(tmp_path: Path) -> None
         "code": (1, 1),
         "docs": (2, 1),
         "data": (0, 1),
-        "logs": (0, 0),
         "archives": (0, 0),
         "media": (0, 0),
     }
@@ -257,7 +256,6 @@ def test_navigation_tallies_share_semantic_family_and_canonical_counts() -> None
         "code": [1, 1],
         "docs": [0, 0],
         "data": [0, 0],
-        "logs": [0, 0],
         "archives": [0, 0],
         "media": [0, 0],
     }

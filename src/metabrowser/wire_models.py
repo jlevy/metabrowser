@@ -261,24 +261,6 @@ class NavigationTallies(TypedDict):
     recency_tallies: list[list[object]]
 
 
-class TypeFamilyTally(TypedDict):
-    """One semantic family and its conserved canonical-extension children."""
-
-    id: str
-    all_files: int
-    all_bytes: int
-    unignored_files: int
-    unignored_bytes: int
-    extensions: list[ExtensionTallyRow]
-
-
-class TypeTallies(TypedDict):
-    """Bounded top-level semantic and ungrouped rollup populations."""
-
-    families: list[TypeFamilyTally]
-    extensions: list[ExtensionTallyRow]
-
-
 class FileTypeMeasure(TypedDict):
     """One population's conserved file and apparent-byte measures."""
 
@@ -351,7 +333,6 @@ class RollupResult(TypedDict):
 
     node: RollupDirNode
     ext_tallies: list[ExtensionTallyRow]
-    type_tallies: TypeTallies
     file_type_breakdown: FileTypeBreakdown
 
 
@@ -362,7 +343,6 @@ class RollupEnvelope(TypedDict):
     path: str
     node: RollupDirNode | None
     ext_tallies: list[ExtensionTallyRow]
-    type_tallies: TypeTallies
     file_type_breakdown: FileTypeBreakdown | None
     index_status: str
     indexed_files: int
@@ -455,69 +435,6 @@ def validate_extension_tallies(rows: Sequence[Sequence[object]]) -> None:
         )
         assert values[2] <= values[0], f"unignored files exceed all files at row {index}"
         assert values[3] <= values[1], f"unignored bytes exceed all bytes at row {index}"
-
-
-def validate_type_tallies(raw: object, node: Mapping[str, Any]) -> None:
-    """Assert semantic hierarchy, catalog identity, and root conservation."""
-
-    assert isinstance(raw, dict), "type tallies must be an object"
-    assert set(raw) == {"families", "extensions"}
-    families = raw["families"]
-    extensions = raw["extensions"]
-    assert isinstance(families, list)
-    assert isinstance(extensions, list)
-    validate_extension_tallies(extensions)
-
-    known_family_ids = {family.id for family in FILE_TYPE_FAMILIES}
-    seen_family_ids: set[str] = set()
-    top_level_totals = [sum(row[column] for row in extensions) for column in range(1, 5)]
-    for index, family in enumerate(families):
-        assert isinstance(family, dict), f"type family tally {index} must be an object"
-        assert set(family) == {
-            "id",
-            "all_files",
-            "all_bytes",
-            "unignored_files",
-            "unignored_bytes",
-            "extensions",
-        }
-        family_id = family["id"]
-        assert isinstance(family_id, str) and family_id in known_family_ids
-        assert family_id not in seen_family_ids, f"duplicate type family tally: {family_id!r}"
-        seen_family_ids.add(family_id)
-        child_rows = family["extensions"]
-        assert isinstance(child_rows, list)
-        validate_extension_tallies(child_rows)
-        for row in child_rows:
-            match = family_for_extension(cast(str, row[0]))
-            assert match is not None
-            assert match.family.id == family_id
-            assert match.canonical_extension == row[0]
-        metrics = [
-            family["all_files"],
-            family["all_bytes"],
-            family["unignored_files"],
-            family["unignored_bytes"],
-        ]
-        assert all(isinstance(value, int) and not isinstance(value, bool) for value in metrics)
-        assert all(cast(int, value) >= 0 for value in metrics)
-        assert metrics[2] <= metrics[0]
-        assert metrics[3] <= metrics[1]
-        child_totals = [sum(row[column] for row in child_rows) for column in range(1, 5)]
-        assert child_totals == metrics, f"type family children do not sum to {family_id!r}"
-        for metric_index, value in enumerate(metrics):
-            top_level_totals[metric_index] += cast(int, value)
-
-    for row in extensions:
-        key = cast(str, row[0])
-        if key not in ("", "(none)"):
-            assert family_for_extension(key) is None, f"known family member emitted raw: {key!r}"
-    assert top_level_totals == [
-        node["total_files"],
-        node["total_size"],
-        node["unignored_files"],
-        node["unignored_size"],
-    ]
 
 
 def _validated_population_metrics(raw: object) -> dict[str, tuple[int, int]]:
@@ -691,10 +608,7 @@ def validate_file_type_breakdown(raw: object, node: Mapping[str, Any]) -> None:
 def validate_rollup_result(result: Mapping[str, Any]) -> None:
     """Assert one inventory result and the equality of root and tally totals."""
 
-    assert set(result) in (
-        {"node", "ext_tallies", "type_tallies"},
-        {"node", "ext_tallies", "type_tallies", "file_type_breakdown"},
-    )
+    assert set(result) == {"node", "ext_tallies", "file_type_breakdown"}
     node = result["node"]
     assert isinstance(node, dict)
     validate_rollup_node(node)
@@ -708,9 +622,7 @@ def validate_rollup_result(result: Mapping[str, Any]) -> None:
         node["unignored_files"],
         node["unignored_size"],
     ]
-    validate_type_tallies(result["type_tallies"], node)
-    if "file_type_breakdown" in result:
-        validate_file_type_breakdown(result["file_type_breakdown"], node)
+    validate_file_type_breakdown(result["file_type_breakdown"], node)
 
 
 def validate_rollup_envelope(envelope: Mapping[str, Any]) -> None:
@@ -725,19 +637,15 @@ def validate_rollup_envelope(envelope: Mapping[str, Any]) -> None:
     assert isinstance(envelope.get("truncated"), bool)
     node = envelope.get("node")
     rows = envelope.get("ext_tallies")
-    type_tallies = envelope.get("type_tallies")
     file_type_breakdown = envelope.get("file_type_breakdown")
     assert isinstance(rows, list)
-    assert isinstance(type_tallies, dict)
     if node is None:
         assert rows == [], "a cold rollup cannot advertise tallies"
-        assert type_tallies == {"families": [], "extensions": []}
         assert file_type_breakdown is None
         return
-    result = {"node": node, "ext_tallies": rows, "type_tallies": type_tallies}
-    if file_type_breakdown is not None:
-        result["file_type_breakdown"] = file_type_breakdown
-    validate_rollup_result(result)
+    validate_rollup_result(
+        {"node": node, "ext_tallies": rows, "file_type_breakdown": file_type_breakdown}
+    )
 
 
 __all__ = [
@@ -750,13 +658,10 @@ __all__ = [
     "RollupFileNode",
     "RollupRest",
     "RollupResult",
-    "TypeFamilyTally",
-    "TypeTallies",
     "validate_extension_tallies",
     "validate_file_type_breakdown",
     "validate_rollup_envelope",
     "validate_rollup_node",
     "validate_rollup_result",
     "validate_tree_node",
-    "validate_type_tallies",
 ]

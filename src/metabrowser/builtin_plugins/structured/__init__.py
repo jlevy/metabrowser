@@ -23,6 +23,7 @@ from strif import file_mtime_hash
 
 from metabrowser.builtin_plugins.structured.parser import parse_structured
 from metabrowser.gz_io import ArtifactPath
+from metabrowser.http_caching import build_scoped_etag
 from metabrowser.paths_safe import _rel_path, _safe_path
 
 if TYPE_CHECKING:
@@ -72,5 +73,5 @@ def parsed_handler(request: Request) -> JSONResponse:
             "parse_error": payload.parse_error,
             "truncated": payload.truncated,
         },
-        headers={"ETag": f'"{mtime_hash}"'},
+        headers={"ETag": build_scoped_etag(mtime_hash)},
     )

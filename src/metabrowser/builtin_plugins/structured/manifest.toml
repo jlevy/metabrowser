@@ -2,6 +2,7 @@
 name = "structured"
 display_name = "Structured Data"
 version = "0.0.1"
+sdk_version = "0.2"
 extra_scripts = ["preview.js", "tree.js"]
 
 # Generic JSON / YAML browser. Renders the parsed structure as a

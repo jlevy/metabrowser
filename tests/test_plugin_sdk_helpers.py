@@ -96,11 +96,41 @@ def test_sdk_exports_clear_truncation_warning() -> None:
     src = _sdk_source()
     assert "renderTextTruncationWarning: renderTextTruncationWarning" in src
     assert "function renderTextTruncationWarning" in src
-    assert "Content truncated." in src
-    assert "Select Load more to continue." in src
+    # The notice names the condition plainly and reports how much of the file
+    # is showing. It was "Content truncated."; "Partial file." says the same
+    # thing about the file rather than about the rendering.
+    assert "Partial file." in src
+    assert "Showing " in src
     assert "Printed output" not in src
     assert "complete source PDF" not in src
     assert "metabrowser-source-truncation-warning" in src
+
+
+def test_truncation_banner_carries_its_own_load_more() -> None:
+    """The notice that content is missing offers the remedy in place.
+
+    It used to end "Select Load more to continue." and point at a control in
+    the pane header, which is a different place from the explanation and is
+    scrolled away by the time a reader wants it.
+    """
+    src = _sdk_source()
+    assert "Select Load more to continue." not in src
+    assert "function loadMoreButtonHtml" in src
+    assert 'data-position="${position}"' in src
+
+
+def test_sdk_exports_a_trailing_load_more_control() -> None:
+    """Partial content is bracketed by the control that continues it.
+
+    See docs/design-system.md, "Continuing partial content".
+    """
+    src = _sdk_source()
+    assert "renderTextLoadMoreFooter: renderTextLoadMoreFooter" in src
+    assert "function renderTextLoadMoreFooter" in src
+    assert "metabrowser-source-more-footer" in src
+    # Both ends read the same payload, so they cannot disagree about whether
+    # more remains.
+    assert "function textPreviewProgress" in src
 
 
 def test_sdk_size_html_handles_null_skeleton() -> None:

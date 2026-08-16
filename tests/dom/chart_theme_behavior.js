@@ -126,6 +126,7 @@ for (const relative of [
   "src/metabrowser/static/inventory_scope.js",
   "src/metabrowser/static/resource_context.js",
   "src/metabrowser/static/view_state.js",
+  "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin_sdk.js",
   "src/metabrowser/static/charts.js",
 ]) {
@@ -169,7 +170,10 @@ const firstPayload = {
     {
       title: "First",
       type: "line",
-      series: [{ label: "First series", data: [1], color: "var(--chart-series-info)" }],
+      series: [
+        { label: "First series", data: [1], color: "var(--chart-series-info)" },
+        { label: "OKLCH series", data: [2], color: "oklch(70% 0.1 95)" },
+      ],
     },
   ],
 };
@@ -211,6 +215,7 @@ process.stdout.write(
     staticUpdateCalls,
     firstRuntime: {
       initialSeries: firstRuntimeChart.data.datasets[0].borderColor,
+      oklchAlpha: firstRuntimeChart.data.datasets[1].backgroundColor,
       destroyedOnRepaint: firstRuntimeChart.destroyCalls,
       repaintedSeries: repaintedFirstRuntimeChart.data.datasets[0].borderColor,
       specTokenPreserved: firstPayload.charts[0].series[0].color,

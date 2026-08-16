@@ -101,7 +101,7 @@ def _breakdown_for_facts(facts: list[dict[str, object]]) -> dict[str, object]:
             top=0,
             ext_top=0,
             max_nodes=1,
-            type_top=20,
+            remaining_top=20,
             filename_top=20,
             ext_rank="dual",
         ),

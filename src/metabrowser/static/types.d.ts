@@ -9,10 +9,69 @@ type MetabrowserViewSpec = {
   dispose?: (container: HTMLElement) => void;
 };
 
-type MetabrowserOpenPathOptions = {
+type MetabrowserNavigationOpenOptions = {
   /** Activate this view when the destination declares it; otherwise use its default. */
   viewId?: string;
 };
+
+type MetabrowserNavigationApi = Readonly<{
+  current(): MetabrowserNavigationTarget | null;
+  href(target: MetabrowserNavigationTarget): string;
+  open(
+    target: MetabrowserNavigationTarget,
+    options?: MetabrowserNavigationOpenOptions,
+  ): Promise<void>;
+}>;
+
+type MetabrowserNavigationTarget = Readonly<{
+  path: string;
+  query?: string;
+  fragment?: string;
+}>;
+
+type MetabrowserRepositoryContext = Readonly<{
+  branch: string | null;
+  host: "github.com";
+  name: string;
+  owner: string;
+  revision: string;
+  served_prefix: string;
+}>;
+
+type MetabrowserNavigationApplyContext = Readonly<{
+  source: "startup" | "user" | "popstate";
+  pathChanged: boolean;
+  isCurrent(): boolean;
+  viewId?: string;
+}>;
+
+type MetabrowserNavigationController = Readonly<{
+  canonicalizePath(path: string, isFolder: boolean): void;
+  current(): MetabrowserNavigationTarget | null;
+  dispose(): void;
+  open(
+    target: MetabrowserNavigationTarget,
+    options?: { replace?: boolean; viewId?: string },
+  ): Promise<unknown>;
+  start(): Promise<unknown>;
+}>;
+
+type MetabrowserNavigationRouteRuntime = Readonly<{
+  attachController(controller: MetabrowserNavigationController): () => void;
+  createController(options: {
+    apply(
+      target: MetabrowserNavigationTarget | null,
+      context: MetabrowserNavigationApplyContext,
+    ): unknown;
+    eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">;
+    history?: Pick<History, "pushState" | "replaceState">;
+    location?: Pick<Location, "pathname" | "search" | "hash">;
+  }): MetabrowserNavigationController;
+  href(target: MetabrowserNavigationTarget): string;
+  navigation: MetabrowserNavigationApi;
+  normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
+  parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
+}>;
 
 type KpressAssetLoading = "classic" | "module" | "resource" | "stylesheet";
 
@@ -117,16 +176,12 @@ type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
     fingerprint: string;
   }>;
   groups: ReadonlyArray<MetabrowserFileTypeCategory>;
-  /** Compatibility alias for groups. */
-  categories: ReadonlyArray<MetabrowserFileTypeCategory>;
   families: ReadonlyArray<MetabrowserFileTypeFamily>;
   kinds: ReadonlyArray<MetabrowserFileTypeKind>;
   classify(name: unknown, extension: unknown): MetabrowserFileTypeClassification;
   matchExtension(extension: unknown): MetabrowserFileTypeFamilyMatch | null;
   canonicalExtension(extension: unknown): string;
   groupForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
-  /** Compatibility alias for groupForFile. */
-  categoryForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
   distributionKeyForExtension(extension: unknown): string;
 }>;
 
@@ -171,6 +226,13 @@ type MetabrowserResourceContextRuntime = Readonly<{
     seed(path: string, value: T): void;
     subscribe(path: string, listener: (value: T) => void): () => void;
   }>;
+}>;
+
+type MetabrowserSourceAppendRuntime = Readonly<{
+  appendSourceText(root: ParentNode | null, text: string): boolean;
+  nextChunkBytes(current: number, cap: number): number;
+  syncLoadMoreFooter(root: ParentNode | null, markup: string): boolean;
+  syncTruncationWarning(root: ParentNode | null, markup: string): boolean;
 }>;
 
 type MetabrowserViewStateRuntime = Readonly<{
@@ -356,13 +418,48 @@ type TextBuiltins = {
 };
 
 type MarkdownBuiltins = {
+  analyzeGraph(options?: {
+    limits?: { maxFiles?: number; maxLinks?: number; maxSourceBytes?: number };
+    signal?: AbortSignal;
+  }): Promise<MarkdownGraphResult>;
   mountRendered: (
     container: HTMLElement,
     ctx: MetabrowserRenderContext,
-    options?: { signal?: AbortSignal },
+    /** `includeToc: "off"` for a document embedded in host navigation that is
+     * already the reader's way around it; omitted leaves the decision to
+     * KPress' own thresholds. */
+    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off" },
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
+
+type MarkdownGraphResult = Readonly<{
+  backlinks: ReadonlyArray<Readonly<{ sources: ReadonlyArray<string>; target: string }>>;
+  complete: boolean;
+  diagnostics: ReadonlyArray<Readonly<{ code: string; path?: string }>>;
+  edges: ReadonlyArray<
+    Readonly<{
+      action: "navigate" | "embed";
+      fragment?: string;
+      source: string;
+      syntax: "markdown" | "html" | "wiki";
+      target: string;
+    }>
+  >;
+  nodes: ReadonlyArray<Readonly<{ path: string }>>;
+  sourceBytes: number;
+  unresolved: ReadonlyArray<
+    Readonly<{
+      action: "navigate" | "embed";
+      authoredTarget: string;
+      candidates?: ReadonlyArray<string>;
+      reason: string;
+      source: string;
+      status: string;
+      syntax: "markdown" | "html" | "wiki";
+    }>
+  >;
+}>;
 
 type MetabrowserBuiltins = {
   agentLog?: AgentLogBuiltins;
@@ -377,17 +474,6 @@ type MetabrowserRollupEnvelope = {
   path: string;
   node: Record<string, unknown> | null;
   ext_tallies: Array<Array<unknown>>;
-  type_tallies: {
-    families: Array<{
-      id: string;
-      all_files: number;
-      all_bytes: number;
-      unignored_files: number;
-      unignored_bytes: number;
-      extensions: Array<[string, number, number, number, number]>;
-    }>;
-    extensions: Array<[string, number, number, number, number]>;
-  };
   file_type_breakdown: MetabrowserFileTypeBreakdown | null;
   index_status: string;
   indexed_files: number;
@@ -444,8 +530,6 @@ type MetabrowserRollupOptions = {
   remaining_top?: number;
   signal?: AbortSignal;
   top?: number;
-  /** Compatibility alias for remaining_top. */
-  type_top?: number;
 };
 
 type MetabrowserRollupWatch = {
@@ -461,6 +545,8 @@ type MetabrowserFolderEnvelope = {
     state: "pending" | "complete";
     total_files: number | null;
     total_size: number | null;
+    unignored_files: number | null;
+    unignored_size: number | null;
   };
   kind: "folder";
   name: string;
@@ -480,8 +566,10 @@ type FolderOverviewMountHandle<T> = Readonly<{
   update?(context: MetabrowserRenderContext, data: T): void | Promise<void>;
 }>;
 type FolderOverviewPanelSpec<T> = Readonly<{
+  collapsible?: boolean;
   classifyError?(error: unknown): FolderOverviewPanelError;
   label: string;
+  defaultExpanded?: boolean;
   mount(
     container: HTMLElement,
     context: MetabrowserRenderContext,
@@ -504,6 +592,27 @@ type FolderOverviewRegistry = Readonly<{
 }>;
 
 type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
+
+type MetabrowserDirectoryTotals = Readonly<{
+  path: string;
+  revision: number;
+  state: "pending" | "complete";
+  totalFiles: number;
+  totalBytes: number;
+  unignoredFiles: number;
+  unignoredBytes: number;
+}>;
+
+type MetabrowserDirectoryTotalsStore = Readonly<{
+  get(path: string): MetabrowserDirectoryTotals | null;
+  subscribe(path: string, listener: (value: MetabrowserDirectoryTotals | null) => void): () => void;
+}>;
+
+type MetabrowserDirectoryTotalsHostStore = MetabrowserDirectoryTotalsStore &
+  Readonly<{
+    applyChange(ops: ReadonlyArray<Record<string, unknown>>): void;
+    applySnapshot(entries: ReadonlyArray<unknown>): void;
+  }>;
 
 type MetabrowserFileTypeIcon = Readonly<{
   className: string;
@@ -550,6 +659,7 @@ type MetabrowserSdk = {
   ageLabelHtml(mtimeSeconds: number | null | undefined): string;
   builtins: MetabrowserBuiltins;
   errors: MetabrowserRequestErrorRuntime;
+  directoryTotals: MetabrowserDirectoryTotalsStore;
   filters: MetabrowserFilterState;
   folderOverview?: FolderOverviewRegistry;
   folderContext: Readonly<{
@@ -565,6 +675,15 @@ type MetabrowserSdk = {
   ): MetabrowserChartInstance;
   escapeHtml(value: string): string;
   fetchRollup(path: string, opts?: MetabrowserRollupOptions): Promise<MetabrowserRollupEnvelope>;
+  fetchCompleteText(
+    ctx: MetabrowserRenderContext,
+    options?: { signal?: AbortSignal },
+  ): Promise<string>;
+  fetchText(
+    target: MetabrowserNavigationTarget,
+    options?: { signal?: AbortSignal },
+  ): Promise<string>;
+  fileCatalog: MetabrowserPublicFileCatalogApi;
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
@@ -592,6 +711,7 @@ type MetabrowserSdk = {
     plugin: string,
     endpoint: string,
     params: Record<string, unknown>,
+    options?: { signal?: AbortSignal },
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
   filterState?: MetabrowserFilterState;
@@ -605,7 +725,8 @@ type MetabrowserSdk = {
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
-  openPath(path: string, options?: MetabrowserOpenPathOptions): void;
+  navigation: MetabrowserNavigationApi;
+  repository: MetabrowserRepositoryContext | null;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
   setViewPrintState(
@@ -613,6 +734,18 @@ type MetabrowserSdk = {
     state: { printable: boolean; profile?: string; runtime?: string },
   ): void;
   renderTextTruncationWarning(data: Record<string, unknown>): string;
+  renderTextLoadMoreFooter(data: Record<string, unknown>): string;
+  partialNoticeHtml(
+    progress: { loaded: string; total: string },
+    position: "top" | "bottom",
+    options?: {
+      useSiteClass?: string;
+      action?: string | null;
+      hidden?: boolean;
+      label?: string;
+      showControl?: boolean;
+    },
+  ): string;
   sizeClass(value: number): "" | "size-large";
   sizeHtml(value: number | null | undefined, extraClass?: string): string;
   wrapWithCopy(html: string): string;
@@ -749,6 +882,15 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
 
 type MetabrowserKnownFileCatalogRuntime = Readonly<{
   create(): MetabrowserKnownFileCatalogApi;
+}>;
+
+type MetabrowserPublicFileCatalogApi = Readonly<{
+  snapshot(): MetabrowserKnownFileCatalogSnapshot;
+  subscribe(listener: () => void): () => void;
+}>;
+
+type MetabrowserPluginHostRuntime = Readonly<{
+  attachFileCatalog(catalog: MetabrowserKnownFileCatalogApi): () => void;
 }>;
 
 type MetabrowserCatalogFeedApi = Readonly<{
@@ -1153,6 +1295,8 @@ declare global {
     MetabrowserKeyboardShortcuts: MetabrowserKeyboardShortcutsRuntime;
     MetabrowserKeyboardHelp: MetabrowserKeyboardHelpRuntime;
     MetabrowserOverlay: MetabrowserOverlayRuntime;
+    MetabrowserNavigationRoute: MetabrowserNavigationRouteRuntime;
+    MetabrowserPluginHost: MetabrowserPluginHostRuntime;
     MetabrowserContributionRegistry: MetabrowserContributionRegistryRuntime;
     MetabrowserFormatters: MetabrowserFormatterRuntime;
     MetabrowserInventoryScope: MetabrowserInventoryScopeRuntime;
@@ -1164,6 +1308,7 @@ declare global {
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
+    MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
@@ -1171,6 +1316,7 @@ declare global {
       move(event: MouseEvent): void;
       show(html: string, event: MouseEvent): void;
     };
+    METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SETTINGS?: {
       FILE_TYPE_REGISTRY?: {
         schema: "file-type-registry-v1";
@@ -1215,15 +1361,16 @@ declare global {
       ROLLUP_DEFAULT_DEPTH?: number;
       ROLLUP_DEFAULT_EXT_RANK?: "bytes" | "dual";
       ROLLUP_DEFAULT_EXT_TOP?: number;
-      ROLLUP_FILE_TYPE_NAMED_LIMIT?: number;
-      ROLLUP_FILE_TYPE_RAW_LIMIT?: number;
       ROLLUP_FILE_TYPE_FILENAME_LIMIT?: number;
       ROLLUP_FILE_TYPE_REMAINING_LIMIT?: number;
       ROLLUP_DEFAULT_TOP?: number;
       ROLLUP_WATCH_DEBOUNCE_MS?: number;
       DISTRIBUTION_PALETTE_SLOTS?: number;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
+      TEXT_PREVIEW_CHUNK_BYTES?: number;
+      TEXT_PREVIEW_MAX_CHUNK_BYTES?: number;
     };
+    metabrowserDirectoryTotalsStore: MetabrowserDirectoryTotalsHostStore;
     metabrowser: MetabrowserSdk;
     metabrowserAgentLog?: {
       mountLogEventRaw?: (rawEl: HTMLElement) => void;

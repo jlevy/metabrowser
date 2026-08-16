@@ -128,14 +128,13 @@ async function importSource(relative) {
     fingerprint: "registry-seven",
     groups: [
       { id: "media", label: "Media" },
-      { id: "logs", label: "Logs" },
       { id: "other", label: "Other" },
     ],
     families: [
       { id: "images", label: "Images", groupId: "media", extensions: [".png"] },
-      { id: "log-files", label: "Log files", groupId: "logs", extensions: [".log"] },
+      { id: "log-files", label: "Log files", groupId: "other", extensions: [".log"] },
     ],
-    categoryForFile: () => "other",
+    groupForFile: () => "other",
   };
   const breakdownEnvelope = modelModule.normalizeRollupEnvelope({
     ...raw,
@@ -146,7 +145,7 @@ async function importSource(relative) {
       metrics: metrics(6, 50),
       groups: [
         {
-          id: "logs",
+          id: "other",
           families: [
             {
               id: "log-files",
@@ -186,9 +185,9 @@ async function importSource(relative) {
   );
   check(
     "file-type definitions control group and family order",
-    breakdownModel.groups.map((group) => group.id).join(",") === "media,logs,other" &&
+    breakdownModel.groups.map((group) => group.id).join(",") === "media,other" &&
       breakdownModel.rows.map((row) => row.key).join(",") ===
-        "family:images,family:log-files,(none),",
+        "family:images,,family:log-files,(none)",
   );
   check(
     "singleton file-type families are disclosable",
@@ -200,13 +199,13 @@ async function importSource(relative) {
     "No extension exposes filenames and a counted Others tail",
     noExtensionRow?.children[0].label === "README" &&
       noExtensionRow.children[0].iconPath === "README" &&
-      noExtensionRow.children[1].label === "Others (4 more)",
+      noExtensionRow.children[1].label === "4 more",
   );
   check(
     "Other types exposes raw extensions and a counted Others tail",
     remainingRow?.children[0].extension === ".bin" &&
       remainingRow.children[0].iconPath === "x.bin" &&
-      remainingRow.children[1].label === "Others (2 more)",
+      remainingRow.children[1].label === "2 more",
   );
   let identityMismatch = false;
   try {
@@ -222,6 +221,77 @@ async function importSource(relative) {
   const failedModel = modelModule.buildFileTypeSummaryModel(failed, true, formatters, baseRuntime);
   check("failed index is terminal", failedModel.scanning === false);
   check("failed index has a distinct flag", failedModel.indexFailed === true);
+  const scanningWithTotals = modelModule.normalizeRollupEnvelope({
+    ...raw,
+    index_status: "scanning",
+  });
+  check(
+    "scanning rollups never expose provisional breakdown rows",
+    modelModule.buildFileTypeSummaryModel(scanningWithTotals, false, formatters, baseRuntime)
+      .state === "pending",
+  );
+
+  const manyFamiliesRuntime = {
+    revision: 7,
+    fingerprint: "registry-seven",
+    groups: [{ id: "code", label: "Code" }],
+    families: Array.from({ length: 12 }, (_, index) => ({
+      id: `family-${index}`,
+      label: `Family ${index}`,
+      groupId: "code",
+      extensions: [`.x${index}`],
+    })),
+  };
+  const manyFamilies = modelModule.normalizeRollupEnvelope({
+    ...raw,
+    node: { total_files: 78, total_size: 78, unignored_files: 78, unignored_size: 78 },
+    file_type_breakdown: {
+      schema: "file-type-breakdown-v1",
+      registry: { schema_version: 1, revision: 7, fingerprint: "registry-seven" },
+      metrics: metrics(78, 78),
+      groups: [
+        {
+          id: "code",
+          families: Array.from({ length: 12 }, (_, index) => ({
+            id: `family-${index}`,
+            metrics: metrics(index + 1, 12 - index),
+            extensions: Array.from({ length: 12 }, (__, extensionIndex) => ({
+              extension: `.x${index}-${extensionIndex}`,
+              metrics: metrics(extensionIndex + 1, 12 - extensionIndex),
+            })),
+          })),
+        },
+      ],
+      no_extension: { metrics: metrics(0, 0), filenames: [], others: null },
+      remaining_types: { metrics: metrics(0, 0), extensions: [], others: null },
+    },
+  });
+  const byFiles = modelModule.buildFileTypeSummaryModel(
+    manyFamilies,
+    true,
+    formatters,
+    manyFamiliesRuntime,
+    "files",
+  );
+  check(
+    "subsection rows sort by the active metric",
+    byFiles.rows[0].label === "Family 11" && byFiles.rows[9].label === "Family 2",
+    byFiles.rows.map((row) => row.label).join(","),
+  );
+  check(
+    "subsections expose ten rows plus an aggregate disclosure tail",
+    byFiles.rows.length === 11 &&
+      byFiles.rows[10].label === "2 more" &&
+      byFiles.rows[10].kind === "tail" &&
+      byFiles.rows[10].children.length === 2,
+    byFiles.rows.map((row) => row.label).join(","),
+  );
+  check(
+    "family children use the same sorting and bounded-tail grammar",
+    byFiles.rows[0].children[0].label.endsWith("-11") &&
+      byFiles.rows[0].children[10].label === "2 more" &&
+      byFiles.rows[0].children[10].children.length === 2,
+  );
   const failedWithoutTotals = modelModule.normalizeRollupEnvelope({
     ...raw,
     index_status: "failed",
@@ -323,34 +393,21 @@ async function importSource(relative) {
   first.release();
   second.release();
 
-  const state = treemapModel.sanitizeTreemapState({
-    metric: "files",
-    grouping: "type",
-    color: "age",
-    ignored: "hidden",
-  });
-  check(
-    "treemap state keeps only the metric and boolean ignore scope",
-    state.metric === "files" &&
-      state.includeIgnored === true &&
-      Object.keys(state).join(",") === "metric,includeIgnored",
-    JSON.stringify(state),
-  );
-  check(
-    "every legacy ignored mode resets to the checked default",
-    treemapModel.sanitizeTreemapState({ ignored: "dimmed" }).includeIgnored === true &&
-      treemapModel.sanitizeTreemapState({ ignored: "shown" }).includeIgnored === true &&
-      treemapModel.sanitizeTreemapState({ ignored: "hidden" }).includeIgnored === true,
-  );
-  check(
-    "the new ignored boolean persists",
-    treemapModel.sanitizeTreemapState({ includeIgnored: false }).includeIgnored === false,
-  );
-  check(
-    "ignored is included by default",
-    treemapModel.sanitizeTreemapState(null).includeIgnored === true,
-  );
   check("treemap parent path", treemapModel.parentPath("a/b") === "a");
+  check(
+    "treemap parent navigation identifies the enclosing folder",
+    JSON.stringify(treemapModel.parentNavigation("src/metabrowser")) ===
+      JSON.stringify({ path: "src", label: "src/" }),
+  );
+  check(
+    "treemap parent navigation identifies the served root",
+    JSON.stringify(treemapModel.parentNavigation("src")) ===
+      JSON.stringify({ path: "", label: "/" }),
+  );
+  check(
+    "treemap parent navigation is absent at the served root",
+    treemapModel.parentNavigation("") === null,
+  );
 
   if (failures.length) {
     console.error(`folder overview model FAILURES:\n- ${failures.join("\n- ")}`);
