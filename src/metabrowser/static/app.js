@@ -6127,7 +6127,11 @@ async function revealInTree(path) {
     if (folder) {
       var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
-        if (children.querySelector(".tree-lazy-placeholder")) {
+        // Scoped to direct children on purpose. A descendant folder carries
+        // its own stub, so an unscoped match reads "this folder is unloaded"
+        // for a folder whose rows are already on screen, and reloading it
+        // swaps those rows for a spinner before restoring them.
+        if (children.querySelector(":scope > .tree-lazy-placeholder")) {
           await loadSubtree(current, children);
         }
         if (children.style.display === "none") {

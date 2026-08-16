@@ -65,6 +65,11 @@ Keyboard discovery and navigation:
 - The file tree now follows the conventional accessible keyboard model: arrow keys,
   Home, End, Enter, and Space move, expand, collapse, and activate rows while preserving
   native scrolling in the preview pane.
+- An expanded folder no longer flickers shut when navigation reaches something inside
+  it. Revealing a path treated a folder as unloaded whenever any descendant still carried
+  a lazy stub, so it refetched a folder whose rows were already on screen and swapped
+  them for a loading placeholder before restoring them.
+  The check now looks only at the folder’s own direct children.
 - Selection follows focus in the tree: arrow keys, Home, and End open the row they land
   on, so skimming costs one keypress per row rather than two.
   Enter and Space are action keys rather than view keys — they expand or collapse a

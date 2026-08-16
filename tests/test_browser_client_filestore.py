@@ -31,6 +31,8 @@ Coverage:
 
 from __future__ import annotations
 
+import re
+
 from metabrowser import server as proc_browser
 
 
@@ -511,6 +513,24 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
     assert "if (result.scanning)" in fn_block
     assert 'treeLazyLoadingHtml("Still scanning this folder…")' in fn_block
     assert "scheduleSubtreeRetry(path, childrenEl)" in fn_block
+
+
+def test_every_lazy_stub_lookup_is_scoped_to_direct_children() -> None:
+    """A folder is unloaded only if it carries a stub of its own.
+
+    Descendant folders carry their own stubs, so an unscoped lookup answers
+    "unloaded" for a folder whose rows are already rendered. Reloading such a
+    folder replaces its rows with a loading placeholder and then restores them,
+    which reads on screen as the folder closing and reopening. `revealInTree`
+    walks every ancestor of the target on each navigation, so one unscoped
+    lookup there flickers a folder on ordinary keyboard browsing.
+    """
+
+    js = _read_app_js()
+    lookups = re.findall(r"querySelector(?:All)?\(\s*([\"'])(.*?tree-lazy-placeholder.*?)\1", js)
+    assert lookups, "expected at least one lazy-stub lookup to guard"
+    unscoped = [selector for _quote, selector in lookups if not selector.startswith(":scope >")]
+    assert not unscoped, f"lazy-stub lookups must be scoped to direct children: {unscoped}"
 
 
 def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
