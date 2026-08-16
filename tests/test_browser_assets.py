@@ -52,7 +52,10 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     sdk = _browser_asset("static/plugin_sdk.js")
     agent_log = _browser_asset("builtin_plugins/agent_log/index.js")
 
-    assert 'onclick="loadMoreCurrentText()"' in app
+    # The Load more control moved into the SDK's partial-content notice, so the
+    # inline handler is emitted there while the global it names still lives in
+    # app.js. That split is exactly what this check exists to catch.
+    assert 'loadMoreCurrentText()"' in sdk
     assert "async function loadMoreCurrentText()" in app
     # Header copy/navigation buttons carry paths in data-* attributes
     # consumed by a delegated listener (inline onclick would HTML-decode

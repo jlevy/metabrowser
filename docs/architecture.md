@@ -394,6 +394,7 @@ route stack.
 - [Security policy and content trust model](../SECURITY.md)
 - [Plugin authoring](plugins.md)
 - [Design system](design-system.md)
+- [Rendering large content](large-content-rendering.md)
 - [Folder Overview panels and file-type summary](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
 - [End-to-end testing](e2e-testing.md)
 - [Real-time debugging](realtime-debugging.md)

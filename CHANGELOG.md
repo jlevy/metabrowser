@@ -4,6 +4,62 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Binary and source previews:
+
+- Files classified `binary` now open in a new built-in **Bytes** view instead of showing
+  “No preview is available”.
+  Each byte renders as exactly one display unit: printable ASCII as itself, and every
+  other byte as uppercase hex in guillemets such as `‹00›` or `‹FF›`. Nothing is
+  decoded, so the bytes on screen are the bytes on disk.
+  Literal text takes the full-strength text color and byte codes recede to the muted
+  one; on content where the two alternate too often to mark apart, the view drops the
+  distinction for the whole file and says so.
+- Large previews load in far fewer steps.
+  The source view opens at 2 MiB and doubles per click to 8 MiB, so a 4 MiB file opens
+  in one click rather than 31 and a 16 MiB file in three rather than 127. Both views
+  append each chunk instead of rebuilding the pane, so a click costs what it loaded
+  rather than the running total.
+- Loaded bytes stay real text in the DOM, so browser find-in-page, select-all, and print
+  continue to cover everything loaded.
+- Partially-loaded content now offers **Load more at both ends**, above and below what
+  has loaded, and the notice carries the button itself rather than naming a control
+  elsewhere. Reaching the end of a chunk no longer means scrolling back to the top to
+  continue. Both appear and retire together.
+- Binary files larger than the preview ceiling now open and load up to it, instead of
+  refusing with “Preview unavailable”.
+  The ceiling caps how much may be loaded, not which files may be opened; at the cap the
+  notice says the limit was reached rather than silently looking like a finished file.
+- Progress is stated once.
+  Both views carried a second readout in their pane chrome saying the same thing as the
+  notice directly below it.
+- Message boxes are now one primitive.
+  A **notice** — anything the app says about the content it is showing — always uses the
+  ordinary surface as its fill, and carries its severity on the border alone.
+  The KPress render error previously wore an informational blue fill under a warning
+  border, so an error announced itself in the color of an aside beneath a border naming
+  the wrong severity; it is now a plain surface with an error border.
+- Every partial-content notice is now one style, in the source view and the Bytes view
+  alike: the ordinary surface fill with a warning border, rather than an informational
+  blue that meant something else elsewhere.
+  The rule is documented in the design system and enforced by a test.
+
+File typing:
+
+- Files with no known text extension are classified by **looking at their content**
+  rather than guessing from size.
+  A small binary previously fell under a 512 KiB rule that read it as text with
+  `errors="replace"`, so it rendered as a field of `�` and could never reach the Bytes
+  view; a large extensionless text file was refused for the opposite reason.
+  Both now resolve correctly, and a compressed artifact is judged by its decompressed
+  content. The check is a single bounded read that runs only when the extension does not
+  settle the question, so it stays off the path for almost every file.
+
+Plugin API:
+
+- `fetchPluginData` accepts `options.signal` and rejects a non-ok response with an
+  `Error` carrying `status` and the parsed `payload`, matching `fetchKpressRender`. A
+  data hook can now explain a refusal in its body and have the caller read it.
+
 ## 0.4.2
 
 Release automation:

@@ -169,6 +169,13 @@ type MetabrowserResourceContextRuntime = Readonly<{
   }>;
 }>;
 
+type MetabrowserSourceAppendRuntime = Readonly<{
+  appendSourceText(root: ParentNode | null, text: string): boolean;
+  nextChunkBytes(current: number, cap: number): number;
+  syncLoadMoreFooter(root: ParentNode | null, markup: string): boolean;
+  syncTruncationWarning(root: ParentNode | null, markup: string): boolean;
+}>;
+
 type MetabrowserViewStateRuntime = Readonly<{
   isActive(container: HTMLElement): boolean;
   setActive(container: HTMLElement, active: boolean): void;
@@ -601,6 +608,7 @@ type MetabrowserSdk = {
     plugin: string,
     endpoint: string,
     params: Record<string, unknown>,
+    options?: { signal?: AbortSignal },
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
   filterState?: MetabrowserFilterState;
@@ -622,6 +630,18 @@ type MetabrowserSdk = {
     state: { printable: boolean; profile?: string; runtime?: string },
   ): void;
   renderTextTruncationWarning(data: Record<string, unknown>): string;
+  renderTextLoadMoreFooter(data: Record<string, unknown>): string;
+  partialNoticeHtml(
+    progress: { loaded: string; total: string },
+    position: "top" | "bottom",
+    options?: {
+      useSiteClass?: string;
+      action?: string | null;
+      hidden?: boolean;
+      label?: string;
+      showControl?: boolean;
+    },
+  ): string;
   sizeClass(value: number): "" | "size-large";
   sizeHtml(value: number | null | undefined, extraClass?: string): string;
   wrapWithCopy(html: string): string;
@@ -972,6 +992,7 @@ declare global {
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
+    MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
@@ -1029,6 +1050,8 @@ declare global {
       ROLLUP_WATCH_DEBOUNCE_MS?: number;
       DISTRIBUTION_PALETTE_SLOTS?: number;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
+      TEXT_PREVIEW_CHUNK_BYTES?: number;
+      TEXT_PREVIEW_MAX_CHUNK_BYTES?: number;
     };
     metabrowserDirectoryTotalsStore: MetabrowserDirectoryTotalsHostStore;
     metabrowser: MetabrowserSdk;

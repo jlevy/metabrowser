@@ -272,6 +272,7 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 - [Architecture](docs/architecture.md)
 - [File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md)
 - [Design system](docs/design-system.md)
+- [Rendering large content](docs/large-content-rendering.md)
 - [Development](docs/development.md)
 - [End-to-end testing](docs/e2e-testing.md)
 - [Real-time debugging](docs/realtime-debugging.md)

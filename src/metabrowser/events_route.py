@@ -58,6 +58,11 @@ from metabrowser.events import (
     encode_heartbeat_comment,
     encode_sse,
 )
+from metabrowser.http_caching import (
+    build_scoped_etag,
+    etag_headers,
+    matches_if_none_match,
+)
 from metabrowser.inventory import InventoryIndex
 from metabrowser.inventory import (
     get_instance as get_inventory,
@@ -612,7 +617,7 @@ def _progress_etag(progress: IndexProgress) -> str:
         if progress.active
         else progress.indexed_files
     )
-    return f'"{progress.status}-{count_key}"'
+    return build_scoped_etag(f"{progress.status}-{count_key}")
 
 
 def _build_index_meta(inventory: InventoryIndex, *, suffix_limit: int = 64) -> IndexMeta:
@@ -669,13 +674,13 @@ async def api_index_progress(request: Request) -> Response:
     inventory = get_inventory()
     progress = _build_index_progress(inventory)
     etag = _progress_etag(progress)
-    if not progress.active and request.headers.get("If-None-Match", "") == etag:
+    if not progress.active and matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
     body = json.dumps(asdict(progress), separators=(",", ":")).encode()
     return Response(
         body,
         media_type="application/json",
-        headers={"ETag": etag, "Cache-Control": "no-cache"},
+        headers=etag_headers(etag),
     )
 
 
@@ -774,7 +779,7 @@ def _encode_catalog(files: list[tuple[str, str]], status: str, revision: int) ->
 
 
 def _catalog_etag(inventory: InventoryIndex) -> str:
-    return f'"{inventory.status()}-{inventory.catalog_revision()}"'
+    return build_scoped_etag(f"{inventory.status()}-{inventory.catalog_revision()}")
 
 
 async def api_catalog(request: Request) -> Response:
@@ -793,7 +798,7 @@ async def api_catalog(request: Request) -> Response:
 
     inventory = get_inventory()
     etag = _catalog_etag(inventory)
-    if request.headers.get("If-None-Match", "") == etag:
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
 
     cached = _CATALOG_BODY_CACHE.get(etag)
@@ -801,7 +806,7 @@ async def api_catalog(request: Request) -> Response:
         return Response(
             cached,
             media_type="application/json",
-            headers={"ETag": etag, "Cache-Control": "no-cache"},
+            headers=etag_headers(etag),
         )
 
     status = inventory.status()
@@ -822,7 +827,7 @@ async def api_catalog(request: Request) -> Response:
     return Response(
         body,
         media_type="application/json",
-        headers={"ETag": etag, "Cache-Control": "no-cache"},
+        headers=etag_headers(etag),
     )
 
 
@@ -834,14 +839,13 @@ async def api_index_meta(request: Request) -> Response:
     inventory = get_inventory()
     meta = _build_index_meta(inventory)
     body = json.dumps(asdict(meta), separators=(",", ":")).encode()
-    etag = f'"{meta.status}-{meta.indexed_files}-{meta.indexed_dirs}"'
-    if_none_match = request.headers.get("If-None-Match", "")
-    if if_none_match and if_none_match == etag:
+    etag = build_scoped_etag(f"{meta.status}-{meta.indexed_files}-{meta.indexed_dirs}")
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
     return Response(
         body,
         media_type="application/json",
-        headers={"ETag": etag, "Cache-Control": "no-cache"},
+        headers=etag_headers(etag),
     )
 
 

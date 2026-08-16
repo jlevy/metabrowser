@@ -30,6 +30,11 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 from strif import file_mtime_hash
 
+from metabrowser.http_caching import (
+    build_scoped_etag,
+    etag_headers,
+    matches_if_none_match,
+)
 from metabrowser.plugin_loader.discovery import LoadedPlugin
 
 LOG = logging.getLogger(__name__)
@@ -67,18 +72,14 @@ def _make_plugin_static_handler(
         if resolved is None:
             return PlainTextResponse(f"not found: {rel}", status_code=404)
 
-        # ETag: same shape as the rest of the app uses for /api/file.
-        etag = f'"mb-{file_mtime_hash(resolved)}"'
-        if_none_match = request.headers.get("if-none-match", "")
-        if if_none_match == etag:
+        # The shared validator, so this really is the shape /api/file uses.
+        etag = build_scoped_etag(file_mtime_hash(resolved))
+        if matches_if_none_match(request, etag):
             return Response(status_code=304, headers={"ETag": etag})
 
         media_type, _ = mimetypes.guess_type(str(resolved))
         body = resolved.read_bytes()
-        headers = {
-            "ETag": etag,
-            "Cache-Control": "no-cache",  # let revalidation happen via ETag
-        }
+        headers = etag_headers(etag)
         return Response(
             content=body,
             status_code=200,

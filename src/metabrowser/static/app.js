@@ -20,7 +20,12 @@ const TREE_AUTO_EXPAND_ROW_HEIGHT_PROPERTY = "--tree-auto-expand-row-height";
 const FILE_PREFETCH_HOVER_DELAY_MS = 250;
 const FILE_PREFETCH_MAX_BYTES = 512 * 1024;
 const FILE_PREFETCH_MAX_CONCURRENT = 1;
-const TEXT_PREVIEW_CHUNK_BYTES = 128 * 1024;
+// Chunking comes from settings.py so the two planes cannot drift; see
+// docs/large-content-rendering.md for the measurements behind the sizes.
+const TEXT_PREVIEW_CHUNK_BYTES =
+  window.METABROWSER_SETTINGS?.TEXT_PREVIEW_CHUNK_BYTES || 2 * 1024 * 1024;
+const TEXT_PREVIEW_MAX_CHUNK_BYTES =
+  window.METABROWSER_SETTINGS?.TEXT_PREVIEW_MAX_CHUNK_BYTES || 8 * 1024 * 1024;
 
 // Optional perf instrumentation. perf.js installs window.metabrowserPerf
 // with measure/measureAsync helpers and a fetch wrapper; if it isn't
@@ -3494,6 +3499,16 @@ function cachePut(cache, key, value, maxSize, onEvict) {
 }
 
 var textChunkLoadInFlight = false;
+/**
+ * Bytes the next Load more will request. Each click doubles up to the cap, so
+ * reaching a large file takes a handful of clicks rather than dozens while no
+ * single click stalls the main thread.
+ */
+var textChunkNextBytes = TEXT_PREVIEW_CHUNK_BYTES;
+
+function resetTextChunkGrowth() {
+  textChunkNextBytes = TEXT_PREVIEW_CHUNK_BYTES;
+}
 
 function showTextChunkLoadError() {
   var warning = document.querySelector(".metabrowser-source-truncation-warning");
@@ -3519,6 +3534,7 @@ async function loadMoreCurrentText() {
   textChunkLoadInFlight = true;
   var path = currentPath;
   var offset = cached.bytes_read || 0;
+  var requested = textChunkNextBytes;
   try {
     var resp = await fetch(
       "/api/file?path=" +
@@ -3526,7 +3542,7 @@ async function loadMoreCurrentText() {
         "&offset=" +
         encodeURIComponent(String(offset)) +
         "&limit=" +
-        encodeURIComponent(String(TEXT_PREVIEW_CHUNK_BYTES)),
+        encodeURIComponent(String(requested)),
     );
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status}`);
@@ -3550,7 +3566,25 @@ async function loadMoreCurrentText() {
     cached.bytes_read = chunk.bytes_read || cached.bytes_read;
     cached.content_truncated = !!chunk.content_truncated;
     cached.highlight_disabled = true;
-    renderFile(cached);
+    textChunkNextBytes = window.MetabrowserSourceAppend.nextChunkBytes(
+      requested,
+      TEXT_PREVIEW_MAX_CHUNK_BYTES,
+    );
+    if (window.MetabrowserSourceAppend.appendSourceText(document, chunk.content || "")) {
+      // The append skipped the plugin's render, so the banner it emitted still
+      // reports the byte counts from the previous chunk. Sync it rather than
+      // leaving a "content truncated" notice over a fully loaded file.
+      window.MetabrowserSourceAppend.syncTruncationWarning(
+        document,
+        window.metabrowser?.renderTextTruncationWarning?.(cached) || "",
+      );
+      window.MetabrowserSourceAppend.syncLoadMoreFooter(
+        document,
+        window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
+      );
+    } else {
+      renderFile(cached);
+    }
   } catch (e) {
     console.warn("Failed to load text chunk", e);
     if (currentPath === path) {
@@ -3577,6 +3611,9 @@ async function selectFile(path, skipHistory, preferredViewId) {
       // Always close any prior live stream — switching files (or reopening
       // the same file) starts fresh.
       closeLiveStream();
+      // Chunk growth is per file: a fresh selection starts small again so
+      // opening a file never inherits the last file's appetite.
+      resetTextChunkGrowth();
       currentPath = path;
       // The route write happens once, after the response identifies
       // whether the path is a file or a folder — see commitRoute.
@@ -3897,22 +3934,6 @@ function renderBadges(data) {
   return badges;
 }
 
-function renderTextPreviewControls(data) {
-  if (data?.type !== "text" || typeof data.bytes_read !== "number") {
-    return "";
-  }
-  if (!data.content_truncated && data.bytes_read >= (data.size || 0)) {
-    return "";
-  }
-  var loaded = Math.min(data.bytes_read || 0, data.size || 0);
-  var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
-  if (data.content_truncated) {
-    html +=
-      '<button class="btn file-header-action" type="button" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
-  }
-  return html;
-}
-
 function boolData(value) {
   return value === true || value === "true" || value === "1";
 }
@@ -4108,7 +4129,6 @@ function renderFile(data, preferredViewId) {
           "</span>";
         html += badges;
         html += sizeHtml(data.size, "file-header-size");
-        html += renderTextPreviewControls(data);
         html +=
           '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
           (ICONS.print || "") +
