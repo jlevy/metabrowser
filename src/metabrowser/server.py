@@ -1635,8 +1635,6 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             }
         )
     mtime_hash = file_mtime_hash(target)
-    etag = _etag_for(mtime_hash)
-    etag_headers = {"etag": etag, "cache-control": "no-cache"}
     compression_fields = (
         _compression_envelope_fields(artifact, logical_size)
         if logical_size is not None
@@ -1667,12 +1665,18 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         requested_text_offset if logical_size is None else min(requested_text_offset, logical_size)
     )
 
+    # The window is part of what the body is, so it is part of the validator,
+    # and the tag can only be built once the window is known. Keyed on the file
+    # alone, one tag covered every chunk, and the 304 path had to be fenced off
+    # to `text_offset == 0` to stay correct — the knowledge lived in a guard at
+    # one call site instead of in the tag.
+    etag = _etag_for(f"{mtime_hash}-{text_offset}-{text_limit}")
+    etag_headers = {"etag": etag, "cache-control": "no-cache"}
+
     # 304 short-circuit. Repeat clicks on an unchanged file return zero
-    # bytes — meaningful over an SSH tunnel and free locally. We compare
-    # bytewise against the full ETag including the process-epoch suffix
-    # so a server restart guarantees a fresh body even if the file is
-    # untouched.
-    if text_offset == 0 and matches_if_none_match(request, etag):
+    # bytes — meaningful over an SSH tunnel and free locally. Every chunk can
+    # take this path now, not only the first.
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=etag_headers)
 
     # JSONL gets parsed into structured events (single-pass streaming).

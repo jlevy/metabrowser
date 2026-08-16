@@ -252,5 +252,8 @@ def chunk_handler(request: Request) -> JSONResponse:
             "mtime_hash": mtime_hash,
             "content_base64": base64.b64encode(payload).decode("ascii"),
         },
-        headers={"ETag": build_scoped_etag(mtime_hash)},
+        # Offset and limit decide which bytes this is, so they belong in the
+        # validator. Keyed on the file alone, every window of a file shared one
+        # tag — inert while nothing checked it, and wrong the moment anything did.
+        headers={"ETag": build_scoped_etag(f"{mtime_hash}-{offset}-{limit}")},
     )

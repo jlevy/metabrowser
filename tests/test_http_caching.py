@@ -110,3 +110,19 @@ def test_conditional_routes_read_the_header_through_the_helper() -> None:
         "compare conditionals with metabrowser.http_caching.matches_if_none_match:\n  "
         + "\n  ".join(offenders)
     )
+
+
+def test_a_validator_identifies_the_response_not_just_the_file() -> None:
+    """Distinct windows of one file must not share a tag.
+
+    The binary chunk route keyed its tag on the file alone, so every byte
+    window of a file carried the same validator. That was inert only because
+    nothing checked it; a helper that makes checking easy is exactly what turns
+    a latent trap into served-wrong-bytes.
+    """
+    file_identity = "some_file_1234_abcdef"
+    first = build_scoped_etag(f"{file_identity}-0-65536")
+    second = build_scoped_etag(f"{file_identity}-65536-65536")
+    assert first != second
+    # Same window, same tag — the caching still works.
+    assert first == build_scoped_etag(f"{file_identity}-0-65536")
