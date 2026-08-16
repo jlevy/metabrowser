@@ -9,7 +9,23 @@ sdk_version = "0.2"
 # reason `text` doesn't have one — the fallback is in code, not the
 # manifest.
 #
-# Binary kind has no views; the shell's no-views branch explains that
-# no preview is available. The empty plugin folder + manifest documents
-# that ownership lives here for any future binary-specific renderer
-# (hex dump, embedded preview).
+# The Bytes view is the generic fallback preview: every byte becomes one
+# display unit, so a file opens readable instead of blank. Format-specific
+# plugins claim their files at a higher priority and are unaffected.
+#
+# It declares no `printable` / `print_profile`: the view shows a bounded
+# window of a file's bytes, which is not a complete print projection, so
+# the shell's print button stays hidden.
+
+[[view]]
+kind = "binary"
+id = "bytes"
+label = "Bytes"
+default = true
+container_class = "content-body metabrowser-binary-host"
+render_runtime = "client"
+
+[[data_hook]]
+route = "chunk"
+sidekick = "metabrowser.builtin_plugins.binary.sidekick:chunk_handler"
+methods = ["GET"]

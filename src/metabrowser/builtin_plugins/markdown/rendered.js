@@ -74,7 +74,7 @@ export function renderKpressError(error, mb) {
   const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
   const detail = payload.detail || (error instanceof Error ? error.message : "");
   const message = `${payload.error || "KPress render failed"}${detail ? `: ${detail}` : ""}`;
-  return `<div class="metabrowser-kpress-render-error" role="alert"><strong>Could not render this document.</strong><pre class="metabrowser-kpress-error-detail">${mb.escapeHtml(String(message))}</pre>${renderKpressDiagnosticsHtml(diagnostics, mb.escapeHtml)}</div>`;
+  return `<div class="notice metabrowser-kpress-render-error" data-severity="error" role="alert"><strong>Could not render this document.</strong><pre class="metabrowser-kpress-error-detail">${mb.escapeHtml(String(message))}</pre>${renderKpressDiagnosticsHtml(diagnostics, mb.escapeHtml)}</div>`;
 }
 
 /**

@@ -208,6 +208,23 @@ Keep handlers defensive:
 - avoid blocking the event loop with synchronous filesystem work;
 - keep domain imports inside the plugin package.
 
+A synchronous `def` handler already runs off the event loop: the dispatcher sends it
+through Starlette’s threadpool, the same way Starlette offloads its own sync endpoints.
+Reach for `async def` only when the handler awaits something.
+
+A hook may serve a large resource in bounded pieces rather than refusing it.
+The built-in binary plugin’s `chunk` route is the worked example: it reads a bounded
+window of a file’s logical bytes, reports `next_offset`, `has_more`, and the ceiling
+that applied, and carries a fingerprint so its view can tell a continued read from a
+changed file. See
+[Bounded binary byte preview](project/specs/active/plan-2026-08-11-binary-byte-preview.md)
+for the size policy and the reasoning behind the compressed-artifact bound.
+
+Explain a refusal in the response body, not only in the status code.
+`fetchPluginData` rejects with an `Error` carrying `status` and the parsed `payload`, so
+a view can turn `413` plus a `max_preview_bytes` field into a state naming the exact
+cutoff instead of hard-coding the limit in JavaScript.
+
 ## Browser SDK
 
 The supported API is available as `window.metabrowser`.
@@ -289,7 +306,10 @@ path.
 
 ### Data and Navigation
 
-- `fetchPluginData(plugin, route, params)` calls a declared data hook.
+- `fetchPluginData(plugin, route, params, options?)` calls a declared data hook.
+  Pass `{ signal }` so a disposed view aborts its request.
+  A non-ok response rejects with an `Error` carrying `status` and the parsed `payload`,
+  so a hook’s structured refusal stays readable by its caller.
 - `fetchJsonl(path, options)` requests a normalized JSONL envelope.
 - `fetchCompleteText(ctx, options)` retrieves a bounded complete source after an initial
   text envelope reports truncation.

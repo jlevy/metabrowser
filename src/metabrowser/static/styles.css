@@ -2700,15 +2700,6 @@ html[data-prose-font="sans"] {
   font-size: var(--ui-small-font-size);
   flex-shrink: 0;
 }
-.file-header-preview {
-  font-size: var(--ui-small-font-size);
-  color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.file-header-action {
-  flex-shrink: 0;
-}
 /* .file-header-icon (the print action) has no block of its own: it is
    entirely the .icon-btn primitive. It sits beside the copy icon and,
    across the header, the settings gear, so it must not grow chrome
@@ -3034,16 +3025,67 @@ html[data-prose-font="sans"] {
    the toggle, and the drawer. The doc <h1> header is suppressed at the source
    via show_doc_header=False (the path shows in metabrowser's file header), so
    no host CSS override is needed. */
-.metabrowser-kpress-render-error,
-.metabrowser-source-truncation-warning {
-  margin: 0 0 12px;
+/* ── Notices ─────────────────────────────────────────────────
+   One box for anything the app says *about* the content it is showing: a
+   partial load, a render failure. See docs/design-system.md, "Notices";
+   tests/test_notice_style.py enforces it.
+
+   The fill is always the ordinary surface and the severity is carried by the
+   border alone. Tinting the fill is how these drifted apart: the render error
+   wore an info-blue fill with a warning border, so an error announced itself
+   in the color of an aside and the border named the wrong severity. One tone
+   per box, and it is the one on the edge.
+
+   This rule owns the visual identity only. Layout — how a use site arranges
+   its own contents, and where it sits relative to the content — belongs to
+   the use site, because a one-line notice with a button and a stacked error
+   with a detail block have nothing to share there. */
+.notice {
   padding: 10px 12px;
-  border: 1px solid var(--status-warning);
-  background: var(--status-info-bg);
+  border: 1px solid var(--border);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   line-height: 1.45;
+}
+
+.notice[data-severity="warning"] {
+  border-color: var(--status-warning);
+}
+
+.notice[data-severity="error"] {
+  border-color: var(--status-error);
+}
+
+/* A KPress render failure: the document could not be rendered at all, so it
+   stacks its message above a detail block rather than sitting in a row. */
+.metabrowser-kpress-render-error {
+  margin: 0 0 12px;
+}
+
+/* The partial-content notice, which pairs a statement with the control that
+   continues it — hence the row. */
+.partial-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* It brackets the content, so its margin is the one thing that differs
+   between the two ends. */
+.partial-notice[data-position="top"] {
+  margin: 0 0 12px;
+}
+
+.partial-notice[data-position="bottom"] {
+  margin: 12px 0 0;
+}
+
+.partial-notice-readout {
+  font-variant-numeric: var(--tabular-numerals);
 }
 .metabrowser-kpress-error-detail {
   margin: 8px 0 0;
@@ -4034,8 +4076,9 @@ pre.code-block code.hljs {
     color: black;
   }
 
-  .metabrowser-kpress-render-error,
-  .metabrowser-source-truncation-warning {
+  /* Addressed through the primitive, so a new notice prints correctly
+     without being added here. */
+  .notice {
     break-inside: avoid;
     background: white;
     color: black;

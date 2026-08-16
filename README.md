@@ -290,6 +290,8 @@ Extending it:
 - [Design system](docs/design-system.md) — tokens, layout bands, and component rules
 - [File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md)
   — the shared file-type and rollup contract
+- [Rendering large content](docs/large-content-rendering.md) — the cost model and limit
+  rules every content view shares
 
 Working on it:
 

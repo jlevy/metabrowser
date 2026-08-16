@@ -83,6 +83,7 @@ from metabrowser.activity import FileActivityTracker as _FileActivityTracker
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.file_kinds import (
     FILE_KIND_DETECTORS,
@@ -99,6 +100,7 @@ from metabrowser.gz_io import (
     ArtifactDecompressionLimitError,
     ArtifactPath,
 )
+from metabrowser.http_caching import build_scoped_etag, matches_if_none_match
 from metabrowser.inventory import get_instance as get_inventory
 from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
@@ -130,6 +132,9 @@ from metabrowser.settings import (
     ROLLUP_MAX_EXT_TOP,
     ROLLUP_MAX_TOP,
     SLOW_OPERATION_LOG_SECONDS,
+    SYNTAX_HIGHLIGHT_MAX_BYTES,
+    TEXT_PREVIEW_CHUNK_BYTES,
+    TEXT_PREVIEW_REQUEST_MAX_BYTES,
     client_settings_dict,
 )
 from metabrowser.sse import api_stream
@@ -406,8 +411,16 @@ def _etag_for(mtime_hash: str) -> str:
     Strong ETags are quoted per RFC 7232. The token is stable across
     browser-server restarts for unchanged files so dev-loop restarts do not
     force clients to re-download every cached payload.
+
+    It also carries this build's identity, because the body is a function of
+    the file *and* of how this version renders it. Keying on the file alone
+    made every rendering change invisible to a client that had already cached
+    the file: after small binaries moved from the text fallback to the Bytes
+    view, a cached browser kept replaying a field of U+FFFD, because the
+    file's mtime had not changed and the server answered 304 to its
+    revalidation. The salt is what makes an upgrade invalidate exactly once.
     """
-    return f'"{mtime_hash}"'
+    return build_scoped_etag(mtime_hash)
 
 
 # File-extension sets used by ``api_file`` to decide which branch to
@@ -422,17 +435,37 @@ from metabrowser.file_extensions import (
     BROWSER_TEXT_EXTS as _TEXT_EXTS,
 )
 
-# Files outside ``_TEXT_EXTS`` smaller than this are still tried as
-# text (`read_text(errors="replace")`). Above this we treat them as
-# binary unless they hit a known extension. 512 KiB is the
-# pre-refactor default.
-_INLINE_TEXT_FALLBACK_BYTES = 512 * 1024
-_TEXT_PREVIEW_CHUNK_BYTES = int(os.environ.get("METABROWSER_TEXT_PREVIEW_BYTES", str(128 * 1024)))
+# Files outside ``_TEXT_EXTS`` are decided by looking at their content —
+# see metabrowser.content_sniff and _prefers_text_body below. Size used to
+# stand in for that check (under 512 KiB meant "try it as text"), which read
+# every small binary through `errors="replace"` and rendered it as a field of
+# U+FFFD, and refused every large extensionless text file the opposite way.
+
+
+def _prefers_text_body(target: Path) -> bool:
+    """Whether a file with no known text extension should render as text.
+
+    Only consulted once the extension has failed to answer, so the bounded
+    read inside costs nothing for the files this browser opens most.
+
+    ``UNKNOWN`` resolves to text on purpose: it means the bytes could not be
+    read at all, and the text path reports that failure with the real reason
+    where the byte view would answer a broken file with an empty dump.
+    """
+    return sniff_artifact(target) is not ContentClass.BINARY
+
+
+# Defaults live in settings.py, which is also what the client reads, so the
+# chunk size cannot drift between the two planes. See
+# docs/large-content-rendering.md for the measurements behind them.
+_TEXT_PREVIEW_CHUNK_BYTES = int(
+    os.environ.get("METABROWSER_TEXT_PREVIEW_BYTES", str(TEXT_PREVIEW_CHUNK_BYTES))
+)
 _TEXT_PREVIEW_MAX_CHUNK_BYTES = int(
-    os.environ.get("METABROWSER_TEXT_PREVIEW_MAX_BYTES", str(8 * 1024 * 1024))
+    os.environ.get("METABROWSER_TEXT_PREVIEW_MAX_BYTES", str(TEXT_PREVIEW_REQUEST_MAX_BYTES))
 )
 _SYNTAX_HIGHLIGHT_MAX_BYTES = int(
-    os.environ.get("METABROWSER_HIGHLIGHT_MAX_BYTES", str(512 * 1024))
+    os.environ.get("METABROWSER_HIGHLIGHT_MAX_BYTES", str(SYNTAX_HIGHLIGHT_MAX_BYTES))
 )
 
 
@@ -764,6 +797,7 @@ async def index(_request: Request) -> HTMLResponse:
     resource_context_url = _static_asset_url("resource_context.js")
     view_state_url = _static_asset_url("view_state.js")
     navigation_url = _static_asset_url("navigation.js")
+    source_append_url = _static_asset_url("source_append.js")
     file_type_taxonomy_url = _static_asset_url("file_type_taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin_sdk.js")
     filter_state_url = _static_asset_url("filter_state.js")
@@ -1008,6 +1042,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>
   <script src="{navigation_url}"></script>
+  <script src="{source_append_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
   <script src="{filter_state_url}"></script>
@@ -1624,8 +1659,6 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             }
         )
     mtime_hash = file_mtime_hash(target)
-    etag = _etag_for(mtime_hash)
-    etag_headers = {"etag": etag, "cache-control": "no-cache"}
     compression_fields = (
         _compression_envelope_fields(artifact, logical_size)
         if logical_size is not None
@@ -1656,12 +1689,18 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         requested_text_offset if logical_size is None else min(requested_text_offset, logical_size)
     )
 
+    # The window is part of what the body is, so it is part of the validator,
+    # and the tag can only be built once the window is known. Keyed on the file
+    # alone, one tag covered every chunk, and the 304 path had to be fenced off
+    # to `text_offset == 0` to stay correct — the knowledge lived in a guard at
+    # one call site instead of in the tag.
+    etag = _etag_for(f"{mtime_hash}-{text_offset}-{text_limit}")
+    etag_headers = {"etag": etag, "cache-control": "no-cache"}
+
     # 304 short-circuit. Repeat clicks on an unchanged file return zero
-    # bytes — meaningful over an SSH tunnel and free locally. We compare
-    # bytewise against the full ETag including the process-epoch suffix
-    # so a server restart guarantees a fresh body even if the file is
-    # untouched.
-    if text_offset == 0 and request.headers.get("if-none-match") == etag:
+    # bytes — meaningful over an SSH tunnel and free locally. Every chunk can
+    # take this path now, not only the first.
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=etag_headers)
 
     # JSONL gets parsed into structured events (single-pass streaming).
@@ -1707,9 +1746,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
-    if ext in _TEXT_EXTS or (
-        logical_size is not None and logical_size < _INLINE_TEXT_FALLBACK_BYTES
-    ):
+    if ext in _TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target):
         try:
             content_has_more = False
             if (
@@ -1986,7 +2023,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
         )
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
-    if ext not in _TEXT_EXTS and logical_size >= _INLINE_TEXT_FALLBACK_BYTES:
+    if ext not in _TEXT_EXTS and not await asyncio.to_thread(_prefers_text_body, target):
         return JSONResponse(
             {
                 "type": "kpress_render_error",
@@ -2273,7 +2310,7 @@ async def kpress_static_asset(request: Request) -> Response:
             # asset changes.
             "Cache-Control": "no-cache",
         }
-    if request.headers.get("if-none-match", "") == asset.etag:
+    if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
     return Response(
         content=asset.content,
