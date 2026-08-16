@@ -1,6 +1,6 @@
 base:
   assignee: null
-  description_hash: sha256v7:3f01a0a74b121d6817c303bf388871bf1e766ad320cc28d8291bc95aac4a2cb5
+  description_hash: sha256v7:0302e1837215f299f4f35249507f3195d51c0edebc89a60cfd9a53d9095cdd5a
   labels: []
   priority: 2
   status: open
@@ -11,5 +11,5 @@ external_key: OS-329
 external_url: https://linear.app/finterm-ai/issue/OS-329/implement-the-reserved-mb-query-namespace-in-the-url-codec
 remote_updated_at: 2026-08-16T21:18:49.184Z
 state: linked
-synced_at: 2026-08-16T21:18:49.567Z
+synced_at: 2026-08-16T21:19:19.833Z
 type: lk
