@@ -398,7 +398,8 @@
   async function renderCharts(container, ctx) {
     const generation = ++chartsRenderGeneration;
     container.innerHTML =
-      '<div class="charts-placeholder preview-empty mb-delayed-loading">Loading charts…</div>';
+      '<div class="charts-placeholder preview-empty mb-delayed-loading">' +
+      '<span class="sr-only">Loading charts…</span></div>';
     const chartData = await mb.fetchPluginData("agent-log", "charts", {
       path: ctx.path,
     });

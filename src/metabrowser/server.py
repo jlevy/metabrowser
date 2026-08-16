@@ -975,7 +975,8 @@ async def index(_request: Request) -> HTMLResponse:
       <div class="nav-filter-bar" id="nav-filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
-          <div class="loading"><div class="spinner"></div>Loading files…</div>
+          <div class="loading mb-delayed-loading"><div class="spinner"></div><span
+            class="sr-only">Loading files…</span></div>
         </div>
       </div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>

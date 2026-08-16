@@ -107,7 +107,6 @@ def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
     file_types = (folder_root / "file_type_summary.js").read_text()
     distribution = (folder_root / "distribution_view.js").read_text()
     treemap = (folder_root / "treemap.js").read_text()
-    css = (folder_root / "file_type_summary.css").read_text()
 
     assert 'label: "Files"' in file_totals
     assert "defaultExpanded: true" in file_totals
@@ -124,7 +123,11 @@ def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
     assert 'for (const label of ["Population", "Files", "Size"])' not in totals
     assert 'for (const label of ["Type", "Files", "Size"])' not in distribution
     assert "metricHeader" in distribution
-    assert ".folder-totals .sr-only" in css
+    # The totals table hides its header row with `sr-only`, which is defined in
+    # the shared stylesheet rather than here. It used to be scoped to this
+    # plugin's own ancestors, which silently left the same class inert
+    # everywhere else; see test_browser_loading_delay.py.
+    assert ".sr-only" in (proc_browser.STATIC_DIR / "styles.css").read_text()
 
 
 def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:

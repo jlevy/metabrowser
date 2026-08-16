@@ -3656,6 +3656,24 @@ pre.code-block code.hljs {
 
 /* ── Loading ─────────────────────────────────────────────────── */
 
+/* Screen-reader-only text. Global by necessity: this is what makes a
+   spinner's label inaudible-but-announced rather than printed next to it
+   (see "Spinners Carry No Visible Label" in docs/design-system.md), and
+   the shell, the Markdown renderer, and every plugin need it. It lived
+   only inside the folder tables' stylesheet, so the same class printed
+   its text verbatim everywhere else. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .mb-delayed-loading {
   visibility: hidden;
   animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
