@@ -28,6 +28,12 @@ EXPECTED_LICENSE_METADATA = {
     "License-File: LICENSE",
     "License-File: NOTICE.md",
 }
+KEYBOARD_STATIC_ASSETS = {
+    "keyboard_help.js",
+    "keyboard_shortcuts.js",
+    "overlay_layer.js",
+    "tree_keyboard_navigation.js",
+}
 
 
 def _single_wheel() -> Path:
@@ -93,6 +99,7 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "dist-info/licenses/LICENSE",
             "dist-info/licenses/NOTICE.md",
+            *(f"metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
             if not any(name.endswith(suffix) for name in names):
@@ -124,6 +131,7 @@ def _inspect_sdist(sdist: Path) -> None:
             "skills/metabrowser/agents/openai.yaml",
             "src/metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "src/metabrowser/static/app.js",
+            *(f"src/metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
             if not any(name.endswith(suffix) for name in names):
@@ -171,7 +179,10 @@ def _smoke_install(wheel: Path) -> None:
             "mtime_hash='wheel-smoke', size=14); "
             "assert metabrowser.__version__; "
             "assert registry.family('javascript') is not None; "
-            "assert files('metabrowser').joinpath('static/app.js').is_file(); "
+            "static = files('metabrowser').joinpath('static'); "
+            "assets = ('app.js', 'keyboard_help.js', 'keyboard_shortcuts.js', "
+            "'overlay_layer.js', 'tree_keyboard_navigation.js'); "
+            "assert all(static.joinpath(asset).is_file() for asset in assets); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
             "assert required == names; "

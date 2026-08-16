@@ -683,11 +683,11 @@ def test_the_first_tree_row_clears_the_tally_rule() -> None:
     tally's border while every band above kept 6px."""
 
     css = _read("styles.css")
-    start = css.index(".tree-summary + .tree-item,")
+    start = css.index(".tree-summary + .tree-root > .tree-item:first-child,")
     block = css[start : css.index("}", start)]
     # Both leading cases: the tally, and rows alone under a recency window.
-    assert ".tree-summary-filtered + .tree-item" in block
-    assert ".tree-content > * > .tree-item:first-child" in block
+    assert ".tree-summary-filtered + .tree-root > .tree-item:first-child" in block
+    assert ".tree-content > * > .tree-root:first-child > .tree-item:first-child" in block
     # Margin, so the hover fill and selected border stay row-height.
     assert "margin-top" in block
     assert "padding-top" not in block
@@ -846,8 +846,8 @@ def test_filters_reapply_when_new_rows_render() -> None:
     js = _read("app.js")
     sub_start = js.index("async function loadSubtree(")
     assert "applyTreeFilters();" in js[sub_start : sub_start + 2500]
-    page_start = js.index(".tree-page-more")
-    assert "applyTreeFilters();" in js[page_start : page_start + 700]
+    page_start = js.index("function mountNextTreePage(row)")
+    assert "applyTreeFilters();" in js[page_start : page_start + 1800]
 
 
 def test_leaving_the_recency_source_abandons_its_fetch() -> None:

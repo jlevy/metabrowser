@@ -734,6 +734,11 @@ var knownFileCatalog = null;
 var quickFileSearchController = null;
 var quickFilePalette = null;
 var quickFileCatalogFeed = null;
+var shortcutRegistry = null;
+var keyboardHelp = null;
+var treeKeyboard = null;
+var applicationFocusRegion = null;
+var applicationFocusListener = null;
 var QUICK_FILE_RESULT_LIMIT = 100;
 
 // ── Tree ────────────────────────────────────────────────────────
@@ -949,6 +954,7 @@ function renderFilesFromTree() {
     return false;
   }
   var snapshot = _lastTreeRender;
+  treeKeyboard?.prepareForMutation();
   _perf.measure(
     "renderTreeNodes:root",
     () => {
@@ -963,6 +969,7 @@ function renderFilesFromTree() {
   );
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
   scheduleSubtreePrefetch();
   return true;
 }
@@ -1051,6 +1058,56 @@ function treeDirChipHtml(totalFiles, totalSize, options) {
   return sizeHtml(totalSize, "tree-item-size");
 }
 
+function treeDomId(prefix, identity) {
+  return `metabrowser-${prefix}-${encodeURIComponent(String(identity))}`;
+}
+
+function treeRootHtml(content) {
+  return `<div class="tree-root" role="tree" aria-label="Files">${content}</div>`;
+}
+
+function treeItemAttributes(options) {
+  var identity =
+    options.kind === "page" ? `page:${options.pageId}` : `${options.kind}:${options.path || ""}`;
+  var attributes =
+    ' role="treeitem" tabindex="-1"' +
+    ` data-tree-kind="${esc(options.kind)}"` +
+    ` data-tree-id="${esc(identity)}"` +
+    ` data-tree-level="${options.level}"` +
+    ` data-tree-position="${options.position}"` +
+    ` data-tree-set-size="${options.setSize}"` +
+    ` aria-level="${options.level}"` +
+    ` aria-posinset="${options.position}"` +
+    ` aria-setsize="${options.setSize}"` +
+    ` aria-labelledby="${esc(options.labelId)}"`;
+  if (typeof options.expanded === "boolean") {
+    attributes += ` aria-expanded="${options.expanded}"`;
+  }
+  if (typeof options.selected === "boolean") {
+    attributes += ` aria-selected="${options.selected}"`;
+  }
+  if (options.ownedGroupId) {
+    attributes += ` aria-owns="${esc(options.ownedGroupId)}"`;
+  }
+  if (options.pageId) {
+    attributes += ` data-page-id="${esc(options.pageId)}"`;
+  }
+  return attributes;
+}
+
+function treeRootForPanel(panel) {
+  return panel?.querySelector(":scope > .tree-root") || null;
+}
+
+function treeLevelForContainer(container) {
+  if (container?.getAttribute("role") === "tree") {
+    return 1;
+  }
+  var owner = container?.previousElementSibling;
+  var ownerLevel = owner ? Number(owner.getAttribute("aria-level")) : 0;
+  return Number.isFinite(ownerLevel) && ownerLevel > 0 ? ownerLevel + 1 : 1;
+}
+
 // `options` is a small bag of render-mode flags forwarded into
 // recursive calls. Currently:
 //   options.dirMetric — "size" (default, Files panel) renders
@@ -1080,6 +1137,9 @@ function renderTreeNodes(nodes, isRoot, options) {
     );
   }
   var defaultExpandedPaths = options.defaultExpandedPaths || new Set();
+  var level = options.level || 1;
+  var positionOffset = options.positionOffset || 0;
+  var setSize = options.setSize || nodes.length;
   // Array-of-strings + join() is O(n); naive `+=` against a growing
   // string was hot on big trees because every concat copied the whole
   // accumulator. With ~35 k files at depth=4 this drops a frame's
@@ -1091,11 +1151,15 @@ function renderTreeNodes(nodes, isRoot, options) {
   var hidden = nodes.length - visibleCount;
   for (var ni = 0; ni < visibleCount; ni++) {
     var node = nodes[ni];
+    var position = positionOffset + ni + 1;
     var mutedCls = "";
     if (node.gitignored) {
       mutedCls += " tree-item-gitignored";
     }
-    if (node.type === "dir" && node.empty) {
+    if (
+      node.type === "dir" &&
+      (node.empty || (Array.isArray(node.children) && node.children.length === 0))
+    ) {
       mutedCls += " tree-item-empty";
     }
     if (node.type === "dir") {
@@ -1106,10 +1170,24 @@ function renderTreeNodes(nodes, isRoot, options) {
       var stateClass = expanded ? "expanded" : "collapsed";
       var dirAge = formatAge(node.mtime);
       var dirChip = treeDirChipHtml(node.total_files, node.total_size, options);
+      var hasPotentialChildren =
+        !node.empty && (!Array.isArray(node.children) || node.children.length > 0);
+      var folderLabelId = treeDomId("tree-label", `folder:${node.path}`);
+      var groupId = hasPotentialChildren ? treeDomId("tree-group", node.path) : "";
+      var folderAttributes = treeItemAttributes({
+        kind: "folder",
+        path: node.path,
+        level: level,
+        position: position,
+        setSize: setSize,
+        expanded: hasPotentialChildren ? expanded : undefined,
+        ownedGroupId: groupId,
+        labelId: folderLabelId,
+      });
       parts.push(
-        `<div class="tree-item tree-folder ${stateClass}${mutedCls}" data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
+        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
         `<span class="tree-toggle">${ICONS.toggle}</span>`,
-        '<span class="tree-item-name">',
+        `<span class="tree-item-name" id="${folderLabelId}">`,
         esc(node.name),
         "</span>",
         '<span class="tree-item-age-inline">',
@@ -1117,32 +1195,51 @@ function renderTreeNodes(nodes, isRoot, options) {
         "</span>",
         dirChip,
         "</div>",
-        '<div class="tree-children" style="display:',
-        expanded ? "block" : "none",
-        '">',
       );
-      if (Array.isArray(node.children)) {
-        parts.push(renderTreeNodes(node.children, false, options));
-      } else {
-        // Lazy stub: server emits `children: null` past the depth
-        // cap. Render a placeholder; click-to-expand fetches the
-        // subtree via /api/tree?path=...
+      if (hasPotentialChildren) {
         parts.push(
-          '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
-            ' role="status" aria-label="Loading">' +
-            '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
-            "</div>",
+          `<div class="tree-children" id="${groupId}" role="group" style="display:${expanded ? "block" : "none"}">`,
         );
+        if (Array.isArray(node.children)) {
+          parts.push(
+            renderTreeNodes(node.children, false, {
+              ...options,
+              level: level + 1,
+              positionOffset: 0,
+              setSize: node.children.length,
+            }),
+          );
+        } else {
+          // Lazy stub: server emits `children: null` past the depth
+          // cap. Render a placeholder; click-to-expand fetches the
+          // subtree via /api/tree?path=...
+          parts.push(
+            '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+              ' role="status" aria-label="Loading">' +
+              '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
+              "</div>",
+          );
+        }
+        parts.push("</div>");
       }
-      parts.push("</div>");
     } else if (node.type === "symlink") {
       var linkAge = formatAge(node.mtime);
+      var linkLabelId = treeDomId("tree-label", `symlink:${node.path}`);
+      var linkAttributes = treeItemAttributes({
+        kind: "symlink",
+        path: node.path,
+        level: level,
+        position: position,
+        setSize: setSize,
+        selected: currentPath === node.path,
+        labelId: linkLabelId,
+      });
       parts.push(
-        `<div class="tree-item tree-symlink${mutedCls}" data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(node.name)}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(node.name)}" data-tip-mtime="${node.mtime || 0}">`,
         '<span class="tree-item-icon">',
         ICONS.fileSymlink,
         "</span>",
-        '<span class="tree-item-name">',
+        `<span class="tree-item-name" id="${linkLabelId}">`,
         esc(node.name),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
@@ -1168,15 +1265,25 @@ function renderTreeNodes(nodes, isRoot, options) {
       // extension of a compressed artifact" and drives icon dispatch.
       var extAttr = node.ext ? ` data-ext="${esc(node.ext)}"` : "";
       var compressedAttr = compressed ? ' data-compressed="1"' : "";
+      var fileLabelId = treeDomId("tree-label", `file:${node.path}`);
+      var fileAttributes = treeItemAttributes({
+        kind: "file",
+        path: node.path,
+        level: level,
+        position: position,
+        setSize: setSize,
+        selected: currentPath === node.path,
+        labelId: fileLabelId,
+      });
       parts.push(
-        `<div class="tree-item tree-file${mutedCls}" data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
         '<span class="',
         iconCls,
         '">',
         fi.svg,
         compressionBadge,
         "</span>",
-        '<span class="tree-item-name">',
+        `<span class="tree-item-name" id="${fileLabelId}">`,
         esc(node.name),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
@@ -1189,23 +1296,39 @@ function renderTreeNodes(nodes, isRoot, options) {
   }
   if (hidden > 0) {
     var pageId = String(++pendingTreePageId);
+    var pageLabelId = treeDomId("tree-label", `page:${pageId}`);
     pendingTreePages.set(pageId, {
       nodes: nodes.slice(visibleCount),
-      options: options,
+      options: {
+        ...options,
+        level: level,
+        positionOffset: positionOffset + visibleCount,
+        setSize: setSize,
+      },
+    });
+    var pageAttributes = treeItemAttributes({
+      kind: "page",
+      path: "",
+      pageId: pageId,
+      level: level,
+      position: positionOffset + visibleCount + 1,
+      setSize: setSize,
+      labelId: pageLabelId,
     });
     parts.push(
-      '<div class="tree-page-more" data-action="page-more" data-page-id="',
-      pageId,
-      '">',
+      `<div class="tree-item tree-page-more"${pageAttributes} data-action="page-more">`,
+      `<span id="${pageLabelId}">`,
       "Show ",
       String(hidden),
       " more (",
       String(nodes.length),
       " total)",
+      "</span>",
       "</div>",
     );
   }
-  return parts.join("");
+  var content = parts.join("");
+  return isRoot ? treeRootHtml(content) : content;
 }
 
 // ── Lazy subtree loading ──────────────────────────────────────
@@ -1320,6 +1443,18 @@ function clearSubtreeRetry(childrenEl) {
   subtreeRetryTimers.delete(childrenEl);
 }
 
+function markFolderKnownEmpty(childrenEl) {
+  var folder = childrenEl.previousElementSibling;
+  if (!folder?.classList.contains("tree-folder")) {
+    return;
+  }
+  folder.classList.add("tree-item-empty", "collapsed");
+  folder.classList.remove("expanded");
+  folder.removeAttribute("aria-expanded");
+  folder.removeAttribute("aria-owns");
+  childrenEl.remove();
+}
+
 // One request per path, shared by the click that expands a folder and the
 // idle sweep that warms it. A click landing on a prefetch already in flight
 // joins it instead of racing a second identical fetch.
@@ -1367,49 +1502,76 @@ function fetchSubtree(path) {
 
 async function loadSubtree(path, childrenEl, options) {
   options = options || treeRenderOptionsForElement(childrenEl);
+  treeKeyboard?.prepareForMutation();
   if (subtreeCache.has(path)) {
     clearSubtreeRetry(childrenEl);
     _perf.measure(
       "renderTreeNodes:subtreeCache",
       () => {
-        childrenEl.innerHTML = renderTreeNodes(subtreeCache.get(path), false, options);
+        var cachedTree = subtreeCache.get(path);
+        childrenEl.innerHTML = renderTreeNodes(cachedTree, false, {
+          ...options,
+          level: treeLevelForContainer(childrenEl),
+          positionOffset: 0,
+          setSize: cachedTree.length,
+        });
       },
       { path: path, nodes: subtreeCache.get(path).length },
     );
+    if (subtreeCache.get(path).length === 0) {
+      markFolderKnownEmpty(childrenEl);
+    }
+    applyTreeFilters();
+    synchronizeTreeNow();
     scheduleSubtreePrefetch();
     return;
   }
   childrenEl.innerHTML = treeLazyLoadingHtml();
+  synchronizeTreeNow();
   try {
     const result = await fetchSubtree(path);
     var tree = result.tree;
     if (result.scanning) {
+      treeKeyboard?.prepareForMutation();
       childrenEl.innerHTML = treeLazyLoadingHtml("Still scanning this folder…");
       startIndexProgressPolling();
       scheduleSubtreeRetry(path, childrenEl);
+      synchronizeTreeNow();
       return;
     }
     clearSubtreeRetry(childrenEl);
+    treeKeyboard?.prepareForMutation();
     _perf.measure(
       "renderTreeNodes:subtree",
       () => {
         childrenEl.innerHTML = tree.length
-          ? renderTreeNodes(tree, false, options)
+          ? renderTreeNodes(tree, false, {
+              ...options,
+              level: treeLevelForContainer(childrenEl),
+              positionOffset: 0,
+              setSize: tree.length,
+            })
           : '<div class="tree-lazy-placeholder">This folder is empty.</div>';
       },
       { path: path, nodes: tree.length },
     );
+    if (tree.length === 0) {
+      markFolderKnownEmpty(childrenEl);
+    }
     // Newly rendered children carry no filter classes yet, so without
     // this an expand under an active filter reveals the whole folder.
     applyTreeFilters();
     reconcilePendingTallyDiagnostics();
+    synchronizeTreeNow();
     scheduleSubtreePrefetch();
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
+    treeKeyboard?.prepareForMutation();
     childrenEl.innerHTML = treeLazyFailureHtml(
       "Could not load this folder. Collapse and reopen it to try again.",
     );
+    synchronizeTreeNow();
   }
 }
 
@@ -1614,6 +1776,55 @@ if (!treePane) {
   throw new Error("Metabrowser shell is missing #tree-pane");
 }
 
+// Coalesced roving-focus and ARIA repair for event-driven tree mutations.
+//
+// treeKeyboard.synchronize() rewrites level, position, set-size, expansion,
+// and selection on every rendered row and then re-derives the visible row
+// list, so it costs one walk of the painted tree. That is the right price for
+// a user action, but the inventory stream calls into the tree once per entry:
+// a reconnect replays a whole snapshot through applyCellPatch, and the walker
+// pushes changes for as long as it runs. Paying a full walk per event is the
+// same hazard scheduleFilterReapply() already guards against for filters.
+//
+// Bursts therefore collapse into one repair on the next task. The earliest
+// pending focus snapshot wins, because that is the one describing the tree as
+// the user last saw it; a later burst must not overwrite the anchor lineage
+// captured before the first mutation.
+var _treeSynchronizeHandle = null;
+/** @type {ReturnType<NonNullable<typeof treeKeyboard>["prepareForMutation"]> | null} */
+var _treeSynchronizeMutation = null;
+
+/** @param {ReturnType<NonNullable<typeof treeKeyboard>["prepareForMutation"]> | null} [mutationSnapshot] */
+function scheduleTreeSynchronize(mutationSnapshot) {
+  if (!treeKeyboard) {
+    return;
+  }
+  if (mutationSnapshot && !_treeSynchronizeMutation) {
+    _treeSynchronizeMutation = mutationSnapshot;
+  }
+  if (_treeSynchronizeHandle !== null) {
+    return;
+  }
+  _treeSynchronizeHandle = setTimeout(() => {
+    _treeSynchronizeHandle = null;
+    var snapshot = _treeSynchronizeMutation;
+    _treeSynchronizeMutation = null;
+    treeKeyboard?.synchronize(snapshot || undefined);
+  }, 0);
+}
+
+// A user action repairs focus in its own turn, so it must not land behind a
+// queued burst repair — and running both would walk the tree twice.
+function synchronizeTreeNow() {
+  if (_treeSynchronizeHandle !== null) {
+    clearTimeout(_treeSynchronizeHandle);
+    _treeSynchronizeHandle = null;
+  }
+  var snapshot = _treeSynchronizeMutation;
+  _treeSynchronizeMutation = null;
+  treeKeyboard?.synchronize(snapshot || undefined);
+}
+
 treePane.addEventListener(
   "mouseenter",
   (e) => {
@@ -1777,82 +1988,170 @@ async function expandAllDescendants(container) {
     if (!ch?.classList.contains("tree-children")) {
       continue;
     }
-    window.MetabrowserTreeExpansion.setFolderExpanded(folder, ch, true);
-    if (ch.querySelector(":scope > .tree-lazy-placeholder")) {
-      await loadSubtree(folder.dataset.path, ch);
-    }
+    await setFolderExpanded(folder, true, { synchronize: false });
     await expandAllDescendants(ch);
   }
 }
 
 function collapseAllDescendants(container) {
   container.querySelectorAll(".tree-children").forEach((ch) => {
-    ch.style.display = "none";
     var folder = ch.previousElementSibling;
     if (folder?.classList.contains("tree-folder")) {
-      window.MetabrowserTreeExpansion.setFolderExpanded(folder, ch, false);
+      setFolderExpanded(folder, false, { synchronize: false });
     }
   });
 }
 
-function toggleTreeFolder(item, recursive) {
-  var children = /** @type {HTMLElement | null} */ (item.nextElementSibling);
-  if (!children?.classList.contains("tree-children")) {
+function setFolderExpanded(row, expanded, options) {
+  options = options || {};
+  var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (
+    !row.classList.contains("tree-folder") ||
+    row.classList.contains("tree-item-empty") ||
+    !children?.classList.contains("tree-children")
+  ) {
     return;
   }
-  var expanded = window.MetabrowserTreeExpansion.toggleFolderExpanded(item, children);
-  if (!expanded) {
-    if (recursive) {
-      collapseAllDescendants(children);
-    }
-    return;
+  window.MetabrowserTreeExpansion.setFolderExpanded(row, children, expanded);
+  row.setAttribute("aria-expanded", String(expanded));
+  if (options.synchronize !== false) {
+    synchronizeTreeNow();
   }
-  var needsLoad = !!children.querySelector(":scope > .tree-lazy-placeholder");
-  if (needsLoad) {
-    var load = loadSubtree(item.dataset.path, children);
-    if (recursive) {
-      load.then(() => expandAllDescendants(children));
-    }
-  } else if (recursive) {
-    expandAllDescendants(children);
+  if (expanded && children.querySelector(":scope > .tree-lazy-placeholder")) {
+    return loadSubtree(row.dataset.path, children).then(() => {
+      if (options.synchronize !== false) {
+        synchronizeTreeNow();
+      }
+    });
   }
 }
 
-treePane.addEventListener("click", (e) => {
-  // Pagination "Show N more" sentinel is its own row (not .tree-item)
-  // so it doesn't accidentally pick up tree-item click semantics like
-  // hover-prefetch or selection.
-  var target = eventTargetElement(e);
-  if (!target) {
+async function toggleTreeFolder(row, options) {
+  options = options || {};
+  var expanded = row.getAttribute("aria-expanded") === "true";
+  var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (!children?.classList.contains("tree-children")) {
+    return row;
+  }
+  // Recursive walks defer every per-folder repair to the single synchronize
+  // below. Expand and collapse pay the same price: one walk of the visible
+  // tree for the whole operation, not one per descendant folder.
+  if (options.recursive && expanded) {
+    collapseAllDescendants(children);
+    setFolderExpanded(row, false, { synchronize: false });
+  } else if (options.recursive) {
+    await setFolderExpanded(row, true, { synchronize: false });
+    await expandAllDescendants(children);
+  } else {
+    await setFolderExpanded(row, !expanded);
+  }
+  synchronizeTreeNow();
+  return row;
+}
+
+function mountNextTreePage(row) {
+  var pageId = row.dataset.pageId;
+  var page = pendingTreePages.get(pageId);
+  var nextBatch = page?.nodes;
+  if (!nextBatch?.length) {
+    return null;
+  }
+  treeKeyboard?.prepareForMutation();
+  pendingTreePages.delete(pageId);
+  var temporary = document.createElement("div");
+  temporary.innerHTML = renderTreeNodes(nextBatch, false, page.options);
+  var nodes = Array.prototype.slice.call(temporary.childNodes);
+  var firstMounted = null;
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i];
+    row.parentElement?.insertBefore(node, row);
+    if (!firstMounted && node.getAttribute?.("role") === "treeitem") {
+      firstMounted = node;
+    }
+  }
+  row.remove();
+  // A deferred page arrives without current filter decoration.
+  applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
+  return firstMounted;
+}
+
+// The pointer activation contract. A folder row is a single target: it selects
+// the folder, opens its default Overview view, and toggles its immediate
+// children, so the chevron stays a state indicator rather than a second action
+// with its own navigation semantics.
+//
+// The keyboard splits what a click fuses, because arrows already carry the
+// opening half: see openTreeRow and activateTreeRowFromKeyboard below.
+async function activateTreeRow(row, options) {
+  var action = row.dataset.action;
+  if (action === "select-dir") {
+    // Guarded like the select branch below: a pathless row would otherwise
+    // clear the whole selection and request the served root.
+    if (row.dataset.path) {
+      setSelectedPath(row.dataset.path);
+      // Trailing slash marks a folder in the canonical /view/ route.
+      void navigateToPath(`${row.dataset.path}/`);
+    }
+    return toggleTreeFolder(row, options);
+  }
+  if (action === "page-more") {
+    return mountNextTreePage(row);
+  }
+  if (action === "select" && row.dataset.path) {
+    setSelectedPath(row.dataset.path);
+    void navigateToPath(row.dataset.path);
+  }
+  return row;
+}
+
+// Arrow keys are the browse gesture: landing on a row opens it, so skimming
+// costs one keypress per row instead of two. Reading is the common case and
+// waiting for a confirm keystroke saved nothing once opening became fast.
+//
+// The route is replaced rather than pushed, so a skim does not bury the
+// reader's entry point under one history entry per row they passed.
+function openTreeRow(row) {
+  var path = row.dataset.path;
+  if (!path) {
+    // Pagination rows carry no path; they are activated, never opened.
     return;
   }
-  var pageRow = /** @type {HTMLElement | null} */ (target.closest(".tree-page-more"));
-  if (pageRow) {
-    var pageId = pageRow.dataset.pageId;
-    var page = pendingTreePages.get(pageId);
-    var nextBatch = page?.nodes;
-    if (nextBatch) {
-      pendingTreePages.delete(pageId);
-      pageRow.outerHTML = renderTreeNodes(nextBatch, false, page.options);
-      // Same reason as loadSubtree: a deferred page arrives unfiltered.
-      applyTreeFilters();
-      reconcilePendingTallyDiagnostics();
-    }
+  setSelectedPath(path);
+  var folder = row.dataset.action === "select-dir";
+  void navigateToPath(folder ? `${path}/` : path, undefined, { replace: true });
+}
+
+// Enter and Space are action keys in the tree, not view keys. Whatever the
+// focus is on is already open, so activation is only for what arrows cannot
+// express: changing a folder's disclosure state and mounting a deferred page.
+async function activateTreeRowFromKeyboard(row, options) {
+  var action = row.dataset.action;
+  if (action === "select-dir") {
+    return toggleTreeFolder(row, options);
+  }
+  if (action === "page-more") {
+    return mountNextTreePage(row);
+  }
+  return row;
+}
+
+treePane.addEventListener("click", (e) => {
+  var target = eventTargetElement(e);
+  if (!target) {
     return;
   }
   const item = /** @type {HTMLElement | null} */ (target.closest(".tree-item"));
   if (!item) {
     return;
   }
-  const action = item.dataset.action;
-  if (action === "select") {
-    setSelectedPath(item.dataset.path);
-    navigateToPath(item.dataset.path || "");
-  } else if (action === "select-dir") {
-    setSelectedPath(item.dataset.path);
-    navigateToPath(item.dataset.path ? `${item.dataset.path}/` : "");
-    toggleTreeFolder(item, e.shiftKey);
-  }
+  treeKeyboard?.setAnchor(item);
+  void activateTreeRow(item, { recursive: e.shiftKey }).then((focusTarget) => {
+    if (focusTarget?.isConnected) {
+      treeKeyboard?.setAnchor(focusTarget, item.dataset.action === "page-more");
+    }
+  });
 });
 
 // Mark every .tree-item whose data-path matches *path* as
@@ -1867,6 +2166,7 @@ function setSelectedPath(path) {
     }
   });
   if (!path) {
+    treeKeyboard?.setSelectedPath(null);
     return;
   }
   queryHtmlAll(".tree-item").forEach((el) => {
@@ -1874,6 +2174,7 @@ function setSelectedPath(path) {
       el.classList.add("selected");
     }
   });
+  treeKeyboard?.setSelectedPath(path);
 }
 
 // ── Nav pane ────────────────────────────────────────────────────
@@ -2462,6 +2763,7 @@ function renderRecentFromBase() {
   if (!results) {
     return;
   }
+  treeKeyboard?.prepareForMutation();
   var entries = recentEntriesFromBase({
     window: currentRecentWindow,
     limit: RECENT_LIMIT,
@@ -2487,6 +2789,7 @@ function renderRecentFromBase() {
     setSelectedPath(currentPath);
   }
   reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
 }
 
 const RECENT_EXPIRY_MIN_DELAY_MS = 250;
@@ -3381,22 +3684,30 @@ function _childContainerFor(row) {
 function applyTreeFilters() {
   var panel = document.getElementById("tab-files");
   if (!panel || !filterState) {
+    scheduleTreeSynchronize();
     return;
   }
   var st = filterState.get();
   var rows = /** @type {HTMLElement[]} */ (
-    Array.prototype.slice.call(panel.querySelectorAll(".tree-item"))
+    Array.prototype.slice.call(panel.querySelectorAll(".tree-item:not(.tree-page-more)"))
+  );
+  var pageRows = /** @type {HTMLElement[]} */ (
+    Array.prototype.slice.call(panel.querySelectorAll(".tree-page-more"))
   );
   var constrained = filterHasConstraints(st);
   if (!constrained) {
     for (var c = 0; c < rows.length; c++) {
       rows[c].classList.remove("tree-item-filter-hidden");
     }
+    for (var pageIndex = 0; pageIndex < pageRows.length; pageIndex++) {
+      pageRows[pageIndex].classList.remove("tree-item-filter-hidden");
+    }
     // Clear both lines too: this early return is the path taken when
     // the last filter is removed, so leaving them would strand a
     // "Filtered to N files" over an unfiltered tree.
     _renderFilteredTally(panel, 0, st, null);
     _renderFilterNote(panel, 0, st);
+    scheduleTreeSynchronize();
     return;
   }
   var nowSec = Date.now() / 1000;
@@ -3463,6 +3774,13 @@ function applyTreeFilters() {
       }
     }
   }
+  for (var pageRowIndex = 0; pageRowIndex < pageRows.length; pageRowIndex++) {
+    var pageParent = pageRows[pageRowIndex].parentElement?.previousElementSibling;
+    pageRows[pageRowIndex].classList.toggle(
+      "tree-item-filter-hidden",
+      Boolean(pageParent?.classList.contains("tree-item-filter-hidden")),
+    );
+  }
   // The recency source counts from its entries, not the rendered rows:
   // renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count reports how
   // much has been paged in rather than how many files passed.
@@ -3474,6 +3792,10 @@ function applyTreeFilters() {
     : null;
   _renderFilteredTally(panel, shownFiles, st, recencyCount);
   _renderFilterNote(panel, unloadedFolders, st);
+  // Scheduled, not immediate: every caller that needs focus repaired in this
+  // turn follows applyTreeFilters() with synchronizeTreeNow(), which cancels
+  // this task and runs once instead of walking the tree twice.
+  scheduleTreeSynchronize();
 }
 
 // How many files the filter is actually showing, as a second line
@@ -4729,6 +5051,7 @@ function fileStoreApplyChange(ops) {
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
       activeFiles.delete(op.path);
+      _removeDeferredTreePageEntries(op.path);
       // Remove rendered rows in every tab panel; also drops the
       // dir's `.tree-children` container so descendant rows go
       // with it. Server's bulk-remove op already lists each
@@ -4948,6 +5271,9 @@ function _treeKeyCmp(a, b) {
 // sibling — the user can expand to lazy-load.
 function _buildRowHtml(entry, options) {
   var name = entry.name || "";
+  var level = options?.level || 1;
+  var position = options?.position || 1;
+  var setSize = options?.setSize || 1;
   var muted = "";
   if (entry.gitignored) {
     muted += " tree-item-gitignored";
@@ -4955,10 +5281,25 @@ function _buildRowHtml(entry, options) {
   if (entry.type === "dir") {
     var dirChip = treeDirChipHtml(entry.total_files, entry.total_size, options);
     var dirAge = formatAge(entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0);
+    var hasPotentialChildren = entry.empty !== true;
+    var folderLabelId = treeDomId("tree-label", `folder:${entry.path}`);
+    var groupId = hasPotentialChildren ? treeDomId("tree-group", entry.path) : "";
+    var folderAttributes = treeItemAttributes({
+      kind: "folder",
+      path: entry.path,
+      level: level,
+      position: position,
+      setSize: setSize,
+      expanded: hasPotentialChildren ? false : undefined,
+      ownedGroupId: groupId,
+      labelId: folderLabelId,
+    });
     return (
       '<div class="tree-item tree-folder collapsed' +
       muted +
-      '" data-action="select-dir" data-path="' +
+      '"' +
+      folderAttributes +
+      ' data-action="select-dir" data-path="' +
       esc(entry.path) +
       '" data-tip-type="dir" data-tip-name="' +
       esc(name) +
@@ -4972,7 +5313,9 @@ function _buildRowHtml(entry, options) {
       '<span class="tree-toggle">' +
       ICONS.toggle +
       "</span>" +
-      '<span class="tree-item-name">' +
+      '<span class="tree-item-name" id="' +
+      folderLabelId +
+      '">' +
       esc(name) +
       "</span>" +
       '<span class="tree-item-age-inline">' +
@@ -4980,20 +5323,36 @@ function _buildRowHtml(entry, options) {
       "</span>" +
       dirChip +
       "</div>" +
-      '<div class="tree-children" style="display:none">' +
-      '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
-      ' role="status" aria-label="Loading">' +
-      '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
-      "</div>" +
-      "</div>"
+      (hasPotentialChildren
+        ? '<div class="tree-children" id="' +
+          groupId +
+          '" role="group" style="display:none">' +
+          '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+          ' role="status" aria-label="Loading">' +
+          '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
+          "</div>" +
+          "</div>"
+        : "")
     );
   }
   if (entry.type === "symlink") {
     var linkAge = formatAge(entry.mtime_ns ? entry.mtime_ns / 1e9 : 0);
+    var linkLabelId = treeDomId("tree-label", `symlink:${entry.path}`);
+    var linkAttributes = treeItemAttributes({
+      kind: "symlink",
+      path: entry.path,
+      level: level,
+      position: position,
+      setSize: setSize,
+      selected: currentPath === entry.path,
+      labelId: linkLabelId,
+    });
     return (
       '<div class="tree-item tree-symlink' +
       muted +
-      '" data-action="select" data-path="' +
+      '"' +
+      linkAttributes +
+      ' data-action="select" data-path="' +
       esc(entry.path) +
       '" data-tip-type="symlink" data-tip-name="' +
       esc(name) +
@@ -5003,7 +5362,9 @@ function _buildRowHtml(entry, options) {
       '<span class="tree-item-icon">' +
       ICONS.fileSymlink +
       "</span>" +
-      '<span class="tree-item-name">' +
+      '<span class="tree-item-name" id="' +
+      linkLabelId +
+      '">' +
       esc(name) +
       "</span>" +
       '<span class="tree-item-age-inline"><span class="tree-item-age">' +
@@ -5014,10 +5375,22 @@ function _buildRowHtml(entry, options) {
   }
   var fi = getFileIcon(getLogicalName(entry));
   var fileAge = formatAge(entry.mtime_ns ? entry.mtime_ns / 1e9 : 0);
+  var fileLabelId = treeDomId("tree-label", `file:${entry.path}`);
+  var fileAttributes = treeItemAttributes({
+    kind: "file",
+    path: entry.path,
+    level: level,
+    position: position,
+    setSize: setSize,
+    selected: currentPath === entry.path,
+    labelId: fileLabelId,
+  });
   return (
     '<div class="tree-item tree-file' +
     muted +
-    '" data-action="select" data-path="' +
+    '"' +
+    fileAttributes +
+    ' data-action="select" data-path="' +
     esc(entry.path) +
     '" data-tip-type="file" data-tip-name="' +
     esc(name) +
@@ -5035,7 +5408,9 @@ function _buildRowHtml(entry, options) {
     '">' +
     fi.svg +
     "</span>" +
-    '<span class="tree-item-name">' +
+    '<span class="tree-item-name" id="' +
+    fileLabelId +
+    '">' +
     esc(name) +
     "</span>" +
     '<span class="tree-item-age-inline">' +
@@ -5057,7 +5432,7 @@ function _buildRowHtml(entry, options) {
 // appear when the user expands).
 function _findChildContainerFor(parentRel, panelEl) {
   if (!parentRel) {
-    return panelEl; // root
+    return treeRootForPanel(panelEl);
   }
   var folder = panelEl.querySelector(
     `.tree-folder[data-path="${escapePathForSelector(parentRel)}"]`,
@@ -5075,10 +5450,95 @@ function _findChildContainerFor(parentRel, panelEl) {
   return children;
 }
 
+function _deferredTreePageForContainer(container) {
+  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
+  if (!sentinel) {
+    return null;
+  }
+  var pageId = sentinel.dataset.pageId;
+  var page = pendingTreePages.get(pageId);
+  return page ? { pageId: pageId, page: page, sentinel: sentinel } : null;
+}
+
+// Snapshot and change events include entries already held by a deferred page.
+// Refresh that pending copy instead of mounting it ahead of its sentinel.
+function _updateDeferredTreePageEntry(container, entry) {
+  var deferred = _deferredTreePageForContainer(container);
+  if (!deferred) {
+    return false;
+  }
+  var index = deferred.page.nodes.findIndex((node) => node.path === entry.path);
+  if (index < 0) {
+    return false;
+  }
+  var current = deferred.page.nodes[index];
+  if (current.type !== entry.type) {
+    deferred.page.nodes.splice(index, 1);
+    _synchronizeDeferredTreePage(deferred.pageId, deferred.page);
+    return false;
+  }
+  deferred.page.nodes[index] = { ...current, ...entry };
+  return true;
+}
+
+function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
+  var sentinel = /** @type {HTMLElement | null} */ (
+    document.querySelector(`.tree-page-more[data-page-id="${escapePathForSelector(pageId)}"]`)
+  );
+  if (!sentinel) {
+    pendingTreePages.delete(pageId);
+    return;
+  }
+  var container = sentinel.parentElement;
+  if (!container) {
+    return;
+  }
+  var rows = /** @type {HTMLElement[]} */ (
+    Array.from(container.querySelectorAll(":scope > .tree-item:not(.tree-page-more)"))
+  );
+  var setSize = Math.max(rows.length + page.nodes.length, Number(page.options.setSize) || 0);
+  page.options.setSize = setSize;
+  for (var index = 0; index < rows.length; index++) {
+    rows[index].dataset.treePosition = String(index + 1);
+    rows[index].dataset.treeSetSize = String(setSize);
+  }
+  if (page.nodes.length === 0) {
+    var sentinelMutation = mutationSnapshot || treeKeyboard?.prepareForMutation();
+    sentinel.remove();
+    pendingTreePages.delete(pageId);
+    scheduleTreeSynchronize(sentinelMutation);
+    return;
+  }
+  sentinel.dataset.treePosition = String(rows.length + 1);
+  sentinel.dataset.treeSetSize = String(setSize);
+  var labelId = sentinel.getAttribute("aria-labelledby") || "";
+  var label = document.getElementById(labelId);
+  if (label) {
+    label.textContent = `Show ${page.nodes.length} more (${setSize} total)`;
+  }
+  scheduleTreeSynchronize(mutationSnapshot);
+}
+
+function _removeDeferredTreePageEntries(path) {
+  var prefix = `${path}/`;
+  for (var [pageId, page] of pendingTreePages) {
+    var originalLength = page.nodes.length;
+    page.nodes = page.nodes.filter((node) => node.path !== path && !node.path.startsWith(prefix));
+    var removed = originalLength - page.nodes.length;
+    if (removed === 0) {
+      continue;
+    }
+    var previousSetSize = Number(page.options.setSize) || originalLength;
+    page.options.setSize = Math.max(page.nodes.length, previousSetSize - removed);
+    _synchronizeDeferredTreePage(pageId, page);
+  }
+}
+
 // Insert a new row into a child container at sorted position.
 // Containers may include a `.tree-page-more` sentinel at the end
-// (when the initial render hit TREE_PAGE_SIZE); inserts go before
-// it so the sort order isn't broken by new arrivals at the cap.
+// (when the initial render hit TREE_PAGE_SIZE). Entries already in
+// that deferred page stay deferred; genuinely new arrivals go before
+// the sentinel so they remain visible without a reload.
 // Idempotent: if a row with this data-path already exists in the
 // container, do nothing (the patch path will handle updates).
 //
@@ -5092,11 +5552,22 @@ function _insertRowSorted(container, entry, options) {
   if (existing) {
     return false;
   }
+  if (_updateDeferredTreePageEntry(container, entry)) {
+    return false;
+  }
+  var deferredPage = _deferredTreePageForContainer(container);
+  treeKeyboard?.prepareForMutation();
   container.querySelectorAll(":scope > .tree-lazy-placeholder").forEach((el) => {
     el.remove();
   });
   var tmp = document.createElement("div");
-  tmp.innerHTML = _buildRowHtml(entry, options);
+  var mountedRows = container.querySelectorAll(":scope > .tree-item").length + 1;
+  tmp.innerHTML = _buildRowHtml(entry, {
+    ...options,
+    level: treeLevelForContainer(container),
+    position: mountedRows,
+    setSize: mountedRows,
+  });
   var nodes = Array.prototype.slice.call(tmp.childNodes);
   // For dir inserts, _buildRowHtml emits two siblings (the .tree-folder
   // and its .tree-children). We insert both at the same anchor.
@@ -5151,6 +5622,23 @@ function _insertRowSorted(container, entry, options) {
       );
     }
   }
+  var mounted = /** @type {HTMLElement[]} */ (
+    Array.from(container.querySelectorAll(":scope > .tree-item"))
+  );
+  if (deferredPage) {
+    _synchronizeDeferredTreePage(deferredPage.pageId, deferredPage.page);
+    return true;
+  }
+  var declaredSetSize = mounted.reduce(
+    (largest, row) => Math.max(largest, Number(row.dataset.treeSetSize) || 0),
+    mounted.length,
+  );
+  for (var metadataIndex = 0; metadataIndex < mounted.length; metadataIndex++) {
+    mounted[metadataIndex].dataset.treeLevel = String(treeLevelForContainer(container));
+    mounted[metadataIndex].dataset.treePosition = String(metadataIndex + 1);
+    mounted[metadataIndex].dataset.treeSetSize = String(declaredSetSize);
+  }
+  scheduleTreeSynchronize();
   return true;
 }
 
@@ -5196,6 +5684,7 @@ function applyCellPatch(entry) {
   if (!entry.path) {
     updateRootAggregatePresentation(entry);
     reconcilePendingTallyDiagnostics();
+    scheduleTreeSynchronize();
     return;
   }
   var safePath = escapePathForSelector(entry.path);
@@ -5217,6 +5706,7 @@ function applyCellPatch(entry) {
     // path. Remove it synchronously, including a former folder's child rows,
     // before taking the normal insert path. The same applies when a rapid
     // remove/recreate reaches us while an old same-shaped row is animating out.
+    treeKeyboard?.prepareForMutation();
     _removeRenderedRowsImmediately(entry.path);
     rows = queryHtmlAll(selector);
   }
@@ -5243,7 +5733,27 @@ function applyCellPatch(entry) {
         // are visible leaves but intentionally excluded from aggregates.
         var totalFiles = entry.total_files;
         if (typeof entry.empty === "boolean") {
+          treeKeyboard?.prepareForMutation();
           row.classList.toggle("tree-item-empty", entry.empty);
+          var children = row.nextElementSibling;
+          if (entry.empty && children?.classList.contains("tree-children")) {
+            children.remove();
+            row.classList.remove("expanded");
+            row.classList.add("collapsed");
+            row.removeAttribute("aria-expanded");
+            row.removeAttribute("aria-owns");
+          } else if (!entry.empty && !children?.classList.contains("tree-children")) {
+            var groupId = treeDomId("tree-group", entry.path);
+            row.insertAdjacentHTML(
+              "afterend",
+              `<div class="tree-children" id="${groupId}" role="group" style="display:none">` +
+                '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+                ' role="status" aria-label="Loading">' +
+                '<span class="spinner spinner-sm" aria-hidden="true"></span></div></div>',
+            );
+            row.setAttribute("aria-expanded", "false");
+            row.setAttribute("aria-owns", groupId);
+          }
         } else if (totalFiles > 0) {
           // Positive totals remain an unambiguous fallback for events
           // from an older server that lacks explicit empty-state metadata.
@@ -5258,6 +5768,7 @@ function applyCellPatch(entry) {
       scheduleFilterReapply();
     }
     reconcilePendingTallyDiagnostics();
+    scheduleTreeSynchronize();
     return;
   }
   // No row exists — try to insert one in each panel where the
@@ -5282,6 +5793,7 @@ function applyCellPatch(entry) {
   // a new file would show up regardless of the active filter.
   scheduleFilterReapply();
   reconcilePendingTallyDiagnostics();
+  scheduleTreeSynchronize();
 }
 
 // Remove all rendered rows (in any tab panel) for *path*. For
@@ -5299,6 +5811,7 @@ function applyCellPatch(entry) {
 // arrive on the wire, and a collapsing tree-children container
 // reads as confusing motion).
 function _removeRenderedRows(path) {
+  var removalMutation = treeKeyboard?.prepareForMutation();
   var safe = escapePathForSelector(path);
   var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
   for (var i = 0; i < rows.length; i++) {
@@ -5324,7 +5837,27 @@ function _removeRenderedRows(path) {
         if (ev.animationName === "tree-row-flash-out") {
           var target = ev.currentTarget;
           if (target instanceof Element) {
+            var parent = target.parentElement;
+            var previousSetSize = Number(target.getAttribute("aria-setsize")) || 0;
+            var deferredPage = parent ? _deferredTreePageForContainer(parent) : null;
             target.remove();
+            if (deferredPage) {
+              deferredPage.page.options.setSize = Math.max(
+                deferredPage.page.nodes.length,
+                previousSetSize - 1,
+              );
+              _synchronizeDeferredTreePage(deferredPage.pageId, deferredPage.page, removalMutation);
+            } else if (parent) {
+              var rows = /** @type {HTMLElement[]} */ (
+                Array.from(parent.querySelectorAll(":scope > .tree-item"))
+              );
+              var nextSetSize = Math.max(rows.length, previousSetSize - 1);
+              for (var j = 0; j < rows.length; j++) {
+                rows[j].dataset.treePosition = String(j + 1);
+                rows[j].dataset.treeSetSize = String(nextSetSize);
+              }
+              scheduleTreeSynchronize(removalMutation);
+            }
           }
         }
       },
@@ -5337,6 +5870,7 @@ function _removeRenderedRows(path) {
 // the same data-path and must be inserted in this event turn. This also removes
 // a former folder's rendered descendants before its replacement is mounted.
 function _removeRenderedRowsImmediately(path) {
+  treeKeyboard?.prepareForMutation();
   var safe = escapePathForSelector(path);
   var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
   for (var i = 0; i < rows.length; i++) {
@@ -5344,6 +5878,9 @@ function _removeRenderedRowsImmediately(path) {
     if (row.classList.contains("tree-folder")) {
       var children = row.nextElementSibling;
       if (children?.classList.contains("tree-children")) {
+        children.querySelectorAll(".tree-page-more[data-page-id]").forEach((sentinel) => {
+          pendingTreePages.delete(/** @type {HTMLElement} */ (sentinel).dataset.pageId);
+        });
         children.remove();
       }
     }
@@ -5590,10 +6127,16 @@ async function revealInTree(path) {
     if (folder) {
       var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
-        if (children.querySelector(".tree-lazy-placeholder")) {
+        // Scoped to direct children on purpose. A descendant folder carries
+        // its own stub, so an unscoped match reads "this folder is unloaded"
+        // for a folder whose rows are already on screen, and reloading it
+        // swaps those rows for a spinner before restoring them.
+        if (children.querySelector(":scope > .tree-lazy-placeholder")) {
           await loadSubtree(current, children);
         }
-        window.MetabrowserTreeExpansion.setFolderExpanded(folder, children, true);
+        if (children.style.display === "none") {
+          await setFolderExpanded(folder, true);
+        }
       }
     }
   }
@@ -5603,25 +6146,144 @@ async function revealInTree(path) {
   }
   setSelectedPath(path);
   target.scrollIntoView({ block: "nearest" });
+  synchronizeTreeNow();
   return true;
 }
 
-/** @returns {Promise<QuickFileOpenOutcome>} */
-async function navigateToPath(path, preferredViewId) {
+/**
+ * @param {string} path
+ * @param {string=} preferredViewId
+ * @param {{replace?: boolean}=} routeOptions
+ * @returns {Promise<QuickFileOpenOutcome>}
+ */
+async function navigateToPath(path, preferredViewId, routeOptions) {
   // The served root is the empty path, and only a nested folder carries a
   // trailing slash, so both spellings arrive here already canonical.
   var normalized = path.replace(/\/+$/, "");
   var folder = path.endsWith("/");
+  /** @type {{replace?: boolean, viewId?: string}} */
+  var openOptions = {};
+  if (preferredViewId) {
+    openOptions.viewId = preferredViewId;
+  }
+  // Skimming with arrows replaces the route instead of pushing it, so Back
+  // returns to wherever the reader entered the tree rather than replaying
+  // every row they passed through.
+  if (routeOptions?.replace) {
+    openOptions.replace = true;
+  }
   // The route module is dialect-agnostic and types `open` as returning the
   // apply callback's `unknown`. This shell installed that callback, so it is
   // the one place that knows the result is an open outcome.
   return /** @type {Promise<QuickFileOpenOutcome>} */ (
     navigationController.open(
       { path: folder && normalized ? `${normalized}/` : normalized },
-      preferredViewId ? { viewId: preferredViewId } : undefined,
+      openOptions,
     )
   );
 }
+
+// Compose application keyboard infrastructure at the shell boundary.
+function resolveApplicationFocusFallback(previous) {
+  if (treeKeyboard && previous?.closest?.('[role="treeitem"]')) {
+    var focusedTreeRow = treeKeyboard.focusedRow();
+    if (focusedTreeRow?.isConnected) {
+      return focusedTreeRow;
+    }
+  }
+  if (applicationFocusRegion === "preview") {
+    return document.getElementById("preview-pane");
+  }
+  return null;
+}
+
+function initKeyboardInfrastructure() {
+  if (shortcutRegistry || keyboardHelp || treeKeyboard) {
+    return;
+  }
+  if (
+    !window.MetabrowserKeyboardShortcuts ||
+    !window.MetabrowserTreeKeyboardNavigation ||
+    !window.MetabrowserOverlay ||
+    !window.MetabrowserKeyboardHelp
+  ) {
+    console.warn("Keyboard Help dependencies are unavailable");
+    return;
+  }
+  var hintHost = document.getElementById("nav-shortcut-hints");
+  if (!hintHost) {
+    console.warn("Keyboard Help hint host is unavailable");
+    return;
+  }
+  shortcutRegistry = window.MetabrowserKeyboardShortcuts.create({ document: document });
+  keyboardHelp = window.MetabrowserKeyboardHelp.create({
+    document: document,
+    hintHost: hintHost,
+    overlay: window.MetabrowserOverlay,
+    resolveFocusFallback: resolveApplicationFocusFallback,
+    shortcuts: shortcutRegistry,
+  });
+  treeKeyboard = window.MetabrowserTreeKeyboardNavigation.create({
+    activate: activateTreeRowFromKeyboard,
+    container: treePane,
+    document: document,
+    navigate: openTreeRow,
+    setFolderExpanded: setFolderExpanded,
+    shortcuts: shortcutRegistry,
+  });
+  applicationFocusListener = (event) => {
+    var target = event.target;
+    var treePaneElement = document.getElementById("tree-pane");
+    var previewElement = document.getElementById("preview-pane");
+    if (treePaneElement?.contains(target)) {
+      applicationFocusRegion = "tree";
+    } else if (previewElement?.contains(target)) {
+      applicationFocusRegion = "preview";
+    }
+  };
+  document.addEventListener("focusin", applicationFocusListener);
+}
+
+function disposeKeyboardInfrastructure() {
+  if (applicationFocusListener) {
+    document.removeEventListener("focusin", applicationFocusListener);
+    applicationFocusListener = null;
+  }
+  quickFilePalette?.dispose();
+  quickFilePalette = null;
+  quickFileCatalogFeed?.dispose();
+  quickFileCatalogFeed = null;
+  quickFileSearchController?.dispose();
+  quickFileSearchController = null;
+  knownFileCatalog = null;
+  treeKeyboard?.dispose();
+  treeKeyboard = null;
+  keyboardHelp?.dispose();
+  keyboardHelp = null;
+  shortcutRegistry?.dispose();
+  shortcutRegistry = null;
+}
+
+// `pagehide` also fires when the document enters the back/forward cache, and a
+// bfcache restore never re-runs DOMContentLoaded. Tearing the registry down
+// there would return the user to a page whose shortcuts, Help, Quick File, and
+// tree keys are all silently dead, so a persisted hide is left alone and the
+// matching `pageshow` rebuilds whatever an earlier real teardown removed. The
+// listener stays registered: a persisted hide can be followed by a genuine one.
+window.addEventListener("pagehide", (event) => {
+  if (/** @type {PageTransitionEvent} */ (event).persisted) {
+    return;
+  }
+  disposeKeyboardInfrastructure();
+});
+
+window.addEventListener("pageshow", (event) => {
+  if (!(/** @type {PageTransitionEvent} */ (event).persisted)) {
+    return;
+  }
+  initKeyboardInfrastructure();
+  initQuickFileFinder();
+});
 
 // Compose the application-lifetime quick-file modules at the shell boundary.
 function initQuickFileFinder() {
@@ -5632,7 +6294,9 @@ function initQuickFileFinder() {
     !window.MetabrowserKnownFileCatalog ||
     !window.MetabrowserFileFuzzyMatch ||
     !window.MetabrowserSearch ||
-    !window.MetabrowserSearchPalette
+    !window.MetabrowserSearchPalette ||
+    !shortcutRegistry ||
+    !window.MetabrowserOverlay
   ) {
     console.warn("Quick File dependencies are unavailable");
     return;
@@ -5659,6 +6323,7 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
     // live deltas — so an open search re-runs instead of keeping the result
     // set it happened to get first.
@@ -5674,6 +6339,8 @@ function initQuickFileFinder() {
       boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
       return navigateToPath(path);
     },
+    resolveFocusFallback: resolveApplicationFocusFallback,
+    shortcuts: shortcutRegistry,
   });
 }
 
@@ -5717,6 +6384,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavTabs();
   initFilterBar();
   initNavScrollShadow();
+  initKeyboardInfrastructure();
   initQuickFileFinder();
   // Start the URL-pinned file fetch in parallel with the tree walk. Only a
   // /view/ pathname selects a file; a hash is document state, never identity.

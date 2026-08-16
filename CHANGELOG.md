@@ -55,6 +55,48 @@ Document navigation and URL scheme:
   document. Plugin authors should not introduce `_mb_` keys of their own.
   See the browser URL grammar in `docs/architecture.md`.
 
+Keyboard discovery and navigation:
+
+- Press `?` or use the visible Help control to open a concise product description, the
+  project link, and the complete shortcut list, all generated from the same binding
+  registry that dispatches commands.
+- The navigation footer keeps Help and Quick File hints visible above indexing progress.
+  The strip names one preferred key per command and stops there — `? Help` and
+  `T Quick File`. Tree arrows are the first thing anyone tries unprompted, so they stay
+  in Help rather than spending a permanent line; `/` still opens Quick File and is still
+  documented there.
+- Jump-to-edge in the tree is now `Shift`+`↑` and `Shift`+`↓` as well as Home and End,
+  which a Mac laptop keyboard does not have.
+- The GitHub link in Help uses the accent color every other link uses, instead of the
+  browser’s default blue.
+- The file tree now follows the conventional accessible keyboard model: arrow keys,
+  Home, End, Enter, and Space move, expand, collapse, and activate rows while preserving
+  native scrolling in the preview pane.
+- An expanded folder no longer flickers shut when navigation reaches something inside
+  it. Revealing a path treated a folder as unloaded whenever any descendant still carried
+  a lazy stub, so it refetched a folder whose rows were already on screen and swapped
+  them for a loading placeholder before restoring them.
+  The check now looks only at the folder’s own direct children.
+- Selection follows focus in the tree: arrow keys, Home, and End open the row they land
+  on, so skimming costs one keypress per row rather than two.
+  Enter and Space are action keys rather than view keys — they expand or collapse a
+  folder, or mount a deferred page, and no longer open a file.
+  Skimming replaces the route instead of pushing it, so Back returns to wherever the
+  reader entered the tree rather than replaying every row they passed.
+  Clicking is unchanged: a pointer gets one gesture per row, so a click still opens and
+  toggles together.
+- Live inventory events now refresh deferred tree pages without mounting their rows
+  early, so activating a pagination row cannot duplicate files and removals cannot
+  resurrect a stale deferred entry.
+  Type replacement also discards deferred pages owned by the removed subtree.
+- Recursive folder expansion and collapse each batch tree synchronization once after the
+  full operation instead of re-walking the visible tree for every descendant, and live
+  inventory bursts coalesce into one pass instead of one per event.
+- Help and Quick File now share the same modal, key-presentation, focus-restoration, and
+  dismissal primitives for consistent pointer and keyboard behavior.
+- Quick File result movement now wraps at both ends, and Home and End keep their normal
+  meaning in the query box.
+
 Plugin SDK:
 
 - **Breaking:** `PLUGIN_SDK_VERSION` is now `0.2`. Plugins navigate through the

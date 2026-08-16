@@ -33,6 +33,7 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 - [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
 - [Flat single-command `metab` CLI](specs/done/plan-2026-07-27-metab-flat-cli.md)
 - [Folder Overview panels and file-type summary](specs/done/plan-2026-08-12-directory-file-type-summary.md)
+- [Contextual keyboard help and tree navigation](specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
 - [Semantic file type families](specs/done/plan-2026-08-13-semantic-file-type-families.md)
 - [Shared file type taxonomy and bounded breakdowns](specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
 - [GitHub and Obsidian Markdown navigation](specs/done/plan-2026-08-13-markdown-link-navigation.md)

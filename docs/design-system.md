@@ -120,10 +120,66 @@ inside a sentence.
 
 Write the key in its natural case in markup — the caps treatment is presentational, so
 the accessible name stays what the markup says.
-For a sequence, emit one `.kbd` per key so each keeps its own border.
+For a chord or alternative, emit one `.kbd` per physical key so each keeps its own
+border.
 
 The component, its tokens, and its markup contract are documented in the
 `── Keyboard keys ──` blocks of `static/styles.css`.
+
+#### Canonical Key Names
+
+Event matching, visible keycaps, spoken names, and `aria-keyshortcuts` are different
+representations. The shared shortcut formatter derives every applicable representation
+from one semantic binding; a caller never abbreviates a key or substitutes an arrow
+glyph itself.
+
+| Semantic key | Markup label | Spoken name | ARIA key token |
+| --- | --- | --- | --- |
+| `?` | `?` | Question mark | Omitted when matched as a produced character |
+| `/` | `/` | Slash | Omitted when matched as a produced character |
+| Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
+| `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
+| `ArrowDown` | `↓` | Down arrow | `ArrowDown` |
+| `ArrowLeft` | `←` | Left arrow | `ArrowLeft` |
+| `ArrowRight` | `→` | Right arrow | `ArrowRight` |
+| `Enter` | `Enter` | Enter | `Enter` |
+| Space (`KeyboardEvent.key === " "`) | `Space` | Space | `Space` |
+| `Escape` | `Esc` | Escape | `Escape` |
+| `Home` | `Home` | Home | `Home` |
+| `End` | `End` | End | `End` |
+| `Delete` | `Delete` | Delete | `Delete` |
+| `F2` | `F2` | F2 | `F2` |
+
+The `.kbd` text transform produces the visible caps treatment; source markup keeps the
+mixed-case label in this table.
+The
+[WAI-ARIA definition of `aria-keyshortcuts`](https://www.w3.org/TR/wai-aria-1.2/#aria-keyshortcuts)
+describes physical keys, not generated characters.
+ARIA serialization is therefore a separate, optional formatter output: it uses `Escape`
+instead of the visible `Esc` and `ArrowUp` instead of `↑`, but omits a character-matched
+punctuation binding when the physical chord varies by keyboard layout.
+Do not guess `Shift+/` for a `?` binding that intentionally works on any layout
+producing that character.
+When modifier bindings are introduced, the formatter owns both platform labels and ARIA
+serialization; no call site chooses between names such as Control, Command, or Meta.
+Adding a key that is not in this vocabulary requires adding its display, spoken, and
+ARIA policy together with formatter tests.
+
+#### Binding Grammar and Accessibility
+
+- Alternative bindings use the word “or”: `T` or `/`.
+- Simultaneous keys use a plus sign: `Ctrl` + `F`.
+- Ordered key sequences are not supported and must not be implied by adjacent keycaps.
+- Direction pairs use “or,” not a slash or unexplained adjacency: `↑` or `↓`.
+
+The visual and spoken forms are both generated.
+An isolated key may use its natural-case `<kbd>` text as its accessible name.
+A group of alternatives or a chord exposes one visually hidden phrase such as “T or
+slash” or “Control plus F” and hides its visual punctuation and keycaps from assistive
+technology, avoiding duplicate or ambiguous announcements.
+An actionable control keeps its action as the accessible name and receives the
+formatter’s `aria-keyshortcuts` value separately when the formatter can represent the
+physical shortcut accurately.
 
 ### Type Scale
 
@@ -368,6 +424,94 @@ divider remains equally close to headings with and without disclosure controls.
 This pattern does not replace the navigation-tree disclosure.
 The tree keeps its leading chevron because that mark communicates hierarchy and shares
 one activation target with folder navigation.
+
+## Keyboard Commands and Help
+
+Application commands have one registry and one document-level dispatcher.
+The same descriptors drive matching, the full Help list, compact hints,
+`aria-keyshortcuts`, and shortcut hints in menus.
+No surface keeps a parallel key-name map, copies command text, or installs another
+document-level application-shortcut listener.
+
+Widget behavior that belongs to a focused control, such as arrow navigation within a
+menu or radiogroup, stays on that component’s root.
+If that behavior is advertised in Help or another hint surface, its presentation still
+comes from a registered descriptor.
+Document-level commands ignore editable controls, composition, previously handled
+events, and modifiers they did not declare.
+They prevent browser behavior only after an enabled handler reports that it acted.
+
+A command may opt back into an editable target only for a key that field does not
+already own. A combobox may claim the arrow keys, `Enter`, and `Escape`, because none of
+them edit text. It may not claim `Home` or `End`: those move the caret, and taking them
+leaves the user unable to reach the start or end of what they typed.
+When a list needs first-item and last-item reach behind an editable control, its
+movement commands wrap instead of borrowing the caret keys.
+
+### Descriptor Contract
+
+Every presented command declares:
+
+- a stable identifier and scope;
+- semantic bindings, including explicit modifier and repeat policy;
+- a group identifier whose heading, context sentence, and order come from one group
+  registry;
+- one sentence-case action label with no terminal punctuation;
+- one active-voice Help description ending in a period;
+- a compact hint of one to three words when the full label will not fit; and
+- the surfaces where it appears and when those surfaces may show it.
+
+A command rendered as a control that opens a managed surface also supplies a control
+binding from that surface.
+The binding connects a rendered trigger to its stable controlled-element ID, popup role
+when applicable, and current expanded state, then restores any prior state when
+disconnected.
+The registry snapshot carries the binding to the renderer; a call site does
+not hand-author `aria-controls`, `aria-haspopup`, or `aria-expanded`. Pointer invocation
+carries the trigger element to the command so an overlay can restore focus even in
+browsers that do not focus a clicked button.
+
+The key formatter, not the descriptor, supplies visible abbreviations and glyphs.
+The registry rejects duplicate normalized bindings within one scope and incomplete copy
+for any requested surface.
+Equivalent keys for one command are aliases in one descriptor.
+Separate commands may share a compact hint; the renderer then coalesces adjacent
+commands with the same hint and joins their bindings with “or.”
+
+Full Help includes registered contextual commands even when their scope is inactive and
+states when each group applies.
+Compact hints include descriptors explicitly selected for that surface: persistent
+global commands plus selected commands available in the active scope.
+They are a high-value subset, not a second exhaustive Help list, and disappear when
+their scope is unavailable rather than looking disabled.
+Changing contextual hints is not a live-region announcement.
+
+### Shortcut and Help Copy
+
+Shortcut copy follows the general [interface-copy rules](#interface-copy) plus these
+surface-specific constraints:
+
+| Copy | Form | Example |
+| --- | --- | --- |
+| Action or trigger label | Short sentence-case noun or verb phrase; no punctuation | `Quick File` |
+| Compact hint | One to three words; sentence case; no punctuation | `Toggle folder` |
+| Help description | One complete active-voice sentence describing context or result | `Open the selected file.` |
+| Context note | One complete sentence saying when the group applies | `Available while a file-tree row has focus.` |
+
+Copy never repeats the rendered key name, uses a slash to mean “or,” or says “click” for
+an action that also works from the keyboard.
+Use the canonical product terms “Help,” “Quick File,” “navigation pane,” “file tree,”
+and “main pane.” Key abbreviations belong only inside `.kbd`; ordinary prose uses the
+full key name.
+
+The Help surface is a modal dialog with three content blocks: a brief description of
+Metabrowser, a descriptive link to the public project homepage, and registry-derived
+shortcut groups. The description explains the folder, navigation, preview, and
+trusted-plugin model in at most three short sentences; it links to longer documentation
+instead of duplicating it.
+The project link identifies GitHub and announces that it opens a new tab.
+Help has a visible labelled trigger, so learning the `?` shortcut is never a
+prerequisite for opening it.
 
 ## Icons and Icon Buttons
 
@@ -936,8 +1080,74 @@ bars, table, standalone tally, or synthetic “No README” document panel.
 Loading, partial, empty, and failed states must remain visually and semantically
 distinct.
 
-Floating menus and tooltips use the shared surface, border, radius, and shadow tokens.
-They must remain within the viewport and close on Escape or outside interaction.
+## Overlays, Menus, and Dialogs
+
+“Overlay” describes shared placement and lifecycle, not accessibility semantics.
+Every overlay chooses a content pattern and uses that pattern’s role and keyboard model.
+“Popover” is likewise a visual description, not an ARIA role; do not use it to blur the
+difference between a tooltip, menu, and dialog.
+
+| Pattern | Purpose and semantics | Focus and dismissal |
+| --- | --- | --- |
+| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls | Opens for pointer hover and keyboard focus; closes on pointer leave, blur, or Escape |
+| Anchored popup | A menu, listbox, or other pattern anchored to a trigger or pointer; the content role defines its semantics | Uses that pattern’s focus model; closes on Escape and outside interaction |
+| Modal dialog | A labelled task or information surface with `role="dialog"` and `aria-modal="true"` | Moves focus inside, contains Tab, makes background content inert, and closes through Escape, an explicit control, or the scrim |
+
+A compact surface can still be a modal dialog.
+Help is a dialog because it contains a link and controls and temporarily owns focus; it
+is not a tooltip or menu.
+
+### Shared Overlay Lifecycle
+
+One overlay controller owns body portals, viewport-relative placement, flip and clamp,
+stacking, scrims, open-surface arbitration, focus save and restore, and disposal.
+Consumers do not recreate those behaviors.
+At most one anchored popup and one modal are open; an anchored popup inside the active
+modal may coexist with it, and Escape closes the topmost eligible surface first.
+
+The shortcut registry owns the one document-level application keydown listener.
+An overlay component registers its Escape action for the component’s lifetime.
+Opening activates the command’s scope, closing removes that exact activation, and
+component disposal removes the command registration.
+The visible Close control, scrim, and Escape binding invoke that same command; its
+descriptor supplies the Close control’s accessible action name and any representable
+`aria-keyshortcuts` value.
+Widget roots may handle their own roving-focus keys, and a modal root may contain Tab,
+but neither installs another document-level shortcut dispatcher.
+
+Opening and closing meet these requirements:
+
+- pointer and keyboard triggers reach the same controller and state;
+- triggers expose the appropriate accessible name, `aria-expanded`, `aria-controls`, and
+  `aria-haspopup` value;
+- the interaction that opens a surface cannot dismiss it in the same event sequence;
+- scrolling inside a bounded overlay does not dismiss it;
+- closing restores focus to the connected trigger or a documented connected fallback;
+- modal background content cannot receive pointer, keyboard, or assistive-technology
+  interaction while the dialog is open; and
+- `dispose()` removes portals, scrims, registrations, observers, and listeners and
+  restores any focus, trigger, or inert state it changed.
+
+### Surface Anatomy and Styling
+
+Floating surfaces use the shared raised surface, border, chrome radius, shadow, z-index,
+type-scale, focus, and motion tokens.
+Use-site classes may choose placement and content layout but do not restate those visual
+properties. Reusable dimensions, spacing, or motion require component tokens rather than
+repeated literals.
+
+A modal dialog has one labelled surface with a header, title, visible Close control,
+scrolling body, and optional action footer.
+The body is the only vertical scroll owner inside the surface.
+The surface clamps to the viewport, keeps the Close control visible, and remains usable
+at 200% zoom and at the narrowest supported navigation-pane width.
+Motion respects `prefers-reduced-motion`; content and focus order do not depend on an
+animation completing.
+
+Correct semantics are part of the primitive.
+A menu renderer supplies menu roles and roving focus; a dialog renderer supplies its
+label relationship and modal state; a tooltip renderer never accepts interactive
+children. Visually similar surfaces do not borrow the wrong role merely to share CSS.
 
 ## Structured Data and Tables
 
@@ -1117,6 +1327,11 @@ without freezing incidental wording throughout the codebase.
 - Status does not rely on color alone.
 - Text meets contrast requirements at its actual size and weight.
 - Tooltips supplement, rather than replace, persistent labels for essential controls.
+- Shortcut keycaps have canonical visible and spoken names, and actionable shortcut
+  controls expose registry-derived `aria-keyshortcuts` when their physical binding is
+  representable accurately.
+- Modal dialogs label themselves, keep background content inert, contain focus, and
+  restore focus on every close path.
 - Print views hide host chrome and retain the rendered document or source content.
 
 ## Review Checklist
@@ -1130,7 +1345,10 @@ When adding a component or plugin view:
 3. Review all chrome copy and adjacent text across supported states.
 4. Check light theme, dark theme, keyboard focus, reduced motion, and print output.
 5. Verify lazy mount and disposal behavior.
-6. Run Biome, TypeScript check-JS, and the relevant browser-side tests.
+6. For shortcut or overlay work, verify the shared descriptor, key formatter, overlay
+   lifecycle, spoken labels, and contextual availability instead of testing one surface
+   in isolation.
+7. Run Biome, TypeScript check-JS, and the relevant browser-side tests.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

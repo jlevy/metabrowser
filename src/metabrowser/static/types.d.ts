@@ -1040,7 +1040,7 @@ type MetabrowserSearchPaletteApi = Readonly<{
   dispose(): void;
   element: HTMLElement;
   isOpen(): boolean;
-  open(): void;
+  open(trigger?: HTMLElement | null): void;
 }>;
 
 type MetabrowserSearchPaletteRuntime = Readonly<{
@@ -1052,12 +1052,211 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
+    overlay: MetabrowserOverlayRuntime;
+    resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
+    shortcuts: MetabrowserShortcutRegistry;
     /**
      * Observe catalog growth so an open search converges instead of keeping
      * the coverage it had when the query ran. Returns an unsubscribe function.
      */
     subscribeCatalog?(listener: () => void): () => void;
   }): MetabrowserSearchPaletteApi;
+}>;
+
+type MetabrowserModifierPolicy = "allow" | "forbid" | "require";
+
+type MetabrowserShortcutBinding = Readonly<{
+  key: string;
+  modifiers?: Partial<Record<"alt" | "control" | "meta" | "shift", MetabrowserModifierPolicy>>;
+}>;
+
+type MetabrowserBindingPresentation = Readonly<{
+  ariaKeyshortcuts: string;
+  preferred?: MetabrowserBindingPresentation;
+  spoken: string;
+  visible: ReadonlyArray<
+    Readonly<{ keys: ReadonlyArray<string>; separators: ReadonlyArray<string> }>
+  >;
+}>;
+
+type MetabrowserShortcutControlBinding = Readonly<{
+  connect(element: HTMLElement): () => void;
+}>;
+
+type MetabrowserShortcutCommand = Readonly<{
+  allowInEditable?: boolean;
+  available?(context: Record<string, unknown>): boolean;
+  bindings: ReadonlyArray<MetabrowserShortcutBinding>;
+  control?: MetabrowserShortcutControlBinding;
+  copy: Readonly<{ action: string; description: string; hint: string }>;
+  group: string;
+  handler(context: Record<string, unknown>): boolean;
+  id: string;
+  order: number;
+  repeat?: boolean;
+  scope: string;
+  surfaces: Readonly<Record<string, "active" | "always">>;
+}>;
+
+type MetabrowserShortcutPresentation = Readonly<{
+  bindings: MetabrowserBindingPresentation;
+  control?: MetabrowserShortcutControlBinding;
+  copy: Readonly<{ action: string; description: string; hint: string }>;
+  commandIds: ReadonlyArray<string>;
+  group: string;
+  id: string;
+  scope: string;
+  surfaces: Readonly<Record<string, "active" | "always">>;
+}>;
+
+type MetabrowserShortcutGroupPresentation = Readonly<{
+  commands: ReadonlyArray<MetabrowserShortcutPresentation>;
+  context: string;
+  id: string;
+  label: string;
+}>;
+
+type MetabrowserShortcutRegistry = Readonly<{
+  activateScope(scope: string, options?: { exclusive?: boolean }): () => void;
+  appendBinding(container: HTMLElement, presentation: MetabrowserBindingPresentation): void;
+  dispose(): void;
+  describeBindings(
+    bindings: ReadonlyArray<MetabrowserShortcutBinding>,
+  ): MetabrowserBindingPresentation;
+  invoke(commandId: string, context?: Record<string, unknown>): boolean;
+  present(commandId: string): MetabrowserShortcutPresentation | null;
+  register(command: MetabrowserShortcutCommand): () => void;
+  snapshot(
+    surface: string,
+    options?: { includeInactive?: boolean },
+  ): ReadonlyArray<MetabrowserShortcutGroupPresentation>;
+  subscribe(
+    listener: (event: Readonly<{ commandId?: string; kind: string; scope?: string }>) => void,
+  ): () => void;
+}>;
+
+type MetabrowserKeyboardShortcutsRuntime = Readonly<{
+  GROUP_DEFINITIONS: Readonly<
+    Record<string, Readonly<{ context: string; label: string; order: number }>>
+  >;
+  KEY_DEFINITIONS: Readonly<
+    Record<string, Readonly<{ aria: string; spoken: string; visible: string }>>
+  >;
+  appendBinding(
+    document: Document,
+    container: HTMLElement,
+    presentation: MetabrowserBindingPresentation,
+  ): void;
+  bindingSignature(binding: MetabrowserShortcutBinding): string;
+  create(options?: { document?: Document }): MetabrowserShortcutRegistry;
+  describeBindings(
+    bindings: ReadonlyArray<MetabrowserShortcutBinding>,
+  ): MetabrowserBindingPresentation;
+  eventMatchesBinding(event: KeyboardEvent, binding: MetabrowserShortcutBinding): boolean;
+  isEditableTarget(target: EventTarget | null): boolean;
+  normalizeBinding(binding: MetabrowserShortcutBinding): MetabrowserShortcutBinding;
+  validateCommand(command: MetabrowserShortcutCommand): boolean;
+}>;
+
+type MetabrowserModalController = Readonly<{
+  body: HTMLElement;
+  close(options?: { restoreFocus?: boolean }): void;
+  closeButton: HTMLButtonElement;
+  control: MetabrowserShortcutControlBinding;
+  dialog: HTMLElement;
+  dispose(): void;
+  element: HTMLElement;
+  footer: HTMLElement;
+  isOpen(): boolean;
+  open(trigger?: HTMLElement | null): void;
+  title: HTMLElement;
+}>;
+
+type MetabrowserOverlayRuntime = Readonly<{
+  captureBackgroundState(
+    document: Document,
+    portal: HTMLElement,
+  ): Array<{ element: HTMLElement; inert: boolean }>;
+  createDialogShell(options: {
+    className?: string;
+    document: Document;
+    title: string;
+  }): Omit<MetabrowserModalController, "close" | "control" | "dispose" | "isOpen" | "open">;
+  createModal(options: {
+    className?: string;
+    closeCommandId: string;
+    document?: Document;
+    initialFocus?: HTMLElement | (() => HTMLElement | null);
+    onClose?(): void;
+    onOpen?(): void;
+    resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
+    scope: string;
+    shortcuts: MetabrowserShortcutRegistry;
+    title: string;
+  }): MetabrowserModalController;
+  focusableElements(root: HTMLElement): Array<HTMLElement>;
+  restoreBackgroundState(records: ReadonlyArray<{ element: HTMLElement; inert: boolean }>): void;
+}>;
+
+type MetabrowserKeyboardHelpApi = Readonly<{
+  close(): void;
+  dispose(): void;
+  open(trigger?: HTMLElement | null): void;
+}>;
+
+type MetabrowserKeyboardHelpRuntime = Readonly<{
+  create(options: {
+    document?: Document;
+    hintHost: HTMLElement;
+    overlay: MetabrowserOverlayRuntime;
+    resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
+    shortcuts: MetabrowserShortcutRegistry;
+  }): MetabrowserKeyboardHelpApi;
+  reconcileHintStrip(
+    host: HTMLElement,
+    snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
+    invoke: (commandId: string, context: Record<string, unknown>) => boolean,
+    append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
+  ): void;
+  renderHelpGroups(
+    body: HTMLElement,
+    snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
+    append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
+  ): void;
+}>;
+
+type MetabrowserTreeMutationSnapshot = Readonly<{
+  anchor: string | null;
+  hadFocus: boolean;
+  parent: string | null;
+  siblings: Array<string>;
+}>;
+
+type MetabrowserTreeKeyboardApi = Readonly<{
+  dispose(): void;
+  focusedRow(): HTMLElement | null;
+  prepareForMutation(): MetabrowserTreeMutationSnapshot;
+  setAnchor(row: HTMLElement, focus?: boolean): HTMLElement | null;
+  setSelectedPath(path: string | null | undefined): void;
+  synchronize(snapshot?: MetabrowserTreeMutationSnapshot | null): Array<HTMLElement>;
+  visibleRows(): Array<HTMLElement>;
+}>;
+
+type MetabrowserTreeKeyboardRuntime = Readonly<{
+  create(options: {
+    activate(
+      row: HTMLElement,
+    ): HTMLElement | null | undefined | Promise<HTMLElement | null | undefined>;
+    container: HTMLElement;
+    document?: Document;
+    navigate(row: HTMLElement): void;
+    setFolderExpanded(row: HTMLElement, expanded: boolean): void | Promise<void>;
+    shortcuts: MetabrowserShortcutRegistry;
+  }): MetabrowserTreeKeyboardApi;
+  firstChildRow(row: HTMLElement): HTMLElement | null;
+  parentRow(row: HTMLElement): HTMLElement | null;
+  readVisibleRows(container: HTMLElement): Array<HTMLElement>;
+  rowIdentity(row: HTMLElement): string;
 }>;
 
 declare global {
@@ -1095,6 +1294,9 @@ declare global {
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
+    MetabrowserKeyboardShortcuts: MetabrowserKeyboardShortcutsRuntime;
+    MetabrowserKeyboardHelp: MetabrowserKeyboardHelpRuntime;
+    MetabrowserOverlay: MetabrowserOverlayRuntime;
     MetabrowserNavigationRoute: MetabrowserNavigationRouteRuntime;
     MetabrowserPluginHost: MetabrowserPluginHostRuntime;
     MetabrowserContributionRegistry: MetabrowserContributionRegistryRuntime;
@@ -1107,6 +1309,7 @@ declare global {
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
+    MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;

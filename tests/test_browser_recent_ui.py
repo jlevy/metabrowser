@@ -69,6 +69,15 @@ def test_index_template_renders_only_the_files_panel() -> None:
 
 def test_index_template_renders_index_progress_footer() -> None:
     html = _render_index_html()
+    hints = html.index('id="nav-shortcut-hints"')
+    progress = html.index('id="index-progress"')
+    hint_tag = html[hints : html.index(">", hints)]
+    assert hints < progress
+    # A name needs a role that can carry it: ARIA forbids naming a generic
+    # element, so the label would be dropped from a bare div.
+    assert 'role="group"' in hint_tag
+    assert 'aria-label="Keyboard shortcuts"' in hint_tag
+    assert "aria-live" not in hint_tag
     assert 'id="index-progress"' in html
     assert 'class="index-progress-spinner"' in html
     assert 'aria-live="polite"' in html
@@ -77,11 +86,41 @@ def test_index_template_renders_index_progress_footer() -> None:
 def test_index_template_versions_core_static_assets() -> None:
     html = _render_index_html()
     assert 'href="/static/styles.css?v=' in html
-    assert 'src="/static/plugin_sdk.js?v=' in html
-    assert 'src="/static/icons.js?v=' in html
-    assert 'src="/static/tree_expansion.js?v=' in html
-    assert 'src="/static/app.js?v=' in html
-    assert html.index("/static/tree_expansion.js") < html.index("/static/app.js")
+    assets = (
+        "/static/plugin_sdk.js",
+        "/static/icons.js",
+        "/static/tree_expansion.js",
+        "/static/known_file_catalog.js",
+        "/static/catalog_feed.js",
+        "/static/file_fuzzy_match.js",
+        "/static/search_controller.js",
+        "/static/keyboard_shortcuts.js",
+        "/static/overlay_layer.js",
+        "/static/keyboard_help.js",
+        "/static/tree_keyboard_navigation.js",
+        "/static/search_palette.js",
+        "/static/app.js",
+    )
+    positions = []
+    for asset in assets:
+        assert f'src="{asset}?v=' in html
+        positions.append(html.index(asset))
+    assert positions == sorted(positions)
+
+
+def test_files_panel_owns_one_generated_tree_with_concise_row_names() -> None:
+    html = _render_index_html()
+    js = _read_app_js()
+    tab_start = html.index('id="tab-files"')
+    tab_tag = html[tab_start : html.index(">", tab_start)]
+    assert 'role="tree"' not in tab_tag
+    assert 'role="tree" aria-label="Files"' in js
+    assert "return isRoot ? treeRootHtml(content) : content;" in js
+    assert 'role="group"' in js
+    assert "aria-labelledby" in js
+    assert "data-tree-level" in js
+    assert "data-tree-position" in js
+    assert "data-tree-set-size" in js
 
 
 # ── DOM contract: every JS-referenced id present in HTML ───────
@@ -352,16 +391,14 @@ def test_set_selected_path_clears_when_path_falsy() -> None:
     assert "if (!path)" in fn_block
 
 
-def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
-    """Both the tree-pane click delegate's 'select' branch AND
-    revealInTree should funnel through setSelectedPath; otherwise
-    cross-panel selection breaks."""
+def test_set_selected_path_called_from_shared_activation_and_reveal() -> None:
+    """Pointer and keyboard activation share selection with deep-link reveal."""
 
     js = _read_app_js()
-    # The select-branch use is right after the action === "select".
+    # The select branch lives in the shared pointer/keyboard action.
     select_branch = js.index('action === "select"')
     select_block = js[select_branch : select_branch + 500]
-    assert "setSelectedPath(item.dataset.path)" in select_block
+    assert "setSelectedPath(row.dataset.path)" in select_block
 
     # revealInTree uses it.
     reveal_start = js.index("async function revealInTree(path)")
@@ -369,21 +406,33 @@ def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
     assert "setSelectedPath(path)" in reveal_block
 
 
-def test_folder_row_click_selects_opens_and_toggles_the_folder() -> None:
+def test_folder_row_activation_selects_opens_and_toggles_the_folder() -> None:
     """A folder row is one target, including its chevron hotspot.
 
     Every activation must keep navigation and disclosure together: open the
     folder Overview, then toggle the immediate subtree in either direction.
+    Pointer and keyboard share one entry point, so the contract lives in
+    activateTreeRow rather than in the click delegate.
     """
 
     js = _read_app_js()
+    activate_start = js.index("async function activateTreeRow(row, options)")
+    activate_block = js[activate_start : activate_start + 900]
+    select_dir_start = activate_block.index('action === "select-dir"')
+    select_dir_block = activate_block[select_dir_start : activate_block.index('action === "page')]
+    assert "setSelectedPath(row.dataset.path)" in select_dir_block
+    # Folder activation goes through the canonical /view/ route; the trailing
+    # slash is what makes it a folder rather than a file.
+    assert "navigateToPath(`${row.dataset.path}/`)" in select_dir_block
+    assert "toggleTreeFolder(row, options)" in select_dir_block
+    # Guarded like the select branch: a pathless row must not clear selection.
+    assert "if (row.dataset.path) {" in select_dir_block
+
+    # The click delegate routes every row through that one action, and the
+    # chevron never becomes a second hotspot with its own semantics.
     handler_start = js.index('treePane.addEventListener("click"')
     handler_block = js[handler_start : handler_start + 3400]
-    select_dir_start = handler_block.index('action === "select-dir"')
-    select_dir_block = handler_block[select_dir_start : select_dir_start + 500]
-    assert "setSelectedPath(item.dataset.path)" in select_dir_block
-    assert "navigateToPath(item.dataset.path" in select_dir_block
-    assert "toggleTreeFolder(item, e.shiftKey)" in select_dir_block
+    assert "activateTreeRow(item, { recursive: e.shiftKey })" in handler_block
     assert "isToggleHotspot" not in handler_block
 
 

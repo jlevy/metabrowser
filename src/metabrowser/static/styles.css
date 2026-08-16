@@ -187,7 +187,10 @@
 
      Keys are always ALL CAPS — ENTER, ESC, T — including single
      letters, so a key never reads as a word. Arrow glyphs (↑ ↓) have no
-     case and pass through unchanged.
+     case and pass through unchanged. The visible, spoken, and ARIA
+     vocabulary for semantic keys lives in docs/design-system.md and is
+     emitted by the shared shortcut binding formatter; use sites do not
+     choose abbreviations or glyphs.
 
      The border is deliberately thin and low-contrast: a key is a quiet
      inline mark inside hint text, not a button. Both themes inherit
@@ -445,6 +448,20 @@
   --highlight-bg: color-mix(in srgb, var(--link) 10%, transparent);
   --highlight-bar: var(--link);
   --modal-scrim: color-mix(in srgb, var(--text) 28%, transparent);
+  --modal-inline-margin: 16px;
+  --modal-block-margin: max(24px, 8vh);
+  --modal-max-width: 640px;
+  --modal-max-height: min(80vh, 720px);
+  --modal-header-padding: 8px 12px;
+  --modal-header-gap: 12px;
+  --modal-body-padding: 12px;
+  --modal-footer-padding: 8px 12px;
+  --help-dialog-width: 560px;
+  --help-section-gap: 16px;
+  --help-row-gap: 12px;
+  --help-binding-width: 108px;
+  --search-palette-width: 640px;
+  --search-palette-max-height: min(70vh, 640px);
 
   /* Code block backgrounds */
   --code-bg: hsl(210 29% 97%);
@@ -1619,12 +1636,15 @@ html.theme-anim .menu {
 
      Press <kbd class="kbd">T</kbd> to search
 
-   Write the key in its natural case in markup — the caps treatment is
-   presentational, so the accessible name a screen reader announces
-   stays whatever the markup says. Keys stand alone as marks; do not
-   nest one inside a <code> or restyle it per surface. For a sequence,
-   emit separate keys and let the surrounding text carry any joining
-   word, so each key keeps its own border. */
+   Write an isolated key in its natural case in markup — the caps
+   treatment is presentational, so the accessible name a screen reader
+   announces stays whatever the markup says. Keys stand alone as marks;
+   do not nest one inside a <code> or restyle it per surface.
+
+   Dynamic shortcut surfaces use the shared binding renderer. It emits
+   one .kbd per physical key, an unambiguous visual separator, and one
+   expanded spoken phrase for aliases or chords; callers never assemble
+   those pieces themselves. */
 
 .kbd {
   display: inline-flex;
@@ -1643,6 +1663,23 @@ html.theme-anim .menu {
   text-transform: var(--kbd-text-transform);
   line-height: 1.5;
   vertical-align: baseline;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shortcut-binding-separator {
+  margin-inline: 3px;
+  color: var(--muted);
 }
 
 /* ── Main layout ─────────────────────────────────────────────── */
@@ -1678,6 +1715,58 @@ html.theme-anim .menu {
   overflow-y: auto;
   padding: 0 0 8px;
   --scrollbar-bg: var(--sidebar-bg);
+}
+
+.nav-shortcut-hints {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1.2;
+}
+.nav-shortcut-hints[hidden] {
+  display: none;
+}
+.nav-shortcut-action,
+.nav-shortcut-hint,
+.nav-shortcut-binding {
+  display: inline-flex;
+  align-items: center;
+}
+.nav-shortcut-action,
+.nav-shortcut-hint {
+  gap: 4px;
+  padding: 3px 0;
+}
+/* A shortcut hint carries exactly two boxes: the strip that groups every
+   shortcut behind one border, and the keycap that says "this is a key". A
+   button chrome around the key and its label would be a third, nested box
+   restating what the other two already say. An actionable hint is therefore a
+   bare button whose visible affordance is the keycap it contains. */
+.nav-shortcut-action {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.nav-shortcut-action:hover {
+  color: var(--link);
+}
+.nav-shortcut-action:hover .kbd {
+  border-color: var(--link);
+  color: var(--link);
+}
+.nav-shortcut-action:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
 }
 
 .index-progress[hidden] {
@@ -1842,7 +1931,7 @@ html[data-prose-font="sans"] {
 /* Pagination sentinel — clickable row that swaps in the next batch
    of children for a directory that exceeded TREE_PAGE_SIZE. Compact
    and visually subordinate to real tree rows. */
-.tree-page-more {
+.tree-item.tree-page-more {
   padding: 2px 12px 2px 32px;
   cursor: pointer;
   user-select: var(--toggle-user-select);
@@ -1850,7 +1939,7 @@ html[data-prose-font="sans"] {
   font-style: italic;
   font-size: var(--ui-small-font-size);
 }
-.tree-page-more:hover {
+.tree-item.tree-page-more:hover {
   background: var(--hover-bg);
   color: var(--text);
 }
@@ -1870,6 +1959,11 @@ html[data-prose-font="sans"] {
   transition: background var(--transition-fast);
 }
 .tree-item:hover {
+  background: var(--hover-bg);
+}
+.tree-item:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
   background: var(--hover-bg);
 }
 /* Current item — same tinted background + accent left bar as the embedded
@@ -2614,9 +2708,9 @@ html[data-prose-font="sans"] {
    leads the pane and when rows do (a recency window renders no tally
    of its own). Margin, not padding, so the row's hover fill and its
    selected border stay the height of every other row. */
-.tree-summary + .tree-item,
-.tree-summary-filtered + .tree-item,
-.tree-content > * > .tree-item:first-child {
+.tree-summary + .tree-root > .tree-item:first-child,
+.tree-summary-filtered + .tree-root > .tree-item:first-child,
+.tree-content > * > .tree-root:first-child > .tree-item:first-child {
   margin-top: 4px;
 }
 .recent-truncated-note {
@@ -3516,28 +3610,28 @@ pre.code-block code.hljs {
   opacity: 1;
 }
 
-/* ── Quick-file palette ─────────────────────────────────────────
-   A body-level modal surface so tree and preview replacement cannot
-   discard its state. Search work and selection state stay in the
-   injected controller; this block owns only the bounded result DOM. */
-.search-palette-overlay {
+/* ── Modal dialog — shared blocking overlay primitive ───────────
+   Consumers supply content and dimensions. This primitive owns the
+   raised surface, fixed scrim, labelled header, scrolling body, and
+   fixed footer shared by every modal. */
+.modal-overlay {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: max(48px, 10vh) 16px 16px;
+  padding: var(--modal-block-margin) var(--modal-inline-margin) var(--modal-inline-margin);
   background: var(--modal-scrim);
 }
-.search-palette-overlay[hidden] {
+.modal-overlay[hidden] {
   display: none;
 }
-.search-palette-dialog {
+.modal-dialog {
   display: flex;
   flex-direction: column;
-  width: min(640px, calc(100vw - 32px));
-  max-height: min(70vh, 640px);
+  width: min(var(--modal-max-width), calc(100vw - 2 * var(--modal-inline-margin)));
+  max-height: var(--modal-max-height);
   overflow: hidden;
   color: var(--text);
   background: var(--viz-surface-raised);
@@ -3545,13 +3639,122 @@ pre.code-block code.hljs {
   border-radius: var(--radius-chrome);
   box-shadow: var(--shadow-lg);
 }
-.search-palette-title {
-  padding: 8px 12px 4px;
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--modal-header-gap);
+  padding: var(--modal-header-padding);
+  border-bottom: 1px solid var(--border);
+}
+.modal-title {
   color: var(--label-color);
   font-size: var(--label-font-size);
   font-weight: var(--label-font-weight);
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
+}
+.modal-close {
+  flex: none;
+}
+.modal-body {
+  min-height: 0;
+  padding: var(--modal-body-padding);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.modal-footer {
+  padding: var(--modal-footer-padding);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Help dialog ──────────────────────────────────────────────── */
+.help-dialog {
+  width: min(var(--help-dialog-width), calc(100vw - 2 * var(--modal-inline-margin)));
+}
+.help-dialog .modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--help-section-gap);
+}
+.help-description p + p {
+  margin-top: 6px;
+}
+/* The shell sets no global anchor color, so an unclassed link falls through to
+   the user agent's default blue instead of the accent every other link uses. */
+.help-project a {
+  color: var(--link);
+}
+.help-project a:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
+}
+.help-section-heading,
+.help-shortcut-heading {
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
+.help-section-heading {
+  margin-bottom: 8px;
+  font-size: var(--body-font-size);
+}
+.help-shortcut-group + .help-shortcut-group {
+  margin-top: var(--help-section-gap);
+}
+.help-shortcut-heading {
+  font-size: var(--nav-font-size);
+}
+.help-shortcut-context {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.help-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.help-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, var(--help-binding-width)) minmax(0, 1fr);
+  gap: var(--help-row-gap);
+  align-items: start;
+}
+.help-command-binding {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.help-command-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.help-command-label {
+  font-size: var(--nav-font-size);
+}
+.help-command-description {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+/* ── Quick-file palette ─────────────────────────────────────────
+   A body-level modal surface so tree and preview replacement cannot
+   discard its state. Search work and selection state stay in the
+   injected controller; this block owns only the bounded result DOM. */
+.search-palette-overlay {
+  --modal-block-margin: max(48px, 10vh);
+}
+.search-palette-dialog {
+  width: min(var(--search-palette-width), calc(100vw - 2 * var(--modal-inline-margin)));
+  max-height: var(--search-palette-max-height);
+}
+.search-palette-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 /* The query is a band of the dialog, not a control floating inside it.
    Every other row here — title, results, status, hint — runs edge to edge on
@@ -4064,7 +4267,9 @@ pre.code-block code.hljs {
   .file-header-print,
   .settings-toggle,
   .custom-tooltip,
-  .search-palette-overlay,
+  /* Covers Quick File too: its overlay is a .modal-overlay. */
+  .modal-overlay,
+  .nav-shortcut-hints,
   .index-progress,
   .loading,
   .spinner {

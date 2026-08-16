@@ -42,6 +42,10 @@ def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
         "/static/catalog_feed.js",
         "/static/file_fuzzy_match.js",
         "/static/search_controller.js",
+        "/static/keyboard_shortcuts.js",
+        "/static/overlay_layer.js",
+        "/static/keyboard_help.js",
+        "/static/tree_keyboard_navigation.js",
         "/static/search_palette.js",
         "/static/app.js",
     )
@@ -70,6 +74,9 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
     assert "getFileIcon" in init_block
     assert "openFile" in init_block
     assert "onNotFound" in init_block
+    assert "overlay: window.MetabrowserOverlay" in init_block
+    assert "resolveFocusFallback: resolveApplicationFocusFallback" in init_block
+    assert "shortcuts: shortcutRegistry" in init_block
 
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
@@ -77,6 +84,31 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
         "navigationController.start()"
     )
     assert loaded_block.count("initQuickFileFinder();") == 1
+
+
+def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
+    palette = proc_browser.STATIC_DIR.joinpath("search_palette.js").read_text()
+    assert "function registerCommands()" in palette
+    assert "function renderShortcutHints()" in palette
+    assert "options.overlay.createModal" in palette
+    assert 'id: "quick-file.open"' in palette
+    assert 'id: "quick-file.close"' in palette
+    assert "OPEN_KEYS" not in palette
+    assert "HINT_GROUPS" not in palette
+    assert 'hostDocument.addEventListener("keydown"' not in palette
+
+
+def test_registry_is_the_only_application_shortcut_dispatcher() -> None:
+    registry = proc_browser.STATIC_DIR.joinpath("keyboard_shortcuts.js").read_text()
+    assert registry.count('hostDocument.addEventListener("keydown"') == 1
+    for filename in (
+        "keyboard_help.js",
+        "overlay_layer.js",
+        "search_palette.js",
+        "tree_keyboard_navigation.js",
+    ):
+        source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
+        assert 'hostDocument.addEventListener("keydown"' not in source
 
 
 def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
@@ -213,7 +245,7 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
 
     assert "async function selectFile(path, preferredViewId)" in js
     assert "function renderFile(data, preferredViewId)" in js
-    assert "async function navigateToPath(path, preferredViewId)" in js
+    assert "async function navigateToPath(path, preferredViewId, routeOptions)" in js
     assert "MetabrowserNavigationRoute.attachController(navigationController)" in js
     assert "metabrowser:open-path" not in js
 
