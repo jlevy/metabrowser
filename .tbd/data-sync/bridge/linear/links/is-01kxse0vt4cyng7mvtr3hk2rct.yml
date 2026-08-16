@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:3665ecb8f58eb8c475a9228a38bc623a945bf09309104fcc3b0b140870c07aa9
+  labels:
+    - diff
+  priority: 1
+  status: open
+  title: "Diff P1: Changes nav surface and per-file diff renderer"
+bead_id: is-01kxse0vt4cyng7mvtr3hk2rct
+external_id: a18941f9-1b80-42ad-b5da-eaa77ec485e9
+external_key: OS-284
+external_url: https://linear.app/finterm-ai/issue/OS-284/diff-p1-changes-nav-surface-and-per-file-diff-renderer
+remote_updated_at: 2026-08-16T08:06:28.015Z
+state: linked
+synced_at: 2026-08-16T08:06:28.256Z
+type: lk

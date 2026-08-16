@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:745bdff0bfff779230a911c94b755b44053f075b97e4fb87b000c71d8214d67a
+  labels: []
+  priority: 2
+  status: open
+  title: Gated rename and trash via POST /api/mutate with nav context-menu actions
+bead_id: is-01kzctbjy7z530930gzmvakxws
+external_id: 188ffcb9-98fa-4aca-822b-c76718108e6c
+external_key: OS-300
+external_url: https://linear.app/finterm-ai/issue/OS-300/gated-rename-and-trash-via-post-apimutate-with-nav-context-menu
+remote_updated_at: 2026-08-16T08:06:48.519Z
+state: linked
+synced_at: 2026-08-16T08:06:48.767Z
+type: lk

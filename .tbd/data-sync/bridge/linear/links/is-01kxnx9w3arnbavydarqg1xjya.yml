@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:c186a603421d8a2611df67222252b42f754feef67590680e797e0469690507ac
+  labels:
+    - browser
+    - testing
+  priority: 2
+  status: open
+  title: Add browser-grade DOM and payload contract coverage
+bead_id: is-01kxnx9w3arnbavydarqg1xjya
+external_id: 9201e8b4-6c43-400f-a8c1-f694f5c4e195
+external_key: OS-266
+external_url: https://linear.app/finterm-ai/issue/OS-266/add-browser-grade-dom-and-payload-contract-coverage
+remote_updated_at: 2026-08-16T08:05:58.639Z
+state: linked
+synced_at: 2026-08-16T08:05:58.828Z
+type: lk

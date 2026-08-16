@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:7dedeca4f7a8b3d4c57efac6e076fb9adc11221f7b41a495165950cf4d23e88c
+  labels: []
+  priority: 1
+  status: open
+  title: Unified filtering across navigation and folder views
+bead_id: is-01ky070wk6z56ghjc9wyhf0sye
+external_id: 2966f32d-9498-4efd-95bb-ee77e5c5d062
+external_key: OS-291
+external_url: https://linear.app/finterm-ai/issue/OS-291/unified-filtering-across-navigation-and-folder-views
+remote_updated_at: 2026-08-16T08:06:37.159Z
+state: linked
+synced_at: 2026-08-16T08:06:37.322Z
+type: lk

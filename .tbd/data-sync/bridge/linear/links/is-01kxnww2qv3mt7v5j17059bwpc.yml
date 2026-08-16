@@ -1,0 +1,18 @@
+base:
+  assignee: null
+  description_hash: sha256v7:f81fd85af70f3a4e7e65cbe31bb1b151d11ad27e8663c1c42eda07f1ef9d549d
+  labels:
+    - tooling
+    - biome
+    - ratchet
+  priority: 3
+  status: open
+  title: Remove scoped Biome legacy rule exceptions
+bead_id: is-01kxnww2qv3mt7v5j17059bwpc
+external_id: 548aa569-c8d3-4796-9230-906592cb0796
+external_key: OS-264
+external_url: https://linear.app/finterm-ai/issue/OS-264/remove-scoped-biome-legacy-rule-exceptions
+remote_updated_at: 2026-08-16T08:05:56.262Z
+state: linked
+synced_at: 2026-08-16T08:05:56.429Z
+type: lk

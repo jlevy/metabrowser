@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:3deac6d0a3153a6168b2596a6dadb1010bd583a9ee76d7638b16d40cb7ad873b
+  labels:
+    - diff
+  priority: 1
+  status: open
+  title: "Git diff view: staged delivery of the Changes surface and comparison API"
+bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
+external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
+external_key: OS-281
+external_url: https://linear.app/finterm-ai/issue/OS-281/git-diff-view-staged-delivery-of-the-changes-surface-and-comparison
+remote_updated_at: 2026-08-16T08:06:24.413Z
+state: linked
+synced_at: 2026-08-16T08:06:24.658Z
+type: lk

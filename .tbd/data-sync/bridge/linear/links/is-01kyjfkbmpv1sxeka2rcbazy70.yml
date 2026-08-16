@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:0655a2b41a4c443a45e552d2d2cd442f66ebc1d459071b2b22bde5437af9a244
+  labels: []
+  priority: 3
+  status: open
+  title: Derive CLI mode/option metadata from one declarative table
+bead_id: is-01kyjfkbmpv1sxeka2rcbazy70
+external_id: 2f6c78dc-7e7a-4ed8-adb9-00d2ec586432
+external_key: OS-294
+external_url: https://linear.app/finterm-ai/issue/OS-294/derive-cli-modeoption-metadata-from-one-declarative-table
+remote_updated_at: 2026-08-16T08:06:40.272Z
+state: linked
+synced_at: 2026-08-16T08:06:40.452Z
+type: lk

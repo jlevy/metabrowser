@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:1d014aba01d57a7366313857befb489bd56b334147bbea0d1ab754d9809d56f4
+  labels: []
+  priority: 2
+  status: open
+  title: "P2: complete filter hide mode across nav and folder views"
+bead_id: is-01ky071dj04cfxc3gdq6z74xe0
+external_id: a686753d-cd6a-468c-b561-ea7336b89acd
+external_key: OS-292
+external_url: https://linear.app/finterm-ai/issue/OS-292/p2-complete-filter-hide-mode-across-nav-and-folder-views
+remote_updated_at: 2026-08-16T08:06:38.078Z
+state: linked
+synced_at: 2026-08-16T08:06:38.387Z
+type: lk

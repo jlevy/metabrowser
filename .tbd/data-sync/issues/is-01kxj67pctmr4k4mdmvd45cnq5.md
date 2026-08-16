@@ -5,17 +5,17 @@ title: Support transparent bounded Zstandard artifacts
 kind: feature
 status: open
 priority: 2
-version: 4
+version: 5
 spec_path: TODO.md
 labels: []
 dependencies: []
 parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-07-15T06:08:13.209Z
-updated_at: 2026-08-16T08:05:43.062Z
+updated_at: 2026-08-16T08:05:46.595Z
 extensions:
   linear:
     id: ee3b3ac9-0c58-436c-847c-6749ae00c491
-    linked_at: 2026-08-16T08:05:43.062Z
+    linked_at: 2026-08-16T08:05:46.595Z
 ---
 Add .zst single-file compression to the same transparent ArtifactPath contract as .gz and .zlib: preserve logical extension/name, enforce compressed-input/decompressed-output/CPU bounds, classify and render the decoded file, cover raw/preview/structured/JSONL/KPress/tree/UI behavior, and audit any new dependency under repository supply-chain policy.
 

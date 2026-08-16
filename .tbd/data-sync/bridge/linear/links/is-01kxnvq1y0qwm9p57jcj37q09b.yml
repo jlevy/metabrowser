@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:69f3ec46f77d98e6d9cdc2306f53e665bc8de8c92075454ca9a54b282591684c
+  labels:
+    - pr-review
+    - security
+  priority: 3
+  status: open
+  title: "PR #3 review D: add a strict Content Security Policy"
+bead_id: is-01kxnvq1y0qwm9p57jcj37q09b
+external_id: 4adbc1fb-afe9-4f50-9f55-e8ff34227388
+external_key: OS-261
+external_url: https://linear.app/finterm-ai/issue/OS-261/pr-3-review-d-add-a-strict-content-security-policy
+remote_updated_at: 2026-08-16T08:05:51.505Z
+state: linked
+synced_at: 2026-08-16T08:05:52.026Z
+type: lk

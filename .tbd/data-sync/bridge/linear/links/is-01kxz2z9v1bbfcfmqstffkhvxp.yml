@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:44df3ff16f89b5ce1d920bdef643c88603082c53d744fc5cdf4fd1073fe54683
+  labels: []
+  priority: 1
+  status: open
+  title: Folder views and treemap overview
+bead_id: is-01kxz2z9v1bbfcfmqstffkhvxp
+external_id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc
+external_key: OS-290
+external_url: https://linear.app/finterm-ai/issue/OS-290/folder-views-and-treemap-overview
+remote_updated_at: 2026-08-16T08:06:36.148Z
+state: linked
+synced_at: 2026-08-16T08:06:36.319Z
+type: lk

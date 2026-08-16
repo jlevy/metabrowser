@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:b362076ae16cd83455383485215250bbc6ca0aa07e4d8f7477afd9708de04ef7
+  labels:
+    - diff
+  priority: 1
+  status: open
+  title: "Diff P1: hardened Git adapter and comparison service (uncommitted view)"
+bead_id: is-01kxse0vfwwkcq1a6mfdx6v9ad
+external_id: 9f2f8636-4e15-42cd-adfd-e7574e92171d
+external_key: OS-283
+external_url: https://linear.app/finterm-ai/issue/OS-283/diff-p1-hardened-git-adapter-and-comparison-service-uncommitted-view
+remote_updated_at: 2026-08-16T08:06:26.731Z
+state: linked
+synced_at: 2026-08-16T08:06:26.887Z
+type: lk

@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:4264b05f8a391ff33c4b629e4492cd06e7b797a6944a9b21c2825c0faea92446
+  labels:
+    - diff
+  priority: 1
+  status: open
+  title: "Diff P0: golden Git fixture repos, adapter contract harness, and baselines"
+bead_id: is-01kxse0v48bnzvcya9vpxh4s06
+external_id: 30aeb3d3-bb47-459b-bc77-4d3a3a47f3eb
+external_key: OS-282
+external_url: https://linear.app/finterm-ai/issue/OS-282/diff-p0-golden-git-fixture-repos-adapter-contract-harness-and
+remote_updated_at: 2026-08-16T08:06:25.566Z
+state: linked
+synced_at: 2026-08-16T08:06:25.751Z
+type: lk

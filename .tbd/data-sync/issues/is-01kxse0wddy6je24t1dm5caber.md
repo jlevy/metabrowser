@@ -5,7 +5,7 @@ title: "Diff P2: split view, intraline, highlight enrichment, context expansion"
 kind: feature
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
 labels:
   - diff
@@ -14,10 +14,10 @@ dependencies:
     target: is-01kxse0wpvpg9vx64phcr3bh8s
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-07-18T01:38:59.628Z
-updated_at: 2026-08-16T08:05:43.248Z
+updated_at: 2026-08-16T08:06:29.441Z
 extensions:
   linear:
     id: be7a39d5-c9b6-4a86-8008-0af0fff8de65
-    linked_at: 2026-08-16T08:05:43.248Z
+    linked_at: 2026-08-16T08:06:29.441Z
 ---
 Split/unified toggle, whitespace toggle, bounded context expansion via content refs, intraline word spans, vendored highlight.js enrichment rendering plain text first. Adopt formal plugin event subscription and shared cache helper when available.

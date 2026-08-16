@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:3c43a92be20d719c91f5532266583b7e16a5911c965bd30bf509a60968cc47a9
+  labels:
+    - tryscript
+  priority: 2
+  status: open
+  title: Upstream tryscript fixes from the metabrowser golden migration
+bead_id: is-01kyjyyvyeyv4w8efxgxcf3h7g
+external_id: 1434375c-de30-4a72-8d68-dbb68115ba2b
+external_key: OS-295
+external_url: https://linear.app/finterm-ai/issue/OS-295/upstream-tryscript-fixes-from-the-metabrowser-golden-migration
+remote_updated_at: 2026-08-16T08:06:41.468Z
+state: linked
+synced_at: 2026-08-16T08:06:41.691Z
+type: lk

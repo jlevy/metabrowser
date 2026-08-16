@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:65e40955897a1546dce53ecf6ebbca05da2cb0c99685ce840bf0d87da18f95b4
+  labels: []
+  priority: 3
+  status: open
+  title: Support safe archive and container browsing
+bead_id: is-01kxj6mrvpkqnkn274rhy3mg2j
+external_id: 48e8dd27-0205-4ace-ba06-3973c5d3c94c
+external_key: OS-260
+external_url: https://linear.app/finterm-ai/issue/OS-260/support-safe-archive-and-container-browsing
+remote_updated_at: 2026-08-16T08:05:49.976Z
+state: linked
+synced_at: 2026-08-16T08:05:50.175Z
+type: lk

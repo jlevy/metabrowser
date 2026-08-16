@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:a45a8e696dd03335d54cbb597ee6d5b6b839d6f78440e995427eb4548895d6ab
+  labels:
+    - indexing
+    - plugins
+  priority: 2
+  status: open
+  title: Add a generic writer event-log backend
+bead_id: is-01kxnx9wqvz9cy9h4qphq1078a
+external_id: 9bb812dc-1b93-47da-aa5b-1b140f267b4c
+external_key: OS-269
+external_url: https://linear.app/finterm-ai/issue/OS-269/add-a-generic-writer-event-log-backend
+remote_updated_at: 2026-08-16T08:06:02.321Z
+state: linked
+synced_at: 2026-08-16T08:06:02.899Z
+type: lk

@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:eba27799fb15f4b3e131873deb8f4725a4c0c23997df1bae7ef73b4309001e86
+  labels: []
+  priority: 3
+  status: open
+  title: Evaluate additional transparent compression formats
+bead_id: is-01kxj6mq90b884fzynz50bjcbj
+external_id: b7f881bd-ed3b-40ed-a31e-0dc6fbb493e7
+external_key: OS-259
+external_url: https://linear.app/finterm-ai/issue/OS-259/evaluate-additional-transparent-compression-formats
+remote_updated_at: 2026-08-16T08:05:48.711Z
+state: linked
+synced_at: 2026-08-16T08:05:48.916Z
+type: lk

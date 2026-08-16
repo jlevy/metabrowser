@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:6d9e52ab46e1302caefe7cc21bb77b9d5af48a63a0e3864179f84420c1adcda0
+  labels:
+    - roadmap
+  priority: 2
+  status: open
+  title: Post-v0.1 MetaBrowser core roadmap
+bead_id: is-01kxnx985gd2k5epmcswersqdk
+external_id: 4bf23327-faca-40ed-b28b-0b3870993e50
+external_key: OS-257
+external_url: https://linear.app/finterm-ai/issue/OS-257/post-v01-metabrowser-core-roadmap
+remote_updated_at: 2026-08-16T08:05:45.795Z
+state: linked
+synced_at: 2026-08-16T08:05:46.269Z
+type: lk

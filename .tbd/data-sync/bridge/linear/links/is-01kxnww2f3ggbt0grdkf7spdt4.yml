@@ -1,0 +1,18 @@
+base:
+  assignee: null
+  description_hash: sha256v7:41d5d55575f961b3326efbe05e6ff37f8cddf1278f576397c5506816b71b7e5d
+  labels:
+    - tooling
+    - typescript
+    - ratchet
+  priority: 3
+  status: open
+  title: Ratchet legacy browser JavaScript to noImplicitAny
+bead_id: is-01kxnww2f3ggbt0grdkf7spdt4
+external_id: 5169c336-d301-4100-9653-ce96dd092cec
+external_key: OS-263
+external_url: https://linear.app/finterm-ai/issue/OS-263/ratchet-legacy-browser-javascript-to-noimplicitany
+remote_updated_at: 2026-08-16T08:05:55.120Z
+state: linked
+synced_at: 2026-08-16T08:05:55.279Z
+type: lk

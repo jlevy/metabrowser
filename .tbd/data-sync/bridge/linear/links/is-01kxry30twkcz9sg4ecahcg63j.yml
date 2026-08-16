@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:3f43dadaee46bb1277b444512ef424c1b37a88007854f728cf90bc96ec0e7c3a
+  labels: []
+  priority: 1
+  status: open
+  title: "Platform A1: plugin sub-router mount (path params, full methods, honest status
+    codes)"
+bead_id: is-01kxry30twkcz9sg4ecahcg63j
+external_id: 8abea237-409f-4114-b118-4efa20f438b3
+external_key: OS-274
+external_url: https://linear.app/finterm-ai/issue/OS-274/platform-a1-plugin-sub-router-mount-path-params-full-methods-honest
+remote_updated_at: 2026-08-16T08:06:12.551Z
+state: linked
+synced_at: 2026-08-16T08:06:12.727Z
+type: lk

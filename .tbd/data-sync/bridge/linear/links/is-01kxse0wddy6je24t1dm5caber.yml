@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:458b28252b797ed7cd0c46a66e3a49c8f477cf477deaf26801d294c116bb77c6
+  labels:
+    - diff
+  priority: 2
+  status: open
+  title: "Diff P2: split view, intraline, highlight enrichment, context expansion"
+bead_id: is-01kxse0wddy6je24t1dm5caber
+external_id: be7a39d5-c9b6-4a86-8008-0af0fff8de65
+external_key: OS-286
+external_url: https://linear.app/finterm-ai/issue/OS-286/diff-p2-split-view-intraline-highlight-enrichment-context-expansion
+remote_updated_at: 2026-08-16T08:06:29.900Z
+state: linked
+synced_at: 2026-08-16T08:06:30.083Z
+type: lk

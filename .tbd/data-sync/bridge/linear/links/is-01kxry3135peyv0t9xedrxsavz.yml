@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:8fd8257bf07679ac4d4d0d165980b9728d0874a31d70019ace36139ecfe78dc9
+  labels: []
+  priority: 1
+  status: open
+  title: "Platform A2: SDK data-plane v2 — POST bodies, streaming/NDJSON, SSE helper wired
+    to view disposal"
+bead_id: is-01kxry3135peyv0t9xedrxsavz
+external_id: cd17ecaf-ed4e-44db-86ba-855c34def907
+external_key: OS-275
+external_url: https://linear.app/finterm-ai/issue/OS-275/platform-a2-sdk-data-plane-v2-post-bodies-streamingndjson-sse-helper
+remote_updated_at: 2026-08-16T08:06:14.142Z
+state: linked
+synced_at: 2026-08-16T08:06:14.577Z
+type: lk

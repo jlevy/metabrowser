@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:09a89dddb2d6fa3bce3a82e87b4847529d2ded8988e76c2b34c47e98059bed35
+  labels:
+    - build
+  priority: 2
+  status: open
+  title: Extend vendor pipeline with esbuild single-entry ESM bundling (workers, ESM-only
+    libs)
+bead_id: is-01kxshfx0fhzyccg1wwtdv7c6b
+external_id: 66d2a207-9a94-44a8-afcb-f3a252eb2229
+external_key: OS-288
+external_url: https://linear.app/finterm-ai/issue/OS-288/extend-vendor-pipeline-with-esbuild-single-entry-esm-bundling-workers
+remote_updated_at: 2026-08-16T08:06:33.450Z
+state: linked
+synced_at: 2026-08-16T08:06:33.598Z
+type: lk

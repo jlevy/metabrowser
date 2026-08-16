@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:c88dfaeccea41c4210dd648eeaf518d88320db31590b46a67b540d50e85f3532
+  labels:
+    - browser
+    - architecture
+  priority: 2
+  status: open
+  title: Modularize the browser shell and reader assets
+bead_id: is-01kxnx9vtb13p6z8mewgsm2t75
+external_id: fb70400d-cf16-4be7-b0c6-8ff45c3730da
+external_key: OS-265
+external_url: https://linear.app/finterm-ai/issue/OS-265/modularize-the-browser-shell-and-reader-assets
+remote_updated_at: 2026-08-16T08:05:57.347Z
+state: linked
+synced_at: 2026-08-16T08:05:57.573Z
+type: lk

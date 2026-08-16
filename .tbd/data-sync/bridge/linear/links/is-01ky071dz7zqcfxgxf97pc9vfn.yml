@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:50ec0aea71dd9713ae3d0133bb088a1d387dcdf672bd45ecb5de087bf665bc98
+  labels: []
+  priority: 2
+  status: open
+  title: "P3: retire the Recent tab behind the Recent preset"
+bead_id: is-01ky071dz7zqcfxgxf97pc9vfn
+external_id: b81d0c3c-95f1-4942-bd2c-554169f43a57
+external_key: OS-293
+external_url: https://linear.app/finterm-ai/issue/OS-293/p3-retire-the-recent-tab-behind-the-recent-preset
+remote_updated_at: 2026-08-16T08:06:39.346Z
+state: linked
+synced_at: 2026-08-16T08:06:39.527Z
+type: lk

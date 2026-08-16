@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:833e5e61a589bb1df9173bf4dba417a72bad666e43b2a2f3c1e618058e681176
+  labels: []
+  priority: 1
+  status: open
+  title: "Platform A3: expose file-change event subscription/emission to installed plugins
+    via plugin_api"
+bead_id: is-01kxry31b7bpyxphe66g7gr64t
+external_id: 33bb512a-82cb-4713-8dc5-74f8d677d894
+external_key: OS-276
+external_url: https://linear.app/finterm-ai/issue/OS-276/platform-a3-expose-file-change-event-subscriptionemission-to-installed
+remote_updated_at: 2026-08-16T08:06:15.485Z
+state: linked
+synced_at: 2026-08-16T08:06:15.937Z
+type: lk
