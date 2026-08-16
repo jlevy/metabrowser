@@ -5,7 +5,7 @@ title: "[epic] Minor cleanups for the next minor release"
 kind: epic
 status: open
 priority: 2
-version: 11
+version: 13
 labels: []
 dependencies: []
 child_order_hints:
@@ -19,8 +19,10 @@ child_order_hints:
   - is-01m03vh4tqrz0n4m532rkd2e4r
   - is-01m03wy6v5750g66sba9wtk38x
   - is-01m03wy77fh1xfwrngvtvdvqfv
+  - is-01m041td5z4cm8krh0bgw00286
+  - is-01m041tjpb6dxha8h5yfjs9jqw
 created_at: 2026-08-15T23:04:54.515Z
-updated_at: 2026-08-15T23:43:29.006Z
+updated_at: 2026-08-16T01:08:52.554Z
 ---
 Umbrella epic collecting small, independent cleanup items across MetaBrowser. Individual cleanups are tracked as child beads under this epic as they come in.
 
