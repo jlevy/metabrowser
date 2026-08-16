@@ -66,7 +66,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
-sdk_version = "0.1"
+sdk_version = "0.2"
 
 [[kind]]
 id = "hello-document"
@@ -437,8 +437,10 @@ The SDK is versioned with the release, not independently, and the version is enf
 rather than advisory.
 `PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract this host provides.
 A manifest should declare `sdk_version`. A manifest that omits it targets the original
-SDK `0.1`, preserving manifests accepted by Metabrowser 0.4.0 without making omission
-follow a future host version.
+SDK `0.1` and nothing later, so omission never silently follows the host forward onto a
+contract the plugin was not written against.
+Now that the host provides `0.2`, an omitted `sdk_version` resolves to `0.1` and is
+refused like any other stale value.
 A different resolved value is refused when it loads, with a message naming the required
 version, and `metab --doctor` reports the same problem before it reaches a user.
 There is no negotiation and no shim for an older surface.

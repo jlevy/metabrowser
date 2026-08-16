@@ -11,30 +11,60 @@ Document navigation and URL scheme:
   itself, so headings, browser history, new tabs, and copy-link all work from a real
   `href`. The previous `/#<file-path>` hash route is gone; it is not read, rewritten, or
   redirected.
+
 - The bare origin `/` now redirects to `/view/`, and both the CLI startup banner and the
   header **Jump to root** link emit that canonical route.
   Previously the origin was a second spelling of the served root that rendered an empty
   preview pane.
+
 - Standard Markdown links resolve exactly as they do on GitHub, from any nesting depth:
   relative, `./`, `../`, and leading-slash targets, reference-style links, sanitized raw
   HTML anchors, folders, queries, fragments, spaces, Unicode, and literal percent signs.
   Embedded images, audio, and video route through the bounded `/raw` endpoint.
   Missing targets keep an exact URL and fall through to the ordinary not-found state
   rather than being guessed at by basename.
+
 - Obsidian wiki links work without configuration: `[[Note]]`, `[[Folder/Note]]`,
   `[[Note|Label]]`, heading and `#^block` targets, attachments, and media embeds, plus
   bounded whole-note, heading, and block transclusion.
   Ambiguous and missing notes stay visible and keyboard reachable instead of resolving
   by catalog order.
-- Plugins navigate through the documented `window.metabrowser.navigation` namespace
-  (`href`, `open`, `current`). This replaces `metabrowser.openPath` and the
-  `metabrowser:open-path` event, which are removed.
+
+- A link written as an absolute GitHub URL now opens locally when repository identity
+  proves it names the working tree currently being served: the origin remote, the
+  checked out branch or the exact revision, and the served subdirectory must all match.
+  Anything else — another repository, another branch, a stale revision, a
+  non-`blob`/`tree` URL — stays an ordinary outbound link.
+
+- In a repository that carries an MkDocs, Docusaurus, or Jekyll config at its root, a
+  root-relative link written as a published-site route — `/guide/`, `/docs/setup` — now
+  falls back to the source document behind it once exact lookup fails.
+  A route that resolves exactly, or a repository with no such config, keeps ordinary
+  Markdown behavior.
+
+- Plugins gain `window.metabrowser.fileCatalog` (`snapshot`, `subscribe`),
+  `window.metabrowser.repository` (verified GitHub identity for the served tree, or
+  `null`), and the bounded source readers `fetchText` and `fetchCompleteText`.
+  `mb.builtins.markdown.analyzeGraph()` returns a bounded immutable snapshot of Markdown
+  nodes, resolved edges, unresolved destinations, backlinks, and diagnostics.
+
 - Query strings on `/view/` URLs are carried verbatim and never interpreted, so a query
   an author wrote survives resolution unchanged.
   Metabrowser now reserves query keys beginning with `_mb_` for future presentation
   parameters such as a pinned view or line range; every other key belongs to the
   document. Plugin authors should not introduce `_mb_` keys of their own.
   See the browser URL grammar in `docs/architecture.md`.
+
+Plugin SDK:
+
+- **Breaking:** `PLUGIN_SDK_VERSION` is now `0.2`. Plugins navigate through the
+  documented `window.metabrowser.navigation` namespace (`href`, `open`, `current`),
+  which replaces `metabrowser.openPath` and the `metabrowser:open-path` event; both are
+  removed with no shim.
+  An external plugin must update its call sites and set `sdk_version = "0.2"`. A
+  manifest left at `0.1` — or one that omits `sdk_version`, which resolves to `0.1` — is
+  now refused at load time with a message naming the required version, and
+  `metab --doctor` reports it before it reaches a user.
 
 ## 0.4.2
 
