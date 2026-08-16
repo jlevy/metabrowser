@@ -70,6 +70,44 @@ Plugin SDK:
   `Error` carrying `status` and the parsed `payload`, matching `fetchKpressRender`. A
   data hook can now explain a refusal in its body and have the caller read it.
 
+Speed and loading states:
+
+- Expandable folders are prefetched while the browser is idle, so opening one in the
+  navigation tree renders instantly instead of fetching its contents on the click.
+  An expansion that lands on a prefetch already in flight joins it rather than issuing a
+  second request.
+- Nothing announces loading inside the quiet period before a placeholder appears, at
+  every grain rather than only for view- and panel-level placeholders.
+  Lazy subtree placeholders no longer flash a spinner on expansions that resolve in a
+  few milliseconds, and the window widens from 30ms to 50ms.
+- Spinners no longer carry a redundant visible label such as **Loading folder…**; the
+  label is now screen-reader-only.
+  States a spinner cannot express on its own, such as a scan still running, keep their
+  visible copy.
+
+Documents:
+
+- The README embedded in a folder’s Overview no longer renders its own table of
+  contents. The panel stack around it is already the reader’s way through the folder, so
+  a second navigation inside the embed competed with it.
+  Opening the same README as a file is unchanged.
+- Markdown documents need to be both sectioned and long before they get a table of
+  contents, rather than sectioned alone, so a short note with a few headings no longer
+  gets a sidebar listing sections already on screen (KPress 0.3.3).
+
+Folder views:
+
+- Treemap’s file tally is segmented by file type with the same structure, colors, and
+  tooltips as the identical tally on Overview, instead of one flat neutral bar.
+- Overview opens File Breakdown by default, alongside Files.
+- A collapsed Overview section drops its rule and most of its trailing space, so a
+  closed section no longer reads as an empty one.
+  Expanded sections are unchanged.
+- Hovering a distribution bar segment now visibly shifts the segment.
+  The shared data-mark hover moves in the direction that gains contrast in each theme
+  rather than brightening in both, which on the light palette was as likely to lose
+  contrast as gain it.
+
 Binary and source previews:
 
 - Files classified `binary` now open in a new built-in **Bytes** view instead of showing

@@ -12,9 +12,26 @@ SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
 def test_kpress_is_an_exact_required_runtime_dependency() -> None:
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
 
-    assert "kpress==0.3.2" in project["project"]["dependencies"]
+    assert "kpress==0.3.3" in project["project"]["dependencies"]
     assert "kpress" not in project["project"].get("optional-dependencies", {})
     assert "kpress" not in project.get("dependency-groups", {}).get("dev", [])
+
+
+def test_the_pinned_kpress_release_is_the_one_reviewed_for_the_cool_off() -> None:
+    """The pin and its supply-chain record move together.
+
+    KPress is first-party and exempt from the cool-off, but the exemption is
+    per-release: each one is reviewed against its predecessor. Bumping the pin
+    without updating that record would leave the exemption naming a version
+    nobody ships, which reads as reviewed when it is not.
+    """
+
+    project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
+    pins = [d for d in project["project"]["dependencies"] if d.startswith("kpress")]
+    assert len(pins) == 1, pins
+
+    policy = (PROJECT_FILE.parent / "SUPPLY-CHAIN-SECURITY.md").read_text(encoding="utf-8")
+    assert f"`{pins[0]}`" in policy, f"{pins[0]} is not recorded in SUPPLY-CHAIN-SECURITY.md"
 
 
 def test_kpress_does_not_resolve_from_the_monorepo_workspace() -> None:

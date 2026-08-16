@@ -48,7 +48,7 @@ added, and the published artifact’s SHA-256 matches the digest recorded in `uv
 
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
-| `kpress==0.3.2` | `0.3.1` | CSS-only; no public surface changed |
+| `kpress==0.3.3` | `0.3.2` | TOC thresholds and `include_toc` on the render request |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `get-tbd==0.4.2` | — | Issue tracker; not a build or runtime input |
 

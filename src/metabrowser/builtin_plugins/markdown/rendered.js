@@ -81,7 +81,7 @@ export function renderKpressError(error, mb) {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off"}} [options]
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
@@ -111,7 +111,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
 
   container.classList.add("metabrowser-kpress-host");
   container.innerHTML =
-    '<div class="loading mb-delayed-loading"><div class="spinner"></div>Loading document…</div>';
+    '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+    '<span class="sr-only">Loading document…</span></div>';
   async function render() {
     try {
       const raw =
@@ -126,6 +127,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {
         dedupKey: `markdown-mount-${++mountSequence}`,
         profile: "document",
+        includeToc: options.includeToc,
         signal: controller.signal,
         sourceText: wiki?.changed ? wiki.source : undefined,
       });

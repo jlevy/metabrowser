@@ -1100,6 +1100,12 @@
     if (profile) {
       url.searchParams.set("profile", profile);
     }
+    // "off" for a document embedded in host navigation that is already the
+    // reader's way around it; omitted means KPress' own thresholds decide.
+    const includeToc = options?.includeToc;
+    if (includeToc) {
+      url.searchParams.set("toc", includeToc);
+    }
     const dedupKey = options?.dedupKey || path;
     const previous = _kpressInflight.get(dedupKey);
     if (previous) {

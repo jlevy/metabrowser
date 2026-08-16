@@ -179,6 +179,73 @@ def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch)
     assert "resolved_theme" not in seen
 
 
+def test_kpress_render_route_forwards_the_toc_choice(tmp_path: Path, monkeypatch) -> None:
+    """A document embedded in host navigation renders without a TOC.
+
+    The Overview's README panel is the caller: the panel stack around it is
+    already the reader's way through the folder, so a second navigation inside
+    the embed competes with it. Suppressing it at the render beats host CSS,
+    which would build the sidebar layout and then cover it up.
+    """
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Heading\n")
+    seen: dict[str, Any] = {}
+
+    def _fake_render(**kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        return {
+            "type": "kpress-rendered-document",
+            "html": "<article>ok</article>",
+            "profile": "document",
+            "printable": True,
+            "assets": _empty_asset_manifest(),
+            "diagnostics": [],
+        }
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _fake_render)
+
+    response = asyncio.run(
+        server.api_kpress_render(
+            _request(query={"path": "doc.md", "view": "rendered", "toc": "off"})
+        )
+    )
+    assert response.status_code == 200
+    assert seen["include_toc"] == "off"
+
+    # Absent means KPress' own thresholds decide, which is what opening the
+    # same README as a file must keep doing.
+    seen.clear()
+    response = asyncio.run(
+        server.api_kpress_render(_request(query={"path": "doc.md", "view": "rendered"}))
+    )
+    assert response.status_code == 200
+    assert seen["include_toc"] == "auto"
+
+
+def test_kpress_render_route_rejects_an_unknown_toc_value(tmp_path: Path, monkeypatch) -> None:
+    """A typo must fail loudly rather than render the other layout."""
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Heading\n")
+    called = False
+
+    def _fake_render(**_kwargs: Any) -> dict[str, Any]:
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _fake_render)
+    response = asyncio.run(
+        server.api_kpress_render(
+            _request(query={"path": "doc.md", "view": "rendered", "toc": "none"})
+        )
+    )
+
+    assert response.status_code == 400
+    assert not called, "an out-of-contract value reached the renderer"
+
+
 def test_kpress_render_route_uses_logical_size_for_gzip(tmp_path: Path, monkeypatch) -> None:
     server._set_root_dir(tmp_path)
     content = "---\ntitle: Compressed\n---\n# Heading\n" + ("Repeated content.\n" * 200)

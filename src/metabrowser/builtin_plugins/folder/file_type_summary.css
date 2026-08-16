@@ -17,19 +17,6 @@
   font-variant-numeric: var(--tabular-numerals);
 }
 
-.file-type-summary .sr-only,
-.folder-totals .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 .file-type-summary-body {
   display: grid;
   gap: 12px;

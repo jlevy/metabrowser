@@ -963,6 +963,7 @@ function renderFilesFromTree() {
   );
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
+  scheduleSubtreePrefetch();
   return true;
 }
 
@@ -1127,7 +1128,8 @@ function renderTreeNodes(nodes, isRoot, options) {
         // cap. Render a placeholder; click-to-expand fetches the
         // subtree via /api/tree?path=...
         parts.push(
-          '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+          '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+            ' role="status" aria-label="Loading">' +
             '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
             "</div>",
         );
@@ -1211,13 +1213,15 @@ function renderTreeNodes(nodes, isRoot, options) {
 const subtreeCache = new Map();
 const subtreeRetryTimers = new WeakMap();
 
+// A spinner alone says "loading"; the surrounding row already says what
+// is loading, so the generic label is left to screen readers. Callers
+// pass visible copy only for a state a spinner cannot express on its own
+// (see the still-scanning case in loadSubtree).
 function treeLazyLoadingHtml(message) {
   return (
-    '<div class="tree-lazy-placeholder" role="status" aria-live="polite">' +
+    '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-live="polite">' +
     '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
-    "<span>" +
-    esc(message || "Loading folder…") +
-    "</span>" +
+    (message ? `<span>${esc(message)}</span>` : '<span class="sr-only">Loading folder…</span>') +
     "</div>"
   );
 }
@@ -1316,21 +1320,17 @@ function clearSubtreeRetry(childrenEl) {
   subtreeRetryTimers.delete(childrenEl);
 }
 
-async function loadSubtree(path, childrenEl, options) {
-  options = options || treeRenderOptionsForElement(childrenEl);
-  if (subtreeCache.has(path)) {
-    clearSubtreeRetry(childrenEl);
-    _perf.measure(
-      "renderTreeNodes:subtreeCache",
-      () => {
-        childrenEl.innerHTML = renderTreeNodes(subtreeCache.get(path), false, options);
-      },
-      { path: path, nodes: subtreeCache.get(path).length },
-    );
-    return;
+// One request per path, shared by the click that expands a folder and the
+// idle sweep that warms it. A click landing on a prefetch already in flight
+// joins it instead of racing a second identical fetch.
+const subtreeRequests = new Map();
+
+function fetchSubtree(path) {
+  const existing = subtreeRequests.get(path);
+  if (existing) {
+    return existing;
   }
-  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…");
-  try {
+  const request = (async () => {
     const resp = await fetch(
       `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
       { cache: "no-store" },
@@ -1346,16 +1346,50 @@ async function loadSubtree(path, childrenEl, options) {
     if (!Array.isArray(data.tree)) {
       throw new Error("Malformed tree response");
     }
-    var tree = data.tree;
-    knownFileCatalog?.observeLazyTree(tree);
-    if (tree.length === 0 && data.tally_cache_status === "scanning") {
+    knownFileCatalog?.observeLazyTree(data.tree);
+    // A folder whose scan has not reached it yet reports empty; caching that
+    // would answer every later expansion with a folder that has contents.
+    const scanning = data.tree.length === 0 && data.tally_cache_status === "scanning";
+    if (!scanning) {
+      subtreeCache.set(path, data.tree);
+    }
+    return { tree: data.tree, scanning: scanning };
+  })();
+  subtreeRequests.set(path, request);
+  const forget = () => {
+    if (subtreeRequests.get(path) === request) {
+      subtreeRequests.delete(path);
+    }
+  };
+  request.then(forget, forget);
+  return request;
+}
+
+async function loadSubtree(path, childrenEl, options) {
+  options = options || treeRenderOptionsForElement(childrenEl);
+  if (subtreeCache.has(path)) {
+    clearSubtreeRetry(childrenEl);
+    _perf.measure(
+      "renderTreeNodes:subtreeCache",
+      () => {
+        childrenEl.innerHTML = renderTreeNodes(subtreeCache.get(path), false, options);
+      },
+      { path: path, nodes: subtreeCache.get(path).length },
+    );
+    scheduleSubtreePrefetch();
+    return;
+  }
+  childrenEl.innerHTML = treeLazyLoadingHtml();
+  try {
+    const result = await fetchSubtree(path);
+    var tree = result.tree;
+    if (result.scanning) {
       childrenEl.innerHTML = treeLazyLoadingHtml("Still scanning this folder…");
       startIndexProgressPolling();
       scheduleSubtreeRetry(path, childrenEl);
       return;
     }
     clearSubtreeRetry(childrenEl);
-    subtreeCache.set(path, tree);
     _perf.measure(
       "renderTreeNodes:subtree",
       () => {
@@ -1369,12 +1403,82 @@ async function loadSubtree(path, childrenEl, options) {
     // this an expand under an active filter reveals the whole folder.
     applyTreeFilters();
     reconcilePendingTallyDiagnostics();
+    scheduleSubtreePrefetch();
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
     childrenEl.innerHTML = treeLazyFailureHtml(
       "Could not load this folder. Collapse and reopen it to try again.",
     );
+  }
+}
+
+// ── Subtree prefetch ────────────────────────────────────────────
+//
+// Expanding a folder should be instant, which means the subtree is
+// already in hand before the click (see "Everything is effortlessly
+// fast" in docs/design-system.md). The rendered tree names its own
+// candidates: every unexpanded folder past the server's depth cap
+// carries a lazy stub, and those are exactly the folders a reader can
+// open next. The sweep runs when the browser is idle, a few at a time,
+// so warming the tree never competes with the request a reader is
+// actually waiting on.
+const SUBTREE_PREFETCH_MAX_CONCURRENT = 3;
+const SUBTREE_PREFETCH_MAX_PER_SWEEP = 32;
+const SUBTREE_PREFETCH_IDLE_TIMEOUT_MS = 2000;
+let subtreePrefetchScheduled = false;
+
+function pendingSubtreePaths() {
+  const paths = [];
+  const stubs = treePane.querySelectorAll("[data-tree-lazy-stub]");
+  for (let index = 0; index < stubs.length; index += 1) {
+    if (paths.length >= SUBTREE_PREFETCH_MAX_PER_SWEEP) {
+      break;
+    }
+    // Stub -> .tree-children -> the .tree-folder row that owns the path.
+    const folder = /** @type {HTMLElement | null} */ (
+      stubs[index].parentElement?.previousElementSibling ?? null
+    );
+    const path = folder?.dataset?.path;
+    if (path && !subtreeCache.has(path) && !subtreeRequests.has(path)) {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+async function prefetchPendingSubtrees() {
+  const paths = pendingSubtreePaths();
+  let next = 0;
+  const worker = async () => {
+    while (next < paths.length) {
+      const path = paths[next];
+      next += 1;
+      try {
+        await fetchSubtree(path);
+      } catch (_error) {
+        // Best-effort: a failed warm-up costs nothing, and the expansion
+        // that needs this folder reports its own failure.
+      }
+    }
+  };
+  const lanes = Math.min(SUBTREE_PREFETCH_MAX_CONCURRENT, paths.length);
+  await Promise.all(Array.from({ length: lanes }, worker));
+}
+
+function scheduleSubtreePrefetch() {
+  if (subtreePrefetchScheduled) {
+    return;
+  }
+  subtreePrefetchScheduled = true;
+  const run = () => {
+    subtreePrefetchScheduled = false;
+    void prefetchPendingSubtrees();
+  };
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(run, { timeout: SUBTREE_PREFETCH_IDLE_TIMEOUT_MS });
+  } else {
+    setTimeout(run, 200);
   }
 }
 
@@ -3648,7 +3752,8 @@ async function selectFile(path, preferredViewId) {
         disposeActivePluginViews();
         stopFolderHeaderSubscription();
         preview.innerHTML =
-          '<div class="loading mb-delayed-loading"><div class="spinner"></div>Loading file…</div>';
+          '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+          '<span class="sr-only">Loading file…</span></div>';
       }, LOADING_INDICATOR_DELAY_MS);
 
       if (selectFileAbortController) {
@@ -4876,7 +4981,8 @@ function _buildRowHtml(entry, options) {
       dirChip +
       "</div>" +
       '<div class="tree-children" style="display:none">' +
-      '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
+      '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+      ' role="status" aria-label="Loading">' +
       '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
       "</div>" +
       "</div>"
