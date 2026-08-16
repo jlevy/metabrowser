@@ -32,6 +32,12 @@ Binary and source previews:
 - Progress is stated once.
   Both views carried a second readout in their pane chrome saying the same thing as the
   notice directly below it.
+- Message boxes are now one primitive.
+  A **notice** — anything the app says about the content it is showing — always uses the
+  ordinary surface as its fill, and carries its severity on the border alone.
+  The KPress render error previously wore an informational blue fill under a warning
+  border, so an error announced itself in the color of an aside beneath a border naming
+  the wrong severity; it is now a plain surface with an error border.
 - Every partial-content notice is now one style, in the source view and the Bytes view
   alike: the ordinary surface fill with a warning border, rather than an informational
   blue that meant something else elsewhere.

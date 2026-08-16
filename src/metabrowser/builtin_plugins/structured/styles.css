@@ -165,17 +165,6 @@
 
 /* Parse-error banner — appears above the source view when the
    server reports parse_error or truncated. */
-.parse-error-banner {
-  margin: var(--content-padding-y) var(--content-padding-x);
-  padding: var(--panel-cell-padding);
-  background: hsl(0 60% 96%);
-  border: 1px solid hsl(0 50% 80%);
-  border-radius: var(--radius-document);
-  color: hsl(0 50% 30%);
-  font-family: var(--font-sans);
-  font-size: var(--body-font-size);
-}
-
 /* Per-event inline mount (agent-log + unknown-jsonl reuse).
    Stays compact: bounded by the per-event payload cap so we don't
    need a scroll viewport. */

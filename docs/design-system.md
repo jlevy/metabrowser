@@ -246,30 +246,44 @@ worse the cost, which is exactly backwards.
 Both controls carry the same label, act on the same state, and appear and retire
 together.
 
-### One Notice, One Style
+### Notices
 
-Every surface that says “this is only part of the file” is the same box, in core and in
-plugins alike: the `.partial-notice` primitive in `static/styles.css`.
+A **notice** is any box the app draws to say something *about* the content it is
+showing: that a file is only partly loaded, that a document could not be rendered.
+They are one primitive, `.notice` in `static/styles.css`, in core and in plugins alike.
 
-Its fill is the ordinary surface — `var(--bg)`, white in the light theme — and its
-border is `var(--status-warning)`. The border alone carries “incomplete,” which is the
-single thing that distinguishes this box from the content around it.
-The fill is deliberately not a status tint: blue already means something else wherever
-it appears, and a partial load is not an informational aside.
-Reaching for `--status-info-bg` here is how the banner and the byte view drifted apart
-in the first place, one wearing an info fill with a warning border while the other
-announced the same condition with no box at all.
+Its fill is always the ordinary surface — `var(--bg)`, white in the light theme — and
+**severity is carried by the border alone**, as one `[data-severity]` override:
 
-A use site adds a class for positioning, visibility, and querying, and carries
-`.partial-notice` in the markup alongside it.
-It never restates the fill, border, or type — the same rule the
+| Severity | Border | Means |
+| --- | --- | --- |
+| (none) | `var(--border)` | Neutral; the box is a container, not a signal |
+| `warning` | `var(--status-warning)` | Incomplete, capped, or degraded — the content is fine as far as it goes |
+| `error` | `var(--status-error)` | The thing could not be done at all |
+
+One tone per box, and it is the one on the edge.
+Tinting the fill is how these drifted, twice: the partial-content banner wore an
+info-blue fill with a warning border while the byte view announced the same condition
+with no box at all, and the KPress render error wore that same blue under an orange
+border — an error announcing itself in the color of an aside, beneath a border naming
+the wrong severity. A tint token such as `--status-info-bg` exists for surfaces that
+genuinely mean “informational”; it is never a message box’s fill.
+
+A use site carries `.notice` in the markup alongside its own class, and owns only
+**layout and position** — how it arranges its contents and where it sits.
+It never restates the fill, border, or type, the same rule the
 [control families](#control-families) follow, for the same reason.
-`tests/test_partial_notice_style.py` enforces this: it fails the build if the primitive
-is redefined outside core, if its fill or border changes meaning, or if a use site
-declares a background, border, color, or font of its own.
+Layout is deliberately not shared: a one-line notice with a button and a stacked render
+error with a detail block have nothing useful in common there.
 
-Build the notice through `mb.partialNoticeHtml` rather than by hand, so a new view gets
-the markup and the placement together.
+`tests/test_notice_style.py` enforces all of it.
+It fails the build if the primitive is redefined outside core, if its fill stops being
+the surface, if a severity does anything but set a border color, if a use site declares
+its own background, border, color, or font, or if any stylesheet uses a status tint as a
+box fill.
+
+Build a partial-content notice through `mb.partialNoticeHtml` rather than by hand, so a
+new view gets the markup, the severity, and the placement together.
 
 ### State Progress Once
 

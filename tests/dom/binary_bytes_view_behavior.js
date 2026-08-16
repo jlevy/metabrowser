@@ -175,10 +175,11 @@ function makeSdk() {
       formatSize: (bytes) => `${bytes} B`,
       // Mirrors the shell's builder closely enough to assert placement and
       // wiring; the real markup contract is covered in
-      // tests/test_partial_notice_style.py.
+      // tests/test_notice_style.py.
       partialNoticeHtml: (progress, position, options) =>
-        `<div class="partial-notice ${options?.useSiteClass ?? ""}" ` +
-        `data-position="${position}"${options?.hidden ? " hidden" : ""}>` +
+        `<div class="notice partial-notice ${options?.useSiteClass ?? ""}" ` +
+        `data-severity="warning" data-position="${position}"` +
+        `${options?.hidden ? " hidden" : ""}>` +
         `<strong class="partial-notice-label">${options?.label ?? "Partial file."}</strong> ` +
         `<span class="partial-notice-readout">Showing ${progress.loaded} of ${progress.total}.</span>` +
         (options?.showControl === false

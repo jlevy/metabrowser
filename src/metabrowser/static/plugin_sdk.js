@@ -676,8 +676,8 @@
     const control =
       options?.showControl === false ? "" : loadMoreButtonHtml(position, options?.action);
     return (
-      `<div class="partial-notice${useSiteClass}" data-position="${position}"` +
-      ` role="status"${hidden}>` +
+      `<div class="notice partial-notice${useSiteClass}" data-severity="warning"` +
+      ` data-position="${position}" role="status"${hidden}>` +
       // The progress figures live in their own element so a view that updates
       // in place can rewrite them without taking the label with them.
       `<span><strong class="partial-notice-label">${escapeHtml(label)}</strong> ` +

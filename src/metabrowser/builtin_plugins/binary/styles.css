@@ -18,7 +18,7 @@
 /* The partial-content notice is the shell primitive `.partial-notice`; this
    class only exists so the view can find its own boxes. Declaring a fill,
    border, or type here would be the drift the primitive prevents —
-   tests/test_partial_notice_style.py fails the build if it appears. */
+   tests/test_notice_style.py fails the build if it appears. */
 .binary-bytes-notice[hidden] {
   display: none;
 }
