@@ -494,7 +494,7 @@ surface-specific constraints:
 | Copy | Form | Example |
 | --- | --- | --- |
 | Action or trigger label | Short sentence-case noun or verb phrase; no punctuation | `Quick File` |
-| Compact hint | One to three words; sentence case; no punctuation | `Open or toggle` |
+| Compact hint | One to three words; sentence case; no punctuation | `Toggle folder` |
 | Help description | One complete active-voice sentence describing context or result | `Open the selected file.` |
 | Context note | One complete sentence saying when the group applies | `Available while a file-tree row has focus.` |
 

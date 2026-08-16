@@ -245,7 +245,7 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
 
     assert "async function selectFile(path, preferredViewId)" in js
     assert "function renderFile(data, preferredViewId)" in js
-    assert "async function navigateToPath(path, preferredViewId)" in js
+    assert "async function navigateToPath(path, preferredViewId, routeOptions)" in js
     assert "MetabrowserNavigationRoute.attachController(navigationController)" in js
     assert "metabrowser:open-path" not in js
 

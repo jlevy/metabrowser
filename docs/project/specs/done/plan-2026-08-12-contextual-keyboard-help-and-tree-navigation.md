@@ -128,10 +128,14 @@ rather than adding another roving-tabindex implementation.
    only for a focused tree row.
    The same keys in the preview retain default browser behavior, including arrow, Page
    Up, Page Down, Home, End, and Space scrolling.
-6. **Focus and selection remain distinct.** The roving focus row is where the next
-   keyboard command applies.
-   The selected file is what the preview displays.
-   Moving with arrows does not fetch a file; Enter or Space activates it.
+6. **Selection follows focus.** Moving the roving focus with arrows, Home, or End opens
+   the row it lands on, so skimming a tree costs one keypress per row instead of two.
+   Browsing is the common case, and a confirm keystroke bought nothing once opening was
+   fast enough to be effectively free.
+   Enter and Space are therefore action keys rather than view keys: they change a
+   folder’s disclosure state or mount a deferred page, and never open.
+   Arrow-driven opening replaces the route instead of pushing it, so a skim does not
+   bury the reader’s entry point under one history entry per row passed.
 7. **No first-release tree typeahead.** Single-character typeahead would collide with
    the global `T` command and introduce buffering and timeout policy.
    Quick File is the explicit filename-navigation surface.
@@ -142,11 +146,11 @@ rather than adding another roving-tabindex implementation.
 | --- | --- | --- |
 | Anywhere outside editable content | `?` | Open Help |
 | Anywhere outside editable content | `T`, `/` | Open Quick File |
-| File tree | `ArrowUp`, `ArrowDown` | Focus the previous or next visible tree row |
-| File tree | `ArrowLeft` | Collapse an expanded folder; otherwise focus its parent |
-| File tree | `ArrowRight` | Expand a collapsed folder; otherwise focus its first visible child |
-| File tree | `Home`, `End` | Focus the first or last visible tree row |
-| File tree | `Enter`, `Space` | Toggle a folder or open a file or symbolic link |
+| File tree | `ArrowUp`, `ArrowDown` | Open the previous or next visible tree row |
+| File tree | `ArrowLeft` | Collapse an expanded folder; otherwise open its parent |
+| File tree | `ArrowRight` | Expand a collapsed folder; otherwise open its first visible child |
+| File tree | `Home`, `End` | Open the first or last visible tree row |
+| File tree | `Enter`, `Space` | Toggle a folder or show the next page |
 | Quick File | `ArrowUp`, `ArrowDown` | Change the active result, wrapping at both ends |
 | Quick File | `Home`, `End` | Move the query caret to the start or end of the line |
 | Quick File | `Enter` | Open the active result |
@@ -177,13 +181,13 @@ surface.
 | --- | --- | --- | --- | --- | --- |
 | `help.open` | `anywhere` | `?` | Help | Open Help for a description of Metabrowser and all keyboard shortcuts. | Help |
 | `quick-file.open` | `anywhere` | `T` or `/` | Quick File | Find and open a file from the current folder. | Quick File |
-| `tree.previous` | `navigation` | `↑` | Previous item | Move focus to the previous visible item in the file tree. | Move |
-| `tree.next` | `navigation` | `↓` | Next item | Move focus to the next visible item in the file tree. | Move |
-| `tree.parent-or-collapse` | `navigation` | `←` | Parent or collapse | Collapse the focused folder or move focus to its parent item. | Navigate folders |
-| `tree.child-or-expand` | `navigation` | `→` | Child or expand | Expand the focused folder or move focus to its first visible child. | Navigate folders |
-| `tree.first` | `navigation` | `Home` | First item | Move focus to the first visible item in the file tree. | — |
-| `tree.last` | `navigation` | `End` | Last item | Move focus to the last visible item in the file tree. | — |
-| `tree.activate` | `navigation` | `Enter` or `Space` | Open or toggle | Open the focused file, toggle the focused folder, or show the next page. | Open or toggle |
+| `tree.previous` | `navigation` | `↑` | Previous item | Open the previous visible item in the file tree. | Browse |
+| `tree.next` | `navigation` | `↓` | Next item | Open the next visible item in the file tree. | Browse |
+| `tree.parent-or-collapse` | `navigation` | `←` | Parent or collapse | Collapse the focused folder or open its parent item. | Navigate folders |
+| `tree.child-or-expand` | `navigation` | `→` | Child or expand | Expand the focused folder or open its first visible child. | Navigate folders |
+| `tree.first` | `navigation` | `Home` | First item | Open the first visible item in the file tree. | — |
+| `tree.last` | `navigation` | `End` | Last item | Open the last visible item in the file tree. | — |
+| `tree.activate` | `navigation` | `Enter` or `Space` | Toggle folder | Expand or collapse the focused folder, or show the next page. | Toggle folder |
 | `quick-file.previous` | `quick-file` | `↑` | Previous result | Move to the previous Quick File result, wrapping at the top. | Move |
 | `quick-file.next` | `quick-file` | `↓` | Next result | Move to the next Quick File result, wrapping at the bottom. | Move |
 | `quick-file.activate` | `quick-file` | `Enter` | Open result | Open the active Quick File result. | Open |
@@ -401,9 +405,9 @@ The index template gains `#nav-shortcut-hints` immediately before `#index-progre
 │ …scrolling file tree…                   │
 ├─────────────────────────────────────────┤
 │ [?] Help   [T] or [/] Quick File        │  always
-│ [↑] or [↓] Move                         │  while a tree row has focus
+│ [↑] or [↓] Browse                       │  while a tree row has focus
 │ [←] or [→] Navigate folders             │
-│ [Enter] or [Space] Open or toggle       │
+│ [Enter] or [Space] Toggle folder        │
 ├─────────────────────────────────────────┤
 │ ◌ Scanning 8,192 files…                 │  only while indexing
 └─────────────────────────────────────────┘
@@ -481,15 +485,18 @@ Folder behavior matches the conventional tree model:
 - Right on an expanded folder with no visible child does nothing.
 - Left on an expanded folder collapses it and leaves focus on the folder.
 - Left on a collapsed folder or leaf moves to its parent when one is rendered.
-- Up and Down traverse the flattened visible order without opening a file.
-- Home and End move to the first and last visible item.
-- Enter or Space toggles a folder and activates a file, symbolic link, or pagination
-  row.
+- Up and Down traverse the flattened visible order, opening each row they land on.
+- Home and End move to the first and last visible item, opening it.
+- Enter or Space toggles a folder or mounts a pagination row, and never opens.
 
 Clicking a row also makes it the roving anchor, so pointer and keyboard use continue
 from the same place.
+A click still fuses opening and toggling, because a pointer gets one gesture per row;
+the keyboard splits them, because arrows already carry the opening half.
 Focus styling is separate from `.selected`: a focus ring says where keys apply, while
 the existing selected treatment says what is open.
+Because selection follows focus, the two now travel together in the tree, but they stay
+distinct treatments — a row can hold focus while a filter hides the selection it opened.
 
 ### Main-Pane Contract
 

@@ -135,6 +135,7 @@
    *   activate: (row: HTMLElement) => HTMLElement | null | undefined | Promise<HTMLElement | null | undefined>,
    *   container: HTMLElement,
    *   document?: Document,
+   *   navigate: (row: HTMLElement) => void,
    *   setFolderExpanded: (row: HTMLElement, expanded: boolean) => void | Promise<void>,
    *   shortcuts: ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]>,
    * }} options
@@ -144,10 +145,11 @@
       !options?.container ||
       !options.shortcuts ||
       typeof options.activate !== "function" ||
+      typeof options.navigate !== "function" ||
       typeof options.setFolderExpanded !== "function"
     ) {
       throw new TypeError(
-        "Tree keyboard navigation requires a container, shortcuts, activation, and folder actions",
+        "Tree keyboard navigation requires a container, shortcuts, activation, navigation, and folder actions",
       );
     }
     const hostDocument = options.document || window.document;
@@ -357,6 +359,22 @@
       return visible;
     }
 
+    /**
+     * Roving focus and the preview move together. Arrows are the browse
+     * gesture, so landing on a row opens it rather than waiting for a second
+     * keypress. Re-entering the row that already has focus is skipped, so an
+     * arrow clamped at either end does not reopen what is already showing.
+     *
+     * @param {HTMLElement} row
+     */
+    function focusAndOpen(row) {
+      const changed = row !== focusedRow();
+      setAnchor(row, true);
+      if (changed) {
+        options.navigate(row);
+      }
+    }
+
     /** @param {number} index */
     function focusIndex(index) {
       const rows = ensureVisibleRows();
@@ -364,7 +382,7 @@
         return false;
       }
       const bounded = Math.max(0, Math.min(index, rows.length - 1));
-      setAnchor(rows[bounded], true);
+      focusAndOpen(rows[bounded]);
       return true;
     }
 
@@ -396,7 +414,7 @@
       }
       const parent = parentRow(row);
       if (parent) {
-        setAnchor(parent, true);
+        focusAndOpen(parent);
       }
       return true;
     }
@@ -415,7 +433,7 @@
       }
       const child = firstChildRow(row);
       if (child) {
-        setAnchor(child, true);
+        focusAndOpen(child);
       }
       return true;
     }
@@ -453,8 +471,8 @@
           bindings: [{ key: "ArrowUp" }],
           copy: {
             action: "Previous item",
-            description: "Move focus to the previous visible item in the file tree.",
-            hint: "Move",
+            description: "Open the previous visible item in the file tree.",
+            hint: "Browse",
           },
           group: "navigation",
           handler: () => move(-1),
@@ -468,8 +486,8 @@
           bindings: [{ key: "ArrowDown" }],
           copy: {
             action: "Next item",
-            description: "Move focus to the next visible item in the file tree.",
-            hint: "Move",
+            description: "Open the next visible item in the file tree.",
+            hint: "Browse",
           },
           group: "navigation",
           handler: () => move(1),
@@ -483,7 +501,7 @@
           bindings: [{ key: "ArrowLeft" }],
           copy: {
             action: "Parent or collapse",
-            description: "Collapse the focused folder or move focus to its parent item.",
+            description: "Collapse the focused folder or open its parent item.",
             hint: "Navigate folders",
           },
           group: "navigation",
@@ -498,7 +516,7 @@
           bindings: [{ key: "ArrowRight" }],
           copy: {
             action: "Child or expand",
-            description: "Expand the focused folder or move focus to its first visible child.",
+            description: "Expand the focused folder or open its first visible child.",
             hint: "Navigate folders",
           },
           group: "navigation",
@@ -513,7 +531,7 @@
           bindings: [{ key: "Home" }],
           copy: {
             action: "First item",
-            description: "Move focus to the first visible item in the file tree.",
+            description: "Open the first visible item in the file tree.",
             hint: "First",
           },
           group: "navigation",
@@ -528,7 +546,7 @@
           bindings: [{ key: "End" }],
           copy: {
             action: "Last item",
-            description: "Move focus to the last visible item in the file tree.",
+            description: "Open the last visible item in the file tree.",
             hint: "Last",
           },
           group: "navigation",
@@ -542,9 +560,9 @@
         options.shortcuts.register({
           bindings: [{ key: "Enter" }, { key: " " }],
           copy: {
-            action: "Open or toggle",
-            description: "Open the focused file, toggle the focused folder, or show the next page.",
-            hint: "Open or toggle",
+            action: "Toggle folder",
+            description: "Expand or collapse the focused folder, or show the next page.",
+            hint: "Toggle folder",
           },
           group: "navigation",
           handler: activateFocused,

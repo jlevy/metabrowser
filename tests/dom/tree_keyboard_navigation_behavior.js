@@ -305,6 +305,7 @@ root.append(folder, children, empty, outside, page);
 const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
 const expansionCalls = [];
 const activationCalls = [];
+const navigationCalls = [];
 const navigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
   activate(row) {
     activationCalls.push(row.dataset.treeId);
@@ -312,6 +313,9 @@ const navigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
   },
   container,
   document,
+  navigate(row) {
+    navigationCalls.push(row.dataset.treeId);
+  },
   setFolderExpanded(row, expanded) {
     expansionCalls.push([row.dataset.treeId, expanded]);
     const childGroup = row.nextElementSibling;
@@ -367,11 +371,26 @@ check("tree scope exposes contextual nav hints", shortcuts.snapshot("nav").lengt
 let event = keyboardEvent("ArrowDown", folder, { repeat: true });
 document.dispatch(event);
 check("repeat movement is handled", event.defaultPrevented && document.activeElement === empty);
+check("moving opens the row it lands on", navigationCalls.at(-1) === "folder:empty");
 
 event = keyboardEvent("Home", empty);
 document.dispatch(event);
 check("Home focuses the first visible row", document.activeElement === folder);
+check("Home opens the row it lands on", navigationCalls.at(-1) === "folder:src");
 
+// Skimming past the last row must not reopen it: the clamp lands on the row
+// that already has focus, and reopening would restart its live stream.
+folder.focus();
+container.dispatch("focusin", { target: folder });
+event = keyboardEvent("ArrowUp", folder);
+document.dispatch(event);
+check(
+  "an arrow clamped at the edge does not reopen the focused row",
+  navigationCalls.at(-1) === "folder:src" &&
+    navigationCalls.filter((id) => id === "folder:src").length === 1,
+);
+
+const beforeExpand = navigationCalls.length;
 event = keyboardEvent("ArrowRight", folder);
 document.dispatch(event);
 check(
@@ -379,14 +398,17 @@ check(
   folder.getAttribute("aria-expanded") === "true",
 );
 check("expanded children join visible order", navigator.visibleRows().includes(first));
+check("expanding in place opens nothing new", navigationCalls.length === beforeExpand);
 
 event = keyboardEvent("ArrowRight", folder);
 document.dispatch(event);
 check("Right enters an expanded folder", document.activeElement === first);
+check("entering a folder opens its first child", navigationCalls.at(-1) === "file:src/a.js");
 
 event = keyboardEvent("ArrowLeft", first);
 document.dispatch(event);
 check("Left from a child focuses its parent", document.activeElement === folder);
+check("returning to the parent opens it", navigationCalls.at(-1) === "folder:src");
 
 event = keyboardEvent("ArrowLeft", folder);
 document.dispatch(event);
@@ -404,12 +426,17 @@ check(
 
 outside.focus();
 container.dispatch("focusin", { target: outside });
+const beforeActivate = navigationCalls.length;
 event = keyboardEvent("Enter", outside);
 document.dispatch(event);
 check(
-  "Enter activates a leaf",
+  "Enter dispatches activation for the focused row",
   event.defaultPrevented && activationCalls.at(-1) === "file:README.md",
 );
+// Activation and opening are separate callbacks: arrows opened this row on the
+// way in, so Enter must not route through navigation a second time. What
+// activation *means* per row type is the shell's decision, not this module's.
+check("Enter never opens", navigationCalls.length === beforeActivate);
 const activationCount = activationCalls.length;
 event = keyboardEvent("Enter", outside, { repeat: true });
 document.dispatch(event);

@@ -65,6 +65,14 @@ Keyboard discovery and navigation:
 - The file tree now follows the conventional accessible keyboard model: arrow keys,
   Home, End, Enter, and Space move, expand, collapse, and activate rows while preserving
   native scrolling in the preview pane.
+- Selection follows focus in the tree: arrow keys, Home, and End open the row they land
+  on, so skimming costs one keypress per row rather than two.
+  Enter and Space are action keys rather than view keys — they expand or collapse a
+  folder, or mount a deferred page, and no longer open a file.
+  Skimming replaces the route instead of pushing it, so Back returns to wherever the
+  reader entered the tree rather than replaying every row they passed.
+  Clicking is unchanged: a pointer gets one gesture per row, so a click still opens and
+  toggles together.
 - Live inventory events now refresh deferred tree pages without mounting their rows
   early, so activating a pagination row cannot duplicate files and removals cannot
   resurrect a stale deferred entry.

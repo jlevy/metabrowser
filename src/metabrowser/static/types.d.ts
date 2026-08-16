@@ -1248,6 +1248,7 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
     ): HTMLElement | null | undefined | Promise<HTMLElement | null | undefined>;
     container: HTMLElement;
     document?: Document;
+    navigate(row: HTMLElement): void;
     setFolderExpanded(row: HTMLElement, expanded: boolean): void | Promise<void>;
     shortcuts: MetabrowserShortcutRegistry;
   }): MetabrowserTreeKeyboardApi;

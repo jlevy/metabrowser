@@ -65,22 +65,50 @@ def test_renderers_share_one_tree_semantics_helper() -> None:
     assert 'kind: "page"' in render
 
 
-def test_tree_actions_are_shared_by_pointer_and_keyboard() -> None:
+def test_pointer_fuses_open_and_toggle_while_keyboard_splits_them() -> None:
+    """A click carries one meaning; the keyboard spreads it across two keys.
+
+    Clicking a folder both opens it and toggles it, because a pointer gets one
+    gesture per row. Arrows are the browse gesture, so they carry the opening
+    half on their own, which leaves Enter and Space to mean only the half
+    arrows cannot express. The two paths therefore diverge on purpose, and each
+    one must own its behavior rather than borrow the other's.
+    """
+
     source = _app()
     for name in (
         "setFolderExpanded",
         "toggleTreeFolder",
         "mountNextTreePage",
         "activateTreeRow",
+        "openTreeRow",
+        "activateTreeRowFromKeyboard",
     ):
         assert f"function {name}" in source
+
     click = source[source.index('treePane.addEventListener("click"') :][:1800]
     assert "treeKeyboard?.setAnchor" in click
-    assert "activateTreeRow" in click
+    assert "activateTreeRow(item" in click
+
     init = _function(source, "initKeyboardInfrastructure", 2500)
     assert "MetabrowserTreeKeyboardNavigation.create" in init
-    assert "activate: activateTreeRow" in init
+    assert "activate: activateTreeRowFromKeyboard" in init
+    assert "navigate: openTreeRow" in init
     assert "setFolderExpanded: setFolderExpanded" in init
+
+    # Arrow-driven opening replaces the route. Pushing one entry per row would
+    # bury the reader's entry point under the rows they skimmed past.
+    open_row = _function(source, "openTreeRow", 700)
+    assert "navigateToPath(" in open_row
+    assert "replace: true" in open_row
+
+    # Enter and Space are action keys: whatever has focus is already open, so
+    # keyboard activation must not navigate.
+    keyboard_activate = _function(source, "activateTreeRowFromKeyboard", 700)
+    assert "toggleTreeFolder(row, options)" in keyboard_activate
+    assert "mountNextTreePage(row)" in keyboard_activate
+    assert "navigateToPath" not in keyboard_activate
+    assert "selectFile" not in keyboard_activate
 
 
 def test_every_tree_mutation_path_synchronizes_focus() -> None:

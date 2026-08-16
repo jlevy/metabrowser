@@ -2077,10 +2077,13 @@ function mountNextTreePage(row) {
   return firstMounted;
 }
 
-// One activation contract for pointer and keyboard. A folder row is a single
-// target: it selects the folder, opens its default Overview view, and toggles
-// its immediate children, so the chevron stays a state indicator rather than a
-// second action with its own navigation semantics.
+// The pointer activation contract. A folder row is a single target: it selects
+// the folder, opens its default Overview view, and toggles its immediate
+// children, so the chevron stays a state indicator rather than a second action
+// with its own navigation semantics.
+//
+// The keyboard splits what a click fuses, because arrows already carry the
+// opening half: see openTreeRow and activateTreeRowFromKeyboard below.
 async function activateTreeRow(row, options) {
   var action = row.dataset.action;
   if (action === "select-dir") {
@@ -2099,6 +2102,37 @@ async function activateTreeRow(row, options) {
   if (action === "select" && row.dataset.path) {
     setSelectedPath(row.dataset.path);
     void navigateToPath(row.dataset.path);
+  }
+  return row;
+}
+
+// Arrow keys are the browse gesture: landing on a row opens it, so skimming
+// costs one keypress per row instead of two. Reading is the common case and
+// waiting for a confirm keystroke saved nothing once opening became fast.
+//
+// The route is replaced rather than pushed, so a skim does not bury the
+// reader's entry point under one history entry per row they passed.
+function openTreeRow(row) {
+  var path = row.dataset.path;
+  if (!path) {
+    // Pagination rows carry no path; they are activated, never opened.
+    return;
+  }
+  setSelectedPath(path);
+  var folder = row.dataset.action === "select-dir";
+  void navigateToPath(folder ? `${path}/` : path, undefined, { replace: true });
+}
+
+// Enter and Space are action keys in the tree, not view keys. Whatever the
+// focus is on is already open, so activation is only for what arrows cannot
+// express: changing a folder's disclosure state and mounting a deferred page.
+async function activateTreeRowFromKeyboard(row, options) {
+  var action = row.dataset.action;
+  if (action === "select-dir") {
+    return toggleTreeFolder(row, options);
+  }
+  if (action === "page-more") {
+    return mountNextTreePage(row);
   }
   return row;
 }
@@ -6112,19 +6146,35 @@ async function revealInTree(path) {
   return true;
 }
 
-/** @returns {Promise<QuickFileOpenOutcome>} */
-async function navigateToPath(path, preferredViewId) {
+/**
+ * @param {string} path
+ * @param {string=} preferredViewId
+ * @param {{replace?: boolean}=} routeOptions
+ * @returns {Promise<QuickFileOpenOutcome>}
+ */
+async function navigateToPath(path, preferredViewId, routeOptions) {
   // The served root is the empty path, and only a nested folder carries a
   // trailing slash, so both spellings arrive here already canonical.
   var normalized = path.replace(/\/+$/, "");
   var folder = path.endsWith("/");
+  /** @type {{replace?: boolean, viewId?: string}} */
+  var openOptions = {};
+  if (preferredViewId) {
+    openOptions.viewId = preferredViewId;
+  }
+  // Skimming with arrows replaces the route instead of pushing it, so Back
+  // returns to wherever the reader entered the tree rather than replaying
+  // every row they passed through.
+  if (routeOptions?.replace) {
+    openOptions.replace = true;
+  }
   // The route module is dialect-agnostic and types `open` as returning the
   // apply callback's `unknown`. This shell installed that callback, so it is
   // the one place that knows the result is an open outcome.
   return /** @type {Promise<QuickFileOpenOutcome>} */ (
     navigationController.open(
       { path: folder && normalized ? `${normalized}/` : normalized },
-      preferredViewId ? { viewId: preferredViewId } : undefined,
+      openOptions,
     )
   );
 }
@@ -6170,9 +6220,10 @@ function initKeyboardInfrastructure() {
     shortcuts: shortcutRegistry,
   });
   treeKeyboard = window.MetabrowserTreeKeyboardNavigation.create({
-    activate: activateTreeRow,
+    activate: activateTreeRowFromKeyboard,
     container: treePane,
     document: document,
+    navigate: openTreeRow,
     setFolderExpanded: setFolderExpanded,
     shortcuts: shortcutRegistry,
   });
