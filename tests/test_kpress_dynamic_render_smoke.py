@@ -149,12 +149,14 @@ def test_dynamic_render_includes_doc_chrome_without_fragment_theme_state(
 
 
 def test_dynamic_render_collapses_deep_toc_entries_by_default(served_root: Path) -> None:
+    # KPress 0.3.3 renders an "auto" TOC only for a document that clears both a
+    # heading count and a length, so the fixture has to earn one before its
+    # collapse depth can be asserted. The nested H3 is what collapse acts on.
+    body = " ".join(["word"] * 120)
+    sections = "".join(f"## Section {index}\n\n{body}\n\n" for index in range(8))
     source = served_root / "docs" / "long.md"
     source.write_text(
-        (
-            "# Long document\n\n## First section\n\n### Detail\n\n"
-            "## Second section\n\n## Third section\n\nBody.\n"
-        ),
+        f"# Long document\n\n## First section\n\n### Detail\n\n{body}\n\n{sections}",
         encoding="utf-8",
     )
 

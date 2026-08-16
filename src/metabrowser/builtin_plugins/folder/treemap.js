@@ -14,7 +14,12 @@
 // shared across per-root ports), and live refresh rides mb.watchRollup's
 // debounced /api/events signal.
 
-import { mountFolderTotalsView, normalizeFolderTotals } from "./folder_totals.js";
+import { normalizeRollupEnvelope } from "./file_type_summary_model.js";
+import {
+  buildFolderTotalsComposition,
+  mountFolderTotalsView,
+  normalizeFolderTotals,
+} from "./folder_totals.js";
 import { layoutTree } from "./treemap_layout.js";
 import { parentNavigation } from "./treemap_model.js";
 
@@ -269,6 +274,33 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         totalsView.update(normalized);
       }
     });
+    /** @type {ReturnType<typeof normalizeRollupEnvelope> | null} */
+    let totalsEnvelope = null;
+
+    /**
+     * Paint the file-type segments behind the totals bars, so the tally
+     * above the map reads the same as the Overview's. The treemap owns
+     * its own rollup watch, so it composes straight from that envelope
+     * rather than through the Overview's projection pool. A contract
+     * failure leaves the bars a single neutral fill instead of taking
+     * the map down with it.
+     */
+    function updateTotalsComposition() {
+      try {
+        totalsView.updateComposition(
+          buildFolderTotalsComposition(
+            totalsEnvelope,
+            mb.fileTypes,
+            state.metric,
+            state.includeIgnored,
+          ),
+          palette,
+        );
+      } catch (error) {
+        totalsView.updateComposition(null, null);
+        console.warn("Could not compose treemap population bars.", error);
+      }
+    }
     const unmountMetricControls = rollupControls.mount(metricControls, {
       metric: true,
       ignored: false,
@@ -445,10 +477,15 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     });
 
     const unsubscribeControls = rollupControls.subscribe((next) => {
-      if (next.metric !== state.metric) {
+      const metricChanged = next.metric !== state.metric;
+      const populationChanged = next.includeIgnored !== state.includeIgnored;
+      if (metricChanged) {
         totalsView.updateMetric(next.metric);
       }
       state = next;
+      if (metricChanged || populationChanged) {
+        updateTotalsComposition();
+      }
       relayout();
     });
 
@@ -479,6 +516,13 @@ export function registerTreemap(mb, palettePool, rollupControls) {
             ]
           : [],
       );
+      try {
+        totalsEnvelope = breakdown ? normalizeRollupEnvelope(env) : null;
+      } catch (error) {
+        totalsEnvelope = null;
+        console.warn("Could not read the treemap file-type breakdown.", error);
+      }
+      updateTotalsComposition();
       relayout();
     });
     const unsubscribeActive = mb.viewState.subscribeActive(container, (active) => {

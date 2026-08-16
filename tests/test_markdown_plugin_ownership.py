@@ -119,3 +119,33 @@ def test_source_views_include_visible_truncation_warning() -> None:
     src = _all_js()
     assert "mb.renderTextTruncationWarning(data)" in src
     assert "warning" in src
+
+
+def test_embedded_readme_suppresses_its_own_table_of_contents() -> None:
+    """The folder Overview's README asks KPress for no TOC.
+
+    The panel stack around it is already the reader's way through the folder,
+    so a second navigation inside the embed competes with it. Opening the same
+    README as a file passes nothing and keeps KPress' ordinary thresholds, so
+    the suppression has to travel with this one call rather than being a
+    property of the renderer.
+    """
+
+    folder_dir = PLUGIN_DIR.parent / "folder"
+    readme_panel = (folder_dir / "readme_panel.js").read_text(encoding="utf-8")
+    assert 'includeToc: "off"' in readme_panel
+
+    # The option has to survive the whole path or the panel's request is inert:
+    # renderer -> SDK -> query string.
+    rendered = (PLUGIN_DIR / "rendered.js").read_text(encoding="utf-8")
+    assert "includeToc: options.includeToc" in rendered
+
+    sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin_sdk.js").read_text(encoding="utf-8")
+    assert 'url.searchParams.set("toc", includeToc)' in sdk
+
+
+def test_a_readme_opened_as_a_file_keeps_its_table_of_contents() -> None:
+    """Only the embedded mount opts out; the view registration must not."""
+
+    index = _index_js()
+    assert "includeToc" not in index

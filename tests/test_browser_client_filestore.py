@@ -490,23 +490,38 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
         assert "Crawling" not in haystack, f"{label} still contains 'Crawling'"
         assert "crawling" not in haystack, f"{label} still contains 'crawling'"
 
+    # The scanning gate lives in fetchSubtree, which owns the request shared by
+    # an expansion and the idle prefetch; loadSubtree owns what the reader sees.
+    fetch_start = js.index("function fetchSubtree(path)")
+    fetch_block = js[fetch_start : js.index("async function loadSubtree(")]
+    assert 'data.tally_cache_status === "scanning"' in fetch_block
+    # Caching an empty subtree because the scan has not reached it yet would
+    # answer every later expansion with a folder that has contents.
+    assert fetch_block.index("const scanning =") < fetch_block.index(
+        "subtreeCache.set(path, data.tree)"
+    )
+    assert "if (!scanning)" in fetch_block
+
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
     fn_block = js[fn_start : fn_start + 2200]
-    assert 'childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…")' in fn_block
-    assert 'data.tally_cache_status === "scanning"' in fn_block
+    # No visible label for the plain case: the spinner alone says "loading",
+    # and the row it replaces already says which folder. Only the
+    # still-scanning state below earns visible copy.
+    assert "childrenEl.innerHTML = treeLazyLoadingHtml()" in fn_block
+    assert "if (result.scanning)" in fn_block
     assert 'treeLazyLoadingHtml("Still scanning this folder…")' in fn_block
     assert "scheduleSubtreeRetry(path, childrenEl)" in fn_block
-    assert fn_block.index('data.tally_cache_status === "scanning"') < fn_block.index(
-        "subtreeCache.set(path, tree)"
-    )
 
 
 def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
     js = _read_app_js()
+    fetch_start = js.index("function fetchSubtree(path)")
+    fetch_block = js[fetch_start : js.index("async function loadSubtree(")]
+    assert "if (!resp.ok)" in fetch_block
+    assert "throw new Error(`HTTP ${resp.status}`)" in fetch_block
+
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
     fn_block = js[fn_start : fn_start + 2400]
-    assert "if (!resp.ok)" in fn_block
-    assert "throw new Error(`HTTP ${resp.status}`)" in fn_block
     assert "treeLazyFailureHtml(" in fn_block
     assert "Could not load this folder. Collapse and reopen it to try again." in fn_block
     assert "Failed to load</div>" not in fn_block

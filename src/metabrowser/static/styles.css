@@ -369,9 +369,11 @@
   /* Transitions */
   --transition-fast: 150ms ease;
   /* Transient loading chrome stays quiet through work that finishes within
-     roughly two frames. The placeholder still reserves its layout while
-     hidden, so revealing it later cannot move ready content. */
-  --loading-state-delay: 30ms;
+     about three frames, which covers a cached subtree expansion and most
+     local requests. The placeholder still reserves its layout while hidden,
+     so revealing it later cannot move ready content. Nothing announces
+     loading inside this window; see "Motion" in docs/design-system.md. */
+  --loading-state-delay: 50ms;
   /* Theme crossfade — applied to the major page surfaces so flipping
      light↔dark glides instead of snapping. Gated behind html.theme-anim
      (added by app.js one frame after first paint) so it never fires on
@@ -645,12 +647,19 @@
      legend item, frame header, node card, toggle) shares the same ease
      + duration so hover feels consistent across the plane. Filter-darken
      is used where the element has a solid rest-color; background swap is
-     used where the rest-state is transparent. Categorical data marks use
-     a slight whole-mark brightness increase so hue and internal contrast remain. */
+     used where the rest-state is transparent. Categorical data marks shift the
+     whole mark rather than recoloring it, so hue and internal contrast remain —
+     but the shift has to run the direction that gains contrast against the
+     page, which is opposite per theme. The light palette sits near 48%
+     lightness on a near-white page, so hover deepens it; the dark palette sits
+     near 67% on a near-black page, so hover lifts it (see the dark block). One
+     shared direction is what left hover reading as "nothing happened" on the
+     light distribution bars. The saturation nudge keeps the deepened light mark
+     from reading as merely greyer. */
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
-  --viz-data-mark-hover-filter: brightness(1.06);
+  --viz-data-mark-hover-filter: brightness(0.88) saturate(1.18);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -949,6 +958,10 @@
   --mb-distribution-category-10: hsl(15 78% 70%);
   --mb-distribution-category-11: hsl(315 55% 70%);
   --mb-distribution-category-12: hsl(166 54% 58%);
+
+  /* Lift rather than deepen: the dark categorical palette is already light
+     against a near-black page (see the light-theme note beside this token). */
+  --viz-data-mark-hover-filter: brightness(1.2) saturate(1.08);
 
   --viz-text: var(--text);
   --viz-text-muted: hsl(215 12% 68%);
@@ -3684,6 +3697,24 @@ pre.code-block code.hljs {
 }
 
 /* ── Loading ─────────────────────────────────────────────────── */
+
+/* Screen-reader-only text. Global by necessity: this is what makes a
+   spinner's label inaudible-but-announced rather than printed next to it
+   (see "Spinners Carry No Visible Label" in docs/design-system.md), and
+   the shell, the Markdown renderer, and every plugin need it. It lived
+   only inside the folder tables' stylesheet, so the same class printed
+   its text verbatim everywhere else. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .mb-delayed-loading {
   visibility: hidden;

@@ -92,9 +92,9 @@ global.window = { METABROWSER_SETTINGS: {} };
   )();
   const fileTypeSummaryPanel = createFileTypeSummaryPanel({}, {}, {}, {});
   check(
-    "file breakdown is a separate closed section",
+    "file breakdown is a separate open section",
     fileTypeSummaryPanel.label === "File Breakdown" &&
-      fileTypeSummaryPanel.defaultExpanded === false,
+      fileTypeSummaryPanel.defaultExpanded === true,
     JSON.stringify(fileTypeSummaryPanel),
   );
   const registrySource = fs.readFileSync(
@@ -482,10 +482,18 @@ global.window = { METABROWSER_SETTINGS: {} };
 
   const filesToggle = stack.children[0].children[0].children[0];
   const filesBody = stack.children[0].children[1];
+  const filesPanel = stack.children[0];
   filesToggle.listeners.click();
   check(
     "overview panels collapse",
     filesBody.className.includes("folder-overview-panel-body-collapsed"),
+  );
+  // The panel carries the state too, because the heading's rule and trailing
+  // space are dropped while there is no body under them (see overview.css).
+  check(
+    "the collapsed panel is marked for its heading styling",
+    filesPanel.className.includes("folder-overview-panel-collapsed"),
+    filesPanel.className,
   );
   check(
     "collapsed state is announced",
@@ -497,6 +505,11 @@ global.window = { METABROWSER_SETTINGS: {} };
   check(
     "overview panels reopen",
     !filesBody.className.includes("folder-overview-panel-body-collapsed"),
+  );
+  check(
+    "reopening restores the expanded heading styling",
+    !filesPanel.className.includes("folder-overview-panel-collapsed"),
+    filesPanel.className,
   );
   check(
     "expanded state is announced",

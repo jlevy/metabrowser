@@ -205,11 +205,17 @@ global.document = { createElement: (tag) => new Element(tag) };
       tooltipCalls[2]?.action === "hide",
     JSON.stringify(tooltipCalls),
   );
+  // The hover shift runs opposite ways per theme (deepen on the light page,
+  // lift on the dark one), so both declarations have to be present. Their
+  // values stay free to be adjusted without editing this check.
+  const darkStart = sharedStyles.indexOf('[data-theme="dark"] {');
   check(
     "tooltip-bearing segments reuse the shared data-mark hover treatment",
     styles.includes(".folder-totals .file-type-summary-fill[data-segment-key]:hover") &&
       styles.includes("filter: var(--viz-data-mark-hover-filter);") &&
-      sharedStyles.includes("--viz-data-mark-hover-filter: brightness(1.06);"),
+      darkStart > 0 &&
+      sharedStyles.indexOf("--viz-data-mark-hover-filter:") < darkStart &&
+      sharedStyles.lastIndexOf("--viz-data-mark-hover-filter:") > darkStart,
     styles,
   );
   view.dispose();
