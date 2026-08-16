@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:9441ea792a9324a1a229cfeb9836575260f885af6f32cc603ae76f1e1aa1db42
+  labels: []
+  priority: 2
+  status: open
+  title: Navigation tree rows are not real links
+bead_id: is-01m036wy3pwxv6afsdx4qpx25j
+external_id: 50793e33-3f25-40a8-a941-d87da73a1971
+external_key: OS-327
+external_url: https://linear.app/finterm-ai/issue/OS-327/navigation-tree-rows-are-not-real-links
+remote_updated_at: 2026-08-16T21:18:47.480Z
+state: linked
+synced_at: 2026-08-16T21:18:47.653Z
+type: lk

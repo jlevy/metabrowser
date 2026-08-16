@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:787ff0fa7fe2ced9ea9d997717c20738e4e7ecec8d108a53dcceb7e151509525
+  labels: []
+  priority: 2
+  status: open
+  title: Files section lacks the pending skeleton that File Breakdown shows
+bead_id: is-01m041tjpb6dxha8h5yfjs9jqw
+external_id: 77699871-6531-4807-bf2b-7ab3f8625ff0
+external_key: OS-335
+external_url: https://linear.app/finterm-ai/issue/OS-335/files-section-lacks-the-pending-skeleton-that-file-breakdown-shows
+remote_updated_at: 2026-08-16T21:18:52.877Z
+state: linked
+synced_at: 2026-08-16T21:18:53.027Z
+type: lk

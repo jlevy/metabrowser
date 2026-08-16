@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:fac242a8de38693b00f355770dc0244d26cb4daf2f6cce2d38a1fe1f7869dd31
+  labels: []
+  priority: 3
+  status: open
+  title: "Text preview: measure whether content-visibility helps past 16 MiB"
+bead_id: is-01m03awqw5frn5zgcw5q074pyx
+external_id: 53578099-acf6-4206-90ba-36f3434b1448
+external_key: OS-328
+external_url: https://linear.app/finterm-ai/issue/OS-328/text-preview-measure-whether-content-visibility-helps-past-16-mib
+remote_updated_at: 2026-08-16T21:18:48.266Z
+state: linked
+synced_at: 2026-08-16T21:18:48.427Z
+type: lk

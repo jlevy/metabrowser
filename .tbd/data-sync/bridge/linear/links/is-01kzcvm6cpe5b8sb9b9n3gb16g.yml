@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:0836a2d5870c338929f36c9cdf0c29d4f28f81619f6809dee79e2c24f8bfcd37
+  labels:
+    - security
+  priority: 1
+  status: open
+  title: HTML rendering and an explicit content-trust model
+bead_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
+external_id: efc46703-5aa2-49d6-8195-546330186e9c
+external_key: OS-304
+external_url: https://linear.app/finterm-ai/issue/OS-304/html-rendering-and-an-explicit-content-trust-model
+remote_updated_at: 2026-08-16T21:18:28.482Z
+state: linked
+synced_at: 2026-08-16T21:18:28.660Z
+type: lk

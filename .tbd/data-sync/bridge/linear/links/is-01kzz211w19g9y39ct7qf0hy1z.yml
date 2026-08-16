@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:5ffbff4519ee36c4761a66be16a53d38c42277073c6664f82355152962f3aa7e
+  labels: []
+  priority: 3
+  status: in_progress
+  title: Evaluate post-baseline Markdown navigation adapters and knowledge features
+bead_id: is-01kzz211w19g9y39ct7qf0hy1z
+external_id: 76946bce-e1af-4297-80b0-836175cbb954
+external_key: OS-322
+external_url: https://linear.app/finterm-ai/issue/OS-322/evaluate-post-baseline-markdown-navigation-adapters-and-knowledge
+remote_updated_at: 2026-08-16T21:18:43.293Z
+state: linked
+synced_at: 2026-08-16T21:18:43.503Z
+type: lk

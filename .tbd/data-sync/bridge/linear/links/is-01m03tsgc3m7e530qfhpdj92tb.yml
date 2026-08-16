@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:6e40cfe3b7b20109cb7515ec8906dd43aa5cd2aa58f1ea97af77a666c60fb76a
+  labels: []
+  priority: 2
+  status: open
+  title: "Content typing: record sniff results during the inventory crawl"
+bead_id: is-01m03tsgc3m7e530qfhpdj92tb
+external_id: d108e0bd-8e3e-4a4a-beb2-41e2cad50ed2
+external_key: OS-331
+external_url: https://linear.app/finterm-ai/issue/OS-331/content-typing-record-sniff-results-during-the-inventory-crawl
+remote_updated_at: 2026-08-16T21:18:50.836Z
+state: linked
+synced_at: 2026-08-16T21:18:51.070Z
+type: lk

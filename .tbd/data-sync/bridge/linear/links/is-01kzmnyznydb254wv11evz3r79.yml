@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:ba40b7008208af59c9e99302de0b09476ed2bc16f0a47b1bdebbd8268ea1ed3a
+  labels: []
+  priority: 3
+  status: open
+  title: Segment-trie catalog index for subtree removal (deferred)
+bead_id: is-01kzmnyznydb254wv11evz3r79
+external_id: 500acf6c-3126-4c89-8253-f08a81fa2fdb
+external_key: OS-310
+external_url: https://linear.app/finterm-ai/issue/OS-310/segment-trie-catalog-index-for-subtree-removal-deferred
+remote_updated_at: 2026-08-16T21:18:32.003Z
+state: linked
+synced_at: 2026-08-16T21:18:32.156Z
+type: lk

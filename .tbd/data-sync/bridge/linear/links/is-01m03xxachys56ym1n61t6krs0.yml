@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:b254c6393dbb9d5c0c61752af1d4f54a0b2f7a7a841bf6836d83e89f115f7c1f
+  labels: []
+  priority: 3
+  status: open
+  title: "Flaky: test_tick_does_not_block_event_loop fails under full-suite load"
+bead_id: is-01m03xxachys56ym1n61t6krs0
+external_id: b0453b87-1411-4b69-a101-d5f42bf89c3e
+external_key: OS-333
+external_url: https://linear.app/finterm-ai/issue/OS-333/flaky-test-tick-does-not-block-event-loop-fails-under-full-suite-load
+remote_updated_at: 2026-08-16T21:18:51.929Z
+state: linked
+synced_at: 2026-08-16T21:18:52.079Z
+type: lk

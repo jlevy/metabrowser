@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:d2e976f51233b0fc7490400f9e4ad0dce4228b7068b79ddeb051a1287737ca5c
+  labels: []
+  priority: 2
+  status: open
+  title: "[epic] Minor cleanups for the next minor release"
+bead_id: is-01m03tqjzm7j6qkxjeath5qe0d
+external_id: da29ec9a-dfad-45c8-96a5-c5866a6ac816
+external_key: OS-330
+external_url: https://linear.app/finterm-ai/issue/OS-330/epic-minor-cleanups-for-the-next-minor-release
+remote_updated_at: 2026-08-16T21:18:50.070Z
+state: linked
+synced_at: 2026-08-16T21:18:50.495Z
+type: lk

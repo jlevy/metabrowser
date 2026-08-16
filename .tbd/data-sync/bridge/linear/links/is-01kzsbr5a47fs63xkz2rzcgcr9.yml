@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:61e00a5f26733f3a8a673bbeda75043bc293f8ae8dcc7436eff940cea7aff217
+  labels: []
+  priority: 1
+  status: open
+  title: "PR #24: human visual validation pass of the Git graph"
+bead_id: is-01kzsbr5a47fs63xkz2rzcgcr9
+external_id: 76eb6a23-1ca4-4b82-b473-18f5a660afd6
+external_key: OS-319
+external_url: https://linear.app/finterm-ai/issue/OS-319/pr-24-human-visual-validation-pass-of-the-git-graph
+remote_updated_at: 2026-08-16T21:18:40.739Z
+state: linked
+synced_at: 2026-08-16T21:18:40.996Z
+type: lk

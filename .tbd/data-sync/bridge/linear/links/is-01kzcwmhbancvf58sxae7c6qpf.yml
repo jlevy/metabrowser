@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:18cda62f47292540abaeb6f1695ce45ae1973f2009fd26aa291c70d178d18c66
+  labels: []
+  priority: 2
+  status: open
+  title: Watcher can silently miss kernel event-queue overflow (watchfiles drops notify's
+    Rescan flag)
+bead_id: is-01kzcwmhbancvf58sxae7c6qpf
+external_id: 3bbdd03f-269a-484a-bdf2-784a5d7a9290
+external_key: OS-309
+external_url: https://linear.app/finterm-ai/issue/OS-309/watcher-can-silently-miss-kernel-event-queue-overflow-watchfiles-drops
+remote_updated_at: 2026-08-16T21:18:31.401Z
+state: linked
+synced_at: 2026-08-16T21:18:31.601Z
+type: lk

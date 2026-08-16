@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:11b5d59a86bf690345986564b8544bf6d62f1fb4ab299a583d20ed8bb14cc1b5
+  labels: []
+  priority: 2
+  status: open
+  title: "Repo cache: extend git/process.py and add repo_clone.py (reuse the existing runner)"
+bead_id: is-01kzsb4jnyd56wy89xmztkmz2m
+external_id: 0ffb0ef8-e09f-4e96-8736-01e0592ab450
+external_key: OS-316
+external_url: https://linear.app/finterm-ai/issue/OS-316/repo-cache-extend-gitprocesspy-and-add-repo-clonepy-reuse-the-existing
+remote_updated_at: 2026-08-16T21:18:38.585Z
+state: linked
+synced_at: 2026-08-16T21:18:38.752Z
+type: lk

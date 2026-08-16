@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:56ce87ed76381e73b66c9b41f402bfa31769eae5d2b155471f4e28ef9f2fe604
+  labels:
+    - ui
+    - filters
+  priority: 1
+  status: open
+  title: Nav filter controls and fine-grained filtering
+bead_id: is-01kzp82ktssqmf4fhm8sxmvb6p
+external_id: acf60561-e724-4f66-85e2-3a8e6de21eec
+external_key: OS-312
+external_url: https://linear.app/finterm-ai/issue/OS-312/nav-filter-controls-and-fine-grained-filtering
+remote_updated_at: 2026-08-16T21:18:35.234Z
+state: linked
+synced_at: 2026-08-16T21:18:35.482Z
+type: lk

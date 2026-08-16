@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:86d56a036a1186ce3467fdf10dbb661701f1510dfdfcf8b1282c9012f74dd994
+  labels: []
+  priority: 4
+  status: open
+  title: "Future: Add explicit multi-repository and cross-vault navigation"
+bead_id: is-01kzz4eksmrezrggyrjefynntk
+external_id: 322677d0-64f4-490c-b12b-c315716b91b0
+external_key: OS-326
+external_url: https://linear.app/finterm-ai/issue/OS-326/future-add-explicit-multi-repository-and-cross-vault-navigation
+remote_updated_at: 2026-08-16T21:18:46.955Z
+state: linked
+synced_at: 2026-08-16T21:18:47.131Z
+type: lk

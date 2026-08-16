@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:2275772f68694f29d931edb0c32bf2ea870946592477f3b6c8e232093f4a816e
+  labels: []
+  priority: 2
+  status: open
+  title: "Repo cache: cache store (path derivation, flock, temp-and-rename publication,
+    sidecar)"
+bead_id: is-01kzsb4jzq5a37evdz4bk0dqg4
+external_id: 72de9d89-2da1-484f-b3bf-1a9e3204a9bb
+external_key: OS-317
+external_url: https://linear.app/finterm-ai/issue/OS-317/repo-cache-cache-store-path-derivation-flock-temp-and-rename
+remote_updated_at: 2026-08-16T21:18:39.371Z
+state: linked
+synced_at: 2026-08-16T21:18:39.772Z
+type: lk

@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:efa3256e86a1edc1eb2b1e15741101312d681c648ced4293fc923c3cf0a5d03a
+  labels: []
+  priority: 2
+  status: open
+  title: "Open a Git URL directly: purgeable repo cache with blobless clone + background
+    backfill"
+bead_id: is-01kzs5m38dz1egphfwf30c8h7n
+external_id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5
+external_key: OS-315
+external_url: https://linear.app/finterm-ai/issue/OS-315/open-a-git-url-directly-purgeable-repo-cache-with-blobless-clone
+remote_updated_at: 2026-08-16T21:18:37.703Z
+state: linked
+synced_at: 2026-08-16T21:18:37.893Z
+type: lk

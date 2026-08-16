@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:684960c76e68a0586142cf63253a8f2b90d4ec062e26dbd1230546a8fce0c75c
+  labels: []
+  priority: 1
+  status: open
+  title: "HTML P4: html kind, full-page detection, and sandboxed preview"
+bead_id: is-01kzcvmr0d1eyegyds8zpbffbz
+external_id: 4c13f679-cdd5-48b6-9f28-d6cd16cc62de
+external_key: OS-308
+external_url: https://linear.app/finterm-ai/issue/OS-308/html-p4-html-kind-full-page-detection-and-sandboxed-preview
+remote_updated_at: 2026-08-16T21:18:30.868Z
+state: linked
+synced_at: 2026-08-16T21:18:31.035Z
+type: lk

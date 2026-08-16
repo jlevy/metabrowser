@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:fcbc86481371de1f96d58faa257bc58bf2113da5989e5d5f5ebb6fd4e08d9983
+  labels: []
+  priority: 4
+  status: open
+  title: "Future: Add source-view line location targets"
+bead_id: is-01kzz4ejm8kxev59qawa3a9yqd
+external_id: c7c44fca-2bb1-427c-9c3f-81c69be6b0f5
+external_key: OS-324
+external_url: https://linear.app/finterm-ai/issue/OS-324/future-add-source-view-line-location-targets
+remote_updated_at: 2026-08-16T21:18:45.227Z
+state: linked
+synced_at: 2026-08-16T21:18:45.405Z
+type: lk

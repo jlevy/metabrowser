@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:cb282dce8e70373dfa8206a0db97b20857dd327f416282c1b0dc803de01ca0d2
+  labels: []
+  priority: 2
+  status: open
+  title: "Repo cache: URL-aware ROOT and serve wiring, plus --cache and --cache-purge modes"
+bead_id: is-01kzsb4k9hwrt25jj9j6svkvaf
+external_id: 04c1dc4d-0602-449f-95a5-09481c36a843
+external_key: OS-318
+external_url: https://linear.app/finterm-ai/issue/OS-318/repo-cache-url-aware-root-and-serve-wiring-plus-cache-and-cache-purge
+remote_updated_at: 2026-08-16T21:18:40.147Z
+state: linked
+synced_at: 2026-08-16T21:18:40.306Z
+type: lk

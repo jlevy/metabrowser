@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:35bbf3b3977ed64aec4759e2f462f33802e5c0003662c742656f7c6b542d3e5f
+  labels:
+    - ui
+    - backend
+  priority: 3
+  status: open
+  title: Optionally mirror extension and size filters upstream
+bead_id: is-01kzpz3txn7m46njwk82njfwvg
+external_id: 0318dd18-eb0f-4c87-b3f4-1d820412aa64
+external_key: OS-314
+external_url: https://linear.app/finterm-ai/issue/OS-314/optionally-mirror-extension-and-size-filters-upstream
+remote_updated_at: 2026-08-16T21:18:37.161Z
+state: linked
+synced_at: 2026-08-16T21:18:37.373Z
+type: lk

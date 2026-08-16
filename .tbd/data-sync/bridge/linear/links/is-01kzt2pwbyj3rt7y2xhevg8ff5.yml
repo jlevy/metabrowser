@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:d525b8ef9f53dcbc0fd2d0c9c5603f6d557d6d1dc3d646d4600ec947aab00c36
+  labels: []
+  priority: 2
+  status: open
+  title: "Spec: bounded binary byte preview"
+bead_id: is-01kzt2pwbyj3rt7y2xhevg8ff5
+external_id: 10816d20-0b05-4e76-a7c3-7603b74e43b5
+external_key: OS-320
+external_url: https://linear.app/finterm-ai/issue/OS-320/spec-bounded-binary-byte-preview
+remote_updated_at: 2026-08-16T21:18:41.489Z
+state: linked
+synced_at: 2026-08-16T21:18:41.718Z
+type: lk

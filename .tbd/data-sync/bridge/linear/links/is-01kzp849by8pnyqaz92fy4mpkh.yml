@@ -1,0 +1,16 @@
+base:
+  assignee: null
+  description_hash: sha256v7:4f9245cca50cb856338e84249ca3fe481a49d6ce927fdec17201cd398d1a6721
+  labels:
+    - ui
+  priority: 2
+  status: open
+  title: Rebase folder-treemap branch onto the core chip family
+bead_id: is-01kzp849by8pnyqaz92fy4mpkh
+external_id: f2431b34-4d34-4b94-91c6-007fb143ebfb
+external_key: OS-313
+external_url: https://linear.app/finterm-ai/issue/OS-313/rebase-folder-treemap-branch-onto-the-core-chip-family
+remote_updated_at: 2026-08-16T21:18:36.224Z
+state: linked
+synced_at: 2026-08-16T21:18:36.397Z
+type: lk

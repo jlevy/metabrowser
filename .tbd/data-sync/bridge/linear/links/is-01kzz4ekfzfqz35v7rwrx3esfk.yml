@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:b0482f6ad1046009c0983aa4d5e4e7263888e33247eb75259ae444c14cf0d026
+  labels: []
+  priority: 4
+  status: open
+  title: "Future: Evaluate frontmatter alias target lookup"
+bead_id: is-01kzz4ekfzfqz35v7rwrx3esfk
+external_id: e3bbbf8e-025d-43e5-9333-2c7715425113
+external_key: OS-325
+external_url: https://linear.app/finterm-ai/issue/OS-325/future-evaluate-frontmatter-alias-target-lookup
+remote_updated_at: 2026-08-16T21:18:46.097Z
+state: linked
+synced_at: 2026-08-16T21:18:46.278Z
+type: lk

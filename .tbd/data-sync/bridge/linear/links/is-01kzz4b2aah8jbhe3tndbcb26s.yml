@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:0bcb8b21dfd35f892d7b3545e11e6fd3c8af9039f52b77d18310f7171aac1750
+  labels:
+    - cleanup
+    - file-types
+  priority: 3
+  status: open
+  title: Remove semantic file-type rollout compatibility aliases
+bead_id: is-01kzz4b2aah8jbhe3tndbcb26s
+external_id: 8d0e5620-86bd-4caf-b82f-06ef9d2c66ca
+external_key: OS-323
+external_url: https://linear.app/finterm-ai/issue/OS-323/remove-semantic-file-type-rollout-compatibility-aliases
+remote_updated_at: 2026-08-16T21:18:43.900Z
+state: linked
+synced_at: 2026-08-16T21:18:44.060Z
+type: lk

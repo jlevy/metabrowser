@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:985eef3e96f76bfd01af63cfa63e3ab04169a8416e9aa9fc0c20292f20b6b7a7
+  labels: []
+  priority: 1
+  status: open
+  title: Serve folder Overview breadth-first instead of blocking on a full scan
+bead_id: is-01m041td5z4cm8krh0bgw00286
+external_id: 9cd2a98f-f85b-49e1-830c-27248e2c1f94
+external_key: OS-334
+external_url: https://linear.app/finterm-ai/issue/OS-334/serve-folder-overview-breadth-first-instead-of-blocking-on-a-full-scan
+remote_updated_at: 2026-08-16T21:18:52.398Z
+state: linked
+synced_at: 2026-08-16T21:18:52.556Z
+type: lk

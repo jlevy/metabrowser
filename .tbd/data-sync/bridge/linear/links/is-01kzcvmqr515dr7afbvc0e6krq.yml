@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:9d29338cda6b3d9747d81ec48e7cc39000c62d8e2ad897eb3599a2087f0cd7f0
+  labels: []
+  priority: 1
+  status: open
+  title: "HTML P3: path-shaped raw route so relative references resolve"
+bead_id: is-01kzcvmqr515dr7afbvc0e6krq
+external_id: da24fe06-1e60-44e4-bad5-fd8a93098265
+external_key: OS-307
+external_url: https://linear.app/finterm-ai/issue/OS-307/html-p3-path-shaped-raw-route-so-relative-references-resolve
+remote_updated_at: 2026-08-16T21:18:30.259Z
+state: linked
+synced_at: 2026-08-16T21:18:30.432Z
+type: lk

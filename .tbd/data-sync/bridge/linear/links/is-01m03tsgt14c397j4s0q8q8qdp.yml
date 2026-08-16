@@ -1,0 +1,15 @@
+base:
+  assignee: null
+  description_hash: sha256v7:350f277073bc2251a61c7d21d6c05bc38fdda7f8d6b847044ed6742a71a17be6
+  labels: []
+  priority: 3
+  status: open
+  title: "Content typing: widen beyond the text/binary split"
+bead_id: is-01m03tsgt14c397j4s0q8q8qdp
+external_id: 4562611e-4cd7-46db-9fb7-b50417b91709
+external_key: OS-332
+external_url: https://linear.app/finterm-ai/issue/OS-332/content-typing-widen-beyond-the-textbinary-split
+remote_updated_at: 2026-08-16T21:18:51.434Z
+state: linked
+synced_at: 2026-08-16T21:18:51.611Z
+type: lk
