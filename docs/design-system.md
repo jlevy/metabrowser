@@ -894,20 +894,19 @@ Respect `prefers-reduced-motion`. Content and status must remain understandable 
 transitions are disabled.
 
 Transient loading chrome has a quiet period through the shared `.mb-delayed-loading`
-utility, whose length is `--loading-state-delay` in `styles.css`.
-The placeholder reserves its final layout immediately but stays invisible long enough
-for synchronous work and fast local requests to replace it before paint.
+utility, whose length is `--loading-state-delay` in `styles.css`. The placeholder
+reserves its final layout immediately but stays invisible long enough for synchronous
+work and fast local requests to replace it before paint.
 
-**Nothing announces loading inside the quiet period.**
-This holds at every grain, not only for view- and panel-level placeholders: a subtree
-expanding under the cursor is exactly the case where the request usually beats the eye,
-and a spinner that appears and vanishes reads as a glitch rather than as progress.
+**Nothing announces loading inside the quiet period.** This holds at every grain, not
+only for view- and panel-level placeholders: a subtree expanding under the cursor is
+exactly the case where the request usually beats the eye, and a spinner that appears and
+vanishes reads as a glitch rather than as progress.
 A spinner is the strongest form and has no reason to exist before the quiet period ends;
 below it, the most that may appear is the neutral pulsing block used by the navigation
-tally.
-Apply the utility rather than adding independent timers at each renderer.
+tally. Apply the utility rather than adding independent timers at each renderer.
 
-The shell's own preview swap adds a longer wait on top (`LOADING_INDICATOR_DELAY_MS`),
+The shell’s own preview swap adds a longer wait on top (`LOADING_INDICATOR_DELAY_MS`),
 keeping the previous file on screen instead of blanking it — a different mechanism for a
 different problem, and not a reason to skip the utility.
 
@@ -925,13 +924,13 @@ and keyframe.
 
 ### Spinners Carry No Visible Label
 
-A spinner beside the words “Loading folder…” says the same thing twice: the surface being
-replaced already says which folder, and the spinner already says it is loading.
+A spinner beside the words “Loading folder…” says the same thing twice: the surface
+being replaced already says which folder, and the spinner already says it is loading.
 Keep the label for screen readers (`sr-only`) and show the spinner alone.
 
 Visible copy is for a state the spinner cannot express on its own — a scan still running
-behind an empty result, an index that failed — and it says what that state is rather than
-that something is loading.
+behind an empty result, an index that failed — and it says what that state is rather
+than that something is loading.
 
 ## Text Selection
 
