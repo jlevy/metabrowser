@@ -5,7 +5,7 @@ title: Ratchet remaining Python strict-type debt
 kind: chore
 status: open
 priority: 3
-version: 4
+version: 5
 spec_path: TODO.md
 labels:
   - tooling
@@ -14,7 +14,11 @@ labels:
 dependencies: []
 parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-07-16T16:41:32.628Z
-updated_at: 2026-07-17T20:20:52.187Z
+updated_at: 2026-08-16T08:05:43.098Z
+extensions:
+  linear:
+    id: 8fc405b1-c150-4848-aa57-4bf7f1046655
+    linked_at: 2026-08-16T08:05:43.098Z
 ---
 Continue removing the explicitly scoped BasedPyright legacy exceptions without weakening the global strict floor. The 2026-07-16 unsuppressed baseline is 483 diagnostics: 121 in src across private-helper usage, unknown arguments/members/variables, and unused nested functions; 362 at pytest fixture and monkeypatch boundaries. devtools has no scoped exception. Acceptance: reduce the measured counts, delete exception categories as they reach zero, keep typeCheckingMode=strict, and never add a broad global suppression.
 

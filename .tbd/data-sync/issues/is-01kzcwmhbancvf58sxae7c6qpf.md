@@ -5,11 +5,15 @@ title: Watcher can silently miss kernel event-queue overflow (watchfiles drops n
 kind: bug
 status: open
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
 created_at: 2026-08-07T01:15:39.743Z
-updated_at: 2026-08-11T16:57:07.959Z
+updated_at: 2026-08-16T08:05:43.375Z
+extensions:
+  linear:
+    id: 3bbdd03f-269a-484a-bdf2-784a5d7a9290
+    linked_at: 2026-08-16T08:05:43.375Z
 ---
 Source review of watchfiles' Rust layer (attic/watchfiles/src/lib.rs) shows notify's EventKind::Other + Flag::Rescan — emitted on inotify Q_OVERFLOW, FSEvents MustScanSubDirs, and Windows buffer overruns — is silently discarded in the event-mapping else branch. Metabrowser therefore has no way to learn its inventory is incomplete after large event bursts (git checkout, npm install); it diverges until restart. Not fixable through the watchfiles API. Mitigations: periodic reconciliation sweep in watch_backends.py, or the fdu-watch layer (research-2026-08-06-file-rollup-engine.md) which handles Rescan as InvalidateSubtree. Found during fdu watch-layer research.
 

@@ -5,12 +5,16 @@ title: Segment-trie catalog index for subtree removal (deferred)
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels: []
 dependencies: []
 created_at: 2026-08-10T01:52:57.533Z
-updated_at: 2026-08-10T01:52:57.533Z
+updated_at: 2026-08-16T08:05:43.381Z
+extensions:
+  linear:
+    id: 500acf6c-3126-4c89-8253-f08a81fa2fdb
+    linked_at: 2026-08-16T08:05:43.381Z
 ---
 Deferred alternative to the batching fix in mb-r8yg. Replace the flat path map with nested maps keyed by path segment so a directory removal costs O(subtree) instead of O(catalog).
 

@@ -5,7 +5,7 @@ title: "HTML P2: capability set, --untrusted profile, and client publication"
 kind: task
 status: open
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 labels: []
 dependencies:
@@ -15,6 +15,10 @@ dependencies:
     target: is-01kzs5m38dz1egphfwf30c8h7n
 parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 created_at: 2026-08-07T00:58:17.469Z
-updated_at: 2026-08-11T19:43:40.097Z
+updated_at: 2026-08-16T08:05:43.354Z
+extensions:
+  linear:
+    id: 799c6e7a-191e-4d81-86b5-0a581e9e54c1
+    linked_at: 2026-08-16T08:05:43.354Z
 ---
 Resolve an immutable capability object before app construction. Add --no-active-content / METAB_ACTIVE_CONTENT=0 and the --untrusted / METAB_UNTRUSTED=1 profile, with individual flags overriding the profile. Publish through client_settings_dict() as CAPABILITIES and via GET /api/capabilities. When active_content is off, drop allow-scripts from the raw sandbox directive (NOT a text/plain downgrade — that reintroduces the type enumeration the unconditional header removed and breaks innocent styled pages). Document the flags in SECURITY.md and the README warning block in the same change. Generalizes the mechanism the file-actions plan defines for mutations rather than adding a parallel one.

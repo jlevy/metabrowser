@@ -5,7 +5,7 @@ title: Quick file finder and search providers
 kind: feature
 status: open
 priority: 2
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels:
   - search
@@ -17,7 +17,11 @@ child_order_hints:
   - is-01kyxybpctnfvcbj8eh629hab0
   - is-01kyxybvqnw3fmmzhs3hnqhtxr
 created_at: 2026-07-16T16:49:05.366Z
-updated_at: 2026-08-09T18:03:27.124Z
+updated_at: 2026-08-16T08:05:43.129Z
+extensions:
+  linear:
+    id: d2579248-d47f-40b5-b4d8-79ff0a9d7dcb
+    linked_at: 2026-08-16T08:05:43.129Z
 ---
 Build a provider-based search surface in phases. Phase 1 opens a slash-key quick file finder and fuzzy-matches a minimal catalog of every file already observed by the browser, without a search request. Phase 2 adds complete server filename fallback over InventoryIndex. Phase 3 adds explicit bounded server full-text search with location-aware results. Quick file and content queries stay separate from persisted FilterState and from hierarchical hide-mode filtering.
 

@@ -5,12 +5,16 @@ title: "Future: Evaluate frontmatter alias target lookup"
 kind: feature
 status: open
 priority: 4
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md
 labels: []
 dependencies: []
 parent_id: is-01kzz211w19g9y39ct7qf0hy1z
 created_at: 2026-08-14T03:18:33.726Z
-updated_at: 2026-08-14T05:12:35.776Z
+updated_at: 2026-08-16T08:05:43.484Z
+extensions:
+  linear:
+    id: e3bbbf8e-025d-43e5-9333-2c7715425113
+    linked_at: 2026-08-16T08:05:43.484Z
 ---
 Measure real vault demand for resolving links through note metadata aliases. If warranted, add a bounded metadata index, explicit precedence, candidate diagnostics, and ambiguity behavior without silently redirecting exact standard Markdown links.

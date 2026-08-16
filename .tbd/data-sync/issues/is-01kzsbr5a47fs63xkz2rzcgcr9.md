@@ -5,13 +5,17 @@ title: "PR #24: human visual validation pass of the Git graph"
 kind: task
 status: open
 priority: 1
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies: []
 parent_id: is-01kzctqt5s7te6w75jm5pvg6g7
 created_at: 2026-08-11T21:30:40.323Z
-updated_at: 2026-08-11T21:30:40.323Z
+updated_at: 2026-08-16T08:05:43.447Z
+extensions:
+  linear:
+    id: 76eb6a23-1ca4-4b82-b473-18f5a660afd6
+    linked_at: 2026-08-16T08:05:43.447Z
 ---
 The last engineering gap on the Git graph branch. Everything else is automated-green; graph *proportions* have never had a human sign-off, which is why the PR is still titled a spike.
 

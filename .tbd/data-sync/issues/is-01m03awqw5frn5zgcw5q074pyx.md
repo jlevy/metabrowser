@@ -5,12 +5,16 @@ title: "Text preview: measure whether content-visibility helps past 16 MiB"
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 spec_path: docs/large-content-rendering.md
 labels: []
 dependencies: []
 created_at: 2026-08-15T18:28:06.149Z
-updated_at: 2026-08-15T18:28:06.149Z
+updated_at: 2026-08-16T08:05:43.503Z
+extensions:
+  linear:
+    id: 53578099-acf6-4206-90ba-36f3434b1448
+    linked_at: 2026-08-16T08:05:43.503Z
 ---
 The source view now opens at 2 MiB and grows to 8 MiB per click, appending
 rather than re-rendering. Measured on a 16 MiB source file: loads to

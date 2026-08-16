@@ -5,7 +5,7 @@ title: "Spec: bounded binary byte preview"
 kind: epic
 status: open
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/done/plan-2026-08-11-binary-byte-preview.md
 labels: []
 dependencies: []
@@ -18,7 +18,11 @@ child_order_hints:
   - is-01m023cq7qajqd0y3x4r4378sv
   - is-01m024s03n1vxyhxqm7dz7p5tp
 created_at: 2026-08-12T04:11:55.645Z
-updated_at: 2026-08-15T07:27:36.574Z
+updated_at: 2026-08-16T08:05:43.452Z
+extensions:
+  linear:
+    id: 10816d20-0b05-4e76-a7c3-7603b74e43b5
+    linked_at: 2026-08-16T08:05:43.452Z
 ---
 Deliver the bounded binary byte preview described in
 docs/project/specs/active/plan-2026-08-11-binary-byte-preview.md.

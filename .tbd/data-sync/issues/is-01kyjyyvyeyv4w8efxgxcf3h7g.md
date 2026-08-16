@@ -5,12 +5,16 @@ title: Upstream tryscript fixes from the metabrowser golden migration
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 labels:
   - tryscript
 dependencies: []
 created_at: 2026-07-27T23:36:00.205Z
-updated_at: 2026-07-27T23:36:00.205Z
+updated_at: 2026-08-16T08:05:43.300Z
+extensions:
+  linear:
+    id: 1434375c-de30-4a72-8d68-dbb68115ba2b
+    linked_at: 2026-08-16T08:05:43.300Z
 ---
 Findings from migrating metabrowser's CLI goldens to tryscript 0.1.7, for upstream fixes in jlevy/tryscript. Verified against dist/src (preprocessPaths, normalizeOutput, patternToRegex) and reproduced in isolation.
 

@@ -5,11 +5,15 @@ title: "Content typing: record sniff results during the inventory crawl"
 kind: feature
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-15T23:05:57.359Z
-updated_at: 2026-08-15T23:05:57.359Z
+updated_at: 2026-08-16T08:05:43.520Z
+extensions:
+  linear:
+    id: d108e0bd-8e3e-4a4a-beb2-41e2cad50ed2
+    linked_at: 2026-08-16T08:05:43.520Z
 ---
 Content classification currently runs at view time: metabrowser.content_sniff.sniff_artifact reads a bounded prefix when a file's extension does not settle its type, and FileContext caches the answer for that one request.
 

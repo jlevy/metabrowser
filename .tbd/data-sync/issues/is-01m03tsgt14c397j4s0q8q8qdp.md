@@ -5,11 +5,15 @@ title: "Content typing: widen beyond the text/binary split"
 kind: feature
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-15T23:05:57.824Z
-updated_at: 2026-08-15T23:05:57.824Z
+updated_at: 2026-08-16T08:05:43.527Z
+extensions:
+  linear:
+    id: 4562611e-4cd7-46db-9fb7-b50417b91709
+    linked_at: 2026-08-16T08:05:43.527Z
 ---
 metabrowser.content_sniff answers one question — text or binary — because that is the only one needed to stop rendering small binaries as U+FFFD.
 

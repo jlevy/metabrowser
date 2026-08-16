@@ -5,12 +5,16 @@ title: Files section lacks the pending skeleton that File Breakdown shows
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-08-16T01:08:52.554Z
-updated_at: 2026-08-16T01:08:52.554Z
+updated_at: 2026-08-16T08:05:43.547Z
+extensions:
+  linear:
+    id: 77699871-6531-4807-bf2b-7ab3f8625ff0
+    linked_at: 2026-08-16T08:05:43.547Z
 ---
 Reported 2026-08-15: while a large folder loads slowly, the File Breakdown panel shows its pulsing skeleton bars but the Files panel above it does not, so the top of the Overview reads as empty or as settled numbers while the section below is visibly still working.
 
