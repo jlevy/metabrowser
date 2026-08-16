@@ -327,6 +327,41 @@ Planned entries are tracked with their features rather than reserved in advance;
 [the extensions plan](project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 maps the first of them.
 
+## Markdown Link Resolution
+
+The Markdown plugin decides *what* an authored link points at; the shell decides *how*
+that target is spelled as a `/view/` URL. The resolvers are pure — no I/O, no preflight
+— so every decision is testable against a catalog snapshot, and route knowledge never
+leaks into the plugin nor dialect knowledge into the shell.
+
+One authored target passes through these layers in order:
+
+1. **Scheme dispatch** (`builtin_plugins/markdown/links.js`). `http`, `https`, `mailto`,
+   and `tel` stay external; unsafe schemes are disabled with a visible reason rather
+   than removed silently.
+2. **Exact standard resolution** (same module).
+   Relative, `./`, `../`, and leading-slash targets resolve GitHub-style from the source
+   document. A missing target keeps its exact URL and falls through to the ordinary
+   not-found state — nothing guesses by basename.
+   Embedded media routes through the bounded `/raw` endpoint.
+3. **Verified GitHub localization** (`github_localizer.js`). An absolute
+   `github.com/<owner>/<name>/blob|tree/<ref>/<path>` URL opens locally only when
+   repository identity proves it names the served working tree: origin remote, branch or
+   exact revision, and served subdirectory must all match.
+   Identity comes from `repository_context.py`, a bounded read of Git metadata at first
+   paint that never invokes Git and exposes no local paths.
+   Anything unproven stays an ordinary outbound link.
+4. **Published-route adapters** (`project_adapters.js`). When an MkDocs, Docusaurus, or
+   Jekyll config sits at the served root, a root-relative published-site route such as
+   `/guide/` falls back to the source document behind it — only after exact resolution
+   fails, so a real file at that path always wins.
+5. **Wiki resolution** (`wiki_resolver.js`), for `[[...]]` targets: exact path, then the
+   source directory, then a *unique* catalog match.
+   Ambiguous and missing notes render visibly and keyboard-reachable with their
+   candidate paths; a name that is unique in a half-built catalog stays `pending` until
+   completeness proves it, because resolving by catalog order would make link targets
+   depend on walk order.
+
 ## Startup and First Paint
 
 The CLI binds before beginning expensive recursive work.
