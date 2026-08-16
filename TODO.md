@@ -1,16 +1,72 @@
 # Roadmap
 
-Metabrowser treats compression as a transport layer around one logical file.
-For example, `report.html.zst` should classify and render like `report.html` while all
-reads remain bounded.
+This is the top-level map of Metabrowser’s work: what is planned, what is in flight, and
+which document carries the detail.
+It sits above the specs rather than duplicating them.
+Plans live in [`docs/project/specs/`](docs/project/README.md) — `active/` while a plan
+still owes work, `done/` once it is delivered, with follow-ups tracked as beads.
 Checked items below are supported today; unchecked items are planned work.
+
+## Where Work Stands
+
+| Area | Plan | Status |
+| --- | --- | --- |
+| Markdown navigation | [Navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md) | Baseline shipped; three items remain — see below |
+| File search | [Quick File finder and search providers](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md) | Client finder shipped; server providers planned |
+| HTML trust model | [Full-page HTML rendering and trust model](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md) | Draft |
+| File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Draft |
+| File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
+| Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
+| Git surfaces | [Web diff viewer research](docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md) | Research only; no plan yet |
+| Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
+
+Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
+the navigation baseline, folder Overview and file-type summaries, semantic file-type
+families, the shared taxonomy, filter controls, the bounded binary byte preview, the
+flat `metab` CLI, and the v0.1.0 package.
+
+## Markdown Navigation: What Is Not Done
+
+The
+[navigation baseline](docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md)
+is delivered: one canonical `/view/<path>` route per file and folder, exact GitHub-style
+relative resolution, deterministic Obsidian wiki lookup with visible ambiguous and
+missing states, bounded transclusion, verified same-repository GitHub URL localization,
+configured static-site route adapters, and a typed `window.metabrowser.navigation`
+boundary.
+
+Three items from the
+[extensions plan](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+remain, and nothing else in that plan is outstanding:
+
+- [ ] Interpret the reserved `_mb_` query namespace in the URL codec.
+  The baseline reserved the namespace and pinned it with codec tests but interprets no
+  key, so query stays verbatim passthrough.
+  This blocks the next item.
+- [ ] Add source-view line-location targets (`_mb_view`, `_mb_lines`), so a link can
+  address a line range inside a rendered or source view.
+- [ ] Evaluate frontmatter alias target lookup.
+  Still a question, not a commitment.
+- [ ] Add explicit mounted roots for multi-repository and cross-vault navigation.
+
+Two known gaps sit outside that plan and are not regressions:
+
+- [ ] Make navigation tree rows real links.
+  Rendered Markdown links are now genuine anchors, but tree rows remain `div` elements
+  with click handlers, so the primary navigation surface still lacks the native link
+  behavior — middle-click, copy address, and status-bar preview — that document links
+  gained.
+- [ ] Reconcile `/raw?path=<path>` with the path-shaped `/view/<path>` route.
+  Tracked under the HTML trust-model work, since that plan also changes how `/raw`
+  responses are served.
 
 ## Core Browser
 
-- [ ] Make folders first-class with an
-  [extensible Overview panel stack](docs/project/specs/active/plan-2026-08-12-directory-file-type-summary.md):
-  File types is always present, README is conditional, Treemap remains a peer view, and
-  a future Files listing can become another peer tab
+- [x] Make folders first-class with an
+  [extensible Overview panel stack](docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md):
+  File types is always present, README is conditional, and Treemap is a peer view
+- [ ] Add a Files listing as another peer folder view beside Overview and Treemap,
+  rather than as a large panel inside Overview
 - [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
   rendering can evolve independently
 - [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
@@ -19,14 +75,24 @@ Checked items below are supported today; unchecked items are planned work.
   over a complete live catalog of non-gitignored files
 - [ ] Add bounded server-side filename and full-text search providers, then evaluate
   optional persistent indexing only if measured catalog sizes require it
+- [x] Give every file and folder a canonical, reloadable
+  [`/view/<path>` URL](docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md)
+  with GitHub and Obsidian link resolution
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
 - [ ] Define a generic writer event-log backend for append-only generated files
-- [ ] Complete the
-  [Markdown navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
-  for configured static sites, verified GitHub URLs, bounded knowledge analysis,
-  transclusion, source locations, aliases, and explicit mounted roots
 - [ ] Enforce and report explicit time, memory, item-count, and payload-size budgets for
   directories containing hundreds of thousands of entries
+
+## Git Surfaces
+
+- [ ] Design a Changes surface and comparison API from the
+  [web diff viewer research](docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md),
+  then stage its delivery behind a written plan
+- [ ] Add a Git graph navigation panel over a read-only Git collection API
+
+Both remain research and open exploration rather than committed plans.
+Neither should enter core until its read-only boundary and bounded-cost model are
+written down.
 
 ## Plugin Platform
 
@@ -38,13 +104,17 @@ Checked items below are supported today; unchecked items are planned work.
 
 Metabrowser’s core stays independent of domain-specific renderers.
 Applications can ship their own plugin packages while depending only on the documented
-public plugin API.
+public plugin API. `PLUGIN_SDK_VERSION` is the enforced contract between host and
+plugin; it is bumped when that contract breaks, never shimmed.
 
 ## Trusted-Local Workflows
 
 - [ ] Add
   [opt-in file operations](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md)
   with containment, conflict handling, and trash-first semantics
+- [ ] Add
+  [menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
+  so an action surface exists before any mutating operation ships
 - [ ] Expose
   [scan progress and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
   without presenting incomplete trees as empty
@@ -65,6 +135,10 @@ Editor-specific readiness, authentication, and embed modes should remain host-ne
 other trusted desktop integrations can use them without entering Metabrowser core.
 
 ## Transparent Single-File Compression
+
+Metabrowser treats compression as a transport layer around one logical file.
+For example, `report.html.zst` should classify and render like `report.html` while all
+reads remain bounded.
 
 - [x] Gzip (`.gz`)
 - [x] Raw zlib streams (`.zlib`)
@@ -91,6 +165,9 @@ They are not part of the v0.1.0 core contract.
 
 ## Browser Defense in Depth
 
+- [ ] Settle the
+  [HTML rendering and content-trust model](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md),
+  including sandboxed `/raw` responses and same-origin proof on `/api`
 - [ ] Enforce a strict Content Security Policy after replacing or nonce-enabling the
   remaining inline shell and plugin handlers
 

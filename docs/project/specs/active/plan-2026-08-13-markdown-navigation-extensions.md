@@ -4,7 +4,18 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Active
+**Status:** Partly delivered.
+Four of the seven items below shipped with the navigation baseline: configured
+static-site adapters, verified GitHub URL localization, broken-link and graph analysis,
+and bounded Obsidian transclusion.
+Each carries its own **Status** line in its section.
+
+Three remain, and they are the whole of what this plan still owes:
+
+- **Source-view line locations** — blocked on implementing the reserved `_mb_` query
+  namespace in the URL codec, which the baseline pinned by test but left uninterpreted.
+- **Frontmatter alias lookup** — still an evaluation, not a commitment.
+- **Explicit mounted roots** — multi-repository and cross-vault navigation.
 
 ## Context
 
