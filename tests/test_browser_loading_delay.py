@@ -84,6 +84,49 @@ def test_spinners_carry_no_visible_loading_label() -> None:
                 assert "sr-only" in line, f"{label} shows a visible {phrase!r} beside a spinner"
 
 
+def test_expandable_folders_are_prefetched_so_expansion_needs_no_load() -> None:
+    """The fastest loading state is the one that never runs.
+
+    Every unexpanded folder past the server's depth cap carries a lazy stub,
+    which is exactly the set a reader can open next, so the sweep takes its
+    candidates from the rendered tree rather than guessing.
+    """
+
+    app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "data-tree-lazy-stub" in app
+    sweep = app[app.index("function pendingSubtreePaths()") :]
+    sweep = sweep[: sweep.index("function scheduleSubtreePrefetch()")]
+    assert 'querySelectorAll("[data-tree-lazy-stub]")' in sweep
+    # Already cached or already being fetched are both "no request needed".
+    assert "!subtreeCache.has(path)" in sweep
+    assert "!subtreeRequests.has(path)" in sweep
+
+    # Warming the tree must never compete with the request a reader is waiting
+    # on: bounded lanes, a bounded sweep, and only while the browser is idle.
+    assert "SUBTREE_PREFETCH_MAX_CONCURRENT" in app
+    assert "SUBTREE_PREFETCH_MAX_PER_SWEEP" in app
+    schedule = app[app.index("function scheduleSubtreePrefetch()") :][:600]
+    assert "requestIdleCallback" in schedule
+
+
+def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:
+    """Otherwise the prefetch makes the very expansion it exists to speed up
+    cost two identical requests."""
+
+    app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    fetch_block = app[
+        app.index("function fetchSubtree(path)") : app.index("async function loadSubtree(")
+    ]
+
+    assert "const existing = subtreeRequests.get(path)" in fetch_block
+    assert "return existing" in fetch_block
+    assert "subtreeRequests.set(path, request)" in fetch_block
+    # The entry is dropped on both settle paths, or one failure would pin a
+    # rejected promise as the answer for that folder forever.
+    assert "request.then(forget, forget)" in fetch_block
+
+
 def test_shell_keeps_the_previous_preview_during_fast_fetches() -> None:
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
     select_file = app[
