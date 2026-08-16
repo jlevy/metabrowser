@@ -159,7 +159,14 @@ def test_palette_hint_renders_keys_through_the_kbd_component() -> None:
     assert "↑↓ choose · Enter open · Esc close" not in palette_source
 
 
-def test_both_open_keys_are_advertised_in_the_hint() -> None:
+def test_both_open_keys_stay_bound_though_the_hint_names_one() -> None:
+    """The alias is unadvertised, not unbound.
+
+    The compact strip shows a single preferred key per command, so `/` no
+    longer appears at the bottom of the navigation pane. It must still open
+    Quick File, still reach the nav surface, and still be listed in Help.
+    """
+
     source = SEARCH_PALETTE_JS.read_text()
     command_start = source.index('id: "quick-file.open"')
     command = source[source.rfind("options.shortcuts.register", 0, command_start) : command_start]
