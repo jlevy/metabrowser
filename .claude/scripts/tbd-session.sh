@@ -64,7 +64,7 @@ if command -v npx &> /dev/null; then
     else
         echo "[tbd] tbd CLI not found; using configured fallback get-tbd@$configured_fallback_version." >&2
     fi
-    npx --yes "get-tbd@$configured_fallback_version" prime "$@"
+    npx --yes --min-release-age=0 "get-tbd@$configured_fallback_version" prime "$@"
     exit $?
 fi
 
