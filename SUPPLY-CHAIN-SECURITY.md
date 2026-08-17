@@ -50,10 +50,12 @@ added, and the published artifact’s SHA-256 matches the digest recorded in `uv
 | --- | --- | --- |
 | `kpress==0.3.3` | `0.3.2` | TOC thresholds and `include_toc` on the render request |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
-| `get-tbd==0.4.2` | — | Issue tracker; not a build or runtime input |
+| `get-tbd==0.7.0` | `0.4.2` | Issue tracker; not a build or runtime input |
 
 npm has no per-package cool-off exclusion, so the tbd session hooks pass
-`--min-release-age=0` on their exact pinned `npx --yes get-tbd@0.4.2` invocation.
+`--min-release-age=0` on their exact pinned `npx --yes get-tbd@0.7.0` invocation.
+The hooks read that exact version from `tbd_fallback_version` in `.tbd/config.yml`
+rather than carrying a second copy of it.
 That version string also appears in the copied agent-skill instructions, where it is
 operator-invoked documentation — no build, hook, CI, test, or publishing path runs it.
 
