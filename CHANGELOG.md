@@ -4,6 +4,8 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+## 0.5.1
+
 Folder views:
 
 - The README embedded in a folder’s Overview is now main content: its card fills the
