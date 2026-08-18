@@ -5,14 +5,14 @@ title: "Diff P3: multi-file review surface and renderer library decision gate"
 kind: feature
 status: open
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
+version: 5
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
 dependencies: []
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-07-18T01:38:59.931Z
-updated_at: 2026-08-16T08:06:30.382Z
+updated_at: 2026-08-18T06:33:22.814Z
 extensions:
   linear:
     id: 1f7bf3e6-0c7f-4a6e-b747-082187c56ecd

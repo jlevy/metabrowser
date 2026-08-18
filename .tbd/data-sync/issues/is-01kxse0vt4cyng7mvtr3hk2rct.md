@@ -5,8 +5,8 @@ title: "Diff P1: Changes nav surface and per-file diff renderer"
 kind: feature
 status: open
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
+version: 6
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01kxse0wddy6je24t1dm5caber
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-07-18T01:38:59.012Z
-updated_at: 2026-08-16T08:06:27.290Z
+updated_at: 2026-08-18T06:33:21.948Z
 extensions:
   linear:
     id: a18941f9-1b80-42ad-b5da-eaa77ec485e9

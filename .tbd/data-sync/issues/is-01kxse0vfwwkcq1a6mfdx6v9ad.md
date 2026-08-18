@@ -5,8 +5,8 @@ title: "Diff P1: hardened Git adapter and comparison service (uncommitted view)"
 kind: feature
 status: open
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-18-git-diff-view.md
+version: 7
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
 dependencies:
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kxse0vt4cyng7mvtr3hk2rct
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-07-18T01:38:58.684Z
-updated_at: 2026-08-16T08:06:26.279Z
+updated_at: 2026-08-18T06:33:21.659Z
 extensions:
   linear:
     id: 9f2f8636-4e15-42cd-adfd-e7574e92171d
