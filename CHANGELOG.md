@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Folder views:
+
+- The README embedded in a folder’s Overview is now main content: its card fills the
+  same column as every other panel, with the same left and right edges.
+  Three things had pushed it off that column — the panel body was the one body no width
+  rule sized, KPress’s article frame reserved space per side for a table-of-contents
+  control the Overview turns off, and the wide column was built as the text measure plus
+  a gutter per side, so the card floated inside a column the other panels filled.
+  The padding between the card’s border and its text is unchanged, and still varies with
+  width exactly as it does when the same README is opened as a file.
+
 ## 0.5.0
 
 Document navigation and URL scheme:

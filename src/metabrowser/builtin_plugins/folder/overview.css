@@ -6,12 +6,11 @@
   --folder-overview-wide-document-gutter: 1rem;
   --folder-overview-wide-toc-width: 15rem;
   --folder-overview-wide-toc-gap: 3rem;
-  --folder-overview-wide-prose-inset: 2.5rem;
-  --folder-overview-wide-card-width: calc(
-    var(--kpress-measure) +
-    2 *
-    var(--folder-overview-wide-prose-inset)
-  );
+  /* The wide column is exactly the prose measure. It used to be the measure
+     plus an inset per side, which left the README's visible card sitting 2.5rem
+     inside the column the other panels filled. Every panel now shares one edge,
+     and the card fills it rather than floating within it. */
+  --folder-overview-wide-card-width: var(--kpress-measure);
 
   container-type: inline-size;
 }
@@ -88,9 +87,23 @@
 
 .folder-overview-panel-surface > .folder-overview-panel-heading,
 .folder-overview-panel-surface > .folder-overview-panel-body,
-.folder-overview-panel-document > .folder-overview-panel-heading {
+.folder-overview-panel-document > .folder-overview-panel-heading,
+.folder-overview-panel-document > .folder-overview-panel-body {
   width: var(--folder-overview-regular-card-width);
   margin-inline: auto;
+}
+
+/* KPress's article frame reserves 2rem per side for the floating table-of-
+   contents control. The Overview renders the README with the contents off, so
+   that reservation holds nothing and only pushes the visible prose card in from
+   the column every other panel sits on.
+
+   Only the reservation is dropped. The card keeps the padding KPress computes
+   between its border and the text, which is what the same file gets opened on
+   its own — recomputing that here is what flattened the text against the box the
+   first time this was tried. */
+.folder-overview-panel-document > .folder-overview-panel-body > .kpress {
+  padding-inline: 0;
 }
 
 .folder-overview-loading {
@@ -110,7 +123,8 @@
 @container (max-width: 47.99rem) {
   .folder-overview-panel-surface > .folder-overview-panel-heading,
   .folder-overview-panel-surface > .folder-overview-panel-body,
-  .folder-overview-panel-document > .folder-overview-panel-heading {
+  .folder-overview-panel-document > .folder-overview-panel-heading,
+  .folder-overview-panel-document > .folder-overview-panel-body {
     width: calc(100% - 2 * var(--folder-overview-narrow-document-gutter));
   }
 }
@@ -118,7 +132,8 @@
 @container (min-width: 75rem) {
   .folder-overview-panel-surface > .folder-overview-panel-heading,
   .folder-overview-panel-surface > .folder-overview-panel-body,
-  .folder-overview-panel-document > .folder-overview-panel-heading {
+  .folder-overview-panel-document > .folder-overview-panel-heading,
+  .folder-overview-panel-document > .folder-overview-panel-body {
     width: var(--folder-overview-wide-card-width);
     margin-inline-start: calc(
       var(--folder-overview-wide-document-gutter) +
