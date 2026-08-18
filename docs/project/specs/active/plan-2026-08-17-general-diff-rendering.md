@@ -206,6 +206,51 @@ an abstraction with one implementation is a guess.
 4. **Document edits** (later) — a saved edit or annotation set rendered as a comparison
    against the prior version.
 
+### Consumers and composition
+
+Four surfaces consume comparisons, and none of them is a feature silo.
+Each is a composition of layers that exist or are already planned:
+
+| Layer | Provides | Where |
+| --- | --- | --- |
+| Acquisition | A local tree: a path today, a Git URL into the purgeable repo cache | [Open a repo from a Git URL](plan-2026-08-11-open-repo-from-git-url.md) |
+| History | The commit graph over any local repository | [Git graph](plan-2026-08-06-git-graph-view.md) |
+| Comparison | Manifest, file patches, renderer | This plan |
+| Annotation | Anchored threads and marks over a comparison | Deferred; anchor model reserved below |
+
+The composition that proves the layering is **viewing a pull request**, because it
+exercises every layer and adds almost nothing of its own.
+GitHub exposes each pull request over plain git transport as `refs/pull/<n>/head` and
+`refs/pull/<n>/merge` — verified live, with no API and no token.
+The `merge` ref is the provider-computed synthetic merge result the research said a
+hosted comparison must record.
+
+Opening a PR URL therefore decomposes as: derive the repository URL and clone or reuse
+the cache (acquisition); fetch the two pull refs (one bounded `git fetch`, beside the
+existing clone path); resolve a merge-base comparison between the base branch and the PR
+head (the same three-dot semantics GitHub itself uses, already required for branch
+comparisons); render it (this plan’s renderer).
+The diff bodies never touch the GitHub API. Only two things do, and both are small and
+deferrable: PR metadata (title, state, checks) for the header, and review threads for
+the annotation layer.
+That is the true hosted-provider surface, and it is a conversation plane, not a diff
+plane — which sharpens the core/plugin split above: PR *refs* ride the git transport and
+belong to the core Git adapter; PR *conversation* is provider API territory and belongs
+to a plugin.
+
+A documentation-heavy PR also shows where Metabrowser can be better than the hosting
+site rather than merely equal: the manifest’s rich-view hint plus content-at-revision
+means a changed Markdown file can be read rendered at the head revision, not only as
+patch text. A hosted site shows the diff of a document; this shows the document.
+
+The annotation layer is deliberately not built here, but the comparison model reserves
+its anchor shape — comparison and file-change IDs, side, immutable content identity,
+byte and line range, and a context fingerprint — because line numbers alone do not
+survive a moving pull request or an edited file.
+GitHub review threads are the first intended consumer, read-only; a document’s own saved
+edits and annotations are the second, and both arrive as data over the same anchors
+rather than as new renderer features.
+
 ### API changes
 
 A core route collection under `/api/diff/`, following the research’s shape:
