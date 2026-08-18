@@ -5,12 +5,12 @@ title: "Diff: decide the core/plugin split for hosted and document sources"
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies: []
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-08-18T06:33:51.408Z
-updated_at: 2026-08-18T06:33:51.408Z
+updated_at: 2026-08-18T19:55:24.800Z
 ---
-The spec puts the comparison model and renderer in core and keeps sources as adapters: Git in core beside git/, hosted providers as plugins because a provider is a consumer domain. A GitHub adapter needs several Platform A1-A5 items that the core decision otherwise defers. Settle which of those the first external adapter actually requires, so they are scheduled against a real consumer rather than speculatively.
+Refined by the Consumers and composition section of the spec: PR *refs* ride the git transport and belong to the core Git adapter (refs/pull/<n>/head and /merge are fetchable with no API — verified live). PR *conversation and metadata* (title, state, checks, review threads) is the true hosted-provider surface and belongs to a plugin. Remaining question: which Platform A1-A5 items that conversation plugin actually needs, scheduled against it as a real consumer rather than speculatively.
