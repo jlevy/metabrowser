@@ -5,20 +5,6 @@
   const DEFAULT_MAX_ROWS = 100;
   let paletteSerial = 0;
 
-  // Keys that open the palette from anywhere in the app. `/` is the
-  // browser-search convention; `t` matches github.com's go-to-file, so the
-  // reflex carries over from the site these files usually came from. Both are
-  // equal — neither is a modifier-prefixed alias of the other.
-  const OPEN_KEYS = Object.freeze(["/", "t"]);
-
-  // The hint row under the results. Keys render through the .kbd component;
-  // the labels are ordinary chrome text, so the row reads as a sentence.
-  const HINT_GROUPS = Object.freeze([
-    { keys: ["↑", "↓"], label: "choose" },
-    { keys: ["Enter"], label: "open" },
-    { keys: ["Esc"], label: "close" },
-  ]);
-
   /**
    * @typedef {object} PaletteResult
    * @property {string} description
@@ -57,45 +43,6 @@
   /** @param {unknown} value @returns {value is HTMLElement} */
   function focusable(value) {
     return Boolean(value && typeof (/** @type {{focus?: unknown}} */ (value).focus) === "function");
-  }
-
-  /**
-   * Build one "KEY KEY label" cluster for the hint row.
-   *
-   * Keys are written in natural case here; .kbd applies the caps treatment, so
-   * the accessible name stays "Enter" rather than shouting at a screen reader.
-   * @param {Document} hostDocument
-   * @param {readonly string[]} keys
-   * @param {string} label
-   */
-  function hintGroup(hostDocument, keys, label) {
-    const group = hostDocument.createElement("span");
-    group.className = "search-palette-hint-group";
-    for (const key of keys) {
-      const element = hostDocument.createElement("kbd");
-      element.className = "kbd";
-      element.textContent = key;
-      group.append(element);
-    }
-    const text = hostDocument.createElement("span");
-    text.textContent = label;
-    group.append(text);
-    return group;
-  }
-
-  /** @param {EventTarget | null} target */
-  function isEditableTarget(target) {
-    if (!target || typeof (/** @type {{tagName?: unknown}} */ (target).tagName) !== "string") {
-      return false;
-    }
-    const element = /** @type {HTMLElement} */ (target);
-    const tagName = element.tagName.toLowerCase();
-    return (
-      tagName === "input" ||
-      tagName === "textarea" ||
-      tagName === "select" ||
-      element.isContentEditable
-    );
   }
 
   /** @param {number} count @param {string} [modifier] */
@@ -146,11 +93,21 @@
    *   maxRows?: number,
    *   onNotFound?: (path: string) => void | Promise<void>,
    *   openFile: (path: string) => OpenOutcome | Promise<OpenOutcome>,
+   *   overlay: Window["MetabrowserOverlay"],
+   *   resolveFocusFallback?: (previous: HTMLElement | null) => HTMLElement | null,
+   *   shortcuts: ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]>,
    * }} options
    */
   function create(options) {
-    if (!options?.controller || typeof options.openFile !== "function") {
-      throw new TypeError("Search palette requires a controller and open-file action");
+    if (
+      !options?.controller ||
+      typeof options.openFile !== "function" ||
+      !options.shortcuts ||
+      !options.overlay
+    ) {
+      throw new TypeError(
+        "Search palette requires a controller, open-file action, shortcuts, and overlays",
+      );
     }
     const hostDocument = options.document || window.document;
     if (!hostDocument?.body) {
@@ -162,21 +119,6 @@
         : DEFAULT_MAX_ROWS;
     paletteSerial += 1;
     const idPrefix = `metabrowser-quick-file-${paletteSerial}`;
-
-    const overlay = hostDocument.createElement("div");
-    overlay.className = "search-palette-overlay";
-    overlay.hidden = true;
-
-    const dialog = hostDocument.createElement("section");
-    dialog.className = "search-palette-dialog";
-    dialog.setAttribute("role", "dialog");
-    dialog.setAttribute("aria-modal", "true");
-    dialog.setAttribute("aria-labelledby", `${idPrefix}-title`);
-
-    const title = hostDocument.createElement("h2");
-    title.className = "search-palette-title";
-    title.id = `${idPrefix}-title`;
-    title.textContent = "Quick File";
 
     const input = hostDocument.createElement("input");
     input.className = "search-palette-input";
@@ -206,20 +148,51 @@
 
     const hint = hostDocument.createElement("div");
     hint.className = "search-palette-hint";
-    for (const group of HINT_GROUPS) {
-      hint.append(hintGroup(hostDocument, group.keys, group.label));
-    }
 
-    dialog.append(title, input, listbox, status, hint);
-    overlay.append(dialog);
-    hostDocument.body.append(overlay);
+    /** @type {ReturnType<Window["MetabrowserOverlay"]["createModal"]> | null} */
+    let modal = null;
+    const unregisterClose = options.shortcuts.register({
+      allowInEditable: true,
+      bindings: [{ key: "Escape" }],
+      copy: {
+        action: "Close Quick File",
+        description: "Close Quick File and restore focus to the previous control.",
+        hint: "Close",
+      },
+      group: "quick-file",
+      handler: () => {
+        if (!modal?.isOpen()) {
+          return false;
+        }
+        close();
+        return true;
+      },
+      id: "quick-file.close",
+      order: 60,
+      scope: "quick-file",
+      surfaces: { help: "always", "quick-file": "active" },
+    });
+    modal = options.overlay.createModal({
+      className: "search-palette-dialog",
+      closeCommandId: "quick-file.close",
+      document: hostDocument,
+      initialFocus: input,
+      onClose: resetAfterClose,
+      onOpen: resetForOpen,
+      resolveFocusFallback: options.resolveFocusFallback,
+      scope: "quick-file",
+      shortcuts: options.shortcuts,
+      title: "Quick File",
+    });
+    const overlay = modal.element;
+    overlay.classList.add("search-palette-overlay");
+    modal.body.classList.add("search-palette-body");
+    modal.body.append(input, listbox, status, hint);
 
     /** @type {PaletteResult[]} */
     let results = [];
     /** @type {PaletteSearchState | null} */
     let searchState = null;
-    /** @type {HTMLElement | null} */
-    let previousFocus = null;
     /** @type {string | null} */
     let selectedResultId = null;
     let activeIndex = -1;
@@ -394,6 +367,28 @@
         activeIndex = Math.max(0, Math.min(results.length - 1, index));
       }
       syncActiveOption(scroll);
+    }
+
+    /**
+     * Step the active result, wrapping at both ends.
+     *
+     * The list is bounded by maxRows and has no Home or End command — those
+     * keys stay with the query box's caret — so wrapping is what keeps the far
+     * end of the list one keystroke away.
+     *
+     * @param {number} delta
+     */
+    function moveActiveIndex(delta) {
+      if (results.length === 0) {
+        setActiveIndex(-1);
+        return;
+      }
+      if (activeIndex < 0) {
+        setActiveIndex(delta > 0 ? 0 : results.length - 1);
+        return;
+      }
+      const next = (activeIndex + delta) % results.length;
+      setActiveIndex(next < 0 ? next + results.length : next);
     }
 
     function renderResults() {
@@ -594,19 +589,7 @@
       renderStatus();
     }
 
-    function open() {
-      if (disposed) {
-        return;
-      }
-      if (!overlay.hidden) {
-        input.focus();
-        input.select();
-        return;
-      }
-      previousFocus = focusable(hostDocument.activeElement)
-        ? /** @type {HTMLElement} */ (hostDocument.activeElement)
-        : null;
-      overlay.hidden = false;
+    function resetForOpen() {
       input.setAttribute("aria-expanded", "true");
       input.value = "";
       searchState = null;
@@ -616,80 +599,30 @@
       actionStatus = "";
       renderResults();
       renderStatus();
-      input.focus();
-      input.select();
     }
 
-    /** @param {boolean} [restoreFocus] */
-    function close(restoreFocus = true) {
-      if (overlay.hidden) {
-        return;
-      }
+    function resetAfterClose() {
       options.controller.cancel();
       clearSearchingStatus();
       clearCatalogRefresh();
       actionSerial += 1;
       opening = false;
-      overlay.hidden = true;
       input.setAttribute("aria-expanded", "false");
       input.removeAttribute("aria-activedescendant");
-      const focusTarget = previousFocus;
-      previousFocus = null;
-      if (restoreFocus && focusable(focusTarget) && focusTarget.isConnected) {
-        focusTarget.focus();
-      }
     }
 
-    /** @param {KeyboardEvent} event */
-    function handleGlobalKeydown(event) {
-      // Letter keys compare case-insensitively so a stuck caps lock still
-      // opens the palette; the shift guard below is what keeps `?` and `T`
-      // from triggering it, matching github.com.
-      if (
-        !OPEN_KEYS.includes(event.key.toLowerCase()) ||
-        event.defaultPrevented ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey ||
-        event.isComposing ||
-        isEditableTarget(event.target)
-      ) {
+    /** @param {HTMLElement | null} [trigger] */
+    function open(trigger = null) {
+      if (disposed) {
         return;
       }
-      event.preventDefault();
-      open();
+      modal?.open(trigger);
+      input.select();
     }
 
-    /** @param {KeyboardEvent} event */
-    function handleInputKeydown(event) {
-      if (event.key === "Tab") {
-        event.preventDefault();
-        input.focus();
-        return;
-      }
-      if (event.isComposing) {
-        return;
-      }
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setActiveIndex(activeIndex < 0 ? 0 : activeIndex + 1);
-      } else if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setActiveIndex(activeIndex < 0 ? results.length - 1 : activeIndex - 1);
-      } else if (event.key === "Home") {
-        event.preventDefault();
-        setActiveIndex(0);
-      } else if (event.key === "End") {
-        event.preventDefault();
-        setActiveIndex(results.length - 1);
-      } else if (event.key === "Enter") {
-        event.preventDefault();
-        void acceptIndex(activeIndex);
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        close();
-      }
+    /** @param {boolean} [restoreFocus] */
+    function close(restoreFocus = true) {
+      modal?.close({ restoreFocus });
     }
 
     /** @param {Event} event */
@@ -700,19 +633,125 @@
       runSearch();
     }
 
-    /** @param {PointerEvent} event */
-    function handleOverlayPointerdown(event) {
-      if (event.target === overlay) {
-        close();
+    function renderShortcutHints() {
+      const groups = options.shortcuts.snapshot("quick-file");
+      const rendered = [];
+      for (const group of groups) {
+        for (const command of group.commands) {
+          const item = hostDocument.createElement("span");
+          item.className = "search-palette-hint-group";
+          const binding = hostDocument.createElement("span");
+          binding.className = "search-palette-hint-binding";
+          options.shortcuts.appendBinding(binding, command.bindings);
+          const label = hostDocument.createElement("span");
+          label.textContent = command.copy.hint;
+          item.append(binding, label);
+          rendered.push(item);
+        }
       }
+      hint.replaceChildren(...rendered);
+    }
+
+    function registerCommands() {
+      return [
+        options.shortcuts.register({
+          bindings: [{ key: "t" }, { key: "/" }],
+          control: modal?.control,
+          copy: {
+            action: "Quick File",
+            description: "Find and open a file from the current folder.",
+            hint: "Quick File",
+          },
+          group: "anywhere",
+          handler: (context) => {
+            const trigger = context.trigger;
+            open(
+              trigger && typeof trigger === "object" ? /** @type {HTMLElement} */ (trigger) : null,
+            );
+            return true;
+          },
+          id: "quick-file.open",
+          order: 20,
+          scope: "global",
+          surfaces: { help: "always", nav: "always" },
+        }),
+        options.shortcuts.register({
+          allowInEditable: true,
+          bindings: [{ key: "ArrowUp" }],
+          copy: {
+            action: "Previous result",
+            description: "Move to the previous Quick File result, wrapping at the top.",
+            hint: "Move",
+          },
+          group: "quick-file",
+          handler: () => {
+            moveActiveIndex(-1);
+            return true;
+          },
+          id: "quick-file.previous",
+          order: 10,
+          repeat: true,
+          scope: "quick-file",
+          surfaces: { help: "always", "quick-file": "active" },
+        }),
+        options.shortcuts.register({
+          allowInEditable: true,
+          bindings: [{ key: "ArrowDown" }],
+          copy: {
+            action: "Next result",
+            description: "Move to the next Quick File result, wrapping at the bottom.",
+            hint: "Move",
+          },
+          group: "quick-file",
+          handler: () => {
+            moveActiveIndex(1);
+            return true;
+          },
+          id: "quick-file.next",
+          order: 20,
+          repeat: true,
+          scope: "quick-file",
+          surfaces: { help: "always", "quick-file": "active" },
+        }),
+        // Home and End deliberately have no command here. The query box is an
+        // editable combobox, so those keys belong to its caret: claiming them
+        // would take line-start and line-end away from the field, which the
+        // design system reserves for native editing behavior. The result list
+        // is bounded at maxRows and the arrow commands wrap, so the ends of the
+        // list stay one keystroke away.
+        options.shortcuts.register({
+          allowInEditable: true,
+          bindings: [{ key: "Enter" }],
+          copy: {
+            action: "Open result",
+            description: "Open the active Quick File result.",
+            hint: "Open",
+          },
+          group: "quick-file",
+          handler: () => {
+            if (!results[activeIndex] || opening || !rowsMatchQuery()) {
+              return false;
+            }
+            void acceptIndex(activeIndex);
+            return true;
+          },
+          id: "quick-file.activate",
+          order: 50,
+          scope: "quick-file",
+          surfaces: { help: "always", "quick-file": "active" },
+        }),
+      ];
     }
 
     const unsubscribe = options.controller.subscribe(consumeState);
     const unsubscribeCatalog = options.subscribeCatalog?.(onCatalogChanged) || (() => {});
-    hostDocument.addEventListener("keydown", handleGlobalKeydown);
+    const unregisterCommands = registerCommands();
+    const unsubscribeHints = options.shortcuts.subscribe(renderShortcutHints);
+    renderShortcutHints();
+    // Tab belongs to the shared modal focus trap, which cycles the query box
+    // and the dialog's Close control in both directions. A palette-local Tab
+    // handler would preventDefault before the trap ran and strand Shift+Tab.
     input.addEventListener("input", handleInput);
-    input.addEventListener("keydown", handleInputKeydown);
-    overlay.addEventListener("pointerdown", handleOverlayPointerdown);
 
     function dispose() {
       if (disposed) {
@@ -723,11 +762,14 @@
       clearCatalogRefresh();
       unsubscribe();
       unsubscribeCatalog();
-      hostDocument.removeEventListener("keydown", handleGlobalKeydown);
+      unsubscribeHints();
       input.removeEventListener("input", handleInput);
-      input.removeEventListener("keydown", handleInputKeydown);
-      overlay.removeEventListener("pointerdown", handleOverlayPointerdown);
-      overlay.remove();
+      for (const unregister of unregisterCommands) {
+        unregister();
+      }
+      modal?.dispose();
+      modal = null;
+      unregisterClose();
     }
 
     return Object.freeze({ close, dispose, element: overlay, isOpen: () => !overlay.hidden, open });

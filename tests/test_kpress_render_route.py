@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from kpress import ASSET_MANIFEST_SCHEMA_VERSION, __version__
+from starlette.testclient import TestClient
 
 from metabrowser import kpress_adapter, server
 
@@ -30,10 +31,11 @@ def _request(
     path_params: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
 ) -> Any:
-    request = Mock(spec=["query_params", "headers", "path_params"])
+    request = Mock(spec=["query_params", "headers", "method", "path_params"])
     request.query_params = _FakeQuery(query or {})
     request.path_params = path_params or {}
     request.headers = headers or {}
+    request.method = "GET"
     return request
 
 
@@ -81,6 +83,70 @@ def test_kpress_render_rejects_path_traversal(tmp_path: Path) -> None:
     assert response.status_code == 404
 
 
+def test_kpress_render_accepts_bounded_transformed_source(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Original\n")
+    try:
+        response = TestClient(server.app).post(
+            "/api/kpress/render",
+            json={
+                "path": "doc.md",
+                "view": "rendered",
+                "profile": "document",
+                "source_text": (
+                    '<span class="metabrowser-wiki-link" data-mb-wiki-target="Note">Note</span>\n'
+                ),
+            },
+        )
+    finally:
+        server._set_root_dir(Path())
+
+    assert response.status_code == 200
+    assert 'data-mb-wiki-target="Note"' in response.json()["html"]
+
+
+def test_kpress_render_rejects_oversized_transformed_source(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Original\n")
+    try:
+        response = TestClient(server.app).post(
+            "/api/kpress/render",
+            json={
+                "path": "doc.md",
+                "view": "rendered",
+                "source_text": "x" * (server._TEXT_PREVIEW_MAX_CHUNK_BYTES + 1),
+            },
+        )
+    finally:
+        server._set_root_dir(Path())
+
+    assert response.status_code == 413
+    assert response.json()["error"] == "Transformed source exceeds safety limits"
+
+
+def test_kpress_render_rejects_invalid_transformed_source_fields(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Original\n")
+    try:
+        client = TestClient(server.app)
+        invalid_profile = client.post(
+            "/api/kpress/render",
+            json={"path": "doc.md", "view": "rendered", "profile": 7, "source_text": "# Doc"},
+        )
+        invalid_encoding = client.post(
+            "/api/kpress/render",
+            content=b'{"path":"doc.md","view":"rendered","source_text":"\\ud800"}',
+            headers={"content-type": "application/json"},
+        )
+    finally:
+        server._set_root_dir(Path())
+
+    assert invalid_profile.status_code == 400
+    assert invalid_profile.json()["error"] == "Invalid render body fields"
+    assert invalid_encoding.status_code == 400
+    assert invalid_encoding.json()["error"] == "Invalid transformed source encoding"
+
+
 def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "doc.md").write_text("---\ntitle: Test\n---\n# Heading\n")
@@ -111,6 +177,73 @@ def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch)
     assert seen["frontmatter"] == {"title": "Test"}
     assert "theme_mode" not in seen
     assert "resolved_theme" not in seen
+
+
+def test_kpress_render_route_forwards_the_toc_choice(tmp_path: Path, monkeypatch) -> None:
+    """A document embedded in host navigation renders without a TOC.
+
+    The Overview's README panel is the caller: the panel stack around it is
+    already the reader's way through the folder, so a second navigation inside
+    the embed competes with it. Suppressing it at the render beats host CSS,
+    which would build the sidebar layout and then cover it up.
+    """
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Heading\n")
+    seen: dict[str, Any] = {}
+
+    def _fake_render(**kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        return {
+            "type": "kpress-rendered-document",
+            "html": "<article>ok</article>",
+            "profile": "document",
+            "printable": True,
+            "assets": _empty_asset_manifest(),
+            "diagnostics": [],
+        }
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _fake_render)
+
+    response = asyncio.run(
+        server.api_kpress_render(
+            _request(query={"path": "doc.md", "view": "rendered", "toc": "off"})
+        )
+    )
+    assert response.status_code == 200
+    assert seen["include_toc"] == "off"
+
+    # Absent means KPress' own thresholds decide, which is what opening the
+    # same README as a file must keep doing.
+    seen.clear()
+    response = asyncio.run(
+        server.api_kpress_render(_request(query={"path": "doc.md", "view": "rendered"}))
+    )
+    assert response.status_code == 200
+    assert seen["include_toc"] == "auto"
+
+
+def test_kpress_render_route_rejects_an_unknown_toc_value(tmp_path: Path, monkeypatch) -> None:
+    """A typo must fail loudly rather than render the other layout."""
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Heading\n")
+    called = False
+
+    def _fake_render(**_kwargs: Any) -> dict[str, Any]:
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _fake_render)
+    response = asyncio.run(
+        server.api_kpress_render(
+            _request(query={"path": "doc.md", "view": "rendered", "toc": "none"})
+        )
+    )
+
+    assert response.status_code == 400
+    assert not called, "an out-of-contract value reached the renderer"
 
 
 def test_kpress_render_route_uses_logical_size_for_gzip(tmp_path: Path, monkeypatch) -> None:

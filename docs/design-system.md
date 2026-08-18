@@ -6,16 +6,25 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 
 ## Principles
 
-1. **The file is primary.** Navigation and controls stay compact so the preview receives
-   most of the viewport.
+1. **The selected item is primary.** Navigation and controls stay compact so a file’s
+   contents or a folder’s Overview receives most of the viewport.
 2. **Color has one meaning.** Status, file type, chart threshold, and selection colors
    come from tokens instead of local literals.
 3. **Text remains selectable.** Use real text and DOM structure for labels and data;
    reserve canvas for charts.
 4. **Large content degrades gracefully.** Truncation, lazy mounting, virtualization, and
    background indexing must remain visible to the user.
+   Size limits are claims about cost and must be measured, not assumed; see
+   [rendering large content](large-content-rendering.md) for the cost model, the
+   strategy ladder, and the current limits.
 5. **Light and dark themes share semantics.** Theme overrides may change contrast and
    lightness, not the meaning of a token.
+6. **Everything is effortlessly fast.** Speed is a product requirement, not an
+   optimization to get to later, and a visible loading state is a failure to plan rather
+   than a neutral way to spend time.
+   Prefetch whatever the reader is plausibly about to ask for — the subfolders in view,
+   the next surface of the selected file — unless the cost is real and known.
+   Where waiting is unavoidable, [Motion](#motion) governs what may appear and when.
 
 ## Token Layers
 
@@ -24,17 +33,57 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 - base surfaces, text, borders, links, and shadows;
 - semantic status colors;
 - file-type foreground, background, and border triplets;
+- aggregate-distribution category, track, and neutral-tail colors;
 - chart colors and annotation states;
 - component dimensions, radii, typography, and motion.
 
 Components consume semantic tokens.
-They should not copy HSL or hexadecimal values from another component.
+They should not copy OKLCH, HSL, or hexadecimal values from another component.
 When a new concept needs a color, add a token with a semantic name and define its
 dark-theme override alongside it.
+
+New and deliberately adjusted color families use OKLCH because its lightness and chroma
+steps are more perceptually uniform than HSL steps.
+Stable HSL families may migrate when their palette is deliberately adjusted; syntax-only
+mass conversion adds review risk without improving the interface.
 
 Plugin styles may consume host tokens.
 A plugin-specific visual language belongs in the plugin stylesheet, including any new
 domain tokens, rather than in core `styles.css`.
+
+## File Age
+
+File age is one shared primitive across navigation rows, file headers, recent-filter
+menus, Live badges, and plugin-rendered age labels.
+Each state owns two parallel OKLCH tokens in `static/styles.css`:
+
+- `--file-age-<state>` is an accessible text foreground
+- `--file-age-fill-<state>` is a translucent surface or area fill
+
+Live is an activity state, not an elapsed-age bucket, but it shares the freshest
+reddish-orange token and bold weight with the under-one-minute tier.
+That warm family remains distinct from the deeper destructive red and from success
+green. The six elapsed-age buckets retain the existing thresholds: under one minute,
+under one hour, under one day, under one week, under one month, and older.
+They move from gold through yellow-green while chroma and prominence fall monotonically
+toward a warm neutral.
+
+Text color is the sole age hue signal; dates and Live labels never gain a dot, swatch,
+or adjacent color cue.
+Light-theme text derives from the visible swatches in the approved reference ramp:
+reddish orange for Live and under one minute, then high-saturation yellow followed by
+progressively quieter yellow-green and neutral endpoints.
+After the adjacent dots were removed, the text retained those swatch hues, lowered
+lightness modestly, and raised chroma so the labels remain dark enough for the UI while
+carrying the vivid color themselves.
+The `.age-live` and `.age-*` classes select tokens only, so new consumers reuse the
+primitive rather than reconstructing colors.
+The navigation age menu’s Live entry and under-one-minute labels in file rows therefore
+have identical computed color and bold weight.
+
+Adjust this family only at its token definitions, preserve the semantic ordering in both
+themes, and run `tests/test_file_age_palette.py` to verify the approved light palette,
+OKLCH structure, semantic ordering, and dark-theme surface contrast.
 
 ## Typography
 
@@ -71,10 +120,66 @@ inside a sentence.
 
 Write the key in its natural case in markup — the caps treatment is presentational, so
 the accessible name stays what the markup says.
-For a sequence, emit one `.kbd` per key so each keeps its own border.
+For a chord or alternative, emit one `.kbd` per physical key so each keeps its own
+border.
 
 The component, its tokens, and its markup contract are documented in the
 `── Keyboard keys ──` blocks of `static/styles.css`.
+
+#### Canonical Key Names
+
+Event matching, visible keycaps, spoken names, and `aria-keyshortcuts` are different
+representations. The shared shortcut formatter derives every applicable representation
+from one semantic binding; a caller never abbreviates a key or substitutes an arrow
+glyph itself.
+
+| Semantic key | Markup label | Spoken name | ARIA key token |
+| --- | --- | --- | --- |
+| `?` | `?` | Question mark | Omitted when matched as a produced character |
+| `/` | `/` | Slash | Omitted when matched as a produced character |
+| Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
+| `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
+| `ArrowDown` | `↓` | Down arrow | `ArrowDown` |
+| `ArrowLeft` | `←` | Left arrow | `ArrowLeft` |
+| `ArrowRight` | `→` | Right arrow | `ArrowRight` |
+| `Enter` | `Enter` | Enter | `Enter` |
+| Space (`KeyboardEvent.key === " "`) | `Space` | Space | `Space` |
+| `Escape` | `Esc` | Escape | `Escape` |
+| `Home` | `Home` | Home | `Home` |
+| `End` | `End` | End | `End` |
+| `Delete` | `Delete` | Delete | `Delete` |
+| `F2` | `F2` | F2 | `F2` |
+
+The `.kbd` text transform produces the visible caps treatment; source markup keeps the
+mixed-case label in this table.
+The
+[WAI-ARIA definition of `aria-keyshortcuts`](https://www.w3.org/TR/wai-aria-1.2/#aria-keyshortcuts)
+describes physical keys, not generated characters.
+ARIA serialization is therefore a separate, optional formatter output: it uses `Escape`
+instead of the visible `Esc` and `ArrowUp` instead of `↑`, but omits a character-matched
+punctuation binding when the physical chord varies by keyboard layout.
+Do not guess `Shift+/` for a `?` binding that intentionally works on any layout
+producing that character.
+When modifier bindings are introduced, the formatter owns both platform labels and ARIA
+serialization; no call site chooses between names such as Control, Command, or Meta.
+Adding a key that is not in this vocabulary requires adding its display, spoken, and
+ARIA policy together with formatter tests.
+
+#### Binding Grammar and Accessibility
+
+- Alternative bindings use the word “or”: `T` or `/`.
+- Simultaneous keys use a plus sign: `Ctrl` + `F`.
+- Ordered key sequences are not supported and must not be implied by adjacent keycaps.
+- Direction pairs use “or,” not a slash or unexplained adjacency: `↑` or `↓`.
+
+The visual and spoken forms are both generated.
+An isolated key may use its natural-case `<kbd>` text as its accessible name.
+A group of alternatives or a chord exposes one visually hidden phrase such as “T or
+slash” or “Control plus F” and hides its visual punctuation and keycaps from assistive
+technology, avoiding duplicate or ambiguous announcements.
+An actionable control keeps its action as the accessible name and receives the
+formatter’s `aria-keyshortcuts` value separately when the formatter can represent the
+physical shortcut accurately.
 
 ### Type Scale
 
@@ -180,6 +285,7 @@ Every button belongs to one role-specific primitive:
 | Filter value or filter menu | `.chip` and its variants |
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
+| Collapsible section title | `.section-disclosure-trigger` |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
 motion tokens, while their shapes communicate different interaction roles.
@@ -188,6 +294,224 @@ primitive class in the markup and must not recreate the primitive’s border, fi
 typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
+
+### Continuing Partial Content
+
+A view that shows part of a file offers the control that loads the rest **at both ends
+of the content**, above it and below it, whenever more remains.
+
+The reader who most wants the next chunk is the one who just finished the current one,
+and they are at the bottom.
+A single control in the pane header is out of view by then, so continuing means
+scrolling back through everything already read to reach it — the longer the content, the
+worse the cost, which is exactly backwards.
+Both controls carry the same label, act on the same state, and appear and retire
+together.
+
+### Notices
+
+A **notice** is any box the app draws to say something *about* the content it is
+showing: that a file is only partly loaded, that a document could not be rendered.
+They are one primitive, `.notice` in `static/styles.css`, in core and in plugins alike.
+
+Its fill is always the ordinary surface — `var(--bg)`, white in the light theme — and
+**severity is carried by the border alone**, as one `[data-severity]` override:
+
+| Severity | Border | Means |
+| --- | --- | --- |
+| (none) | `var(--border)` | Neutral; the box is a container, not a signal |
+| `warning` | `var(--status-warning)` | Incomplete, capped, or degraded — the content is fine as far as it goes |
+| `error` | `var(--status-error)` | The thing could not be done at all |
+
+One tone per box, and it is the one on the edge.
+Tinting the fill is how these drifted, twice: the partial-content banner wore an
+info-blue fill with a warning border while the byte view announced the same condition
+with no box at all, and the KPress render error wore that same blue under an orange
+border — an error announcing itself in the color of an aside, beneath a border naming
+the wrong severity. A tint token such as `--status-info-bg` exists for surfaces that
+genuinely mean “informational”; it is never a message box’s fill.
+
+A use site carries `.notice` in the markup alongside its own class, and owns only
+**layout and position** — how it arranges its contents and where it sits.
+It never restates the fill, border, or type, the same rule the
+[control families](#control-families) follow, for the same reason.
+Layout is deliberately not shared: a one-line notice with a button and a stacked render
+error with a detail block have nothing useful in common there.
+
+`tests/test_notice_style.py` enforces all of it.
+It fails the build if the primitive is redefined outside core, if its fill stops being
+the surface, if a severity does anything but set a border color, if a use site declares
+its own background, border, color, or font, or if any stylesheet uses a status tint as a
+box fill.
+
+Build a partial-content notice through `mb.partialNoticeHtml` rather than by hand, so a
+new view gets the markup, the severity, and the placement together.
+
+### State Progress Once
+
+The notice is the only place a view reports how much of a file is loaded.
+
+Both views used to carry a second readout in their pane chrome — “1.0 MB / 6.0 MB” above
+a notice reading “Showing 1.0 MB of 6.0 MB” — which is the same sentence twice in two
+boxes, and gives a reader two things to reconcile where there is only one fact.
+The file header states the file’s **size**, which is identity; the notice states
+**progress**, which is state.
+The two controls at the ends of the content are not a second statement: they bracket the
+same content so the reader meets one of them wherever they are.
+
+Three supporting rules follow from the same reasoning:
+
+- **A notice that content is missing carries its own control.** Telling a reader that
+  more exists and pointing them elsewhere to ask for it puts the explanation and the
+  remedy in different places.
+  The partial-content banner holds a Load more button rather than naming one.
+- **Retire the control when nothing remains.** A control that cannot do anything reads
+  as a broken control, and any trailing rule or spacing it owns goes with it.
+- **A bound on loading is not a refusal to show anything.** When a view caps how much it
+  will load, it still opens the file and loads up to the cap; it then keeps the notice,
+  drops the control, and says the limit was reached.
+  “No control” and “you are seeing the whole file” look identical otherwise, and a
+  reader who cannot see the rest needs telling either way.
+  The byte view previously refused any file above its 32 MiB ceiling outright, which
+  meant the view existed for binaries and declined the large ones with nothing to look
+  at.
+
+Core provides both halves through `mb.renderTextTruncationWarning` and
+`mb.renderTextLoadMoreFooter` for views whose progress comes from `/api/file`, and
+`mb.partialNoticeHtml` for a view that tracks its own offsets.
+A plugin gets the placement and the style by using them rather than by reproducing them.
+See [Rendering Large Content](large-content-rendering.md) for the loading policy behind
+the chunk sizes these controls request.
+
+### Navigation Tree Folders
+
+A folder row is one activation target, including its chevron, name, and metadata.
+Activating it selects the folder, opens its default **Overview** view, and toggles its
+immediate children. Activating an already open folder collapses its children without
+clearing the folder selection or replacing Overview.
+
+The chevron is a state indicator within that target, not a second action with separate
+navigation semantics.
+Its direction and the child container’s visibility derive from the same expanded state
+so they cannot drift.
+Shift-activation applies the same open or close direction recursively, while still
+selecting the folder and opening Overview.
+
+### Section Disclosure Headers
+
+Use the section-disclosure primitive when a labelled section may hide its body without
+changing the selected file, folder, or top-level view.
+Folder Overview panels use a button inside their visible `h2`; rendered-document
+metadata keeps native `details` and `summary` semantics.
+Both forms place the same gray Lucide chevron immediately after the title with
+`--section-disclosure-chevron-gap`. The mark uses `--section-disclosure-chevron-size` in
+`em`, so it remains proportional to the unchanged local heading typography at every type
+tier. It points right when collapsed and rotates down when expanded.
+
+The title and chevron form one focusable target.
+A button trigger declares `type="button"`, `aria-expanded`, and `aria-controls`; its
+section uses `aria-labelledby` to preserve the visible heading as the accessible name.
+Collapsing an already mounted section hides its body without remounting or disposing its
+renderer. Overview panels start expanded on each mount.
+Markdown Frontmatter and Diagnostics disclosures start collapsed through the absence of
+the native `open` attribute.
+These defaults are not saved as user preferences.
+
+Section headings use `--section-heading-divider-gap` between their content and the
+divider. Components consume the token instead of choosing local bottom padding, so the
+divider remains equally close to headings with and without disclosure controls.
+
+This pattern does not replace the navigation-tree disclosure.
+The tree keeps its leading chevron because that mark communicates hierarchy and shares
+one activation target with folder navigation.
+
+## Keyboard Commands and Help
+
+Application commands have one registry and one document-level dispatcher.
+The same descriptors drive matching, the full Help list, compact hints,
+`aria-keyshortcuts`, and shortcut hints in menus.
+No surface keeps a parallel key-name map, copies command text, or installs another
+document-level application-shortcut listener.
+
+Widget behavior that belongs to a focused control, such as arrow navigation within a
+menu or radiogroup, stays on that component’s root.
+If that behavior is advertised in Help or another hint surface, its presentation still
+comes from a registered descriptor.
+Document-level commands ignore editable controls, composition, previously handled
+events, and modifiers they did not declare.
+They prevent browser behavior only after an enabled handler reports that it acted.
+
+A command may opt back into an editable target only for a key that field does not
+already own. A combobox may claim the arrow keys, `Enter`, and `Escape`, because none of
+them edit text. It may not claim `Home` or `End`: those move the caret, and taking them
+leaves the user unable to reach the start or end of what they typed.
+When a list needs first-item and last-item reach behind an editable control, its
+movement commands wrap instead of borrowing the caret keys.
+
+### Descriptor Contract
+
+Every presented command declares:
+
+- a stable identifier and scope;
+- semantic bindings, including explicit modifier and repeat policy;
+- a group identifier whose heading, context sentence, and order come from one group
+  registry;
+- one sentence-case action label with no terminal punctuation;
+- one active-voice Help description ending in a period;
+- a compact hint of one to three words when the full label will not fit; and
+- the surfaces where it appears and when those surfaces may show it.
+
+A command rendered as a control that opens a managed surface also supplies a control
+binding from that surface.
+The binding connects a rendered trigger to its stable controlled-element ID, popup role
+when applicable, and current expanded state, then restores any prior state when
+disconnected.
+The registry snapshot carries the binding to the renderer; a call site does
+not hand-author `aria-controls`, `aria-haspopup`, or `aria-expanded`. Pointer invocation
+carries the trigger element to the command so an overlay can restore focus even in
+browsers that do not focus a clicked button.
+
+The key formatter, not the descriptor, supplies visible abbreviations and glyphs.
+The registry rejects duplicate normalized bindings within one scope and incomplete copy
+for any requested surface.
+Equivalent keys for one command are aliases in one descriptor.
+Separate commands may share a compact hint; the renderer then coalesces adjacent
+commands with the same hint and joins their bindings with “or.”
+
+Full Help includes registered contextual commands even when their scope is inactive and
+states when each group applies.
+Compact hints include descriptors explicitly selected for that surface: persistent
+global commands plus selected commands available in the active scope.
+They are a high-value subset, not a second exhaustive Help list, and disappear when
+their scope is unavailable rather than looking disabled.
+Changing contextual hints is not a live-region announcement.
+
+### Shortcut and Help Copy
+
+Shortcut copy follows the general [interface-copy rules](#interface-copy) plus these
+surface-specific constraints:
+
+| Copy | Form | Example |
+| --- | --- | --- |
+| Action or trigger label | Short sentence-case noun or verb phrase; no punctuation | `Quick File` |
+| Compact hint | One to three words; sentence case; no punctuation | `Toggle folder` |
+| Help description | One complete active-voice sentence describing context or result | `Open the selected file.` |
+| Context note | One complete sentence saying when the group applies | `Available while a file-tree row has focus.` |
+
+Copy never repeats the rendered key name, uses a slash to mean “or,” or says “click” for
+an action that also works from the keyboard.
+Use the canonical product terms “Help,” “Quick File,” “navigation pane,” “file tree,”
+and “main pane.” Key abbreviations belong only inside `.kbd`; ordinary prose uses the
+full key name.
+
+The Help surface is a modal dialog with three content blocks: a brief description of
+Metabrowser, a descriptive link to the public project homepage, and registry-derived
+shortcut groups. The description explains the folder, navigation, preview, and
+trusted-plugin model in at most three short sentences; it links to longer documentation
+instead of duplicating it.
+The project link identifies GitHub and announces that it opens a new tab.
+Help has a visible labelled trigger, so learning the `?` shortcut is never a
+prerequisite for opening it.
 
 ## Icons and Icon Buttons
 
@@ -201,6 +525,12 @@ mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
 Where an icon reserves a column in a row of text, the alignment box around it is 16px —
 one step wider than the glyph, so the mark sits optically centered.
+
+Files and exact file extensions use the `.file-identity-icon` alignment-box primitive.
+Resolve its host-owned SVG and subtype class with `window.metabrowser.fileTypeIcon()`;
+do not copy the filename matcher, SVG, or `ft-*` mapping into a component.
+The navigation tree, plugin views, and aggregate rows therefore change together when a
+file type is added.
 
 There is one deliberate exception, `.menu-seg svg` in the segmented theme and font
 choosers, where the glyph *is* the segment’s label rather than a mark beside text and so
@@ -226,6 +556,19 @@ adds weight without adding information.
 
 The one sanctioned resting surface is `.icon-btn-overlay`, for a button that floats
 above content: a bare glyph over source text is unreadable, so it needs an opaque plate.
+
+### Parent Navigation Is a Bordered Button
+
+Moving to an enclosing folder is a labelled navigation action, even when a compact
+header has room for only its arrow.
+Both forms combine `.btn` with `.parent-nav-btn`, use the shared `.parent-nav-arrow`,
+and keep a visible resting boundary.
+The labelled form includes the destination folder; the icon-only form retains the same
+arrow size and button height with its destination in the accessible label and tooltip.
+
+Do not represent parent navigation as a bare `.icon-btn`. Icon actions such as Print
+operate on the current view and remain unboxed at rest; parent navigation changes the
+current location and uses the stronger bordered-button vocabulary.
 
 ### Reveal on Hover Keeps Keyboard Reach
 
@@ -295,14 +638,28 @@ Fixed age windows remain in chronological order and show cumulative counts.
 Open-ended type values are ranked by frequency and capped, so the menu cuts the long
 tail rather than an arbitrary alphabetical slice.
 
-A dropdown may lead with named **presets** — shorthands standing for the full set of
-values beneath them, separated from the raw list.
-A preset is checked only when every value it names is selected, so a half-covered group
-never claims to be on, and a selection that is exactly one preset shows by its name
-rather than as `.md +21`.
+A dropdown may lead with ordered named **preset sections** — shorthands standing for the
+full set of values beneath them.
+Each nonempty section has a visible small-caps label, an ARIA-labelled group, and a
+separator between semantic tiers and before the raw list.
+The navigation type chooser uses broad group presets first, families grouped under the
+recommended file-type definitions’ group labels second, and canonical/raw extension rows
+last. Empty groups and empty presets are omitted; an empty preset must never alias the
+Any state. A preset is checked only when every value it names is selected, so a
+half-covered group never claims to be on, and a selection that is exactly one preset
+shows by its name rather than as `.md +21`. Other remains a family-section heading
+rather than a broad preset because its unknown extension population is open-ended and
+cannot be represented by a fixed token list.
+Named families such as Log files remain selectable within that section.
 
-Where a row stands for a file type, it carries that type’s icon and leaves the label
-plain.
+Selecting a semantic family adds all declared canonical suffixes; selecting a broad
+category adds its category-only filenames and all family members.
+Removing a child clears its parent’s checked state.
+A known canonical suffix matches declared compound tails, while an unknown raw extension
+remains exact.
+
+Where a row stands for an exact extension, it carries that type’s icon and leaves the
+label plain. Aggregate category and family rows are text-only.
 The icon is what identifies a type everywhere else in the app, and tinting a whole
 column of labels makes the hues compete with the selected-state mark instead of helping
 anyone scan the list.
@@ -370,19 +727,427 @@ a file.
 Add new file types through the declarative matcher and token triplet.
 Do not add filename-specific CSS selectors.
 
+### Aggregate Distributions
+
+The shipped
+[Folder Overview plan](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
+defines the first instance of this component contract.
+An aggregate distribution relates exact categories through one selected metric column in
+a semantic table. The metric cell presents an absolute value, a track normalized to that
+metric’s population total, and a percentage.
+A nearby exclusive control switches the entire table atomically between Files and Bytes;
+it never leaves parallel metric columns competing with that control.
+This keeps large category sets vertically scannable and lets the selected measure use
+the available width.
+It is distinct from the broad `ft-*` identity system: several exact extensions may
+intentionally share one file icon, while semantic families such as JavaScript and YAML
+need stable distribution identities of their own.
+
+The component uses a bounded light/dark categorical palette, a neutral **Other** token,
+a track token, and a named track-height token.
+Consumers select palette classes; they do not copy color literals or set theme colors
+inline. Inline percentage widths are allowed because they encode data rather than theme.
+
+The token family is `--mb-distribution-category-1` through
+`--mb-distribution-category-12`, plus `--mb-distribution-other`,
+`--mb-distribution-track`, `--mb-distribution-track-height`, and
+`--mb-distribution-segment-gap`. The segment-gap token remains available to consumers
+that place categorical segments beside one another.
+Shared `.mb-distribution-slot-*` and `.mb-distribution-other` utility classes map those
+tokens to a component color variable.
+Core owns these tokens and utilities; the folder plugin owns File types and Treemap
+layout selectors.
+
+When a selected metric changes, the table keeps the same category set and color map.
+The active measure controls values, percentage widths, emphasis classes, and row order
+as one update. Categories keep their assigned slot for the mounted folder even when live
+updates change rank, and Other stays last and neutral.
+A related visualization, such as the extension-colored Treemap for that folder, reuses
+the same mounted mapping when both views exist.
+
+The semantic table is the visual summary and the source of exact values.
+Every row names its category and reports absolute values and percentages; the colored
+fills need no separate circle or legend.
+Detailed breakdown fills do not become tab stops or add duplicate tooltips and are
+hidden from the accessibility tree.
+Labels never rely on color or place text on a category fill.
+
+File types uses non-subtotaling row groups in the server registry’s order: Code,
+Documentation, Data, Archives, Media, and Other.
+Empty groups are omitted.
+Membership comes from the same recommended File Rollup Format type definitions used by
+rollups, navigation filters, and Treemap colors; surfaces never maintain local extension
+lists. Known canonical suffixes roll up into readable family parents such as
+**JavaScript**, **TypeScript**, **CSS**, **YAML**, **Log files**, **Archives**, and
+**Images**. Log files is a semantic family within Other rather than a separate group.
+Compound extensions inherit the longest declared suffix: `.min.js` contributes to
+JavaScript’s `.js` child without rewriting the file’s exact logical extension.
+Indexed logical extensions contain at most two suffix components, so source maps remain
+useful `.js.map` or `.ts.map` rows without fragmenting the table into filename-specific
+`.umd.min.js.map` and `.d.ts.map` variants.
+
+Family parents are aggregate identities, so they are text-only.
+Every nonempty family places the shared gray trailing chevron after its label, starts
+collapsed, and reveals its indented extension rows without changing denominators or
+colors. A singleton such as Rust therefore still expands to `.rs`, preserving one
+consistent interaction and leaving room for future exact-extension filtering.
+Canonical children retain exact extension icons and share their parent’s `family:<id>`
+palette key. Unknown and deliberately ambiguous extensions remain raw rows; they are not
+assigned a confident name merely to shorten the table.
+**No extension** and **Other types** are disclosable special parents under Other.
+No extension reveals exact basenames; Other types reveals raw logical extensions.
+Each serialized fallback list is independently capped at 20 and adds a neutral
+**Others** row whose file and byte metrics exactly conserve children omitted by the
+producer. Presentation applies a second, consistent bound to every direct child list:
+show the first 10 rows and add one neutral **N more** aggregate row.
+Activating that row reveals its exact children in place.
+The same grammar applies recursively to family, special-parent, and fallback lists,
+including lists with only 11 entries.
+Expansion does not refetch or change denominators, and remains stable across live
+updates while its row still exists.
+A group heading is shown only when it has rows and carries no subtotal.
+Type labels use the bold design-system weight as the row’s scan anchor.
+Each raw or disclosed canonical extension row leads with the shared file-identity icon
+resolved from a synthetic filename, and each basename child resolves from the basename,
+so both match navigation without weakening the text label.
+Special parents and Others stay iconless because they describe aggregates rather than
+exact files or extensions.
+An unknown exact extension such as `.bin` uses the generic blank-page identity.
+Family parents, Files, and Ignored are likewise iconless.
+Every exact Files value uses the shared `.count` and `.count-large` convention, and
+every exact byte value uses `.size` and `.size-large`. The stronger weight therefore
+appears at the same count and byte thresholds as the navigation panel, including on
+Files and Ignored; a row role never forces a different numeric weight.
+
+Rows within each subsection sort by the active Bytes or Files measure, descending.
+The other measure is the deterministic secondary key and the stable row identity is the
+final tie-breaker. Group order remains registry-defined.
+Changing the metric therefore reveals the relevant skew without making equal rows jump
+unpredictably.
+
+The **Files** section begins expanded.
+It contains the shared Files / Bytes control and a fixed two-row composition table.
+**Files** comes first and reports the unignored population immediately from the
+inventory snapshot. **Ignored** follows with the excluded population.
+These are disjoint rows whose counts and byte sizes sum to the complete selected
+directory. Each row displays one absolute selected-metric tally and treats its own
+population as 100%, so no percentage column appears.
+Its full-width track is segmented by the top-level semantic file types in File Breakdown
+and reuses their mounted palette assignments.
+The segments follow registry group order and then descend by the selected Files or Bytes
+measure within each group.
+Sorting uses the population selected by Show ignored, and both Files and Ignored tracks
+keep that same order for comparison.
+Hovering a colored segment uses the shared body-portaled navigation tooltip: the bold
+semantic family name is the first line, followed by the exact file count and byte size
+for that row’s disjoint population.
+Tooltip-bearing categorical marks use `--viz-data-mark-hover-filter`, the same subtle
+whole-mark brightness change used by Treemap cells.
+The filter preserves the mark’s hue and the contrast between its fill, border, and
+nested content; hover never changes geometry, stacking, or opacity.
+It transitions with the shared visualization hover timing, while reduced-motion mode
+applies the state immediately.
+These supplemental hover tooltips do not create tab stops; the expanded File Breakdown
+remains the accessible source for the same values.
+The Ignored row dims its label, tally, track, and colors through
+`--dimmed-content-opacity`, the same token used by ignored navigation and Treemap
+entries.
+
+Inventory totals render first.
+Until a compatible terminal file-type projection is available, each nonzero population
+uses one neutral full-width fill.
+The projection replaces that fill atomically with exact segments; it never changes the
+inventory-backed tally.
+A zero population renders no fill.
+If a stale projection does not conserve the current tally, the row stays neutral rather
+than showing a misleading composition.
+
+The **File Breakdown** section follows Files and begins collapsed.
+It contains the full type distribution and starts with the same labelled `.filter-check`
+**Show ignored** checkbox used by navigation.
+Show ignored begins checked when there is no saved preference and changes only the
+breakdown population and the matching top-track segment order; it never changes or hides
+the explicit Files and Ignored totals.
+File Breakdown does not render another metric chooser.
+Both sections observe the same state object, so the Files / Bytes choice in Files
+atomically updates the totals and the complete breakdown, including while the breakdown
+is collapsed.
+
+Visual Type and metric column labels are unnecessary when every metric cell keeps the
+same aligned grammar.
+File Breakdown uses value, track, and percentage; Files uses value and composition
+track. The semantic table retains screen-reader-only headers and updates the selected
+metric header between Files and Bytes, so assistive technology receives the
+relationships that sighted users get from alignment.
+
+Zero totals do not produce a colored fill, division artifact, or header-only table.
+If one metric is zero while another is not, the zero metric uses the neutral track and
+the populated metric remains meaningful.
+If the whole population is empty, the parent surface renders its explicit empty state
+instead of the distribution body.
+
+### Folder Treemap
+
+Treemap is the hierarchy complement to File types, not a second composition summary.
+It always lays out the bounded directory tree as folders and files; it does not offer a
+Folders/Types grouping choice.
+File types already answers which extensions make up the population, while Treemap
+answers where space or file count sits and keeps folder and file cells navigable.
+
+The Files context above the map mounts the same reusable folder-rollup controls used by
+Overview. The metric control appears before Files and Ignored; the scope control appears
+after them:
+
+- A joined, exclusive **Files / Bytes** group chooses the cell-area metric and starts on
+  Files when there is no saved preference.
+- A labelled **Show ignored** checkbox chooses scope and starts checked.
+  Checked includes gitignored cells and dims them; unchecked removes them and switches
+  folder, remainder, and status values to the rollup’s unignored totals.
+
+Both views observe one state object and preference key, so changing either control in
+Overview or Treemap updates the other surface without a second interpretation of scope
+or metric. The metric switches both totals rows and the map.
+Show ignored changes map membership but leaves the explicit Files and Ignored rows
+intact.
+
+There is no separate color selector.
+Every file maps its exact extension through the taxonomy’s distribution key, every
+folder maps its dominant extension through the same helper, and remainder cells use the
+neutral Other slot. The File types panel and Treemap acquire the same per-folder palette
+session, so a semantic family keeps the same color across both views.
+Modification age remains available in the tooltip; it does not compete with file type as
+a second cell-color vocabulary.
+Treemap derives a theme-aware surface wash and stronger border from that shared base
+color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
+Hover brightens the composed cell, including its type-derived surface and border, so
+their contrast and hue relationship remain intact.
+There is no separate label hover surface.
+It never changes stacking or display: nested folder containers and their descendant
+rectangles are flattened siblings, so raising a container would cover its children.
+
+The complete visible rectangle of every folder or file is its pointer target, including
+the uncovered header, gutter, and background of a nested folder.
+When rectangles are nested, the deepest rectangle under the pointer wins; an inert
+remainder cell does not fall through to its parent.
+The nested parent remains an ARIA group and its label remains the keyboard control, so
+full-cell pointer handling never creates an invalid button containing descendant
+buttons.
+
+Cell typography grows continuously with usable rectangle geometry.
+The scale combines the short side with the square root of area, which lets a genuinely
+large box grow while preventing a long, thin sliver from claiming display type.
+Folder/file labels stay between 11px and 24px; value labels stay between 10px and 18px.
+Geometry-derived inline custom properties are allowed here because they encode layout
+data, just as inline bar widths encode percentages; theme colors still come only from
+tokens and shared utility classes.
+
+Large nested folders place their formatted aggregate value in the reserved header row.
+Non-nested cells place the value below the name when both lines fit.
+File leaves keep their formatted byte size in either area mode because “1 file” adds no
+information; aggregate folders and remainder cells report the selected metric.
+Values use the shared byte and file-count formatters.
+A label or value that cannot fit is omitted rather than shrunk below its lower bound or
+allowed to overlap child cells.
+Visible folder labels end in `/`, while file labels carry the same file-identity icon as
+the navigation tree.
+The slash is a visual kind cue and is not added to the folder’s accessible name or path.
+The accessible name preserves the cell name, kind, and visible value; the tooltip
+retains the complete name, counts, bytes, and modification time.
+
+Treemap navigation preserves the user’s spatial context.
+Activating a folder cell opens that folder with Treemap selected, and Backspace opens
+the parent with Treemap selected.
+Every non-root Treemap also places a compact labelled action immediately above the map.
+Its up arrow and enclosing folder name make the zoom-out target explicit, and activation
+opens that parent with Treemap still selected.
+The top-level target is shown as `/`; the control is omitted at the served root because
+there is no enclosing folder within the browsing scope.
+Activating a file cell opens the file’s ordinary default view.
+This uses the public navigation preference rather than simulating a tab click; an
+unavailable preferred view falls back to the destination’s declared default.
+
 ## Panels and Tabs
 
 The preview pane has one scroll owner.
 Views should not introduce nested full-height scroll containers unless the content
 itself requires independent horizontal or virtual scrolling.
 
+### Folder Views Are Tabs
+
+The Folder Overview applies these rules to every served directory.
+A tab changes the primary way the selected item is inspected.
+For folders, **Overview** is the default tab and **Treemap** is a peer visualization.
+A future **Files** listing also belongs at this level because it replaces the primary
+working surface; it is not an Overview panel.
+
 Tab renderers receive a dedicated container and own its contents.
 Default views mount immediately; hidden views mount on first activation.
 A loading state should preserve the tab’s dimensions and communicate whether the work is
 local parsing or an HTTP request.
 
-Floating menus and tooltips use the shared surface, border, radius, and shadow tokens.
-They must remain within the viewport and close on Escape or outside interaction.
+### Folder Overview Is a Panel Stack
+
+Overview is one vertically ordered composition surface, not a fixed page template.
+Its panel registry lets a capability contribute a region without knowing which other
+regions are installed:
+
+- **Files** is the required totals panel for every folder and starts expanded.
+- **File Breakdown** is the required detailed type-distribution panel and starts
+  collapsed.
+- **README** is a content panel only when a direct-child README exists.
+- License and other future panels use the same contribution contract and appear only
+  when applicable.
+
+The Overview composer owns panel order, measure, gaps, responsive stacking, loading,
+failure isolation, and disposal.
+Panels own only their data and internal rendering.
+They must not query sibling DOM, reserve ad hoc margins for another panel, or create a
+second preview scroll owner.
+Named placement bands establish broad order; stable panel IDs break ties, so
+asynchronous resolution and plugin load timing never rearrange the page.
+
+Every contribution is a labelled semantic section.
+The composer renders the label as a visible, document-aligned section heading above the
+panel body. These headings use the tab bar’s uppercase, bold, tracked sans-serif grammar
+at the body-text size, followed by a neutral separator.
+Collapsible headings contain the shared section-disclosure trigger, with its gray
+trailing chevron and unchanged heading typography.
+Files and README start expanded; File Breakdown starts collapsed.
+All three collapse in place without disposing their mounted contents.
+Files uses the stable internal panel ID `folder.file-totals`, and File Breakdown retains
+`folder.file-types`. The Files panel owns the only Overview metric chooser; shared state
+applies that choice to File Breakdown and Treemap.
+
+Panel bodies use one of two presentations:
+
+- A **surface panel** receives a flat host-rendered body and chrome typography.
+  Files and File Breakdown use this presentation without surrounding cards.
+- A **document panel** supplies its normal rendered-document surface.
+  README therefore looks exactly like an ordinarily rendered Markdown file, including
+  its metadata, diagnostics, TOC, breakpoints, and print behavior.
+  Overview adds the shared section heading but does not override the document card.
+  The card keeps its standard border and shadow at regular and wide document bands, then
+  becomes borderless through KPress’s own narrow breakpoint.
+
+“Panel” describes composition and lifecycle, not a requirement to draw the same box
+around unlike content.
+Surface content, section headings, and document content use one responsive alignment
+contract and shared stack gap.
+At regular and wide Markdown breakpoints, flat surface panels and section headings align
+to the README card’s outer edges; the TOC keeps its own rail in the wide band.
+In the regular band, the target is the visible `.kpress-long-text` card rather than the
+wider `.kpress-doc` frame.
+The shared width is `min(100% - 4rem, var(--kpress-measure) - 2rem)`, which accounts for
+the frame’s floating-TOC clearance and aligns section rules, labels, tallies, and bars
+with the card border.
+Below the card breakpoint, KPress removes the card boundary and the alignment follows
+the README prose edge.
+The Overview composer mirrors those pinned KPress breakpoints so the rule remains exact
+rather than approximating the document geometry.
+
+Panel availability is independent.
+A missing README removes only that region, and one failed optional panel gets a local
+error without replacing Overview or its siblings.
+Transient failures offer Retry; invalid or permanent failures provide the applicable
+corrective action instead of a control that cannot help.
+Printing includes only contributions that declare themselves printable; host summaries
+and empty-state chrome stay off paper.
+
+### Folder Rollup Loading
+
+Directory totals and detailed rollups have separate readiness contracts.
+The totals rows at the start of Files render from the inventory snapshot attached to the
+selected folder and subscribe to the public directory-totals store for later revisions.
+Navigation must never replace a known total with a fabricated zero or a loading
+placeholder.
+
+File Breakdown and Treemap render only terminal rollup generations.
+File Breakdown also publishes its validated terminal envelope to the per-directory
+projection pool used by Files.
+While a scan is pending, they keep their geometry stable and render the same
+low-contrast pulsing block used by the navigation tally.
+Provisional rows or rectangles are never painted and then reshuffled.
+The motion is delayed briefly, respects reduced-motion preferences, and is replaced
+atomically when the complete, truncated, or failed generation arrives.
+
+Treemap repeats the fixed **Files** context immediately above the map.
+It does not make that context collapsible and does not duplicate totals or scan state in
+a footer sentence. The print action is absent when no mounted contribution is printable.
+
+An empty folder is still a completed Overview.
+Files remains visible with the message **No files to summarize.** It renders no empty
+bars, table, standalone tally, or synthetic “No README” document panel.
+Loading, partial, empty, and failed states must remain visually and semantically
+distinct.
+
+## Overlays, Menus, and Dialogs
+
+“Overlay” describes shared placement and lifecycle, not accessibility semantics.
+Every overlay chooses a content pattern and uses that pattern’s role and keyboard model.
+“Popover” is likewise a visual description, not an ARIA role; do not use it to blur the
+difference between a tooltip, menu, and dialog.
+
+| Pattern | Purpose and semantics | Focus and dismissal |
+| --- | --- | --- |
+| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls | Opens for pointer hover and keyboard focus; closes on pointer leave, blur, or Escape |
+| Anchored popup | A menu, listbox, or other pattern anchored to a trigger or pointer; the content role defines its semantics | Uses that pattern’s focus model; closes on Escape and outside interaction |
+| Modal dialog | A labelled task or information surface with `role="dialog"` and `aria-modal="true"` | Moves focus inside, contains Tab, makes background content inert, and closes through Escape, an explicit control, or the scrim |
+
+A compact surface can still be a modal dialog.
+Help is a dialog because it contains a link and controls and temporarily owns focus; it
+is not a tooltip or menu.
+
+### Shared Overlay Lifecycle
+
+One overlay controller owns body portals, viewport-relative placement, flip and clamp,
+stacking, scrims, open-surface arbitration, focus save and restore, and disposal.
+Consumers do not recreate those behaviors.
+At most one anchored popup and one modal are open; an anchored popup inside the active
+modal may coexist with it, and Escape closes the topmost eligible surface first.
+
+The shortcut registry owns the one document-level application keydown listener.
+An overlay component registers its Escape action for the component’s lifetime.
+Opening activates the command’s scope, closing removes that exact activation, and
+component disposal removes the command registration.
+The visible Close control, scrim, and Escape binding invoke that same command; its
+descriptor supplies the Close control’s accessible action name and any representable
+`aria-keyshortcuts` value.
+Widget roots may handle their own roving-focus keys, and a modal root may contain Tab,
+but neither installs another document-level shortcut dispatcher.
+
+Opening and closing meet these requirements:
+
+- pointer and keyboard triggers reach the same controller and state;
+- triggers expose the appropriate accessible name, `aria-expanded`, `aria-controls`, and
+  `aria-haspopup` value;
+- the interaction that opens a surface cannot dismiss it in the same event sequence;
+- scrolling inside a bounded overlay does not dismiss it;
+- closing restores focus to the connected trigger or a documented connected fallback;
+- modal background content cannot receive pointer, keyboard, or assistive-technology
+  interaction while the dialog is open; and
+- `dispose()` removes portals, scrims, registrations, observers, and listeners and
+  restores any focus, trigger, or inert state it changed.
+
+### Surface Anatomy and Styling
+
+Floating surfaces use the shared raised surface, border, chrome radius, shadow, z-index,
+type-scale, focus, and motion tokens.
+Use-site classes may choose placement and content layout but do not restate those visual
+properties. Reusable dimensions, spacing, or motion require component tokens rather than
+repeated literals.
+
+A modal dialog has one labelled surface with a header, title, visible Close control,
+scrolling body, and optional action footer.
+The body is the only vertical scroll owner inside the surface.
+The surface clamps to the viewport, keeps the Close control visible, and remains usable
+at 200% zoom and at the narrowest supported navigation-pane width.
+Motion respects `prefers-reduced-motion`; content and focus order do not depend on an
+animation completing.
+
+Correct semantics are part of the primitive.
+A menu renderer supplies menu roles and roving focus; a dialog renderer supplies its
+label relationship and modal state; a tooltip renderer never accepts interactive
+children. Visually similar surfaces do not borrow the wrong role merely to share CSS.
 
 ## Structured Data and Tables
 
@@ -429,6 +1194,27 @@ Avoid looping animation except for active progress indicators.
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
 
+Transient loading chrome has a quiet period through the shared `.mb-delayed-loading`
+utility, whose length is `--loading-state-delay` in `styles.css`. The placeholder
+reserves its final layout immediately but stays invisible long enough for synchronous
+work and fast local requests to replace it before paint.
+
+**Nothing announces loading inside the quiet period.** This holds at every grain, not
+only for view- and panel-level placeholders: a subtree expanding under the cursor is
+exactly the case where the request usually beats the eye, and a spinner that appears and
+vanishes reads as a glitch rather than as progress.
+A spinner is the strongest form and has no reason to exist before the quiet period ends;
+below it, the most that may appear is the neutral pulsing block used by the navigation
+tally. Apply the utility rather than adding independent timers at each renderer.
+
+The shell’s own preview swap adds a longer wait on top (`LOADING_INDICATOR_DELAY_MS`),
+keeping the previous file on screen instead of blanking it — a different mechanism for a
+different problem, and not a reason to skip the utility.
+
+The shell separately retains the previous preview during a fast file-envelope request.
+Ready content always wins immediately: do not add a minimum spinner duration, crossfade,
+or transition that delays usable content merely to complete an animation.
+
 ### Progress Spinners Stay Neutral
 
 Loading and progress spinners use the shared neutral-gray track and accent tokens.
@@ -436,6 +1222,16 @@ They must not borrow link, status, file-type, or chart colors because a spinner 
 activity, not meaning.
 Prefer the shared spinner classes; custom sizes must still use the shared spinner tokens
 and keyframe.
+
+### Spinners Carry No Visible Label
+
+A spinner beside the words “Loading folder…” says the same thing twice: the surface
+being replaced already says which folder, and the spinner already says it is loading.
+Keep the label for screen readers (`sr-only`) and show the spinner alone.
+
+Visible copy is for a state the spinner cannot express on its own — a scan still running
+behind an empty result, an index that failed — and it says what that state is rather
+than that something is loading.
 
 ## Text Selection
 
@@ -531,6 +1327,11 @@ without freezing incidental wording throughout the codebase.
 - Status does not rely on color alone.
 - Text meets contrast requirements at its actual size and weight.
 - Tooltips supplement, rather than replace, persistent labels for essential controls.
+- Shortcut keycaps have canonical visible and spoken names, and actionable shortcut
+  controls expose registry-derived `aria-keyshortcuts` when their physical binding is
+  representable accurately.
+- Modal dialogs label themselves, keep background content inert, contain focus, and
+  restore focus on every close path.
 - Print views hide host chrome and retain the rendered document or source content.
 
 ## Review Checklist
@@ -539,10 +1340,15 @@ When adding a component or plugin view:
 
 1. Identify the existing primitive and tokens it can reuse.
 2. Test narrow and wide panes, long paths, empty data, malformed data, and large data.
+   If the view can show part of its content, check that continuing is reachable from the
+   bottom as well as the top.
 3. Review all chrome copy and adjacent text across supported states.
 4. Check light theme, dark theme, keyboard focus, reduced motion, and print output.
 5. Verify lazy mount and disposal behavior.
-6. Run Biome, TypeScript check-JS, and the relevant browser-side tests.
+6. For shortcut or overlay work, verify the shared descriptor, key formatter, overlay
+   lifecycle, spoken labels, and contextual availability instead of testing one surface
+   in isolation.
+7. Run Biome, TypeScript check-JS, and the relevant browser-side tests.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

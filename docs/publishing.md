@@ -75,8 +75,8 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    uvx --from metabrowser==X.Y.Z metabrowser --help
    ```
 
-9. From a clean temporary directory, install the public Agent Skill and confirm its
-   pinned runner matches the release:
+9. From a clean temporary directory, install the public Agent Skill and confirm it
+   retains the documented local-`metab` or `uvx metabrowser@latest` runner policy:
 
    ```shell
    npx skills add jlevy/metabrowser --skill metabrowser

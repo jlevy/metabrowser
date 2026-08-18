@@ -248,16 +248,21 @@ def test_depth_of_root_and_subpaths() -> None:
     assert _depth_of("a/b/c") == 3
 
 
-def test_ext_of_compound_tail() -> None:
+def test_ext_of_bounded_compound_tail() -> None:
     assert _ext_of("foo.runbook.md") == ".runbook.md"
     assert _ext_of("archive.tar.gz") == ".tar.gz"
+    assert _ext_of("bundle.js.map") == ".js.map"
+    assert _ext_of("bundle.map") == ".map"
+    assert _ext_of("bundle.umd.min.js.map") == ".js.map"
+    assert _ext_of("types.d.ts.map") == ".ts.map"
+    assert _ext_of("bundle.umd.min.js") == ".min.js"
     assert _ext_of("plain.txt") == ".txt"
     assert _ext_of("Makefile") == ""
     assert _ext_of(".dotfile") == ""
-    assert _ext_of("Foo.With.Dots.Txt") == ""
+    assert _ext_of("Foo.With.Dots.Txt") == ".dots.txt"
 
 
-def test_fs_entry_factory_uses_compound_ext_for_file_observations() -> None:
+def test_fs_entry_factory_uses_bounded_compound_ext_for_file_observations() -> None:
     """Both the walker (boot scan / rewalk_subtree) and the watcher
     (file-event handler) construct entries via
     :meth:`FsEntry.for_observed_file` / :meth:`FsEntry.for_stat`. The
@@ -547,10 +552,39 @@ def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
 
     after_insert, after_remove, changes = asyncio.run(_run())
     assert (after_insert.total_files, after_insert.total_size) == (5, 303)
+    assert (after_insert.unignored_files, after_insert.unignored_size) == (5, 303)
     assert (after_remove.total_files, after_remove.total_size) == (4, 250)
+    assert (after_remove.unignored_files, after_remove.unignored_size) == (4, 250)
     assert (after_remove.newest_mtime_ns or 0) < (after_insert.newest_mtime_ns or 0)
     for change in changes:
         assert any(isinstance(op, FsUpsert) and op.entry.path == "" for op in change.ops)
+
+
+def test_live_ignore_state_flip_updates_only_unignored_ancestor_totals(tmp_path: Path) -> None:
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[FsEntry, FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        file_entry = inv.get("file_a.log")
+        assert file_entry is not None
+        before = inv.get("")
+        assert before is not None
+        inv.apply_live_entry(replace(file_entry, gitignored=True))
+        ignored = inv.get("")
+        assert ignored is not None
+        inv.apply_live_entry(replace(file_entry, gitignored=False))
+        restored = inv.get("")
+        assert restored is not None
+        return before, ignored, restored
+
+    before, ignored, restored = asyncio.run(_run())
+    assert (ignored.total_files, ignored.total_size) == (before.total_files, before.total_size)
+    assert ignored.unignored_files == (before.unignored_files or 0) - 1
+    assert ignored.unignored_size == (before.unignored_size or 0) - len(b"a" * 50)
+    assert (restored.unignored_files, restored.unignored_size) == (
+        before.unignored_files,
+        before.unignored_size,
+    )
 
 
 def test_live_change_during_boot_invalidates_stale_directory_finalization(
@@ -1355,3 +1389,30 @@ def test_walker_populates_gitignored_on_files_and_dirs(tmp_path: Path) -> None:
         "directory gitignore must propagate via FsEntry.gitignored "
         "so recent.py can compose `gitignored_dirs` from inventory reads"
     )
+
+
+def test_walker_finalizes_unignored_directory_aggregates(tmp_path: Path) -> None:
+    """Final directory entries carry both all-file and tracked totals.
+
+    Folder views can therefore paint stable totals from the live inventory
+    without waiting for a second rollup request or scanning descendants in the
+    browser.
+    """
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".gitignore").write_text("ignored/\n*.log\n", encoding="utf-8")
+    (tmp_path / "kept.py").write_bytes(b"abc")
+    (tmp_path / "debug.log").write_bytes(b"12345")
+    ignored = tmp_path / "ignored"
+    ignored.mkdir()
+    (ignored / "bundle.js").write_bytes(b"1234567")
+
+    async def _run() -> tuple[FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        return inv._entries[""], inv._entries["ignored"]
+
+    root, ignored_dir = asyncio.run(_run())
+    assert (root.total_files, root.total_size) == (3, 15)
+    assert (root.unignored_files, root.unignored_size) == (1, 3)
+    assert (ignored_dir.total_files, ignored_dir.total_size) == (1, 7)
+    assert (ignored_dir.unignored_files, ignored_dir.unignored_size) == (0, 0)

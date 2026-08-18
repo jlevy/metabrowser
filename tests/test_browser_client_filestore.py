@@ -31,6 +31,8 @@ Coverage:
 
 from __future__ import annotations
 
+import re
+
 from metabrowser import server as proc_browser
 
 
@@ -261,7 +263,7 @@ def test_apply_cell_patch_uses_subtree_empty_state_for_empty_class() -> None:
 
     js = _read_app_js()
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 3600]
+    fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert 'classList.toggle("tree-item-empty"' in fn_block
     assert 'typeof entry.empty === "boolean"' in fn_block
     assert "entry.empty" in fn_block
@@ -278,7 +280,7 @@ def test_apply_cell_patch_syncs_gitignored_class() -> None:
 
     js = _read_app_js()
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 3600]
+    fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert 'classList.toggle("tree-item-gitignored"' in fn_block
 
 
@@ -490,23 +492,56 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
         assert "Crawling" not in haystack, f"{label} still contains 'Crawling'"
         assert "crawling" not in haystack, f"{label} still contains 'crawling'"
 
+    # The scanning gate lives in fetchSubtree, which owns the request shared by
+    # an expansion and the idle prefetch; loadSubtree owns what the reader sees.
+    fetch_start = js.index("function fetchSubtree(path)")
+    fetch_block = js[fetch_start : js.index("async function loadSubtree(")]
+    assert 'data.tally_cache_status === "scanning"' in fetch_block
+    # Caching an empty subtree because the scan has not reached it yet would
+    # answer every later expansion with a folder that has contents.
+    assert fetch_block.index("const scanning =") < fetch_block.index(
+        "subtreeCache.set(path, data.tree)"
+    )
+    assert "if (!scanning)" in fetch_block
+
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
-    fn_block = js[fn_start : fn_start + 2200]
-    assert 'childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…")' in fn_block
-    assert 'data.tally_cache_status === "scanning"' in fn_block
+    fn_block = js[fn_start : js.index("\n// ── Subtree prefetch", fn_start)]
+    # No visible label for the plain case: the spinner alone says "loading",
+    # and the row it replaces already says which folder. Only the
+    # still-scanning state below earns visible copy.
+    assert "childrenEl.innerHTML = treeLazyLoadingHtml()" in fn_block
+    assert "if (result.scanning)" in fn_block
     assert 'treeLazyLoadingHtml("Still scanning this folder…")' in fn_block
     assert "scheduleSubtreeRetry(path, childrenEl)" in fn_block
-    assert fn_block.index('data.tally_cache_status === "scanning"') < fn_block.index(
-        "subtreeCache.set(path, tree)"
-    )
+
+
+def test_every_lazy_stub_lookup_is_scoped_to_direct_children() -> None:
+    """A folder is unloaded only if it carries a stub of its own.
+
+    Descendant folders carry their own stubs, so an unscoped lookup answers
+    "unloaded" for a folder whose rows are already rendered. Reloading such a
+    folder replaces its rows with a loading placeholder and then restores them,
+    which reads on screen as the folder closing and reopening. `revealInTree`
+    walks every ancestor of the target on each navigation, so one unscoped
+    lookup there flickers a folder on ordinary keyboard browsing.
+    """
+
+    js = _read_app_js()
+    lookups = re.findall(r"querySelector(?:All)?\(\s*([\"'])(.*?tree-lazy-placeholder.*?)\1", js)
+    assert lookups, "expected at least one lazy-stub lookup to guard"
+    unscoped = [selector for _quote, selector in lookups if not selector.startswith(":scope >")]
+    assert not unscoped, f"lazy-stub lookups must be scoped to direct children: {unscoped}"
 
 
 def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
     js = _read_app_js()
+    fetch_start = js.index("function fetchSubtree(path)")
+    fetch_block = js[fetch_start : js.index("async function loadSubtree(")]
+    assert "if (!resp.ok)" in fetch_block
+    assert "throw new Error(`HTTP ${resp.status}`)" in fetch_block
+
     fn_start = js.index("async function loadSubtree(path, childrenEl, options)")
-    fn_block = js[fn_start : fn_start + 2400]
-    assert "if (!resp.ok)" in fn_block
-    assert "throw new Error(`HTTP ${resp.status}`)" in fn_block
+    fn_block = js[fn_start : js.index("\n// ── Subtree prefetch", fn_start)]
     assert "treeLazyFailureHtml(" in fn_block
     assert "Could not load this folder. Collapse and reopen it to try again." in fn_block
     assert "Failed to load</div>" not in fn_block
@@ -518,6 +553,52 @@ def test_inserted_rows_clear_lazy_placeholder() -> None:
     fn_block = js[fn_start : fn_start + 1000]
     assert 'querySelectorAll(":scope > .tree-lazy-placeholder")' in fn_block
     assert "el.remove()" in fn_block
+
+
+def test_snapshot_entries_already_in_a_deferred_page_stay_deferred() -> None:
+    js = _read_app_js()
+    helper_start = js.index("function _updateDeferredTreePageEntry(container, entry)")
+    helper_block = js[helper_start : helper_start + 1000]
+    assert "_deferredTreePageForContainer(container)" in helper_block
+    assert "node.path === entry.path" in helper_block
+    assert "deferred.page.nodes[index]" in helper_block
+    assert "current.type !== entry.type" in helper_block
+    assert "deferred.page.nodes.splice(index, 1)" in helper_block
+    assert "_synchronizeDeferredTreePage(deferred.pageId, deferred.page)" in helper_block
+
+    insert_start = js.index("function _insertRowSorted(container, entry, options)")
+    insert_block = js[insert_start : insert_start + 900]
+    assert "_updateDeferredTreePageEntry(container, entry)" in insert_block
+    assert insert_block.index("_updateDeferredTreePageEntry") < insert_block.index(
+        "treeKeyboard?.prepareForMutation()"
+    )
+
+
+def test_live_removals_update_deferred_pages_before_mounting() -> None:
+    js = _read_app_js()
+    change_start = js.index("function fileStoreApplyChange(ops)")
+    change_block = js[change_start : change_start + 1600]
+    assert "_removeDeferredTreePageEntries(op.path)" in change_block
+
+    remove_start = js.index("function _removeDeferredTreePageEntries(path)")
+    remove_block = js[remove_start : remove_start + 1200]
+    assert "page.nodes.filter" in remove_block
+    assert "_synchronizeDeferredTreePage(pageId, page)" in remove_block
+    assert "pendingTreePages.delete(pageId)" in js
+
+
+def test_type_replacement_discards_deferred_pages_in_removed_subtree() -> None:
+    js = _read_app_js()
+    sync_start = js.index("function _synchronizeDeferredTreePage(pageId, page")
+    sync_block = js[sync_start : sync_start + 500]
+    assert "if (!sentinel)" in sync_block
+    assert "pendingTreePages.delete(pageId)" in sync_block
+
+    remove_start = js.index("function _removeRenderedRowsImmediately(path)")
+    remove_block = js[remove_start : remove_start + 1200]
+    assert 'querySelectorAll(".tree-page-more[data-page-id]")' in remove_block
+    assert "pendingTreePages.delete" in remove_block
+    assert remove_block.index("pendingTreePages.delete") < remove_block.index("children.remove()")
 
 
 def test_index_progress_updates_by_file_count_bucket() -> None:
@@ -674,7 +755,7 @@ def test_apply_cell_patch_inserts_new_rows_under_expanded_parent() -> None:
     assert "function _buildRowHtml(entry, options)" in js
     # applyCellPatch references them when no row exists.
     fn_start = js.index("function applyCellPatch(entry)")
-    fn_block = js[fn_start : fn_start + 5000]
+    fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert "_findChildContainerFor" in fn_block
     assert "_insertRowSorted" in fn_block
     assert "_insertRowSorted(container, entry, treeRenderOptionsForElement(panel))" in fn_block

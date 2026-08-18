@@ -82,6 +82,12 @@ sandbox.MetabrowserCharts = {
 
 vm.createContext(sandbox);
 for (const relative of [
+  "src/metabrowser/static/request_error.js",
+  "src/metabrowser/static/formatters.js",
+  "src/metabrowser/static/inventory_scope.js",
+  "src/metabrowser/static/resource_context.js",
+  "src/metabrowser/static/view_state.js",
+  "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin_sdk.js",
   "src/metabrowser/static/filter_controls.js",
   "src/metabrowser/static/icons.js",

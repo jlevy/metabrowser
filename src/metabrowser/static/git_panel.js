@@ -596,9 +596,10 @@
       element.addEventListener("click", () => {
         const path = element instanceof HTMLElement ? element.dataset.path : null;
         if (path) {
-          // The shell's own navigation path, the same event the plugin
-          // SDK's openPath dispatches.
-          window.dispatchEvent(new CustomEvent("metabrowser:open-path", { detail: { path } }));
+          // The documented navigation namespace. The `metabrowser:open-path`
+          // event this used to dispatch was removed with the SDK 0.2 break,
+          // with no shim, so dispatching it now navigates nowhere.
+          void window.MetabrowserNavigationRoute.navigation.open({ path });
         }
       });
     }

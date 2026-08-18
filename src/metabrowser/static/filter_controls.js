@@ -184,7 +184,8 @@
    *          value: string[] | string | null, anyLabel: string,
    *          anyValue?: string, select?: string, open?: boolean,
    *          menuId: string,
-   *          presets?: Array<{id: string, label: string, values: string[], count?: number}>}} spec
+   *          presets?: Array<{id: string, label: string, values: string[], count?: number}>,
+   *          presetSections?: Array<{id: string, label?: string, presets: Array<{id: string, label: string, values: string[], count?: number}>}>}} spec
    */
   function menuGroupHtml(spec) {
     const many = spec.select !== "one";
@@ -207,8 +208,15 @@
     }
     // A selection that is exactly one preset reads better by its name
     // than as ".md +21" — the user picked "Docs", so say Docs.
-    const exact = (spec.presets || []).find(
+    const presetSections = Array.isArray(spec.presetSections)
+      ? spec.presetSections
+      : spec.presets?.length
+        ? [{ id: "presets", presets: spec.presets }]
+        : [];
+    const allPresets = presetSections.flatMap((section) => section.presets || []);
+    const exact = allPresets.find(
       (preset) =>
+        preset.values.length > 0 &&
         preset.values.length === selected.length &&
         preset.values.every((value) => selected.indexOf(value) >= 0),
     );
@@ -237,9 +245,8 @@
         const icon = opt.icon
           ? `<span class="menu-item-icon ${esc(opt.iconClass || "")}">${opt.icon}</span>`
           : "";
-        // `ageClass` tints the label from the shared freshness ramp
-        // (.age-sec … .age-wk), so a menu row and the rows it keeps
-        // read in the same colour.
+        // `ageClass` selects the shared age foreground, so a menu row
+        // and the rows it keeps stay in sync.
         const age = opt.ageClass ? ` ${esc(opt.ageClass)}` : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +
@@ -264,29 +271,37 @@
     // Named shorthands above the raw list. A preset is checked only
     // when every value it stands for is selected, so a half-covered
     // group never claims to be on.
-    const presets = spec.presets || [];
-    const presetRows = presets.length
-      ? '<div class="menu-separator"></div>' +
-        presets
-          .map((preset) => {
-            const on =
-              preset.values.length > 0 &&
-              preset.values.every((value) => selected.indexOf(value) >= 0);
-            const count =
-              typeof preset.count === "number"
-                ? `<span class="chip-menu-count">${esc(preset.count.toLocaleString())}</span>`
-                : "";
-            return (
-              `<button type="button" class="menu-item chip-menu-item chip-menu-preset"` +
-              ` role="${rowRole}" aria-checked="${on}"` +
-              ` data-chip-key="${esc(spec.key)}" data-chip-preset="${esc(preset.id)}">` +
-              `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
-              `<span class="menu-item-label">${esc(preset.label)}</span>${count}</button>`
-            );
-          })
-          .join("") +
-        '<div class="menu-separator"></div>'
-      : "";
+    const presetRows = presetSections
+      .filter((section) => section.presets.length > 0)
+      .map((section, sectionIndex) => {
+        const labelId = `${spec.menuId}-section-${sectionIndex}`;
+        return (
+          `<div class="chip-menu-preset-section" role="group" aria-labelledby="${esc(labelId)}">` +
+          `<div class="menu-separator" data-chip-menu-section="${esc(section.id)}"></div>` +
+          `<div class="menu-section-label" id="${esc(labelId)}">${esc(section.label || section.id)}</div>` +
+          section.presets
+            .map((preset) => {
+              const on =
+                preset.values.length > 0 &&
+                preset.values.every((value) => selected.indexOf(value) >= 0);
+              const count =
+                typeof preset.count === "number"
+                  ? `<span class="chip-menu-count">${esc(preset.count.toLocaleString())}</span>`
+                  : "";
+              return (
+                `<button type="button" class="menu-item chip-menu-item chip-menu-preset"` +
+                ` role="${rowRole}" aria-checked="${on}"` +
+                ` data-chip-key="${esc(spec.key)}" data-chip-preset="${esc(preset.id)}">` +
+                `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
+                `<span class="menu-item-label">${esc(preset.label)}</span>${count}</button>`
+              );
+            })
+            .join("") +
+          `</div>`
+        );
+      })
+      .join("");
+    const optionSeparator = presetRows ? '<div class="menu-separator"></div>' : "";
     return (
       `<span class="chip-menu" data-chip-menu="${esc(spec.key)}"` +
       ` aria-expanded="${spec.open === true}">` +
@@ -300,7 +315,7 @@
       ` aria-controls="${esc(spec.menuId)}" aria-label="${esc(spec.label)}">` +
       `${esc(summary)}<span class="chip-menu-caret" aria-hidden="true">${menuChevron}</span></button>` +
       `<span class="menu chip-menu-panel" id="${esc(spec.menuId)}" role="menu"` +
-      ` aria-label="${esc(spec.label)}">${anyRow}${presetRows}${rows}</span></span>`
+      ` aria-label="${esc(spec.label)}">${anyRow}${presetRows}${optionSeparator}${rows}</span></span>`
     );
   }
 

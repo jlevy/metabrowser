@@ -302,7 +302,7 @@ const menuAged = fc.menuGroupHtml({
     {
       value: "live",
       label: "Live",
-      ageClass: "age-sec",
+      ageClass: "age-live",
       title: "Files modified in the past 90 seconds",
       count: 12,
     },
@@ -313,7 +313,12 @@ const menuAged = fc.menuGroupHtml({
   anyValue: "all",
   menuId: "r",
 });
-assertContains("live takes the under-a-minute colour", menuAged, "chip-menu-item age-sec");
+assertContains(
+  "age-menu Live uses the shared freshest colour",
+  menuAged,
+  "chip-menu-item age-live",
+);
+assertMissing("age rows use text color without a marker", menuAged, "file-age-marker");
 assertContains(
   "live explains its exact cutoff",
   menuAged,
@@ -391,6 +396,54 @@ assertContains(
 );
 // The user picked "Docs"; say Docs rather than ".md +1".
 assertContains("an exact preset names the trigger", menuFullPreset, ">Docs<");
+
+const menuSections = fc.menuGroupHtml({
+  key: "types",
+  label: "File type",
+  options: menuOptions,
+  presetSections: [
+    { id: "categories", label: "Groups", presets: PRESETS },
+    {
+      id: "families",
+      label: "Code",
+      presets: [
+        { id: "family:javascript", label: "JavaScript", values: [".js", ".mjs"], count: 10 },
+      ],
+    },
+  ],
+  value: [".js", ".mjs"],
+  anyLabel: "Any type",
+  menuId: "m",
+});
+assertContains(
+  "preset sections keep category and family tiers distinct",
+  menuSections,
+  'data-chip-menu-section="categories"',
+);
+assertContains("preset sections have visible group labels", menuSections, ">Groups</div>");
+assertContains("family sections have visible group labels", menuSections, ">Code</div>");
+assertContains(
+  "preset section labels name semantic groups",
+  menuSections,
+  'role="group" aria-labelledby="m-section-0"',
+);
+assertContains(
+  "semantic families are selectable parents",
+  menuSections,
+  'data-chip-preset="family:javascript"',
+);
+assertContains("an exact family names the trigger", menuSections, ">JavaScript<");
+
+const emptyPreset = fc.menuGroupHtml({
+  key: "types",
+  label: "File type",
+  options: menuOptions,
+  presets: [{ id: "other", label: "Other", values: [] }],
+  value: [],
+  anyLabel: "Any type",
+  menuId: "m",
+});
+assertContains("an empty preset cannot claim the empty selection", emptyPreset, ">Any type<");
 
 // ── Escaping ───────────────────────────────────────────────────
 

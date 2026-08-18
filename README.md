@@ -67,6 +67,15 @@ read Markdown docs.
   highlighting, math, links, images, and print-friendly output (supported via
   [kpress](https://github.com/jlevy/kpress)).
 
+- **Repository-native document links.** Relative and served-root Markdown links use the
+  same exact path semantics as GitHub, including headings, spaces, Unicode, images, and
+  other local resources.
+  Obsidian wiki links add deterministic note, heading, named-block, attachment, and
+  media navigation, plus bounded whole-note, heading, and block transclusion with
+  visible missing or ambiguous states instead of guessed paths.
+  Each selected file has a reloadable `/view/<path>` URL, so native new-tab, copy-link,
+  and browser history behavior works without configuration.
+
 - **Broad file support.** Render common text, syntax highlighted source code, logs,
   images, and tree-parsed JSON, JSONL, and YAML. Clean support for YAML frontmatter.
 
@@ -75,8 +84,29 @@ read Markdown docs.
   visible while you browse.
   And the streaming architecture easily scales to 100,000 files or more in a folder.
 
+- **Folder overviews with exact file tallies.** Every directory opens with a compact
+  Files summary that compares file counts and byte totals, percentages, and normalized
+  bars across semantic groups such as Code, Documentation, Data, Archives, Media, and
+  Other. Expand a family such as Log files to inspect exact extensions, or inspect
+  bounded No extension and Other types details without losing the conserved total or
+  ignored-file subset.
+
+- **A visual Treemap for every folder.** Size the same live file hierarchy by bytes or
+  file count, include or exclude ignored files, and move through nested folders without
+  leaving the Treemap.
+  Colors and file identities stay consistent with Overview and the navigation filters.
+
 - **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every
   non-gitignored file under the root, then jump straight to it by name or path fragment.
+
+- **Built-in keyboard Help.** Press `?` or use the visible Help control for a concise
+  explanation, the project link, and the complete shortcut list.
+  A persistent hint strip keeps Help and Quick File discoverable and adds contextual
+  commands while you work in the file tree.
+
+- **Accessible file-tree navigation.** Move through the tree with the arrow keys, jump
+  with Home and End, and activate folders, files, or pagination with Enter or Space.
+  Focus, selection, expansion, and dynamic tree updates stay synchronized.
 
 - **A fast, framework-free frontend.** Metabrowser ships direct CSS and JavaScript with
   no browser framework.
@@ -88,6 +118,12 @@ read Markdown docs.
 
 It doesn’t currently support editing (or commenting on Markdown docs), but it could in
 the future.
+
+Metabrowser is also a candidate producer and consumer of the reusable
+[File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md),
+which defines portable file-type registries and conserved directory statistics.
+The format is application-independent and is intended to be usable by other inventory
+tools, including [`fdu`](https://github.com/jlevy/fdu).
 
 ## Quick Start
 
@@ -249,17 +285,39 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 ## Documentation
 
-- [Installation](docs/installation.md)
-- [Plugin authoring](docs/plugins.md)
-- [Architecture](docs/architecture.md)
-- [Design system](docs/design-system.md)
-- [Development](docs/development.md)
-- [End-to-end testing](docs/e2e-testing.md)
-- [Real-time debugging](docs/realtime-debugging.md)
-- [Publishing](docs/publishing.md)
-- [Project design and plans](docs/project/README.md)
-- [Security policy](SECURITY.md)
-- [Roadmap](TODO.md)
+Using Metabrowser:
+
+- [Installation](docs/installation.md) — uv setup, upgrades, and the agent skill
+- [Changelog](CHANGELOG.md) — what changed in each release
+- [Roadmap](TODO.md) — what is planned next
+
+Extending it:
+
+- [Plugin authoring](docs/plugins.md) — manifest schema, browser SDK, and data hooks
+- [Architecture](docs/architecture.md) — request flow, URL grammar, and plugin
+  boundaries
+- [Design system](docs/design-system.md) — tokens, layout bands, and component rules
+- [File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md)
+  — the shared file-type and rollup contract
+- [Rendering large content](docs/large-content-rendering.md) — the cost model and limit
+  rules every content view shares
+
+Working on it:
+
+- [Contributing](CONTRIBUTING.md) — how to propose and land a change
+- [Development](docs/development.md) — everyday commands and the `make verify` gate
+- [End-to-end testing](docs/e2e-testing.md) — which test layer proves what
+- [Real-time debugging](docs/realtime-debugging.md) — a stable transcript of tree and
+  filter behavior
+- [Publishing](docs/publishing.md) — the tag-driven release path
+- [Project design and plans](docs/project/README.md) — specs, research briefs, and
+  architecture notes
+
+Policies:
+
+- [Security policy](SECURITY.md) — reporting and the served-root trust boundary
+- [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency review and the cool-off
+  rules
 
 ## License
 

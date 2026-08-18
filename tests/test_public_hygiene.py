@@ -93,10 +93,13 @@ def test_production_property_names_are_not_plan_markers() -> None:
         assert find_hygiene_findings("src/metabrowser/example.js", expression) == []
 
 
-def test_generated_tbd_document_cache_is_not_scanned() -> None:
+def test_generated_tbd_content_is_not_scanned() -> None:
     tbd_docs = ROOT / ".tbd" / "docs"
+    tbd_workspaces = ROOT / ".tbd" / "workspaces"
+    text_files = _text_files()
 
-    assert all(not path.is_relative_to(tbd_docs) for path in _text_files())
+    assert all(not path.is_relative_to(tbd_docs) for path in text_files)
+    assert all(not path.is_relative_to(tbd_workspaces) for path in text_files)
 
 
 def test_project_markdown_requires_common_document_footer() -> None:
@@ -167,7 +170,7 @@ def test_claude_hook_commands_anchor_to_project_root() -> None:
 def test_agent_tbd_skills_use_repository_version_pin() -> None:
     for relative in (".agents/skills/tbd/SKILL.md", ".claude/skills/tbd/SKILL.md"):
         text = (ROOT / relative).read_text(encoding="utf-8")
-        assert "get-tbd@0.4.2" in text
+        assert "get-tbd@0.7.0" in text
         assert "@latest" not in text
 
 

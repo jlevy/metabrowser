@@ -152,28 +152,32 @@ Defaults chosen to unblock implementation; each is cheap to change during review
    durable user preferences nor part of a file’s address.
    Within the page, active state is never invisible — the badge and Clear are always
    present when anything is set.
-9. **Type filtering is by literal extension, offered from what the tree contains.** The
-   menu lists real extensions (`.md`, `.py`, `.ts`) rather than abstract `ft-*`
-   families, ranked by frequency, capped at 20, each row carrying its tally.
+9. **Type filtering uses a semantic hierarchy without losing literal extensions.** The
+   menu leads with Docs/Code/Data categories, then the semantic families present in the
+   index, then real canonical and raw extensions (`.md`, `.py`, `.ts`). Exact-extension
+   rows are ranked by frequency, capped at 20, and carry their tally.
    Tallies come from one server index pass (`InventoryIndex.navigation_tallies`, carried
    on `/api/tree`), not from the Quick File catalog: that catalog drops gitignored
    entries by design, so a menu built from it undercounts every type the tree still
    shows while gitignored rows are visible.
    Tracked and ignored counts stay apart on the wire so the menu reports whichever total
    matches the current **Show ignored** setting, and re-ranks on the count it is
-   actually showing. Each row carries the file-type *icon* the tree shows, tinted by its
-   `ft-*` subtype; the label stays plain text.
+   actually showing. Exact extension rows carry the file-type *icon* the tree shows,
+   tinted by its `ft-*` subtype; aggregate category and family rows stay text-only.
    Tinting eight row labels made the hue compete with the check mark rather than help
    anyone scan, and the icon is what identifies a type everywhere else in the app.
-   The menu leads with **Docs / Code / Data** presets, each a shorthand for its full
-   token set and carrying the tally for that aggregate.
-   Preset entries follow one convention — a leading dot is an extension, anything else a
-   whole filename — which is what lets Docs reach `README` and `LICENSE`, files that
-   carry no extension and would otherwise be unfilterable.
+   Category and family entries are additive shorthands for their canonical suffixes.
+   A known suffix such as `.js` also matches declared bounded compound tails such as
+   `.min.js`; unknown raw extensions remain exact.
+   Category-only entries follow the original convention — a leading dot is an extension,
+   anything else a whole filename — which is what lets Docs reach `README` and
+   `LICENSE`, files that carry no extension and would otherwise be unfilterable.
    These are a separate vocabulary from `FILE_TYPES`: that list answers “what icon and
    hue does this one file get”, which is why `.json` sits with the YAML family there,
    while these answer “which broad kind of work is this”, where `.json` belongs with
-   data.
+   data. See the
+   [semantic file type family plan](../done/plan-2026-08-13-semantic-file-type-families.md)
+   for catalog ownership and matching rules.
 10. **Size is a cumulative floor, not a band.**
     `Any / >100K / >1M / >10M / >100M / >1G`. “What is over 10M in here” is the question
     people ask; bands make you guess which one a file landed in.
@@ -521,6 +525,15 @@ Tracked as beads under epic `mb-pcih`:
   an earlier progress request observed completion before the slower response painted
 - [ ] `mb-katw` — optionally mirror extension and size upstream, for directories large
   enough that a client-side answer is incomplete rather than merely slow
+
+### Phase 9: Semantic Type Hierarchy
+
+The semantic file type family implementation generalizes the preset portion of the
+chooser into ordered sections and adds server tallies for known families and canonical
+extensions. A family selection adds all of its declared canonical suffixes, removing a
+child clears the parent state, and the trigger uses the family label when the selection
+exactly matches that parent.
+The raw-extension cap and all existing keyboard and menu semantics remain unchanged.
 
 ## Testing Strategy
 

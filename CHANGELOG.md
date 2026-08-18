@@ -4,6 +4,325 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Folder views:
+
+- The README embedded in a folder’s Overview is now main content: its card fills the
+  same column as every other panel, with the same left and right edges.
+  Three things had pushed it off that column — the panel body was the one body no width
+  rule sized, KPress’s article frame reserved space per side for a table-of-contents
+  control the Overview turns off, and the wide column was built as the text measure plus
+  a gutter per side, so the card floated inside a column the other panels filled.
+  The padding between the card’s border and its text is unchanged, and still varies with
+  width exactly as it does when the same README is opened as a file.
+
+## 0.5.0
+
+Document navigation and URL scheme:
+
+- Every selected file and folder now has a canonical, reloadable `/view/<path>` URL. A
+  URL fragment identifies a location inside the selected document and never the file
+  itself, so headings, browser history, new tabs, and copy-link all work from a real
+  `href`. The previous `/#<file-path>` hash route is gone; it is not read, rewritten, or
+  redirected.
+
+- The bare origin `/` now redirects to `/view/`, and both the CLI startup banner and the
+  header **Jump to root** link emit that canonical route.
+  Previously the origin was a second spelling of the served root that rendered an empty
+  preview pane.
+
+- Standard Markdown links resolve exactly as they do on GitHub, from any nesting depth:
+  relative, `./`, `../`, and leading-slash targets, reference-style links, sanitized raw
+  HTML anchors, folders, queries, fragments, spaces, Unicode, and literal percent signs.
+  Embedded images, audio, and video route through the bounded `/raw` endpoint.
+  Missing targets keep an exact URL and fall through to the ordinary not-found state
+  rather than being guessed at by basename.
+
+- Obsidian wiki links work without configuration: `[[Note]]`, `[[Folder/Note]]`,
+  `[[Note|Label]]`, heading and `#^block` targets, attachments, and media embeds, plus
+  bounded whole-note, heading, and block transclusion.
+  Ambiguous and missing notes stay visible and keyboard reachable instead of resolving
+  by catalog order.
+
+- A link written as an absolute GitHub URL now opens locally when repository identity
+  proves it names the working tree currently being served: the origin remote, the
+  checked out branch or the exact revision, and the served subdirectory must all match.
+  Anything else — another repository, another branch, a stale revision, a
+  non-`blob`/`tree` URL — stays an ordinary outbound link.
+
+- In a repository that carries an MkDocs, Docusaurus, or Jekyll config at its root, a
+  root-relative link written as a published-site route — `/guide/`, `/docs/setup` — now
+  falls back to the source document behind it once exact lookup fails.
+  A route that resolves exactly, or a repository with no such config, keeps ordinary
+  Markdown behavior.
+
+- Plugins gain `window.metabrowser.fileCatalog` (`snapshot`, `subscribe`),
+  `window.metabrowser.repository` (verified GitHub identity for the served tree, or
+  `null`), and the bounded source readers `fetchText` and `fetchCompleteText`.
+  `mb.builtins.markdown.analyzeGraph()` returns a bounded immutable snapshot of Markdown
+  nodes, resolved edges, unresolved destinations, backlinks, and diagnostics.
+
+- Query strings on `/view/` URLs are carried verbatim and never interpreted, so a query
+  an author wrote survives resolution unchanged.
+  Metabrowser now reserves query keys beginning with `_mb_` for future presentation
+  parameters such as a pinned view or line range; every other key belongs to the
+  document. Plugin authors should not introduce `_mb_` keys of their own.
+  See the browser URL grammar in `docs/architecture.md`.
+
+Keyboard discovery and navigation:
+
+- Press `?` or use the visible Help control to open a concise product description, the
+  project link, and the complete shortcut list, all generated from the same binding
+  registry that dispatches commands.
+- The navigation footer keeps Help and Quick File hints visible above indexing progress.
+  The strip names one preferred key per command and stops there — `? Help` and
+  `T Quick File`. Tree arrows are the first thing anyone tries unprompted, so they stay
+  in Help rather than spending a permanent line; `/` still opens Quick File and is still
+  documented there.
+- Jump-to-edge in the tree is now `Shift`+`↑` and `Shift`+`↓` as well as Home and End,
+  which a Mac laptop keyboard does not have.
+- The GitHub link in Help uses the accent color every other link uses, instead of the
+  browser’s default blue.
+- Every file-tree row is now reachable and operable from the keyboard.
+  The tree carries the conventional ARIA roving-focus model — one tab stop,
+  `aria-level`, `aria-posinset`, `aria-setsize`, and disclosure state — and focus
+  survives filtering, live updates, lazy subtree loads, and pagination.
+  The preview pane keeps native browser scrolling, so arrow, Page Up, Page Down, Home,
+  End, and Space still scroll there.
+- An expanded folder no longer flickers shut when navigation reaches something inside
+  it. Revealing a path treated a folder as unloaded whenever any descendant still carried
+  a lazy stub, so it refetched a folder whose rows were already on screen and swapped
+  them for a loading placeholder before restoring them.
+  The check now looks only at the folder’s own direct children.
+- Selection follows focus in the tree: arrows, `Shift`+arrows, Home, and End open the
+  row they land on, so skimming costs one keypress per row rather than two.
+  Enter and Space are action keys rather than view keys — they expand or collapse a
+  folder, or mount a deferred page, and no longer open a file.
+  Skimming replaces the route instead of pushing it, so Back returns to wherever the
+  reader entered the tree rather than replaying every row they passed.
+  Clicking is unchanged: a pointer gets one gesture per row, so a click still opens and
+  toggles together.
+- Live inventory events now refresh deferred tree pages without mounting their rows
+  early, so activating a pagination row cannot duplicate files and removals cannot
+  resurrect a stale deferred entry.
+  Type replacement also discards deferred pages owned by the removed subtree.
+- Recursive folder expansion and collapse each batch tree synchronization once after the
+  full operation instead of re-walking the visible tree for every descendant, and live
+  inventory bursts coalesce into one pass instead of one per event.
+- Help and Quick File now share the same modal, key-presentation, focus-restoration, and
+  dismissal primitives for consistent pointer and keyboard behavior.
+- Quick File result movement now wraps at both ends, and Home and End keep their normal
+  meaning in the query box.
+
+Plugin SDK:
+
+- **Breaking:** `PLUGIN_SDK_VERSION` is now `0.2`. Plugins navigate through the
+  documented `window.metabrowser.navigation` namespace (`href`, `open`, `current`),
+  which replaces `metabrowser.openPath` and the `metabrowser:open-path` event; both are
+  removed with no shim.
+  An external plugin must update its call sites and set `sdk_version = "0.2"`. A
+  manifest left at `0.1` — or one that omits `sdk_version`, which resolves to `0.1` — is
+  now refused at load time with a message naming the required version, and
+  `metab --doctor` reports it before it reaches a user.
+
+- `fetchPluginData` accepts `options.signal` and rejects a non-ok response with an
+  `Error` carrying `status` and the parsed `payload`, matching `fetchKpressRender`. A
+  data hook can now explain a refusal in its body and have the caller read it.
+
+Speed and loading states:
+
+- Expandable folders are prefetched while the browser is idle, so opening one in the
+  navigation tree renders instantly instead of fetching its contents on the click.
+  An expansion that lands on a prefetch already in flight joins it rather than issuing a
+  second request.
+- Nothing announces loading inside the quiet period before a placeholder appears, at
+  every grain rather than only for view- and panel-level placeholders.
+  Lazy subtree placeholders no longer flash a spinner on expansions that resolve in a
+  few milliseconds, and the window widens from 30ms to 50ms.
+- Spinners no longer carry a redundant visible label such as **Loading folder…**; the
+  label is now screen-reader-only.
+  States a spinner cannot express on its own, such as a scan still running, keep their
+  visible copy.
+
+Documents:
+
+- The README embedded in a folder’s Overview no longer renders its own table of
+  contents. The panel stack around it is already the reader’s way through the folder, so
+  a second navigation inside the embed competed with it.
+  Opening the same README as a file is unchanged.
+- Markdown documents need to be both sectioned and long before they get a table of
+  contents, rather than sectioned alone, so a short note with a few headings no longer
+  gets a sidebar listing sections already on screen (KPress 0.3.3).
+
+Folder views:
+
+- Treemap’s file tally is segmented by file type with the same structure, colors, and
+  tooltips as the identical tally on Overview, instead of one flat neutral bar.
+- Overview opens File Breakdown by default, alongside Files.
+- A collapsed Overview section drops its rule and most of its trailing space, so a
+  closed section no longer reads as an empty one.
+  Expanded sections are unchanged.
+- Hovering a distribution bar segment now visibly shifts the segment.
+  The shared data-mark hover moves in the direction that gains contrast in each theme
+  rather than brightening in both, which on the light palette was as likely to lose
+  contrast as gain it.
+
+Binary and source previews:
+
+- Files classified `binary` now open in a new built-in **Bytes** view instead of showing
+  “No preview is available”.
+  Each byte renders as exactly one display unit: printable ASCII as itself, and every
+  other byte as uppercase hex in guillemets such as `‹00›` or `‹FF›`. Nothing is
+  decoded, so the bytes on screen are the bytes on disk.
+  Literal text takes the full-strength text color and byte codes recede to the muted
+  one; on content where the two alternate too often to mark apart, the view drops the
+  distinction for the whole file and says so.
+- Large previews load in far fewer steps.
+  The source view opens at 2 MiB and doubles per click to 8 MiB, so a 4 MiB file opens
+  in one click rather than 31 and a 16 MiB file in three rather than 127. Both views
+  append each chunk instead of rebuilding the pane, so a click costs what it loaded
+  rather than the running total.
+- Loaded bytes stay real text in the DOM, so browser find-in-page, select-all, and print
+  continue to cover everything loaded.
+- Partially-loaded content now offers **Load more at both ends**, above and below what
+  has loaded, and the notice carries the button itself rather than naming a control
+  elsewhere. Reaching the end of a chunk no longer means scrolling back to the top to
+  continue. Both appear and retire together.
+- Binary files larger than the preview ceiling now open and load up to it, instead of
+  refusing with “Preview unavailable”.
+  The ceiling caps how much may be loaded, not which files may be opened; at the cap the
+  notice says the limit was reached rather than silently looking like a finished file.
+- Progress is stated once.
+  Both views carried a second readout in their pane chrome saying the same thing as the
+  notice directly below it.
+- Message boxes are now one primitive.
+  A **notice** — anything the app says about the content it is showing — always uses the
+  ordinary surface as its fill, and carries its severity on the border alone.
+  The KPress render error previously wore an informational blue fill under a warning
+  border, so an error announced itself in the color of an aside beneath a border naming
+  the wrong severity; it is now a plain surface with an error border.
+- Every partial-content notice is now one style, in the source view and the Bytes view
+  alike: the ordinary surface fill with a warning border, rather than an informational
+  blue that meant something else elsewhere.
+  The rule is documented in the design system and enforced by a test.
+
+File typing:
+
+- Files with no known text extension are classified by **looking at their content**
+  rather than guessing from size.
+  A small binary previously fell under a 512 KiB rule that read it as text with
+  `errors="replace"`, so it rendered as a field of `�` and could never reach the Bytes
+  view; a large extensionless text file was refused for the opposite reason.
+  Both now resolve correctly, and a compressed artifact is judged by its decompressed
+  content. The check is a single bounded read that runs only when the extension does not
+  settle the question, so it stays off the path for almost every file.
+
+## 0.4.2
+
+Release automation:
+
+- Post-publication smoke retries now refresh the package index on every attempt, so an
+  initial negative lookup cannot remain cached while a new PyPI release propagates.
+
+## 0.4.1
+
+Folder views and navigation:
+
+- Folder Overview now paints separate nonignored Files and Ignored totals immediately,
+  with full-width composition bars segmented by semantic file family.
+  The bars reuse the File Breakdown palette and navigation tooltip, including exact file
+  and byte values, without another crawl or rollup request.
+- Files, File Breakdown, and Treemap share one Files or Bytes choice.
+  File Breakdown and Treemap also share the labelled Show ignored control.
+  Detailed views wait for a complete rollup instead of briefly rendering partial or
+  zero-valued data.
+- File Breakdown sorts each section by the selected metric and bounds repeated rows to
+  ten plus an exact, expandable **N more** row.
+  Files opens by default; the complete breakdown starts collapsed.
+- Treemap adds parent-folder navigation, full-cell pointer targets, consistent semantic
+  colors and hover feedback, and removes redundant headings and footer status text.
+- Overview sections align with the visible README card, including the responsive narrow
+  layout. Recommended File-Type Registry revision 2 moves Log files under Other while
+  retaining `.log`, `.jsonl`, and `.ndjson` membership and removes the misleading broad
+  Other filter preset.
+- File ages use centralized light and dark OKLCH tokens.
+  Live and under-one-minute entries share one bold orange treatment, newer files remain
+  vivid yellow, and age is conveyed by the text itself rather than an adjacent dot.
+
+Plugin compatibility and maintenance:
+
+- Plugin SDK versions are enforced at discovery and by `metab --doctor`, so a manifest
+  targeting a different SDK fails with an actionable message instead of breaking inside
+  a renderer. Existing Metabrowser 0.4.0 manifests that omit `sdk_version` remain
+  compatible by targeting the original SDK `0.1`; omission does not follow future host
+  versions.
+- Removed unused file-rollup compatibility fields and aliases.
+  Consume `file_type_breakdown`, `remaining_top`, `mb.fileTypes.groups`, and
+  `groupForFile`. The old `type_tallies`, `type_top`, duplicate limit settings, taxonomy
+  projection, `categories`, and `categoryForFile` surfaces had no known consumer.
+- Removed unreleased treemap-preference migration code, an unreachable theme
+  localStorage fallback, and an unused legacy treemap state sanitizer.
+- Development guidance now requires a named consumer before adding an alias, fallback,
+  shim, deprecation window, or duplicate transitional field.
+  Repository-specific rules link to the shared compatibility guidance and replace
+  drifting prose baselines with their real checks and tracked work.
+
+## 0.4.0
+
+Folder Overview and Treemap:
+
+- Every directory now opens with an extensible Overview whose always-present Files
+  summary appears above a rendered README when the folder contains one.
+  Files and README share responsive alignment and independently collapsible section
+  headings, while the README retains the ordinary Markdown document surface.
+- The Files summary compares exact file counts and byte totals with percentages and
+  independently normalized bars.
+  A leading Total row and conditional Ignored row make the selected population explicit,
+  including deliberate empty, pending, partial, incompatible, and unavailable states.
+- Treemap is now a peer folder view with Bytes and Files sizing, a Show ignored
+  checkbox, adaptive labels, and hierarchy-preserving hover.
+  File icons and colors match Overview and navigation, folder labels end in `/`, and
+  folder navigation keeps the Treemap active.
+
+File types and folder summaries:
+
+- One versioned File-Type Registry now drives folder Overview, navigation filters,
+  Treemap colors, and the public browser SDK. Common extensions roll up into readable
+  semantic families under Code, Documentation, Data, Logs, Archives, Media, and Other;
+  singleton families remain expandable to their exact extension.
+- The Files summary now explains extensionless and unknown populations.
+  No extension expands to exact basenames and Other types expands to raw logical
+  extensions; each list is capped at 20 and conserves omitted files and bytes in an
+  exact Others row.
+- Logical extensions are ASCII-case-insensitive, treat bare dotfiles as extensionless,
+  and retain at most two trailing components.
+  This keeps `.js.map` and `.tar.gz` useful without fragmenting reports into names such
+  as `.umd.min.js.map`. This intentionally merges uppercase suffixes into their
+  lowercase identities: `README.MD` joins `.md`, `photo.PNG` joins `.png`, and `.C`
+  joins `.c` rather than retaining a case-distinct language bucket.
+- Log files include `.log`, `.jsonl`, and `.ndjson`; archives and common image, video,
+  audio, and font formats gain explicit families.
+  JSON Lines retains its data-analysis identity and SVG retains its markup identity
+  while using those display families.
+- Registry, Breakdown v1, JSON Schemas, conformance cases, and a checked export tool now
+  form a self-contained compatibility packet that `fdu` can adopt without a sibling
+  checkout or network access.
+  Packet export prunes stale destination content, verifies exact manifest membership and
+  hashes before returning, and supports an independent `--verify` mode.
+
+Navigation, plugins, and reliability:
+
+- The file-type chooser uses the same registry-backed hierarchy as Overview: broad
+  groups, semantic families, and exact canonical or raw extensions can be selected
+  independently, with parent choices selecting their children.
+- The public browser SDK adds immutable file-type definitions, bounded folder-rollup
+  helpers, folder context, view-aware navigation, shared formatters and file identity,
+  active-view state, and an extensible folder-panel registry.
+- Folder rollups run off the event loop and reuse the inventory snapshot instead of
+  crawling the filesystem again.
+  Rapidly rebuilt directories are reconciled against the current filesystem so stale
+  watcher deletes cannot leave an Overview blank, and brief local navigation no longer
+  flashes loading chrome.
+
 ## 0.3.0
 
 Filtering and file navigation:

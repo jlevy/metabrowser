@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -10,7 +11,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GIT_CHECK_IGNORE_TIMEOUT_SECONDS = 30
 SKIP_PARTS = {".git", ".venv", "dist", "node_modules", "__pycache__"}
-SKIP_ROOTS = (ROOT / ".tbd" / "docs",)
+SKIP_ROOTS = (
+    ROOT / ".tbd" / "docs",
+    # Machine-generated issue exports used by tbd sync-failure recovery.
+    ROOT / ".tbd" / "workspaces",
+)
 COMMON_DOC_FOOTER = "This document follows common-doc-guidelines.md."
 COMMON_DOC_EXEMPT_ROOTS = (
     ROOT / ".agents" / "skills",
@@ -41,6 +46,15 @@ TOKEN_PATTERN = re.compile(r"[a-z][a-z0-9_-]*", re.IGNORECASE)
 ISSUE_ID_PATTERN = re.compile(r"\b([a-z][a-z0-9]{1,15})-[a-z0-9]{4,}\b", re.IGNORECASE)
 PRIVATE_ISSUE_PREFIX_HASHES = frozenset(
     {"0035e3bed3a10ebe81bc85bbf80cc092871ba344926efa491f195e36cc7e003b"}
+)
+GIT_LOCAL_ENV_FALLBACK = frozenset(
+    {
+        "GIT_COMMON_DIR",
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_PREFIX",
+        "GIT_WORK_TREE",
+    }
 )
 BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -97,6 +111,21 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
         return set()
     stdin = "".join(f"{path.relative_to(ROOT)}\0" for path in paths)
     try:
+        env = os.environ.copy()
+        local_env_result = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_CHECK_IGNORE_TIMEOUT_SECONDS,
+            check=False,
+        )
+        local_env_names = (
+            local_env_result.stdout.splitlines()
+            if local_env_result.returncode == 0
+            else GIT_LOCAL_ENV_FALLBACK
+        )
+        for name in local_env_names:
+            env.pop(name, None)
         result = subprocess.run(
             ["git", "-C", str(ROOT), "check-ignore", "--stdin", "-z"],
             input=stdin,
@@ -104,6 +133,7 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
             text=True,
             timeout=GIT_CHECK_IGNORE_TIMEOUT_SECONDS,
             check=False,
+            env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return set()

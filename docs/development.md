@@ -94,6 +94,61 @@ rendering, and the in-process navigation API check.
 The installed wheel must also pass `metab --doctor`, so the release gate validates the
 user-facing plugin diagnostics rather than only importing plugin internals.
 
+## File Rollup Format Maintenance
+
+The [File Rollup Format](project/architecture/file-rollup-format/file-rollup-format.md)
+defines the application-independent classification and aggregation contract.
+Its
+[recommended file-type definitions](project/architecture/file-rollup-format/recommended-file-types.toml)
+are a generated documentation copy of the packaged source at
+`src/metabrowser/data/file-rollup-format/recommended-file-types.toml`. Edit the packaged
+TOML source, not the documentation copy.
+
+For a definitions-only change, increment `registry_revision` in the packaged TOML. Use
+the version boundaries in the format’s Evolution section when a change affects the
+registry structure, a serialized component, or the overall rollup semantics.
+Stable IDs are compatibility keys and must not be reassigned to a different meaning.
+
+Regenerate the documentation copy, projected registry, conformance corpus, and empty
+example after changing the definitions or their reference behavior:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py --write
+```
+
+Review every generated diff, then run the checker without a mode to prove that all
+checked artifacts match the source and validate against their JSON Schemas:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py
+uv --config-file uv.toml run --frozen pytest \
+  tests/test_file_type_contract.py \
+  tests/test_file_type_registry.py \
+  tests/test_file_type_taxonomy_js.py
+make verify
+```
+
+To hand the format to another implementation, export a self-contained packet into an
+explicit destination and record the reviewed source revision:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
+  --export /explicit/destination/file-rollup-format \
+  --source-revision SOURCE_GIT_REVISION
+
+uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
+  --verify /explicit/destination/file-rollup-format
+```
+
+Export replaces stale packet contents and immediately verifies the result.
+The manifest pins the source revision, registry schema and data revisions, normalized
+registry fingerprint, exact file list, and SHA-256 digest of every artifact.
+Verification rejects unsafe paths, symbolic links, missing or extra content, duplicate
+entries, and hash mismatches.
+The packet has no network, sibling-repository, or package-import dependency; its format
+document, recommended definitions, schemas, conformance cases, and empty example are the
+complete adoption boundary.
+
 ## Dependencies
 
 Read [supply-chain security](../SUPPLY-CHAIN-SECURITY.md) before adding or upgrading a
@@ -146,6 +201,80 @@ The root-level `--kpress-host-font-size-base` hook anchors KPress’s derived ty
 Metabrowser’s document scale, while scoped public size tokens express deliberate mono,
 secondary-text, and label divergences.
 
+## Compatibility and Legacy Code
+
+`tbd guidelines backward-compatibility-rules` owns the general rules: the deciding
+question, what does not count as a consumer, why versioning is not backward
+compatibility, and why an unreachable compatibility layer is worse than unused code.
+Read it rather than the summary that used to live here.
+This section records only what that guideline cannot know — the facts about this
+repository, and the standing answers it asks each project to record once.
+
+**Speculative compatibility layers are forbidden.** The deciding question is whether a
+real consumer cannot update alongside the producer, or whether a released version wrote
+data that needs migrating.
+For almost everything here, none does, and the reason is structural rather than
+stylistic.
+
+Metabrowser ships the server, the browser shell, and the built-in plugins as one
+artifact from one repository.
+The page is served uncached and every asset URL carries a content-derived version, so a
+browser cannot hold an old `app.js` against a new `/api/rollup`. Settings are inlined
+into that same page, so the browser’s file-type definitions and the server’s are always
+the same object from the same process.
+There is no window in which the two halves disagree, so code written to survive that
+window is dead on arrival.
+
+`/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the plugin manifest, and
+the built-in plugin interfaces are therefore internal contracts.
+Change one everywhere in one commit, and record it in `CHANGELOG.md` when the change is
+observable to someone using Metabrowser or writing a plugin.
+
+**The one genuinely external artifact** is an exported File Rollup Format packet, which
+leaves the repository for another implementation.
+It carries a schema version, registry revision, and fingerprint so a consumer that sees
+an unfamiliar identity refuses the payload rather than guessing.
+Follow the format’s Evolution section when that identity changes, and do not add a
+second reader for the previous one.
+
+**Plugins are upgraded, not accommodated.** `PLUGIN_SDK_VERSION` in
+`plugin_loader/manifest.py` is the contract the host provides; a manifest declaring
+anything else is refused at load time with a message naming the required version, and
+`metab --doctor` reports it.
+Bare manifests accepted by Metabrowser 0.4.0 resolve to the original SDK `0.1`, a pinned
+meaning backed by known installed plugins; omission never follows the moving host
+version.
+Bump that constant only when the contract actually breaks, update every built-in
+manifest in the same commit, and note the break in `CHANGELOG.md`. An external plugin
+updates and declares the new version; the host ships no shim for the older surface.
+
+**The user’s own data is not a compatibility layer.** Never require a rewrite of the
+served tree — those files belong to the user.
+Read persisted browser state defensively, falling back to the default when a stored
+value is absent or unusable, and carry a migration only for a key some released version
+actually wrote, which today means none.
+
+### Standing Compatibility Answers
+
+These are this repository’s answers to the template in
+`tbd guidelines backward-compatibility-rules`, recorded once so no change has to ask
+again:
+
+| Area | Standing answer | Why |
+| --- | --- | --- |
+| Internal code | DO NOT MAINTAIN | One repository, one artifact |
+| Library APIs | DO NOT MAINTAIN | `window.metabrowser` ships with the shell that uses it |
+| Server APIs | DO NOT MAINTAIN | `/api/*` is consumed only by the co-shipped client |
+| Plugin and extension APIs | UPGRADE + GATE | `PLUGIN_SDK_VERSION` refuses a mismatch at load |
+| File formats | VERSION + FAIL FAST | Exported packets carry an identity; one reader |
+| Persisted client state | DO NOT MAINTAIN | No released version wrote a key needing migration |
+| Database schemas | N/A | Metabrowser has none |
+
+Raise it with the maintainers if a change needs a different answer; do not assume a
+stricter one and build the layer anyway.
+Revisit the table when the deciding question’s answer changes — a first external plugin
+author, a published format, a client that starts shipping separately.
+
 ## Python
 
 - Support the Python range declared in `pyproject.toml`.
@@ -158,12 +287,11 @@ secondary-text, and label divergences.
 
 Run Ruff and BasedPyright through `make lint-check` before handoff.
 BasedPyright runs in strict mode globally.
-Its remaining compatibility exceptions are scoped separately to `src` and `tests`;
-`devtools` receives the unmodified strict floor.
-The 2026-07-16 ratchet baseline is 121 suppressed source diagnostics at dynamic plugin
-and cross-module compatibility boundaries and 362 at pytest fixture and monkeypatch
-boundaries. Reduce those counts and remove an exception category when it reaches zero.
-Never add a broad global suppression.
+Its remaining exceptions are the `executionEnvironments` entries in `pyproject.toml`,
+scoped separately to `src` and `tests`; `devtools` receives the unmodified strict floor.
+Each entry names the diagnostics it suppresses, so `pyproject.toml` is the current
+statement of that debt.
+Narrow an entry when a category reaches zero, and never add a broad global suppression.
 
 ## Browser Code
 
@@ -186,20 +314,16 @@ not combine an unrelated rewrite with a release fix.
 modules automatically.
 `tsconfig.legacy.json` is an explicit allowlist of older modules that still permit
 implicit `any` while retaining strict null and other strict checks.
-The 2026-07-16 baseline is 10 files, 7,124 JavaScript lines, and 532 diagnostics when
-the allowlist is checked with `noImplicitAny` enabled.
-`text/index.js` has graduated to the strict project; move each additional file as its
-JSDoc contracts become complete.
-No new file may enter the legacy configuration as an ordinary implementation shortcut.
-An exceptional addition requires a documented architecture reason and an explicit
-follow-up; otherwise the allowlist only shrinks as JSDoc contracts become complete.
+Its `files` array is the allowlist; read it there rather than from a count in prose.
+No new file may enter it as an ordinary implementation shortcut, and a file leaves it
+once its JSDoc contracts are complete.
+To see the work remaining for a file, run
+`npx --no-install tsc --noEmit -p tsconfig.legacy.json --noImplicitAny`.
 
 Biome checks every shipped browser module, including the legacy application shell, with
 the recommended rule set.
-Its compatibility overrides are file-scoped: 244 legacy inner declarations across
-`app.js`, `charts.js`, `perf.js`, `structured/preview.js`, and `structured/tree.js`,
-plus 24 descending-specificity findings in `styles.css` at the 2026-07-16 baseline.
-Shrink each override list as those files become clean.
+Its overrides are file-scoped and listed in `biome.json`. Shrink each override list as
+those files become clean.
 Globals invoked from generated HTML retain their public names through narrow inline
 suppressions because those call sites are not visible to static analysis.
 All Biome and TypeScript commands run from `package-lock.json` with `npx --no-install`,
@@ -224,10 +348,38 @@ the code must follow, extract them into a plan under `specs/active/` instead of 
 the brief as the contract.
 The public-hygiene gate rejects references to the private guidance tree and other
 non-public residue; see `devtools/public_hygiene.py` for the enforced rules.
+`make lint-check` runs it on every change, so a release needs no separate pass.
+Run it directly only when changing repository visibility, which the ordinary gate never
+sees:
+
+```shell
+uv --config-file uv.toml run --frozen python devtools/public_hygiene.py
+```
 
 Keep documentation public-safe.
 Do not include private repository names, internal issue identifiers, personal absolute
 paths, credentials, customer data, or copied operational files.
+
+### Changing This Guidance
+
+This document and `AGENTS.md` constrain everyone who works here, so a rule has to earn
+its place the same way code does.
+
+- State the reason with the rule.
+  A reader who cannot reconstruct why a rule exists cannot tell when it stops applying,
+  and will either cargo-cult it or quietly ignore it.
+- Prefer a check over a sentence.
+  Anything a linter, type checker, test, or Make target can enforce belongs there
+  instead; guidance that restates what `make verify` already enforces only adds a second
+  place to drift.
+- Do not put numbers in prose that nothing maintains.
+  Hand-typed counts and baselines rot silently and then mislead — cite the file or the
+  command that reports the current value.
+- Delete a rule whose reason no longer holds.
+  Guidance is not append-only, and a stale restriction costs more than the absent rule
+  would.
+
+Challenging an existing rule from first principles is ordinary work, not an overstep.
 
 ## Issue Tracking
 

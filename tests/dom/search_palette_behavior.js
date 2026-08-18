@@ -60,10 +60,13 @@ class FakeElement {
     this.listeners = new Map();
     this.className = "";
     this.classList = new FakeClassList(this);
+    this.disabled = false;
     this.hidden = false;
     this.id = "";
     this.innerHTML = "";
+    this.inert = false;
     this.isContentEditable = false;
+    this.tabIndex = this.tagName === "BUTTON" || this.tagName === "INPUT" ? 0 : -1;
     this.value = "";
     this._textContent = "";
     this.focusCalls = 0;
@@ -132,10 +135,17 @@ class FakeElement {
 
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
+    if (name === "tabindex") {
+      this.tabIndex = Number(value);
+    }
   }
 
   getAttribute(name) {
     return this.attributes.has(name) ? this.attributes.get(name) : null;
+  }
+
+  hasAttribute(name) {
+    return this.attributes.has(name);
   }
 
   removeAttribute(name) {
@@ -161,6 +171,11 @@ class FakeElement {
       event.target = this;
     }
     event.currentTarget = this;
+    if (event.type === "keydown") {
+      for (const listener of this.ownerDocument.listeners.get("keydown") || []) {
+        listener(event);
+      }
+    }
     for (const listener of this.listeners.get(event.type) || []) {
       listener(event);
     }
@@ -301,11 +316,13 @@ const sandbox = { clearTimeout, document, setTimeout };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(
-  fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/search_palette.js"), "utf-8"),
-  sandbox,
-  { filename: "search_palette.js" },
-);
+for (const filename of ["keyboard_shortcuts.js", "overlay_layer.js", "search_palette.js"]) {
+  vm.runInContext(
+    fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8"),
+    sandbox,
+    { filename },
+  );
+}
 
 const failures = [];
 function check(label, condition, detail = "") {
@@ -417,6 +434,7 @@ async function main() {
   const removedPaths = [];
   const destination = document.createElement("button");
   document.body.append(destination);
+  const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
   const palette = sandbox.MetabrowserSearchPalette.create({
     controller,
     document,
@@ -432,6 +450,7 @@ async function main() {
     },
     getFileIcon: () => ({ cls: "ft-code", svg: "<svg></svg>" }),
     maxRows: 3,
+    overlay: sandbox.MetabrowserOverlay,
     onNotFound(pathname) {
       removedPaths.push(pathname);
       availableResults = availableResults.filter((result) => result.path !== pathname);
@@ -446,6 +465,8 @@ async function main() {
       }
       return { focusTarget: destination, status: "opened" };
     },
+    resolveFocusFallback: () => initialFocus,
+    shortcuts,
   });
 
   const overlay = document.body.querySelector(".search-palette-overlay");
@@ -462,8 +483,14 @@ async function main() {
       listbox.getAttribute("role") === "listbox",
   );
   check("status is polite", status.getAttribute("aria-live") === "polite");
+  check(
+    "registry remains the only document keydown owner",
+    document.listeners.get("keydown").length === 1,
+  );
+  check("shared modal adds a visible Close control", dialog.querySelector(".modal-close") !== null);
 
   const hint = dialog.querySelector(".search-palette-hint");
+  palette.open();
   const hintKeys = hint ? hint.querySelectorAll("kbd") : [];
   check("hint renders every key through the kbd component", hintKeys.length === 4);
   check(
@@ -479,6 +506,7 @@ async function main() {
       .map((key) => key.textContent)
       .join(" "),
   );
+  palette.close(false);
 
   const editableTargets = ["input", "textarea", "select"].map((tag) => document.createElement(tag));
   const contentEditable = document.createElement("div");
@@ -600,21 +628,42 @@ async function main() {
     "asynchronous reordering preserves selection identity",
     input.getAttribute("aria-activedescendant") === preservedId,
   );
-  input.dispatchEvent(fakeEvent("keydown", { key: "End", target: input }));
+  input.dispatchEvent(fakeEvent("keydown", { key: "ArrowDown", target: input }));
   check(
-    "End activates the last mounted option",
+    "ArrowDown reaches the last mounted option",
     listbox.children[2].getAttribute("aria-selected") === "true",
   );
-  input.dispatchEvent(fakeEvent("keydown", { key: "Home", target: input }));
+  input.dispatchEvent(fakeEvent("keydown", { key: "ArrowDown", target: input }));
   check(
-    "Home activates the first option",
+    "ArrowDown wraps to the first option",
     listbox.children[0].getAttribute("aria-selected") === "true",
   );
-  const tabEvent = fakeEvent("keydown", { key: "Tab", target: input });
-  input.dispatchEvent(tabEvent);
+  input.dispatchEvent(fakeEvent("keydown", { key: "ArrowUp", target: input }));
   check(
-    "Tab stays within the one-control modal",
-    tabEvent.defaultPrevented && document.activeElement === input,
+    "ArrowUp wraps to the last option",
+    listbox.children[2].getAttribute("aria-selected") === "true",
+  );
+
+  // The query box is an editable combobox, so Home and End belong to its
+  // caret. Claiming them would take line-start and line-end away from the
+  // field, and the wrapping arrows already reach both ends of the list.
+  const endEvent = fakeEvent("keydown", { key: "End", target: input });
+  input.dispatchEvent(endEvent);
+  const homeEvent = fakeEvent("keydown", { key: "Home", target: input });
+  input.dispatchEvent(homeEvent);
+  check(
+    "Home and End stay with the query caret",
+    !endEvent.defaultPrevented &&
+      !homeEvent.defaultPrevented &&
+      listbox.children[2].getAttribute("aria-selected") === "true",
+  );
+
+  // Tab belongs to the shared modal focus trap (covered in
+  // overlay_layer_behavior.js). A palette-local handler would preventDefault
+  // before the trap ran and strand Shift+Tab on the query box.
+  check(
+    "the palette installs no keydown handler on the query box",
+    (input.listeners.get("keydown") || []).length === 0,
   );
 
   input.dispatchEvent(fakeEvent("keydown", { key: "Enter", target: input }));
@@ -883,6 +932,7 @@ async function main() {
   const focusCallsBefore = input.focusCalls;
   document.dispatchEvent(fakeEvent("keydown", { key: "/", target: initialFocus }));
   check("dispose removes the global shortcut", input.focusCalls === focusCallsBefore);
+  shortcuts.dispose();
 
   if (failures.length > 0) {
     process.stderr.write(`${failures.join("\n")}\n`);

@@ -266,10 +266,16 @@ sandbox.METABROWSER_SETTINGS = {
 };
 
 const openedPaths = [];
-sandbox.dispatchEvent = (event) => {
-  if (event.type === "metabrowser:open-path") {
-    openedPaths.push(event.detail.path);
-  }
+sandbox.dispatchEvent = () => {};
+// Navigation goes through the documented namespace. The panel used to dispatch
+// `metabrowser:open-path`, which the SDK 0.2 break removed with no shim.
+sandbox.MetabrowserNavigationRoute = {
+  navigation: {
+    open: (target) => {
+      openedPaths.push(target.path);
+      return Promise.resolve({ status: "opened" });
+    },
+  },
 };
 
 // Shell bridge stub. The panel only uses these three.

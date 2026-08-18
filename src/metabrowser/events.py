@@ -107,6 +107,8 @@ class FsEntry:
     # dir aggregates — None while the walker has not yet finalized
     total_files: int | None = None
     total_size: int | None = None
+    unignored_files: int | None = None
+    unignored_size: int | None = None
     newest_mtime_ns: int | None = None
     empty: bool | None = None
     gitignored: bool = False
@@ -128,7 +130,7 @@ class FsEntry:
         """Build a freshly-observed file entry.
 
         This is the single construction point for the walker and watcher,
-        ensuring both use the compound-tail extension heuristic in
+        ensuring both use the bounded compound-tail extension rule in
         :func:`metabrowser.fs_paths.derive_ext`.
 
         Carries forward ``active`` and ``labels`` from *existing* when
@@ -292,7 +294,7 @@ class FsChange:
 @dataclass(slots=True, frozen=True)
 class CatalogUpsert:
     """Minimal Quick File catalog entry: served-root-relative path
-    plus the logical compound-tail extension (``derive_ext``)."""
+    plus the bounded logical extension (``derive_ext``)."""
 
     p: str
     e: str

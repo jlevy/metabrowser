@@ -123,6 +123,14 @@ def test_route_timing_is_debug_diagnostic() -> None:
     assert records[0].levelno == logging.DEBUG
 
 
+def test_expensive_request_handlers_keep_timing_decorators() -> None:
+    for handler in (server.api_tree, server.api_rollup, server.api_file):
+        assert hasattr(handler, "__wrapped__"), handler.__name__
+
+    assert not hasattr(server._ensure_inventory_serving, "__wrapped__")
+    assert not hasattr(server._api_folder_envelope, "__wrapped__")
+
+
 def test_fast_gitignore_setup_does_not_emit_timing_at_info(tmp_path: Path) -> None:
     """The slow-call threshold must suppress sub-threshold helper timings."""
     loggers = (tree.LOG, logging.getLogger("funlog.funlog"))

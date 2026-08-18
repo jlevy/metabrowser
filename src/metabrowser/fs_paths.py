@@ -10,7 +10,7 @@ watching layer flagged divergence on both as silent-bug producers:
   ``_is_visible_segment`` (every segment). A watcher event on
   ``a/.hidden/b/file`` passed the walker's check inside
   ``rewalk_subtree`` because ``walk_tree`` filters per-name only.
-* The walker used :func:`derive_ext` (compound-tail heuristic for
+* The walker used :func:`derive_ext` (bounded compound-tail heuristic for
   ``.runbook.md`` / ``.tar.gz``); the watcher used a simple
   last-dot suffix. Downstream code matching on ``ext`` silently
   miscategorized files depending on which producer created the entry.
@@ -30,6 +30,10 @@ from metabrowser.constants import LOGS_DIR, STATE_DIR
 # constants) and the walker/watcher (which read this module) can never
 # disagree on the allowlist.
 _VISIBLE_HIDDEN = frozenset({LOGS_DIR, STATE_DIR})
+
+# Bounds aggregate and filter cardinality while retaining common compound
+# formats such as source maps, declaration files, and compressed artifacts.
+_MAX_LOGICAL_EXTENSION_COMPONENTS = 2
 
 
 def is_visible(name: str) -> bool:
@@ -58,31 +62,30 @@ def is_visible_segment(rel_path: str) -> bool:
 
 
 def derive_ext(name: str) -> str:
-    """The most-specific compound tail extension for *name*.
+    """Return the bounded compound-tail extension for *name*.
 
-    ``foo.runbook.md`` → ``.runbook.md``; ``archive.tar.gz`` →
-    ``.tar.gz``; ``myfile.with.dots.txt`` → ``.txt``. Matches the
-    search-spec semantics so suffix tallies (``InventoryIndex.suffixes``)
-    stay consistent across producers.
+    At most the final two eligible components are retained: ``archive.tar.gz``
+    becomes ``.tar.gz``, ``bundle.umd.min.js.map`` becomes ``.js.map``, and
+    ``types.d.ts.map`` becomes ``.ts.map``. This keeps suffix tallies stable
+    without losing common compound formats.
 
-    A multi-segment tail folds only when every segment is short and
-    lowercase — a heuristic that captures the real-world cases
-    (runbook/tar/schema/...) and avoids over-folding ordinary names
-    with embedded dots.
+    Components are ASCII-lowercased before validation. A leading dot belongs
+    to the basename, so ``.gitignore`` has no extension while
+    ``.eslintrc.json`` has ``.json``.
     """
 
-    if not name or name.startswith("."):
+    if not name:
         return ""
-    parts = name.split(".")
+    basename = name.replace("\\", "/").rsplit("/", maxsplit=1)[-1]
+    candidate = basename[1:] if basename.startswith(".") else basename
+    parts = candidate.split(".")
     if len(parts) <= 1:
         return ""
-    # A "tail segment" is short, lowercase, alphanumeric. Folds
-    # ``.runbook.md`` / ``.tar.gz`` / ``.html5`` but stops at the
-    # first segment that breaks the pattern.
     tail_parts: list[str] = []
-    for part in reversed(parts[1:]):
-        if 0 < len(part) <= 12 and part.islower() and part.isalnum():
-            tail_parts.append(part)
+    for part in reversed(parts[1:][-_MAX_LOGICAL_EXTENSION_COMPONENTS:]):
+        normalized = part.lower()
+        if 0 < len(normalized) <= 12 and normalized.isascii() and normalized.isalnum():
+            tail_parts.append(normalized)
         else:
             break
     if not tail_parts:

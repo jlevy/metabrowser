@@ -1,0 +1,47 @@
+{
+  "groups": [],
+  "metrics": {
+    "all": {
+      "bytes": 0,
+      "files": 0
+    },
+    "unignored": {
+      "bytes": 0,
+      "files": 0
+    }
+  },
+  "no_extension": {
+    "filenames": [],
+    "metrics": {
+      "all": {
+        "bytes": 0,
+        "files": 0
+      },
+      "unignored": {
+        "bytes": 0,
+        "files": 0
+      }
+    },
+    "others": null
+  },
+  "registry": {
+    "fingerprint": "a648f3f563eeaa7150a0b0b2fda310735b3a0662bd03cea84ab9424ad330900a",
+    "revision": 2,
+    "schema_version": 1
+  },
+  "remaining_types": {
+    "extensions": [],
+    "metrics": {
+      "all": {
+        "bytes": 0,
+        "files": 0
+      },
+      "unignored": {
+        "bytes": 0,
+        "files": 0
+      }
+    },
+    "others": null
+  },
+  "schema": "file-type-breakdown-v1"
+}

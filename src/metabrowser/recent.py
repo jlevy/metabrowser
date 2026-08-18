@@ -99,7 +99,7 @@ def collect_recent_entries(
     the Files tab. Response construction does not repeat that work
     per leaf or ancestor.
 
-    *ext_filter* is matched against the entry's compound-tail
+    *ext_filter* is matched against the entry's bounded compound-tail
     extension (``.runbook.md`` for ``foo.runbook.md``); empty
     tuple disables the filter.
 
@@ -182,7 +182,7 @@ def _file_entry_to_recent_dict(entry: FsEntry) -> dict[str, Any]:
         "type": "file",
         "size": entry.size,
         "mtime": entry.mtime_ns / 1_000_000_000.0 if entry.mtime_ns else 0.0,
-        # The compound-tail extension (".min.js", ".runbook.md"), which
+        # The bounded compound-tail extension (".min.js", ".runbook.md"), which
         # is the unit the nav's type filter and its tally both use. The
         # tree payload carries it too; without it here, rows from this
         # source could not be matched against a compound extension.

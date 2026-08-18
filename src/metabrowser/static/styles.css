@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────────
-   Design system — HSL color tokens + elevation tokens, no literals
+   Design system — semantic color tokens + elevation tokens, no literals
    outside :root.
 
    Every color AND every box-shadow in this app is defined ONCE as a
@@ -10,35 +10,40 @@
    tests/test_viz_css_no_literal_colors.py; the same rule applies by
    convention to the rest of the app.
 
-   Why HSL (hsl(H S% L%) / hsl(H S% L% / A))?
+   New and deliberately adjusted color families use OKLCH
+   (oklch(L% C H) / oklch(L% C H / A)). Existing HSL families stay
+   valid until their palette is deliberately adjusted; do not mass-convert a
+   stable palette merely to change syntax.
 
      1. Hue encodes *family*. Tokens that share a hue are meant to
         read as related. Example — adapter and model chips both sit
-        on ~sea-green (~160°); file-age grades walk a continuous
-        warm→cool→grey ramp (red→amber→green→blue→grey); chart
+        on ~sea-green; file-age grades keep every non-live age in a
+        yellow-to-neutral family while Live has one salmon state; chart
         threshold colors use the same info / warning / error hues
         as the status palette so dashboards and alerts speak the
         same language. To introduce a new token, pick the hue that
         places it in the right family first — do not pick a color
         that "looks nice" in isolation.
 
-     2. Lightness is the retune knob. To make a dark theme or a
-        higher-contrast variant, hold H and S roughly fixed and
+     2. Lightness is the contrast knob. To make a dark theme or a
+        higher-contrast variant, hold H and chroma roughly fixed and
         invert/shift L. A pair like "--viz-chip-adapter-bg" /
         "--viz-chip-adapter-text" is two lightness stops on one
         hue — so bg and text retune together when either is
-        adjusted. Never shift hue to dim a color; lower L.
+        adjusted. Never shift hue to dim a color; move L toward the
+        surrounding surface.
 
-     3. Saturation is the loudness knob. Chart callouts, age
-        warnings, and status dots are higher S; body text, borders,
-        and surfaces are low S. If a new token reads as too noisy,
-        drop S before dropping L.
+     3. Chroma is the loudness knob. Chart callouts, fresh-age
+        text, and status dots are higher C; body text, borders,
+        and surfaces are low C. OKLCH makes equal chroma and lightness
+        steps more perceptually uniform than HSL. If a new token reads
+        as too noisy, drop C before dropping L.
 
-     4. Alpha is L4 syntax: hsl(H S% L% / 0.5). This lets us derive
+     4. Alpha uses Color 4 syntax: oklch(L% C H / 0.5). This lets us derive
         translucent variants at the point of use (chart fills,
         annotation backgrounds) without a separate -a-20 token for
-        every color. The JS helper colorWithAlpha() in charts.js
-        applies alpha to any hsl() at runtime.
+        every color. The JS helper colorWithAlpha() in charts.js accepts
+        both OKLCH and legacy HSL while the remaining families migrate.
 
    How to add a color token: add it in :root below, next to the
    family it belongs to, with a one-line comment naming the use site
@@ -81,10 +86,10 @@
            app header, drawer, tooltip — routes through
            `sizeHtml(bytes)`. The helper formats via formatSize()
            AND applies `.size-large` (= font-weight: bold) above a
-           single shared threshold (SIZE_LARGE_THRESHOLD). Big reads
+           single threshold owned by MetabrowserFormatters. Big reads
            as bold, small as normal, EVERYWHERE. Never render a byte
            count with a bare formatSize() call + custom weight logic
-           in a one-off site — adjust the threshold in one place.
+           in a one-off site.
 
        File-type colors (.ft-<name> + --ft-*) — see the block in
        :root. Each subtype is one hue triplet (--ft-color, --ft-bg,
@@ -182,7 +187,10 @@
 
      Keys are always ALL CAPS — ENTER, ESC, T — including single
      letters, so a key never reads as a word. Arrow glyphs (↑ ↓) have no
-     case and pass through unchanged.
+     case and pass through unchanged. The visible, spoken, and ARIA
+     vocabulary for semantic keys lives in docs/design-system.md and is
+     emitted by the shared shortcut binding formatter; use sites do not
+     choose abbreviations or glyphs.
 
      The border is deliberately thin and low-contrast: a key is a quiet
      inline mark inside hint text, not a button. Both themes inherit
@@ -284,6 +292,14 @@
   --label-text-transform: uppercase;
   --label-color: var(--muted);
 
+  /* Section disclosures place one quiet chevron immediately after the title.
+     The em-sized glyph follows the surrounding heading rather than creating a
+     second icon tier. Folder-tree chevrons remain a separate leading control. */
+  --section-disclosure-chevron-color: var(--muted);
+  --section-disclosure-chevron-gap: 0.35em;
+  --section-disclosure-chevron-size: 0.85em;
+  --section-heading-divider-gap: 5px;
+
   /* "Panel" envelope — the bordered, rounded frame shared by markdown
      tables and frontmatter blocks (and any future similar surface).
      Putting these on :root keeps the visual treatment consistent across
@@ -292,6 +308,25 @@
   --panel-border: 1px solid var(--border);
   --panel-header-bg: var(--sidebar-bg);
   --panel-cell-padding: 0.35rem 0.6rem;
+
+  /* Aggregate distributions — exact-category marks used to join stacked
+     bars to semantic rows. Text never sits on these colors. */
+  --mb-distribution-category-1: hsl(211 70% 48%);
+  --mb-distribution-category-2: hsl(142 58% 38%);
+  --mb-distribution-category-3: hsl(28 80% 48%);
+  --mb-distribution-category-4: hsl(275 55% 54%);
+  --mb-distribution-category-5: hsl(350 66% 54%);
+  --mb-distribution-category-6: hsl(186 65% 38%);
+  --mb-distribution-category-7: hsl(48 82% 43%);
+  --mb-distribution-category-8: hsl(235 58% 61%);
+  --mb-distribution-category-9: hsl(101 46% 43%);
+  --mb-distribution-category-10: hsl(15 72% 56%);
+  --mb-distribution-category-11: hsl(315 48% 52%);
+  --mb-distribution-category-12: hsl(166 52% 35%);
+  --mb-distribution-other: var(--muted);
+  --mb-distribution-track: var(--viz-surface-sunken);
+  --mb-distribution-track-height: 8px;
+  --mb-distribution-segment-gap: 2px;
 
   /* Icons — one glyph size for every icon in the chrome, whether it is a
      button (gear, printer, copy), a file-type mark in a row, or a menu
@@ -336,6 +371,12 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+  /* Transient loading chrome stays quiet through work that finishes within
+     about three frames, which covers a cached subtree expansion and most
+     local requests. The placeholder still reserves its layout while hidden,
+     so revealing it later cannot move ready content. Nothing announces
+     loading inside this window; see "Motion" in docs/design-system.md. */
+  --loading-state-delay: 50ms;
   /* Theme crossfade — applied to the major page surfaces so flipping
      light↔dark glides instead of snapping. Gated behind html.theme-anim
      (added by app.js one frame after first paint) so it never fires on
@@ -394,6 +435,7 @@
   --hover-bg: hsl(0 0% 94%);
   --link: hsl(205 80% 40%);
   --muted: hsl(208 7% 46%);
+  --dimmed-content-opacity: 0.45;
 
   /* Selection highlight — the "current item" indicator shared by the
      file-tree nav and the embedded KPress document TOC, so both read the
@@ -406,6 +448,20 @@
   --highlight-bg: color-mix(in srgb, var(--link) 10%, transparent);
   --highlight-bar: var(--link);
   --modal-scrim: color-mix(in srgb, var(--text) 28%, transparent);
+  --modal-inline-margin: 16px;
+  --modal-block-margin: max(24px, 8vh);
+  --modal-max-width: 640px;
+  --modal-max-height: min(80vh, 720px);
+  --modal-header-padding: 8px 12px;
+  --modal-header-gap: 12px;
+  --modal-body-padding: 12px;
+  --modal-footer-padding: 8px 12px;
+  --help-dialog-width: 560px;
+  --help-section-gap: 16px;
+  --help-row-gap: 12px;
+  --help-binding-width: 108px;
+  --search-palette-width: 640px;
+  --search-palette-max-height: min(70vh, 640px);
 
   /* Code block backgrounds */
   --code-bg: hsl(210 29% 97%);
@@ -608,10 +664,19 @@
      legend item, frame header, node card, toggle) shares the same ease
      + duration so hover feels consistent across the plane. Filter-darken
      is used where the element has a solid rest-color; background swap is
-     used where the rest-state is transparent. */
+     used where the rest-state is transparent. Categorical data marks shift the
+     whole mark rather than recoloring it, so hue and internal contrast remain —
+     but the shift has to run the direction that gains contrast against the
+     page, which is opposite per theme. The light palette sits near 48%
+     lightness on a near-white page, so hover deepens it; the dark palette sits
+     near 67% on a near-black page, so hover lifts it (see the dark block). One
+     shared direction is what left hover reading as "nothing happened" on the
+     light distribution bars. The saturation nudge keeps the deepened light mark
+     from reading as merely greyer. */
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
+  --viz-data-mark-hover-filter: brightness(0.88) saturate(1.18);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -712,32 +777,38 @@
   --spinner-mini-track: hsl(0 0% 87%);
   --spinner-mini-accent: hsl(0 0% 55%);
 
-  /* File-age design system (used by the file-tree ".age-*" classes).
+  /* File-age design system (used by every ".age-*" class and Live badge).
      Rationale: the primary affordance of the file browser is "where did
      something *just happen*?" — when runs write new files, the user's
-     eye should land on them without scanning names. Color is the
-     primary signal (warm/red = seconds, cooling to grey = old); weight
-     is a secondary boost for the very-recent tiers (seconds, minutes)
-     so they also read as bold. Every ".age-*" class pulls from these
-     tokens — do not add literal hex values inline. */
+     eye should land on them without scanning names. The text itself
+     carries the hue, and weight boosts the very-recent tiers. Live is a
+     warm salmon activity state. Every elapsed age stays yellow and loses
+     chroma and prominence as it gets older. */
   --file-age-weight: var(--weight-medium); /* base — 11px labels read */
   /* as light at normal 400, */
   /* so medium (500) is the */
   /* legibility floor */
-  --file-age-weight-recent: var(--weight-bold); /* seconds + minutes pop */
+  --file-age-weight-recent: var(--weight-bold); /* live, seconds, minutes pop */
+  /* Live remains a distinct activity state, but it and the under-one-
+     minute bucket share the freshest reddish-orange visual. Later ages
+     retain the approved swatch hues while using darker lightness and
+     stronger chroma so the text stays vivid without a marker. */
+  --file-age-live: oklch(74% 0.22 55);
+  --file-age-sec: var(--file-age-live); /* < 1 minute */
+  --file-age-min: oklch(72% 0.23 97.5); /* < 1 hour */
+  --file-age-hr: oklch(64% 0.2 104); /* < 1 day */
+  --file-age-day: oklch(56% 0.14 107.1); /* < 1 week */
+  --file-age-wk: oklch(50% 0.07 107.8); /* < 1 month */
+  --file-age-old: oklch(48% 0.012 106.6); /* ≥ 1 month */
 
-  /* Freshness ramp (red → orange → dim yellow). Single-family encoding:
-     hue walks monotonically from red to yellow as age grows, saturation
-     drops from loud to quiet, and lightness stays in the mid-40s so
-     contrast against the page background is roughly constant. The
-     reading is "warmer + louder = newer; cooler + quieter = older"
-     without ever crossing into a different color family. */
-  --file-age-sec: hsl(8 85% 52%); /* < 1 min — saturated red */
-  --file-age-min: hsl(22 78% 48%); /* < 1 hour — red-orange */
-  --file-age-hr: hsl(34 68% 46%); /* < 1 day — orange */
-  --file-age-day: hsl(44 55% 44%); /* < 1 week — amber */
-  --file-age-wk: hsl(50 35% 42%); /* < 1 month — dim yellow */
-  --file-age-old: hsl(52 18% 40%); /* ≥ 1 month — desaturated khaki */
+  /* Translucent surface variants for badges and area encodings. */
+  --file-age-fill-live: oklch(71% 0.151 55 / 0.22);
+  --file-age-fill-sec: var(--file-age-fill-live);
+  --file-age-fill-min: oklch(78.6% 0.159 97.5 / 0.28);
+  --file-age-fill-hr: oklch(71.4% 0.138 104 / 0.24);
+  --file-age-fill-day: oklch(62% 0.097 107.1 / 0.19);
+  --file-age-fill-wk: oklch(54.8% 0.047 107.8 / 0.14);
+  --file-age-fill-old: oklch(51.6% 0.006 106.6 / 0.1);
 
   /* File-type design system (used everywhere a filename shows up —
      file tree, viz dep icons, drawer path rows).
@@ -888,11 +959,45 @@
   --color-syntax-deletion: hsl(355 80% 82%);
   --color-syntax-deletion-bg: hsl(355 55% 18%);
 
+  /* Dark surfaces keep the same semantics and hue families while
+     raising foreground lightness and fill alpha. */
+  --file-age-live: oklch(78% 0.109 55);
+  --file-age-sec: var(--file-age-live);
+  --file-age-min: oklch(89% 0.136 99.4);
+  --file-age-hr: oklch(86% 0.121 104);
+  --file-age-day: oklch(80.6% 0.088 106.5);
+  --file-age-wk: oklch(74.1% 0.043 107.4);
+  --file-age-old: oklch(69.7% 0.006 106.5);
+
+  --file-age-fill-live: oklch(75.1% 0.126 55 / 0.26);
+  --file-age-fill-sec: var(--file-age-fill-live);
+  --file-age-fill-min: oklch(85.9% 0.161 98.8 / 0.36);
+  --file-age-fill-hr: oklch(81.4% 0.149 104.1 / 0.3);
+  --file-age-fill-day: oklch(73% 0.116 107.1 / 0.24);
+  --file-age-fill-wk: oklch(61.7% 0.053 107.9 / 0.18);
+  --file-age-fill-old: oklch(55.2% 0.007 106.6 / 0.12);
+
   --panel-header-bg: hsl(222 17% 18%);
   --scrollbar-thumb: hsl(220 10% 36%);
   --scrollbar-thumb-hover: hsl(220 10% 46%);
   --tally-skeleton-bg: hsl(220 10% 31%);
   --row-flash-bg: hsl(45 75% 28%);
+  --mb-distribution-category-1: hsl(211 78% 67%);
+  --mb-distribution-category-2: hsl(142 55% 60%);
+  --mb-distribution-category-3: hsl(28 82% 66%);
+  --mb-distribution-category-4: hsl(275 67% 72%);
+  --mb-distribution-category-5: hsl(350 72% 70%);
+  --mb-distribution-category-6: hsl(186 62% 59%);
+  --mb-distribution-category-7: hsl(48 80% 63%);
+  --mb-distribution-category-8: hsl(235 68% 76%);
+  --mb-distribution-category-9: hsl(101 48% 61%);
+  --mb-distribution-category-10: hsl(15 78% 70%);
+  --mb-distribution-category-11: hsl(315 55% 70%);
+  --mb-distribution-category-12: hsl(166 54% 58%);
+
+  /* Lift rather than deepen: the dark categorical palette is already light
+     against a near-black page (see the light-theme note beside this token). */
+  --viz-data-mark-hover-filter: brightness(1.2) saturate(1.08);
 
   --viz-text: var(--text);
   --viz-text-muted: hsl(215 12% 68%);
@@ -927,6 +1032,23 @@
   --ft-text-border: hsl(220 10% 30%);
   --ft-config-bg: hsl(220 12% 18%);
   --ft-config-border: hsl(220 10% 30%);
+  /* Hued file-type washes: same hue as the light triplets, dropped to
+     dark-surface lightness. The treemap uses --ft-bg as large area
+     fills, so every subtype needs a dark stop, not just the greys. */
+  --ft-md-bg: hsl(210 30% 18%);
+  --ft-md-border: hsl(210 22% 32%);
+  --ft-md-runbook-bg: hsl(142 25% 16%);
+  --ft-md-runbook-border: hsl(142 18% 30%);
+  --ft-md-template-bg: hsl(43 35% 16%);
+  --ft-md-template-border: hsl(43 28% 30%);
+  --ft-yaml-bg: hsl(28 35% 17%);
+  --ft-yaml-border: hsl(28 26% 31%);
+  --ft-jsonl-bg: hsl(247 25% 20%);
+  --ft-jsonl-border: hsl(247 18% 34%);
+  --ft-code-bg: hsl(162 25% 16%);
+  --ft-code-border: hsl(162 18% 30%);
+  --ft-csv-bg: hsl(41 32% 16%);
+  --ft-csv-border: hsl(41 25% 30%);
   --chart-grid: hsl(220 13% 24%);
   --chart-label-text: var(--viz-text-meta);
 
@@ -938,6 +1060,46 @@
   --git-ref-remote: hsl(265 75% 74%);
   --git-ref-tag: hsl(38 92% 62%);
   --git-ref-bg: hsl(220 16% 22%);
+}
+
+.mb-distribution-slot-1 {
+  --mb-distribution-color: var(--mb-distribution-category-1);
+}
+.mb-distribution-slot-2 {
+  --mb-distribution-color: var(--mb-distribution-category-2);
+}
+.mb-distribution-slot-3 {
+  --mb-distribution-color: var(--mb-distribution-category-3);
+}
+.mb-distribution-slot-4 {
+  --mb-distribution-color: var(--mb-distribution-category-4);
+}
+.mb-distribution-slot-5 {
+  --mb-distribution-color: var(--mb-distribution-category-5);
+}
+.mb-distribution-slot-6 {
+  --mb-distribution-color: var(--mb-distribution-category-6);
+}
+.mb-distribution-slot-7 {
+  --mb-distribution-color: var(--mb-distribution-category-7);
+}
+.mb-distribution-slot-8 {
+  --mb-distribution-color: var(--mb-distribution-category-8);
+}
+.mb-distribution-slot-9 {
+  --mb-distribution-color: var(--mb-distribution-category-9);
+}
+.mb-distribution-slot-10 {
+  --mb-distribution-color: var(--mb-distribution-category-10);
+}
+.mb-distribution-slot-11 {
+  --mb-distribution-color: var(--mb-distribution-category-11);
+}
+.mb-distribution-slot-12 {
+  --mb-distribution-color: var(--mb-distribution-category-12);
+}
+.mb-distribution-other {
+  --mb-distribution-color: var(--mb-distribution-other);
 }
 
 * {
@@ -1060,6 +1222,66 @@ body {
 .btn:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
+}
+/* Parent navigation is a button, not a bare icon action. Labelled and
+   icon-only forms share the same compact arrow, persistent boundary,
+   hover, and focus vocabulary through `.btn`. */
+.parent-nav-btn {
+  display: inline-flex;
+  height: var(--icon-btn-size);
+  align-items: center;
+  gap: 6px;
+  border-color: var(--viz-border-strong);
+  background: var(--viz-surface);
+}
+.parent-nav-btn-icon-only {
+  width: var(--icon-btn-size);
+  justify-content: center;
+  padding: 3px;
+}
+.parent-nav-arrow {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1;
+}
+.parent-nav-btn:hover .parent-nav-arrow,
+.parent-nav-btn:focus-visible .parent-nav-arrow {
+  color: inherit;
+}
+.parent-nav-btn[disabled] {
+  cursor: default;
+  opacity: 0.4;
+}
+.parent-nav-btn[disabled]:hover {
+  border-color: var(--viz-border-strong);
+  color: var(--text);
+}
+/* ── Section disclosures — shared trailing-chevron primitive ─────
+   Section titles keep their local typography and put a quiet, em-sized
+   chevron immediately after the text. The trigger owns aria-expanded;
+   folder-tree rows intentionally keep their separate leading chevron. */
+.section-disclosure-trigger {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--section-disclosure-chevron-gap);
+}
+
+.section-disclosure-trigger::after,
+.metabrowser-kpress-host .kpress details > summary::after {
+  background-color: var(--section-disclosure-chevron-color);
+  content: "";
+  flex: none;
+  height: var(--section-disclosure-chevron-size);
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transition: transform var(--transition-fast);
+  width: var(--section-disclosure-chevron-size);
+}
+
+.section-disclosure-trigger[aria-expanded="true"]::after,
+.metabrowser-kpress-host .kpress details[open] > summary::after {
+  transform: rotate(90deg);
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -1191,7 +1413,8 @@ body {
                       theme and reading-font pickers.
      .menu-select     a small native <select> for a short list that may grow
                       (the font-set picker), styled as a recessed field.
-     .menu-separator  a divider between groups. */
+     .menu-separator  a divider between groups.
+     .menu-section-label a quiet heading for a semantic group of rows. */
 .menu {
   min-width: 124px;
   padding: 4px;
@@ -1261,6 +1484,15 @@ body {
   height: 1px;
   margin: 4px 0;
   background: var(--border);
+}
+.menu-section-label {
+  padding: 3px 8px 2px 32px;
+  color: var(--label-color);
+  font-family: var(--font-sans);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
 }
 /* Segmented chooser: icon-only buttons sharing a row, applied instantly
    on click. The active segment fills with the selection surface; the rest
@@ -1432,12 +1664,15 @@ html.theme-anim .menu {
 
      Press <kbd class="kbd">T</kbd> to search
 
-   Write the key in its natural case in markup — the caps treatment is
-   presentational, so the accessible name a screen reader announces
-   stays whatever the markup says. Keys stand alone as marks; do not
-   nest one inside a <code> or restyle it per surface. For a sequence,
-   emit separate keys and let the surrounding text carry any joining
-   word, so each key keeps its own border. */
+   Write an isolated key in its natural case in markup — the caps
+   treatment is presentational, so the accessible name a screen reader
+   announces stays whatever the markup says. Keys stand alone as marks;
+   do not nest one inside a <code> or restyle it per surface.
+
+   Dynamic shortcut surfaces use the shared binding renderer. It emits
+   one .kbd per physical key, an unambiguous visual separator, and one
+   expanded spoken phrase for aliases or chords; callers never assemble
+   those pieces themselves. */
 
 .kbd {
   display: inline-flex;
@@ -1456,6 +1691,23 @@ html.theme-anim .menu {
   text-transform: var(--kbd-text-transform);
   line-height: 1.5;
   vertical-align: baseline;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shortcut-binding-separator {
+  margin-inline: 3px;
+  color: var(--muted);
 }
 
 /* ── Main layout ─────────────────────────────────────────────── */
@@ -1491,6 +1743,58 @@ html.theme-anim .menu {
   overflow-y: auto;
   padding: 0 0 8px;
   --scrollbar-bg: var(--sidebar-bg);
+}
+
+.nav-shortcut-hints {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1.2;
+}
+.nav-shortcut-hints[hidden] {
+  display: none;
+}
+.nav-shortcut-action,
+.nav-shortcut-hint,
+.nav-shortcut-binding {
+  display: inline-flex;
+  align-items: center;
+}
+.nav-shortcut-action,
+.nav-shortcut-hint {
+  gap: 4px;
+  padding: 3px 0;
+}
+/* A shortcut hint carries exactly two boxes: the strip that groups every
+   shortcut behind one border, and the keycap that says "this is a key". A
+   button chrome around the key and its label would be a third, nested box
+   restating what the other two already say. An actionable hint is therefore a
+   bare button whose visible affordance is the keycap it contains. */
+.nav-shortcut-action {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.nav-shortcut-action:hover {
+  color: var(--link);
+}
+.nav-shortcut-action:hover .kbd {
+  border-color: var(--link);
+  color: var(--link);
+}
+.nav-shortcut-action:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
 }
 
 .index-progress[hidden] {
@@ -1655,7 +1959,7 @@ html[data-prose-font="sans"] {
 /* Pagination sentinel — clickable row that swaps in the next batch
    of children for a directory that exceeded TREE_PAGE_SIZE. Compact
    and visually subordinate to real tree rows. */
-.tree-page-more {
+.tree-item.tree-page-more {
   padding: 2px 12px 2px 32px;
   cursor: pointer;
   user-select: var(--toggle-user-select);
@@ -1663,7 +1967,7 @@ html[data-prose-font="sans"] {
   font-style: italic;
   font-size: var(--ui-small-font-size);
 }
-.tree-page-more:hover {
+.tree-item.tree-page-more:hover {
   background: var(--hover-bg);
   color: var(--text);
 }
@@ -1685,6 +1989,11 @@ html[data-prose-font="sans"] {
 .tree-item:hover {
   background: var(--hover-bg);
 }
+.tree-item:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
 /* Current item — same tinted background + accent left bar as the embedded
    KPress TOC (see --highlight-bg / --highlight-bar). */
 .tree-item.selected {
@@ -1700,6 +2009,23 @@ html[data-prose-font="sans"] {
   justify-content: center;
 }
 .tree-item-icon svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+
+/* File identity is one icon primitive in navigation and plugin chrome.
+   The resolver supplies the canonical SVG and optional ft-* subtype;
+   this alignment box supplies the common geometry and base tone. */
+.file-identity-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.file-identity-icon svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
 }
@@ -1759,7 +2085,7 @@ html[data-prose-font="sans"] {
    these, not bespoke styles. `.size` is the neutral base (cool-blue
    hue, tabular nums); `.size-large` bumps weight + shifts to the
    bolder stop of the same hue above the shared threshold (see
-   sizeHtml() / SIZE_LARGE_THRESHOLD in app.js). Callers add a
+   MetabrowserFormatters.sizeClass() in formatters.js). Callers add a
    site-specific class for positioning (.tree-item-size,
    .file-header-size, .tree-summary-size) but NEVER for weight/color. */
 .size {
@@ -1774,8 +2100,8 @@ html[data-prose-font="sans"] {
 /* File-count convention — same idea as .size, same hue family (file
    counts and file sizes are two views of the same data category so
    they share the color signal). `.count-large` bolds up at the
-   shared threshold (see countHtml() / COUNT_LARGE_THRESHOLD in
-   app.js) the same way `.size-large` does for byte counts. */
+   shared threshold (see MetabrowserFormatters.countClass() in
+   formatters.js) the same way `.size-large` does for byte counts. */
 .count {
   color: var(--size-color);
   font-variant-numeric: tabular-nums;
@@ -1785,29 +2111,34 @@ html[data-prose-font="sans"] {
   color: var(--size-color-bold);
   font-weight: var(--weight-bold);
 }
-/* Freshness ramp on the file tree: color (primary signal) + weight-boost
-   on the two most-recent tiers (secondary signal) so the newest files
-   read as the eye's first stop during a run. Colors + weights come from
-   --file-age-* tokens; do not inline literal hex values here. */
+/* File-age primitive. The text color is the sole age hue signal. */
+.age-live {
+  --file-age-current: var(--file-age-live);
+}
 .age-sec {
-  color: var(--file-age-sec);
-  font-weight: var(--file-age-weight-recent);
+  --file-age-current: var(--file-age-sec);
 }
 .age-min {
-  color: var(--file-age-min);
-  font-weight: var(--file-age-weight-recent);
+  --file-age-current: var(--file-age-min);
 }
 .age-hr {
-  color: var(--file-age-hr);
+  --file-age-current: var(--file-age-hr);
 }
 .age-day {
-  color: var(--file-age-day);
+  --file-age-current: var(--file-age-day);
 }
 .age-wk {
-  color: var(--file-age-wk);
+  --file-age-current: var(--file-age-wk);
 }
 .age-old {
-  color: var(--file-age-old);
+  --file-age-current: var(--file-age-old);
+}
+:is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
+  color: var(--file-age-current);
+  font-weight: var(--file-age-weight);
+}
+:is(.age-live, .age-sec, .age-min) {
+  font-weight: var(--file-age-weight-recent);
 }
 .tree-children {
   margin-left: 16px;
@@ -1876,17 +2207,17 @@ html[data-prose-font="sans"] {
   --ft-border: var(--ft-csv-border);
 }
 
-/* Icon-color consumer — any tree-item-icon with an ft-<name> class
-   reads the subtype's --ft-color automatically. */
-.tree-item-icon.ft-md,
-.tree-item-icon.ft-md-runbook,
-.tree-item-icon.ft-md-template,
-.tree-item-icon.ft-text,
-.tree-item-icon.ft-yaml,
-.tree-item-icon.ft-config,
-.tree-item-icon.ft-jsonl,
-.tree-item-icon.ft-code,
-.tree-item-icon.ft-csv {
+/* Icon-color consumer — every shared file identity with an ft-<name>
+   class reads the subtype's --ft-color automatically. */
+.file-identity-icon.ft-md,
+.file-identity-icon.ft-md-runbook,
+.file-identity-icon.ft-md-template,
+.file-identity-icon.ft-text,
+.file-identity-icon.ft-yaml,
+.file-identity-icon.ft-config,
+.file-identity-icon.ft-jsonl,
+.file-identity-icon.ft-code,
+.file-identity-icon.ft-csv {
   color: var(--ft-color);
 }
 /* `.icon-state` is a folder variant (logs/state dirs), not a file-type. */
@@ -1899,7 +2230,7 @@ html[data-prose-font="sans"] {
    — just faded. Hover still lights up via .tree-item:hover. */
 .tree-item.tree-item-gitignored,
 .tree-item.tree-item-empty {
-  opacity: 0.45;
+  opacity: var(--dimmed-content-opacity);
 }
 .tree-item.tree-item-gitignored:hover,
 .tree-item.tree-item-empty:hover {
@@ -2169,17 +2500,8 @@ html[data-prose-font="sans"] {
   font-variant-numeric: tabular-nums;
   font-size: var(--ui-small-font-size);
 }
-/* Age rows wear the freshness ramp, so the menu is the legend for the
-   colours in the tree. The .age-* classes already colour the button;
-   this only pulls the hour row's red back a little, because Live and
-   Past hour are adjacent steps and sit next to each other here in a
-   way they never do in a file listing. Scoped to the menu on purpose:
-   the tree's ramp is contrast-audited against every surface it rides
-   (see the --file-age-* block), and this is a legibility tweak for one
-   control, not a change to what the colours mean. */
-.chip-menu-item.age-min {
-  color: color-mix(in srgb, var(--file-age-min) 72%, var(--muted));
-}
+/* Age menu rows inherit the same foreground as tree and header ages.
+   There are no menu-only color corrections. */
 /* Labelled checkbox — the family's one deliberate break from
    button-with-aria-pressed, for a boolean whose polarity has to be
    legible. A pressed pill reading "Gitignored" does not say whether
@@ -2414,9 +2736,9 @@ html[data-prose-font="sans"] {
    leads the pane and when rows do (a recency window renders no tally
    of its own). Margin, not padding, so the row's hover fill and its
    selected border stay the height of every other row. */
-.tree-summary + .tree-item,
-.tree-summary-filtered + .tree-item,
-.tree-content > * > .tree-item:first-child {
+.tree-summary + .tree-root > .tree-item:first-child,
+.tree-summary-filtered + .tree-root > .tree-item:first-child,
+.tree-content > * > .tree-root:first-child > .tree-item:first-child {
   margin-top: 4px;
 }
 .recent-truncated-note {
@@ -2456,6 +2778,48 @@ html[data-prose-font="sans"] {
 }
 /* Geometry, hover, and reveal come from the .icon-btn primitive; only
    the reveal trigger and the copied-confirmation tint live here. */
+
+/* Folder preview header: up control + clickable breadcrumb + summary.
+   Shares .file-header chrome; crumbs are real buttons for keyboard use. */
+.folder-breadcrumb {
+  gap: 2px;
+}
+.folder-crumb {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  padding: 0 2px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.folder-crumb:hover {
+  background: var(--hover-bg);
+}
+.folder-crumb:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+}
+.folder-crumb-current {
+  color: var(--text);
+  cursor: default;
+  font-weight: var(--weight-bold);
+}
+.folder-crumb-sep {
+  color: var(--muted);
+}
+.folder-header-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.folder-header-count,
+.folder-header-age {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .file-header:hover .file-header-copy {
   opacity: 1;
   pointer-events: auto;
@@ -2469,15 +2833,6 @@ html[data-prose-font="sans"] {
    size-chip convention above. */
 .file-header-size {
   font-size: var(--ui-small-font-size);
-  flex-shrink: 0;
-}
-.file-header-preview {
-  font-size: var(--ui-small-font-size);
-  color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.file-header-action {
   flex-shrink: 0;
 }
 /* .file-header-icon (the print action) has no block of its own: it is
@@ -2685,13 +3040,9 @@ html[data-prose-font="sans"] {
 .metabrowser-kpress-host .metabrowser-doc-meta > details {
   border: 0;
 }
-/* Hang the disclosure chevron in the card's gutter so the label starts on the
-   prose edge, flush with the keys of the list it opens. The offset is the
-   marker itself: KPress draws it at 0.85em with a 0.4rem gap (document.css
-   `.kpress summary`), and it stays well inside the card's narrowest inline
-   padding (1.5rem below the 768px card breakpoint). */
+/* Preamble disclosures align their title with the prose edge. Their shared
+   trailing chevron follows the title instead of hanging in the card gutter. */
 .metabrowser-kpress-host .metabrowser-doc-meta > details > summary {
-  margin-inline-start: calc(-0.85em - 0.4rem);
   padding-inline: 0;
 }
 .metabrowser-kpress-host .metabrowser-doc-meta > details[open] > summary {
@@ -2787,6 +3138,14 @@ html[data-prose-font="sans"] {
   letter-spacing: var(--label-letter-spacing);
   line-height: normal;
   text-transform: var(--label-text-transform);
+  gap: var(--section-disclosure-chevron-gap);
+}
+/* KPress supplies the same Lucide mark before its standalone summaries.
+   Embedded documents use the host section-disclosure placement after the
+   title while retaining native details/summary interaction. */
+.metabrowser-kpress-host .kpress details > summary::before {
+  content: none;
+  display: none;
 }
 .metabrowser-kpress-host .kpress details > summary:hover {
   color: var(--text);
@@ -2801,16 +3160,67 @@ html[data-prose-font="sans"] {
    the toggle, and the drawer. The doc <h1> header is suppressed at the source
    via show_doc_header=False (the path shows in metabrowser's file header), so
    no host CSS override is needed. */
-.metabrowser-kpress-render-error,
-.metabrowser-source-truncation-warning {
-  margin: 0 0 12px;
+/* ── Notices ─────────────────────────────────────────────────
+   One box for anything the app says *about* the content it is showing: a
+   partial load, a render failure. See docs/design-system.md, "Notices";
+   tests/test_notice_style.py enforces it.
+
+   The fill is always the ordinary surface and the severity is carried by the
+   border alone. Tinting the fill is how these drifted apart: the render error
+   wore an info-blue fill with a warning border, so an error announced itself
+   in the color of an aside and the border named the wrong severity. One tone
+   per box, and it is the one on the edge.
+
+   This rule owns the visual identity only. Layout — how a use site arranges
+   its own contents, and where it sits relative to the content — belongs to
+   the use site, because a one-line notice with a button and a stacked error
+   with a detail block have nothing to share there. */
+.notice {
   padding: 10px 12px;
-  border: 1px solid var(--status-warning);
-  background: var(--status-info-bg);
+  border: 1px solid var(--border);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   line-height: 1.45;
+}
+
+.notice[data-severity="warning"] {
+  border-color: var(--status-warning);
+}
+
+.notice[data-severity="error"] {
+  border-color: var(--status-error);
+}
+
+/* A KPress render failure: the document could not be rendered at all, so it
+   stacks its message above a detail block rather than sitting in a row. */
+.metabrowser-kpress-render-error {
+  margin: 0 0 12px;
+}
+
+/* The partial-content notice, which pairs a statement with the control that
+   continues it — hence the row. */
+.partial-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* It brackets the content, so its margin is the one thing that differs
+   between the two ends. */
+.partial-notice[data-position="top"] {
+  margin: 0 0 12px;
+}
+
+.partial-notice[data-position="bottom"] {
+  margin: 12px 0 0;
+}
+
+.partial-notice-readout {
+  font-variant-numeric: var(--tabular-numerals);
 }
 .metabrowser-kpress-error-detail {
   margin: 8px 0 0;
@@ -3228,28 +3638,28 @@ pre.code-block code.hljs {
   opacity: 1;
 }
 
-/* ── Quick-file palette ─────────────────────────────────────────
-   A body-level modal surface so tree and preview replacement cannot
-   discard its state. Search work and selection state stay in the
-   injected controller; this block owns only the bounded result DOM. */
-.search-palette-overlay {
+/* ── Modal dialog — shared blocking overlay primitive ───────────
+   Consumers supply content and dimensions. This primitive owns the
+   raised surface, fixed scrim, labelled header, scrolling body, and
+   fixed footer shared by every modal. */
+.modal-overlay {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: max(48px, 10vh) 16px 16px;
+  padding: var(--modal-block-margin) var(--modal-inline-margin) var(--modal-inline-margin);
   background: var(--modal-scrim);
 }
-.search-palette-overlay[hidden] {
+.modal-overlay[hidden] {
   display: none;
 }
-.search-palette-dialog {
+.modal-dialog {
   display: flex;
   flex-direction: column;
-  width: min(640px, calc(100vw - 32px));
-  max-height: min(70vh, 640px);
+  width: min(var(--modal-max-width), calc(100vw - 2 * var(--modal-inline-margin)));
+  max-height: var(--modal-max-height);
   overflow: hidden;
   color: var(--text);
   background: var(--viz-surface-raised);
@@ -3257,13 +3667,122 @@ pre.code-block code.hljs {
   border-radius: var(--radius-chrome);
   box-shadow: var(--shadow-lg);
 }
-.search-palette-title {
-  padding: 8px 12px 4px;
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--modal-header-gap);
+  padding: var(--modal-header-padding);
+  border-bottom: 1px solid var(--border);
+}
+.modal-title {
   color: var(--label-color);
   font-size: var(--label-font-size);
   font-weight: var(--label-font-weight);
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
+}
+.modal-close {
+  flex: none;
+}
+.modal-body {
+  min-height: 0;
+  padding: var(--modal-body-padding);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.modal-footer {
+  padding: var(--modal-footer-padding);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Help dialog ──────────────────────────────────────────────── */
+.help-dialog {
+  width: min(var(--help-dialog-width), calc(100vw - 2 * var(--modal-inline-margin)));
+}
+.help-dialog .modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--help-section-gap);
+}
+.help-description p + p {
+  margin-top: 6px;
+}
+/* The shell sets no global anchor color, so an unclassed link falls through to
+   the user agent's default blue instead of the accent every other link uses. */
+.help-project a {
+  color: var(--link);
+}
+.help-project a:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
+}
+.help-section-heading,
+.help-shortcut-heading {
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
+.help-section-heading {
+  margin-bottom: 8px;
+  font-size: var(--body-font-size);
+}
+.help-shortcut-group + .help-shortcut-group {
+  margin-top: var(--help-section-gap);
+}
+.help-shortcut-heading {
+  font-size: var(--nav-font-size);
+}
+.help-shortcut-context {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.help-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.help-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, var(--help-binding-width)) minmax(0, 1fr);
+  gap: var(--help-row-gap);
+  align-items: start;
+}
+.help-command-binding {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.help-command-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.help-command-label {
+  font-size: var(--nav-font-size);
+}
+.help-command-description {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+/* ── Quick-file palette ─────────────────────────────────────────
+   A body-level modal surface so tree and preview replacement cannot
+   discard its state. Search work and selection state stay in the
+   injected controller; this block owns only the bounded result DOM. */
+.search-palette-overlay {
+  --modal-block-margin: max(48px, 10vh);
+}
+.search-palette-dialog {
+  width: min(var(--search-palette-width), calc(100vw - 2 * var(--modal-inline-margin)));
+  max-height: var(--search-palette-max-height);
+}
+.search-palette-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 /* The query is a band of the dialog, not a control floating inside it.
    Every other row here — title, results, status, hint — runs edge to edge on
@@ -3410,6 +3929,34 @@ pre.code-block code.hljs {
 
 /* ── Loading ─────────────────────────────────────────────────── */
 
+/* Screen-reader-only text. Global by necessity: this is what makes a
+   spinner's label inaudible-but-announced rather than printed next to it
+   (see "Spinners Carry No Visible Label" in docs/design-system.md), and
+   the shell, the Markdown renderer, and every plugin need it. It lived
+   only inside the folder tables' stylesheet, so the same class printed
+   its text verbatim everywhere else. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mb-delayed-loading {
+  visibility: hidden;
+  animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
+}
+@keyframes mb-delayed-loading-reveal {
+  to {
+    visibility: visible;
+  }
+}
+
 .loading {
   display: flex;
   align-items: center;
@@ -3475,13 +4022,22 @@ pre.code-block code.hljs {
   transform: rotate(90deg);
 }
 /* Left-align folder names with file names. A file row leads with a 16px icon
-   box (.tree-item-icon); a folder row leads with the bare 12px chevron, so
-   folder names sat 4px to the left. The 2px inline margins make the chevron's
-   margin-box 16px to match the icon box (glyph stays 12px, centered), so names
-   align at every indent level. Scoped to .tree-folder so the shared tally-tree
-   chevron is unaffected. */
-.tree-folder > .toggle-chevron {
+   box (.tree-item-icon); a folder row leads with the chevron inside its
+   .tree-toggle wrapper, so the wrapper's 2px inline margins make its
+   margin-box 16px to match the icon box (glyph stays 12px, centered), so
+   names align at every indent level. Scoped to .tree-folder so the shared
+   tally-tree chevron is unaffected. The entire folder row shares one
+   disclosure-and-navigation action. */
+.tree-folder > .tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-inline: 2px;
+  flex-shrink: 0;
+  border-radius: var(--radius-circle);
+}
+.tree-folder > .tree-toggle .toggle-chevron {
+  margin: 0;
 }
 
 /* ── Activity indicators ────────────────────────────────────── */
@@ -3515,18 +4071,9 @@ pre.code-block code.hljs {
 }
 
 .badge-live {
-  background: var(--status-success-soft-bg);
-  color: var(--status-success-soft-text);
+  background: var(--file-age-fill-live);
+  color: var(--file-age-live);
   animation: pulse-dot 1.5s ease-in-out infinite;
-}
-.badge-live::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-circle);
-  background: var(--status-success-dot);
-  margin-right: 4px;
 }
 
 /* ── Charts ─────────────────────────────────────────────────── */
@@ -3701,10 +4248,12 @@ pre.code-block code.hljs {
   .tree-item-flash-out {
     animation-duration: 1ms;
   }
-  /* The drawer and its chevron still change state, just without the
-     travel. */
+  /* Drawers and disclosure chevrons still change state, just without
+     the travel. */
   .filter-drawer,
-  .filter-drawer-toggle svg {
+  .filter-drawer-toggle svg,
+  .section-disclosure-trigger::after,
+  .metabrowser-kpress-host .kpress details > summary::after {
     transition-duration: 1ms;
   }
   /* The bar's row-gap tracks the drawer, so it has to stop travelling
@@ -3746,7 +4295,9 @@ pre.code-block code.hljs {
   .file-header-print,
   .settings-toggle,
   .custom-tooltip,
-  .search-palette-overlay,
+  /* Covers Quick File too: its overlay is a .modal-overlay. */
+  .modal-overlay,
+  .nav-shortcut-hints,
   .index-progress,
   .loading,
   .spinner {
@@ -3789,8 +4340,9 @@ pre.code-block code.hljs {
     color: black;
   }
 
-  .metabrowser-kpress-render-error,
-  .metabrowser-source-truncation-warning {
+  /* Addressed through the primitive, so a new notice prints correctly
+     without being added here. */
+  .notice {
     break-inside: avoid;
     background: white;
     color: black;

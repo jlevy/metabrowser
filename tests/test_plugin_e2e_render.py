@@ -41,7 +41,7 @@ def shim_output() -> dict[str, Any]:
     if not _has_node():
         pytest.skip("node not available; skipping JS-side plugin shim")
     result = subprocess.run(
-        ["node", str(LOADER_JS), str(REPO_ROOT)],
+        ["node", "--experimental-vm-modules", str(LOADER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
         timeout=30,
@@ -59,6 +59,7 @@ def test_shim_loads_every_builtin_plugin(shim_output: dict[str, Any]) -> None:
     assert set(shim_output["plugins"]) == {
         "agent_log",
         "binary",
+        "folder",
         "markdown",
         "structured",
         "text",
@@ -113,7 +114,8 @@ def test_namespace_rule_is_enforced(tmp_path: Path) -> None:
     bad = tmp_path / "bad_plugin"
     bad.mkdir()
     (bad / "manifest.toml").write_text(
-        '[plugin]\nname = "bad_plugin"\n[[kind]]\nid = "bad"\n'
+        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.2"\n'
+        '[[kind]]\nid = "bad"\n'
         'match = { ext = ".bad" }\n[[view]]\nkind = "bad"\nid = "v"\nlabel = "V"\n'
     )
     (bad / "index.js").write_text(
@@ -126,7 +128,13 @@ def test_namespace_rule_is_enforced(tmp_path: Path) -> None:
         "})();\n"
     )
     result = subprocess.run(
-        ["node", str(LOADER_JS), str(REPO_ROOT), str(tmp_path)],
+        [
+            "node",
+            "--experimental-vm-modules",
+            str(LOADER_JS),
+            str(REPO_ROOT),
+            str(tmp_path),
+        ],
         capture_output=True,
         text=True,
         timeout=30,
@@ -150,7 +158,13 @@ def test_extra_plugins_dir_is_loaded() -> None:
     if not (fixture_dir / "sample_plugin" / "index.js").is_file():
         pytest.skip("sample_plugin fixture missing")
     result = subprocess.run(
-        ["node", str(LOADER_JS), str(REPO_ROOT), str(fixture_dir)],
+        [
+            "node",
+            "--experimental-vm-modules",
+            str(LOADER_JS),
+            str(REPO_ROOT),
+            str(fixture_dir),
+        ],
         capture_output=True,
         text=True,
         timeout=30,

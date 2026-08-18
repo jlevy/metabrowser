@@ -42,6 +42,10 @@ def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
         "/static/catalog_feed.js",
         "/static/file_fuzzy_match.js",
         "/static/search_controller.js",
+        "/static/keyboard_shortcuts.js",
+        "/static/overlay_layer.js",
+        "/static/keyboard_help.js",
+        "/static/tree_keyboard_navigation.js",
         "/static/search_palette.js",
         "/static/app.js",
     )
@@ -59,12 +63,12 @@ def test_preview_is_a_programmatic_focus_destination() -> None:
 
 def test_file_preview_claims_and_checks_shell_ownership() -> None:
     js = _read_app_js()
-    select_start = js.index("async function selectFile(path, skipHash)")
+    select_start = js.index("async function selectFile(path, preferredViewId)")
     select_block = js[select_start : select_start + 5200]
     assert 'claimPreview("file")' in select_block
     assert "isPreviewClaimCurrent(previewClaim)" in select_block
 
-    render_start = js.index("function renderFile(data, claim)")
+    render_start = js.index("function renderFile(data, preferredViewId, claim)")
     render_block = js[render_start : render_start + 700]
     assert "isPreviewClaimCurrent(renderClaim)" in render_block
 
@@ -82,11 +86,41 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
     assert "getFileIcon" in init_block
     assert "openFile" in init_block
     assert "onNotFound" in init_block
+    assert "overlay: window.MetabrowserOverlay" in init_block
+    assert "resolveFocusFallback: resolveApplicationFocusFallback" in init_block
+    assert "shortcuts: shortcutRegistry" in init_block
 
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
-    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index("selectFile(")
+    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index(
+        "navigationController.start()"
+    )
     assert loaded_block.count("initQuickFileFinder();") == 1
+
+
+def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
+    palette = proc_browser.STATIC_DIR.joinpath("search_palette.js").read_text()
+    assert "function registerCommands()" in palette
+    assert "function renderShortcutHints()" in palette
+    assert "options.overlay.createModal" in palette
+    assert 'id: "quick-file.open"' in palette
+    assert 'id: "quick-file.close"' in palette
+    assert "OPEN_KEYS" not in palette
+    assert "HINT_GROUPS" not in palette
+    assert 'hostDocument.addEventListener("keydown"' not in palette
+
+
+def test_registry_is_the_only_application_shortcut_dispatcher() -> None:
+    registry = proc_browser.STATIC_DIR.joinpath("keyboard_shortcuts.js").read_text()
+    assert registry.count('hostDocument.addEventListener("keydown"') == 1
+    for filename in (
+        "keyboard_help.js",
+        "overlay_layer.js",
+        "search_palette.js",
+        "tree_keyboard_navigation.js",
+    ):
+        source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
+        assert 'hostDocument.addEventListener("keydown"' not in source
 
 
 def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
@@ -98,14 +132,14 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     assert "knownFileCatalog?.observeInitialTree(data.tree)" in load_tree
     assert load_tree.index("observeInitialTree") < load_tree.index('"renderTreeNodes:root"')
 
-    load_subtree = js[
-        js.index("async function loadSubtree(path, childrenEl, options)") : js.index(
-            "// ── Custom tooltip"
-        )
+    # Lazily fetched rows are observed in fetchSubtree, so a subtree pulled in
+    # by the idle prefetch reaches the catalog the same as an expanded one.
+    fetch_subtree = js[
+        js.index("function fetchSubtree(path)") : js.index("async function loadSubtree(")
     ]
-    assert "knownFileCatalog?.observeLazyTree(tree)" in load_subtree
-    assert load_subtree.index("observeLazyTree") < load_subtree.index(
-        "subtreeCache.set(path, tree)"
+    assert "knownFileCatalog?.observeLazyTree(data.tree)" in fetch_subtree
+    assert fetch_subtree.index("observeLazyTree") < fetch_subtree.index(
+        "subtreeCache.set(path, data.tree)"
     )
 
     recent = js[
@@ -185,24 +219,55 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
     js = _read_app_js()
     select_file = js[
-        js.index("async function selectFile(path, skipHash)") : js.index("// ── File rendering")
+        js.index("async function selectFile(path, preferredViewId)") : js.index(
+            "// ── File rendering"
+        )
     ]
     for status in ("opened", "not-found", "error", "cancelled"):
         assert f'status: "{status}"' in select_file
     assert "resp.status === 404" in select_file
 
-    navigate = js[
-        js.index("async function navigateToPath(path, skipHash)") : js.index(
-            "function initQuickFileFinder()"
+    apply_navigation = js[
+        js.index("async function applyNavigationTarget(target, context)") : js.index(
+            "async function revealInTree(path)"
         )
     ]
-    assert "return selectFile(" in navigate
+    assert "await selectFile(path, context.viewId)" in apply_navigation
 
     init_start = js.index("function initQuickFileFinder()")
     init_block = js[init_start : init_start + 2600]
     assert "fileNeedsRevalidate.add(path)" in init_block
     assert "return navigateToPath(path)" in init_block
     assert "knownFileCatalog.removePath(path)" in init_block
+
+
+def test_plugin_navigation_can_prefer_a_destination_view() -> None:
+    """Folder visualizations can carry their view intent across navigation."""
+    js = _read_app_js()
+    sdk = (proc_browser.STATIC_DIR / "plugin_sdk.js").read_text()
+    types = (proc_browser.STATIC_DIR / "types.d.ts").read_text()
+    treemap = (
+        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
+    ).read_text()
+
+    assert "navigation: global.MetabrowserNavigationRoute.navigation" in sdk
+    assert "function openPath(" not in sdk
+    assert "type MetabrowserNavigationOpenOptions" in types
+    assert "navigation: MetabrowserNavigationApi;" in types
+
+    assert "async function selectFile(path, preferredViewId)" in js
+    assert "function renderFile(data, preferredViewId, claim)" in js
+    assert "async function navigateToPath(path, preferredViewId, routeOptions)" in js
+    assert "MetabrowserNavigationRoute.attachController(navigationController)" in js
+    assert "metabrowser:open-path" not in js
+
+    render_start = js.index("function renderFile(data, preferredViewId, claim)")
+    render = js[render_start : render_start + 5000]
+    assert "view.id === preferredViewId" in render
+    assert "views.find((view) => view.default)" in render
+
+    assert 'const TREEMAP_VIEW_ID = "treemap";' in treemap
+    assert "mb.navigation.open({ path: cell.path }, { viewId: TREEMAP_VIEW_ID })" in treemap
 
 
 def test_local_quick_file_modules_define_no_search_endpoint() -> None:

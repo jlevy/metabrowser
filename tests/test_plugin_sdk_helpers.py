@@ -8,7 +8,7 @@ the JSDOM shim end-to-end test (see tests/dom/).
 
 Surface checked:
 - mb.escapeHtml, mb.formatSize, mb.formatTimestamp (already shipped)
-- mb.sizeHtml, mb.isLargeTextPreview (new in 3b)
+- mb.countClass, mb.sizeClass, mb.sizeHtml, mb.isLargeTextPreview
 - mb.wrapWithCopy (new in 3b)
 - mb.icons proxy (new in 3b — backed by window.MetabrowserIcons)
 - mb.perf.measure (new in 3b — wraps app.js's _mbPerf)
@@ -57,6 +57,14 @@ def test_sdk_exports_icons_proxy() -> None:
     assert "MetabrowserIcons" in src
 
 
+def test_sdk_exports_file_type_icon_proxy() -> None:
+    src = _sdk_source()
+    assert "fileTypeIcon: fileTypeIcon" in src
+    assert "function fileTypeIcon" in src
+    assert "MetabrowserFileTypes.iconFor" in src
+    assert 'typeof icon.cls === "string"' in src
+
+
 def test_sdk_exports_perf_measure() -> None:
     src = _sdk_source()
     assert "perf: perf" in src
@@ -88,11 +96,41 @@ def test_sdk_exports_clear_truncation_warning() -> None:
     src = _sdk_source()
     assert "renderTextTruncationWarning: renderTextTruncationWarning" in src
     assert "function renderTextTruncationWarning" in src
-    assert "Content truncated." in src
-    assert "Select Load more to continue." in src
+    # The notice names the condition plainly and reports how much of the file
+    # is showing. It was "Content truncated."; "Partial file." says the same
+    # thing about the file rather than about the rendering.
+    assert "Partial file." in src
+    assert "Showing " in src
     assert "Printed output" not in src
     assert "complete source PDF" not in src
     assert "metabrowser-source-truncation-warning" in src
+
+
+def test_truncation_banner_carries_its_own_load_more() -> None:
+    """The notice that content is missing offers the remedy in place.
+
+    It used to end "Select Load more to continue." and point at a control in
+    the pane header, which is a different place from the explanation and is
+    scrolled away by the time a reader wants it.
+    """
+    src = _sdk_source()
+    assert "Select Load more to continue." not in src
+    assert "function loadMoreButtonHtml" in src
+    assert 'data-position="${position}"' in src
+
+
+def test_sdk_exports_a_trailing_load_more_control() -> None:
+    """Partial content is bracketed by the control that continues it.
+
+    See docs/design-system.md, "Continuing partial content".
+    """
+    src = _sdk_source()
+    assert "renderTextLoadMoreFooter: renderTextLoadMoreFooter" in src
+    assert "function renderTextLoadMoreFooter" in src
+    assert "metabrowser-source-more-footer" in src
+    # Both ends read the same payload, so they cannot disagree about whether
+    # more remains.
+    assert "function textPreviewProgress" in src
 
 
 def test_sdk_size_html_handles_null_skeleton() -> None:
@@ -104,8 +142,10 @@ def test_sdk_size_html_handles_null_skeleton() -> None:
     assert "tally-pending" in src
 
 
-def test_sdk_size_html_uses_size_class_threshold() -> None:
-    """1 MiB threshold defines size-large vs normal class — same as app.js."""
+def test_sdk_exports_shared_metric_emphasis_classes() -> None:
+    """Plugins use the same count and byte emphasis contract as the shell."""
     src = _sdk_source()
-    assert "size-large" in src
-    assert "1024 * 1024" in src
+    assert "countClass: countClass" in src
+    assert "sizeClass: sizeClass" in src
+    assert "MetabrowserFormatters.countClass" in src
+    assert "MetabrowserFormatters.sizeClass" in src

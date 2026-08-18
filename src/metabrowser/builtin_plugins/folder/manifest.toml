@@ -1,0 +1,24 @@
+[plugin]
+name = "folder"
+display_name = "Folder"
+version = "0.0.1"
+sdk_version = "0.2"
+extra_styles = ["overview.css", "file_type_summary.css"]
+
+# `folder` is the directory kind. A manifest [[kind]] predicate cannot
+# express "the path is a directory" — the kind assignment happens in
+# server.api_file's is_dir branch (mirroring how classify_file_kind
+# owns the text/binary fallbacks). This manifest declares the views.
+
+[[view]]
+kind = "folder"
+id = "overview"
+label = "Overview"
+default = true
+container_class = "content-body folder-overview-host"
+
+[[view]]
+kind = "folder"
+id = "treemap"
+label = "Treemap"
+container_class = "content-body folder-treemap-host"

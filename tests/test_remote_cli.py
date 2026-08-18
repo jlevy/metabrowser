@@ -180,12 +180,14 @@ def test_remote_auto_open_uses_portable_webbrowser(monkeypatch) -> None:
         )
 
     wait_for_ready.assert_called_once()
+    # The canonical route, not the bare origin: the origin redirects, and the
+    # readiness probe retries a redirect until it times out.
     assert wait_for_ready.call_args.args == (
         "127.0.0.1",
         8411,
-        "http://localhost:8411",
+        "http://localhost:8411/view/",
     )
-    browser.open.assert_called_once_with("http://localhost:8411", new=2)
+    browser.open.assert_called_once_with("http://localhost:8411/view/", new=2)
     assert len(popen_calls) == 1
 
 

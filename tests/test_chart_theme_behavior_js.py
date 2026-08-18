@@ -44,6 +44,7 @@ def test_charts_repaint_from_theme_tokens_until_disposed() -> None:
     assert payload["staticUpdateCalls"] == 0
     assert payload["firstRuntime"] == {
         "initialSeries": "dark-series",
+        "oklchAlpha": "oklch(70% 0.1 95 / 0.13)",
         "destroyedOnRepaint": 1,
         "repaintedSeries": "light-series",
         "specTokenPreserved": "var(--chart-series-info)",

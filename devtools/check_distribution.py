@@ -29,6 +29,12 @@ EXPECTED_LICENSE_METADATA = {
     "License-File: NOTICE.md",
 }
 VSCODE_LICENSE_PATH = "metabrowser/static/vendor/licenses/vscode.txt"
+KEYBOARD_STATIC_ASSETS = {
+    "keyboard_help.js",
+    "keyboard_shortcuts.js",
+    "overlay_layer.js",
+    "tree_keyboard_navigation.js",
+}
 
 
 def _single_wheel() -> Path:
@@ -71,6 +77,10 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/__init__.py",
             "metabrowser/static/app.js",
             "metabrowser/static/charts.js",
+            "metabrowser/static/contribution_registry.js",
+            "metabrowser/static/resource_context.js",
+            "metabrowser/static/view_state.js",
+            "metabrowser/static/source_append.js",
             # Vendored browser libraries: the offline-first page depends on
             # these shipping in the wheel (see static/vendor/manifest.json).
             "metabrowser/static/vendor/manifest.json",
@@ -78,8 +88,20 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/vendor/chart.umd.min.js",
             VSCODE_LICENSE_PATH,
             "metabrowser/builtin_plugins/markdown/manifest.toml",
+            "metabrowser/builtin_plugins/markdown/rendered.js",
+            "metabrowser/builtin_plugins/folder/overview.js",
+            "metabrowser/builtin_plugins/folder/file_type_summary.js",
+            "metabrowser/builtin_plugins/folder/file_type_summary.css",
+            "metabrowser/data/file-rollup-format/empty-file-rollup.json",
+            "metabrowser/data/file-rollup-format/file-rollup-conformance.json",
+            "metabrowser/data/file-rollup-format/file-rollup-conformance.schema.json",
+            "metabrowser/data/file-rollup-format/file-rollup.schema.json",
+            "metabrowser/data/file-rollup-format/file-type-registry.schema.json",
+            "metabrowser/data/file-rollup-format/recommended-file-types.json",
+            "metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "dist-info/licenses/LICENSE",
             "dist-info/licenses/NOTICE.md",
+            *(f"metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
             if not any(name.endswith(suffix) for name in names):
@@ -104,10 +126,14 @@ def _inspect_sdist(sdist: Path) -> None:
             "LICENSE",
             "NOTICE.md",
             "README.md",
+            "docs/project/architecture/file-rollup-format/file-rollup-format.md",
+            "docs/project/architecture/file-rollup-format/recommended-file-types.toml",
             "pyproject.toml",
             "skills/metabrowser/SKILL.md",
             "skills/metabrowser/agents/openai.yaml",
+            "src/metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "src/metabrowser/static/app.js",
+            *(f"src/metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
             if not any(name.endswith(suffix) for name in names):
@@ -142,17 +168,25 @@ def _smoke_install(wheel: Path) -> None:
         (
             "from importlib.resources import files; "
             "import metabrowser; "
+            "from metabrowser.file_type_registry import load_file_type_registry; "
             "from metabrowser.kpress_adapter import render_kpress_view; "
             "from metabrowser.plugin_loader.discovery import discover_plugins; "
+            "registry = load_file_type_registry(); "
             "plugins = discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
-            "required = {'agent-log', 'binary', 'markdown', 'structured', 'text', "
-            "'unknown-jsonl'}; "
+            "required = {'agent-log', 'binary', 'folder', 'markdown', 'structured', "
+            "'text', 'unknown-jsonl'}; "
             "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
             "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
             "mtime_hash='wheel-smoke', size=14); "
             "assert metabrowser.__version__; "
-            "assert files('metabrowser').joinpath('static/app.js').is_file(); "
+            "assert registry.family('javascript') is not None; "
+            "static = files('metabrowser').joinpath('static'); "
+            "assets = ('app.js', 'keyboard_help.js', 'keyboard_shortcuts.js', "
+            "'overlay_layer.js', 'tree_keyboard_navigation.js'); "
+            "assert all(static.joinpath(asset).is_file() for asset in assets); "
+            "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
             "assert required == names; "
             "assert not plugins.errors; "
             "assert 'Wheel smoke' in rendered['html']; "

@@ -27,6 +27,25 @@ function assertSet(label, actual, expected) {
   assertEqual(label, JSON.stringify(Array.from(actual).sort()), JSON.stringify(expected.sort()));
 }
 
+function folderElements(expanded) {
+  const classes = new Set(["tree-folder", expanded ? "expanded" : "collapsed"]);
+  return {
+    children: { style: { display: expanded ? "block" : "none" } },
+    row: {
+      classList: {
+        contains: (name) => classes.has(name),
+        toggle: (name, force) => {
+          if (force) {
+            classes.add(name);
+          } else {
+            classes.delete(name);
+          }
+        },
+      },
+    },
+  };
+}
+
 function file(name, parent = "") {
   return {
     name,
@@ -105,6 +124,37 @@ assertEqual(
   25,
 );
 assertEqual("invalid measurements use the fallback", expansion.visibleRowBudget(0, 0, 18), 18);
+
+const closedFolder = folderElements(false);
+assertEqual(
+  "activating a closed folder reports expanded",
+  expansion.toggleFolderExpanded(closedFolder.row, closedFolder.children),
+  true,
+);
+assertEqual("expanding reveals children", closedFolder.children.style.display, "block");
+assertEqual("expanding sets the row class", closedFolder.row.classList.contains("expanded"), true);
+assertEqual(
+  "expanding clears the opposite row class",
+  closedFolder.row.classList.contains("collapsed"),
+  false,
+);
+
+assertEqual(
+  "activating the open folder reports collapsed",
+  expansion.toggleFolderExpanded(closedFolder.row, closedFolder.children),
+  false,
+);
+assertEqual("collapsing hides children", closedFolder.children.style.display, "none");
+assertEqual(
+  "collapsing clears the row class",
+  closedFolder.row.classList.contains("expanded"),
+  false,
+);
+assertEqual(
+  "collapsing sets the opposite row class",
+  closedFolder.row.classList.contains("collapsed"),
+  true,
+);
 
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
