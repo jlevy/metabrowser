@@ -5,7 +5,7 @@ title: "Open a Git URL directly: purgeable repo cache with blobless clone + back
 kind: feature
 status: open
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies:
@@ -13,8 +13,10 @@ dependencies:
     target: is-01m0b71xgqp0jgz007h0wtzr3z
   - type: blocks
     target: is-01m0c1by1cmexbqhx6xeb3b10p
+  - type: blocks
+    target: is-01m0c4dfbfnqg3q53y7xzbgc0a
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-08-19T03:34:48.107Z
+updated_at: 2026-08-19T04:28:18.865Z
 extensions:
   linear:
     id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5

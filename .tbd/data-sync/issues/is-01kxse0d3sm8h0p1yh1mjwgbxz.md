@@ -5,7 +5,7 @@ title: "General diff rendering: source-agnostic comparison model, renderer, and 
 kind: epic
 status: open
 priority: 1
-version: 19
+version: 32
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -25,8 +25,21 @@ child_order_hints:
   - is-01m0b71xwkrf39qnq9ccgxmfp4
   - is-01m0byfa26xv57p4y3rrcd1zm9
   - is-01m0c1by1cmexbqhx6xeb3b10p
+  - is-01m0c4cbscxq3b0qe4zcw6250j
+  - is-01m0c4cc698vj8c0qmfvtw24ad
+  - is-01m0c4cch7txk2nfb9fwqk6nxq
+  - is-01m0c4ccvt15140jetz8zqvdy9
+  - is-01m0c4cxzv2gzbbxp15796r65j
+  - is-01m0c4cycfke1sadh3hd8a24wk
+  - is-01m0c4cyrd1jqse6z0rxt0kh2k
+  - is-01m0c4cz2kcc5e7em60dn3jya4
+  - is-01m0c4czd01fxz2rv1na9s3b5q
+  - is-01m0c4dez6h952zmcdd6rhsp2b
+  - is-01m0c4dfbfnqg3q53y7xzbgc0a
+  - is-01m0c4dfp54t81297rz61cse4r
+  - is-01m0c4dg0mn2a39exqkjdvf6jv
 created_at: 2026-07-18T01:38:43.961Z
-updated_at: 2026-08-19T03:34:48.107Z
+updated_at: 2026-08-19T04:28:05.011Z
 extensions:
   linear:
     id: 0390e452-459b-479d-8bc2-d469e35c1dd5

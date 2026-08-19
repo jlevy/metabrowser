@@ -3,9 +3,9 @@ type: is
 id: is-01kxse0vt4cyng7mvtr3hk2rct
 title: "Diff P1: Changes nav surface and per-file diff renderer"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,9 @@ dependencies:
     target: is-01kxse0wddy6je24t1dm5caber
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-07-18T01:38:59.012Z
-updated_at: 2026-08-19T02:44:21.320Z
+updated_at: 2026-08-19T04:28:51.605Z
+closed_at: 2026-08-19T04:28:51.604Z
+close_reason: Superseded by mb-p2mi (comparison context in the Files tree) and mb-yv0g (comparison view descriptors). The shell-mapping section resolved this from a bespoke surface into two existing-mechanism extensions.
 extensions:
   linear:
     id: a18941f9-1b80-42ad-b5da-eaa77ec485e9
