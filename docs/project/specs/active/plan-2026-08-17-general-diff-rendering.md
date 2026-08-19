@@ -251,6 +251,27 @@ GitHub review threads are the first intended consumer, read-only; a document’s
 edits and annotations are the second, and both arrive as data over the same anchors
 rather than as new renderer features.
 
+### One acquisition workflow
+
+Three flows must feel like slight variations of one workflow, because they are: browsing
+a transient checkout of a repository URL, viewing a transient pull request, and viewing
+a pull request against a repository already on disk.
+They differ only in where objects come from and which refs are fetched:
+
+1. **Object store.** A remote URL clones into the purgeable cache; a repository already
+   on disk is borrowed into the cache with a reference clone, which is near-instant and
+   needs no network; a cache hit reuses either.
+2. **Refs.** The default branch for browsing; `refs/pull/<n>/head` and `/merge` for a
+   pull request; arbitrary revisions for a two-ref comparison.
+3. **Materialization.** When a filesystem tree is needed — the serve path expects one —
+   a transient detached worktree is created inside the cache and purged with it.
+
+The user’s own repository is never fetched into, checked out, or otherwise written —
+transient materialization always happens in the cache, which preserves the git package’s
+read-only contract while making the local-repository case simply the fastest variant of
+the same flow. After acquisition, every flow converges: the same serve path, the same
+tree, the same comparison context.
+
 ### The shell is the review surface
 
 Reviewing a change set does not get a new surface.
@@ -312,6 +333,38 @@ compatibility target, and the conformance corpus encodes git-produced cases dire
 Existing diff-model and unified-patch parser libraries are evaluated against this format
 before any in-house parser is written; a library that matches the model earns the
 adapter, and the format — not the library — remains the contract either way.
+
+**Schema authority and implementations.** The neutral JSON Schema is the contract,
+checked in beside the format document and versioned — the third instance of the
+repository’s established pattern, after the rollup schema and the tree wire model.
+Neither language side owns the format, because producers and consumers will exist on
+both sides. In Python, Pydantic models implement it: pydantic is already a runtime
+dependency and already the idiom for validated documents (`plugin_loader/manifest.py`),
+and discriminated unions on the change kind are exactly its strength.
+The checked-in schema remains the authority; the conformance corpus, run through the
+Pydantic models and the browser model alike, is what keeps every implementation honest.
+In the browser the format is `types.d.ts` declarations plus the corpus-driven validator
+— not Zod, because the corpus already provides the guarantee Zod would, and the
+zero-runtime-npm-dependency posture is evaluated once, at the Phase 3 renderer gate, not
+spent early on validation.
+
+**The apply oracle.** “Fully modeled” has a testable definition: a fully hydrated change
+set, applied to the base tree, must reproduce the target tree — byte for byte, verified
+by tree-hash equality, with modes, symlinks, renames, and type changes included.
+Apply takes a content resolver, so content may be referenced rather than embedded; the
+availability states then have a precise meaning — they are the declared gaps in
+applicability, not rendering annotations.
+A model that applies cleanly necessarily contains everything any view needs, which is
+the property that makes valid-therefore-renders-cleanly true rather than hopeful.
+
+**Standalone and worktree-tied are layers, not alternatives.** The format is standalone:
+a validated document with no requirement that a repository exists, which the patch-file
+source proves in Phase 1. Producers may be worktree-tied: the Git adapter resolves refs
+in a local object store and fills the same model lazily, manifest first, patches on
+demand, with hydration recorded per file in the availability field.
+A fully hydrated model is therefore a portable artifact — it can be exported, archived,
+and applied — while a partially hydrated one remains bound to its source through content
+references. Both are the same format.
 
 ### API changes
 
@@ -439,6 +492,9 @@ model have to render somewhere.
 - **Format conformance.** The corpus from the format document runs against both the
   Python model and the browser model, in the way the file-rollup corpus already does, so
   the two sides cannot drift.
+- **The apply oracle.** For fixture (base, target) pairs, compute the model, apply it to
+  the base tree through the content resolver, and assert tree-hash equality with the
+  target — the completeness proof, run over the same corpus repos as the adapter tests.
 - **Wire contracts.** Runtime validators on every emitted shape, in the style
   `git/wire.py` established, with `types.d.ts` kept in the same commit.
 - **Renderer.** DOM behavior tests for unified and split projections, context expansion,
