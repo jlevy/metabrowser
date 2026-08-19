@@ -1,11 +1,14 @@
 // Unified diff renderer over File Diff Format.
 //
-// Renders the manifest as sticky file sections and each hydrated patch
-// as hunks of line rows. Every availability state has exactly one
-// rendering path — an absent patch is a labeled state, never an empty
-// box. Rendering is deliberately dumber than the model: the data plane
-// is tested by the conformance corpus and CLI goldens, and this layer
-// only projects it.
+// Each file renders as a section under a bar: the section-disclosure
+// primitive carrying the filename (styled as a filename, not a
+// heading), change notes, the inline +N −N stat pair, and a copy-path
+// control riding the shell's [data-copy-path] delegation. Sections
+// start expanded; the bar collapses the body without disposing it.
+// Every availability state has exactly one rendering path — an absent
+// patch is a labeled state, never an empty box. Rendering is
+// deliberately dumber than the model: the data plane is tested by the
+// conformance corpus and CLI goldens, and this layer only projects it.
 
 import { fileChangeLabel } from "./diff_model.js";
 
@@ -19,6 +22,8 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   unsupported: "This change cannot be shown as a text diff.",
 });
 
+let sectionSequence = 0;
+
 /** @param {string} tag @param {string} className @param {string} [text] */
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -27,6 +32,14 @@ function el(tag, className, text) {
     node.textContent = text;
   }
   return node;
+}
+
+/** @returns {string} The shell's copy glyph, or "" outside the shell. */
+function copyIconSvg() {
+  const shell = /** @type {{metabrowser?: {icons?: Record<string, string>}}} */ (
+    /** @type {unknown} */ (globalThis)
+  );
+  return shell.metabrowser?.icons?.copy ?? "";
 }
 
 /** @param {Record<string, unknown>} hunk @returns {HTMLElement} */
@@ -65,19 +78,53 @@ function renderHunk(hunk) {
   return section;
 }
 
-/** @param {Record<string, unknown>} change @returns {HTMLElement} */
-function renderFileHeader(change) {
+/**
+ * The per-file bar: one disclosure trigger (kind, path, notes, stats)
+ * plus a sibling copy control, per the section-disclosure and icon
+ * button primitives in the design system.
+ *
+ * @param {Record<string, unknown>} change
+ * @param {string} toggleId
+ * @param {string} bodyId
+ * @returns {{bar: HTMLElement, toggle: HTMLElement}}
+ */
+function renderFileBar(change, toggleId, bodyId) {
   const { letter, label, notes } = fileChangeLabel(change);
-  const header = el("div", "diff-file-header");
-  header.append(el("span", `diff-file-kind diff-file-kind-${String(change.kind)}`, letter));
-  header.append(el("span", "diff-file-path", label));
+  const bar = el("div", "diff-file-bar");
+  const toggle = el("button", "diff-file-toggle section-disclosure-trigger");
+  toggle.setAttribute("type", "button");
+  toggle.setAttribute("id", toggleId);
+  toggle.setAttribute("aria-controls", bodyId);
+  toggle.setAttribute("aria-expanded", "true");
+  toggle.append(el("span", `diff-file-kind diff-file-kind-${String(change.kind)}`, letter));
+  toggle.append(el("span", "diff-file-path", label));
   for (const note of notes) {
-    header.append(el("span", "diff-file-note", note));
+    toggle.append(el("span", "diff-file-note", note));
   }
   if (change.additions !== null && change.additions !== undefined) {
-    header.append(el("span", "diff-file-counts", `+${change.additions} −${change.deletions}`));
+    const stats = el("span", "diff-file-stats");
+    stats.append(el("span", "diff-stat-add", `+${change.additions}`));
+    stats.append(el("span", "diff-stat-del", `−${change.deletions}`));
+    toggle.append(stats);
   }
-  return header;
+  bar.append(toggle);
+
+  const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
+  if (side !== undefined) {
+    const copy = el("button", "icon-btn icon-btn-reveal diff-file-copy");
+    copy.setAttribute("type", "button");
+    copy.setAttribute("data-copy-path", String(side.path));
+    copy.setAttribute("title", "Copy path");
+    copy.setAttribute("aria-label", "Copy path");
+    const svg = copyIconSvg();
+    if (svg) {
+      copy.innerHTML = svg;
+    } else {
+      copy.textContent = "⧉";
+    }
+    bar.append(copy);
+  }
+  return { bar, toggle };
 }
 
 /**
@@ -86,26 +133,41 @@ function renderFileHeader(change) {
  * @returns {HTMLElement}
  */
 function renderFileSection(change, patch) {
+  sectionSequence += 1;
+  const toggleId = `diff-file-toggle-${sectionSequence}`;
+  const bodyId = `diff-file-body-${sectionSequence}`;
   const section = el("section", "diff-file");
-  section.append(renderFileHeader(change));
+  section.setAttribute("aria-labelledby", toggleId);
+  const { bar, toggle } = renderFileBar(change, toggleId, bodyId);
+  const body = el("div", "diff-file-body");
+  body.setAttribute("id", bodyId);
+  section.append(bar, body);
+
+  let expanded = true;
+  toggle.addEventListener("click", () => {
+    expanded = !expanded;
+    toggle.setAttribute("aria-expanded", String(expanded));
+    body.classList.toggle("diff-file-body-collapsed", !expanded);
+  });
+
   const availability = String(change.availability);
   if (availability !== "ready" || patch === undefined) {
     const copy = AVAILABILITY_COPY[availability] || "This file's changes are unavailable.";
-    section.append(el("div", "diff-availability", copy));
+    body.append(el("div", "diff-availability", copy));
     return section;
   }
   const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
   if (hunks.length === 0) {
     // A hydrated patch with no hunks is a metadata-only change (a chmod,
-    // a pure rename): the header already says everything it changes.
-    section.append(el("div", "diff-availability", "No content changes."));
+    // a pure rename): the bar already says everything it changes.
+    body.append(el("div", "diff-availability", "No content changes."));
     return section;
   }
   for (const hunk of hunks) {
-    section.append(renderHunk(hunk));
+    body.append(renderHunk(hunk));
   }
   if (patch.truncated) {
-    section.append(el("div", "diff-availability", "This patch was truncated at its bounds."));
+    body.append(el("div", "diff-availability", "This patch was truncated at its bounds."));
   }
   return section;
 }
@@ -128,13 +190,20 @@ export function mountDiffView(container, document_) {
   const plus = totals.additions === null ? "?" : String(totals.additions);
   const minus = totals.deletions === null ? "?" : String(totals.deletions);
   const exactness = totals.exact ? "" : " (estimated)";
-  root.append(
+  const summary = el("div", "diff-summary");
+  summary.append(
     el(
-      "div",
-      "diff-summary",
-      `${totals.files} changed ${Number(totals.files) === 1 ? "file" : "files"}  +${plus} −${minus}${exactness}`,
+      "span",
+      "diff-summary-files",
+      `${totals.files} changed ${Number(totals.files) === 1 ? "file" : "files"}`,
     ),
+    el("span", "diff-stat-add", `+${plus}`),
+    el("span", "diff-stat-del", `−${minus}`),
   );
+  if (exactness) {
+    summary.append(el("span", "diff-summary-note", exactness.trim()));
+  }
+  root.append(summary);
   for (const change of manifest.files) {
     root.append(renderFileSection(change, patches[String(change.id)]));
   }

@@ -417,6 +417,23 @@ Markdown Frontmatter and Diagnostics disclosures start collapsed through the abs
 the native `open` attribute.
 These defaults are not saved as user preferences.
 
+The diff view’s per-file bar is a third user of the primitive with one deliberate
+difference: its trigger is styled as a filename, not a heading — the shell’s file-path
+typography (`--font-sans`, `--nav-font-size`, `--weight-bold`) — because the title *is*
+a file path.
+The bar keeps everything else: one focusable trigger carrying the chevron, a
+sibling `.icon-btn` copy control on the shell’s `[data-copy-path]` delegation so a
+nested interactive never sits inside the trigger, and sections start expanded.
+
+### Inline Change Stats
+
+The `+N` / `−N` pair that rides beside a filename wherever a surface reports change
+size: `.diff-stat-add` in `--status-success`, `.diff-stat-del` in `--status-error`,
+always in that order, using the true minus sign, at the local small-text size.
+The same pair is the summary line’s vocabulary, so a change set and its files read
+identically. Kind letters reuse the same mapping — added is `--status-success`, deleted
+is `--status-error` — and no diff surface introduces a local green or red.
+
 Section headings use `--section-heading-divider-gap` between their content and the
 divider. Components consume the token instead of choosing local bottom padding, so the
 divider remains equally close to headings with and without disclosure controls.

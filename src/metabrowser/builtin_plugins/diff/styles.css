@@ -1,8 +1,13 @@
-/* Diff view. Tokens only; the add/del tints reuse the shared data-mark
+/* Diff view. Tokens only; the add/del tints reuse the shared status
    palette so a diff reads with the same vocabulary as every other
-   surface that shows change. */
+   surface that shows change. The per-file bar composes the
+   section-disclosure and icon-button primitives from the design
+   system; the title is styled as a filename, not a heading. */
 
 .metabrowser-diff-host .diff-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
@@ -16,20 +21,36 @@
   overflow: hidden;
 }
 
-.metabrowser-diff-host .diff-file-header {
+.metabrowser-diff-host .diff-file-bar {
   position: sticky;
   top: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 4px;
+  padding: 4px 6px 4px 10px;
   background: var(--sidebar-bg);
   border-bottom: 1px solid var(--border);
+}
+
+.metabrowser-diff-host .diff-file-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
+  text-align: left;
+  cursor: pointer;
 }
 
 .metabrowser-diff-host .diff-file-kind {
   font-weight: var(--weight-bold);
+  flex: none;
 }
 
 .metabrowser-diff-host .diff-file-kind-added {
@@ -40,18 +61,43 @@
   color: var(--status-error);
 }
 
+/* Filename styling, matching the shell's file header path. */
 .metabrowser-diff-host .diff-file-path {
+  font-size: var(--nav-font-size);
+  font-weight: var(--weight-bold);
+  color: var(--text);
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.metabrowser-diff-host .diff-file-note,
-.metabrowser-diff-host .diff-file-counts {
+.metabrowser-diff-host .diff-file-note {
   color: var(--muted);
+  flex: none;
 }
 
-.metabrowser-diff-host .diff-file-counts {
+/* Inline change stats: the +N −N pair in the status palette. */
+.metabrowser-diff-host .diff-file-stats {
   margin-left: auto;
+  display: inline-flex;
+  gap: 6px;
   white-space: nowrap;
+  flex: none;
+}
+
+.metabrowser-diff-host .diff-stat-add {
+  color: var(--status-success);
+}
+
+.metabrowser-diff-host .diff-stat-del {
+  color: var(--status-error);
+}
+
+.metabrowser-diff-host .diff-file-copy {
+  flex: none;
+}
+
+.metabrowser-diff-host .diff-file-body-collapsed {
+  display: none;
 }
 
 .metabrowser-diff-host .diff-hunk-header {

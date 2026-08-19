@@ -9,6 +9,10 @@ Diff rendering:
 - `.patch` and `.diff` files now open as rendered diffs: a change summary, per-file
   sections with GitHub-style indicators (renames with the old path, mode changes, type
   changes such as file to symlink, binary), and numbered unified hunks.
+  Each file sits under a sticky bar — the filename with a copy-path control, its change
+  notes, and a green/red `+N −N` stat pair — that collapses and reopens the section with
+  the same chevron disclosure used across the app.
+  Sections start expanded, and collapsing keeps the rows mounted.
   Every unavailable state is a labeled explanation rather than an empty box, and input
   that is not a diff says so instead of claiming no changes.
 - New `metab --diff SPEC` mode: `BASE..TARGET`, a single revision (compared against its

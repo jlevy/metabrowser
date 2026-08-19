@@ -1,7 +1,8 @@
 // Render checks for the diff view, deliberately lighter than the model
 // tests: the data plane is pinned by the corpus and the CLI goldens, so
 // this only asserts the projection — line rows, numbering, availability
-// states, metadata-only changes, and disposal.
+// states, metadata-only changes, the per-file disclosure bar, and
+// disposal.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -10,15 +11,49 @@ const { pathToFileURL } = require("node:url");
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
 
+class FakeClassList {
+  /** @param {FakeElement} owner */
+  constructor(owner) {
+    this.owner = owner;
+  }
+
+  _set() {
+    return new Set(this.owner.className.split(" ").filter(Boolean));
+  }
+
+  _write(set) {
+    this.owner.className = [...set].join(" ");
+  }
+
+  toggle(name, force) {
+    const set = this._set();
+    const want = force === undefined ? !set.has(name) : force;
+    if (want) {
+      set.add(name);
+    } else {
+      set.delete(name);
+    }
+    this._write(set);
+    return want;
+  }
+
+  contains(name) {
+    return this._set().has(name);
+  }
+}
+
 class FakeElement {
   constructor(tag) {
     this.tagName = tag.toUpperCase();
     this.className = "";
     this.textContent = "";
+    this.innerHTML = "";
     this.title = "";
     this.children = [];
     this.parentNode = null;
     this.attributes = new Map();
+    this.listeners = new Map();
+    this.classList = new FakeClassList(this);
   }
 
   append(...nodes) {
@@ -39,6 +74,22 @@ class FakeElement {
     this.attributes.set(name, String(value));
   }
 
+  getAttribute(name) {
+    return this.attributes.has(name) ? this.attributes.get(name) : null;
+  }
+
+  addEventListener(type, handler) {
+    const handlers = this.listeners.get(type) ?? [];
+    handlers.push(handler);
+    this.listeners.set(type, handlers);
+  }
+
+  click() {
+    for (const handler of this.listeners.get("click") ?? []) {
+      handler({ target: this });
+    }
+  }
+
   *walk() {
     yield this;
     for (const child of this.children) {
@@ -47,7 +98,7 @@ class FakeElement {
   }
 
   find(className) {
-    return [...this.walk()].filter((node) => node.className.split(" ").includes(className));
+    return [...this.walk()].filter((node) => node.classList.contains(className));
   }
 
   text() {
@@ -86,6 +137,36 @@ async function main() {
   const firstNumbers = lines[0].find("diff-line-number").map((cell) => cell.textContent);
   check("context rows carry both numbers", JSON.stringify(firstNumbers) === '["3","3"]');
   check("hunk heading renders", container.text().includes("def f():"));
+
+  // The per-file bar: a section-disclosure trigger plus a copy control.
+  const toggle = container.find("diff-file-toggle")[0];
+  check(
+    "bar composes the disclosure primitive",
+    toggle.classList.contains("section-disclosure-trigger"),
+  );
+  check("sections start expanded", toggle.getAttribute("aria-expanded") === "true");
+  const body = container.find("diff-file-body")[0];
+  check(
+    "trigger controls the body",
+    toggle.getAttribute("aria-controls") === body.getAttribute("id"),
+  );
+  const copy = container.find("diff-file-copy")[0];
+  check("copy control rides the shell delegation", Boolean(copy.getAttribute("data-copy-path")));
+  check("copy control is an icon button", copy.classList.contains("icon-btn"));
+  const stats = container.find("diff-file-stats")[0];
+  check(
+    "stat pair renders add then del",
+    stats.children[0].classList.contains("diff-stat-add") &&
+      stats.children[1].classList.contains("diff-stat-del"),
+  );
+
+  // Toggling collapses without disposing, and toggling back restores.
+  toggle.click();
+  check("collapse hides the body", body.classList.contains("diff-file-body-collapsed"));
+  check("collapse flips aria-expanded", toggle.getAttribute("aria-expanded") === "false");
+  check("collapse keeps rows mounted", container.find("diff-line").length === 4);
+  toggle.click();
+  check("expand restores the body", !body.classList.contains("diff-file-body-collapsed"));
 
   // Disposal removes everything the mount added.
   handle.dispose();
