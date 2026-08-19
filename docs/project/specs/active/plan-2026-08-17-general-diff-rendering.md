@@ -251,6 +251,68 @@ GitHub review threads are the first intended consumer, read-only; a document’s
 edits and annotations are the second, and both arrive as data over the same anchors
 rather than as new renderer features.
 
+### The shell is the review surface
+
+Reviewing a change set does not get a new surface.
+The existing shell maps onto it with three customizations, each extending a mechanism
+that already exists rather than adding one:
+
+1. **The comparison scopes the tree, the way a filter already does.** The Files panel
+   already swaps its data source — a recency window renders `/api/recent` through the
+   same tree renderer — and the filter bar already narrows what the tree shows.
+   A comparison composes both moves: the manifest is a third source, and its scope *is*
+   a filter down to the files that changed.
+   Rows carry the same change indicators the hosting sites use, driven by the complete
+   classification below: added, deleted, modified, renamed with the old path visible
+   (including a move to another folder), copied, mode change, type change such as file
+   to symlink, binary, and unsupported.
+   Selection routes through the same `navigateToPath` and preferred-view path every
+   other selection uses.
+2. **Presentations are view tabs on the file.** The file envelope already carries
+   ordered view descriptors, the shell mounts them lazily as tabs, and `preferredViewId`
+   picks one. In comparison context a changed file’s descriptor list gains comparison
+   views, and **Diff** becomes the context default.
+   Every later presentation — Before, After, rendered-at-revision for Markdown, an
+   inline diff inside the rendered document — is another tab from the same diff layout,
+   not a new mechanism.
+3. **The context is addressable.** A comparison scopes what the tree shows and what the
+   tabs mean, so it must live in the URL like every other selection since the `/view/`
+   scheme landed. That is the open URL-grammar decision, and this mapping is why it is
+   structural rather than cosmetic.
+
+Live updates freeze differently here: a historical comparison is immutable, and an
+uncommitted one goes `stale` with a refresh offer rather than repainting under the
+reader — the rule the comparison model already states.
+
+View phasing for a changed text file, all tabs from one diff layout:
+
+| Phase | Tabs |
+| --- | --- |
+| First | **Diff** (unified source), After |
+| Next | Before; **Rendered** at the head revision for Markdown |
+| Later | Split and inline presentations; the diff shown inside the rendered document |
+
+### The format is defined standalone, up front
+
+The change model is the part of this design with the most corner cases — renames that
+are also edits, copies, mode flips, type changes between file and symlink and submodule,
+unmerged paths, binary transitions, missing trailing newlines, non-UTF-8 paths — and
+discovering them incrementally means backfilling the model over and over, invalidating
+consumers each time.
+
+So the model ships the way File Rollup Format did: a standalone architecture document
+under `docs/project/architecture/file-diff-format/`, with JSON schemas and a generated
+conformance corpus in `data/` that runs against both the Python and browser
+implementations, so a change record cannot quietly mean different things on the two
+sides. The document enumerates the complete taxonomy once, before the first consumer.
+
+**Git’s model is the reference semantics whenever there is doubt** — its statuses,
+rename and copy scoring, mode and type transitions, and combined-merge behavior are the
+compatibility target, and the conformance corpus encodes git-produced cases directly.
+Existing diff-model and unified-patch parser libraries are evaluated against this format
+before any in-house parser is written; a library that matches the model earns the
+adapter, and the format — not the library — remains the contract either way.
+
 ### API changes
 
 A core route collection under `/api/diff/`, following the research’s shape:
@@ -295,8 +357,11 @@ that makes it pleasant, and carries the dependency decision.
 Ends with: opening a `.patch` file renders a real diff.
 No Git involvement.
 
+- [ ] File Diff Format: the standalone architecture document, JSON schemas, and
+  conformance corpus described above, following git semantics; evaluate existing
+  diff-model libraries against it before writing any parser
 - [ ] `diff/model.py`: intent, resolved comparison, manifest, file patch, availability
-  states, with wire validators in the style of `git/wire.py`
+  states — implementing the format, with wire validators in the style of `git/wire.py`
 - [ ] `diff/adapters/patch_file.py`: bounded unified-patch parser covering renames,
   copies, mode changes, binary markers, and malformed input
 - [ ] `diff/service.py`: adapter registry, deterministic comparison IDs, bounded caches
@@ -315,8 +380,11 @@ commit.
   unstaged, all uncommitted
 - [ ] Rename and copy detection with stated limits
 - [ ] `--diff-merges=first-parent` for merges, matching the history surface
-- [ ] Changes surface mounted through `registerNavPanel`: searchable file list with
-  status, counts, and badges; whole-commit and per-file navigation
+- [ ] Comparison context in the shell: the Files tree renders the manifest as a third
+  source beside tree and recent, scoped like a filter to the changed files, with the
+  full change-indicator set from the format
+- [ ] Comparison views injected into changed files’ view descriptors, Diff as the
+  context default, After beside it; selection flows through `navigateToPath`
 - [ ] Commit detail in the Git panel links into the comparison rather than re-rendering
 - [ ] Watcher-driven `stale` for uncommitted comparisons
 
@@ -368,6 +436,9 @@ model have to render somewhere.
   reproducible.
 - **Bounds.** Each cap has a test that crosses it and asserts the reported state, not
   just the absence of a crash.
+- **Format conformance.** The corpus from the format document runs against both the
+  Python model and the browser model, in the way the file-rollup corpus already does, so
+  the two sides cannot drift.
 - **Wire contracts.** Runtime validators on every emitted shape, in the style
   `git/wire.py` established, with `types.d.ts` kept in the same commit.
 - **Renderer.** DOM behavior tests for unified and split projections, context expansion,
@@ -383,8 +454,9 @@ model have to render somewhere.
 - Whether hunks are produced by the Python adapter or parsed in a browser worker from
   bounded per-file patches.
   Server production is the cleaner target.
-- Whether the Changes surface is a nav panel, a preview-pane surface, or both, and how
-  it addresses a comparison in the `/view/` URL grammar so a diff is linkable.
+- How a comparison is addressed in the `/view/` URL grammar so a diff is linkable.
+  (Whether review needed its own surface is resolved above: it is the existing shell in
+  a comparison context.)
 - Whether the core file tree gains a decoration API so changed and staged files can be
   badged in place. This moves the core boundary and should be settled before the Changes
   surface ships rather than after.
