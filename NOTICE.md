@@ -6,6 +6,12 @@ independent of Metabrowser’s license.
 
 ## Vendored and Bundled Components
 
+- **Visual Studio Code Source Control Graph**
+  ([MIT License](src/metabrowser/static/vendor/licenses/vscode.txt),
+  [Visual Studio Code](https://github.com/microsoft/vscode)). The commit-graph swimlane
+  implementation in `src/metabrowser/static/git_graph.js` is derived from Visual Studio
+  Code’s `scmHistory.ts`, copied at upstream commit
+  `9245212c26af8113b3b96392c04563623cd99811` (2026-08-07).
 - **Mustache.js** v4.2.0
   ([MIT License](src/metabrowser/static/vendor/licenses/mustache.txt),
   [mustache.js](https://github.com/janl/mustache.js)). The browser runtime is vendored

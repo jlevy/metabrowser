@@ -2539,26 +2539,223 @@ function startIndexProgressPolling() {
   }, INDEX_PROGRESS_POLL_MS);
 }
 
+// ── Nav panel registry ─────────────────────────────────────────
+//
+// The tab bar used to be hardcoded buttons and a click handler that knew
+// each panel by name. It is a registry now for two reasons: a panel can
+// be conditional (Git appears only when the served root resolves to a
+// repository, which is not known until /api/git/repo answers), and a
+// panel's first-show hook belongs beside its declaration rather than in
+// an if-chain inside the handler.
+//
+// Files stays in the server-rendered HTML — it is first-paint critical,
+// and creating it in JS would flash an empty nav. Panels registered
+// later create their own button and container, which is what makes a
+// stale registration dangerous rather than merely dead: registering a
+// retired panel would put its tab back on screen.
+// This is the seam a plugin-facing registerNavPanel would build on; no
+// such SDK surface is exposed yet.
+
+/**
+ * @typedef {object} NavPanel
+ * @property {string} id
+ * @property {string} label
+ * @property {(() => void) | null} onFirstShow Runs once, the first time
+ *   the panel is shown. Lazy loading is the whole point: Recent and Git
+ *   both cost a request that a user who never opens them should not pay.
+ * @property {(() => void) | null | undefined} [onShow] Runs every time
+ *   the panel is activated, including the first. Panels use this only
+ *   for cheap refresh/retry checks after their lazy initialization.
+ */
+
+/** @type {NavPanel[]} */
+var navPanels = [];
+/** @type {Set<string>} */
+var navPanelsShown = new Set();
+var previewClaimGeneration = 0;
+
+/**
+ * Claim the shared preview pane for one navigation owner.
+ *
+ * Async preview producers keep the returned generation and check it
+ * before every write. A later file, commit, or nav action increments the
+ * generation, making all older writes harmless.
+ *
+ * @param {string} owner
+ * @returns {number}
+ */
+function claimPreview(owner) {
+  previewClaimGeneration += 1;
+  const preview = document.getElementById("preview-pane");
+  if (preview) {
+    preview.dataset.previewOwner = owner;
+  }
+  return previewClaimGeneration;
+}
+
+/** @param {number} claim */
+function isPreviewClaimCurrent(claim) {
+  return claim === previewClaimGeneration;
+}
+
+function registerNavPanel(panel) {
+  if (navPanels.some((existing) => existing.id === panel.id)) {
+    return;
+  }
+  navPanels.push(panel);
+  ensureNavPanelElements(panel);
+}
+
+// Create the button and container for a panel that was not in the
+// server-rendered markup. Idempotent, so a re-registration after a root
+// change does not duplicate the tab.
+function ensureNavPanelElements(panel) {
+  const navBar = queryHtml(".nav-tab-bar");
+  const content = document.getElementById("tree-content");
+  if (!navBar || !content) {
+    return;
+  }
+  if (!navBar.querySelector(`.tab-btn[data-tab="${panel.id}"]`)) {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn";
+    btn.type = "button";
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", "false");
+    btn.dataset.tab = panel.id;
+    btn.textContent = panel.label;
+    btn.addEventListener("click", () => activateNavPanel(panel.id));
+    navBar.appendChild(btn);
+  }
+  if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
+    const container = document.createElement("div");
+    container.id = `tab-${panel.id}`;
+    container.dataset.tabContent = panel.id;
+    container.style.display = "none";
+    content.appendChild(container);
+  }
+}
+
+function removeNavPanel(panelId) {
+  navPanels = navPanels.filter((panel) => panel.id !== panelId);
+  navPanelsShown.delete(panelId);
+  const navBar = queryHtml(".nav-tab-bar");
+  const button = navBar?.querySelector(`.tab-btn[data-tab="${panelId}"]`);
+  const container = document.querySelector(`[data-tab-content="${panelId}"]`);
+  const wasActive = button?.classList.contains("active");
+  button?.remove();
+  container?.remove();
+  // Never leave the nav with no active tab: if the panel being removed
+  // was the visible one, fall back to Files.
+  if (wasActive) {
+    activateNavPanel("files");
+  }
+}
+
+function activateNavPanel(panelId) {
+  const navBar = queryHtml(".nav-tab-bar");
+  if (!navBar) {
+    return;
+  }
+  claimPreview(`nav:${panelId}`);
+  // Claiming invalidates any in-flight file or commit load, but the
+  // placeholder those loads already painted is still on screen and their
+  // responses can no longer replace it — so the pane would keep showing a
+  // spinner until some unrelated navigation redraws it. Retire the
+  // placeholder here. Rendered content is left alone: it is still a valid
+  // preview, and a tab switch is not a reason to throw it away.
+  const preview = document.getElementById("preview-pane");
+  if (preview?.firstElementChild?.classList.contains("loading")) {
+    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
+  }
+  queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
+    const selected = btn.dataset.tab === panelId;
+    btn.classList.toggle("active", selected);
+    btn.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+  queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
+    panel.style.display = panel.dataset.tabContent === panelId ? "" : "none";
+  });
+  // The filter bar is chrome for the file tree, and it sits outside the
+  // tab containers on purpose — a tree reload replaces #tab-files
+  // wholesale, and the bar has to survive that and stay put while the
+  // tree scrolls. Being outside means the loop above does not reach it,
+  // so a panel that is not Files would otherwise keep a bar of file
+  // filters on screen above content they cannot filter.
+  const filterBar = document.getElementById("nav-filter-bar");
+  if (filterBar) {
+    filterBar.style.display = panelId === "files" ? "" : "none";
+  }
+  // Hiding or restoring the bar changes which chrome the scroll shadow
+  // belongs to, and no scroll event fires on a tab switch.
+  navScrollShadowUpdate?.();
+
+  const panel = navPanels.find((candidate) => candidate.id === panelId);
+  if (!navPanelsShown.has(panelId)) {
+    navPanelsShown.add(panelId);
+    panel?.onFirstShow?.();
+  }
+  panel?.onShow?.();
+}
+
 function initNavTabs() {
   const navBar = queryHtml(".nav-tab-bar");
   if (!navBar) {
     return;
   }
+  // Files needs no first-show hook: the tree is already loading when the
+  // shell boots, and Files is the panel that starts visible.
+  //
+  // Recent is deliberately absent. It was a panel here until the filter
+  // work folded it into the Files pane as the recency dimension, and
+  // registering it now would not merely be dead code: a registration
+  // whose button is not in the server-rendered markup *creates* one, so
+  // this would put the retired tab back on screen.
+  registerNavPanel({ id: "files", label: "Files", onFirstShow: null });
+  navPanelsShown.add("files");
+
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      var tabId = btn.dataset.tab;
-      navBar.querySelectorAll(".tab-btn").forEach((b) => {
-        b.classList.remove("active");
-        b.setAttribute("aria-selected", "false");
-      });
-      btn.classList.add("active");
-      btn.setAttribute("aria-selected", "true");
-      queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
-        panel.style.display = panel.dataset.tabContent === tabId ? "" : "none";
-      });
-    });
+    const panelId = btn.dataset.tab;
+    if (!panelId) {
+      return;
+    }
+    btn.addEventListener("click", () => activateNavPanel(panelId));
   });
 }
+
+// Replace the preview pane's contents with shell-owned HTML.
+//
+// Disposal is the reason this is a function rather than an innerHTML
+// assignment at each call site: replacing the pane detaches whatever
+// plugin views are mounted, and skipping their disposers leaks their
+// listeners and retained resources.
+function renderPreviewHtml(html, claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return null;
+  }
+  const preview = document.getElementById("preview-pane");
+  if (!preview) {
+    return null;
+  }
+  disposeActivePluginViews();
+  preview.innerHTML = html;
+  return preview;
+}
+
+// The seam between the shell and modules that are not file renderers.
+//
+// Deliberately narrow, and deliberately not `window.metabrowser`: that
+// object is the documented plugin SDK with a compatibility contract,
+// whereas this is an internal boundary that core modules loaded by the
+// shell may use. Exposing it at all is what lets git_panel.js stay out
+// of app.js instead of adding a thousand lines to it.
+window.MetabrowserShell = Object.freeze({
+  activateNavPanel,
+  claimPreview,
+  isPreviewClaimCurrent,
+  registerNavPanel,
+  removeNavPanel,
+  renderPreviewHtml,
+});
 
 // Toggle the nav chrome's drop shadow based on whether the
 // tree-content scroll position is at the top. At scrollTop=0 the
@@ -2570,21 +2767,29 @@ function initNavTabs() {
 // The shadow rides the filter bar, not the tab bar: the filter bar is
 // the bottom-most chrome above the scroll owner, so a shadow on the
 // tab bar would land on the filter bar instead of on the content.
+/** @type {(() => void) | null} */
+var navScrollShadowUpdate = null;
+
 function initNavScrollShadow() {
-  const shadowTarget = document.getElementById("nav-filter-bar") || queryHtml(".nav-tab-bar");
+  const filterBar = document.getElementById("nav-filter-bar");
+  const tabBar = queryHtml(".nav-tab-bar");
   const content = document.getElementById("tree-content");
-  if (!shadowTarget || !content) {
+  if (!content || (!filterBar && !tabBar)) {
     return;
   }
-  const scrollNavBar = shadowTarget;
   const scrollContent = content;
   function update() {
-    if (scrollContent.scrollTop > 0) {
-      scrollNavBar.classList.add("scrolled");
-    } else {
-      scrollNavBar.classList.remove("scrolled");
-    }
+    // Resolved per call rather than once at startup: the filter bar is
+    // hidden on panels that are not Files, and a shadow on a hidden
+    // element is no cue at all. Whichever chrome is bottom-most *and
+    // visible* carries it, and the other is cleared so a tab switch
+    // cannot leave two shadows armed.
+    const target = filterBar && filterBar.offsetParent !== null ? filterBar : tabBar;
+    const other = target === filterBar ? tabBar : filterBar;
+    other?.classList.remove("scrolled");
+    target?.classList.toggle("scrolled", scrollContent.scrollTop > 0);
   }
+  navScrollShadowUpdate = update;
   // Passive listener — we never preventDefault — so the browser
   // can keep scroll responsive while we just read scrollTop.
   scrollContent.addEventListener("scroll", update, { passive: true });
@@ -3925,6 +4130,9 @@ function cachePut(cache, key, value, maxSize, onEvict) {
 }
 
 var textChunkLoadInFlight = false;
+/** @type {number | null} */
+var filePreviewClaim = null;
+
 /**
  * Bytes the next Load more will request. Each click doubles up to the cap, so
  * reaching a large file takes a handful of clicks rather than dozens while no
@@ -3959,6 +4167,7 @@ async function loadMoreCurrentText() {
 
   textChunkLoadInFlight = true;
   var path = currentPath;
+  var previewClaim = filePreviewClaim;
   var offset = cached.bytes_read || 0;
   var requested = textChunkNextBytes;
   try {
@@ -3978,7 +4187,7 @@ async function loadMoreCurrentText() {
       () => resp.json(),
       responsePerfMeta(resp, path, { offset: offset }),
     );
-    if (currentPath !== path) {
+    if (currentPath !== path || previewClaim === null || !isPreviewClaimCurrent(previewClaim)) {
       return;
     }
     if (chunk.mtime_hash && cached.mtime_hash && chunk.mtime_hash !== cached.mtime_hash) {
@@ -4009,7 +4218,7 @@ async function loadMoreCurrentText() {
         window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
       );
     } else {
-      renderFile(cached);
+      renderFile(cached, undefined, previewClaim);
     }
   } catch (e) {
     console.warn("Failed to load text chunk", e);
@@ -4031,6 +4240,8 @@ var selectFileAbortController = null;
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, preferredViewId) {
+  var previewClaim = claimPreview("file");
+  filePreviewClaim = previewClaim;
   return _perf.measureAsync(
     "selectFile",
     async () => {
@@ -4058,7 +4269,7 @@ async function selectFile(path, preferredViewId) {
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
         navigationController.canonicalizePath(path, cached.kind === "folder");
-        renderFile(cached, preferredViewId);
+        renderFile(cached, preferredViewId, previewClaim);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
       }
@@ -4068,7 +4279,7 @@ async function selectFile(path, preferredViewId) {
       }
       loadingIndicatorTimer = setTimeout(() => {
         loadingIndicatorTimer = null;
-        if (currentPath !== path) {
+        if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
           return;
         }
         disposeActivePluginViews();
@@ -4101,13 +4312,13 @@ async function selectFile(path, preferredViewId) {
           // Server confirmed the cached payload is still fresh — zero-byte
           // body, render from memory.
           fileNeedsRevalidate.delete(path);
-          if (currentPath === path) {
+          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
             if (loadingIndicatorTimer) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
             navigationController.canonicalizePath(path, cached.kind === "folder");
-            renderFile(cached, preferredViewId);
+            renderFile(cached, preferredViewId, previewClaim);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
           }
@@ -4140,13 +4351,13 @@ async function selectFile(path, preferredViewId) {
           }
         }
         fileNeedsRevalidate.delete(path);
-        if (currentPath === path) {
+        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
           navigationController.canonicalizePath(path, data.kind === "folder");
-          renderFile(data, preferredViewId);
+          renderFile(data, preferredViewId, previewClaim);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
         }
@@ -4157,7 +4368,7 @@ async function selectFile(path, preferredViewId) {
           return { status: "cancelled" };
         }
         var notFound = caught?.notFound === true;
-        if (currentPath === path) {
+        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
@@ -4519,7 +4730,14 @@ function mountPluginView(container, pluginView, ctx) {
   }
 }
 
-function renderFile(data, preferredViewId) {
+function renderFile(data, preferredViewId, claim) {
+  // Ownership, not staleness: the Git panel renders into this same pane, so a
+  // file render that lost the pane must not paint over it. currentPath cannot
+  // express that, because the owner changed rather than the path.
+  var renderClaim = claim ?? filePreviewClaim;
+  if (renderClaim === null || !isPreviewClaimCurrent(renderClaim)) {
+    return;
+  }
   return _perf.measure(
     `renderFile:${data.kind || data.type || "?"}`,
     () => {
@@ -6386,6 +6604,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavScrollShadow();
   initKeyboardInfrastructure();
   initQuickFileFinder();
+  // Not awaited: whether the served root is a repository is irrelevant
+  // to first paint, and blocking the tree walk on a git call would make
+  // every non-repository directory pay for a feature it will not show.
+  window.MetabrowserGitPanel?.init();
   // Start the URL-pinned file fetch in parallel with the tree walk. Only a
   // /view/ pathname selects a file; a hash is document state, never identity.
   var initialTarget = window.MetabrowserNavigationRoute.parse(

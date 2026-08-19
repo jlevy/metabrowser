@@ -74,6 +74,26 @@ downloads, external URLs, and ordinary not-found handling retain browser behavio
 Fragment scrolling runs only after the matching asynchronous Markdown mount completes
 and ends with that mount’s disposer.
 
+## Git
+
+Read-only repository history lives in core, under `git/`, with its own endpoint
+collection at `/api/git/` and its own wire model in `git/wire.py`.
+
+Git is infrastructure here rather than a consumer domain: `ignore_filter.py` implements
+gitignore semantics, `tree.build_gitignore_check` performs repository-root discovery,
+and both the tree and recent wire models carry a `gitignored` flag.
+History reading extends a dependency core already has.
+
+Every git call goes through `git/process.py`, which spawns `git` with a fixed argument
+vector, a wall-clock timeout, and a cap on buffered stdout.
+Revisions are validated against a full-SHA pattern before they can reach an argument
+vector. Git’s stderr is logged and dropped: it contains absolute local paths.
+
+Swimlane layout is a browser concern.
+The server returns commits, parents, and references; `static/git_graph.js` assigns lanes
+and draws them, carrying lane state across pages.
+This is the same split `recent.py` makes, where clustering belongs to the renderer.
+
 ## Folder Views and Overview Composition
 
 Folder views extend the same request and registry flow to directories.
@@ -250,6 +270,12 @@ renderers. Transparent compression is a core filesystem capability because it ap
 uniformly before classification and rendering.
 Specialized binary stores and their value schemas belong in separately installed
 plugins.
+
+The nav-panel tab list is a registry in `app.js` rather than fixed markup, which is what
+lets the Git tab appear only inside a repository.
+No plugin-facing registration API is exposed for it yet: the registry is reachable
+through `window.MetabrowserShell`, an internal seam for core modules, and is not part of
+the `window.metabrowser` SDK contract.
 
 Plugins own:
 
@@ -496,6 +522,7 @@ Core provides no global plugin payload cache.
 src/metabrowser/
 ├── builtin_plugins/   # Built-in manifests and renderers
 ├── cli/               # serve, remote, walk, and plugins commands
+├── git/               # Read-only history: process, repo, log, detail, wire, routes
 ├── logutil/           # Generic agent-log normalization
 ├── plugin_loader/     # Discovery, manifests, classification, and routes
 ├── static/            # Browser shell, SDK, charts, icons, and styles

@@ -28,6 +28,7 @@ EXPECTED_LICENSE_METADATA = {
     "License-File: LICENSE",
     "License-File: NOTICE.md",
 }
+VSCODE_LICENSE_PATH = "metabrowser/static/vendor/licenses/vscode.txt"
 KEYBOARD_STATIC_ASSETS = {
     "keyboard_help.js",
     "keyboard_shortcuts.js",
@@ -85,6 +86,7 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/vendor/manifest.json",
             "metabrowser/static/vendor/highlight.min.js",
             "metabrowser/static/vendor/chart.umd.min.js",
+            VSCODE_LICENSE_PATH,
             "metabrowser/builtin_plugins/markdown/manifest.toml",
             "metabrowser/builtin_plugins/markdown/rendered.js",
             "metabrowser/builtin_plugins/folder/overview.js",

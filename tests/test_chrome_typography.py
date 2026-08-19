@@ -41,6 +41,8 @@ MONO_DECLARATION_RE = re.compile(r"(?:^|;)\s*font(?:-family)?\s*:[^;]*--font-mon
 #   .compression-badge          a 7px glyph, iconography rather than text
 #   .metabrowser-kpress-error-detail   a verbatim error payload
 #   .log-event-header           structured log values (type, timestamps), not paths
+#   .git-commit-sha             an object id, where every character is identity
+#   .git-commit-body            a verbatim commit message, the committer's own text
 MONO_ALLOWED_SELECTORS = frozenset(
     {
         "code.hljs",
@@ -51,6 +53,8 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".compression-badge",
         ".metabrowser-kpress-error-detail",
         ".log-event-header",
+        ".git-commit-sha",
+        ".git-commit-body",
     }
 )
 
@@ -61,6 +65,9 @@ PATH_SELECTORS = (
     ".file-header-path",
     ".search-palette-description",
     ".tally-tree",
+    # The changed-file list in a commit view is a list of paths, and it
+    # navigates like the tree does.
+    ".git-file-path",
 )
 
 KBD_TOKENS = (

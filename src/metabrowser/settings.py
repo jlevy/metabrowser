@@ -229,6 +229,57 @@ ROLLUP_MAX_NODES = 1_200
 ROLLUP_WATCH_DEBOUNCE_MS = 1_000
 
 
+# ── Git graph panel ──────────────────────────────────────────
+
+# Every ``/api/git/`` handler spawns ``git`` on a request path, so each
+# invocation is bounded twice: by wall clock and by how much stdout we
+# are willing to buffer. A repository large enough to exceed either is
+# reported as a failure rather than being allowed to stall the loop or
+# grow the resident set without limit.
+GIT_SUBPROCESS_TIMEOUT_S = 15.0
+GIT_SUBPROCESS_MAX_BYTES = 32 * 1024 * 1024
+
+# Commits per ``/api/git/log`` page. The default is sized so the first
+# page fills a tall panel with room to scroll before the second request;
+# the max is the clamp applied to a caller-supplied ``limit``.
+GIT_LOG_DEFAULT_LIMIT = 250
+GIT_LOG_MAX_LIMIT = 1_000
+
+# Maximum commit rows retained and mounted by the browser. A navigation
+# panel must not grow its DOM or client state with the lifetime of a
+# repository. The panel discloses the cap instead of presenting the
+# bounded list as complete.
+GIT_HISTORY_MAX_ROWS = 500
+
+# Largest ``--skip`` offset a page cursor may carry. Cursors are opaque
+# and server-issued, and the panel stops paging at GIT_HISTORY_MAX_ROWS,
+# so no legitimate cursor comes near this; it is ~400 pages at the default
+# limit. Without the bound, a well-formed cursor carrying an arbitrary
+# offset makes git walk and discard that whole prefix of history on every
+# request, spending the subprocess timeout budget to return nothing.
+GIT_LOG_MAX_SKIP = 100_000
+
+# Changed files returned by ``/api/git/commit/{revision}``. A commit that
+# touches more than this reports ``files_truncated`` rather than being
+# silently shortened.
+GIT_COMMIT_MAX_FILES = 1_000
+
+# Repository identity (root, HEAD, capability) is stable between commits
+# but must not go stale across a checkout. Short TTL, same shape as the
+# gitignore checker cache in ``tree.py``. Unborn HEAD entries bypass the
+# cache so the first commit appears immediately.
+GIT_REPO_INFO_TTL_S = 5.0
+
+# Client-side pacing for the hover card. The card is backed by the same
+# commit-detail request the detail view uses, so a slow drag across the
+# graph must not issue one request per row.
+GIT_HOVER_DEBOUNCE_MS = 300
+
+# Bounded client-side commit-detail cache, shared by the hover card and
+# the detail view so hovering then selecting a row is one request.
+GIT_DETAIL_CACHE_SIZE = 200
+
+
 # ── Client settings export ───────────────────────────────────
 
 
@@ -256,6 +307,10 @@ def client_settings_dict() -> dict[str, Any]:
         "PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT": PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
         "TREE_AUTO_EXPAND_FALLBACK_ROWS": TREE_AUTO_EXPAND_FALLBACK_ROWS,
         "SSE_HEARTBEAT_INTERVAL_S": SSE_HEARTBEAT_INTERVAL_S,
+        "GIT_LOG_LIMIT": GIT_LOG_DEFAULT_LIMIT,
+        "GIT_HISTORY_MAX_ROWS": GIT_HISTORY_MAX_ROWS,
+        "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
+        "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
         "ROLLUP_DEFAULT_DEPTH": ROLLUP_DEFAULT_DEPTH,
         "ROLLUP_DEFAULT_TOP": ROLLUP_DEFAULT_TOP,
         "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
@@ -276,6 +331,16 @@ __all__ = [
     "DEFAULT_EXECUTOR_WORKERS",
     "DISTRIBUTION_PALETTE_SLOTS",
     "FOLDER_DISCOVERY_MAX_ENTRIES",
+    "GIT_COMMIT_MAX_FILES",
+    "GIT_DETAIL_CACHE_SIZE",
+    "GIT_HISTORY_MAX_ROWS",
+    "GIT_HOVER_DEBOUNCE_MS",
+    "GIT_LOG_DEFAULT_LIMIT",
+    "GIT_LOG_MAX_LIMIT",
+    "GIT_LOG_MAX_SKIP",
+    "GIT_REPO_INFO_TTL_S",
+    "GIT_SUBPROCESS_MAX_BYTES",
+    "GIT_SUBPROCESS_TIMEOUT_S",
     "INDEX_PROGRESS_POLL_MS",
     "INDEX_PROGRESS_UPDATE_FILES",
     "INVENTORY_FIRST_RENDER_DEPTH",
