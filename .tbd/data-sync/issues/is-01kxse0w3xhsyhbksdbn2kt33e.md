@@ -5,7 +5,7 @@ title: "Diff P2: comparison presets, history browsing, and content-at-revision"
 kind: feature
 status: open
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,7 @@ dependencies:
     target: is-01kxse0wpvpg9vx64phcr3bh8s
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-07-18T01:38:59.325Z
-updated_at: 2026-08-19T18:12:17.380Z
+updated_at: 2026-08-19T19:34:34.682Z
 extensions:
   linear:
     id: fedfa275-330a-4a89-a928-512efc3ff45d
@@ -24,4 +24,4 @@ Comparison bar: staged, unstaged, all uncommitted, commit, two revisions with re
 
 ## Notes
 
-Includes the adapter gap named in diff-sources-and-anchoring.md path 5: GitDiffSource.resolve currently accepts revisions only; worktree/index snapshots (presets HEAD-vs-worktree, staged, unstaged) need resolve + content resolution for uncommitted sides plus the generation token wiring mb-tcdy consumes.
+Unmerged (U) end-to-end belongs here too: a commit-pair adapter can never produce U — conflicts live in the index — so unmerged support arrives with the index/worktree snapshot work. The parser now surfaces combined ('diff --cc') conflict output as unsupported rather than misparsing it.
