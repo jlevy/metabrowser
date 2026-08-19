@@ -160,7 +160,7 @@ def apply_file_change(
     resolve_content: ContentResolver = _no_resolver,
 ) -> TreeEntry | None:
     """One change against one base entry; None means the path ends deleted."""
-    if change.availability is not Availability.ready:
+    if change.availability not in (Availability.ready, Availability.binary):
         raise NotFullyHydrated(
             f"change {change.id!r} is {change.availability.value}, not applicable"
         )
