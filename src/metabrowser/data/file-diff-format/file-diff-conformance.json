@@ -1,0 +1,1927 @@
+{
+  "apply_cases": [
+    {
+      "base": {
+        "entries": {
+          "keep.txt": {
+            "content_b64": "a2VlcAo=",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "added",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "new.txt"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "add",
+                    "text": "hello"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 0,
+                "old_start": 0
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-add",
+      "target": {
+        "entries": {
+          "keep.txt": {
+            "content_b64": "a2VlcAo=",
+            "entry_type": "file",
+            "mode": "100644"
+          },
+          "new.txt": {
+            "content_b64": "aGVsbG8K",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      }
+    },
+    {
+      "base": {
+        "entries": {
+          "a.txt": {
+            "content_b64": "YQo=",
+            "entry_type": "file",
+            "mode": "100644"
+          },
+          "b.txt": {
+            "content_b64": "Ygo=",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 0,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "deleted",
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "b.txt"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "del",
+                    "text": "b"
+                  }
+                ],
+                "new_count": 0,
+                "new_start": 0,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-delete",
+      "target": {
+        "entries": {
+          "a.txt": {
+            "content_b64": "YQo=",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      }
+    },
+    {
+      "base": {
+        "entries": {
+          "end.txt": {
+            "content_b64": "b25lCnR3bwo=",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "end.txt"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "end.txt"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "one"
+                  },
+                  {
+                    "op": "del",
+                    "text": "two"
+                  },
+                  {
+                    "no_newline": true,
+                    "op": "add",
+                    "text": "TWO"
+                  }
+                ],
+                "new_count": 2,
+                "new_start": 1,
+                "old_count": 2,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-modify-loses-trailing-newline",
+      "target": {
+        "entries": {
+          "end.txt": {
+            "content_b64": "b25lClRXTw==",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      }
+    },
+    {
+      "base": {
+        "entries": {
+          "src/keep.py": {
+            "content_b64": "awo=",
+            "entry_type": "file",
+            "mode": "100644"
+          },
+          "src/util.py": {
+            "content_b64": "eCA9IDEK",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "renamed",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "src/helpers/util.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "src/util.py"
+              },
+              "similarity": 80
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "x = 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "y = 2"
+                  }
+                ],
+                "new_count": 2,
+                "new_start": 1,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-rename-with-edit",
+      "target": {
+        "entries": {
+          "src/helpers/util.py": {
+            "content_b64": "eCA9IDEKeSA9IDIK",
+            "entry_type": "file",
+            "mode": "100644"
+          },
+          "src/keep.py": {
+            "content_b64": "awo=",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      }
+    },
+    {
+      "base": {
+        "entries": {
+          "run.sh": {
+            "content_b64": "IyEvYmluL3NoCg==",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 0,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100755",
+                "path": "run.sh"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "run.sh"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-mode-change",
+      "target": {
+        "entries": {
+          "run.sh": {
+            "content_b64": "IyEvYmluL3NoCg==",
+            "entry_type": "file",
+            "mode": "100755"
+          }
+        }
+      }
+    },
+    {
+      "base": {
+        "entries": {
+          "cfg": {
+            "content_b64": "cmVhbCBjb250ZW50cwo=",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "type_changed",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "symlink",
+                "mode": "120000",
+                "path": "cfg"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "cfg"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "del",
+                    "text": "real contents"
+                  },
+                  {
+                    "no_newline": true,
+                    "op": "add",
+                    "text": "target/cfg"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-type-change-to-symlink",
+      "target": {
+        "entries": {
+          "cfg": {
+            "content_b64": "dGFyZ2V0L2NmZw==",
+            "entry_type": "symlink",
+            "mode": "120000"
+          }
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 2,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "added",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "docs/new.md",
+                "size": 12
+              }
+            }
+          ],
+          "totals": {
+            "additions": 2,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "add",
+                    "text": "# New"
+                  },
+                  {
+                    "op": "add",
+                    "text": "body"
+                  }
+                ],
+                "new_count": 2,
+                "new_start": 1,
+                "old_count": 0,
+                "old_start": 0
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "added-text-file"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 0,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "deleted",
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "old.txt",
+                "size": 4
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "del",
+                    "text": "gone"
+                  }
+                ],
+                "new_count": 0,
+                "new_start": 0,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "deleted-file"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "heading": "def f():",
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "def f():"
+                  },
+                  {
+                    "op": "del",
+                    "text": "    return 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "    return 2"
+                  },
+                  {
+                    "op": "context",
+                    "text": ""
+                  }
+                ],
+                "new_count": 3,
+                "new_start": 3,
+                "old_count": 3,
+                "old_start": 3
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "modified-with-heading"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "renamed",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "src/helpers/util.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "src/util.py"
+              },
+              "similarity": 87
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "x = 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "y = 2"
+                  }
+                ],
+                "new_count": 2,
+                "new_start": 2,
+                "old_count": 1,
+                "old_start": 2
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "rename-with-edit"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 0,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "copied",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "vendor/LICENSE"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "LICENSE"
+              },
+              "similarity": 100
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "copied-file"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 0,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100755",
+                "path": "run.sh"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "run.sh"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "mode-change-only"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "type_changed",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "symlink",
+                "mode": "120000",
+                "path": "cfg"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "cfg"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "del",
+                    "text": "real contents"
+                  },
+                  {
+                    "no_newline": true,
+                    "op": "add",
+                    "text": "target/cfg"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "type-changed-file-to-symlink"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": null,
+              "availability": "binary",
+              "binary": true,
+              "deletions": null,
+              "id": "f1",
+              "kind": "added",
+              "new": {
+                "content": {
+                  "kind": "git_object",
+                  "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "logo.png",
+                "size": 2048
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": false,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "binary-added-elided"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "added",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "caf\ufffd.txt",
+                "path_b64": "Y2Fm6S50eHQ="
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "add",
+                    "text": "hi"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 0,
+                "old_start": 0
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "non-utf8-path"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "end.txt"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "end.txt"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "no_newline": true,
+                    "op": "del",
+                    "text": "last"
+                  },
+                  {
+                    "no_newline": true,
+                    "op": "add",
+                    "text": "LAST"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "no-newline-marker"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": null,
+              "availability": "unsupported",
+              "binary": false,
+              "deletions": null,
+              "id": "f1",
+              "kind": "unmerged",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "conflict.txt"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "conflict.txt"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "unmerged-path"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": null,
+              "availability": "deferred",
+              "binary": false,
+              "deletions": null,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "big.txt"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "big.txt"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": false,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "deferred-manifest-only"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": null,
+              "availability": "ready",
+              "binary": false,
+              "deletions": null,
+              "id": "f1",
+              "kind": "edited",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "error": "kind",
+      "expect": "invalid",
+      "name": "bad-unknown-kind"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": null,
+              "availability": "ready",
+              "binary": false,
+              "deletions": null,
+              "id": "f1",
+              "kind": "renamed",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "b"
+              },
+              "similarity": 90
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "error": "rename-sides",
+      "expect": "invalid",
+      "name": "bad-rename-missing-old"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": null,
+              "availability": "ready",
+              "binary": false,
+              "deletions": null,
+              "id": "f1",
+              "kind": "added",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "error": "added-sides",
+      "expect": "invalid",
+      "name": "bad-added-carries-old"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": null,
+              "availability": "ready",
+              "binary": false,
+              "deletions": null,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "del",
+                    "text": "x"
+                  },
+                  {
+                    "op": "add",
+                    "text": "y"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 2,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "error": "hunk-counts",
+      "expect": "invalid",
+      "name": "bad-hunk-count-mismatch"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": null,
+              "availability": "ready",
+              "binary": false,
+              "deletions": null,
+              "id": "f1",
+              "kind": "deleted",
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1"
+      },
+      "error": "schema-version",
+      "expect": "invalid",
+      "name": "bad-missing-schema-version"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": "next",
+          "files": [
+            {
+              "additions": null,
+              "availability": "ready",
+              "binary": false,
+              "deletions": null,
+              "id": "f1",
+              "kind": "deleted",
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "error": "cursor",
+      "expect": "invalid",
+      "name": "bad-cursor-without-truncation"
+    }
+  ],
+  "schema": "file-diff-conformance-v1",
+  "schema_version": 1
+}

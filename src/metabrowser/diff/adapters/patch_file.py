@@ -1,0 +1,416 @@
+"""Unified-patch source: File Diff Format from a ``.patch`` or ``.diff``.
+
+The source that proves the format is standalone — no repository, no
+subprocess, no network. It parses git's extended headers (rename, copy,
+mode, similarity, binary) and plain unified diffs alike, byte-exactly:
+paths and line content that are not valid UTF-8 keep their bytes in
+``*_b64`` beside a replacement-decoded display projection.
+
+Malformed input is a value, not an exception: the parser returns a
+document whose files (or whole manifest) carry ``unsupported``
+availability, because a browsable explanation beats a stack trace for a
+file a user just clicked.
+"""
+
+from __future__ import annotations
+
+from base64 import b64encode
+from hashlib import sha256
+
+from metabrowser.diff.format import (
+    Availability,
+    BasePolicy,
+    ChangeKind,
+    ChangeSetDocument,
+    ChangeSetManifest,
+    ContentRef,
+    ContentRefKind,
+    DiffOptions,
+    EntrySide,
+    EntryType,
+    FileChange,
+    FileMode,
+    FilePatch,
+    Hunk,
+    LineOp,
+    LineRecord,
+    ResolvedComparison,
+    SnapshotKind,
+    SnapshotRef,
+    SourceInfo,
+    Totals,
+)
+
+MAX_PATCH_BYTES = 8 * 1024 * 1024
+"""Refusal cap for one pasted-in patch document. A bound on parse cost:
+8 MiB of unified diff is ~100k lines, which parses in well under a second
+and renders through the manifest-first path; anything larger is almost
+certainly generated output that belongs in git, and the CLI/route report
+it as `truncated` rather than stalling."""
+
+MAX_FILE_SECTIONS = 2000
+"""Manifest cap mirroring the route-level manifest bound."""
+
+_HUNK_RE_PREFIX = b"@@ -"
+
+
+def _display(raw: bytes) -> tuple[str, str | None]:
+    """UTF-8 projection plus b64 of the exact bytes when they differ."""
+    try:
+        return raw.decode("utf-8"), None
+    except UnicodeDecodeError:
+        return raw.decode("utf-8", "replace"), b64encode(raw).decode("ascii")
+
+
+def _unquote_c_style(raw: bytes) -> bytes:
+    """Git quotes non-ASCII paths C-style: ``"calf\\351.txt"``."""
+    if not (raw.startswith(b'"') and raw.endswith(b'"') and len(raw) >= 2):
+        return raw
+    body = raw[1:-1]
+    out = bytearray()
+    i = 0
+    while i < len(body):
+        byte = body[i]
+        if byte != 0x5C:  # backslash
+            out.append(byte)
+            i += 1
+            continue
+        i += 1
+        if i >= len(body):
+            break
+        escape = body[i : i + 1]
+        if escape.isdigit():
+            out.append(int(body[i : i + 3], 8))
+            i += 3
+        else:
+            out.append({b"n": 10, b"t": 9, b'"': 34, b"\\": 92}.get(escape, escape[0]))
+            i += 1
+    return bytes(out)
+
+
+def _strip_prefix(raw: bytes) -> bytes:
+    """Drop git's ``a/`` / ``b/`` prefix; keep ``/dev/null`` recognizable."""
+    if raw == b"/dev/null":
+        return raw
+    if len(raw) > 2 and raw[1:2] == b"/" and raw[0:1] in (b"a", b"b"):
+        return raw[2:]
+    return raw
+
+
+class _Section:
+    """One ``diff --git`` (or bare unified) section, before interpretation."""
+
+    def __init__(self) -> None:
+        self.old_path: bytes | None = None
+        self.new_path: bytes | None = None
+        self.old_mode: str | None = None
+        self.new_mode: str | None = None
+        self.kind_hint: ChangeKind | None = None
+        self.similarity: int | None = None
+        self.binary = False
+        self.malformed: str | None = None
+        self.hunk_lines: list[bytes] = []
+
+
+def _split_sections(data: bytes) -> list[_Section]:
+    sections: list[_Section] = []
+    current: _Section | None = None
+    in_hunks = False
+    raw_lines = data.split(b"\n")
+    if raw_lines and raw_lines[-1] == b"":
+        # split() artifact after the final newline, not an empty diff line —
+        # a genuinely empty context line arrives as a single space.
+        raw_lines.pop()
+    for raw_line in raw_lines:
+        if raw_line.startswith(b"diff --git "):
+            current = _Section()
+            sections.append(current)
+            in_hunks = False
+            rest = raw_line[len(b"diff --git ") :]
+            halves = rest.split(b" b/", 1)
+            if len(halves) == 2 and not rest.startswith(b'"'):
+                current.old_path = _strip_prefix(halves[0])
+                current.new_path = halves[1]
+            continue
+        if current is None:
+            if raw_line.startswith(b"--- "):
+                current = _Section()
+                sections.append(current)
+                in_hunks = False
+            else:
+                continue
+        if raw_line.startswith(_HUNK_RE_PREFIX):
+            in_hunks = True
+            current.hunk_lines.append(raw_line)
+            continue
+        if in_hunks:
+            if raw_line[:1] in (b" ", b"+", b"-", b"\\") or raw_line == b"":
+                current.hunk_lines.append(raw_line)
+            continue
+        if raw_line.startswith(b"old mode "):
+            current.old_mode = raw_line[9:].decode("ascii", "replace")
+        elif raw_line.startswith(b"new mode "):
+            current.new_mode = raw_line[9:].decode("ascii", "replace")
+        elif raw_line.startswith(b"new file mode "):
+            current.kind_hint = ChangeKind.added
+            current.new_mode = raw_line[14:].decode("ascii", "replace")
+        elif raw_line.startswith(b"deleted file mode "):
+            current.kind_hint = ChangeKind.deleted
+            current.old_mode = raw_line[18:].decode("ascii", "replace")
+        elif raw_line.startswith(b"similarity index "):
+            current.similarity = int(raw_line[17:].rstrip(b"%") or b"0")
+        elif raw_line.startswith(b"rename from "):
+            current.kind_hint = ChangeKind.renamed
+            current.old_path = _unquote_c_style(raw_line[12:])
+        elif raw_line.startswith(b"rename to "):
+            current.new_path = _unquote_c_style(raw_line[10:])
+        elif raw_line.startswith(b"copy from "):
+            current.kind_hint = ChangeKind.copied
+            current.old_path = _unquote_c_style(raw_line[10:])
+        elif raw_line.startswith(b"copy to "):
+            current.new_path = _unquote_c_style(raw_line[8:])
+        elif raw_line.startswith(b"Binary files ") or raw_line == b"GIT binary patch":
+            current.binary = True
+        elif raw_line.startswith(b"--- "):
+            path = _unquote_c_style(raw_line[4:])
+            if current.old_path is None or path == b"/dev/null":
+                current.old_path = _strip_prefix(path)
+        elif raw_line.startswith(b"+++ "):
+            path = _unquote_c_style(raw_line[4:])
+            if current.new_path is None or path == b"/dev/null":
+                current.new_path = _strip_prefix(path)
+    return sections
+
+
+def _parse_hunks(section: _Section) -> tuple[list[Hunk], int, int] | str:
+    """Hunks plus (additions, deletions), or a malformed-reason string."""
+    hunks: list[Hunk] = []
+    additions = deletions = 0
+    header: tuple[int, int, int, int, str | None] | None = None
+    lines: list[LineRecord] = []
+
+    def close() -> str | None:
+        nonlocal header, lines
+        if header is None:
+            return None
+        old_start, old_count, new_start, new_count, heading = header
+        hunk = Hunk.model_construct(
+            old_start=old_start,
+            old_count=old_count,
+            new_start=new_start,
+            new_count=new_count,
+            heading=heading,
+            lines=tuple(lines),
+        )
+        got_old = sum(1 for line in lines if line.op is not LineOp.add)
+        got_new = sum(1 for line in lines if line.op is not LineOp.delete)
+        if got_old != old_count or got_new != new_count:
+            return f"hunk counts disagree with body (-{old_count}/+{new_count})"
+        hunks.append(hunk)
+        header, lines = None, []
+        return None
+
+    for raw in section.hunk_lines:
+        if raw.startswith(_HUNK_RE_PREFIX):
+            problem = close()
+            if problem:
+                return problem
+            try:
+                marker_end = raw.index(b" @@", 3)
+            except ValueError:
+                return "unterminated hunk header"
+            spans = raw[4:marker_end].split(b" +")
+            if len(spans) != 2:
+                return "unparseable hunk header"
+
+            def span(text: bytes) -> tuple[int, int]:
+                if b"," in text:
+                    start, count = text.split(b",", 1)
+                    return int(start), int(count)
+                return int(text), 1
+
+            try:
+                (old_start, old_count), (new_start, new_count) = span(spans[0]), span(spans[1])
+            except ValueError:
+                return "non-numeric hunk header"
+            heading_raw = raw[marker_end + 3 :].strip()
+            heading, _ = _display(heading_raw)
+            header = (old_start, old_count, new_start, new_count, heading or None)
+            continue
+        if header is None:
+            continue
+        if raw.startswith(b"\\"):
+            if lines:
+                last = lines[-1]
+                lines[-1] = LineRecord.model_construct(
+                    op=last.op, text=last.text, text_b64=last.text_b64, no_newline=True
+                )
+            continue
+        marker, body = (raw[:1], raw[1:]) if raw else (b" ", b"")
+        op = {b" ": LineOp.context, b"+": LineOp.add, b"-": LineOp.delete}.get(marker)
+        if op is None:
+            return "unknown line marker in hunk"
+        text, text_b64 = _display(body)
+        lines.append(
+            LineRecord.model_construct(op=op, text=text, text_b64=text_b64, no_newline=False)
+        )
+        if op is LineOp.add:
+            additions += 1
+        elif op is LineOp.delete:
+            deletions += 1
+    problem = close()
+    if problem:
+        return problem
+    return hunks, additions, deletions
+
+
+def _mode(value: str | None, fallback: FileMode = FileMode.regular) -> FileMode:
+    try:
+        return FileMode(value) if value else fallback
+    except ValueError:
+        return fallback
+
+
+def _entry_type(mode: FileMode) -> EntryType:
+    if mode is FileMode.symlink:
+        return EntryType.symlink
+    if mode is FileMode.gitlink:
+        return EntryType.submodule
+    return EntryType.file
+
+
+def _side(path_raw: bytes, mode: FileMode) -> EntrySide:
+    path, path_b64 = _display(path_raw)
+    return EntrySide.model_construct(
+        path=path,
+        path_b64=path_b64,
+        entry_type=_entry_type(mode),
+        mode=mode,
+        content=ContentRef.model_construct(
+            kind=ContentRefKind.empty, oid=None, inline_b64=None, generation=None
+        ),
+        size=None,
+    )
+
+
+def parse_unified_patch(data: bytes) -> ChangeSetDocument:
+    """Whole-document parse; bounded, and total on malformed input."""
+    truncated_input = len(data) > MAX_PATCH_BYTES
+    if truncated_input:
+        data = data[:MAX_PATCH_BYTES]
+    digest = sha256(data).hexdigest()[:16]
+    sections = _split_sections(data)
+    section_truncated = len(sections) > MAX_FILE_SECTIONS
+    sections = sections[:MAX_FILE_SECTIONS]
+
+    files: list[FileChange] = []
+    patches: dict[str, FilePatch] = {}
+    total_add = total_del = 0
+    exact = True
+    for index, section in enumerate(sections, start=1):
+        file_id = f"f{index}"
+        old_mode = _mode(section.old_mode)
+        new_mode = _mode(section.new_mode, _mode(section.old_mode))
+        kind = section.kind_hint or ChangeKind.modified
+        if (
+            kind is ChangeKind.modified
+            and section.old_mode
+            and section.new_mode
+            and _entry_type(old_mode) is not _entry_type(new_mode)
+        ):
+            kind = ChangeKind.type_changed
+        old_path = section.old_path
+        new_path = section.new_path
+        if old_path == b"/dev/null":
+            kind, old_path = ChangeKind.added, None
+        if new_path == b"/dev/null":
+            kind, new_path = ChangeKind.deleted, None
+        malformed = section.malformed
+        hunks: list[Hunk] = []
+        additions = deletions = 0
+        if not section.binary and not malformed:
+            parsed = _parse_hunks(section)
+            if isinstance(parsed, str):
+                malformed = parsed
+            else:
+                hunks, additions, deletions = parsed
+        if (
+            kind in (ChangeKind.added, ChangeKind.copied)
+            and old_path is not None
+            and section.kind_hint in (ChangeKind.added, None)
+        ):
+            old_path = None if kind is ChangeKind.added else old_path
+        if kind is not ChangeKind.added and old_path is None:
+            malformed = malformed or "missing old path"
+        if kind is not ChangeKind.deleted and new_path is None:
+            malformed = malformed or "missing new path"
+
+        if malformed:
+            availability = Availability.unsupported
+            exact = False
+            hunks, additions, deletions = [], 0, 0
+        elif section.binary:
+            availability = Availability.binary
+            exact = False
+        else:
+            availability = Availability.ready
+            total_add += additions
+            total_del += deletions
+
+        change = FileChange.model_construct(
+            id=file_id,
+            kind=kind,
+            old=_side(old_path, old_mode) if old_path is not None else None,
+            new=_side(new_path, new_mode) if new_path is not None else None,
+            similarity=section.similarity
+            if kind in (ChangeKind.renamed, ChangeKind.copied)
+            else None,
+            binary=section.binary,
+            availability=availability,
+            additions=additions if availability is Availability.ready else None,
+            deletions=deletions if availability is Availability.ready else None,
+        )
+        files.append(change)
+        if availability is Availability.ready:
+            patches[file_id] = FilePatch.model_construct(
+                file_id=file_id, hunks=tuple(hunks), truncated=False
+            )
+
+    truncated = truncated_input or section_truncated
+    document = ChangeSetDocument.model_construct(
+        schema_="file-diff-v1",
+        schema_version=1,
+        resolved=ResolvedComparison.model_construct(
+            comparison_id=f"patch:{digest}",
+            source=SourceInfo.model_construct(name="patch", version=None),
+            kind="content",
+            base_policy=BasePolicy.direct,
+            left=SnapshotRef.model_construct(
+                kind=SnapshotKind.patch, id=None, symbolic=None, generation=None
+            ),
+            right=SnapshotRef.model_construct(
+                kind=SnapshotKind.patch, id=None, symbolic=None, generation=None
+            ),
+            options=DiffOptions.model_construct(
+                context=3, rename_detection=True, rename_similarity=None, algorithm=None
+            ),
+            warnings=("input truncated at parser bounds",) if truncated else (),
+        ),
+        manifest=ChangeSetManifest.model_construct(
+            files=tuple(files),
+            totals=Totals.model_construct(
+                files=len(files),
+                additions=total_add if exact else None,
+                deletions=total_del if exact else None,
+                exact=exact,
+            ),
+            truncated=truncated,
+            cursor="parser-bounds" if truncated else None,
+        ),
+        patches=patches,
+    )
+    # model_construct skipped validation for speed while assembling; the
+    # emitted document must still be format-valid, so validate once here.
+    from metabrowser.diff.format import dump_document, validate_document
+
+    return validate_document(dump_document(document))
