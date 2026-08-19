@@ -202,7 +202,12 @@ def apply_change_set(
         patch = document.patches.get(change.id)
         old_path = change.old.path if change.old is not None else None
         new_path = change.new.path if change.new is not None else None
-        base_entry = result.entries.get(old_path) if old_path is not None else None
+        # Old sides read from the immutable base, never the mutating
+        # result: every change's preimage is the base tree (a copy whose
+        # source was edited in the same change set copies the base
+        # bytes), per git's own warning that sequential per-file
+        # application is incorrect.
+        base_entry = base.entries.get(old_path) if old_path is not None else None
         produced = apply_file_change(change, patch, base_entry, resolve_content)
         consumes_old = change.kind in (
             ChangeKind.deleted,

@@ -609,6 +609,249 @@
           }
         }
       }
+    },
+    {
+      "base": {
+        "entries": {
+          "link": {
+            "content_b64": "b2xkLXRhcmdldA==",
+            "entry_type": "symlink",
+            "mode": "120000"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "symlink",
+                "mode": "120000",
+                "path": "link"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "symlink",
+                "mode": "120000",
+                "path": "link"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "no_newline": true,
+                    "op": "del",
+                    "text": "old-target"
+                  },
+                  {
+                    "no_newline": true,
+                    "op": "add",
+                    "text": "new-target"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "test:symlink-retarget",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "test"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-symlink-retarget",
+      "note": "A symlink edit is a one-line content swap; entry type and mode survive.",
+      "target": {
+        "entries": {
+          "link": {
+            "content_b64": "bmV3LXRhcmdldA==",
+            "entry_type": "symlink",
+            "mode": "120000"
+          }
+        }
+      }
+    },
+    {
+      "base": {
+        "entries": {
+          "lib.py": {
+            "content_b64": "c2hhcmVkCg==",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "lib.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "lib.py"
+              }
+            },
+            {
+              "additions": 0,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f2",
+              "kind": "copied",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "lib_copy.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "lib.py"
+              },
+              "similarity": 100
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 2
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "del",
+                    "text": "shared"
+                  },
+                  {
+                    "op": "add",
+                    "text": "edited"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          },
+          "f2": {
+            "file_id": "f2",
+            "hunks": [],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "test:copy-reads-preimage",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "test"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-copy-reads-preimage",
+      "note": "Every old side reads the base tree: a copy whose source is edited in the same change set copies the base bytes, never the edited ones.",
+      "target": {
+        "entries": {
+          "lib.py": {
+            "content_b64": "ZWRpdGVkCg==",
+            "entry_type": "file",
+            "mode": "100644"
+          },
+          "lib_copy.py": {
+            "content_b64": "c2hhcmVkCg==",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      }
     }
   ],
   "cases": [
@@ -1920,6 +2163,94 @@
       "error": "cursor",
       "expect": "invalid",
       "name": "bad-cursor-without-truncation"
+    },
+    {
+      "document": {
+        "manifest": {
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "symlink",
+                "mode": "120000",
+                "path": "link"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "symlink",
+                "mode": "120000",
+                "path": "link"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "no_newline": true,
+                    "op": "del",
+                    "text": "old-target"
+                  },
+                  {
+                    "no_newline": true,
+                    "op": "add",
+                    "text": "new-target"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "test:symlink-retarget",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "test"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "symlink-retarget",
+      "note": "120000 on both sides; the content is the target path, no-newline on both lines."
     }
   ],
   "schema": "file-diff-conformance-v1",

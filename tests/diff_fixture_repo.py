@@ -1,10 +1,10 @@
 """Reproducible fixture repository for the diff adapter and CLI goldens.
 
 Two commits whose delta exercises the change taxonomy: modify, add,
-delete, rename-with-edit, chmod, file-to-symlink type change, and a
-binary rewrite. Author, committer, and dates are pinned, so commit ids
-are identical on every machine — which is what lets the tryscript
-goldens assert real output.
+delete, rename-with-edit, pure rename, copy, chmod, file-to-symlink
+type change, symlink retarget, and a binary rewrite. Author, committer,
+and dates are pinned, so commit ids are identical on every machine —
+which is what lets the tryscript goldens assert real output.
 """
 
 from __future__ import annotations
@@ -57,6 +57,9 @@ def build_diff_fixture(root: Path) -> tuple[str, str]:
     (root / "src/util.py").write_text("x = 1\n")
     (root / "run.sh").write_text("#!/bin/sh\necho run\n")
     (root / "cfg").write_text("real contents\n")
+    (root / "steady.txt").write_text("the same everywhere\n")
+    (root / "lib.py").write_text("def shared():\n    return 'shared'\n")
+    (root / "link").symlink_to("old-target")
     (root / "logo.bin").write_bytes(b"\x00\x01\x02BINARY-ONE\x00")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "base")
@@ -72,6 +75,15 @@ def build_diff_fixture(root: Path) -> tuple[str, str]:
     (root / "cfg").unlink()
     (root / "cfg").symlink_to("target/cfg")
     (root / "logo.bin").write_bytes(b"\x00\x01\x02BINARY-TWO-LONGER\x00")
+    # Pure rename: byte-identical content moved, R100.
+    (root / "steady.txt").rename(root / "renamed-steady.txt")
+    # Copy: the source is edited in the same commit, so -C detects the
+    # unedited duplicate as C against the base blob.
+    (root / "lib_copy.py").write_text("def shared():\n    return 'shared'\n")
+    (root / "lib.py").write_text("def shared():\n    return 'shared-edited'\n")
+    # Symlink retarget: 120000 on both sides, content is the target path.
+    (root / "link").unlink()
+    (root / "link").symlink_to("new-target")
     git(root, "add", "-A", date=_EPOCH_TWO)
     git(root, "commit", "-q", "-m", "target", date=_EPOCH_TWO)
     target = git(root, "rev-parse", "HEAD").decode().strip()

@@ -73,6 +73,16 @@ def test_manifest_covers_the_change_taxonomy(repo: tuple[Path, str, str]) -> Non
     binary = by_path["logo.bin"]
     assert binary.binary and binary.availability is Availability.binary
     assert manifest.totals.exact is False  # the binary file defers exact totals
+    pure_rename = by_path["renamed-steady.txt"]
+    assert pure_rename.kind is ChangeKind.renamed
+    assert pure_rename.similarity == 100
+    copied = by_path["lib_copy.py"]
+    assert copied.kind is ChangeKind.copied
+    assert copied.old is not None and copied.old.path == "lib.py"
+    retarget = by_path["link"]
+    assert retarget.kind is ChangeKind.modified
+    assert retarget.old is not None and retarget.old.entry_type.value == "symlink"
+    assert retarget.new is not None and retarget.new.entry_type.value == "symlink"
 
 
 def test_single_revision_resolves_to_first_parent(repo: tuple[Path, str, str]) -> None:
