@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -136,11 +135,8 @@ def test_apply_oracle_reproduces_gits_own_target_tree(repo: tuple[Path, str, str
 def test_fixture_commit_ids_are_deterministic(repo: tuple[Path, str, str]) -> None:
     """Pinned dates and identity make the goldens assert real ids."""
     root, base, target = repo
-    probe = subprocess.run(
-        ["git", "-C", str(root), "log", "--format=%H", "--reverse"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.split()
+    # Through the scrubbing helper: inside a githook, git exports GIT_DIR
+    # pointing at the real repository, and it beats -C.
+    probe = git(root, "log", "--format=%H", "--reverse").decode().split()
     assert probe == [base, target]
     assert base.startswith("55") or len(base) == 40  # shape only; ids asserted in goldens
