@@ -203,7 +203,8 @@ executionEnvironments = [
 known-first-party = ["metabrowser"]
 
 [tool.codespell]
-ignore-words-list = "browseable,fo,ue,unparseable"
+# "rouge" is GitLab's syntax highlighter (a proper noun), not a typo of rogue.
+ignore-words-list = "browseable,fo,rouge,ue,unparseable"
 # Vendored third-party browser bundles are minified upstream artifacts;
 # their identifiers are not prose to spell-check. attic/ holds read-only
 # third-party checkouts kept for research (gitignored, never shipped); this

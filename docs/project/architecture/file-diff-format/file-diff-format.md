@@ -1,12 +1,17 @@
 # File Diff Format v1
 
-**Status:** Implemented
+**Format version:** v1\
+**Status:** Implemented draft standard
 
-The change-set model for every comparison Metabrowser renders: two snapshots, a manifest
-of file changes, and per-file patches.
-Sources (a `.patch` file, git, a hosted provider, a document’s edit history) produce
-this format; the renderer and the CLI consume it; nothing downstream knows which source
-produced a document.
+The File Diff Format is a small, reusable format for describing a change set between two
+file-tree snapshots: resolved identity, a manifest of file changes, and per-file
+patches. It is deliberately tool-neutral — nothing in a document references Metabrowser
+concepts — so command-line tools, libraries, services, and user interfaces can share one
+validated model of “what changed.”
+Metabrowser hosts the reference implementations and emits the format from
+`metab --diff --format json`. Sources (a `.patch` file, git, a hosted provider, a
+document’s edit history) produce this format; the renderer and the CLI consume it;
+nothing downstream knows which source produced a document.
 Design rationale lives in the
 [general diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md);
 this document is the normative contract.
@@ -94,6 +99,20 @@ missing final newline.
 `base`, `document`, and `target` trees.
 A document that cannot be applied because content is missing must say so through
 `availability`; `apply` raising `NotFullyHydrated` on a `ready` file is a producer bug.
+
+## Relation to Existing Formats
+
+Git’s extended unified format is the interchange surface: GitHub serves it for any pull
+request, Mercurial documents plain unified diffs as lossy and adopts git’s extension,
+and Jujutsu emits it.
+This format wraps that surface rather than replacing it — parsed text becomes a
+validated document; a document should print back to git-applyable text (the emitter is
+tracked work). What the document adds over any text patch: snapshot identity and
+anchoring, availability states instead of ambiguous absence, machine-validatable
+structure, and apply semantics with an oracle.
+The full survey, including agent edit formats and the ingest/emit compatibility matrix,
+is in the
+[file patch formats research](../../research/research-2026-08-19-file-patch-formats.md).
 
 ## Conformance Corpus
 
