@@ -4,6 +4,24 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Diff rendering:
+
+- `.patch` and `.diff` files now open as rendered diffs: a change summary, per-file
+  sections with GitHub-style indicators (renames with the old path, mode changes, type
+  changes such as file to symlink, binary), and numbered unified hunks.
+  Every unavailable state is a labeled explanation rather than an empty box, and input
+  that is not a diff says so instead of claiming no changes.
+- New `metab --diff SPEC` mode: `BASE..TARGET`, a single revision (compared against its
+  first parent), or a `.patch`/`.diff` file.
+  `--format json` emits the full change-set document, `--diff-patch PATH` prints one
+  file’s hunks, and `--diff-check` applies the change set to the base tree and verifies
+  it reproduces the target tree exactly.
+- Both are built on File Diff Format v1, a documented change-set model with a JSON
+  Schema, a conformance corpus run by the Python and browser implementations alike, and
+  an apply oracle that proves a produced document captures everything — verified
+  byte-for-byte against git’s own trees, including renames, chmods, symlink type
+  changes, binaries, and missing trailing newlines.
+
 ## 0.5.1
 
 Folder views:

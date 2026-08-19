@@ -377,6 +377,13 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
             )
 
     truncated = truncated_input or section_truncated
+    warnings: list[str] = []
+    if truncated:
+        warnings.append("input truncated at parser bounds")
+    if not sections and data.strip():
+        # Nonempty input with no recognizable diff section: an empty manifest
+        # alone would read as "no changes", which is not what happened.
+        warnings.append("no diff sections recognized in this input")
     document = ChangeSetDocument.model_construct(
         schema_="file-diff-v1",
         schema_version=1,
@@ -394,7 +401,7 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
             options=DiffOptions.model_construct(
                 context=3, rename_detection=True, rename_similarity=None, algorithm=None
             ),
-            warnings=("input truncated at parser bounds",) if truncated else (),
+            warnings=tuple(warnings),
         ),
         manifest=ChangeSetManifest.model_construct(
             files=tuple(files),

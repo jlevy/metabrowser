@@ -195,7 +195,8 @@ class GitDiffSource:
                 kind = ChangeKind.copied
             if kind is None:
                 kind = ChangeKind.modified
-            key = new_path or old_path
+            key = new_path if new_path is not None else old_path
+            assert key is not None  # --raw always names at least one path
             add_del = counts.get(key)
             binary = add_del is None
             additions, deletions = add_del if add_del else (None, None)
@@ -215,11 +216,11 @@ class GitDiffSource:
                 if kind not in (ChangeKind.added,) and old_path is not None
                 else None
             )
-            new_side = (
-                _side(new_path if new_path is not None else old_path, new_mode, new_oid)
-                if kind is not ChangeKind.deleted
-                else None
-            )
+            new_side = None
+            if kind is not ChangeKind.deleted:
+                new_raw = new_path if new_path is not None else old_path
+                assert new_raw is not None  # only deleted lacks a new path
+                new_side = _side(new_raw, new_mode, new_oid)
             files.append(
                 FileChange(
                     id=file_id,

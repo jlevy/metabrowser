@@ -19,9 +19,10 @@ stable; the absolute checkout prefix of each plugin’s `static_root` is elided 
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS       VIEWS  HOOKS
--------------  -------  ----------  -----  ------
+-------------  -------  ----------  -----  --------
 agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
+diff           builtin  diff        1      document
 folder         builtin  -           2      -
 markdown       builtin  markdown    2      -
 structured     builtin  structured  2      parsed
@@ -69,6 +70,24 @@ $ metab --plugins --json
       "view_count": 1,
       "data_hooks": [
         "chunk"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "diff",
+      "display_name": "Diff",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/diff",
+      "kinds": [
+        "diff"
+      ],
+      "views": [
+        "diff"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "document"
       ],
       "disabled_data_hooks": []
     },
@@ -270,7 +289,7 @@ $ metab --plugin markdown --json
 
 ```console
 $ metab --doctor
-metab --doctor: 7 plugin(s) OK
+metab --doctor: 8 plugin(s) OK
 ? 0
 ```
 
@@ -280,7 +299,7 @@ metab --doctor: 7 plugin(s) OK
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 7,
+  "plugin_count": 8,
   "problems": []
 }
 ? 0

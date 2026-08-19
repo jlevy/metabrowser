@@ -69,7 +69,9 @@ class Availability(StrEnum):
 class SnapshotKind(StrEnum):
     commit = "commit"
     tree = "tree"
-    index = "index"
+    # `index_` because a StrEnum member named `index` shadows str.index;
+    # the wire value is still "index".
+    index_ = "index"
     worktree = "worktree"
     patch = "patch"
     empty = "empty"

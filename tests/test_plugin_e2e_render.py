@@ -58,6 +58,7 @@ def test_shim_loads_every_builtin_plugin(shim_output: dict[str, Any]) -> None:
     """The generic built-in plugin set loads and runs each ``index.js``."""
     assert set(shim_output["plugins"]) == {
         "agent_log",
+        "diff",
         "binary",
         "folder",
         "markdown",

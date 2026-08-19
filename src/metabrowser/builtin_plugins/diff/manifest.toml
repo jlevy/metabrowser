@@ -1,0 +1,33 @@
+[plugin]
+name = "diff"
+display_name = "Diff"
+version = "0.0.1"
+sdk_version = "0.2"
+extra_styles = ["styles.css"]
+
+# Patch files are the no-repository diff source: the server parses them
+# into File Diff Format and the view renders that document — the same
+# model every other comparison surface will feed the same renderer.
+[[kind]]
+id = "diff"
+match = { ext = ".patch" }
+priority = 0
+
+[[kind]]
+id = "diff"
+match = { ext = ".diff" }
+priority = 0
+
+[[view]]
+kind = "diff"
+id = "diff"
+label = "Diff"
+default = true
+container_class = "content-body metabrowser-diff-host"
+render_runtime = "client"
+
+# Returns the parsed, hydrated ChangeSetDocument for ?path=<file>.
+[[data_hook]]
+route = "document"
+sidekick = "metabrowser.builtin_plugins.diff.sidekick:document_handler"
+methods = ["GET"]
