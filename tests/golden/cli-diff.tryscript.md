@@ -30,7 +30,8 @@ Two commits whose delta covers modify, rename-with-edit, and add.
 The second commit re-pins the dates so both ids stay deterministic.
 
 ```console
-$ git init -q -b main repo \
+$ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
+>   && git init -q -b main repo \
 >   && cd repo \
 >   && printf 'def f():\n    return 1\n' > a.py \
 >   && printf 'x = 1\n' > u.py \
