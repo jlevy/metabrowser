@@ -333,6 +333,11 @@ rather than as new renderer features.
 
 ### One acquisition workflow
 
+Acquisition is one instance of the container materialization rule in
+[nav containers](../../architecture/arch-nav-containers.md): bounded transient cache
+directories that the ordinary serving path routes into, shared as one mechanism by PR
+fetches, patch anchoring, and future archive unpacking.
+
 Three flows must feel like slight variations of one workflow, because they are: browsing
 a transient checkout of a repository URL, viewing a transient pull request, and viewing
 a pull request against a repository already on disk.
@@ -358,6 +363,16 @@ Reviewing a change set does not get a new surface.
 The existing shell maps onto it with three customizations, each extending a mechanism
 that already exists rather than adding one:
 
+0. **A comparison is a container in the tree.** The durable ontology is in
+   [nav containers](../../architecture/arch-nav-containers.md): every tree entry is
+   item-like (opens views), folder-like (expands to children; selecting the entry itself
+   opens an overview), or both, and directories are the already-working precedent rather
+   than a special case.
+   A patch file or PR mirror is a folder-like entry whose children are its file changes;
+   selecting the container opens the change-set summary, and selecting a child opens
+   that file’s diff tabs.
+   The two customizations below are the container contract applied to comparisons, and
+   the same contract later carries archives and zoomed (re-rooted) views.
 1. **The comparison scopes the tree, the way a filter already does.** The Files panel
    already swaps its data source — a recency window renders `/api/recent` through the
    same tree renderer — and the filter bar already narrows what the tree shows.

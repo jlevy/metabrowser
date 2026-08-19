@@ -10,6 +10,8 @@ produced a document.
 Design rationale lives in the
 [general diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md);
 this document is the normative contract.
+[Diff sources, context, and anchoring](diff-sources-and-anchoring.md) maps where
+documents come from and what a repository context adds.
 
 ## Authority and Implementations
 
