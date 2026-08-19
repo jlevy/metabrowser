@@ -424,6 +424,9 @@ a file path.
 The bar keeps everything else: one focusable trigger carrying the chevron, a
 sibling `.icon-btn` copy control on the shell’s `[data-copy-path]` delegation so a
 nested interactive never sits inside the trigger, and sections start expanded.
+Because the trigger’s content is the whole bar — name, notes, then the stat pair pushed
+to the right — its chevron trails the stats at the row’s end rather than sitting against
+the title.
 
 ### Inline Change Stats
 

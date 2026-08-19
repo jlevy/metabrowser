@@ -352,9 +352,12 @@ function formatExactSize(bytes) {
 
 // ── SVG Icons ───────────────────────────────────────────────────
 
-// Lucide `copy` (v1.17.0, ISC), used by clipboard actions.
-var ICON_COPY =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+// Lucide `copy` from the shared registry (icons.js loads first);
+// aliased so call sites keep the established name.
+var _iconRegistry = /** @type {Record<string, string>} */ (
+  (typeof window !== "undefined" && window.MetabrowserIcons) || {}
+);
+var ICON_COPY = _iconRegistry.copy || "";
 
 // ── Icon registry ──────────────────────────────────────────────
 // All SVG markup lives in static/icons.js, loaded before this file
