@@ -180,3 +180,65 @@ def test_parsed_patch_survives_the_apply_oracle() -> None:
     )
     produced = apply_change_set(document, base)
     assert produced.entries["x.txt"].content == b"keep\nnew\n"
+
+
+# ── Hostile-input totality (probes from the format research) ───────
+
+
+def test_context_format_input_is_a_warning_not_a_crash() -> None:
+    """diff -c output must come back as a value; it once escaped as a
+    ValidationError because the ``---`` header line opened a section."""
+    document = parse_unified_patch(
+        b"*** a/x.txt\t2026-01-01\n"
+        b"--- b/x.txt\t2026-01-02\n"
+        b"***************\n"
+        b"*** 1,2 ****\n"
+        b"! old\n"
+        b"  keep\n"
+        b"--- 1,2 ----\n"
+        b"! new\n"
+        b"  keep\n"
+    )
+    assert document.manifest.totals.files == 0
+    assert any("context-format" in warning for warning in document.resolved.warnings)
+
+
+def test_posix_tab_timestamp_headers_keep_the_path() -> None:
+    """GNU/POSIX ``--- path<TAB>timestamp`` headers; git C-quotes any
+    tab inside a real name, so a raw tab is always the separator."""
+    document = parse_unified_patch(
+        b"--- a/src/app.py\t2026-01-01 10:00:00.000000000 +0000\n"
+        b"+++ b/src/app.py\t2026-01-02 10:00:00.000000000 +0000\n"
+        b"@@ -1,1 +1,1 @@\n"
+        b"-old\n"
+        b"+new\n"
+    )
+    change = document.manifest.files[0]
+    assert change.new is not None and change.new.path == "src/app.py"
+    assert change.availability.value == "ready"
+
+
+def test_combined_merge_diff_is_unsupported_not_silently_empty() -> None:
+    """A --cc section once parsed as a clean modified file with zero
+    hunks; it must surface as unsupported instead."""
+    document = parse_unified_patch(
+        b"diff --cc merged.py\n"
+        b"index 1111111,2222222..3333333\n"
+        b"--- a/merged.py\n"
+        b"+++ b/merged.py\n"
+        b"@@@ -1,2 -1,2 +1,3 @@@\n"
+        b"  keep\n"
+        b"- one\n"
+        b" -two\n"
+        b"++three\n"
+    )
+    change = document.manifest.files[0]
+    assert change.availability.value == "unsupported"
+    assert change.new is not None and change.new.path == "merged.py"
+    assert document.patches == {}
+
+
+def test_section_with_no_usable_path_is_dropped_with_a_warning() -> None:
+    document = parse_unified_patch(b"diff --git irrecoverable\n")
+    assert document.manifest.totals.files == 0
+    assert any("skipped" in warning for warning in document.resolved.warnings)

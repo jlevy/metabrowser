@@ -122,6 +122,15 @@ def _split_sections(data: bytes) -> list[_Section]:
         # a genuinely empty context line arrives as a single space.
         raw_lines.pop()
     for raw_line in raw_lines:
+        if raw_line.startswith(b"diff --cc ") or raw_line.startswith(b"diff --combined "):
+            # Combined (merge) diffs carry N+1-column hunks this parser
+            # cannot represent; surface the section as unsupported rather
+            # than silently parsing zero hunks out of it.
+            current = _Section()
+            current.malformed = "combined (merge) diff is not supported"
+            sections.append(current)
+            in_hunks = False
+            continue
         if raw_line.startswith(b"diff --git "):
             current = _Section()
             sections.append(current)
@@ -171,12 +180,14 @@ def _split_sections(data: bytes) -> list[_Section]:
             current.new_path = _unquote_c_style(raw_line[8:])
         elif raw_line.startswith(b"Binary files ") or raw_line == b"GIT binary patch":
             current.binary = True
+        elif raw_line.startswith(b"@@@"):
+            current.malformed = current.malformed or "combined (merge) diff is not supported"
         elif raw_line.startswith(b"--- "):
-            path = _unquote_c_style(raw_line[4:])
+            path = _unquote_c_style(raw_line[4:].split(b"\t", 1)[0])
             if current.old_path is None or path == b"/dev/null":
                 current.old_path = _strip_prefix(path)
         elif raw_line.startswith(b"+++ "):
-            path = _unquote_c_style(raw_line[4:])
+            path = _unquote_c_style(raw_line[4:].split(b"\t", 1)[0])
             if current.new_path is None or path == b"/dev/null":
                 current.new_path = _strip_prefix(path)
     return sections
@@ -299,7 +310,11 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     if truncated_input:
         data = data[:MAX_PATCH_BYTES]
     digest = sha256(data).hexdigest()[:16]
-    sections = _split_sections(data)
+    # Context-format (diff -c) hunks always open with a 15-asterisk line;
+    # inside unified hunk bodies that byte sequence only occurs behind a
+    # +/-/space prefix. Refuse the whole input as a value, not a crash.
+    context_format = b"\n***************" in b"\n" + data
+    sections = [] if context_format else _split_sections(data)
     section_truncated = len(sections) > MAX_FILE_SECTIONS
     sections = sections[:MAX_FILE_SECTIONS]
 
@@ -307,6 +322,7 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     patches: dict[str, FilePatch] = {}
     total_add = total_del = 0
     exact = True
+    dropped_sections = 0
     for index, section in enumerate(sections, start=1):
         file_id = f"f{index}"
         old_mode = _mode(section.old_mode)
@@ -349,6 +365,16 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
             availability = Availability.unsupported
             exact = False
             hunks, additions, deletions = [], 0, 0
+            # The document must stay format-valid even for junk sections:
+            # coerce to modified with the known path mirrored to both
+            # sides, or drop a section with no usable path at all.
+            known = new_path if new_path is not None else old_path
+            if known is None:
+                dropped_sections += 1
+                continue
+            kind = ChangeKind.modified
+            old_path = old_path if old_path is not None else known
+            new_path = new_path if new_path is not None else known
         elif section.binary:
             availability = Availability.binary
             exact = False
@@ -380,10 +406,14 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     warnings: list[str] = []
     if truncated:
         warnings.append("input truncated at parser bounds")
-    if not sections and data.strip():
+    if context_format:
+        warnings.append("context-format diff is not supported; regenerate with unified output")
+    elif not sections and data.strip():
         # Nonempty input with no recognizable diff section: an empty manifest
         # alone would read as "no changes", which is not what happened.
         warnings.append("no diff sections recognized in this input")
+    if dropped_sections:
+        warnings.append(f"{dropped_sections} unparseable section(s) skipped")
     document = ChangeSetDocument.model_construct(
         schema_="file-diff-v1",
         schema_version=1,
