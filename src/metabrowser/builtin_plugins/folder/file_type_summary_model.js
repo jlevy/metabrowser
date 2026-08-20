@@ -538,17 +538,6 @@ export function buildFileTypeSummaryModel(
 ) {
   /** @type {"files" | "size"} */
   const selectedMetric = metric === "files" ? "files" : "size";
-  if (envelope?.indexStatus === "scanning") {
-    return Object.freeze({
-      state: /** @type {const} */ ("pending"),
-      metric: selectedMetric,
-      rows: [],
-      files: 0,
-      bytes: 0,
-      scanning: true,
-      indexFailed: false,
-    });
-  }
   if (!envelope?.totals) {
     const failed = envelope?.indexStatus === "failed";
     const unavailable = envelope?.indexStatus === "done" || envelope?.indexStatus === "truncated";
@@ -620,6 +609,12 @@ export function buildFileTypeSummaryModel(
   if (population.files === 0) {
     if (!showIgnored && population.allFiles > 0) {
       return Object.freeze({ ...base, state: /** @type {const} */ ("ignored-only") });
+    }
+    if (base.scanning && population.allFiles === 0) {
+      // Nothing counted yet in a crawl that is still running. "Empty" is a
+      // claim about a finished count, so hold the loading state rather than
+      // assert it and then contradict it a moment later.
+      return Object.freeze({ ...base, state: /** @type {const} */ ("pending") });
     }
     return Object.freeze({ ...base, state: /** @type {const} */ ("empty") });
   }

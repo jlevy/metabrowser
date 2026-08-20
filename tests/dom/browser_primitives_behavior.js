@@ -6,6 +6,7 @@ const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
 const listeners = new Map();
 let timers = [];
+let timerDelays = [];
 
 function check(name, condition, detail = "failed") {
   if (!condition) {
@@ -35,8 +36,9 @@ const sandbox = {
   TypeError,
   AbortController,
   CustomEvent,
-  setTimeout(callback) {
+  setTimeout(callback, delay) {
     timers.push(callback);
+    timerDelays.push(delay);
     return timers.length;
   },
   clearTimeout() {},
@@ -120,6 +122,37 @@ for (const name of [
   watchResolvers[1]({ revision: 2 });
   await new Promise((resolve) => setImmediate(resolve));
   watch.dispose();
+
+  // A crawl emits inventory changes continuously. A debounce that restarted
+  // on every one would never fire until the stream paused, freezing a
+  // folder's numbers for the whole scan; the wait is bounded by one window
+  // so refreshes keep landing under a steady stream.
+  timers = [];
+  timerDelays = [];
+  const steady = sandbox.MetabrowserInventoryScope.createInventoryWatch(
+    "src",
+    { debounceMs: 1000, fetch: () => new Promise(() => {}) },
+    () => {},
+  );
+  dispatch("metabrowser:inventory-change", { paths: ["src/a.py"] });
+  const firstDelay = timerDelays[timerDelays.length - 1];
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 4) {
+    // Spin so measurable time passes inside the window before the next change.
+  }
+  dispatch("metabrowser:inventory-change", { paths: ["src/b.py"] });
+  const secondDelay = timerDelays[timerDelays.length - 1];
+  check(
+    "a burst of changes coalesces into one window",
+    firstDelay === 1000 && secondDelay <= 1000,
+    `${firstDelay} then ${secondDelay}`,
+  );
+  check(
+    "a later change cannot postpone the refresh past that window",
+    secondDelay < firstDelay,
+    `${firstDelay} then ${secondDelay}`,
+  );
+  steady.dispose();
 
   const registry = sandbox.MetabrowserContributionRegistry.createContributionRegistry({
     validate(id, spec) {

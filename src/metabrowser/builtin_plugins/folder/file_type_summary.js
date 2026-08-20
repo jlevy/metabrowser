@@ -87,10 +87,11 @@ export function mountFileTypeSummary(
     updateDistributionView(view, nextModel);
     envelope = nextEnvelope;
     model = nextModel;
-    if (
-      nextEnvelope.totals &&
-      (nextEnvelope.indexStatus === "done" || nextEnvelope.indexStatus === "truncated")
-    ) {
+    if (nextEnvelope.totals) {
+      // Publish while the crawl is still running too. Sibling panels read
+      // ``indexStatus`` and label their numbers as in-progress, so holding
+      // the projection back until the scan finished only meant they showed
+      // a loading state for the whole crawl instead of counts that refine.
       projection.publish(nextEnvelope);
     }
   }

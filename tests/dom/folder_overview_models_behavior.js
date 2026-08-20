@@ -225,9 +225,33 @@ async function importSource(relative) {
     ...raw,
     index_status: "scanning",
   });
+  // A crawl in progress still has real counts for what it has indexed, and the
+  // view labels them as partial. Withholding them meant a large folder showed
+  // a loading state for the whole scan instead of detail that refines.
+  const scanningModel = modelModule.buildFileTypeSummaryModel(
+    scanningWithTotals,
+    false,
+    formatters,
+    baseRuntime,
+  );
+  check("scanning rollups expose the rows counted so far", scanningModel.state === "populated");
+  check("scanning rollups mark themselves in progress", scanningModel.scanning === true);
+  check("scanning rollups carry counted rows", scanningModel.rows.length > 0);
+
+  // With nothing counted yet, "empty" would be a claim the crawl cannot make.
+  const scanningNothingYet = modelModule.normalizeRollupEnvelope({
+    ...raw,
+    index_status: "scanning",
+    node: { total_files: 0, total_size: 0, unignored_files: 0, unignored_size: 0 },
+    file_type_breakdown: {
+      ...raw.file_type_breakdown,
+      metrics: metrics(0, 0),
+      groups: [],
+    },
+  });
   check(
-    "scanning rollups never expose provisional breakdown rows",
-    modelModule.buildFileTypeSummaryModel(scanningWithTotals, false, formatters, baseRuntime)
+    "a scan with nothing counted yet stays pending rather than claiming empty",
+    modelModule.buildFileTypeSummaryModel(scanningNothingYet, true, formatters, baseRuntime)
       .state === "pending",
   );
 
