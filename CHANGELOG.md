@@ -4,6 +4,36 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Large directories:
+
+- Opening a large folder is now fast regardless of how large it is, and its detail fills
+  in while the crawl runs instead of after it.
+  Previously a folder Overview showed a loading box for the whole scan — about fifteen
+  seconds on a 100,000-file tree — and then filled in at once.
+  The counts were already available throughout; the browser discarded them until the
+  index reported itself complete.
+  A folder now shows what has been counted so far, labeled as still scanning, and
+  refines as the crawl proceeds.
+
+- Folder rollups no longer re-read the whole index on every request.
+  Per-directory subtree aggregates and the parent/child index are kept up to date as
+  entries arrive, so a rollup costs what changed rather than what is stored.
+  On a 100,000-file tree with the Overview open, the median rollup fell from 610 ms to
+  76 ms and the full scan from 52 s to 17 s. Past roughly a quarter-million files the
+  old cost exceeded the browser’s own refresh interval, so each response arrived already
+  stale and the view could stop converging.
+
+- Expanding a folder in the navigation tree no longer scans the whole index first.
+  Expansion now costs what the response contains instead of what the tree holds: on a
+  100,000-file tree, expanding a small folder fell from 63 ms to 7 ms, and no longer
+  depends on whether a scan is running.
+
+- The crawl now visits directories in strict level order, so the layers the navigation
+  tree shows are complete early.
+  On a 100,000-file tree the first two levels are discovered 2 ms and 21 ms into a
+  6.4-second walk. The scan previously followed one top-level directory to the bottom
+  before looking at its siblings.
+
 ## 0.5.1
 
 Folder views:
