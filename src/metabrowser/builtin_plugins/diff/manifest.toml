@@ -44,3 +44,11 @@ methods = ["GET"]
 route = "children"
 sidekick = "metabrowser.builtin_plugins.diff.sidekick:children_handler"
 methods = ["GET"]
+
+# A Git comparison in the served repository, as the same document —
+# so the history view renders diffs through this plugin's view rather
+# than growing a diff surface of its own.
+[[data_hook]]
+route = "comparison"
+sidekick = "metabrowser.builtin_plugins.diff.sidekick:comparison_handler"
+methods = ["GET"]

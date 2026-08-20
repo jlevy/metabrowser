@@ -28,6 +28,7 @@ from metabrowser.plugin_api import (
     relativize_path,
     resolve_directory,
     resolve_path,
+    served_root,
 )
 
 try:
@@ -52,4 +53,5 @@ __all__ = [
     "relativize_path",
     "resolve_directory",
     "resolve_path",
+    "served_root",
 ]

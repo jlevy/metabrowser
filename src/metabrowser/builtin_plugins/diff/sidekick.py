@@ -10,8 +10,14 @@ narrowed to that one file change.
 ``GET /api/plugin/diff/children?path=<rel>`` lists the change entries as
 nav-tree child rows for the container affordance.
 
-Synchronous on purpose: the data-hook dispatcher runs sync sidekicks in
-the thread pool, and the parser is a bounded pure function.
+``GET /api/plugin/diff/comparison?revision=<rev>`` (or ``?left=&right=``)
+serves the same document for a Git comparison in the served repository,
+so the history view renders diffs through this plugin's view instead of
+growing a diff surface of its own.
+
+The patch handlers are synchronous on purpose: the data-hook dispatcher
+runs sync sidekicks in the thread pool, and the parser is a bounded pure
+function. The comparison handler is async because ``git`` is.
 """
 
 from __future__ import annotations
@@ -20,9 +26,21 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse
 
+from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
-from metabrowser.diff.format import ChangeSetDocument, FileChange, Totals, dump_document
-from metabrowser.plugin_api import resolve_path
+from metabrowser.diff.format import (
+    Availability,
+    ChangeSetDocument,
+    ChangeSetManifest,
+    FileChange,
+    FilePatch,
+    ResolvedComparison,
+    Totals,
+    dump_document,
+)
+from metabrowser.git.process import GitError
+from metabrowser.git.repo import repo_info
+from metabrowser.plugin_api import resolve_path, served_root
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -35,6 +53,13 @@ if TYPE_CHECKING:
 _MAX_VIRTUAL_PARTS = 16
 
 _PATCH_EXTS = (".patch", ".diff")
+
+# Hunks hydrated per comparison request. A commit view shows its files
+# in order and the rest stay `deferred` — a declared gap, not a silent
+# truncation — so one oversized commit cannot stall the panel. Sized to
+# cover ordinary commits whole; measured against this repository's own
+# history, where the 95th-percentile commit touches far fewer files.
+MAX_HYDRATED_FILES = 50
 
 
 def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
@@ -132,6 +157,80 @@ def document_handler(request: Request) -> JSONResponse:
             )
         document = narrowed
     return JSONResponse(dump_document(document))
+
+
+async def comparison_handler(request: Request) -> JSONResponse:
+    """A Git comparison in the served repository, as a ChangeSetDocument.
+
+    ``?revision=<rev>`` compares a commit against its first parent — the
+    same resolution ``metab --diff REV`` performs. ``?left=&right=``
+    compares two endpoints. Hunks are hydrated up to a bound; the rest
+    stay ``deferred``, which the renderer states rather than eliding.
+    """
+    revision = request.query_params.get("revision", "").strip()
+    left = request.query_params.get("left", "").strip()
+    right = request.query_params.get("right", "").strip()
+    if revision:
+        intent: dict[str, Any] = {"revision": revision}
+    elif left and right:
+        intent = {"left": left, "right": right}
+    else:
+        return _error(
+            "diff_comparison",
+            "Name a revision, or both endpoints of a comparison.",
+            400,
+            path=revision or f"{left}..{right}",
+        )
+
+    root = served_root()
+    context, _info = await repo_info(root)
+    if context is None:
+        return _error(
+            "diff_comparison",
+            "This folder is not the root of a Git repository.",
+            404,
+            path=revision,
+        )
+
+    source = GitDiffSource(context.git_root)
+    try:
+        resolved = await source.resolve(intent)
+        manifest = await source.manifest(resolved)
+        patches: dict[str, FilePatch] = {}
+        deferred: list[FileChange] = []
+        hydrated = 0
+        for change in manifest.files:
+            if change.availability is not Availability.ready:
+                deferred.append(change)
+                continue
+            if hydrated >= MAX_HYDRATED_FILES:
+                deferred.append(change.model_copy(update={"availability": Availability.deferred}))
+                continue
+            patches[change.id] = await source.file_patch(resolved, change.id)
+            deferred.append(change)
+            hydrated += 1
+    except GitError as exc:
+        return _error("diff_comparison", str(exc), 502, path=revision)
+    except ValueError as exc:
+        return _error("diff_comparison", str(exc), 404, path=revision)
+
+    document = _document_from(resolved, manifest, tuple(deferred), patches)
+    return JSONResponse(dump_document(document))
+
+
+def _document_from(
+    resolved: ResolvedComparison,
+    manifest: ChangeSetManifest,
+    files: tuple[FileChange, ...],
+    patches: dict[str, FilePatch],
+) -> ChangeSetDocument:
+    return ChangeSetDocument.model_construct(
+        schema_="file-diff-v1",
+        schema_version=1,
+        resolved=resolved,
+        manifest=manifest.model_copy(update={"files": files}),
+        patches=patches,
+    )
 
 
 def children_handler(request: Request) -> JSONResponse:

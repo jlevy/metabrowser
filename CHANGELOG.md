@@ -6,6 +6,11 @@ All notable changes to Metabrowser are documented here.
 
 Diff rendering:
 
+- **The Git history view shows real diffs.** Selecting a commit renders its first-parent
+  comparison through the diff view — the same renderer, model, and validation a patch
+  file uses — instead of a file list alone.
+  The commit header keeps only what that view cannot show: files outside the served
+  folder, and a statement when a very large commit’s diff is bounded.
 - **Patch and diff files expand in the navigation tree.** A `.patch` or `.diff` file
   keeps its own row and views and gains a chevron: expanding lists the files it changes,
   each with its change indicator, and selecting one opens just that file’s diff at its

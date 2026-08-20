@@ -473,9 +473,29 @@ async function run() {
   assertContains("detail: subject", previewHtml, "a commit");
   assertContains("detail: short sha", previewHtml, SHA_A.slice(0, 7));
   assertContains("detail: body", previewHtml, "explanatory body");
-  assertContains("detail: file count", previewHtml, "2 files changed");
   assertContains("detail: ref badge", previewHtml, "main");
-  assertNotContains("detail: no truncation note", previewHtml, "Showing the first");
+  // The commit's files are presented by the diff view mounted below, so
+  // the panel keeps only what that view cannot show: a host for it, the
+  // files outside the served root, and any bound on the comparison.
+  assertContains("detail: mounts the diff host", previewHtml, "git-commit-diff");
+  assertNotContains("detail: no duplicate file list", previewHtml, "2 files changed");
+  assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
+  internals.renderCommitDetail({
+    is_repo: true,
+    commit: commit(SHA_A, [], "outside commit"),
+    body: "",
+    stats: { files_changed: 2, additions: 1, deletions: 1 },
+    files: [
+      { path: "inside.js", status: "modified", additions: 1, deletions: 0 },
+      { path: "../outside.js", status: "modified", additions: 0, deletions: 1, outside_root: true },
+    ],
+    files_truncated: false,
+  });
+  // Files the server cannot open are still reported; hiding them would
+  // misreport what the commit changed.
+  assertContains("detail: names files outside the folder", previewHtml, "outside this folder");
+  assertContains("detail: lists the outside file", previewHtml, "outside.js");
+  assertNotContains("detail: does not relist inside files", previewHtml, "inside.js");
   internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [], "big commit"),
@@ -484,20 +504,10 @@ async function run() {
     files: [{ path: "one.js", status: "modified", additions: 1, deletions: 1 }],
     files_truncated: true,
   });
-  // A silently shortened list reads as a complete one, which is the
-  // worse failure — so the cut has to be stated.
-  assertContains("detail: truncation is stated", previewHtml, "Showing the first");
+  // A silently bounded diff reads as a complete one, which is the worse
+  // failure — so the bound has to be stated, with the real total.
+  assertContains("detail: truncation is stated", previewHtml, "the diff below is bounded");
   assertContains("detail: truncation names the total", previewHtml, "900");
-  // Singular, not "1 files changed".
-  internals.renderCommitDetail({
-    is_repo: true,
-    commit: commit(SHA_A, [], "one file"),
-    body: "",
-    stats: { files_changed: 1, additions: 1, deletions: 0 },
-    files: [{ path: "one.js", status: "modified", additions: 1, deletions: 0 }],
-    files_truncated: false,
-  });
-  assertContains("detail: singular file count", previewHtml, "1 file changed");
 
   // ── Paging appends and keeps lanes continuous ──────────────
   {

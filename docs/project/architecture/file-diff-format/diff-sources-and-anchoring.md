@@ -30,7 +30,7 @@ document, which is the practical test of the separability claim.
 | # | Path | Pipeline | Status |
 | --- | --- | --- | --- |
 | 1 | Patch file, standalone | `.patch`/`.diff` → patch source → render | Implemented: browser view and `metab --diff FILE` |
-| 2 | Git revisions, local repository | rev pair → git source → render | Implemented in the CLI (`--diff A..B`, single revision, `--diff-check`); browser surface planned |
+| 2 | Git revisions, local repository | rev pair → git source → render | Implemented: the CLI (`--diff A..B`, single revision, `--diff-check`) and the Git history view, which renders a selected commit’s first-parent comparison through the diff view |
 | 3 | GitHub PR as a patch | `gh pr diff N` or the PR’s `.diff` URL → path 1 | Implemented (it is path 1) |
 | 4 | GitHub PR over git transport | fetch `refs/pull/N/head` → merge-base → path 2 | Planned: acquisition and composition |
 | 5 | Uncommitted states | worktree/index vs `HEAD` → git source | Modeled (snapshot kinds, `generation` tokens); source support planned |

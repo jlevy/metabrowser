@@ -66,6 +66,8 @@
 
   /** @type {PanelState} */
   let state = emptyState();
+  /** @type {{dispose?: () => void} | null} The mounted commit diff. */
+  let commitDiffHandle = null;
   /** @type {Map<string, string>} */
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
@@ -81,6 +83,11 @@
 
   function shell() {
     return window.MetabrowserShell;
+  }
+
+  /** The plugin SDK, which owns the view registry this panel composes. */
+  function sdk() {
+    return window.metabrowser;
   }
 
   /**
@@ -508,6 +515,8 @@
       return;
     }
     const previewClaim = bridge.claimPreview("git");
+    // Whatever is on screen goes before the next commit's render starts.
+    disposeCommitDiff();
     state.selectedId = revision;
     for (const element of document.querySelectorAll(".git-graph-row")) {
       element.classList.toggle(
@@ -571,26 +580,37 @@
       html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;
     }
 
-    html += '<div class="git-commit-files">';
-    html += '<div class="git-commit-files-summary">';
-    html += `${stats.files_changed || 0} file${stats.files_changed === 1 ? "" : "s"} changed`;
-    html += `<span class="git-stat-add">+${stats.additions || 0}</span>`;
-    html += `<span class="git-stat-del">−${stats.deletions || 0}</span>`;
-    html += "</div>";
-    html += files.map(renderFileRow).join("");
+    // Files outside the served root are the one thing the comparison
+    // below cannot show: it renders paths this server can open, and
+    // hiding the rest would misreport what the commit changed.
+    const external = files.filter((file) => file.outside_root);
+    if (external.length) {
+      html += '<div class="git-commit-files">';
+      html += '<div class="git-commit-files-summary">';
+      html += `${external.length} file${external.length === 1 ? "" : "s"} outside this folder`;
+      html += "</div>";
+      html += external.map(renderFileRow).join("");
+      html += "</div>";
+    }
     if (detail.files_truncated) {
       // Say what was cut. A silently shortened list reads as a complete
       // one, which is the worse failure.
-      html += `<div class="git-commit-file git-commit-file-note">Showing the first ${
-        files.length
-      } of ${stats.files_changed || files.length} changed files.</div>`;
+      html += `<div class="git-commit-file git-commit-file-note">This commit changes ${
+        stats.files_changed || files.length
+      } files; the diff below is bounded.</div>`;
     }
-    html += "</div></div>";
+    // The commit's diff is rendered by the diff plugin's own view over
+    // this commit's first-parent comparison — the history view composes
+    // the comparison layer instead of growing a diff surface of its own
+    // (arch-nav-containers.md, the general diff rendering plan).
+    html += '<div class="git-commit-diff metabrowser-diff-host"></div>';
+    html += "</div>";
 
     const preview = bridge.renderPreviewHtml(html, previewClaim);
     if (!preview) {
       return;
     }
+    mountCommitDiff(preview, commit.id, previewClaim);
 
     for (const element of preview.querySelectorAll(".git-commit-file[data-path]")) {
       element.addEventListener("click", () => {
@@ -603,6 +623,47 @@
         }
       });
     }
+  }
+
+  /**
+   * Mount the diff view for one commit, disposing any previous mount.
+   *
+   * @param {HTMLElement} preview
+   * @param {string} revision
+   * @param {number} claim
+   */
+  async function mountCommitDiff(preview, revision, claim) {
+    const host = preview.querySelector(".git-commit-diff");
+    const bridge = shell();
+    if (!(host instanceof HTMLElement) || !bridge) {
+      return;
+    }
+    disposeCommitDiff();
+    const view = sdk()?.getRegisteredView?.("diff", "diff");
+    if (!view) {
+      // The diff plugin is absent: the file list above still stands on
+      // its own, so say nothing rather than showing an empty frame.
+      host.remove();
+      return;
+    }
+    try {
+      const handle = /** @type {{dispose?: () => void} | null} */ (
+        await view.render(host, { revision })
+      );
+      // A different commit or preview owner won while this was in flight.
+      if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(claim)) {
+        handle?.dispose?.();
+        return;
+      }
+      commitDiffHandle = handle || null;
+    } catch (_error) {
+      host.textContent = "Could not load this commit's diff.";
+    }
+  }
+
+  function disposeCommitDiff() {
+    commitDiffHandle?.dispose?.();
+    commitDiffHandle = null;
   }
 
   /**

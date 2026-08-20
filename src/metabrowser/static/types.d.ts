@@ -1,6 +1,8 @@
 type MetabrowserRenderContext = {
   kind?: string;
   path?: string;
+  /** A Git revision, when a surface asks a view for a comparison rather than a file. */
+  revision?: string;
   raw?: unknown;
 };
 

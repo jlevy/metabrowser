@@ -4012,6 +4012,15 @@ pre.code-block code.hljs {
 
 /* ── Tree expand/collapse indicator ──────────────────────────── */
 
+/* The commit diff mounted by the diff plugin inside the Git commit
+   view: its own scroll rhythm, separated from the file list above. */
+.git-commit-diff {
+  margin-top: 16px;
+}
+.git-commit-diff:empty {
+  display: none;
+}
+
 /* Container rows: a file that is also folder-like. Its chevron sits in
    the same 16px alignment box a folder's does, so names line up at every
    indent level; its children carry a kind badge in place of an icon. */

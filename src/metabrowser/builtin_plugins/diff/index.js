@@ -27,9 +27,16 @@ function renderFailure(container, message) {
 
 mb.registerView("diff", "diff", {
   render: async (container, ctx) => {
+    // Two ctx shapes reach the same renderer: a path (a patch file, or
+    // one entry inside it) and a revision (the history view asking for
+    // a commit's comparison). Both resolve to one ChangeSetDocument,
+    // which is the whole point of the format.
+    const revision = ctx.revision || "";
     let payload;
     try {
-      payload = await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
+      payload = revision
+        ? await mb.fetchPluginData("diff", "comparison", { revision })
+        : await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
     } catch (_error) {
       return renderFailure(container, "Could not load this diff. Refresh the page to try again.");
     }

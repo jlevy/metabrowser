@@ -37,6 +37,7 @@ PLUGIN_API_EXPORTS = {
     "relativize_path",
     "resolve_directory",
     "resolve_path",
+    "served_root",
 }
 
 
