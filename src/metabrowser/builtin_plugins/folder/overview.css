@@ -59,10 +59,23 @@
 
 .folder-overview-panel-body {
   min-width: 0;
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: hidden;
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
 }
 
 .folder-overview-panel-body-collapsed {
-  display: none;
+  height: 0;
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folder-overview-panel-body {
+    transition-duration: 1ms;
+  }
 }
 
 /* A collapsed panel is a heading and nothing else. The rule underlines content

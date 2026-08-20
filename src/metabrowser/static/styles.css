@@ -376,6 +376,9 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+  /* Square-ish corner for tag-like chips (branch refs): visibly not a
+     pill, still not a hard corner. */
+  --radius-tag: 3px;
   /* Transient loading chrome stays quiet through work that finishes within
      about three frames, which covers a cached subtree expansion and most
      local requests. The placeholder still reserves its layout while hidden,
@@ -2148,6 +2151,12 @@ html[data-prose-font="sans"] {
 }
 .tree-children {
   margin-left: 16px;
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: hidden;
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
 }
 .tree-folder .tree-item-icon {
   color: var(--text);
@@ -4021,6 +4030,19 @@ pre.code-block code.hljs {
   display: none;
 }
 
+/* ── Disclosure motion — one travel for every toggle ─────────────
+   Expand/collapse bodies travel on the same var(--transition-fast)
+   their chevrons rotate with, via height auto<->0. interpolate-size is
+   scoped to each animated body (Chromium animates keyword heights;
+   elsewhere the swap is instant, which was the prior behavior).
+   Collapsed bodies drop visibility so hidden rows leave the tab order
+   and the accessibility tree. Same recipe in the diff and folder
+   plugins' stylesheets; test_design_vocabulary.py pins all of it. */
+.tree-children-collapsed {
+  height: 0;
+  visibility: hidden;
+}
+
 /* Container rows: a file that is also folder-like. Its chevron sits in
    the same 16px alignment box a folder's does, so names line up at every
    indent level; its children carry a kind badge in place of an icon. */
@@ -4295,7 +4317,8 @@ pre.code-block code.hljs {
   .filter-drawer,
   .filter-drawer-toggle svg,
   .section-disclosure-trigger::after,
-  .metabrowser-kpress-host .kpress details > summary::after {
+  .metabrowser-kpress-host .kpress details > summary::after,
+  .tree-children {
     transition-duration: 1ms;
   }
   /* The bar's row-gap tracks the drawer, so it has to stop travelling
@@ -4537,13 +4560,16 @@ pre.code-block code.hljs {
 
 /* ── Ref badges ─────────────────────────────────────────────── */
 
+/* Branch chips are their own vocabulary, not filter chips: at this
+   size the name carries the meaning, so it is always bold, and the
+   square corner separates "a ref" from "a filter" at a glance. */
 .git-ref {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
   max-width: 140px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
+  padding: 0 5px;
+  border-radius: var(--radius-tag);
   line-height: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4551,6 +4577,7 @@ pre.code-block code.hljs {
   background: var(--git-ref-bg);
   color: var(--git-ref-local);
   font-size: var(--micro-font-size);
+  font-weight: var(--weight-bold);
 }
 
 .git-ref-remote {
@@ -4562,7 +4589,9 @@ pre.code-block code.hljs {
 }
 
 .git-ref-head {
-  font-weight: var(--weight-bold);
+  /* Every ref chip is bold now; HEAD keeps its distinction with a
+     hairline ring in its own color. */
+  box-shadow: inset 0 0 0 1px currentColor;
 }
 
 /* ── Commit detail view ─────────────────────────────────────── */
@@ -4700,10 +4729,12 @@ pre.code-block code.hljs {
 
 .git-stat-add {
   color: var(--status-success);
+  font-weight: var(--weight-bold);
 }
 
 .git-stat-del {
   color: var(--status-error-strong);
+  font-weight: var(--weight-bold);
 }
 
 .git-stat-binary {

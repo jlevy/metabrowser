@@ -72,7 +72,11 @@
     let insideTree = false;
     let ancestor = /** @type {HTMLElement | null} */ (row.parentElement);
     while (ancestor) {
-      if (ancestor.hidden || ancestor.style?.display === "none") {
+      if (
+        ancestor.hidden ||
+        ancestor.style?.display === "none" ||
+        ancestor.classList?.contains("tree-children-collapsed")
+      ) {
         return false;
       }
       if (hasRole(ancestor, "tree")) {
@@ -94,7 +98,7 @@
   /** @param {HTMLElement} row */
   function firstChildRow(row) {
     const group = childGroup(row);
-    if (!group || group.style.display === "none") {
+    if (!group || group.classList.contains("tree-children-collapsed")) {
       return null;
     }
     return readVisibleRows(group)[0] || null;
@@ -222,7 +226,7 @@
         const discloses = kind === "folder" || row.dataset.containerChildren !== undefined;
         if (discloses && group && !isKnownEmptyFolder(row)) {
           row.setAttribute("aria-owns", group.id);
-          const expanded = group.style.display !== "none" && !group.hidden;
+          const expanded = !group.classList.contains("tree-children-collapsed") && !group.hidden;
           row.setAttribute("aria-expanded", String(expanded));
           synchronizeBranch(group, level + 1);
         } else if (discloses) {

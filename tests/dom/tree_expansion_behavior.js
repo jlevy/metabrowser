@@ -27,21 +27,30 @@ function assertSet(label, actual, expected) {
   assertEqual(label, JSON.stringify(Array.from(actual).sort()), JSON.stringify(expected.sort()));
 }
 
-function folderElements(expanded) {
-  const classes = new Set(["tree-folder", expanded ? "expanded" : "collapsed"]);
+function fakeClassList(initial) {
+  const classes = new Set(initial);
   return {
-    children: { style: { display: expanded ? "block" : "none" } },
+    contains: (name) => classes.has(name),
+    toggle: (name, force) => {
+      const want = force === undefined ? !classes.has(name) : force;
+      if (want) {
+        classes.add(name);
+      } else {
+        classes.delete(name);
+      }
+    },
+  };
+}
+
+function folderElements(expanded) {
+  return {
+    // Disclosure is class-driven (the shared motion primitive), so the
+    // fixture models the collapsed class, not inline display.
+    children: {
+      classList: fakeClassList(expanded ? [] : ["tree-children-collapsed"]),
+    },
     row: {
-      classList: {
-        contains: (name) => classes.has(name),
-        toggle: (name, force) => {
-          if (force) {
-            classes.add(name);
-          } else {
-            classes.delete(name);
-          }
-        },
-      },
+      classList: fakeClassList(["tree-folder", expanded ? "expanded" : "collapsed"]),
     },
   };
 }
@@ -131,7 +140,11 @@ assertEqual(
   expansion.toggleFolderExpanded(closedFolder.row, closedFolder.children),
   true,
 );
-assertEqual("expanding reveals children", closedFolder.children.style.display, "block");
+assertEqual(
+  "expanding reveals children",
+  closedFolder.children.classList.contains("tree-children-collapsed"),
+  false,
+);
 assertEqual("expanding sets the row class", closedFolder.row.classList.contains("expanded"), true);
 assertEqual(
   "expanding clears the opposite row class",
@@ -144,7 +157,11 @@ assertEqual(
   expansion.toggleFolderExpanded(closedFolder.row, closedFolder.children),
   false,
 );
-assertEqual("collapsing hides children", closedFolder.children.style.display, "none");
+assertEqual(
+  "collapsing hides children",
+  closedFolder.children.classList.contains("tree-children-collapsed"),
+  true,
+);
 assertEqual(
   "collapsing clears the row class",
   closedFolder.row.classList.contains("expanded"),

@@ -463,11 +463,34 @@ because a control that hides its size is a control the reader cannot judge.
 A fold inside another disclosure stops its click, so expanding a fold never collapses
 its container.
 
+### Disclosure Motion
+
+Every toggle travels the same way: the body animates `height` between `auto` and `0` on
+`var(--transition-fast)` — the same duration its chevron rotates with — with
+`overflow: hidden` during travel and `visibility: hidden` at rest so collapsed content
+leaves the tab order and the accessibility tree.
+`interpolate-size: allow-keywords` is scoped to each animated body; engines without it
+swap instantly, which was the prior behavior.
+Collapse is always class-driven (`.tree-children-collapsed`,
+`.diff-file-body-collapsed`, `.diff-fold-collapsed`,
+`.folder-overview-panel-body-collapsed`), never inline `display`, so the stylesheet owns
+the motion, and reduced-motion drops every travel to 1ms while keeping the state change.
+`tests/test_design_vocabulary.py` pins the recipe on every site.
+
+### Branch Chips
+
+Git ref badges (`.git-ref`) are their own vocabulary, not filter chips: at
+`--micro-font-size` the name carries the meaning, so it is always `--weight-bold`, and
+the corner is `--radius-tag` (square-ish) so “a ref” and “a filter” never read as the
+same control. `HEAD`’s chip keeps its distinction with a hairline ring in its own color.
+
 ### Inline Change Stats
 
 The `+N` / `−N` pair that rides beside a filename wherever a surface reports change
 size: `.diff-stat-add` in `--status-success`, `.diff-stat-del` in `--status-error`,
-always in that order, using the true minus sign, at the local small-text size.
+always in that order, using the true minus sign, at the local small-text size, and
+always `--weight-bold` — the pair is data, and it must read at a glance.
+The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same rule.
 The same pair is the summary line’s vocabulary, so a change set and its files read
 identically. Kind letters reuse the same mapping — added is `--status-success`, deleted
 is `--status-error` — and no diff surface introduces a local green or red.

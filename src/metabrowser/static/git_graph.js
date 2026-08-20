@@ -43,16 +43,20 @@
   // the Window surface use, so a shape can only be defined once. They
   // mirror the TypedDicts in metabrowser/git/wire.py.
 
-  // Geometry, verbatim from scmHistory.ts. SWIMLANE_HEIGHT is also the
-  // row height: the SVG is exactly one row tall, which is what lets the
-  // graph ride along in an ordinary scrolling list instead of needing a
-  // canvas sized to the whole history.
+  // Geometry derived from scmHistory.ts, densified: lanes sit at a 9px
+  // pitch (upstream 11) and the vertical midline is decoupled from the
+  // pitch, so tightening lanes cannot move dots off the row's center.
+  // SWIMLANE_HEIGHT is also the row height: the SVG is exactly one row
+  // tall, which is what lets the graph ride along in an ordinary
+  // scrolling list instead of needing a canvas sized to the whole
+  // history.
   const SWIMLANE_HEIGHT = 22;
-  const SWIMLANE_WIDTH = 11;
+  const SWIMLANE_WIDTH = 9;
+  const SWIMLANE_MIDLINE = SWIMLANE_HEIGHT / 2;
   const SWIMLANE_CURVE_RADIUS = 5;
   // Marker geometry deliberately diverges from upstream: topology is
   // expressed by the lanes, while concentric shapes carry node state.
-  const CIRCLE_RADIUS = 4;
+  const CIRCLE_RADIUS = 3;
   const CIRCLE_STROKE_WIDTH = 2;
   const CIRCLE_CENTER_RADIUS = 1;
 
@@ -276,7 +280,7 @@
   function drawCircle(index, radius, strokeWidth, color) {
     const circle = document.createElementNS(SVG_NAMESPACE, "circle");
     circle.setAttribute("cx", `${SWIMLANE_WIDTH * (index + 1)}`);
-    circle.setAttribute("cy", `${SWIMLANE_WIDTH}`);
+    circle.setAttribute("cy", `${SWIMLANE_MIDLINE}`);
     circle.setAttribute("r", `${radius}`);
     circle.style.strokeWidth = `${strokeWidth}px`;
     if (color) {
@@ -294,7 +298,7 @@
   function drawDashedCircle(index, strokeWidth, color) {
     const circle = document.createElementNS(SVG_NAMESPACE, "circle");
     circle.setAttribute("cx", `${SWIMLANE_WIDTH * (index + 1)}`);
-    circle.setAttribute("cy", `${SWIMLANE_WIDTH}`);
+    circle.setAttribute("cy", `${SWIMLANE_MIDLINE}`);
     circle.setAttribute("r", `${CIRCLE_RADIUS - CIRCLE_CENTER_RADIUS}`);
     circle.style.stroke = color;
     circle.style.strokeWidth = `${strokeWidth}px`;
@@ -379,7 +383,9 @@
           const path = createPath(color);
           const d = [
             `M ${SWIMLANE_WIDTH * (index + 1)} 0`,
-            `A ${SWIMLANE_WIDTH} ${SWIMLANE_WIDTH} 0 0 1 ${SWIMLANE_WIDTH * index} ${SWIMLANE_WIDTH}`,
+            `A ${SWIMLANE_WIDTH} ${SWIMLANE_MIDLINE} 0 0 1 ${
+              SWIMLANE_WIDTH * index
+            } ${SWIMLANE_MIDLINE}`,
             `H ${SWIMLANE_WIDTH * (circleIndex + 1)}`,
           ];
           path.setAttribute("d", d.join(" "));
@@ -429,11 +435,11 @@
       }
       const path = createPath(outputSwimlanes[parentOutputIndex].color);
       const d = [
-        `M ${SWIMLANE_WIDTH * parentOutputIndex} ${SWIMLANE_HEIGHT / 2}`,
-        `A ${SWIMLANE_WIDTH} ${SWIMLANE_WIDTH} 0 0 1 ${
+        `M ${SWIMLANE_WIDTH * parentOutputIndex} ${SWIMLANE_MIDLINE}`,
+        `A ${SWIMLANE_WIDTH} ${SWIMLANE_HEIGHT - SWIMLANE_MIDLINE} 0 0 1 ${
           SWIMLANE_WIDTH * (parentOutputIndex + 1)
         } ${SWIMLANE_HEIGHT}`,
-        `M ${SWIMLANE_WIDTH * parentOutputIndex} ${SWIMLANE_HEIGHT / 2}`,
+        `M ${SWIMLANE_WIDTH * parentOutputIndex} ${SWIMLANE_MIDLINE}`,
         `H ${SWIMLANE_WIDTH * (circleIndex + 1)} `,
       ];
       path.setAttribute("d", d.join(" "));

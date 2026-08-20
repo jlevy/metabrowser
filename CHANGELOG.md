@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Design system:
+
+- Every expand/collapse now travels with one standard, short motion: bodies animate
+  height on the same 150ms the chevrons rotate with — tree folders, patch containers,
+  diff file sections, fold expanders, and folder Overview panels alike — and collapsed
+  content leaves the tab order.
+  Reduced-motion keeps the state change and drops the travel.
+- The green/red `+N −N` change stats are always bold, in the diff view and the commit
+  view alike.
+- Branch and tag chips are their own vocabulary: bold at their small size, square-ish
+  corners so a ref never reads as a filter chip; the `HEAD` chip keeps a hairline ring.
+- The commit graph is denser: lanes at a 9px pitch with smaller dots, so multi-branch
+  history spends its width on subjects, not spacing.
+
 Diff rendering:
 
 - Plugin render contexts gain a `revision` field: a surface may ask a registered view

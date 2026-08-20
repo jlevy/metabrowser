@@ -1246,7 +1246,7 @@ function renderTreeNodes(nodes, isRoot, options) {
       );
       if (hasPotentialChildren) {
         parts.push(
-          `<div class="tree-children" id="${groupId}" role="group" style="display:${expanded ? "block" : "none"}">`,
+          `<div class="tree-children${expanded ? "" : " tree-children-collapsed"}" id="${groupId}" role="group">`,
         );
         if (Array.isArray(node.children)) {
           parts.push(
@@ -1362,7 +1362,7 @@ function renderTreeNodes(nodes, isRoot, options) {
       );
       if (container) {
         parts.push(
-          `<div class="tree-children" id="${containerGroupId}" role="group" style="display:none"></div>`,
+          `<div class="tree-children tree-children-collapsed" id="${containerGroupId}" role="group"></div>`,
         );
       }
     }
@@ -1489,7 +1489,7 @@ function subtreeIsExpanded(childrenEl) {
     !!folder &&
     folder.classList.contains("tree-folder") &&
     folder.classList.contains("expanded") &&
-    childrenEl.style.display !== "none"
+    !childrenEl.classList.contains("tree-children-collapsed")
   );
 }
 
@@ -2135,14 +2135,14 @@ async function toggleTreeContainer(row) {
     row.setAttribute("aria-expanded", "false");
     row.classList.add("collapsed");
     row.classList.remove("expanded");
-    children.style.display = "none";
+    children.classList.add("tree-children-collapsed");
     synchronizeTreeNow();
     return row;
   }
   row.setAttribute("aria-expanded", "true");
   row.classList.add("expanded");
   row.classList.remove("collapsed");
-  children.style.display = "block";
+  children.classList.remove("tree-children-collapsed");
   if (!children.dataset.loaded) {
     children.innerHTML =
       '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
@@ -6105,7 +6105,7 @@ function applyCellPatch(entry) {
             var groupId = treeDomId("tree-group", entry.path);
             row.insertAdjacentHTML(
               "afterend",
-              `<div class="tree-children" id="${groupId}" role="group" style="display:none">` +
+              `<div class="tree-children tree-children-collapsed" id="${groupId}" role="group">` +
                 '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
                 ' role="status" aria-label="Loading">' +
                 '<span class="spinner spinner-sm" aria-hidden="true"></span></div></div>',
@@ -6493,7 +6493,7 @@ async function revealInTree(path) {
         if (children.querySelector(":scope > .tree-lazy-placeholder")) {
           await loadSubtree(current, children);
         }
-        if (children.style.display === "none") {
+        if (children.classList.contains("tree-children-collapsed")) {
           await setFolderExpanded(folder, true);
         }
       }

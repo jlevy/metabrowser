@@ -56,6 +56,59 @@ def test_row_targets_share_the_row_height_token() -> None:
     )
 
 
+def test_disclosure_motion_is_one_recipe_everywhere() -> None:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
+        encoding="utf-8"
+    )
+    overview_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
+        encoding="utf-8"
+    )
+    for css, selector in (
+        (styles, ".tree-children"),
+        (diff_css, ".metabrowser-diff-host .diff-file-body"),
+        (diff_css, ".metabrowser-diff-host .diff-fold-group"),
+        (overview_css, ".folder-overview-panel-body"),
+    ):
+        rule = _rule(css, selector)
+        assert "height var(--transition-fast)" in rule, f"{selector} lost the travel"
+        assert "interpolate-size: allow-keywords" in rule, f"{selector} lost keyword sizing"
+    for css, selector in (
+        (styles, ".tree-children-collapsed"),
+        (diff_css, ".metabrowser-diff-host .diff-file-body-collapsed"),
+        (diff_css, ".metabrowser-diff-host .diff-fold-collapsed"),
+        (overview_css, ".folder-overview-panel-body-collapsed"),
+    ):
+        rule = _rule(css, selector)
+        assert "height: 0" in rule and "visibility: hidden" in rule, f"{selector} state drifted"
+    # Class-driven collapse: the tree never toggles inline display.
+    for name in ("app.js", "tree_expansion.js"):
+        source = (STATIC / name).read_text(encoding="utf-8")
+        assert "tree-children-collapsed" in source, f"{name} lost the collapse class"
+
+
+def test_inline_change_stats_are_bold() -> None:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
+        encoding="utf-8"
+    )
+    for css, selector in (
+        (diff_css, ".metabrowser-diff-host .diff-stat-add"),
+        (diff_css, ".metabrowser-diff-host .diff-stat-del"),
+        (styles, ".git-stat-add"),
+        (styles, ".git-stat-del"),
+    ):
+        assert "font-weight: var(--weight-bold)" in _rule(css, selector), f"{selector} not bold"
+
+
+def test_branch_chips_are_bold_and_square() -> None:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    rule = _rule(styles, ".git-ref")
+    assert "font-weight: var(--weight-bold)" in rule
+    assert "border-radius: var(--radius-tag)" in rule
+    assert "--radius-tag:" in styles
+
+
 def test_row_targets_share_the_hover_token() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(

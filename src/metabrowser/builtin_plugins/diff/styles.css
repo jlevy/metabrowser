@@ -115,10 +115,12 @@
 
 .metabrowser-diff-host .diff-stat-add {
   color: var(--status-success);
+  font-weight: var(--weight-bold);
 }
 
 .metabrowser-diff-host .diff-stat-del {
   color: var(--status-error);
+  font-weight: var(--weight-bold);
 }
 
 .metabrowser-diff-host .diff-file-copy {
@@ -128,8 +130,20 @@
   flex: none;
 }
 
+/* The disclosure-motion recipe from the core stylesheet: bodies travel
+   on the same duration their chevrons rotate with. */
+.metabrowser-diff-host .diff-file-body {
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: hidden;
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
+}
+
 .metabrowser-diff-host .diff-file-body-collapsed {
-  display: none;
+  height: 0;
+  visibility: hidden;
 }
 
 .metabrowser-diff-host .diff-hunk-header {
@@ -209,8 +223,25 @@
   flex: none;
 }
 
+.metabrowser-diff-host .diff-fold-group {
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: hidden;
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
+}
+
 .metabrowser-diff-host .diff-fold-collapsed {
-  display: none;
+  height: 0;
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metabrowser-diff-host .diff-file-body,
+  .metabrowser-diff-host .diff-fold-group {
+    transition-duration: 1ms;
+  }
 }
 
 .metabrowser-diff-host .diff-availability {

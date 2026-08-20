@@ -121,7 +121,9 @@
    * @param {boolean} expanded
    */
   function setFolderExpanded(row, children, expanded) {
-    children.style.display = expanded ? "block" : "none";
+    // Class-driven so the stylesheet owns the travel (the shared
+    // disclosure motion); inline display would jump-cut.
+    children.classList.toggle("tree-children-collapsed", !expanded);
     row.classList.toggle("expanded", expanded);
     row.classList.toggle("collapsed", !expanded);
   }
@@ -134,7 +136,7 @@
    * @returns {boolean}
    */
   function toggleFolderExpanded(row, children) {
-    const expanded = children.style.display === "none";
+    const expanded = children.classList.contains("tree-children-collapsed");
     setFolderExpanded(row, children, expanded);
     return expanded;
   }
