@@ -487,6 +487,16 @@ Expensive projections use mtime-aware caches whose keys change when file size or
 modification time changes.
 Changing the served root clears root-scoped caches.
 
+Inventory-derived responses validate against the index revision instead of file
+metadata, because their bodies summarize many files rather than reproducing one.
+`/api/rollup` and `/api/catalog` both answer conditionally on that revision and retain
+their encoded body for a client that arrives without the tag.
+Structures proportional to the tree — the parent/child index, per-directory subtree
+aggregates — are maintained as entries arrive rather than rebuilt per request.
+[Inventory state and delivery](project/architecture/arch-inventory-state-and-delivery.md)
+is the detailed account, including the invalidation rules and the invariants that
+enforce them.
+
 Plugins should keep domain caches on their own side of the boundary.
 Core provides no global plugin payload cache.
 
@@ -512,6 +522,7 @@ route stack.
 ## Related Documentation
 
 - [Security policy and content trust model](../SECURITY.md)
+- [Inventory state and delivery](project/architecture/arch-inventory-state-and-delivery.md)
 - [Plugin authoring](plugins.md)
 - [Design system](design-system.md)
 - [Rendering large content](large-content-rendering.md)
