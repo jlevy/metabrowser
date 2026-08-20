@@ -294,6 +294,18 @@ class InventoryIndex:
     def get(self, path: str) -> FsEntry | None:
         return self._entries.get(path)
 
+    def children_of(self, parent: str) -> tuple[FsEntry, ...]:
+        """Direct children of *parent*, or an empty tuple.
+
+        Served from the index maintained on write, so a caller that walks a
+        subtree pays for that subtree rather than for the whole index. The
+        served root is excluded from its own children.
+        """
+
+        with self._rollup_cache_lock:
+            bucket = self._children_index.get(parent)
+            return tuple(bucket.values()) if bucket is not None else ()
+
     def has_direct_child(self, path: str) -> bool:
         """Return whether *path* has a child already present in the index."""
 

@@ -250,7 +250,7 @@ def test_build_inventory_subtree_pending_total_files_is_not_empty() -> None:
         "": [pending, finalized_empty, finalized_nonempty],
     }
     nodes = _build_inventory_subtree(
-        by_parent=by_parent,
+        children_of=lambda parent: by_parent.get(parent, []),
         parent_rel="",
         max_depth=2,
         parent_ignored=False,
