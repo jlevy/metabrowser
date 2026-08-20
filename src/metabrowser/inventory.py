@@ -351,6 +351,20 @@ class InventoryIndex:
     def catalog_revision(self) -> int:
         return self._catalog_revision
 
+    def rollup_revision(self) -> int:
+        """Counter that advances on every index write.
+
+        A rollup response is a pure function of the index contents and the
+        request's bounds, so an unchanged revision means an unchanged body.
+        That is what lets ``/api/rollup`` answer a repeat request with a
+        validator instead of re-aggregating and re-serializing the same
+        answer. Advances constantly during a scan, which is correct: the
+        answer really is changing then.
+        """
+
+        with self._rollup_cache_lock:
+            return self._rollup_generation
+
     def catalog_files(self) -> list[tuple[str, str]]:
         """``(path, logical_ext)`` for every non-gitignored file in
         the index — the Quick File catalog universe. List-of-tuples

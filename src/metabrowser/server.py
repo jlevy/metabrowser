@@ -100,7 +100,11 @@ from metabrowser.gz_io import (
     ArtifactDecompressionLimitError,
     ArtifactPath,
 )
-from metabrowser.http_caching import build_scoped_etag, matches_if_none_match
+from metabrowser.http_caching import (
+    build_scoped_etag,
+    etag_headers,
+    matches_if_none_match,
+)
 from metabrowser.inventory import get_instance as get_inventory
 from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
@@ -122,6 +126,7 @@ from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     RECENT_WINDOW_SECONDS,
+    ROLLUP_BODY_CACHE_ENTRIES,
     ROLLUP_DEFAULT_DEPTH,
     ROLLUP_DEFAULT_EXT_RANK,
     ROLLUP_DEFAULT_EXT_TOP,
@@ -173,6 +178,22 @@ LOG = logging.getLogger(__name__)
 # this below the first-paint budget: large trees return partial inventory
 # state instead of blocking on a filesystem walk.
 _TREE_COLD_START_WAIT_S = 0.10
+
+# Encoded rollup bodies keyed by their ETag. The validator alone only helps a
+# client that already holds the answer; a second tab opening the same folder,
+# or a reconnect, arrives without one and would otherwise re-aggregate and
+# re-serialize a body the server just produced. Bounded by
+# ``ROLLUP_BODY_CACHE_ENTRIES``: entries from a superseded index revision can
+# never be requested again, so they age out by insertion order.
+_ROLLUP_BODY_CACHE: dict[str, bytes] = {}
+
+
+def _remember_rollup_body(etag: str, body: bytes | memoryview[int]) -> None:
+    """Retain one encoded rollup body for reuse by an identical request."""
+
+    _ROLLUP_BODY_CACHE[etag] = bytes(body)
+    while len(_ROLLUP_BODY_CACHE) > ROLLUP_BODY_CACHE_ENTRIES:
+        _ROLLUP_BODY_CACHE.pop(next(iter(_ROLLUP_BODY_CACHE)))
 
 
 # ── Performance logging setup ───────────────────────────────────
@@ -1240,7 +1261,7 @@ async def api_tree(request: Request) -> JSONResponse:
 
 
 @log_async_calls(if_slower_than=0.1)
-async def api_rollup(request: Request) -> JSONResponse:
+async def api_rollup(request: Request) -> Response:
     """Bounded treemap rollup for a directory subtree.
 
     `GET /api/rollup?path=&depth=&top=&ext_top=&filename_top=&remaining_top=`
@@ -1293,6 +1314,26 @@ async def api_rollup(request: Request) -> JSONResponse:
 
     inventory = get_inventory()
     inv_can_serve = await _ensure_inventory_serving(subpath)
+
+    # The body is a pure function of the index revision, the path, and the
+    # bounds that shape the response, so those three make an exact validator.
+    # The bounds have to be in it: two clients asking for different depths
+    # share a revision, and a tag that ignored the difference would hand one
+    # of them the other's shape.
+    etag = build_scoped_etag(
+        "rollup-{}-{}-{}-{}".format(
+            inventory_status(),
+            inventory.rollup_revision(),
+            subpath,
+            f"{depth}.{top}.{ext_top}.{remaining_top}.{filename_top}.{ext_rank}",
+        )
+    )
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers={"ETag": etag})
+    cached = _ROLLUP_BODY_CACHE.get(etag)
+    if cached is not None:
+        return Response(cached, media_type="application/json", headers=etag_headers(etag))
+
     result = None
     if inv_can_serve:
         result = await asyncio.to_thread(
@@ -1305,7 +1346,7 @@ async def api_rollup(request: Request) -> JSONResponse:
             filename_top=filename_top,
             ext_rank=ext_rank,
         )
-    return JSONResponse(
+    response = JSONResponse(
         {
             "root": str(_resolved_root_dir()),
             "path": subpath,
@@ -1316,8 +1357,11 @@ async def api_rollup(request: Request) -> JSONResponse:
             "indexed_files": inventory.files_indexed(),
             "max_files": inventory.max_files(),
             "truncated": inventory_status() == "truncated",
-        }
+        },
+        headers=etag_headers(etag),
     )
+    _remember_rollup_body(etag, response.body)
+    return response
 
 
 @log_async_calls()

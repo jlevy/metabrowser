@@ -15,6 +15,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from metabrowser import server
+from metabrowser.events import FsEntry
 from metabrowser.inventory import get_instance as get_inventory
 from metabrowser.settings import ROLLUP_MAX_TOP
 from metabrowser.wire_models import validate_rollup_node
@@ -178,3 +179,67 @@ def test_rollup_route_cold_index_returns_null_node(tmp_path: Path) -> None:
     else:
         assert body["ext_tallies"] == []
         assert body["file_type_breakdown"] is None
+
+
+def test_rollup_revalidates_and_reuses_an_unchanged_body(tmp_path: Path) -> None:
+    """An unchanged index answers a repeat request without rebuilding it.
+
+    The body is a pure function of the index revision and the request's
+    bounds. A client holding the tag gets a 304; one arriving without it (a
+    second tab, a reconnect) gets the retained body rather than a second
+    aggregation of the same answer.
+    """
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("x" * 64)
+
+    async def scenario() -> None:
+        inventory = get_inventory()
+        inventory.start(tmp_path)
+        await inventory.wait_until_done(10)
+
+        first = await server.api_rollup(_mock_request({"path": ""}))
+        etag = first.headers["etag"]
+        assert etag
+        assert first.status_code == 200
+
+        revalidated = await server.api_rollup(_mock_request({"path": ""}, etag))
+        assert revalidated.status_code == 304
+        assert not bytes(revalidated.body)
+        assert revalidated.headers["etag"] == etag
+
+        server._ROLLUP_BODY_CACHE.clear()
+        cold = await server.api_rollup(_mock_request({"path": ""}))
+        assert cold.status_code == 200
+        assert etag in server._ROLLUP_BODY_CACHE
+        reused = await server.api_rollup(_mock_request({"path": ""}))
+        assert bytes(reused.body) == bytes(cold.body)
+
+        # Different bounds must not share a validator: the shape differs.
+        deeper = await server.api_rollup(_mock_request({"path": "", "depth": "1"}))
+        assert deeper.headers["etag"] != etag
+
+        # A write moves the revision, so the old tag stops matching.
+        inventory.apply_live_entry(
+            FsEntry.for_observed_file(
+                path="src/b.py",
+                parent="src",
+                name="b.py",
+                size=8,
+                mtime_ns=1_700_000_000_000_000_000,
+            )
+        )
+        after = await server.api_rollup(_mock_request({"path": ""}, etag))
+        assert after.status_code == 200
+        assert after.headers["etag"] != etag
+        assert json.loads(bytes(after.body))["node"]["total_files"] == 2
+
+    asyncio.run(scenario())
+
+
+def _mock_request(params: dict[str, str], if_none_match: str | None = None) -> Any:
+    request = Mock(spec=["query_params", "headers"])
+    request.query_params = _FakeQuery(params)
+    request.headers = {"if-none-match": if_none_match} if if_none_match else {}
+    return request

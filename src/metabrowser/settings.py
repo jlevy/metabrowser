@@ -227,6 +227,14 @@ ROLLUP_MAX_NODES = 1_200
 # read by the SDK's watchRollup.
 ROLLUP_WATCH_DEBOUNCE_MS = 1_000
 
+# Encoded rollup bodies retained for reuse, keyed by ETag. One open folder
+# view asks for a handful of shapes at once (the Overview totals, the file-type
+# breakdown, the treemap at its own depth), and several tabs on the same folder
+# ask for the same ones, so a cache of a few entries covers the repeats. Bodies
+# from a superseded index revision are unreachable — their tag can never match
+# again — and age out through this bound rather than needing to be swept.
+ROLLUP_BODY_CACHE_ENTRIES = 8
+
 
 # ── Client settings export ───────────────────────────────────
 
@@ -291,6 +299,7 @@ __all__ = [
     "RECENT_MAX_LIMIT",
     "RECENT_RECLUSTER_DEBOUNCE_MS",
     "RECENT_WINDOW_SECONDS",
+    "ROLLUP_BODY_CACHE_ENTRIES",
     "ROLLUP_DEFAULT_DEPTH",
     "ROLLUP_DEFAULT_EXT_RANK",
     "ROLLUP_DEFAULT_EXT_TOP",
