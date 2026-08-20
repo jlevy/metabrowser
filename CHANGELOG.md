@@ -4,17 +4,34 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Routing:
+
+- Commits are addressable: selecting one in the Git panel puts it at `/commit/<rev>`,
+  and opening that URL restores the panel and the commit.
+  The browser URL grammar now states the whole rule — one route per address space, with
+  a uniform `<container address>/<inner path>` shape after it — so a patch file
+  (`/view/changes.patch/src/app.py`) and a commit (`/commit/abc123/src/app.py`) read
+  identically. `/compare/<base>..<head>` is specified and not yet built.
+
 Design system:
+
+- Progress is a box, never prose: a diff whose file has not been fetched shows the
+  standard delayed spinner and loads itself, instead of stating that it has not loaded.
+  Loads that fail — or that overrun their expected time — always reach the console with
+  full detail (what was requested, which hook, elapsed milliseconds, the error).
 
 - Every expand/collapse now travels with one standard, short motion: bodies animate
   height on the same 150ms the chevrons rotate with — tree folders, patch containers,
   diff file sections, fold expanders, and folder Overview panels alike — and collapsed
   content leaves the tab order.
   Reduced-motion keeps the state change and drops the travel.
+
 - The green/red `+N −N` change stats are always bold, in the diff view and the commit
   view alike.
+
 - Branch and tag chips are their own vocabulary: bold at their small size, square-ish
   corners so a ref never reads as a filter chip; the `HEAD` chip keeps a hairline ring.
+
 - The commit graph is denser: lanes at a 9px pitch with smaller dots, so multi-branch
   history spends its width on subjects, not spacing.
 

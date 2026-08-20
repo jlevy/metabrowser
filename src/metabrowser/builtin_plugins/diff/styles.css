@@ -244,6 +244,15 @@
   }
 }
 
+/* Progress is a box with the app's spinner, never prose; the delayed
+   reveal keeps a fast load from flashing it. */
+.metabrowser-diff-host .diff-progress {
+  display: flex;
+  align-items: center;
+  min-height: var(--ui-row-height);
+  padding: 0 12px;
+}
+
 .metabrowser-diff-host .diff-availability {
   padding: 10px 12px;
   color: var(--muted);

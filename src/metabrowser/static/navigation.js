@@ -2,6 +2,57 @@
 
 (() => {
   const ROUTE_PREFIX = "/view/";
+  const COMMIT_PREFIX = "/commit/";
+
+  /**
+   * Encode a commit route: `/commit/<rev>` for the whole change set,
+   * `/commit/<rev>/<file>` for one file's diff. The shape after the
+   * route is `<container address>/<inner path>`, the same shape a patch
+   * file's children use inside `/view/`.
+   *
+   * @param {string} revision
+   * @param {string} [file]
+   * @returns {string}
+   */
+  function commitHref(revision, file = "") {
+    if (typeof revision !== "string" || !revision) {
+      throw new TypeError("commit route requires a revision");
+    }
+    const head = COMMIT_PREFIX + encodeURIComponent(revision);
+    if (!file) {
+      return head;
+    }
+    validateLogicalPath(file);
+    return `${head}/${encodePath(file)}`;
+  }
+
+  /**
+   * Parse a commit route, or null when the location is not one.
+   *
+   * @param {string} pathname
+   * @returns {{revision: string, file: string} | null}
+   */
+  function parseCommit(pathname) {
+    if (typeof pathname !== "string" || !pathname.startsWith(COMMIT_PREFIX)) {
+      return null;
+    }
+    const rawSegments = pathname.slice(COMMIT_PREFIX.length).split("/");
+    if (rawSegments[rawSegments.length - 1] === "") {
+      rawSegments.pop();
+    }
+    if (rawSegments.length === 0 || rawSegments.some((segment) => !segment)) {
+      return null;
+    }
+    try {
+      const [revision, ...rest] = rawSegments.map((segment) => decodeURIComponent(segment));
+      if (!revision || rest.some((segment) => segment === "." || segment === "..")) {
+        return null;
+      }
+      return Object.freeze({ revision, file: rest.join("/") });
+    } catch (_error) {
+      return null;
+    }
+  }
 
   /**
    * @typedef {object} NavigationTarget
@@ -398,10 +449,12 @@
 
   window.MetabrowserNavigationRoute = Object.freeze({
     attachController,
+    commitHref,
     createController,
     href,
     navigation,
     normalizeTarget,
     parse,
+    parseCommit,
   });
 })();

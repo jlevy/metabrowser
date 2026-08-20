@@ -171,8 +171,11 @@ async def comparison_handler(request: Request) -> JSONResponse:
     same resolution ``metab --diff REV`` performs. ``?left=&right=``
     compares two endpoints. Hunks are hydrated up to a bound; the rest
     stay ``deferred``, which the renderer states rather than eliding.
+    ``&file=<path>`` narrows to one change and hydrates it regardless of
+    the bound — the deferred sections' on-demand loader.
     """
     revision = request.query_params.get("revision", "").strip()
+    wanted_file = request.query_params.get("file", "").strip()
     left = request.query_params.get("left", "").strip()
     right = request.query_params.get("right", "").strip()
     if revision:
@@ -204,14 +207,23 @@ async def comparison_handler(request: Request) -> JSONResponse:
         projected: list[FileChange] = []
         hydrate_ids: list[str] = []
         for change in manifest.files:
+            if wanted_file and _change_display_path(change) != wanted_file:
+                continue
             if change.availability is not Availability.ready:
                 projected.append(change)
                 continue
-            if len(hydrate_ids) >= MAX_HYDRATED_FILES:
+            if not wanted_file and len(hydrate_ids) >= MAX_HYDRATED_FILES:
                 projected.append(change.model_copy(update={"availability": Availability.deferred}))
                 continue
             projected.append(change)
             hydrate_ids.append(change.id)
+        if wanted_file and not projected:
+            return _error(
+                "diff_comparison",
+                "This comparison has no entry for that path.",
+                404,
+                path=wanted_file,
+            )
         # One diff run and one parse for the whole set (review R3): a
         # commit click costs O(1) subprocesses, not O(files).
         patches: dict[str, FilePatch] = (
@@ -224,6 +236,24 @@ async def comparison_handler(request: Request) -> JSONResponse:
     except GitError as exc:
         return _error("diff_comparison", str(exc), 502, path=revision)
 
+    if wanted_file:
+        counted = [c for c in projected if c.additions is not None or c.binary]
+        manifest = manifest.model_copy(
+            update={
+                "totals": Totals.model_construct(
+                    files=len(projected),
+                    additions=sum(c.additions or 0 for c in projected)
+                    if len(counted) == len(projected)
+                    else None,
+                    deletions=sum(c.deletions or 0 for c in projected)
+                    if len(counted) == len(projected)
+                    else None,
+                    exact=len(counted) == len(projected),
+                ),
+                "truncated": False,
+                "cursor": None,
+            }
+        )
     document = _document_from(resolved, manifest, tuple(projected), patches)
     return JSONResponse(dump_document(document))
 

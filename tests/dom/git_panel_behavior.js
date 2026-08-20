@@ -276,6 +276,17 @@ sandbox.MetabrowserNavigationRoute = {
       return Promise.resolve({ status: "opened" });
     },
   },
+  // The comparison address space: a selected commit owns the URL.
+  commitHref: (revision, file = "") =>
+    `/commit/${encodeURIComponent(revision)}${file ? `/${file}` : ""}`,
+  parseCommit: () => null,
+};
+/** @type {string[]} Routes the panel replaced, newest last. */
+const replacedRoutes = [];
+sandbox.history = {
+  replaceState: (_state, _title, url) => {
+    replacedRoutes.push(String(url));
+  },
 };
 
 // Shell bridge stub. The panel only uses these three.
@@ -642,6 +653,14 @@ async function run() {
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertContains("selection: renders the clicked commit", previewHtml, "first");
     assertTrue("selection: row is marked", rows[0].classList.contains("selected"));
+    // A commit is a selection like any other, so it owns the URL while
+    // shown — replaced, not pushed, so skimming a history list does not
+    // bury the reader's entry point.
+    assertEqual(
+      "selection: writes its own route",
+      replacedRoutes[replacedRoutes.length - 1],
+      `/commit/${SHA_A}`,
+    );
 
     // Two selections in flight: the later one must win regardless of
     // which response lands first.

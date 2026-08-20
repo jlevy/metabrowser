@@ -296,15 +296,56 @@ Plugin HTTP calls use `fetchPluginData`.
 
 ## Browser URL Grammar
 
-A `/view/` URL answers three separate questions, and each component answers exactly one:
+A browser URL answers four separate questions, and each component answers exactly one:
 
 | Component | Question | Owned by |
 | --- | --- | --- |
-| Path | Which content is selected | The served tree |
+| Route | Which kind of thing is selected | Metabrowser |
+| Path | Which one, within that kind | That kind’s address space |
 | Query | How it is presented | The link author |
 | Fragment | Where inside the rendered document | The document |
 
-Path and fragment are implemented.
+### Routes: one per address space
+
+Everything the shell can select is addressable, and the leading segment names the
+address space its path is written in.
+There is exactly one route per space, because a path only means something once you know
+which space it belongs to:
+
+| Route | Selects | Path is |
+| --- | --- | --- |
+| `/view/<path>` | Content in the served tree | A served-root-relative path |
+| `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
+| `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
+| `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
+| `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
+
+Revisions are not paths in the served tree, so they get their own route rather than a
+sigil inside `/view/`: a commit named as a `/view/` path would either collide with a
+real file or need an escape that every path handler would then have to know about.
+
+The shape after the route is deliberately uniform —
+**`<container address>/<inner path>`** — because it is the
+[container contract](project/architecture/arch-nav-containers.md) written as a URL. A
+patch file and a commit are both containers whose children are file changes; only the
+container’s own address differs, so `/view/changes.patch/src/app.py` and
+`/commit/abc123/src/app.py` are the same grammar over two address spaces.
+A future archive or pull-request container needs no new rule.
+
+Route invariants:
+
+- A route without a path selects that space’s root: `/view/` is the served root,
+  `/commit/<rev>` is the whole change set.
+- Every selection the shell can make has a URL, and reloading it restores that
+  selection. A panel that changes what the main pane shows changes the URL.
+- Query and fragment mean the same thing in every route: presentation and in-document
+  location. The `_mb_` reservation below applies unchanged.
+- Unknown routes are ordinary not-found responses, never a silent redirect to `/view/`.
+
+Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
+selection in the Git panel.
+`/compare/` is specified here and not yet built.
+
 The query slot is currently carried verbatim and never interpreted: it exists so a query
 an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
 

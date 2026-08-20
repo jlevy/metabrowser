@@ -407,10 +407,18 @@ that already exists rather than adding one:
    Every later presentation — Before, After, rendered-at-revision for Markdown, an
    inline diff inside the rendered document — is another tab from the same diff layout,
    not a new mechanism.
-3. **The context is addressable.** A comparison scopes what the tree shows and what the
-   tabs mean, so it must live in the URL like every other selection since the `/view/`
-   scheme landed. That is the open URL-grammar decision, and this mapping is why it is
-   structural rather than cosmetic.
+3. **The context is addressable, on its own route.** A comparison scopes what the tree
+   shows and what the tabs mean, so it lives in the URL like every other selection.
+   The grammar is decided and documented in
+   [Browser URL Grammar](../../../architecture.md#browser-url-grammar): one route per
+   address space, with a uniform `<container address>/<inner path>` shape after it —
+   `/commit/<rev>` for a commit’s change set, `/commit/<rev>/<file>` for one file’s
+   diff, `/compare/<base>..<head>` for an explicit comparison.
+   Revisions get their own route because they are not served-tree paths; the shape after
+   the route is the container contract written as a URL, so a patch file
+   (`/view/changes.patch/src/app.py`) and a commit (`/commit/abc123/src/app.py`) read
+   identically. Every selection the shell can make is reloadable: a panel that changes
+   the main pane changes the URL.
 
 Live updates freeze differently here: a historical comparison is immutable, and an
 uncommitted one goes `stale` with a refresh offer rather than repainting under the

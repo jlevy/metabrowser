@@ -224,9 +224,16 @@ async function main() {
   const binary = new FakeElement("div");
   mountDiffView(binary, byName.get("binary-added-elided"));
   check("binary state renders its copy", binary.text().includes("Binary file; no textual diff."));
+  // Deferred is progress, not prose: with no revision to load from, the
+  // section states unavailability; the progress box and its fetch are
+  // covered where a revision exists (the shell's comparison path).
   const deferred = new FakeElement("div");
   mountDiffView(deferred, byName.get("deferred-manifest-only"));
-  check("deferred state renders its copy", deferred.text().includes("not been loaded yet"));
+  check(
+    "deferred state never renders loading prose",
+    !deferred.text().includes("not been loaded yet") && !deferred.text().includes("Loading"),
+  );
+  check("deferred without a source states unavailability", deferred.text().includes("unavailable"));
 
   // A metadata-only change (chmod) says so instead of showing nothing.
   const chmod = new FakeElement("div");

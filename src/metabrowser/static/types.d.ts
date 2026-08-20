@@ -69,10 +69,13 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
     history?: Pick<History, "pushState" | "replaceState">;
     location?: Pick<Location, "pathname" | "search" | "hash">;
   }): MetabrowserNavigationController;
+  /** `/commit/<rev>[/<file>]` — the comparison address space. */
+  commitHref(revision: string, file?: string): string;
   href(target: MetabrowserNavigationTarget): string;
   navigation: MetabrowserNavigationApi;
   normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
+  parseCommit(pathname: string): Readonly<{ revision: string; file: string }> | null;
 }>;
 
 type KpressAssetLoading = "classic" | "module" | "resource" | "stylesheet";

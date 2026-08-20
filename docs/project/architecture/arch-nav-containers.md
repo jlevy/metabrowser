@@ -82,9 +82,13 @@ children hook groups by path and the narrowed document carries both halves.
 
 ## What stays uniform
 
-- **URLs.** The canonical `/view/<path>` grammar extends by paths, because container
-  membership is path-shaped: `/view/changes.patch` is the overview and
+- **URLs.** Container membership is path-shaped, so a container’s children extend its
+  own address: `/view/changes.patch` is the overview and
   `/view/changes.patch/src/app.py` is one file’s diff.
+  The same shape works in any address space — `/commit/<rev>` and
+  `/commit/<rev>/src/app.py` are a commit’s container and child — because the route
+  names the space and the rest is `<container address>/<inner path>`. See
+  [Browser URL Grammar](../../architecture.md#browser-url-grammar).
   Fragments keep meaning in-document locations; presentation state stays in reserved
   `_mb_` query keys.
 - **Tree mechanics.** Roving focus, `aria-expanded`, lazy child pagination, filtering,

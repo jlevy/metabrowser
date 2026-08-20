@@ -159,7 +159,11 @@ from metabrowser.tree import (
     inventory_has_data,
     inventory_status,
 )
-from metabrowser.view_routes import VIEW_ROUTE_PREFIX, decode_safe_view_path
+from metabrowser.view_routes import (
+    VIEW_ROUTE_PREFIX,
+    decode_safe_commit_route,
+    decode_safe_view_path,
+)
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -1095,6 +1099,20 @@ async def view_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
+    return await index(request)
+
+
+async def commit_shell(request: Request) -> Response:
+    """Serve the SPA shell for ``/commit/<rev>[/<file>]``.
+
+    One route per address space (see the Browser URL Grammar): revisions
+    are not served-tree paths, so they are addressed here rather than
+    through an escape inside ``/view/``.
+    """
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
+        return PlainTextResponse("Invalid commit route.", status_code=400)
     return await index(request)
 
 
@@ -2815,6 +2833,7 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
 routes = [
     Route("/", root_redirect),
     Route("/view/{path:path}", view_shell),
+    Route("/commit/{rest:path}", commit_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),

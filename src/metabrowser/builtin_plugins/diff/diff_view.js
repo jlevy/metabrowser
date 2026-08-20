@@ -10,10 +10,28 @@
 // deliberately dumber than the model: the data plane is tested by the
 // conformance corpus and CLI goldens, and this layer only projects it.
 
-import { fileChangeLabel } from "./diff_model.js";
+import { fileChangeLabel, validateDocument } from "./diff_model.js";
 
+/**
+ * Fetch one file's change from a comparison. Injected by the plugin so
+ * this module keeps its only job — projecting a document — and stays
+ * testable without a shell.
+ *
+ * @type {(revision: string, path: string) => Promise<Record<string, unknown>>}
+ */
+let loadOneChange = async () => {
+  throw new Error("no loader configured");
+};
+
+/** @param {(revision: string, path: string) => Promise<Record<string, unknown>>} loader */
+export function setChangeLoader(loader) {
+  loadOneChange = loader;
+}
+
+// Copy for states that are facts about the change, not steps the
+// reader can take. `deferred` is deliberately absent: it is progress,
+// and progress is a spinner, never prose.
 const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
-  deferred: "This file's changes have not been loaded yet.",
   binary: "Binary file; no textual diff.",
   too_large: "This change is too large to show inline.",
   timed_out: "Producing this diff timed out.",
@@ -21,6 +39,44 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   stale: "The comparison changed underneath this file. Refresh to reload it.",
   unsupported: "This change cannot be shown as a text diff.",
 });
+
+// A load this slow is worth a console record even when it eventually
+// succeeds: a reader watching a spinner deserves a diagnosable stall.
+const SLOW_LOAD_MS = 4000;
+
+/**
+ * The app's standard progress box: hidden until --loading-state-delay,
+ * so a fast load never flashes a spinner.
+ *
+ * @param {string} label Accessible name; never rendered as prose.
+ * @returns {HTMLElement}
+ */
+function progressBox(label) {
+  const box = el("div", "diff-progress mb-delayed-loading");
+  box.setAttribute("role", "status");
+  box.setAttribute("aria-label", label);
+  const spinner = el("span", "spinner spinner-sm");
+  spinner.setAttribute("aria-hidden", "true");
+  box.append(spinner);
+  return box;
+}
+
+/**
+ * Report a load that failed or overran, with everything needed to
+ * diagnose it from the console alone.
+ *
+ * @param {string} what
+ * @param {Record<string, unknown>} detail
+ * @param {unknown} [error]
+ */
+function reportLoad(what, detail, error) {
+  const payload = { ...detail, elapsedMs: Math.round(Number(detail.elapsedMs) || 0) };
+  if (error === undefined) {
+    console.warn(`metabrowser diff: ${what} is slow`, payload);
+    return;
+  }
+  console.error(`metabrowser diff: ${what} failed`, payload, error);
+}
 
 let sectionSequence = 0;
 let foldSequence = 0;
@@ -234,11 +290,65 @@ function renderFileBar(change, toggleId, bodyId) {
 }
 
 /**
+ * Fetch one deferred file's hunks and splice them in, behind the
+ * standard progress box.
+ *
+ * @param {HTMLElement} body
+ * @param {Record<string, unknown>} change
+ * @param {string} revision
+ */
+async function hydrateDeferred(body, change, revision) {
+  const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
+  const path = String(side?.path ?? "");
+  const box = progressBox(`Loading the diff for ${path}`);
+  body.append(box);
+  const started = Date.now();
+  const slow = setTimeout(() => {
+    reportLoad("file hydration", { revision, path, elapsedMs: Date.now() - started });
+  }, SLOW_LOAD_MS);
+  try {
+    const payload = await loadOneChange(revision, path);
+    const result = validateDocument(payload);
+    if (!result.ok) {
+      throw new Error(`invalid document: ${result.error}`);
+    }
+    const loaded =
+      /** @type {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} */ (
+        result.document
+      );
+    const only = loaded.manifest.files[0];
+    const patch = only ? loaded.patches[String(only.id)] : undefined;
+    if (!only || patch === undefined) {
+      throw new Error("the comparison returned no hunks for this file");
+    }
+    box.remove();
+    const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
+    for (const hunk of hunks) {
+      body.append(renderHunk(hunk));
+    }
+    if (hunks.length === 0) {
+      body.append(el("div", "diff-availability", "No content changes."));
+    }
+  } catch (error) {
+    reportLoad(
+      "file hydration",
+      { revision, path, hook: "diff/comparison", elapsedMs: Date.now() - started },
+      error,
+    );
+    box.remove();
+    body.append(el("div", "diff-availability", "Could not load this file's changes."));
+  } finally {
+    clearTimeout(slow);
+  }
+}
+
+/**
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown> | undefined} patch
+ * @param {{revision?: string}} [context]
  * @returns {HTMLElement}
  */
-function renderFileSection(change, patch) {
+function renderFileSection(change, patch, context = {}) {
   sectionSequence += 1;
   const toggleId = `diff-file-toggle-${sectionSequence}`;
   const bodyId = `diff-file-body-${sectionSequence}`;
@@ -267,8 +377,14 @@ function renderFileSection(change, patch) {
   });
 
   const availability = String(change.availability);
+  if (availability === "deferred" && context.revision) {
+    // Deferred is progress, not a state to explain: show the standard
+    // progress box and fetch this file's hunks.
+    void hydrateDeferred(body, change, context.revision);
+    return section;
+  }
   if (availability !== "ready" || patch === undefined) {
-    const copy = AVAILABILITY_COPY[availability] || "This file's changes are unavailable.";
+    const copy = AVAILABILITY_COPY[availability] || "These changes are unavailable.";
     body.append(el("div", "diff-availability", copy));
     return section;
   }
@@ -325,8 +441,9 @@ export function mountDiffView(container, document_) {
     }
     root.append(summary);
   }
+  const context = { revision: String(document_.__revision ?? "") };
   for (const change of manifest.files) {
-    root.append(renderFileSection(change, patches[String(change.id)]));
+    root.append(renderFileSection(change, patches[String(change.id)], context));
   }
   if (manifest.truncated) {
     root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));

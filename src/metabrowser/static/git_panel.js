@@ -68,6 +68,8 @@
   let state = emptyState();
   /** @type {{dispose?: () => void} | null} The mounted commit diff. */
   let commitDiffHandle = null;
+  /** @type {{revision: string, file: string} | null} From a /commit/ URL. */
+  let routeSelection = null;
   /** @type {Map<string, string>} */
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
@@ -509,7 +511,12 @@
    * @param {string} revision
    * @returns {Promise<void>}
    */
-  async function selectCommit(revision) {
+  /**
+   * @param {string} revision
+   * @param {{fromRoute?: boolean}} [options] `fromRoute` when the URL is
+   *   already this commit (restore on load), so the route is not rewritten.
+   */
+  async function selectCommit(revision, options = {}) {
     const bridge = shell();
     if (!bridge) {
       return;
@@ -517,6 +524,14 @@
     const previewClaim = bridge.claimPreview("git");
     // Whatever is on screen goes before the next commit's render starts.
     disposeCommitDiff();
+    // A commit is a selection like any other, so it owns the URL while
+    // it is shown: /commit/<rev> (Browser URL Grammar). Replacing rather
+    // than pushing matches the tree's skim rule — walking a history list
+    // must not bury the reader's entry point.
+    const routes = window.MetabrowserNavigationRoute;
+    if (routes && !options.fromRoute && typeof window.history?.replaceState === "function") {
+      window.history.replaceState(null, "", routes.commitHref(revision));
+    }
     state.selectedId = revision;
     for (const element of document.querySelectorAll(".git-graph-row")) {
       element.classList.toggle(
@@ -747,6 +762,10 @@
         return;
       }
       state.headRevision = info.head?.revision ?? null;
+      // A /commit/ URL selects the Git panel and its commit on load, the
+      // same way a /view/ URL selects a file.
+      routeSelection =
+        window.MetabrowserNavigationRoute?.parseCommit?.(window.location?.pathname ?? "") ?? null;
 
       // Ref colors are an input to lane assignment, so they must settle
       // before the first page is laid out.
@@ -832,6 +851,15 @@
     document
       .getElementById("tree-content")
       ?.addEventListener("scroll", onTreeScroll, { passive: true });
+
+    if (routeSelection) {
+      // The URL named a commit: show the Git panel and that commit,
+      // without rewriting the route it came from.
+      const wanted = routeSelection.revision;
+      bridge.activateNavPanel("git");
+      await ensureHistory();
+      await selectCommit(wanted, { fromRoute: true });
+    }
   }
 
   window.MetabrowserGitPanel = Object.freeze({

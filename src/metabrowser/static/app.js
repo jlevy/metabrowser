@@ -2148,6 +2148,7 @@ async function toggleTreeContainer(row) {
       '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
       '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
     var level = Number(row.dataset.treeLevel || "1") + 1;
+    var childrenStartedAt = Date.now();
     try {
       var payload = await window.metabrowser.fetchPluginData(
         row.dataset.containerPlugin,
@@ -2160,7 +2161,16 @@ async function toggleTreeContainer(row) {
         : '<div class="tree-empty-note">No entries in this file.</div>';
       children.dataset.loaded = "1";
     } catch (error) {
-      console.warn("container children failed for", row.dataset.path, error);
+      console.error(
+        "metabrowser tree: container children failed",
+        {
+          path: row.dataset.path,
+          plugin: row.dataset.containerPlugin,
+          hook: row.dataset.containerChildren,
+          elapsedMs: Date.now() - childrenStartedAt,
+        },
+        error,
+      );
       children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
     }
     applyTreeFilters();
