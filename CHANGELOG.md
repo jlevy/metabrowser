@@ -28,6 +28,12 @@ Large directories:
   100,000-file tree, expanding a small folder fell from 63 ms to 7 ms, and no longer
   depends on whether a scan is running.
 
+- Several browser tabs open on the same folder no longer each pay for the same answer.
+  A folder summary is now revalidated against the index revision, so a tab that already
+  holds the current one is told so instead of being sent it again, and tabs that ask at
+  the same moment share a single computation.
+  On a settled 100,000-file tree, eight tabs cost what one used to.
+
 - The crawl now visits directories in strict level order, so the layers the navigation
   tree shows are complete early.
   On a 100,000-file tree the first two levels are discovered 2 ms and 21 ms into a
