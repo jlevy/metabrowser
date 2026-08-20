@@ -298,6 +298,22 @@ Each is a composition of layers that exist or are already planned:
 | Comparison | Manifest, file patches, renderer | This plan |
 | Annotation | Anchored threads and marks over a comparison | Deferred; anchor model reserved below |
 
+Two integration seams make the layers concrete inside the existing shell, and both are
+container adoptions rather than new surfaces:
+
+1. **Any patch or diff file browses in place.** Every file classifying as the diff kind
+   — a saved `.patch`, a downloaded PR `.diff`, output piped from any tool — is a
+   folder-like container entry wherever it sits in the tree: expand for its file
+   changes, outer-click for the change-set summary, inner-click for one file’s diff
+   tabs. This is deliberately generic groundwork, not a PR feature; the PR mirror is the
+   same affordance over an acquired comparison.
+2. **The Git history view opens comparisons, not its own diff surface.** Selecting a
+   commit in the Git tab resolves that commit’s first-parent comparison — exactly
+   `metab --diff REV` — and presents it through the same container: changed files as
+   children, summary as the outer view, one renderer.
+   Presets (HEAD vs worktree, staged, unstaged) and branch pickers are the same wiring
+   with different endpoints.
+
 The composition that proves the layering is **viewing a pull request**, because it
 exercises every layer and adds almost nothing of its own.
 GitHub exposes each pull request over plain git transport as `refs/pull/<n>/head` and
