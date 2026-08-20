@@ -654,7 +654,7 @@ class InventoryIndex:
             epoch = self._aggregate_epoch
         return self._entries, _ChildrenView(self), epoch
 
-    def _evict_subtree_aggregates(self, path: str) -> None:
+    def _evict_subtree_aggregates(self, path: str, *, is_dir: bool) -> None:
         """Drop the cached aggregate for *path* and every ancestor up to root.
 
         Caller must hold ``_rollup_cache_lock``.
@@ -664,17 +664,20 @@ class InventoryIndex:
         stay valid and are reused, which is what keeps a rollup during a scan
         proportional to what moved rather than to the whole index.
 
+        Only directories are tracked. Eviction epochs are recorded even for a
+        directory that holds no aggregate right now, because a rollup pass
+        already in flight may be about to publish one, and the epoch is what
+        tells the merge to refuse it. Files are skipped so the epoch map stays
+        proportional to the directory count rather than the entry count.
+
         Cost is one chain walk per stored entry, bounded by ``INVENTORY_MAX_DEPTH``.
         """
 
         self._aggregate_epoch += 1
         epoch = self._aggregate_epoch
-        # Only directories carry an aggregate, so this first pop is a no-op
-        # for a file; its parent chain is what actually has to go. Eviction
-        # epochs are recorded whether or not the path was cached, because a
-        # rollup pass already in flight may be about to publish one.
-        self._subtree_aggregates.pop(path, None)
-        self._aggregate_evicted_at[path] = epoch
+        if is_dir:
+            self._subtree_aggregates.pop(path, None)
+            self._aggregate_evicted_at[path] = epoch
         cursor = path
         while cursor:
             cursor = cursor.rpartition("/")[0]
@@ -693,7 +696,7 @@ class InventoryIndex:
             # would make subtree aggregation recurse forever.
             if entry.path != entry.parent:
                 self._children_index.setdefault(entry.parent, {})[entry.path] = entry
-            self._evict_subtree_aggregates(entry.path)
+            self._evict_subtree_aggregates(entry.path, is_dir=entry.type == "dir")
 
     def _pop_index_entry(self, path: str) -> FsEntry | None:
         """Remove an entry and invalidate cached rollup topology atomically."""
@@ -708,7 +711,7 @@ class InventoryIndex:
                     if not siblings:
                         del self._children_index[entry.parent]
                 self._children_index.pop(path, None)
-                self._evict_subtree_aggregates(path)
+                self._evict_subtree_aggregates(path, is_dir=entry.type == "dir")
             return entry
 
     def _ancestor_gitignored(self, path: str, entries: Mapping[str, FsEntry]) -> bool:
