@@ -32,7 +32,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from metabrowser.git.detail import read_commit_detail
-from metabrowser.git.log import decode_cursor, read_log_page, read_refs
+from metabrowser.git.log import decode_cursor, read_log_page, read_refs, resolve_default_scope
 from metabrowser.git.process import GitError, GitTimeoutError
 from metabrowser.git.repo import RepoContext, repo_info
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
@@ -113,6 +113,11 @@ async def api_git_log(request: Request) -> JSONResponse:
         Opaque, from a previous page. A malformed cursor is rejected;
         restarting from the first page would make the append-only client
         duplicate rows and corrupt lane continuity.
+    ``scope``
+        ``all`` walks every ref. The default walks HEAD, its upstream,
+        and whichever trunk refs exist, because ``--all`` in a
+        many-ref repository shows whichever branch commits most often
+        and buries the rest.
     """
     served_root = _resolved_root_dir()
     context, info = await _resolve(served_root)
@@ -131,13 +136,20 @@ async def api_git_log(request: Request) -> JSONResponse:
     if context.head.get("unborn"):
         return JSONResponse({"is_repo": True, "commits": [], "cursor": None, "has_more": False})
 
+    wants_all = request.query_params.get("scope", "") == "all"
     try:
-        page = await read_log_page(served_root, skip=skip, limit=limit)
+        refs = None if wants_all else await resolve_default_scope(served_root)
+        page = await read_log_page(served_root, skip=skip, limit=limit, refs=refs)
     except GitError as exc:
         log.warning("git log failed: %s", exc)
         return _git_failure_response(exc)
 
-    return JSONResponse(dict(page))
+    # The panel states what it is showing, so a graph that omits a branch
+    # never looks like a graph that lost one.
+    payload = dict(page)
+    payload["scope"] = "all" if wants_all else "default"
+    payload["scope_refs"] = list(refs) if refs else []
+    return JSONResponse(payload)
 
 
 async def api_git_commit(request: Request) -> JSONResponse:

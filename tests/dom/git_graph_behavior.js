@@ -290,16 +290,26 @@ function countTags(svg, tagName) {
   const { rows } = graph.computeSwimlanes(commits, { headRevision: "m" });
 
   const headSvg = graph.renderCommitGraph(rows[0]);
-  // HEAD is a ring with a hollow centre: two circles, not one.
-  assertEqual("render: HEAD draws two circles", countTags(headSvg, "circle"), 2);
+  // HEAD is a ring whose hole is a real hole — one evenodd path, no
+  // background-coloured disc — so its shape cannot change with the row
+  // state (hover, selection, or any state added later).
+  const headRing = headSvg.children.find(
+    (child) => child.tagName === "path" && child.getAttribute("fill-rule") === "evenodd",
+  );
+  assertTrue("render: HEAD draws a punched ring", Boolean(headRing));
+  assertEqual("render: HEAD adds no filled centre", countTags(headSvg, "circle"), 0);
   assertEqual("render: row is one row tall", headSvg.style.height, "22px");
   assertTrue("render: svg is class-tagged", headSvg.classNames.has("git-graph-svg"));
 
   const mergeRows = graph.computeSwimlanes(commits).rows;
   const mergeSvg = graph.renderCommitGraph(mergeRows[0]);
   // A merge keeps its ring + dot distinction without growing beyond a
-  // plain vertex.
-  assertEqual("render: merge draws three circles", countTags(mergeSvg, "circle"), 3);
+  // plain vertex: a punched ring plus one filled centre dot.
+  const mergeRing = mergeSvg.children.find(
+    (child) => child.tagName === "path" && child.getAttribute("fill-rule") === "evenodd",
+  );
+  assertTrue("render: merge draws a punched ring", Boolean(mergeRing));
+  assertEqual("render: merge draws one centre dot", countTags(mergeSvg, "circle"), 1);
   // The merge fan-out is an arc; a merge drawn with only straight lines
   // would not read as a merge.
   const mergePaths = mergeSvg.children.filter((child) => child.tagName === "path");
@@ -310,9 +320,18 @@ function countTags(svg, tagName) {
 
   const plainSvg = graph.renderCommitGraph(mergeRows[1]);
   assertEqual("render: plain commit draws one circle", countTags(plainSvg, "circle"), 1);
-  const outerRadii = [headSvg, mergeSvg, plainSvg].map((svg) =>
-    svg.children.find((child) => child.tagName === "circle")?.getAttribute("r"),
-  );
+  // Every vertex occupies the same outer radius, whether it is drawn as
+  // a punched ring or a plain filled circle.
+  const outerRadii = [headSvg, mergeSvg, plainSvg].map((svg) => {
+    const ring = svg.children.find(
+      (child) => child.tagName === "path" && child.getAttribute("fill-rule") === "evenodd",
+    );
+    if (ring) {
+      // `M <cx - r> <cy> a <r> <r> ...` — the first arc radius is the outer one.
+      return (ring.getAttribute("d") ?? "").split(" a ")[1]?.split(" ")[0];
+    }
+    return svg.children.find((child) => child.tagName === "circle")?.getAttribute("r");
+  });
   assertEqual(
     "render: every vertex uses the same outer radius",
     outerRadii,

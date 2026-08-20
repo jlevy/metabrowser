@@ -119,29 +119,19 @@
    * @returns {string}
    */
   function relativeAge(epochSeconds) {
-    if (!Number.isFinite(epochSeconds) || epochSeconds <= 0) {
-      return "";
-    }
-    const seconds = Math.max(0, Date.now() / 1000 - epochSeconds);
-    if (seconds < 60) {
-      return "just now";
-    }
-    /** @type {Array<[number, string]>} */
-    const units = [
-      [60, "m"],
-      [3600, "h"],
-      [86400, "d"],
-      [604800, "w"],
-      [2629800, "mo"],
-      [31557600, "y"],
-    ];
-    let label = "";
-    for (const [size, suffix] of units) {
-      if (seconds >= size) {
-        label = `${Math.floor(seconds / size)}${suffix}`;
-      }
-    }
-    return label ? `${label} ago` : "just now";
+    // The shared age primitive, so a commit's age reads exactly like a
+    // file's: same abbreviations, same freshness tiers.
+    return window.MetabrowserFormatters?.age(epochSeconds)?.label ?? "";
+  }
+
+  /**
+   * The age's freshness class, so the colour convention holds here too.
+   *
+   * @param {number} epochSeconds
+   * @returns {string}
+   */
+  function ageClass(epochSeconds) {
+    return window.MetabrowserFormatters?.ageClass(epochSeconds) ?? "";
   }
 
   /**
@@ -422,7 +412,8 @@
       renderRefBadges(commit.refs || []) +
       `<span class="git-graph-subject">${escapeHtml(commit.subject)}</span>` +
       `<span class="git-graph-meta">${escapeHtml(commit.author?.name || "")}` +
-      `<span class="git-graph-age">${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
+      `<span class="git-graph-age ${escapeHtml(ageClass(commit.committed_at))}">` +
+      `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
     element.appendChild(body);
 
     element.addEventListener("click", () => selectCommit(commit.id));
@@ -591,7 +582,8 @@
     html += '<div class="git-commit-meta">';
     html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
     html += `<span>${escapeHtml(commit.author?.name || "")}</span>`;
-    html += `<span>${escapeHtml(relativeAge(commit.committed_at))}</span>`;
+    html += `<span class="${escapeHtml(ageClass(commit.committed_at))}">`;
+    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
     html += "</div>";
     if (commit.refs?.length) {
       html += `<div class="git-commit-refs">${renderRefBadges(commit.refs)}</div>`;
@@ -883,6 +875,7 @@
       appendPage,
       emptyState,
       hoverText,
+      ageClass,
       relativeAge,
       renderCommitDetail,
       renderFileRow,

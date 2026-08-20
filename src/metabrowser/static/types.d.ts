@@ -115,6 +115,9 @@ type MetabrowserRequestErrorRuntime = Readonly<{
 }>;
 
 type MetabrowserFormatterRuntime = Readonly<{
+  /** Abbreviated age and its freshness class — the one age primitive. */
+  age(epochSeconds: number): { label: string; className: string };
+  ageClass(epochSeconds: number): string;
   countClass(value: number): "" | "count-large";
   formatBytes(value: number): string;
   formatFileCount(value: number): string;

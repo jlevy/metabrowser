@@ -933,7 +933,9 @@
   --git-ref-local: var(--status-info);
   --git-ref-remote: hsl(265 75% 58%);
   --git-ref-tag: hsl(38 92% 40%);
-  --git-ref-bg: var(--viz-surface-sunken);
+  /* Branch and tag chips carry their own very pale warm ground, so a ref
+     never reads as a filter chip. */
+  --git-ref-bg: oklch(95.5% 0.035 75);
 }
 
 [data-theme="dark"] {
@@ -1067,7 +1069,7 @@
      values are text on a dark surface here, not fills on a light one. */
   --git-ref-remote: hsl(265 75% 74%);
   --git-ref-tag: hsl(38 92% 62%);
-  --git-ref-bg: hsl(220 16% 22%);
+  --git-ref-bg: oklch(32% 0.04 70);
 }
 
 .mb-distribution-slot-1 {
@@ -2142,9 +2144,15 @@ html[data-prose-font="sans"] {
 .age-old {
   --file-age-current: var(--file-age-old);
 }
+/* Every age anywhere — file rows, commit rows, commit detail — reads
+   the same: the tier hue, the shared weight, tabular numerals so
+   columns of ages line up. Call sites add positioning only, never
+   colour or weight, exactly as they do for `.size`. */
 :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   color: var(--file-age-current);
   font-weight: var(--file-age-weight);
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: var(--tabular-numerals);
 }
 :is(.age-live, .age-sec, .age-min) {
   font-weight: var(--file-age-weight-recent);
@@ -4481,27 +4489,6 @@ pre.code-block code.hljs {
   height: 22px;
 }
 
-/* The hollow centre of the HEAD and merge markers should read as the row
-   background rather than as a filled dot. Following the row's own
-   background through hover and selection keeps it hollow instead of
-   leaving a pale disc on a highlighted row. */
-.git-graph-row .git-graph-svg > circle:not([style*="fill"]) {
-  fill: var(--sidebar-bg);
-}
-
-.git-graph-row:hover .git-graph-svg > circle:not([style*="fill"]) {
-  fill: var(--hover-bg);
-}
-
-/* Ordered after :hover to match how the row background itself resolves:
-   .git-graph-row.selected and .git-graph-row:hover carry equal
-   specificity, so on a row that is both, source order is what makes the
-   selection colour win. The marker has to make the same choice, or a
-   selected row shows a sidebar-coloured disc inside its ring. */
-.git-graph-row.selected .git-graph-svg > circle:not([style*="fill"]) {
-  fill: var(--highlight-bg);
-}
-
 .git-graph-body {
   display: flex;
   align-items: center;
@@ -4532,9 +4519,10 @@ pre.code-block code.hljs {
   font-size: var(--ui-small-font-size);
 }
 
+/* Positioning only — colour, weight, size, and numerals come from the
+   shared age primitive above. */
 .git-graph-age {
   flex-shrink: 0;
-  font-variant-numeric: var(--tabular-numerals);
 }
 
 .git-graph-more {

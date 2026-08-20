@@ -302,41 +302,14 @@ function formatAge(mtimeSec) {
   if (mtimeSec === null) {
     return '<span class="tally-pending tally-pending-narrow"></span>';
   }
-  if (!mtimeSec) {
+  // One age primitive for the whole product (formatters.js): same
+  // abbreviations, same freshness tiers, same colours, wherever an age
+  // appears.
+  var age = window.MetabrowserFormatters.age(mtimeSec);
+  if (!age.label) {
     return "";
   }
-  var diffMs = Date.now() - mtimeSec * 1000;
-  var absMs = Math.abs(diffMs);
-  /** @type {Array<[string, number]>} */
-  var steps = [
-    ["y", 365 * 24 * 60 * 60 * 1000],
-    ["mo", 30 * 24 * 60 * 60 * 1000],
-    ["w", 7 * 24 * 60 * 60 * 1000],
-    ["d", 24 * 60 * 60 * 1000],
-    ["h", 60 * 60 * 1000],
-    ["m", 60 * 1000],
-  ];
-  var label = "<1m";
-  for (var i = 0; i < steps.length; i++) {
-    if (absMs >= steps[i][1]) {
-      label = Math.round(absMs / steps[i][1]) + steps[i][0];
-      break;
-    }
-  }
-  // Color code by freshness
-  var cls = "age-old";
-  if (absMs < 60 * 1000) {
-    cls = "age-sec";
-  } else if (absMs < 60 * 60 * 1000) {
-    cls = "age-min";
-  } else if (absMs < 24 * 60 * 60 * 1000) {
-    cls = "age-hr";
-  } else if (absMs < 7 * 24 * 60 * 60 * 1000) {
-    cls = "age-day";
-  } else if (absMs < 30 * 24 * 60 * 60 * 1000) {
-    cls = "age-wk";
-  }
-  return `<span class="${cls}">${label}</span>`;
+  return `<span class="${age.className}">${age.label}</span>`;
 }
 
 function formatTimestamp(mtimeSec) {

@@ -477,12 +477,25 @@ Collapse is always class-driven (`.tree-children-collapsed`,
 the motion, and reduced-motion drops every travel to 1ms while keeping the state change.
 `tests/test_design_vocabulary.py` pins the recipe on every site.
 
+### Age
+
+An age is an age, wherever it appears — a file row, a commit row, a commit’s header.
+One primitive produces all of them: `MetabrowserFormatters.age()` returns the
+abbreviation (`<1m`, `5m`, `2h`, `3d`, `2w`) and the freshness class (`.age-live` …
+`.age-old`), and the `:is(...)` rule over those classes owns the hue, the weight, the
+small size, and tabular numerals.
+Call sites add positioning only, never color, weight, or their own abbreviations — the
+same discipline `.size` follows for byte counts.
+An exception needs a line in this document; otherwise there is one age.
+
 ### Branch Chips
 
 Git ref badges (`.git-ref`) are their own vocabulary, not filter chips: at
 `--micro-font-size` the name carries the meaning, so it is always `--weight-bold`, and
 the corner is `--radius-tag` (square-ish) so “a ref” and “a filter” never read as the
 same control. `HEAD`’s chip keeps its distinction with a hairline ring in its own color.
+Their ground is `--git-ref-bg`, a very pale warm tint of its own rather than the neutral
+chip surface, so a ref is identifiable before its text is read.
 
 ### Inline Change Stats
 

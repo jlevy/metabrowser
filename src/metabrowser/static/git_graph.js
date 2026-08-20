@@ -290,6 +290,39 @@
   }
 
   /**
+   * A ring with a real hole: one path, two subpaths, `evenodd`.
+   *
+   * The hole used to be a smaller circle filled with a copy of the row
+   * background, which meant every row state (hover, selected, and any
+   * state added later) had to restate that colour or the marker showed
+   * a wrong-coloured disc — a node that changed shape with the
+   * highlight. Punching the hole makes the row's own background show
+   * through whatever it is, so shape encodes commit state and nothing
+   * else.
+   *
+   * @param {number} index
+   * @param {number} outerRadius
+   * @param {number} innerRadius
+   * @param {string} color
+   * @returns {SVGPathElement}
+   */
+  function drawRing(index, outerRadius, innerRadius, color) {
+    const path = document.createElementNS(SVG_NAMESPACE, "path");
+    const cx = SWIMLANE_WIDTH * (index + 1);
+    const cy = SWIMLANE_MIDLINE;
+    const circle = (/** @type {number} */ radius) =>
+      [
+        `M ${cx - radius} ${cy}`,
+        `a ${radius} ${radius} 0 1 0 ${radius * 2} 0`,
+        `a ${radius} ${radius} 0 1 0 ${-radius * 2} 0`,
+      ].join(" ");
+    path.setAttribute("d", `${circle(outerRadius)} ${circle(innerRadius)}`);
+    path.setAttribute("fill-rule", "evenodd");
+    path.style.fill = color;
+    return path;
+  }
+
+  /**
    * @param {number} index
    * @param {number} strokeWidth
    * @param {string} color
@@ -491,10 +524,9 @@
    */
   function appendCommitNode(svg, row, circleIndex, circleColor) {
     if (row.kind === "HEAD") {
-      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
-      // The unfilled inner circle inherits the current row background,
-      // leaving a hollow HEAD ring through hover and selection states.
-      svg.append(drawCircle(circleIndex, CIRCLE_STROKE_WIDTH, CIRCLE_STROKE_WIDTH));
+      // A ring: the hole is a hole, so it reads the same on every row
+      // state.
+      svg.append(drawRing(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
       return;
     }
 
@@ -502,9 +534,8 @@
     // version — but kept so adding them is a data change, not a
     // renderer change.
     if (row.kind === "incoming-changes" || row.kind === "outgoing-changes") {
-      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
       svg.append(
-        drawCircle(circleIndex, CIRCLE_RADIUS - CIRCLE_CENTER_RADIUS, CIRCLE_STROKE_WIDTH),
+        drawRing(circleIndex, CIRCLE_RADIUS, CIRCLE_RADIUS - CIRCLE_CENTER_RADIUS, circleColor),
       );
       svg.append(
         drawDashedCircle(circleIndex, CIRCLE_STROKE_WIDTH - CIRCLE_CENTER_RADIUS, circleColor),
@@ -515,8 +546,7 @@
     if (row.commit.parent_ids.length > 1) {
       // Merge: a ring around a smaller filled dot, kept inside the same
       // outer radius as every other vertex.
-      svg.append(drawCircle(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
-      svg.append(drawCircle(circleIndex, CIRCLE_STROKE_WIDTH, CIRCLE_STROKE_WIDTH));
+      svg.append(drawRing(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
       svg.append(drawCircle(circleIndex, CIRCLE_CENTER_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
       return;
     }

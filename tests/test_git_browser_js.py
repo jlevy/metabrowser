@@ -47,22 +47,20 @@ def test_git_panel_behavior_assertions_pass() -> None:
     _run_node_suite(GIT_PANEL_TEST_JS)
 
 
-def test_selected_row_marker_fill_is_ordered_after_the_hover_rule() -> None:
-    """The hollow HEAD and merge markers must track the row background.
+def test_node_markers_do_not_restate_the_row_background() -> None:
+    """A node's shape must not depend on the row's state.
 
-    ``.git-graph-row.selected`` and ``.git-graph-row:hover`` carry equal
-    specificity, so on a row that is both, source order alone decides the
-    winner. The marker fill has to resolve the same way the row's own
-    background does, or a selected row shows a sidebar-coloured disc
-    inside the ring that is supposed to be hollow.
+    The hollow centre used to be a disc painted with a copy of the row
+    background, so every row state had to restate that colour and any
+    state that did not left a filled-looking node. The hole is punched
+    now (one evenodd path), so the row's own background shows through
+    whatever it is — and no stylesheet rule may reintroduce a fill.
     """
     css = (Path(__file__).resolve().parents[1] / "src/metabrowser/static/styles.css").read_text()
-    marker = ".git-graph-svg > circle"
-    hover = css.index(f".git-graph-row:hover {marker}")
-    selected = css.index(f".git-graph-row.selected {marker}")
-    assert hover < selected, "the selected marker rule must come after the hover rule"
-
-    # The fill must be the same token the selected row background uses.
-    row_selected = css.index(".git-graph-row.selected {")
-    assert "var(--highlight-bg)" in css[row_selected : css.index("}", row_selected)]
-    assert "var(--highlight-bg)" in css[selected : css.index("}", selected)]
+    assert ".git-graph-svg > circle" not in css, (
+        "a rule filling graph markers reintroduces state-dependent node shapes"
+    )
+    graph = (
+        Path(__file__).resolve().parents[1] / "src/metabrowser/static/git_graph.js"
+    ).read_text()
+    assert 'setAttribute("fill-rule", "evenodd")' in graph, "the ring must punch a real hole"

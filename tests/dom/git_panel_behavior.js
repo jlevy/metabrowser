@@ -338,7 +338,10 @@ sandbox.fetch = async (url) => {
 };
 
 vm.createContext(sandbox);
-for (const file of ["git_graph.js", "git_panel.js"]) {
+// formatters.js first: the panel's ages come from that shared primitive,
+// and loading the real module (not a stub) is what proves a commit's age
+// is spelled exactly like a file's.
+for (const file of ["formatters.js", "git_graph.js", "git_panel.js"]) {
   const source = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", file), "utf-8");
   vm.runInContext(source, sandbox, { filename: file });
 }
@@ -840,10 +843,14 @@ async function run() {
   // ── Relative age ───────────────────────────────────────────
   {
     const now = Date.now() / 1000;
-    assertEqual("age: sub-minute", internals.relativeAge(now - 10), "just now");
-    assertEqual("age: minutes", internals.relativeAge(now - 300), "5m ago");
-    assertEqual("age: hours", internals.relativeAge(now - 7200), "2h ago");
-    assertEqual("age: days", internals.relativeAge(now - 3 * 86400), "3d ago");
+    // One age vocabulary everywhere: the same abbreviations the file
+    // tree uses, produced by the same primitive, so a commit's age and a
+    // file's age are never spelled differently.
+    assertEqual("age: sub-minute", internals.relativeAge(now - 10), "<1m");
+    assertEqual("age: minutes", internals.relativeAge(now - 300), "5m");
+    assertEqual("age: hours", internals.relativeAge(now - 7200), "2h");
+    assertEqual("age: days", internals.relativeAge(now - 3 * 86400), "3d");
+    assertEqual("age: carries its freshness class", internals.ageClass(now - 300), "age-min");
     // A missing or zero timestamp renders nothing rather than "56y ago".
     assertEqual("age: zero renders empty", internals.relativeAge(0), "");
   }
