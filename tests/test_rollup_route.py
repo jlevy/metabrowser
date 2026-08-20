@@ -243,3 +243,45 @@ def _mock_request(params: dict[str, str], if_none_match: str | None = None) -> A
     request.query_params = _FakeQuery(params)
     request.headers = {"if-none-match": if_none_match} if if_none_match else {}
     return request
+
+
+def test_simultaneous_identical_rollups_compute_once(tmp_path: Path) -> None:
+    """Clients that arrive together share one aggregation.
+
+    The retained body only helps a request that arrives after one finished.
+    Several tabs refreshing off the same inventory change arrive together, and
+    each would otherwise aggregate the same answer.
+    """
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "src").mkdir()
+    for index in range(5):
+        (tmp_path / "src" / f"f{index}.py").write_text("x" * 32)
+
+    async def scenario() -> tuple[int, list[bytes]]:
+        inventory = get_inventory()
+        inventory.start(tmp_path)
+        await inventory.wait_until_done(10)
+        server._ROLLUP_BODY_CACHE.clear()
+
+        calls = 0
+        real_rollup = inventory.rollup
+
+        def counting_rollup(*args: Any, **kwargs: Any) -> Any:
+            nonlocal calls
+            calls += 1
+            return real_rollup(*args, **kwargs)
+
+        inventory.rollup = counting_rollup  # type: ignore[method-assign]
+        try:
+            bodies = await asyncio.gather(
+                *(server.api_rollup(_mock_request({"path": ""})) for _ in range(6))
+            )
+        finally:
+            del inventory.rollup  # type: ignore[method-assign]
+        return calls, [bytes(response.body) for response in bodies]
+
+    calls, bodies = asyncio.run(scenario())
+    assert calls == 1, f"expected one shared aggregation, got {calls}"
+    assert len(set(bodies)) == 1
+    assert json.loads(bodies[0])["node"]["total_files"] == 5

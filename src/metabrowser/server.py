@@ -196,6 +196,26 @@ def _remember_rollup_body(etag: str, body: bytes | memoryview[int]) -> None:
         _ROLLUP_BODY_CACHE.pop(next(iter(_ROLLUP_BODY_CACHE)))
 
 
+# Rollup bodies currently being built, keyed by the ETag that identifies them.
+# The retained body only helps a request that arrives after one finished;
+# clients that arrive together — several tabs refreshing off the same inventory
+# change — would each aggregate the same answer. The first to arrive computes,
+# and the rest await its result.
+_ROLLUP_IN_FLIGHT: dict[str, asyncio.Future[bytes]] = {}
+
+
+def _discard_future_error(future: asyncio.Future[bytes]) -> None:
+    """Mark a failed shared computation's error as retrieved.
+
+    Every waiter, including the request that started it, raises on its own.
+    Without this, a failure with no waiters left would surface as an
+    "exception was never retrieved" warning from the event loop.
+    """
+
+    if not future.cancelled():
+        future.exception()
+
+
 # ── Performance logging setup ───────────────────────────────────
 #
 # The browser runs as a long-lived tool against potentially huge trees. Route
@@ -1334,33 +1354,58 @@ async def api_rollup(request: Request) -> Response:
     if cached is not None:
         return Response(cached, media_type="application/json", headers=etag_headers(etag))
 
-    result = None
-    if inv_can_serve:
-        result = await asyncio.to_thread(
-            inventory.rollup,
-            subpath,
-            depth=depth,
-            top=top,
-            ext_top=ext_top,
-            remaining_top=remaining_top,
-            filename_top=filename_top,
-            ext_rank=ext_rank,
+    # Nothing between this lookup and the registration below awaits, so two
+    # requests cannot both decide they are the one computing.
+    shared = _ROLLUP_IN_FLIGHT.get(etag)
+    if shared is not None:
+        return Response(
+            await shared,
+            media_type="application/json",
+            headers=etag_headers(etag),
         )
-    response = JSONResponse(
-        {
-            "root": str(_resolved_root_dir()),
-            "path": subpath,
-            "node": result["node"] if result is not None else None,
-            "ext_tallies": result["ext_tallies"] if result is not None else [],
-            "file_type_breakdown": (result["file_type_breakdown"] if result is not None else None),
-            "index_status": inventory_status(),
-            "indexed_files": inventory.files_indexed(),
-            "max_files": inventory.max_files(),
-            "truncated": inventory_status() == "truncated",
-        },
-        headers=etag_headers(etag),
-    )
-    _remember_rollup_body(etag, response.body)
+    pending: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
+    _ROLLUP_IN_FLIGHT[etag] = pending
+
+    try:
+        result = None
+        if inv_can_serve:
+            result = await asyncio.to_thread(
+                inventory.rollup,
+                subpath,
+                depth=depth,
+                top=top,
+                ext_top=ext_top,
+                remaining_top=remaining_top,
+                filename_top=filename_top,
+                ext_rank=ext_rank,
+            )
+        response = JSONResponse(
+            {
+                "root": str(_resolved_root_dir()),
+                "path": subpath,
+                "node": result["node"] if result is not None else None,
+                "ext_tallies": result["ext_tallies"] if result is not None else [],
+                "file_type_breakdown": (
+                    result["file_type_breakdown"] if result is not None else None
+                ),
+                "index_status": inventory_status(),
+                "indexed_files": inventory.files_indexed(),
+                "max_files": inventory.max_files(),
+                "truncated": inventory_status() == "truncated",
+            },
+            headers=etag_headers(etag),
+        )
+        body = bytes(response.body)
+        _remember_rollup_body(etag, body)
+        pending.set_result(body)
+    except BaseException as error:
+        # Includes cancellation: a client that disconnects mid-build must not
+        # leave everyone waiting on it stranded on a future that never lands.
+        pending.add_done_callback(_discard_future_error)
+        pending.set_exception(error)
+        raise
+    finally:
+        del _ROLLUP_IN_FLIGHT[etag]
     return response
 
 
