@@ -9,8 +9,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
+  color: var(--text);
   border-bottom: 1px solid var(--border);
 }
 
@@ -27,10 +27,34 @@
   top: 0;
   display: flex;
   align-items: center;
+  min-height: var(--ui-row-height);
   gap: 4px;
-  padding: 4px 6px 4px 10px;
+  padding: 0 6px 0 10px;
   background: var(--sidebar-bg);
   border-bottom: 1px solid var(--border);
+}
+
+.metabrowser-diff-host .diff-file-bar:hover {
+  background: var(--hover-bg);
+}
+
+/* Collapsed sections keep the section's own border as the only line. */
+.metabrowser-diff-host .diff-file-collapsed .diff-file-bar {
+  border-bottom: none;
+}
+
+/* The reveal contract: the copy control appears while its row is
+   hovered or holds focus, like every other revealed icon button. */
+.metabrowser-diff-host .diff-file-bar:hover .diff-file-copy,
+.metabrowser-diff-host .diff-file-bar:focus-within .diff-file-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.metabrowser-diff-host .diff-file-chevron {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
 }
 
 .metabrowser-diff-host .diff-file-toggle {
@@ -39,12 +63,12 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 2px 0;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   text-align: left;
   cursor: pointer;
 }
@@ -62,17 +86,21 @@
   color: var(--status-error);
 }
 
-/* Filename styling, matching the shell's file header path. */
+/* Filename styling and truncation, matching the shell's file header
+   path: rows are one line, long paths ellipsize. */
 .metabrowser-diff-host .diff-file-path {
   font-size: var(--nav-font-size);
   font-weight: var(--weight-bold);
   color: var(--text);
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .metabrowser-diff-host .diff-file-note {
   color: var(--muted);
+  font-size: var(--ui-small-font-size);
   flex: none;
 }
 
@@ -94,6 +122,9 @@
 }
 
 .metabrowser-diff-host .diff-file-copy {
+  /* A 20px hit target keeps the 24px row exact under its 1px border;
+     the token re-scope leaves the icon-btn primitive untouched. */
+  --icon-btn-size: 20px;
   flex: none;
 }
 

@@ -9,12 +9,18 @@ Diff rendering:
 - `.patch` and `.diff` files now open as rendered diffs: a change summary, per-file
   sections with GitHub-style indicators (renames with the old path, mode changes, type
   changes such as file to symlink, binary), and numbered unified hunks.
-  Each file sits under a sticky bar: a leading chevron, the filename with its green/red
-  `+N −N` stat pair right beside it, change notes, and a copy-path control.
-  Clicking anywhere on the bar collapses or reopens the section — the same one-target
-  rule folder rows follow — and sections start expanded, with collapsed rows kept
-  mounted. Every unavailable state is a labeled explanation rather than an empty box, and
-  input that is not a diff says so instead of claiming no changes.
+  Each file sits under a sticky bar: the nav tree’s own chevron, the filename with its
+  green/red `+N −N` stat pair right beside it, change notes, and the standard copy-path
+  control revealed on hover.
+  The bar is a row in the design-system sense — tree-row height, the shared hover color,
+  one activation surface (clicking anywhere toggles), a single border when collapsed —
+  and these agreements are now test-enforced.
+  Sections start expanded, and collapsing keeps the rows mounted.
+  Line totals stay exact when a change set contains binaries: binary changes contribute
+  no lines (git’s own semantics), so a patch with images no longer shows
+  `+? −? (estimated)`, and the change-set summary reads at regular UI size instead of
+  small print. Every unavailable state is a labeled explanation rather than an empty box,
+  and input that is not a diff says so instead of claiming no changes.
 - New `metab --diff SPEC` mode: `BASE..TARGET`, a single revision (compared against its
   first parent), or a `.patch`/`.diff` file.
   `--format json` emits the full change-set document, `--diff-patch PATH` prints one

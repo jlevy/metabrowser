@@ -154,14 +154,15 @@ async function main() {
   check("context rows carry both numbers", JSON.stringify(firstNumbers) === '["3","3"]');
   check("hunk heading renders", container.text().includes("def f():"));
 
-  // The per-file bar: a leading-chevron disclosure trigger plus a
-  // copy control, with the stat pair beside the filename.
+  // The per-file bar: the nav tree's own chevron mechanism (leading
+  // glyph, expanded/collapsed classes) plus a copy control, with the
+  // stat pair beside the filename.
   const toggle = container.find("diff-file-toggle")[0];
   check(
-    "bar composes the disclosure primitive",
-    toggle.classList.contains("section-disclosure-trigger"),
+    "chevron leads, from the shared registry mechanism",
+    toggle.children[0].classList.contains("diff-file-chevron"),
   );
-  check("chevron leads the title", toggle.classList.contains("section-disclosure-leading"));
+  check("trigger starts in the expanded class", toggle.classList.contains("expanded"));
   check("sections start expanded", toggle.getAttribute("aria-expanded") === "true");
   const body = container.find("diff-file-body")[0];
   check(
@@ -173,8 +174,8 @@ async function main() {
   check("copy control is an icon button", copy.classList.contains("icon-btn"));
   check(
     "stats sit beside the filename",
-    toggle.children[1].classList.contains("diff-file-path") &&
-      toggle.children[2].classList.contains("diff-file-stats"),
+    toggle.children[2].classList.contains("diff-file-path") &&
+      toggle.children[3].classList.contains("diff-file-stats"),
   );
   const stats = container.find("diff-file-stats")[0];
   check(
@@ -189,6 +190,14 @@ async function main() {
   bar.click();
   check("bar click collapses the body", body.classList.contains("diff-file-body-collapsed"));
   check("collapse flips aria-expanded", toggle.getAttribute("aria-expanded") === "false");
+  check(
+    "collapse flips the rotation class the tree uses",
+    toggle.classList.contains("collapsed") && !toggle.classList.contains("expanded"),
+  );
+  check(
+    "collapse marks the section, so its bar drops the doubled border",
+    bar.parentNode.classList.contains("diff-file-collapsed"),
+  );
   check("collapse keeps rows mounted", container.find("diff-line").length === 4);
   toggle.click();
   check("trigger click restores the body", !body.classList.contains("diff-file-body-collapsed"));

@@ -295,6 +295,11 @@
   /* Section disclosures place one quiet chevron immediately after the title.
      The em-sized glyph follows the surrounding heading rather than creating a
      second icon tier. Folder-tree chevrons remain a separate leading control. */
+  /* One row height for every row-like activation target: tree rows,
+     tally rows, the diff file bar. 13px row text in a 19.5px line plus
+     2px pads — and exactly --icon-btn-size, so a revealed icon button
+     never stretches a row. */
+  --ui-row-height: 24px;
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
@@ -1267,7 +1272,6 @@ body {
 }
 
 .section-disclosure-trigger::after,
-.section-disclosure-trigger.section-disclosure-leading::before,
 .metabrowser-kpress-host .kpress details > summary::after {
   background-color: var(--section-disclosure-chevron-color);
   content: "";
@@ -1281,16 +1285,8 @@ body {
 }
 
 .section-disclosure-trigger[aria-expanded="true"]::after,
-.section-disclosure-trigger.section-disclosure-leading[aria-expanded="true"]::before,
 .metabrowser-kpress-host .kpress details[open] > summary::after {
   transform: rotate(90deg);
-}
-
-/* Leading form: the same mark, before the title instead of after it,
-   for triggers whose content is row data rather than a bare heading
-   (the diff file bar). One mark, one asset, two positions. */
-.section-disclosure-trigger.section-disclosure-leading::after {
-  content: none;
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -1984,6 +1980,7 @@ html[data-prose-font="sans"] {
 .tree-item {
   display: flex;
   align-items: center;
+  min-height: var(--ui-row-height);
   /* 2px transparent bar reserved on every row (coloured only when
      selected) so selecting never shifts the row; the 10px + 2px keeps the
      content's left inset at the original 12px. */
@@ -4262,7 +4259,6 @@ pre.code-block code.hljs {
   .filter-drawer,
   .filter-drawer-toggle svg,
   .section-disclosure-trigger::after,
-  .section-disclosure-trigger.section-disclosure-leading::before,
   .metabrowser-kpress-host .kpress details > summary::after {
     transition-duration: 1ms;
   }

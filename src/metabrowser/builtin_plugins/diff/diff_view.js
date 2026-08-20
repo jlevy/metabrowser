@@ -34,12 +34,17 @@ function el(tag, className, text) {
   return node;
 }
 
-/** @returns {string} The shell's copy glyph, or "" outside the shell. */
-function copyIconSvg() {
+/**
+ * A glyph from the shell's shared registry, or "" outside the shell.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+function shellIcon(name) {
   const shell = /** @type {{metabrowser?: {icons?: Record<string, string>}}} */ (
     /** @type {unknown} */ (globalThis)
   );
-  return shell.metabrowser?.icons?.copy ?? "";
+  return shell.metabrowser?.icons?.[name] ?? "";
 }
 
 /** @param {Record<string, unknown>} hunk @returns {HTMLElement} */
@@ -91,16 +96,25 @@ function renderHunk(hunk) {
 function renderFileBar(change, toggleId, bodyId) {
   const { letter, label, notes } = fileChangeLabel(change);
   const bar = el("div", "diff-file-bar");
-  const toggle = el(
-    "button",
-    "diff-file-toggle section-disclosure-trigger section-disclosure-leading",
-  );
+  const toggle = el("button", "diff-file-toggle expanded");
   toggle.setAttribute("type", "button");
   toggle.setAttribute("id", toggleId);
   toggle.setAttribute("aria-controls", bodyId);
   toggle.setAttribute("aria-expanded", "true");
+  // The same disclosure glyph the nav tree leads with, rotated by the
+  // same expanded/collapsed rules.
+  const chevron = el("span", "diff-file-chevron");
+  const chevronSvg = shellIcon("toggle");
+  if (chevronSvg) {
+    chevron.innerHTML = chevronSvg;
+  } else {
+    chevron.textContent = "›";
+  }
+  toggle.append(chevron);
   toggle.append(el("span", `diff-file-kind diff-file-kind-${String(change.kind)}`, letter));
-  toggle.append(el("span", "diff-file-path", label));
+  const pathSpan = el("span", "diff-file-path", label);
+  pathSpan.title = label;
+  toggle.append(pathSpan);
   if (change.additions !== null && change.additions !== undefined) {
     const stats = el("span", "diff-file-stats");
     stats.append(el("span", "diff-stat-add", `+${change.additions}`));
@@ -119,7 +133,7 @@ function renderFileBar(change, toggleId, bodyId) {
     copy.setAttribute("data-copy-path", String(side.path));
     copy.setAttribute("title", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
-    const svg = copyIconSvg();
+    const svg = shellIcon("copy");
     if (svg) {
       copy.innerHTML = svg;
     } else {
@@ -157,7 +171,10 @@ function renderFileSection(change, patch) {
     }
     expanded = !expanded;
     toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.classList.toggle("expanded", expanded);
+    toggle.classList.toggle("collapsed", !expanded);
     body.classList.toggle("diff-file-body-collapsed", !expanded);
+    section.classList.toggle("diff-file-collapsed", !expanded);
   });
 
   const availability = String(change.availability);

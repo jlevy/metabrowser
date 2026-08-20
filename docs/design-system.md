@@ -420,17 +420,26 @@ Markdown Frontmatter and Diagnostics disclosures start collapsed through the abs
 the native `open` attribute.
 These defaults are not saved as user preferences.
 
-The diff view’s per-file bar is a third user of the primitive with one deliberate
-difference: its trigger is styled as a filename, not a heading — the shell’s file-path
-typography (`--font-sans`, `--nav-font-size`, `--weight-bold`) — because the title *is*
-a file path. The bar keeps everything else: one focusable trigger, a sibling `.icon-btn`
-copy control on the shell’s `[data-copy-path]` delegation so a nested interactive never
-sits inside the trigger, and sections start expanded.
-Its content is left-aligned reading order — leading chevron
-(`.section-disclosure-leading`), kind letter, filename, then the stat pair beside the
-name — and the whole bar is one activation surface, the folder-row rule applied to a
-section header: clicking anywhere on the bar toggles, with only the copy control opting
-out.
+The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
+same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
+`expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
+`--hover-bg`, and reveals its `[data-copy-path]` copy control on row hover or focus —
+the file-header copy affordance, present wherever a filename is.
+Its content is left-aligned reading order — chevron, kind letter, filename in the
+shell’s file-path typography, then the stat pair beside the name — and the whole bar is
+one activation surface, the folder-row rule applied to a section header: clicking
+anywhere toggles, with only the copy control opting out.
+A collapsed section keeps the section’s own border as its single line.
+
+### One Chevron, One Row Contract
+
+Every disclosure chevron in the product is the same Lucide mark: the registry’s leading
+glyph on row-like targets (tree folders, tally tree, diff file bars) and the
+section-disclosure mask after heading-like titles, both in `--muted`, pointing right
+when closed and rotating to point down when open.
+Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agreements
+are enforced by `tests/test_design_vocabulary.py`, which fails when a surface forks the
+glyph, the row height, or the hover token.
 
 ### Inline Change Stats
 
