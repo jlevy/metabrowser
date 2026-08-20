@@ -15,6 +15,13 @@ export function normalizeFolderTotals(raw) {
     return Object.freeze({ state: "pending" });
   }
   const value = /** @type {Record<string, unknown>} */ (raw);
+  // A producer that knows its totals are provisional says so. The directory
+  // totals store zero-fills the aggregates the walker has not finalized, so
+  // re-deriving completeness from the numbers alone would read those
+  // placeholders as a real "0 files" and state it with confidence.
+  if (value.state === "pending") {
+    return Object.freeze({ state: "pending" });
+  }
   const totalFiles = integer(value.totalFiles ?? value.total_files);
   const totalBytes = integer(value.totalBytes ?? value.total_size);
   const unignoredFiles = integer(value.unignoredFiles ?? value.unignored_files);

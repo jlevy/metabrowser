@@ -61,6 +61,25 @@ async function main() {
   if (pending.state !== "pending" || "files" in pending) {
     throw new Error("pending totals must not fabricate zero-valued rows");
   }
+  // The directory totals store zero-fills the aggregates the walker has not
+  // finalized and marks the entry pending. Re-deriving completeness from the
+  // numbers alone would read those placeholders as a real "0 files" and show
+  // it as settled, so an explicit pending state has to win over them.
+  const zeroFilledPending = model.buildFolderTotalsModel(
+    model.normalizeFolderTotals({
+      path: "",
+      revision: 1,
+      state: "pending",
+      totalFiles: 0,
+      totalBytes: 0,
+      unignoredFiles: 0,
+      unignoredBytes: 0,
+    }),
+    formatters,
+  );
+  if (zeroFilledPending.state !== "pending") {
+    throw new Error("a zero-filled pending entry must not read as complete");
+  }
   const allIgnored = model.buildFolderTotalsModel(
     model.normalizeFolderTotals({
       total_files: 3,

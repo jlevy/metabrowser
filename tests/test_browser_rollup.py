@@ -355,3 +355,86 @@ def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
     assert result["node"]["total_files"] == total
     print(f"rollup budget: {total} files in {elapsed_ms:.1f}ms (spec: 150ms at 100k entries)")
     assert elapsed_ms < 1_000, f"rollup took {elapsed_ms:.1f}ms on {total} synthetic entries"
+
+
+def _assert_derived_state_matches_entries(index: InventoryIndex) -> None:
+    """The index keeps derived structures beside ``_entries``; they must agree.
+
+    ``_children_index`` and ``_subtree_aggregates`` are maintained on every
+    write rather than rebuilt per request, which is what keeps a rollup
+    proportional to what changed. That trade only holds while they stay in
+    step with the entries they summarize, and a missed eviction is invisible
+    until a folder reports a stale count, so check them against a from-scratch
+    derivation.
+    """
+
+    expected_children: dict[str, dict[str, FsEntry]] = {}
+    for entry in index._entries.values():
+        if entry.path == entry.parent:
+            continue  # the served root is not its own child
+        expected_children.setdefault(entry.parent, {})[entry.path] = entry
+    assert index._children_index == expected_children, "child index drifted from entries"
+
+    # Every cached aggregate must equal what a cold rollup would compute.
+    for path in list(index._subtree_aggregates):
+        cached = index.rollup(path, depth=0, top=0, ext_top=0)
+        cold = InventoryIndex()
+        for entry in index._entries.values():
+            cold._replace_index_entry(entry)
+        fresh = cold.rollup(path, depth=0, top=0, ext_top=0)
+        assert cached == fresh, f"stale aggregate cached for {path!r}"
+
+
+def test_derived_index_state_survives_writes_and_removals(tmp_path: Path) -> None:
+    """Adding and removing entries must leave no stale derived state."""
+
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "a.py").write_text("x" * 10)
+    (tmp_path / "drop").mkdir()
+    (tmp_path / "drop" / "nested").mkdir()
+    (tmp_path / "drop" / "nested" / "b.md").write_text("y" * 20)
+    index = _build_index(tmp_path)
+
+    # Populate the aggregate memo, then mutate underneath it.
+    index.rollup("", depth=3, top=40, ext_top=12)
+    _assert_derived_state_matches_entries(index)
+
+    # Store a file the way the walker does — a leaf write with no accompanying
+    # rewrite of its ancestor directory entries. Every directory above it still
+    # has to lose its cached aggregate, or the folder keeps reporting the count
+    # it had before the file arrived.
+    index._replace_index_entry(
+        FsEntry.for_observed_file(
+            path="keep/c.py",
+            parent="keep",
+            name="c.py",
+            size=30,
+            mtime_ns=1_700_000_000_000_000_000,
+        )
+    )
+    assert index.rollup("keep", depth=0, top=0, ext_top=0)["node"]["total_files"] == 2
+    assert index.rollup("", depth=0, top=0, ext_top=0)["node"]["total_files"] == 3
+    _assert_derived_state_matches_entries(index)
+
+    index.apply_live_entry(
+        FsEntry.for_observed_file(
+            path="keep/d.py",
+            parent="keep",
+            name="d.py",
+            size=30,
+            mtime_ns=1_700_000_000_000_000_000,
+        )
+    )
+    index.rollup("", depth=3, top=40, ext_top=12)
+    assert index.rollup("keep", depth=0, top=0, ext_top=0)["node"]["total_files"] == 3
+    _assert_derived_state_matches_entries(index)
+
+    # Removing a directory must drop the whole subtree from every structure.
+    index.remove("drop")
+    index.rollup("", depth=3, top=40, ext_top=12)
+    assert index.get("drop/nested/b.md") is None
+    assert "drop" not in index._children_index
+    assert "drop/nested" not in index._children_index
+    # keep/a.py, keep/c.py, keep/d.py survive; the drop/ subtree is gone.
+    assert index.rollup("", depth=0, top=0, ext_top=0)["node"]["total_files"] == 3
+    _assert_derived_state_matches_entries(index)
