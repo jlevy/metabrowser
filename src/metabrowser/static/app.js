@@ -6457,6 +6457,13 @@ function deliverNavigationFragment(target) {
 
 async function applyNavigationTarget(target, context) {
   if (!target) {
+    // A null target usually means "no selection". A /commit/ URL is a
+    // selection in another address space (Browser URL Grammar), owned
+    // by the Git panel — so the file pane must not claim the preview
+    // with its empty landing state.
+    if (window.MetabrowserNavigationRoute.parseCommit(window.location.pathname)) {
+      return { status: "cancelled" };
+    }
     showNavigationLanding();
     return { status: "cancelled" };
   }
@@ -6758,7 +6765,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Not awaited: whether the served root is a repository is irrelevant
   // to first paint, and blocking the tree walk on a git call would make
   // every non-repository directory pay for a feature it will not show.
-  window.MetabrowserGitPanel?.init();
+  window.MetabrowserGitPanel?.init()?.catch((error) => {
+    console.error("metabrowser git panel: init failed", { url: location.pathname }, error);
+  });
   // Start the URL-pinned file fetch in parallel with the tree walk. Only a
   // /view/ pathname selects a file; a hash is document state, never identity.
   var initialTarget = window.MetabrowserNavigationRoute.parse(

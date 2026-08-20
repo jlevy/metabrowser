@@ -68,8 +68,15 @@
   let state = emptyState();
   /** @type {{dispose?: () => void} | null} The mounted commit diff. */
   let commitDiffHandle = null;
-  /** @type {{revision: string, file: string} | null} From a /commit/ URL. */
-  let routeSelection = null;
+  /**
+   * The commit named by the URL this page was opened with, if any. Read
+   * once: later selections rewrite the URL, so re-reading it would make
+   * the restore chase its own writes.
+   *
+   * @type {{revision: string, file: string} | null}
+   */
+  const routeSelection =
+    window.MetabrowserNavigationRoute?.parseCommit?.(window.location?.pathname ?? "") ?? null;
   /** @type {Map<string, string>} */
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
@@ -762,10 +769,6 @@
         return;
       }
       state.headRevision = info.head?.revision ?? null;
-      // A /commit/ URL selects the Git panel and its commit on load, the
-      // same way a /view/ URL selects a file.
-      routeSelection =
-        window.MetabrowserNavigationRoute?.parseCommit?.(window.location?.pathname ?? "") ?? null;
 
       // Ref colors are an input to lane assignment, so they must settle
       // before the first page is laid out.
@@ -854,11 +857,22 @@
 
     if (routeSelection) {
       // The URL named a commit: show the Git panel and that commit,
-      // without rewriting the route it came from.
+      // without rewriting the route it came from. Its own failure is
+      // reported here rather than rejecting init, so a bad revision in
+      // a shared link degrades to an ordinary empty panel.
       const wanted = routeSelection.revision;
-      bridge.activateNavPanel("git");
-      await ensureHistory();
-      await selectCommit(wanted, { fromRoute: true });
+      const startedAt = Date.now();
+      try {
+        bridge.activateNavPanel("git");
+        await ensureHistory();
+        await selectCommit(wanted, { fromRoute: true });
+      } catch (error) {
+        console.error(
+          "metabrowser git panel: restoring the commit route failed",
+          { revision: wanted, url: location.pathname, elapsedMs: Date.now() - startedAt },
+          error,
+        );
+      }
     }
   }
 
