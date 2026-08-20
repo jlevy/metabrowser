@@ -296,6 +296,10 @@ Plugin HTTP calls use `fetchPluginData`.
 
 ## Browser URL Grammar
 
+> [Views, models, and routes](project/architecture/arch-views-models-routes.md) maps
+> every kind, view, model, and route in one table; this section is the grammar behind
+> the route column.
+
 A browser URL answers four separate questions, and each component answers exactly one:
 
 | Component | Question | Owned by |

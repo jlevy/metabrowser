@@ -43,14 +43,6 @@
   border-bottom: none;
 }
 
-/* The reveal contract: the copy control appears while its row is
-   hovered or holds focus, like every other revealed icon button. */
-.metabrowser-diff-host .diff-file-bar:hover .diff-file-copy,
-.metabrowser-diff-host .diff-file-bar:focus-within .diff-file-copy {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 .metabrowser-diff-host .diff-file-chevron {
   display: inline-flex;
   align-items: center;
@@ -128,6 +120,14 @@
      the token re-scope leaves the icon-btn primitive untouched. */
   --icon-btn-size: 20px;
   flex: none;
+}
+
+/* The reveal contract: the copy control appears while its row is
+   hovered or holds focus, like every other revealed icon button. */
+.metabrowser-diff-host .diff-file-bar:hover .diff-file-copy,
+.metabrowser-diff-host .diff-file-bar:focus-within .diff-file-copy {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* The disclosure-motion recipe from the core stylesheet: bodies travel

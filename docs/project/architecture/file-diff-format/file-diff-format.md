@@ -1,7 +1,6 @@
 # File Diff Format v1
 
-**Format version:** v1\
-**Status:** Implemented draft standard
+**Status:** Implemented draft standard, format version v1
 
 The File Diff Format is a small, reusable format for describing a change set between two
 file-tree snapshots: resolved identity, a manifest of file changes, and per-file

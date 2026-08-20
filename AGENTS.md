@@ -77,6 +77,11 @@ this repository’s structural facts and standing answers.
 - Format all human-authored Markdown with the exact `flowmark-rs==0.3.2` pin through
   `make format`.
 - Link to source documentation instead of duplicating long policy text.
+- Architecture documents follow the layout convention in
+  [Architecture Documents](docs/development.md#architecture-documents): status first,
+  one subject per document, and a named check for any table of registered surfaces.
+  Registering a kind, view, route, or format includes updating
+  [the map](docs/project/architecture/arch-views-models-routes.md) in the same change.
 - Never add credentials, private organization or repository names, private issue IDs,
   personal absolute paths, customer data, or copied operational artifacts.
 
