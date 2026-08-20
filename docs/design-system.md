@@ -453,6 +453,16 @@ Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agre
 are enforced by `tests/test_design_vocabulary.py`, which fails when a surface forks the
 glyph, the row height, or the hover token.
 
+### Fold Expanders
+
+A run of content withheld until asked for — a long stretch of changed lines in a diff —
+sits behind a full-width control at `--ui-row-height` carrying the same registry
+chevron, in `--highlight-bg`, hovering with `--hover-bg`. The label states the count it
+holds (`86 more changed lines`) and becomes the inverse when open (`Hide 86 lines`),
+because a control that hides its size is a control the reader cannot judge.
+A fold inside another disclosure stops its click, so expanding a fold never collapses
+its container.
+
 ### Inline Change Stats
 
 The `+N` / `−N` pair that rides beside a filename wherever a surface reports change

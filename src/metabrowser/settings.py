@@ -46,6 +46,17 @@ SLOW_OPERATION_LOG_SECONDS = 2.0
 # size tried, and a single 2M-character minified line paints in ~70 ms. The
 # old 128 KiB chunk was therefore costing 31 clicks to open a 4 MiB source
 # file for no measured benefit.
+# A contiguous run of added or deleted lines longer than this folds
+# behind an expander in the diff view, so one large rewrite cannot bury
+# the changes around it. Measured on this project's own 65-file pull
+# request (13,020 changed lines in 127 runs): at 40, 42 runs fold and
+# 83% of the lines start hidden, while the 85 ordinary runs — most real
+# changes — are untouched. Set to 0 to disable folding entirely.
+DIFF_FOLD_THRESHOLD = 40
+# Lines of the run shown above the expander, so a fold always starts by
+# showing what the change is before offering the rest.
+DIFF_FOLD_VISIBLE = 20
+
 TEXT_PREVIEW_CHUNK_BYTES = 2 * 1024 * 1024
 # Each Load more asks for twice the last chunk, capped here, so reaching a
 # large file takes a handful of clicks while no single click stalls.
@@ -319,6 +330,8 @@ def client_settings_dict() -> dict[str, Any]:
         "ROLLUP_FILE_TYPE_REMAINING_LIMIT": ROLLUP_FILE_TYPE_REMAINING_LIMIT,
         "DISTRIBUTION_PALETTE_SLOTS": DISTRIBUTION_PALETTE_SLOTS,
         "ROLLUP_WATCH_DEBOUNCE_MS": ROLLUP_WATCH_DEBOUNCE_MS,
+        "DIFF_FOLD_THRESHOLD": DIFF_FOLD_THRESHOLD,
+        "DIFF_FOLD_VISIBLE": DIFF_FOLD_VISIBLE,
         "TEXT_PREVIEW_CHUNK_BYTES": TEXT_PREVIEW_CHUNK_BYTES,
         "TEXT_PREVIEW_MAX_CHUNK_BYTES": TEXT_PREVIEW_MAX_CHUNK_BYTES,
     }

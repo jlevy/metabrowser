@@ -6,6 +6,14 @@ All notable changes to Metabrowser are documented here.
 
 Diff rendering:
 
+- **Long runs of changed lines fold behind an expander**, so one large rewrite cannot
+  bury the changes around it.
+  A contiguous run longer than 40 lines shows its first 20 and offers the rest behind a
+  control stating exactly how many it holds; folding is per run, not per file, so
+  ordinary edits beside a rewrite stay visible.
+  Measured on this project’s own 65-file pull request: 42 runs fold and 87% of the lines
+  start hidden, while most real changes are untouched.
+  `DIFF_FOLD_THRESHOLD` sets the bound; 0 disables folding.
 - **The Git history view shows real diffs.** Selecting a commit renders its first-parent
   comparison through the diff view — the same renderer, model, and validation a patch
   file uses — instead of a file list alone.

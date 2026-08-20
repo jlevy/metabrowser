@@ -24,6 +24,15 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
 
 let sectionSequence = 0;
 
+const SETTINGS = /** @type {Record<string, number>} */ (
+  /** @type {{METABROWSER_SETTINGS?: Record<string, number>}} */ (globalThis)
+    .METABROWSER_SETTINGS ?? {}
+);
+// Server-set, with the same defaults, so a page served by an older
+// build still folds sensibly. 0 disables folding.
+const FOLD_THRESHOLD = Number(SETTINGS.DIFF_FOLD_THRESHOLD ?? 40);
+const FOLD_VISIBLE = Number(SETTINGS.DIFF_FOLD_VISIBLE ?? 20);
+
 /** @param {string} tag @param {string} className @param {string} [text] */
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -60,7 +69,32 @@ function renderHunk(hunk) {
   );
   let oldLine = Number(hunk.old_start);
   let newLine = Number(hunk.new_start);
-  for (const line of /** @type {Record<string, unknown>[]} */ (hunk.lines)) {
+  const lines = /** @type {Record<string, unknown>[]} */ (hunk.lines);
+  // Index the contiguous runs of changed lines first, so each line knows
+  // whether it belongs to a run long enough to fold and where it sits
+  // within it. Folding is per run, not per hunk: a hunk may hold a large
+  // rewrite beside ordinary edits, and only the rewrite should collapse.
+  const runIndex = new Array(lines.length).fill(-1);
+  const runLength = new Array(lines.length).fill(0);
+  for (let start = 0; start < lines.length; ) {
+    if (String(lines[start].op) === "context") {
+      start += 1;
+      continue;
+    }
+    let end = start;
+    while (end < lines.length && String(lines[end].op) !== "context") {
+      end += 1;
+    }
+    for (let i = start; i < end; i += 1) {
+      runIndex[i] = i - start;
+      runLength[i] = end - start;
+    }
+    start = end;
+  }
+
+  /** @type {HTMLElement | null} The group hidden lines are appended to. */
+  let foldGroup = null;
+  for (const [index, line] of lines.entries()) {
     const op = String(line.op);
     const row = el("div", `diff-line diff-line-${op}`);
     const oldNumber = el("span", "diff-line-number", op === "add" ? "" : String(oldLine));
@@ -72,7 +106,17 @@ function renderHunk(hunk) {
       row.append(el("span", "diff-line-no-newline", "⏎ absent"));
       row.title = "No newline at end of file";
     }
-    section.append(row);
+    const folds = FOLD_THRESHOLD > 0 && runLength[index] > FOLD_THRESHOLD;
+    if (folds && runIndex[index] === FOLD_VISIBLE) {
+      // The break: an expander stating exactly how many lines it holds.
+      const hidden = runLength[index] - FOLD_VISIBLE;
+      foldGroup = el("div", "diff-fold-group diff-fold-collapsed");
+      section.append(renderFoldControl(foldGroup, hidden), foldGroup);
+    }
+    (folds && runIndex[index] >= FOLD_VISIBLE ? (foldGroup ?? section) : section).append(row);
+    if (runIndex[index] === runLength[index] - 1) {
+      foldGroup = null;
+    }
     if (op !== "add") {
       oldLine += 1;
     }
@@ -81,6 +125,47 @@ function renderHunk(hunk) {
     }
   }
   return section;
+}
+
+/**
+ * The fold expander: the tree's disclosure vocabulary on a full-width
+ * row, stating the count it holds so the reader knows what is hidden.
+ *
+ * @param {HTMLElement} group
+ * @param {number} hidden
+ * @returns {HTMLElement}
+ */
+function renderFoldControl(group, hidden) {
+  const control = el("button", "diff-fold-control");
+  control.setAttribute("type", "button");
+  control.setAttribute("aria-expanded", "false");
+  const chevron = el("span", "diff-fold-chevron");
+  const svg = shellIcon("toggle");
+  if (svg) {
+    chevron.innerHTML = svg;
+  } else {
+    chevron.textContent = "›";
+  }
+  const label = el(
+    "span",
+    "diff-fold-label",
+    `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
+  );
+  control.append(chevron, label);
+  let expanded = false;
+  control.addEventListener("click", (event) => {
+    // The bar above owns clicks on the file section; a fold is its own
+    // control and must not also collapse the whole file.
+    event.stopPropagation();
+    expanded = !expanded;
+    control.setAttribute("aria-expanded", String(expanded));
+    control.classList.toggle("expanded", expanded);
+    group.classList.toggle("diff-fold-collapsed", !expanded);
+    label.textContent = expanded
+      ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
+      : `${hidden} more changed line${hidden === 1 ? "" : "s"}`;
+  });
+  return control;
 }
 
 /**

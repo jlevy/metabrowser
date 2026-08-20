@@ -86,10 +86,17 @@ class FakeElement {
 
   click() {
     // Bubbles like the real event: handlers up the ancestor chain all
-    // see the original target.
-    for (let node = this; node; node = node.parentNode) {
+    // see the original target, and any of them can stop it.
+    let stopped = false;
+    const event = {
+      target: this,
+      stopPropagation() {
+        stopped = true;
+      },
+    };
+    for (let node = this; node && !stopped; node = node.parentNode) {
       for (const handler of node.listeners.get("click") ?? []) {
-        handler({ target: this });
+        handler(event);
       }
     }
   }
@@ -245,6 +252,36 @@ async function main() {
   };
   mountDiffView(many, twoFiles);
   check("change sets keep the summary", many.find("diff-summary").length === 1);
+
+  // A long contiguous run folds behind an expander; ordinary runs do not.
+  const longDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
+  const longHunk = longDoc.patches.f1.hunks[0];
+  const addedLines = [];
+  for (let i = 0; i < 60; i += 1) {
+    addedLines.push({ op: "add", text: `line ${i}` });
+  }
+  longHunk.lines = [{ op: "context", text: "keep" }, ...addedLines];
+  longHunk.old_count = 1;
+  longHunk.new_count = 61;
+  const folded = new FakeElement("div");
+  mountDiffView(folded, longDoc);
+  const control = folded.find("diff-fold-control")[0];
+  check("a long run renders one expander", folded.find("diff-fold-control").length === 1);
+  check("the expander states the hidden count", control.text().includes("40 more changed lines"));
+  const group = folded.find("diff-fold-group")[0];
+  check("hidden lines start collapsed", group.classList.contains("diff-fold-collapsed"));
+  check("the visible head stays outside the group", folded.find("diff-line").length === 61);
+  check("the group holds exactly the surplus", group.find("diff-line").length === 40);
+  const sectionBody = folded.find("diff-file-body")[0];
+  control.click();
+  check("expanding reveals the group", !group.classList.contains("diff-fold-collapsed"));
+  check(
+    "expanding does not also collapse the file",
+    !sectionBody.classList.contains("diff-file-body-collapsed"),
+  );
+  control.click();
+  check("collapsing hides it again", group.classList.contains("diff-fold-collapsed"));
+  check("short runs do not fold", container.find("diff-fold-control").length === 0);
 
   // The no-newline marker is visible, not silently dropped.
   const noNewline = new FakeElement("div");

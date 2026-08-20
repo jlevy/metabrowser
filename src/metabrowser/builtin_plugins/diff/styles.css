@@ -178,6 +178,41 @@
   user-select: none;
 }
 
+/* Fold expander: the tree's disclosure vocabulary on a full-width row,
+   at row height, hovering with the shared token like every other
+   clickable row. */
+.metabrowser-diff-host .diff-fold-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: var(--ui-row-height);
+  padding: 0 10px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--highlight-bg);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+.metabrowser-diff-host .diff-fold-control:hover {
+  background: var(--hover-bg);
+}
+
+.metabrowser-diff-host .diff-fold-chevron {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.metabrowser-diff-host .diff-fold-collapsed {
+  display: none;
+}
+
 .metabrowser-diff-host .diff-availability {
   padding: 10px 12px;
   color: var(--muted);
