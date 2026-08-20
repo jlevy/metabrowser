@@ -1069,6 +1069,51 @@ function treeRootHtml(content) {
   return `<div class="tree-root" role="tree" aria-label="Files">${content}</div>`;
 }
 
+// Container kinds by extension, injected by the server from the loaded
+// plugin manifests (arch-nav-containers.md). A file whose extension is
+// listed plays the folder-like role in addition to its own.
+var CONTAINER_EXTS = window.METABROWSER_CONTAINER_EXTS || {};
+
+function containerForNode(node) {
+  var name = String(node?.name || "");
+  var dot = name.lastIndexOf(".");
+  if (dot <= 0) {
+    return null;
+  }
+  return CONTAINER_EXTS[name.slice(dot).toLowerCase()] || null;
+}
+
+// Child entries of a container render as ordinary item-like rows: the
+// same selection path, the same keyboard model, no new machinery.
+function renderContainerChildren(rows, options) {
+  var level = options.level;
+  var parts = [];
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var labelId = treeDomId("tree-label", `container-child:${row.path}`);
+    var attributes = treeItemAttributes({
+      kind: "file",
+      path: row.path,
+      level: level,
+      position: i + 1,
+      setSize: rows.length,
+      selected: currentPath === row.path,
+      labelId: labelId,
+    });
+    parts.push(
+      `<div class="tree-item tree-file tree-container-child${row.muted ? " tree-item-muted" : ""}"${attributes} data-action="select" data-path="${esc(row.path)}" data-tip-type="file" data-tip-name="${esc(row.name)}">`,
+      row.badge
+        ? `<span class="tree-container-badge" aria-hidden="true">${esc(row.badge)}</span>`
+        : '<span class="tree-item-icon"></span>',
+      `<span class="tree-item-name" id="${labelId}">`,
+      esc(row.name),
+      "</span>",
+      "</div>",
+    );
+  }
+  return parts.join("");
+}
+
 function treeItemAttributes(options) {
   var identity =
     options.kind === "page" ? `page:${options.pageId}` : `${options.kind}:${options.path || ""}`;
@@ -1278,8 +1323,28 @@ function renderTreeNodes(nodes, isRoot, options) {
         selected: currentPath === node.path,
         labelId: fileLabelId,
       });
+      // A file whose kind declares the container capability is
+      // folder-like too (arch-nav-containers.md): it keeps its file
+      // identity and views, and gains a chevron that discloses the
+      // entries inside it, fetched on first expand.
+      var container = containerForNode(node);
+      var containerGroupId = container ? treeDomId("tree-group", `container:${node.path}`) : "";
+      if (container) {
+        fileAttributes = treeItemAttributes({
+          kind: "file",
+          path: node.path,
+          level: level,
+          position: position,
+          setSize: setSize,
+          selected: currentPath === node.path,
+          labelId: fileLabelId,
+          expanded: false,
+          ownedGroupId: containerGroupId,
+        });
+      }
       parts.push(
-        `<div class="tree-item tree-file${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
         '">',
@@ -1295,6 +1360,11 @@ function renderTreeNodes(nodes, isRoot, options) {
         sizeHtml(node.size, "tree-item-size"),
         "</div>",
       );
+      if (container) {
+        parts.push(
+          `<div class="tree-children" id="${containerGroupId}" role="group" style="display:none"></div>`,
+        );
+      }
     }
   }
   if (hidden > 0) {
@@ -2052,6 +2122,65 @@ async function toggleTreeFolder(row, options) {
   return row;
 }
 
+// Container expansion mirrors lazy folder expansion: fetch children on
+// first open, then toggle visibility. Failures state themselves in the
+// group rather than leaving an empty box.
+async function toggleTreeContainer(row) {
+  var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (!children?.classList.contains("tree-children")) {
+    return row;
+  }
+  var expanded = row.getAttribute("aria-expanded") === "true";
+  if (expanded) {
+    row.setAttribute("aria-expanded", "false");
+    row.classList.add("collapsed");
+    row.classList.remove("expanded");
+    children.style.display = "none";
+    synchronizeTreeNow();
+    return row;
+  }
+  row.setAttribute("aria-expanded", "true");
+  row.classList.add("expanded");
+  row.classList.remove("collapsed");
+  children.style.display = "block";
+  if (!children.dataset.loaded) {
+    children.innerHTML =
+      '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
+      '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
+    var level = Number(row.dataset.treeLevel || "1") + 1;
+    try {
+      var payload = await window.metabrowser.fetchPluginData(
+        row.dataset.containerPlugin,
+        row.dataset.containerChildren,
+        { path: row.dataset.path || "" },
+      );
+      var rows = Array.isArray(payload?.children) ? payload.children : [];
+      children.innerHTML = rows.length
+        ? renderContainerChildren(rows, { level: level })
+        : '<div class="tree-empty-note">No entries in this file.</div>';
+      children.dataset.loaded = "1";
+    } catch (_error) {
+      children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
+    }
+    applyTreeFilters();
+  }
+  synchronizeTreeNow();
+  return row;
+}
+
+// The keyboard's one disclosure entry point. Folders and container
+// files both expand through it, each by its own path, so the navigation
+// module never asks what kind of row it is holding.
+function setRowExpanded(row, expanded) {
+  if (!row.dataset.containerChildren) {
+    return setFolderExpanded(row, expanded);
+  }
+  if (row.getAttribute("aria-expanded") === String(expanded)) {
+    return undefined;
+  }
+  return toggleTreeContainer(row);
+}
+
 function mountNextTreePage(row) {
   var pageId = row.dataset.pageId;
   var page = pendingTreePages.get(pageId);
@@ -2105,6 +2234,11 @@ async function activateTreeRow(row, options) {
   if (action === "select" && row.dataset.path) {
     setSelectedPath(row.dataset.path);
     void navigateToPath(row.dataset.path);
+    // A container file is one target like a folder row: opening it also
+    // discloses what is inside it.
+    if (row.dataset.containerChildren) {
+      return toggleTreeContainer(row);
+    }
   }
   return row;
 }
@@ -2136,6 +2270,9 @@ async function activateTreeRowFromKeyboard(row, options) {
   }
   if (action === "page-more") {
     return mountNextTreePage(row);
+  }
+  if (row.dataset.containerChildren) {
+    return toggleTreeContainer(row);
   }
   return row;
 }
@@ -6449,7 +6586,7 @@ function initKeyboardInfrastructure() {
     container: treePane,
     document: document,
     navigate: openTreeRow,
-    setFolderExpanded: setFolderExpanded,
+    setFolderExpanded: setRowExpanded,
     shortcuts: shortcutRegistry,
   });
   applicationFocusListener = (event) => {

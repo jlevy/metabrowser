@@ -397,6 +397,18 @@ so they cannot drift.
 Shift-activation applies the same open or close direction recursively, while still
 selecting the folder and opening Overview.
 
+### Container Rows
+
+A file whose kind declares the container capability keeps its file identity — icon,
+name, size, selection — and additionally leads with the tree’s disclosure chevron in the
+same 16px alignment box a folder uses, so names stay aligned at every indent.
+Its children are ordinary rows carrying a one-letter change badge in place of the file
+icon. Clicking is one gesture, as on a folder row: it opens the file *and* toggles its
+children. The keyboard splits them the same way, and every disclosure affordance in the
+tree — ARIA state, arrow keys, filtering — asks whether a row owns a child group, never
+what kind of row it is.
+See [nav containers](project/architecture/arch-nav-containers.md).
+
 ### Section Disclosure Headers
 
 Use the section-disclosure primitive when a labelled section may hide its body without

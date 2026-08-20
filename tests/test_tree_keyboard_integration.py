@@ -94,7 +94,11 @@ def test_pointer_fuses_open_and_toggle_while_keyboard_splits_them() -> None:
     assert "MetabrowserTreeKeyboardNavigation.create" in init
     assert "activate: activateTreeRowFromKeyboard" in init
     assert "navigate: openTreeRow" in init
-    assert "setFolderExpanded: setFolderExpanded" in init
+    # Disclosure routes through one capability-aware entry point, so the
+    # navigation module never asks whether a row is a folder.
+    assert "setFolderExpanded: setRowExpanded" in init
+    assert "function setRowExpanded" in source
+    assert "toggleTreeContainer(row)" in source
 
     # Arrow-driven opening replaces the route. Pushing one entry per row would
     # bury the reader's entry point under the rows they skimmed past.

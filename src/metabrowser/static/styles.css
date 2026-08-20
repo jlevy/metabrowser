@@ -4012,6 +4012,33 @@ pre.code-block code.hljs {
 
 /* ── Tree expand/collapse indicator ──────────────────────────── */
 
+/* Container rows: a file that is also folder-like. Its chevron sits in
+   the same 16px alignment box a folder's does, so names line up at every
+   indent level; its children carry a kind badge in place of an icon. */
+.tree-container > .tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  margin: 0 2px;
+  flex: none;
+}
+.tree-container-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-bold);
+}
+.tree-empty-note {
+  padding: 2px 12px 2px 28px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
 /* Shared toggle chevron (used by tree folders and tally tree) */
 .toggle-chevron {
   width: 12px;

@@ -6,6 +6,14 @@ All notable changes to Metabrowser are documented here.
 
 Diff rendering:
 
+- **Patch and diff files expand in the navigation tree.** A `.patch` or `.diff` file
+  keeps its own row and views and gains a chevron: expanding lists the files it changes,
+  each with its change indicator, and selecting one opens just that file’s diff at its
+  own URL (`/view/changes.patch/src/app.py`). Keyboard navigation, filtering, and
+  selection work exactly as they do for folders, because disclosure is now a capability
+  any row can declare rather than something only directories have.
+  Plugins declare it in one manifest line, so archives and pull-request mirrors get the
+  same affordance without new tree machinery.
 - `.patch` and `.diff` files now open as rendered diffs: a change summary, per-file
   sections with GitHub-style indicators (renames with the old path, mode changes, type
   changes such as file to symlink, binary), and numbered unified hunks.

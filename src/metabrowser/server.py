@@ -827,6 +827,7 @@ async def index(_request: Request) -> HTMLResponse:
     # duplicating constants in the source.
     settings_block = (
         f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
+        f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
     repository_context_block = (
@@ -1618,11 +1619,20 @@ def _file_unavailable_response(subpath: str, target: Path | None) -> JSONRespons
 async def _api_file_impl(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
     target = _safe_path(subpath)
-    if target is None:
+    if target is None or (target.exists() and not target.is_dir() and not target.is_file()):
+        # Before declaring the path unavailable: a missing path whose
+        # nearest file ancestor is a container kind is that container's
+        # virtual child. Classification reads the file, so off the loop.
+        container = await asyncio.to_thread(_resolve_container_child, subpath)
+        if container is not None:
+            return container
         return _file_unavailable_response(subpath, target)
     if target.is_dir():
         return await _api_folder_envelope(subpath, target)
     if not target.is_file():
+        container = await asyncio.to_thread(_resolve_container_child, subpath)
+        if container is not None:
+            return container
         return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
@@ -2592,6 +2602,107 @@ def _classify_with_plugins(
     if plugin_kind is not None:
         return plugin_kind
     return classify_file_kind(target, ext, adapter)
+
+
+def _container_kinds() -> dict[str, dict[str, str]]:
+    """Kinds whose files are folder-like containers in the tree.
+
+    Maps kind id -> {"plugin": name, "children": data-hook route}. Built
+    from loaded plugin manifests; the shell and the /api/file container
+    resolution below both consume it, so the capability has exactly one
+    source of truth.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for plugin in _LOADED_PLUGINS:
+        for rule in plugin.manifest.kind:
+            if rule.container is not None:
+                out[rule.id] = {
+                    "plugin": plugin.name,
+                    "children": rule.container.children,
+                }
+    return out
+
+
+def _container_exts() -> dict[str, dict[str, str]]:
+    """Extension -> container info, for the tree's row affordance.
+
+    Only ext-matched kinds project here: a kind matched by content
+    sniffing cannot be recognized from a bare tree row. Such kinds still
+    resolve as containers server-side; their rows simply lack the
+    chevron until selected.
+    """
+    kinds = _container_kinds()
+    out: dict[str, dict[str, str]] = {}
+    for plugin in _LOADED_PLUGINS:
+        for rule in plugin.manifest.kind:
+            if rule.id not in kinds:
+                continue
+            exts = [rule.match.ext] if rule.match.ext else (rule.match.exts or [])
+            for ext in exts:
+                if ext:
+                    out[ext] = {"kind": rule.id, **kinds[rule.id]}
+    return out
+
+
+# Deeper nesting is a malformed or adversarial URL, not a real child:
+# today's containers expose one virtual level (a change entry's path),
+# and the walk must stay bounded on the request path.
+_CONTAINER_MAX_DEPTH = 16
+
+
+def _resolve_container_child(subpath: str) -> JSONResponse | None:
+    """Resolve ``<container-file>/<inner>`` to a file envelope.
+
+    Walks the requested path's ancestors from longest to shortest,
+    bounded, through the same safe-path gate as every other read. The
+    nearest existing ancestor decides: a directory means the request was
+    an ordinary missing file; a file whose kind declares the container
+    capability owns everything beneath it, and its views render the
+    virtual path. Returns None when no container claims the path.
+    """
+    parts = subpath.split("/")
+    if len(parts) < 2 or len(parts) > _CONTAINER_MAX_DEPTH:
+        return None
+    kinds = _container_kinds()
+    if not kinds:
+        return None
+    for cut in range(len(parts) - 1, 0, -1):
+        prefix = "/".join(parts[:cut])
+        target = _safe_path(prefix)
+        if target is None:
+            continue
+        if target.is_dir():
+            # A real directory ancestor: the leaf is genuinely missing.
+            return None
+        if not target.is_file():
+            # Nothing at this depth; keep walking toward the root.
+            continue
+        artifact = ArtifactPath(target)
+        ext = artifact.logical_ext
+        kind = _classify_with_plugins(target, ext)
+        info = kinds.get(kind)
+        if info is None:
+            return None
+        inner = "/".join(parts[cut:])
+        return JSONResponse(
+            {
+                "type": "text",
+                "kind": kind,
+                "views": _views_for_kind(kind),
+                "path": subpath,
+                "container": prefix,
+                "container_inner": inner,
+                "ext": ext,
+                "size": 0,
+                "mtime_hash": file_mtime_hash(target),
+                "content": "",
+                "content_offset": 0,
+                "content_bytes": 0,
+                "bytes_read": 0,
+                "content_truncated": False,
+            }
+        )
+    return None
 
 
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:

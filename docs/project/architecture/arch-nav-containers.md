@@ -1,8 +1,8 @@
 # Nav Containers: Item-Like and Folder-Like Roles
 
-**Status:** Design.
-Directories already behave this way; the generalization is not built.
-The first adopter is the diff work in the
+**Status:** Implemented for the first two container kinds (directories and patch files);
+archives and PR mirrors are planned.
+The diff plugin is the first adopter, through the
 [general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md).
 
 ## The two roles
@@ -46,6 +46,39 @@ The inner entries are ordinary item-like objects: a file change carries the diff
 family; a zip member is just a file whose kind is detected as usual.
 No new rendering machinery — the same envelope of view descriptors, mounted lazily as
 tabs, with the container choosing the context default (Diff inside a comparison).
+
+## The mechanism
+
+A kind declares the folder-like role in its manifest:
+
+```toml
+[[kind]]
+id = "diff"
+match = { ext = ".patch" }
+container = { children = "children" }
+```
+
+`container.children` names one of the plugin’s own `[[data_hook]]` routes, validated at
+manifest load; the hook returns `{children: [{name, path, badge?, muted?}]}` for
+`?path=<container file>`. Three consequences follow, and no other machinery is added:
+
+- **The tree** renders such a file with a chevron and an empty child group, fetches the
+  children on first expand, and renders them as ordinary item-like rows.
+  Disclosure is a capability throughout: the ARIA synchronizer and the arrow-key
+  handlers ask whether a row owns a child group, never whether it is a folder.
+- **The server** resolves `<container-file>/<inner>` by walking the requested path’s
+  ancestors — bounded, through the same safe-path gate — and letting the nearest
+  existing *file* ancestor of a container kind claim everything beneath it.
+  A real directory ancestor means the leaf is genuinely missing, so ordinary 404s are
+  unchanged.
+- **The views** of that kind render the virtual path, because the envelope carries the
+  same `kind` plus `container` and `container_inner`. The diff plugin’s document hook
+  answers a virtual path with the change set narrowed to that file, so the renderer
+  needs no notion of containment at all.
+
+One row per inner path: a patch spells a type change as delete-plus-add at one path, and
+two rows sharing a virtual path would be two rows opening the same thing, so the
+children hook groups by path and the narrowed document carries both halves.
 
 ## What stays uniform
 

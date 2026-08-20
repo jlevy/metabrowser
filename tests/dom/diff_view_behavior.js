@@ -227,6 +227,25 @@ async function main() {
   check("mode change renders the note", chmod.text().includes("No content changes."));
   check("mode transition is visible", chmod.text().includes("100644→100755"));
 
+  // A single-file document (a container child) skips the summary: its
+  // bar already carries the name and stats.
+  const single = new FakeElement("div");
+  mountDiffView(single, byName.get("modified-with-heading"));
+  check("one-file documents omit the summary line", single.find("diff-summary").length === 0);
+  check("one-file documents still render their bar", single.find("diff-file-bar").length === 1);
+  const many = new FakeElement("div");
+  const manyDoc = byName.get("modified-with-heading");
+  const twoFiles = {
+    ...manyDoc,
+    manifest: {
+      ...manyDoc.manifest,
+      files: [manyDoc.manifest.files[0], { ...manyDoc.manifest.files[0], id: "f2" }],
+      totals: { ...manyDoc.manifest.totals, files: 2 },
+    },
+  };
+  mountDiffView(many, twoFiles);
+  check("change sets keep the summary", many.find("diff-summary").length === 1);
+
   // The no-newline marker is visible, not silently dropped.
   const noNewline = new FakeElement("div");
   mountDiffView(noNewline, byName.get("no-newline-marker"));

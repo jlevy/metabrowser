@@ -217,20 +217,25 @@ export function mountDiffView(container, document_) {
   const plus = totals.additions === null ? "?" : String(totals.additions);
   const minus = totals.deletions === null ? "?" : String(totals.deletions);
   const exactness = totals.exact ? "" : " (estimated)";
-  const summary = el("div", "diff-summary");
-  summary.append(
-    el(
-      "span",
-      "diff-summary-files",
-      `${totals.files} changed ${Number(totals.files) === 1 ? "file" : "files"}`,
-    ),
-    el("span", "diff-stat-add", `+${plus}`),
-    el("span", "diff-stat-del", `−${minus}`),
-  );
-  if (exactness) {
-    summary.append(el("span", "diff-summary-note", exactness.trim()));
+  // A single-file document is one file's diff — the bar already carries
+  // its name and stats, so a one-line summary above it would only repeat
+  // itself. Change sets keep the summary.
+  if (Number(totals.files) !== 1) {
+    const summary = el("div", "diff-summary");
+    summary.append(
+      el(
+        "span",
+        "diff-summary-files",
+        `${totals.files} changed ${Number(totals.files) === 1 ? "file" : "files"}`,
+      ),
+      el("span", "diff-stat-add", `+${plus}`),
+      el("span", "diff-stat-del", `−${minus}`),
+    );
+    if (exactness) {
+      summary.append(el("span", "diff-summary-note", exactness.trim()));
+    }
+    root.append(summary);
   }
-  root.append(summary);
   for (const change of manifest.files) {
     root.append(renderFileSection(change, patches[String(change.id)]));
   }

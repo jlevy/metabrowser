@@ -1491,6 +1491,8 @@ declare global {
       show(html: string, event: MouseEvent): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
+    /** Container kinds by extension; see arch-nav-containers.md. */
+    METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
       FILE_TYPE_REGISTRY?: {
         schema: "file-type-registry-v1";

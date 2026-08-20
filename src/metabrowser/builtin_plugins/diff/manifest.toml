@@ -8,15 +8,21 @@ extra_styles = ["styles.css"]
 # Patch files are the no-repository diff source: the server parses them
 # into File Diff Format and the view renders that document — the same
 # model every other comparison surface will feed the same renderer.
+# The container table makes patch files folder-like in the nav tree
+# (arch-nav-containers.md): expand for the change entries, outer-click
+# for the whole change set, inner-click for one file's diff at the
+# virtual path <file>/<inner> — resolved by the same document hook.
 [[kind]]
 id = "diff"
 match = { ext = ".patch" }
 priority = 0
+container = { children = "children" }
 
 [[kind]]
 id = "diff"
 match = { ext = ".diff" }
 priority = 0
+container = { children = "children" }
 
 [[view]]
 kind = "diff"
@@ -26,8 +32,15 @@ default = true
 container_class = "content-body metabrowser-diff-host"
 render_runtime = "client"
 
-# Returns the parsed, hydrated ChangeSetDocument for ?path=<file>.
+# Returns the parsed, hydrated ChangeSetDocument for ?path=<file>,
+# or the document narrowed to one change for ?path=<file>/<inner>.
 [[data_hook]]
 route = "document"
 sidekick = "metabrowser.builtin_plugins.diff.sidekick:document_handler"
+methods = ["GET"]
+
+# Nav-tree child rows for the container affordance.
+[[data_hook]]
+route = "children"
+sidekick = "metabrowser.builtin_plugins.diff.sidekick:children_handler"
 methods = ["GET"]
