@@ -76,6 +76,11 @@ submodule’s content is its gitlink oid.
 `availability` is a declared gap in applicability, never an empty body: `ready`,
 `deferred`, `binary`, `too_large`, `timed_out`, `failed`, `stale`, `unsupported`.
 
+Line totals count text lines only, following git’s shortstat semantics: a binary change
+carries null per-file counts, contributes nothing, and does not make `totals.exact`
+false. `exact: false` means some parseable text change is uncounted — unhydrated,
+truncated, or unsupported.
+
 ### Patches
 
 A `FilePatch` is hunks of line records.

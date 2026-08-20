@@ -100,7 +100,8 @@ def test_binary_files_are_elided_not_failed() -> None:
     change = document.manifest.files[0]
     assert change.binary and change.availability is Availability.binary
     assert "f1" not in document.patches
-    assert not document.manifest.totals.exact
+    # Binary changes contribute no lines; line totals stay exact.
+    assert document.manifest.totals.exact
 
 
 def test_no_newline_marker_attaches_to_previous_line() -> None:

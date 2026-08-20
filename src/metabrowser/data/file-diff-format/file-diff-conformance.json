@@ -1451,7 +1451,7 @@
           "totals": {
             "additions": 0,
             "deletions": 0,
-            "exact": false,
+            "exact": true,
             "files": 1
           },
           "truncated": false

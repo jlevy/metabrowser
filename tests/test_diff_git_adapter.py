@@ -72,7 +72,9 @@ def test_manifest_covers_the_change_taxonomy(repo: tuple[Path, str, str]) -> Non
     assert typechange.new is not None and typechange.new.entry_type.value == "symlink"
     binary = by_path["logo.bin"]
     assert binary.binary and binary.availability is Availability.binary
-    assert manifest.totals.exact is False  # the binary file defers exact totals
+    # Binary changes contribute no lines and leave line totals exact.
+    assert manifest.totals.exact is True
+    assert binary.additions is None and binary.deletions is None
     pure_rename = by_path["renamed-steady.txt"]
     assert pure_rename.kind is ChangeKind.renamed
     assert pure_rename.similarity == 100

@@ -205,8 +205,9 @@ class GitDiffSource:
                 additions = deletions = None
                 exact = False
             elif binary:
+                # Binary changes contribute no lines; totals stay exact
+                # (git's shortstat semantics). Per-file counts are null.
                 availability = Availability.binary
-                exact = False
             else:
                 availability = Availability.ready
                 total_add += additions or 0

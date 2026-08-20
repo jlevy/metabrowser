@@ -376,8 +376,10 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
             old_path = old_path if old_path is not None else known
             new_path = new_path if new_path is not None else known
         elif section.binary:
+            # Line totals count text lines; a binary change contributes
+            # none and does not make them estimates — git's shortstat
+            # reports such totals plainly.
             availability = Availability.binary
-            exact = False
         else:
             availability = Availability.ready
             total_add += additions
