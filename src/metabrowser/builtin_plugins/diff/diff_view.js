@@ -91,21 +91,24 @@ function renderHunk(hunk) {
 function renderFileBar(change, toggleId, bodyId) {
   const { letter, label, notes } = fileChangeLabel(change);
   const bar = el("div", "diff-file-bar");
-  const toggle = el("button", "diff-file-toggle section-disclosure-trigger");
+  const toggle = el(
+    "button",
+    "diff-file-toggle section-disclosure-trigger section-disclosure-leading",
+  );
   toggle.setAttribute("type", "button");
   toggle.setAttribute("id", toggleId);
   toggle.setAttribute("aria-controls", bodyId);
   toggle.setAttribute("aria-expanded", "true");
   toggle.append(el("span", `diff-file-kind diff-file-kind-${String(change.kind)}`, letter));
   toggle.append(el("span", "diff-file-path", label));
-  for (const note of notes) {
-    toggle.append(el("span", "diff-file-note", note));
-  }
   if (change.additions !== null && change.additions !== undefined) {
     const stats = el("span", "diff-file-stats");
     stats.append(el("span", "diff-stat-add", `+${change.additions}`));
     stats.append(el("span", "diff-stat-del", `−${change.deletions}`));
     toggle.append(stats);
+  }
+  for (const note of notes) {
+    toggle.append(el("span", "diff-file-note", note));
   }
   bar.append(toggle);
 
@@ -143,8 +146,15 @@ function renderFileSection(change, patch) {
   body.setAttribute("id", bodyId);
   section.append(bar, body);
 
+  // The whole bar is one activation surface, like a tree row; the
+  // button stays the semantic trigger for focus and keyboard, whose
+  // synthesized click bubbles here. Only the copy control opts out.
   let expanded = true;
-  toggle.addEventListener("click", () => {
+  bar.addEventListener("click", (event) => {
+    const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
+    if (typeof origin?.closest === "function" && origin.closest("[data-copy-path]")) {
+      return;
+    }
     expanded = !expanded;
     toggle.setAttribute("aria-expanded", String(expanded));
     body.classList.toggle("diff-file-body-collapsed", !expanded);

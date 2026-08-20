@@ -85,9 +85,25 @@ class FakeElement {
   }
 
   click() {
-    for (const handler of this.listeners.get("click") ?? []) {
-      handler({ target: this });
+    // Bubbles like the real event: handlers up the ancestor chain all
+    // see the original target.
+    for (let node = this; node; node = node.parentNode) {
+      for (const handler of node.listeners.get("click") ?? []) {
+        handler({ target: this });
+      }
     }
+  }
+
+  closest(selector) {
+    for (let node = this; node; node = node.parentNode) {
+      if (selector.startsWith("[") && node.attributes.has(selector.slice(1, -1))) {
+        return node;
+      }
+      if (selector.startsWith(".") && node.classList.contains(selector.slice(1))) {
+        return node;
+      }
+    }
+    return null;
   }
 
   *walk() {
@@ -138,12 +154,14 @@ async function main() {
   check("context rows carry both numbers", JSON.stringify(firstNumbers) === '["3","3"]');
   check("hunk heading renders", container.text().includes("def f():"));
 
-  // The per-file bar: a section-disclosure trigger plus a copy control.
+  // The per-file bar: a leading-chevron disclosure trigger plus a
+  // copy control, with the stat pair beside the filename.
   const toggle = container.find("diff-file-toggle")[0];
   check(
     "bar composes the disclosure primitive",
     toggle.classList.contains("section-disclosure-trigger"),
   );
+  check("chevron leads the title", toggle.classList.contains("section-disclosure-leading"));
   check("sections start expanded", toggle.getAttribute("aria-expanded") === "true");
   const body = container.find("diff-file-body")[0];
   check(
@@ -153,6 +171,11 @@ async function main() {
   const copy = container.find("diff-file-copy")[0];
   check("copy control rides the shell delegation", Boolean(copy.getAttribute("data-copy-path")));
   check("copy control is an icon button", copy.classList.contains("icon-btn"));
+  check(
+    "stats sit beside the filename",
+    toggle.children[1].classList.contains("diff-file-path") &&
+      toggle.children[2].classList.contains("diff-file-stats"),
+  );
   const stats = container.find("diff-file-stats")[0];
   check(
     "stat pair renders add then del",
@@ -160,13 +183,21 @@ async function main() {
       stats.children[1].classList.contains("diff-stat-del"),
   );
 
-  // Toggling collapses without disposing, and toggling back restores.
-  toggle.click();
-  check("collapse hides the body", body.classList.contains("diff-file-body-collapsed"));
+  // The whole bar is one activation surface: bar clicks toggle, the
+  // button's own (bubbled) click toggles, the copy control does not.
+  const bar = container.find("diff-file-bar")[0];
+  bar.click();
+  check("bar click collapses the body", body.classList.contains("diff-file-body-collapsed"));
   check("collapse flips aria-expanded", toggle.getAttribute("aria-expanded") === "false");
   check("collapse keeps rows mounted", container.find("diff-line").length === 4);
   toggle.click();
-  check("expand restores the body", !body.classList.contains("diff-file-body-collapsed"));
+  check("trigger click restores the body", !body.classList.contains("diff-file-body-collapsed"));
+  copy.click();
+  check(
+    "copy click does not toggle",
+    !body.classList.contains("diff-file-body-collapsed") &&
+      toggle.getAttribute("aria-expanded") === "true",
+  );
 
   // Disposal removes everything the mount added.
   handle.dispose();

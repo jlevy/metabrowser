@@ -1267,6 +1267,7 @@ body {
 }
 
 .section-disclosure-trigger::after,
+.section-disclosure-trigger.section-disclosure-leading::before,
 .metabrowser-kpress-host .kpress details > summary::after {
   background-color: var(--section-disclosure-chevron-color);
   content: "";
@@ -1280,8 +1281,16 @@ body {
 }
 
 .section-disclosure-trigger[aria-expanded="true"]::after,
+.section-disclosure-trigger.section-disclosure-leading[aria-expanded="true"]::before,
 .metabrowser-kpress-host .kpress details[open] > summary::after {
   transform: rotate(90deg);
+}
+
+/* Leading form: the same mark, before the title instead of after it,
+   for triggers whose content is row data rather than a bare heading
+   (the diff file bar). One mark, one asset, two positions. */
+.section-disclosure-trigger.section-disclosure-leading::after {
+  content: none;
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -4253,6 +4262,7 @@ pre.code-block code.hljs {
   .filter-drawer,
   .filter-drawer-toggle svg,
   .section-disclosure-trigger::after,
+  .section-disclosure-trigger.section-disclosure-leading::before,
   .metabrowser-kpress-host .kpress details > summary::after {
     transition-duration: 1ms;
   }

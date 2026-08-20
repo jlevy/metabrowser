@@ -22,6 +22,7 @@
 }
 
 .metabrowser-diff-host .diff-file-bar {
+  cursor: pointer;
   position: sticky;
   top: 0;
   display: flex;
@@ -75,9 +76,9 @@
   flex: none;
 }
 
-/* Inline change stats: the +N −N pair in the status palette. */
+/* Inline change stats: the +N −N pair in the status palette, beside
+   the filename rather than across the row. */
 .metabrowser-diff-host .diff-file-stats {
-  margin-left: auto;
   display: inline-flex;
   gap: 6px;
   white-space: nowrap;

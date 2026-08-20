@@ -404,9 +404,12 @@ changing the selected file, folder, or top-level view.
 Folder Overview panels use a button inside their visible `h2`; rendered-document
 metadata keeps native `details` and `summary` semantics.
 Both forms place the same gray Lucide chevron immediately after the title with
-`--section-disclosure-chevron-gap`. The mark uses `--section-disclosure-chevron-size` in
-`em`, so it remains proportional to the unchanged local heading typography at every type
-tier. It points right when collapsed and rotates down when expanded.
+`--section-disclosure-chevron-gap`; a trigger whose content is row data rather than a
+bare heading may add `.section-disclosure-leading` to place the identical mark before
+the title instead — one mark, one asset, two positions.
+The mark uses `--section-disclosure-chevron-size` in `em`, so it remains proportional to
+the unchanged local heading typography at every type tier.
+It points right when collapsed and rotates down when expanded.
 
 The title and chevron form one focusable target.
 A button trigger declares `type="button"`, `aria-expanded`, and `aria-controls`; its
@@ -420,13 +423,14 @@ These defaults are not saved as user preferences.
 The diff view’s per-file bar is a third user of the primitive with one deliberate
 difference: its trigger is styled as a filename, not a heading — the shell’s file-path
 typography (`--font-sans`, `--nav-font-size`, `--weight-bold`) — because the title *is*
-a file path.
-The bar keeps everything else: one focusable trigger carrying the chevron, a
-sibling `.icon-btn` copy control on the shell’s `[data-copy-path]` delegation so a
-nested interactive never sits inside the trigger, and sections start expanded.
-Because the trigger’s content is the whole bar — name, notes, then the stat pair pushed
-to the right — its chevron trails the stats at the row’s end rather than sitting against
-the title.
+a file path. The bar keeps everything else: one focusable trigger, a sibling `.icon-btn`
+copy control on the shell’s `[data-copy-path]` delegation so a nested interactive never
+sits inside the trigger, and sections start expanded.
+Its content is left-aligned reading order — leading chevron
+(`.section-disclosure-leading`), kind letter, filename, then the stat pair beside the
+name — and the whole bar is one activation surface, the folder-row rule applied to a
+section header: clicking anywhere on the bar toggles, with only the copy control opting
+out.
 
 ### Inline Change Stats
 
