@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse
 
+from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
 from metabrowser.diff.format import (
@@ -40,17 +41,12 @@ from metabrowser.diff.format import (
 )
 from metabrowser.git.process import GitError
 from metabrowser.git.repo import repo_info
-from metabrowser.plugin_api import resolve_path, served_root
+from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH, resolve_path, served_root
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from starlette.requests import Request
-
-# The container contract exposes one virtual level: a change entry's
-# path. Deeper requests are malformed, and the ancestor walk on a
-# request path must stay bounded.
-_MAX_VIRTUAL_PARTS = 16
 
 _PATCH_EXTS = (".patch", ".diff")
 
@@ -78,7 +74,7 @@ def _resolve_patch(subpath: str) -> tuple[Path, str] | None:
     if direct is not None and direct.is_file():
         return direct, ""
     parts = subpath.split("/")
-    if len(parts) < 2 or len(parts) > _MAX_VIRTUAL_PARTS:
+    if len(parts) < 2:
         return None
     for cut in range(len(parts) - 1, 0, -1):
         prefix = "/".join(parts[:cut])
@@ -92,15 +88,20 @@ def _resolve_patch(subpath: str) -> tuple[Path, str] | None:
             continue
         if not prefix.lower().endswith(_PATCH_EXTS):
             return None
+        if len(parts) - cut > MAX_CONTAINER_INNER_DEPTH:
+            # The bound is on the inner path, measured from the claiming
+            # file — a deeply nested container keeps its full reach.
+            return None
         return target, "/".join(parts[cut:])
     return None
 
 
 def _parse(target: Path) -> ChangeSetDocument:
     # One byte past the cap keeps the parser's own truncation reporting
-    # authoritative: it sees that the input exceeded the bound and says
-    # so in the manifest, rather than this handler inventing a second rule.
-    data = target.read_bytes()[: MAX_PATCH_BYTES + 1]
+    # authoritative; bounding the read itself keeps a multi-GB file from
+    # ever landing in memory on the request path.
+    with target.open("rb") as handle:
+        data = handle.read(MAX_PATCH_BYTES + 1)
     return parse_unified_patch(data)
 
 
@@ -121,15 +122,19 @@ def _narrow_to_path(document: ChangeSetDocument, inner: str) -> ChangeSetDocumen
     if not matches:
         return None
     patches = {c.id: document.patches[c.id] for c in matches if c.id in document.patches}
-    counted = [c for c in matches if c.additions is not None]
+    # Binary changes contribute zero lines exactly, the same rule the
+    # whole document follows; only an uncounted text change (deferred,
+    # unsupported) makes the narrowed totals estimates.
+    counted = [c for c in matches if c.additions is not None or c.binary]
+    exact = len(counted) == len(matches)
     manifest = document.manifest.model_copy(
         update={
             "files": tuple(matches),
             "totals": Totals.model_construct(
                 files=len(matches),
-                additions=sum(c.additions or 0 for c in counted) if counted else None,
-                deletions=sum(c.deletions or 0 for c in counted) if counted else None,
-                exact=len(counted) == len(matches),
+                additions=sum(c.additions or 0 for c in matches) if exact else None,
+                deletions=sum(c.deletions or 0 for c in matches) if exact else None,
+                exact=exact,
             ),
             "truncated": False,
             "cursor": None,
@@ -196,25 +201,30 @@ async def comparison_handler(request: Request) -> JSONResponse:
     try:
         resolved = await source.resolve(intent)
         manifest = await source.manifest(resolved)
-        patches: dict[str, FilePatch] = {}
-        deferred: list[FileChange] = []
-        hydrated = 0
+        projected: list[FileChange] = []
+        hydrate_ids: list[str] = []
         for change in manifest.files:
             if change.availability is not Availability.ready:
-                deferred.append(change)
+                projected.append(change)
                 continue
-            if hydrated >= MAX_HYDRATED_FILES:
-                deferred.append(change.model_copy(update={"availability": Availability.deferred}))
+            if len(hydrate_ids) >= MAX_HYDRATED_FILES:
+                projected.append(change.model_copy(update={"availability": Availability.deferred}))
                 continue
-            patches[change.id] = await source.file_patch(resolved, change.id)
-            deferred.append(change)
-            hydrated += 1
+            projected.append(change)
+            hydrate_ids.append(change.id)
+        # One diff run and one parse for the whole set (review R3): a
+        # commit click costs O(1) subprocesses, not O(files).
+        patches: dict[str, FilePatch] = (
+            await source.file_patches(resolved, hydrate_ids) if hydrate_ids else {}
+        )
+    except DiffSourceError as exc:
+        # The source's own refusals carry user-facing messages: unknown
+        # revision, no such file in the comparison.
+        return _error("diff_comparison", str(exc), 404, path=revision)
     except GitError as exc:
         return _error("diff_comparison", str(exc), 502, path=revision)
-    except ValueError as exc:
-        return _error("diff_comparison", str(exc), 404, path=revision)
 
-    document = _document_from(resolved, manifest, tuple(deferred), patches)
+    document = _document_from(resolved, manifest, tuple(projected), patches)
     return JSONResponse(dump_document(document))
 
 
@@ -237,7 +247,7 @@ def children_handler(request: Request) -> JSONResponse:
     """The change entries of one patch file, as nav-tree child rows."""
     subpath = request.query_params.get("path", "")
     target = resolve_path(subpath)
-    if target is None or not target.is_file():
+    if target is None or not target.is_file() or not subpath.lower().endswith(_PATCH_EXTS):
         return _error("diff_children", "This file is not available.", 404, path=subpath)
     document = _parse(target)
     # One row per path, not per change: a patch file spells a type change

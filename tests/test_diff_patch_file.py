@@ -243,3 +243,79 @@ def test_section_with_no_usable_path_is_dropped_with_a_warning() -> None:
     document = parse_unified_patch(b"diff --git irrecoverable\n")
     assert document.manifest.totals.files == 0
     assert any("skipped" in warning for warning in document.resolved.warnings)
+
+
+def test_reviewed_crash_probes_all_return_values() -> None:
+    """Review finding R1: six probes that once escaped as exceptions.
+
+    Totality is structural now — the final-validation net degrades any
+    unmodelable input to a warning-bearing empty document — but five of
+    the six degrade at section level, keeping their neighbors.
+    """
+    probes = {
+        "junk-similarity": b"diff --git a/x b/x\nsimilarity index junk%\nrename from x\nrename to y\n",
+        "similarity-150": b"diff --git a/x b/x\nsimilarity index 150%\nrename from x\nrename to y\n",
+        "similarity-huge": (
+            b"diff --git a/x b/x\nsimilarity index "
+            + b"9" * 5000
+            + b"%\nrename from x\nrename to y\n"
+        ),
+        "rename-no-similarity": b"diff --git a/x b/y\nrename from x\nrename to y\n",
+        "negative-span": b"--- a/x\n+++ b/x\n@@ --1,0 +0,0 @@\n",
+        "bad-octal-quote": (
+            b'diff --git "a\\9zz" "b\\9zz"\n--- "a\\9zz"\n+++ "b\\9zz"\n@@ -1,1 +1,1 @@\n-a\n+b\n'
+        ),
+    }
+    for name, data in probes.items():
+        document = parse_unified_patch(data)  # must not raise
+        for change in document.manifest.files:
+            assert change.availability.value in ("unsupported", "ready"), name
+
+
+def test_unmodelable_input_degrades_with_a_warning() -> None:
+    """The structural net: junk that slips past section rules becomes an
+    empty, valid document stating why — never an exception."""
+    # A malformed section beside a good one: the good file survives.
+    document = parse_unified_patch(
+        b"diff --git a/ok.txt b/ok.txt\n--- a/ok.txt\n+++ b/ok.txt\n"
+        b"@@ -1,1 +1,1 @@\n-a\n+b\n"
+        b"diff --git a/x b/y\nrename from x\nrename to y\n"
+    )
+    kinds = {c.availability.value for c in document.manifest.files}
+    assert document.manifest.totals.files == 2
+    assert kinds == {"ready", "unsupported"}
+
+
+def test_plain_multifile_unified_diff_splits_per_file() -> None:
+    """Review finding R5: diff -ru output has no diff --git separators;
+    the next file's headers must open a new section, not be eaten as
+    deletion lines of the previous hunk."""
+    document = parse_unified_patch(
+        b"--- a/one.txt\t2026-01-01\n"
+        b"+++ b/one.txt\t2026-01-02\n"
+        b"@@ -1,2 +1,2 @@\n"
+        b" keep\n"
+        b"-old one\n"
+        b"+new one\n"
+        b"--- a/two.txt\t2026-01-01\n"
+        b"+++ b/two.txt\t2026-01-02\n"
+        b"@@ -1,1 +1,1 @@\n"
+        b"-old two\n"
+        b"+new two\n"
+    )
+    files = document.manifest.files
+    assert [c.new.path for c in files if c.new] == ["one.txt", "two.txt"]
+    assert all(c.availability.value == "ready" for c in files)
+    assert document.manifest.totals.additions == 2
+
+
+def test_authoritative_headers_beat_the_diff_git_guess() -> None:
+    """Review finding R12: a filename containing " b/" defeats the
+    diff --git split; the ---/+++ lines are authoritative."""
+    document = parse_unified_patch(
+        b"diff --git a/x b/y b/x b/y\n--- a/x b/y\n+++ b/x b/y\n@@ -1,1 +1,1 @@\n-a\n+b\n"
+    )
+    change = document.manifest.files[0]
+    assert change.old is not None and change.old.path == "x b/y"
+    assert change.new is not None and change.new.path == "x b/y"
+    assert change.availability.value == "ready"

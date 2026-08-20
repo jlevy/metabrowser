@@ -16,6 +16,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 
@@ -47,7 +48,7 @@ _KIND_LETTERS = {
 }
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     typer.echo(f"diff error: {message}", err=True)
     raise typer.Exit(code=2)
 
@@ -64,17 +65,24 @@ def _load_patch_document(root: Path, spec: str) -> ChangeSetDocument:
 
 async def _hydrate_git_document(root: Path, spec: str) -> ChangeSetDocument:
     source = GitDiffSource(root)
-    if ".." in spec:
+    if "..." in spec:
+        # Git's three-dot idiom: compare right against the merge base —
+        # the semantics a pull-request diff uses.
+        left, _, right = spec.partition("...")
+        intent: dict[str, str] = {"left": left, "right": right, "base_policy": "merge_base"}
+    elif ".." in spec:
         left, _, right = spec.partition("..")
-        intent: dict[str, str] = {"left": left, "right": right.lstrip(".")}
+        intent = {"left": left, "right": right}
     else:
         intent = {"revision": spec}
     resolved = await source.resolve(intent)
     manifest = await source.manifest(resolved)
-    patches = {}
-    for change in manifest.files:
-        if change.availability is Availability.ready:
-            patches[change.id] = await source.file_patch(resolved, change.id)
+    ready_ids = [
+        change.id for change in manifest.files if change.availability is Availability.ready
+    ]
+    # One diff run and one parse for every file (review R3); the CLI
+    # hydrates the whole comparison, so the bulk path is the only sane one.
+    patches = await source.file_patches(resolved, ready_ids) if ready_ids else {}
     document = ChangeSetDocument(
         schema="file-diff-v1",
         schema_version=1,
@@ -92,7 +100,6 @@ def _build_document(root: Path, spec: str) -> ChangeSetDocument:
         return asyncio.run(_hydrate_git_document(root, spec))
     except (DiffSourceError, GitError) as exc:
         _fail(str(exc))
-        raise AssertionError from exc  # unreachable; _fail exits
 
 
 def _describe(change: FileChange) -> str:
@@ -228,6 +235,9 @@ def run_diff(
     patch_path: str | None,
     check: bool,
 ) -> None:
+    if fmt == "yaml":
+        # Silence would claim success while printing the wrong format.
+        _fail("--format yaml is not supported in diff mode; use text or json")
     document = _build_document(root, spec)
     if check:
         _check_apply(root, document)

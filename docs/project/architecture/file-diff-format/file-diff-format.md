@@ -22,7 +22,7 @@ documents come from and what a repository context adds.
 
 [`file-diff.schema.json`](../../../../src/metabrowser/data/file-diff-format/file-diff.schema.json)
 is the contract. `metabrowser.diff.format` implements it in Python (Pydantic,
-`extra="forbid"`); `static/diff_model.js` implements it in the browser.
+`extra="forbid"`); `builtin_plugins/diff/diff_model.js` implements it in the browser.
 [`file-diff-conformance.json`](../../../../src/metabrowser/data/file-diff-format/file-diff-conformance.json)
 binds every implementation: each validation case states whether the document is
 acceptable, and both sides must agree exactly.

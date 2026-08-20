@@ -47,6 +47,13 @@ def relativize_path(raw: str | None) -> str | None:
     return _relativize(raw)
 
 
+# The deepest inner path a container may expose beneath its own file,
+# counted from the container, not from the served root. One value for
+# the server's ancestor walk and every plugin's, so the two
+# implementations of this security-relevant rule cannot drift.
+MAX_CONTAINER_INNER_DEPTH = 16
+
+
 def served_root() -> Path:
     """The folder this server is serving.
 
@@ -68,12 +75,13 @@ __all__ = [
     "JsonlParseLimitError",
     "LogEvent",
     "LogParser",
+    "MAX_CONTAINER_INNER_DEPTH",
     "detect_adapter",
     "extract_agent_charts_cached",
     "register_log_adapter",
-    "served_root",
     "register_root_callback",
     "relativize_path",
     "resolve_directory",
     "resolve_path",
+    "served_root",
 ]

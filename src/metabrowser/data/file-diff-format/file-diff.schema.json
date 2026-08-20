@@ -1,255 +1,632 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jlevy/metabrowser/schemas/file-diff.schema.json",
-  "title": "File Diff Format: change-set document",
-  "description": "A comparison between two snapshots: resolved identity, a change-set manifest, and zero or more per-file patches. The authority for the Python (Pydantic) and browser implementations; the conformance corpus binds all implementations to the same acceptance set. Git's model is the reference semantics wherever this document is silent.",
-  "type": "object",
-  "required": ["schema", "schema_version", "resolved", "manifest", "patches"],
-  "additionalProperties": false,
-  "properties": {
-    "schema": { "const": "file-diff-v1" },
-    "schema_version": { "const": 1 },
-    "resolved": { "$ref": "#/$defs/resolvedComparison" },
-    "manifest": { "$ref": "#/$defs/changeSetManifest" },
-    "patches": {
-      "type": "object",
-      "description": "FilePatch by file-change id. A file id absent here is not hydrated; its availability state says why.",
-      "additionalProperties": { "$ref": "#/$defs/filePatch" }
-    }
-  },
   "$defs": {
-    "resolvedComparison": {
-      "type": "object",
-      "required": ["comparison_id", "source", "kind", "base_policy", "left", "right", "options"],
-      "additionalProperties": false,
-      "properties": {
-        "comparison_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Deterministic and self-describing: derivable from source, endpoints, and options, so an evicted comparison can be rebuilt from its id."
-        },
-        "source": {
-          "type": "object",
-          "required": ["name"],
-          "additionalProperties": false,
-          "properties": {
-            "name": { "type": "string", "minLength": 1 },
-            "version": { "type": "string" }
-          }
-        },
-        "kind": { "const": "content" },
-        "base_policy": { "enum": ["direct", "merge_base", "first_parent"] },
-        "left": { "$ref": "#/$defs/snapshotRef" },
-        "right": { "$ref": "#/$defs/snapshotRef" },
-        "options": { "$ref": "#/$defs/diffOptions" },
-        "warnings": {
-          "type": "array",
-          "items": { "type": "string" }
-        }
-      }
-    },
-    "snapshotRef": {
-      "type": "object",
-      "required": ["kind"],
-      "additionalProperties": false,
-      "properties": {
-        "kind": { "enum": ["commit", "tree", "index", "worktree", "patch", "empty"] },
-        "id": {
-          "type": "string",
-          "description": "Immutable object id when the source has one (a git oid). Absent for worktree, patch, and empty snapshots."
-        },
-        "symbolic": {
-          "type": "string",
-          "description": "The selector as requested (a ref name, 'HEAD', a filename). Display only; never identity."
-        },
-        "generation": {
-          "type": "string",
-          "description": "Volatility token for index and worktree snapshots; a changed generation makes dependent responses stale."
-        }
-      }
-    },
-    "diffOptions": {
-      "type": "object",
-      "required": ["context", "rename_detection"],
-      "additionalProperties": false,
-      "properties": {
-        "context": { "type": "integer", "minimum": 0 },
-        "rename_detection": { "type": "boolean" },
-        "rename_similarity": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Similarity threshold in percent when rename_detection is on; git's -M default is 50."
-        },
-        "algorithm": { "enum": ["myers", "histogram", "patience", "minimal"] }
-      }
-    },
     "changeSetManifest": {
-      "type": "object",
-      "required": ["files", "totals", "truncated"],
       "additionalProperties": false,
       "properties": {
+        "cursor": {
+          "description": "Continuation cursor; non-null exactly when truncated is true.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "files": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/fileChange" }
+          "items": {
+            "$ref": "#/$defs/fileChange"
+          },
+          "type": "array"
         },
         "totals": {
-          "type": "object",
-          "required": ["files", "additions", "deletions", "exact"],
           "additionalProperties": false,
           "properties": {
-            "files": { "type": "integer", "minimum": 0 },
-            "additions": { "type": ["integer", "null"], "minimum": 0 },
-            "deletions": { "type": ["integer", "null"], "minimum": 0 },
+            "additions": {
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "deletions": {
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "exact": {
-              "type": "boolean",
-              "description": "False when line totals are estimated or deferred; exact counts must never delay the manifest."
+              "description": "False when line totals are estimated or deferred; exact counts must never delay the manifest.",
+              "type": "boolean"
+            },
+            "files": {
+              "minimum": 0,
+              "type": "integer"
             }
-          }
+          },
+          "required": [
+            "files",
+            "additions",
+            "deletions",
+            "exact"
+          ],
+          "type": "object"
         },
-        "truncated": { "type": "boolean" },
-        "cursor": {
-          "type": ["string", "null"],
-          "description": "Continuation cursor; non-null exactly when truncated is true."
+        "truncated": {
+          "type": "boolean"
         }
-      }
-    },
-    "fileChange": {
-      "type": "object",
-      "required": ["id", "kind", "binary", "availability", "additions", "deletions"],
-      "additionalProperties": false,
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "kind": {
-          "enum": ["added", "deleted", "modified", "renamed", "copied", "type_changed", "unmerged"],
-          "description": "Follows git status letters A D M R C T U. A pure mode change is 'modified' with differing modes, as git reports it."
-        },
-        "old": { "$ref": "#/$defs/entrySide" },
-        "new": { "$ref": "#/$defs/entrySide" },
-        "similarity": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Rename or copy score, git's -M/-C percentage."
-        },
-        "binary": { "type": "boolean" },
-        "availability": {
-          "enum": ["ready", "deferred", "binary", "too_large", "timed_out", "failed", "stale", "unsupported"],
-          "description": "Declared gaps in applicability. 'ready' promises a patch either present in patches or fetchable; every other state explains why content is absent."
-        },
-        "additions": { "type": ["integer", "null"], "minimum": 0 },
-        "deletions": { "type": ["integer", "null"], "minimum": 0 }
       },
-      "allOf": [
-        {
-          "if": { "properties": { "kind": { "const": "added" } } },
-          "then": { "required": ["new"], "not": { "required": ["old"] } }
-        },
-        {
-          "if": { "properties": { "kind": { "const": "deleted" } } },
-          "then": { "required": ["old"], "not": { "required": ["new"] } }
-        },
-        {
-          "if": { "properties": { "kind": { "enum": ["modified", "type_changed", "unmerged"] } } },
-          "then": { "required": ["old", "new"] }
-        },
-        {
-          "if": { "properties": { "kind": { "enum": ["renamed", "copied"] } } },
-          "then": { "required": ["old", "new", "similarity"] }
-        }
-      ]
-    },
-    "entrySide": {
-      "type": "object",
-      "required": ["path", "entry_type", "mode", "content"],
-      "additionalProperties": false,
-      "properties": {
-        "path": {
-          "type": "string",
-          "description": "Display path, '/'-separated, repository-relative. When the raw path is not valid UTF-8 this is the replacement-decoded projection and path_b64 carries the bytes."
-        },
-        "path_b64": {
-          "type": "string",
-          "description": "Base64 of the exact path bytes, present only when they are not valid UTF-8."
-        },
-        "entry_type": { "enum": ["file", "symlink", "submodule"] },
-        "mode": {
-          "enum": ["100644", "100755", "120000", "160000"],
-          "description": "Git file modes: regular, executable, symlink, gitlink."
-        },
-        "content": { "$ref": "#/$defs/contentRef" },
-        "size": { "type": ["integer", "null"], "minimum": 0 }
-      }
+      "required": [
+        "files",
+        "totals",
+        "truncated"
+      ],
+      "type": "object"
     },
     "contentRef": {
-      "type": "object",
-      "required": ["kind"],
       "additionalProperties": false,
-      "properties": {
-        "kind": { "enum": ["git_object", "inline", "empty"] },
-        "oid": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
-        "inline_b64": { "type": "string" },
-        "generation": { "type": "string" }
-      },
       "allOf": [
         {
-          "if": { "properties": { "kind": { "const": "git_object" } } },
-          "then": { "required": ["oid"] }
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "git_object"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "oid"
+            ]
+          }
         },
         {
-          "if": { "properties": { "kind": { "const": "inline" } } },
-          "then": { "required": ["inline_b64"] }
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "inline"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "inline_b64"
+            ]
+          }
         }
-      ]
+      ],
+      "properties": {
+        "generation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inline_b64": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "git_object",
+            "inline",
+            "empty"
+          ]
+        },
+        "oid": {
+          "pattern": "^[0-9a-f]{40,64}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "diffOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "myers",
+            "histogram",
+            "patience",
+            "minimal",
+            null
+          ]
+        },
+        "context": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rename_detection": {
+          "type": "boolean"
+        },
+        "rename_similarity": {
+          "description": "Similarity threshold in percent when rename_detection is on; git's -M default is 50.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "context",
+        "rename_detection"
+      ],
+      "type": "object"
+    },
+    "entrySide": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/contentRef"
+        },
+        "entry_type": {
+          "enum": [
+            "file",
+            "symlink",
+            "submodule"
+          ]
+        },
+        "mode": {
+          "description": "Git file modes: regular, executable, symlink, gitlink.",
+          "enum": [
+            "100644",
+            "100755",
+            "120000",
+            "160000"
+          ]
+        },
+        "path": {
+          "description": "Display path, '/'-separated, repository-relative. When the raw path is not valid UTF-8 this is the replacement-decoded projection and path_b64 carries the bytes.",
+          "type": "string"
+        },
+        "path_b64": {
+          "description": "Base64 of the exact path bytes, present only when they are not valid UTF-8.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "entry_type",
+        "mode",
+        "content"
+      ],
+      "type": "object"
+    },
+    "fileChange": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "added"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "old"
+              ]
+            },
+            "required": [
+              "new"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "deleted"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "new"
+              ]
+            },
+            "required": [
+              "old"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "modified",
+                  "type_changed",
+                  "unmerged"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "old",
+              "new"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "renamed",
+                  "copied"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "old",
+              "new",
+              "similarity"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "binary": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "additions": {
+                "type": "null"
+              },
+              "deletions": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "additions": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "availability": {
+          "description": "Declared gaps in applicability. 'ready' promises a patch either present in patches or fetchable; every other state explains why content is absent.",
+          "enum": [
+            "ready",
+            "deferred",
+            "binary",
+            "too_large",
+            "timed_out",
+            "failed",
+            "stale",
+            "unsupported"
+          ]
+        },
+        "binary": {
+          "type": "boolean"
+        },
+        "deletions": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "description": "Follows git status letters A D M R C T U. A pure mode change is 'modified' with differing modes, as git reports it.",
+          "enum": [
+            "added",
+            "deleted",
+            "modified",
+            "renamed",
+            "copied",
+            "type_changed",
+            "unmerged"
+          ]
+        },
+        "new": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/entrySide"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "old": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/entrySide"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "similarity": {
+          "description": "Rename or copy score, git's -M/-C percentage.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "binary",
+        "availability",
+        "additions",
+        "deletions"
+      ],
+      "type": "object"
     },
     "filePatch": {
-      "type": "object",
-      "required": ["file_id", "hunks", "truncated"],
       "additionalProperties": false,
       "properties": {
-        "file_id": { "type": "string", "minLength": 1 },
-        "hunks": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/hunk" }
+        "file_id": {
+          "minLength": 1,
+          "type": "string"
         },
-        "truncated": { "type": "boolean" }
-      }
+        "hunks": {
+          "items": {
+            "$ref": "#/$defs/hunk"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "file_id",
+        "hunks",
+        "truncated"
+      ],
+      "type": "object"
     },
     "hunk": {
-      "type": "object",
-      "required": ["old_start", "old_count", "new_start", "new_count", "lines"],
       "additionalProperties": false,
       "properties": {
-        "old_start": { "type": "integer", "minimum": 0 },
-        "old_count": { "type": "integer", "minimum": 0 },
-        "new_start": { "type": "integer", "minimum": 0 },
-        "new_count": { "type": "integer", "minimum": 0 },
         "heading": {
-          "type": "string",
-          "description": "The section heading git appends after @@, when present."
+          "description": "The section heading git appends after @@, when present.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "lines": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/lineRecord" }
+          "items": {
+            "$ref": "#/$defs/lineRecord"
+          },
+          "type": "array"
+        },
+        "new_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "new_start": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "old_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "old_start": {
+          "minimum": 0,
+          "type": "integer"
         }
-      }
+      },
+      "required": [
+        "old_start",
+        "old_count",
+        "new_start",
+        "new_count",
+        "lines"
+      ],
+      "type": "object"
     },
     "lineRecord": {
-      "type": "object",
-      "required": ["op", "text"],
       "additionalProperties": false,
       "properties": {
-        "op": { "enum": ["context", "add", "del"] },
-        "text": {
-          "type": "string",
-          "description": "Line content without the trailing newline. When the raw bytes are not valid UTF-8 this is the replacement-decoded projection and text_b64 carries the bytes."
-        },
-        "text_b64": { "type": "string" },
         "no_newline": {
-          "type": "boolean",
-          "description": "True when this line is the file's last and carries git's no-newline-at-end-of-file marker."
+          "description": "True when this line is the file's last and carries git's no-newline-at-end-of-file marker.",
+          "type": "boolean"
+        },
+        "op": {
+          "enum": [
+            "context",
+            "add",
+            "del"
+          ]
+        },
+        "text": {
+          "description": "Line content without the trailing newline. When the raw bytes are not valid UTF-8 this is the replacement-decoded projection and text_b64 carries the bytes.",
+          "type": "string"
+        },
+        "text_b64": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      }
+      },
+      "required": [
+        "op",
+        "text"
+      ],
+      "type": "object"
+    },
+    "resolvedComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "base_policy": {
+          "enum": [
+            "direct",
+            "merge_base",
+            "first_parent"
+          ]
+        },
+        "comparison_id": {
+          "description": "Deterministic and self-describing: derivable from source, endpoints, and options, so an evicted comparison can be rebuilt from its id.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "const": "content"
+        },
+        "left": {
+          "$ref": "#/$defs/snapshotRef"
+        },
+        "options": {
+          "$ref": "#/$defs/diffOptions"
+        },
+        "right": {
+          "$ref": "#/$defs/snapshotRef"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "comparison_id",
+        "source",
+        "kind",
+        "base_policy",
+        "left",
+        "right",
+        "options"
+      ],
+      "type": "object"
+    },
+    "snapshotRef": {
+      "additionalProperties": false,
+      "properties": {
+        "generation": {
+          "description": "Volatility token for index and worktree snapshots; a changed generation makes dependent responses stale.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Immutable object id when the source has one (a git oid). Absent for worktree, patch, and empty snapshots.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "commit",
+            "tree",
+            "index",
+            "worktree",
+            "patch",
+            "empty"
+          ]
+        },
+        "symbolic": {
+          "description": "The selector as requested (a ref name, 'HEAD', a filename). Display only; never identity.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
     }
-  }
+  },
+  "$id": "https://github.com/jlevy/metabrowser/schemas/file-diff.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A comparison between two snapshots: resolved identity, a change-set manifest, and zero or more per-file patches. The authority for the Python (Pydantic) and browser implementations; the conformance corpus binds all implementations to the same acceptance set. Git's model is the reference semantics wherever this document is silent.",
+  "properties": {
+    "manifest": {
+      "$ref": "#/$defs/changeSetManifest"
+    },
+    "patches": {
+      "additionalProperties": {
+        "$ref": "#/$defs/filePatch"
+      },
+      "description": "FilePatch by file-change id. A file id absent here is not hydrated; its availability state says why.",
+      "type": "object"
+    },
+    "resolved": {
+      "$ref": "#/$defs/resolvedComparison"
+    },
+    "schema": {
+      "const": "file-diff-v1"
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema",
+    "schema_version",
+    "resolved",
+    "manifest",
+    "patches"
+  ],
+  "title": "File Diff Format: change-set document",
+  "type": "object"
 }

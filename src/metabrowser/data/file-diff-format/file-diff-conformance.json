@@ -852,6 +852,144 @@
           }
         }
       }
+    },
+    {
+      "base": {
+        "entries": {
+          "lib.py": {
+            "content_b64": "c2hhcmVkCg==",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      },
+      "document": {
+        "manifest": {
+          "files": [
+            {
+              "additions": 0,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f2",
+              "kind": "copied",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "lib_copy.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "lib.py"
+              },
+              "similarity": 100
+            },
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "lib.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "lib.py"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 2
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "lines": [
+                  {
+                    "op": "del",
+                    "text": "shared"
+                  },
+                  {
+                    "op": "add",
+                    "text": "edited"
+                  }
+                ],
+                "new_count": 1,
+                "new_start": 1,
+                "old_count": 1,
+                "old_start": 1
+              }
+            ],
+            "truncated": false
+          },
+          "f2": {
+            "file_id": "f2",
+            "hunks": [],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "test:copy-reads-preimage",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "test"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "name": "apply-order-independent",
+      "note": "The same change set as apply-copy-reads-preimage with the manifest order reversed must produce the same tree: application is two-phase, so outcome never depends on manifest order.",
+      "target": {
+        "entries": {
+          "lib.py": {
+            "content_b64": "ZWRpdGVkCg==",
+            "entry_type": "file",
+            "mode": "100644"
+          },
+          "lib_copy.py": {
+            "content_b64": "c2hhcmVkCg==",
+            "entry_type": "file",
+            "mode": "100644"
+          }
+        }
+      }
     }
   ],
   "cases": [
@@ -2251,6 +2389,615 @@
       "expect": "valid",
       "name": "symlink-retarget",
       "note": "120000 on both sides; the content is the target path, no-newline on both lines."
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "similarity": null
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "heading": null,
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "def f():"
+                  },
+                  {
+                    "op": "del",
+                    "text": "    return 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "    return 2"
+                  },
+                  {
+                    "op": "context",
+                    "text": ""
+                  }
+                ],
+                "new_count": 3,
+                "new_start": 3,
+                "old_count": 3,
+                "old_start": 3
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "id": null,
+            "kind": "patch"
+          },
+          "options": {
+            "algorithm": null,
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "explicit-nulls-are-absent",
+      "note": "Optional fields treat explicit null exactly as absence, on every implementation."
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "heading": "def f():",
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "def f():"
+                  },
+                  {
+                    "op": "del",
+                    "text": "    return 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "    return 2"
+                  },
+                  {
+                    "op": "context",
+                    "text": ""
+                  }
+                ],
+                "new_count": 3,
+                "new_start": 3,
+                "old_count": 3,
+                "old_start": 3
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "algorithm": "levenshtein",
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "invalid",
+      "name": "bad-algorithm",
+      "note": "algorithm outside the schema's enum."
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              }
+            },
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 2
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "heading": "def f():",
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "def f():"
+                  },
+                  {
+                    "op": "del",
+                    "text": "    return 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "    return 2"
+                  },
+                  {
+                    "op": "context",
+                    "text": ""
+                  }
+                ],
+                "new_count": 3,
+                "new_start": 3,
+                "old_count": 3,
+                "old_start": 3
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "invalid",
+      "name": "bad-duplicate-file-ids",
+      "note": "file change ids must be unique."
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "binary",
+              "binary": true,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {},
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "invalid",
+      "name": "bad-binary-with-line-counts",
+      "note": "binary changes carry no line counts."
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "zz": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "heading": "def f():",
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "def f():"
+                  },
+                  {
+                    "op": "del",
+                    "text": "    return 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "    return 2"
+                  },
+                  {
+                    "op": "context",
+                    "text": ""
+                  }
+                ],
+                "new_count": 3,
+                "new_start": 3,
+                "old_count": 3,
+                "old_start": 3
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "invalid",
+      "name": "bad-patch-key-mismatch",
+      "note": "a patch's map key must equal its file_id."
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
+              "additions": 1,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 1,
+              "id": "f1",
+              "kind": "modified",
+              "new": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              },
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "a.py"
+              }
+            }
+          ],
+          "totals": {
+            "additions": 1,
+            "deletions": 1,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [
+              {
+                "heading": "def f():",
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "def f():"
+                  },
+                  {
+                    "op": "del",
+                    "text": "    return 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "    return 2"
+                  },
+                  {
+                    "op": "context",
+                    "text": ""
+                  }
+                ],
+                "new_count": 3,
+                "new_start": 3,
+                "old_count": 3,
+                "old_start": 3
+              }
+            ],
+            "truncated": false
+          },
+          "ghost": {
+            "file_id": "ghost",
+            "hunks": [
+              {
+                "heading": "def f():",
+                "lines": [
+                  {
+                    "op": "context",
+                    "text": "def f():"
+                  },
+                  {
+                    "op": "del",
+                    "text": "    return 1"
+                  },
+                  {
+                    "op": "add",
+                    "text": "    return 2"
+                  },
+                  {
+                    "op": "context",
+                    "text": ""
+                  }
+                ],
+                "new_count": 3,
+                "new_start": 3,
+                "old_count": 3,
+                "old_start": 3
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "invalid",
+      "name": "bad-patch-without-manifest-entry",
+      "note": "every patch needs a manifest entry."
     }
   ],
   "schema": "file-diff-conformance-v1",

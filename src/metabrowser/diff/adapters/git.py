@@ -14,7 +14,7 @@ Merges are compared against their first parent
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -105,6 +105,7 @@ class GitDiffSource:
 
     def __init__(self, repo_root: Path) -> None:
         self._root = repo_root
+        self._empty_tree_oid: str | None = None
 
     async def _rev_parse(self, revision: str) -> str:
         try:
@@ -124,6 +125,7 @@ class GitDiffSource:
                 left = await self._rev_parse(f"{right}^")
             except DiffSourceError:
                 left = ""  # root commit; git's empty-tree side
+                await self._ensure_empty_tree_oid()
         else:
             left = await self._rev_parse(str(intent["left"]))
             right = await self._rev_parse(str(intent["right"]))
@@ -147,13 +149,25 @@ class GitDiffSource:
             options=DiffOptions(context=3, rename_detection=True, rename_similarity=50),
         )
 
+    async def _ensure_empty_tree_oid(self) -> None:
+        """Derive the repo's empty-tree oid once, honoring its object format.
+
+        The SHA-1 constant is well known, but a repository initialized
+        with ``objectFormat = sha256`` has a different one, and a wrong
+        oid fails every root-commit comparison there.
+        """
+        if self._empty_tree_oid is None:
+            out = await run_git(["hash-object", "-t", "tree", "/dev/null"], cwd=self._root)
+            self._empty_tree_oid = out.decode("ascii").strip()
+
     def _endpoints(self, resolved: ResolvedComparison) -> list[str]:
         right = resolved.right.id
         assert right is not None
         if resolved.left.kind is SnapshotKind.empty:
-            # Root commit: diff the empty tree against it. The hash-object
-            # trick avoids depending on the well-known empty-tree constant.
-            return ["4b825dc642cb6eb9a060e54bf8d69288fbee4904", right]
+            # Root commit: diff the empty tree against it, using the oid
+            # derived for this repo's object format (SHA-1 or SHA-256).
+            empty = self._empty_tree_oid or "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+            return [empty, right]
         left = resolved.left.id
         assert left is not None
         return [left, right]
@@ -341,14 +355,27 @@ class GitDiffSource:
         return counts
 
     async def file_patch(self, resolved: ResolvedComparison, file_id: str) -> FilePatch:
+        patches = await self.file_patches(resolved, (file_id,))
+        return patches[file_id]
+
+    async def file_patches(
+        self, resolved: ResolvedComparison, file_ids: Sequence[str]
+    ) -> dict[str, FilePatch]:
+        """Hydrate any number of files from one diff run and one parse.
+
+        The whole diff, unrestricted: limiting a rename to its own two
+        paths makes git split it into a delete and an add, so section
+        selection happens here rather than through a pathspec. Running
+        it once per comparison — not once per file — is what keeps a
+        50-file commit click at subprocess cost O(1); cross-request
+        caching remains the future service's job. Bounded by run_git's
+        output cap.
+        """
         manifest = await self.manifest(resolved)
-        change = next((entry for entry in manifest.files if entry.id == file_id), None)
-        if change is None:
-            raise DiffSourceError(f"no file {file_id!r} in this comparison")
-        # The whole diff, unrestricted: limiting a rename to its own two paths
-        # makes git split it into a delete and an add, so section selection
-        # happens here rather than through a pathspec. Bounded by run_git's
-        # output cap; per-file caching is the service's job.
+        by_id = {entry.id: entry for entry in manifest.files}
+        missing = [file_id for file_id in file_ids if file_id not in by_id]
+        if missing:
+            raise DiffSourceError(f"no file {missing[0]!r} in this comparison")
         endpoints = self._endpoints(resolved)
         out = await run_git(
             ["diff", "-M50", "-C", "--diff-merges=first-parent", *endpoints],
@@ -359,18 +386,32 @@ class GitDiffSource:
         def side_key(side: EntrySide | None) -> tuple[str | None, str | None]:
             return (side.path if side else None, side.path_b64 if side else None)
 
-        wanted = (side_key(change.old), side_key(change.new))
+        parsed_by_sides: dict[
+            tuple[tuple[str | None, str | None], tuple[str | None, str | None]], FilePatch
+        ] = {}
         for parsed_change in document.manifest.files:
-            if (side_key(parsed_change.old), side_key(parsed_change.new)) == wanted:
-                parsed = document.patches.get(parsed_change.id)
-                if parsed is None:
-                    raise DiffSourceError(f"file {file_id!r} produced no textual patch")
-                return FilePatch(file_id=file_id, hunks=parsed.hunks, truncated=parsed.truncated)
-        if change.kind is ChangeKind.type_changed:
-            merged = self._merge_type_change_sections(document, wanted)
-            if merged is not None:
-                return FilePatch(file_id=file_id, hunks=merged, truncated=False)
-        raise DiffSourceError(f"file {file_id!r} not found in the produced diff")
+            parsed = document.patches.get(parsed_change.id)
+            if parsed is not None:
+                key = (side_key(parsed_change.old), side_key(parsed_change.new))
+                parsed_by_sides.setdefault(key, parsed)
+
+        result: dict[str, FilePatch] = {}
+        for file_id in file_ids:
+            change = by_id[file_id]
+            wanted = (side_key(change.old), side_key(change.new))
+            parsed = parsed_by_sides.get(wanted)
+            if parsed is not None:
+                result[file_id] = FilePatch(
+                    file_id=file_id, hunks=parsed.hunks, truncated=parsed.truncated
+                )
+                continue
+            if change.kind is ChangeKind.type_changed:
+                merged = self._merge_type_change_sections(document, wanted)
+                if merged is not None:
+                    result[file_id] = FilePatch(file_id=file_id, hunks=merged, truncated=False)
+                    continue
+            raise DiffSourceError(f"file {file_id!r} not found in the produced diff")
+        return result
 
     @staticmethod
     def _merge_type_change_sections(

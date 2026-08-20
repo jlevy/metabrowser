@@ -14,6 +14,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from metabrowser.errors import CLIError
 from metabrowser.plugin_api import (
+    MAX_CONTAINER_INNER_DEPTH,
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
     ArtifactDecompressionTimeoutError,
@@ -52,6 +53,7 @@ __all__ = [
     "register_root_callback",
     "relativize_path",
     "resolve_directory",
+    "MAX_CONTAINER_INNER_DEPTH",
     "resolve_path",
     "served_root",
 ]

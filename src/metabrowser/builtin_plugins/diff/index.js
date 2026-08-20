@@ -37,8 +37,18 @@ mb.registerView("diff", "diff", {
       payload = revision
         ? await mb.fetchPluginData("diff", "comparison", { revision })
         : await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
-    } catch (_error) {
-      return renderFailure(container, "Could not load this diff. Refresh the page to try again.");
+    } catch (error) {
+      // The SDK preserves the hook's JSON on the error for exactly this
+      // moment: the server's message ("unknown revision …", "not the
+      // root of a Git repository") beats generic advice, and "refresh"
+      // is only honest for transport-shaped failures.
+      const failure = /** @type {{status?: number, payload?: {message?: string}}} */ (error);
+      const message =
+        typeof failure?.payload?.message === "string" && failure.payload.message
+          ? failure.payload.message
+          : "Could not load this diff. Refresh the page to try again.";
+      console.warn("diff view: data hook failed", error);
+      return renderFailure(container, message);
     }
     const result = validateDocument(payload);
     if (!result.ok) {

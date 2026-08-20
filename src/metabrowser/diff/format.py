@@ -89,6 +89,15 @@ class LineOp(StrEnum):
     delete = "del"
 
 
+class DiffAlgorithm(StrEnum):
+    """The xdiff algorithms the schema names; anything else is drift."""
+
+    myers = "myers"
+    histogram = "histogram"
+    patience = "patience"
+    minimal = "minimal"
+
+
 class ContentRefKind(StrEnum):
     git_object = "git_object"
     inline = "inline"
@@ -133,6 +142,12 @@ class FileChange(_Model):
     availability: Availability
     additions: int | None = Field(default=None, ge=0)
     deletions: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _binary_has_no_line_counts(self) -> FileChange:
+        if self.binary and (self.additions is not None or self.deletions is not None):
+            raise ValueError("binary changes carry no line counts")
+        return self
 
     @model_validator(mode="after")
     def _sides_for_kind(self) -> FileChange:
@@ -221,7 +236,7 @@ class DiffOptions(_Model):
     context: int = Field(ge=0)
     rename_detection: bool
     rename_similarity: int | None = Field(default=None, ge=0, le=100)
-    algorithm: str | None = None
+    algorithm: DiffAlgorithm | None = None
 
 
 class ResolvedComparison(_Model):
@@ -247,6 +262,8 @@ class ChangeSetDocument(_Model):
         if self.schema_version != FILE_DIFF_SCHEMA_VERSION:
             raise ValueError(f"unsupported schema_version {self.schema_version}")
         known = {change.id for change in self.manifest.files}
+        if len(known) != len(self.manifest.files):
+            raise ValueError("file change ids must be unique within a manifest")
         for file_id, patch in self.patches.items():
             if file_id != patch.file_id:
                 raise ValueError(f"patch keyed {file_id!r} carries file_id {patch.file_id!r}")

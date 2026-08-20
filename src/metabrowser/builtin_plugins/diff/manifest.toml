@@ -14,13 +14,7 @@ extra_styles = ["styles.css"]
 # virtual path <file>/<inner> — resolved by the same document hook.
 [[kind]]
 id = "diff"
-match = { ext = ".patch" }
-priority = 0
-container = { children = "children" }
-
-[[kind]]
-id = "diff"
-match = { ext = ".diff" }
+match = { exts = [".patch", ".diff"] }
 priority = 0
 container = { children = "children" }
 

@@ -100,8 +100,8 @@ apply: clean
 
 ## Test: the hydrated JSON document is format-valid on the wire
 
-The full ChangeSetDocument for the same comparison, exactly what /api/diff/ serves and
-the browser model validates.
+The full ChangeSetDocument for the same comparison, exactly what the diff plugin’s
+comparison hook serves and the browser model validates.
 
 ```console
 $ metab repo --diff 'HEAD^..HEAD' --format json | head -24
@@ -147,6 +147,42 @@ right patch
 files 1  +1 -1  (exact)
 M    x.txt  [+1 -1]
 ? 0
+```
+
+## Test: three-dot compares against the merge base
+
+A side branch diverges from `main^`; `main...side` must diff from the merge base
+(three-dot, the pull-request semantics), not from `main` directly.
+The side branch adds one file, so the merge-base comparison shows exactly that file and
+none of main’s own changes.
+
+```console
+$ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
+>   && git -C repo checkout -q -b side 'HEAD^' \
+>   && export GIT_AUTHOR_DATE='2026-01-03T00:00:00 +0000' \
+>   && export GIT_COMMITTER_DATE='2026-01-03T00:00:00 +0000' \
+>   && printf 'side change\n' > repo/side.txt \
+>   && git -C repo add -A && git -C repo commit -qm side \
+>   && git -C repo checkout -q main
+? 0
+```
+
+```console
+$ metab repo --diff 'main...side'
+comparison git:0626f0b9ec0a1ec4 (merge_base)
+left  ac107eaa9009cb6012a76154510bfdd9927b5fc2
+right d1d6c6b344905bbc379b0f996e6dcd7922b70f4a
+files 1  +1 -0  (exact)
+A    side.txt  [+1 -0]
+? 0
+```
+
+## Test: yaml output is refused, not silently wrong
+
+```console
+$ metab repo --diff HEAD --format yaml 2>&1
+diff error: --format yaml is not supported in diff mode; use text or json
+? 2
 ```
 
 ## Test: unknown revision reports and exits 2

@@ -117,6 +117,7 @@ from metabrowser.paths_safe import (
     _safe_subdir,
     _set_root_dir,
 )
+from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
 from metabrowser.repository_context import discover_repository_context
@@ -2644,12 +2645,6 @@ def _container_exts() -> dict[str, dict[str, str]]:
     return out
 
 
-# Deeper nesting is a malformed or adversarial URL, not a real child:
-# today's containers expose one virtual level (a change entry's path),
-# and the walk must stay bounded on the request path.
-_CONTAINER_MAX_DEPTH = 16
-
-
 def _resolve_container_child(subpath: str) -> JSONResponse | None:
     """Resolve ``<container-file>/<inner>`` to a file envelope.
 
@@ -2661,7 +2656,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
     virtual path. Returns None when no container claims the path.
     """
     parts = subpath.split("/")
-    if len(parts) < 2 or len(parts) > _CONTAINER_MAX_DEPTH:
+    if len(parts) < 2:
         return None
     kinds = _container_kinds()
     if not kinds:
@@ -2682,6 +2677,11 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
         kind = _classify_with_plugins(target, ext)
         info = kinds.get(kind)
         if info is None:
+            return None
+        if len(parts) - cut > MAX_CONTAINER_INNER_DEPTH:
+            # The bound is on the inner path, measured from the claiming
+            # file; the shared constant keeps this walk and the plugins'
+            # own walks agreeing.
             return None
         inner = "/".join(parts[cut:])
         return JSONResponse(

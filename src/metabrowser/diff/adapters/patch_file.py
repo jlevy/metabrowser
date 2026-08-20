@@ -80,7 +80,22 @@ def _unquote_c_style(raw: bytes) -> bytes:
             break
         escape = body[i : i + 1]
         if escape.isdigit():
-            out.append(int(body[i : i + 3], 8))
+            # A malformed octal escape is somebody's literal backslash:
+            # keep the bytes verbatim rather than crashing on int().
+            octal = body[i : i + 3]
+            try:
+                value = int(octal, 8)
+            except ValueError:
+                out.append(0x5C)
+                out.append(body[i])
+                i += 1
+                continue
+            if value > 0xFF:
+                out.append(0x5C)
+                out.extend(octal)
+                i += 3
+                continue
+            out.append(value)
             i += 3
         else:
             out.append({b"n": 10, b"t": 9, b'"': 34, b"\\": 92}.get(escape, escape[0]))
@@ -110,12 +125,50 @@ class _Section:
         self.binary = False
         self.malformed: str | None = None
         self.hunk_lines: list[bytes] = []
+        # True while the paths are only the `diff --git` header's guess;
+        # the authoritative ---/+++ lines override a guess (a filename
+        # containing " b/" defeats the header split), but never a path
+        # set by rename/copy headers.
+        self.old_guessed = False
+        self.new_guessed = False
+
+
+def _hunk_line_budget(raw_line: bytes) -> tuple[int, int]:
+    """Old/new line counts a hunk header declares, or a permissive fallback.
+
+    Used only to know where a hunk body ends; the real count validation
+    happens in _parse_hunks. A header these ints cannot be read from
+    keeps the permissive legacy behavior (body runs until the next
+    marker), which _parse_hunks will then reject with a precise reason.
+    """
+    try:
+        marker_end = raw_line.index(b" @@", 3)
+        spans = raw_line[4:marker_end].split(b" +")
+        if len(spans) != 2:
+            raise ValueError(raw_line.decode("ascii", "replace"))
+
+        def count(text: bytes) -> int:
+            if b"," in text:
+                _, count_raw = text.split(b",", 1)
+            else:
+                count_raw = b"1"
+            if not count_raw.isdigit():
+                raise ValueError(text.decode("ascii", "replace"))
+            return int(count_raw)
+
+        return count(spans[0]), count(spans[1])
+    except ValueError:
+        return (1 << 60), (1 << 60)
 
 
 def _split_sections(data: bytes) -> list[_Section]:
     sections: list[_Section] = []
     current: _Section | None = None
     in_hunks = False
+    hunk_old_left = hunk_new_left = 0
+    # After the counted lines run out, a `\ No newline at end of file`
+    # marker may still belong to the hunk's final line.
+    hunk_tail_ok = False
     raw_lines = data.split(b"\n")
     if raw_lines and raw_lines[-1] == b"":
         # split() artifact after the final newline, not an empty diff line —
@@ -140,6 +193,8 @@ def _split_sections(data: bytes) -> list[_Section]:
             if len(halves) == 2 and not rest.startswith(b'"'):
                 current.old_path = _strip_prefix(halves[0])
                 current.new_path = halves[1]
+                current.old_guessed = True
+                current.new_guessed = True
             continue
         if current is None:
             if raw_line.startswith(b"--- "):
@@ -150,12 +205,33 @@ def _split_sections(data: bytes) -> list[_Section]:
                 continue
         if raw_line.startswith(_HUNK_RE_PREFIX):
             in_hunks = True
+            hunk_old_left, hunk_new_left = _hunk_line_budget(raw_line)
             current.hunk_lines.append(raw_line)
             continue
         if in_hunks:
             if raw_line[:1] in (b" ", b"+", b"-", b"\\") or raw_line == b"":
                 current.hunk_lines.append(raw_line)
+                # Count the declared lines down so the splitter knows where
+                # a hunk body ends: `diff -ru` output has no `diff --git`
+                # separators, and consuming the next file's `---` header as
+                # a deletion line collapsed multi-file plain diffs into one
+                # malformed section. The no-newline marker costs nothing.
+                marker = raw_line[:1]
+                if marker in (b" ", b"", b"-"):
+                    hunk_old_left -= 1
+                if marker in (b" ", b"", b"+"):
+                    hunk_new_left -= 1
+                if hunk_old_left <= 0 and hunk_new_left <= 0:
+                    in_hunks = False
+                    hunk_tail_ok = True
             continue
+        if hunk_tail_ok:
+            hunk_tail_ok = False
+            if raw_line.startswith(b"\\"):
+                # The final line's no-newline marker arrives after the
+                # counted lines ran out; it still belongs to the hunk.
+                current.hunk_lines.append(raw_line)
+                continue
         if raw_line.startswith(b"old mode "):
             current.old_mode = raw_line[9:].decode("ascii", "replace")
         elif raw_line.startswith(b"new mode "):
@@ -167,7 +243,14 @@ def _split_sections(data: bytes) -> list[_Section]:
             current.kind_hint = ChangeKind.deleted
             current.old_mode = raw_line[18:].decode("ascii", "replace")
         elif raw_line.startswith(b"similarity index "):
-            current.similarity = int(raw_line[17:].rstrip(b"%") or b"0")
+            # A junk or out-of-range similarity is a malformed header,
+            # not a crash; recording the reason routes the section
+            # through the malformed net below.
+            raw_value = raw_line[17:].rstrip(b"%") or b"0"
+            if raw_value.isdigit() and len(raw_value) <= 3 and int(raw_value) <= 100:
+                current.similarity = int(raw_value)
+            else:
+                current.malformed = current.malformed or "unparseable similarity index"
         elif raw_line.startswith(b"rename from "):
             current.kind_hint = ChangeKind.renamed
             current.old_path = _unquote_c_style(raw_line[12:])
@@ -183,13 +266,20 @@ def _split_sections(data: bytes) -> list[_Section]:
         elif raw_line.startswith(b"@@@"):
             current.malformed = current.malformed or "combined (merge) diff is not supported"
         elif raw_line.startswith(b"--- "):
+            if current.hunk_lines:
+                # A `---` after a finished hunk body is the next file of a
+                # plain multi-file diff (diff -ru): open its section.
+                current = _Section()
+                sections.append(current)
             path = _unquote_c_style(raw_line[4:].split(b"\t", 1)[0])
-            if current.old_path is None or path == b"/dev/null":
+            if current.old_path is None or current.old_guessed or path == b"/dev/null":
                 current.old_path = _strip_prefix(path)
+                current.old_guessed = False
         elif raw_line.startswith(b"+++ "):
             path = _unquote_c_style(raw_line[4:].split(b"\t", 1)[0])
-            if current.new_path is None or path == b"/dev/null":
+            if current.new_path is None or current.new_guessed or path == b"/dev/null":
                 current.new_path = _strip_prefix(path)
+                current.new_guessed = False
     return sections
 
 
@@ -236,9 +326,14 @@ def _parse_hunks(section: _Section) -> tuple[list[Hunk], int, int] | str:
 
             def span(text: bytes) -> tuple[int, int]:
                 if b"," in text:
-                    start, count = text.split(b",", 1)
-                    return int(start), int(count)
-                return int(text), 1
+                    start_raw, count_raw = text.split(b",", 1)
+                else:
+                    start_raw, count_raw = text, b"1"
+                # isdigit() refuses signs, so `--1` and `+2` fail here
+                # instead of passing int() and crashing final validation.
+                if not (start_raw.isdigit() and count_raw.isdigit()):
+                    raise ValueError(text.decode("ascii", "replace"))
+                return int(start_raw), int(count_raw)
 
             try:
                 (old_start, old_count), (new_start, new_count) = span(spans[0]), span(spans[1])
@@ -304,6 +399,39 @@ def _side(path_raw: bytes, mode: FileMode) -> EntrySide:
     )
 
 
+def _degraded_document(
+    digest: str, truncated: bool, warnings: tuple[str, ...]
+) -> ChangeSetDocument:
+    """An empty, valid document that states why the input was refused."""
+    return ChangeSetDocument.model_construct(
+        schema_="file-diff-v1",
+        schema_version=1,
+        resolved=ResolvedComparison.model_construct(
+            comparison_id=f"patch:{digest}",
+            source=SourceInfo.model_construct(name="patch", version=None),
+            kind="content",
+            base_policy=BasePolicy.direct,
+            left=SnapshotRef.model_construct(
+                kind=SnapshotKind.patch, id=None, symbolic=None, generation=None
+            ),
+            right=SnapshotRef.model_construct(
+                kind=SnapshotKind.patch, id=None, symbolic=None, generation=None
+            ),
+            options=DiffOptions.model_construct(
+                context=3, rename_detection=True, rename_similarity=None, algorithm=None
+            ),
+            warnings=warnings,
+        ),
+        manifest=ChangeSetManifest.model_construct(
+            files=(),
+            totals=Totals.model_construct(files=0, additions=0, deletions=0, exact=False),
+            truncated=truncated,
+            cursor="parser-bounds" if truncated else None,
+        ),
+        patches={},
+    )
+
+
 def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     """Whole-document parse; bounded, and total on malformed input."""
     truncated_input = len(data) > MAX_PATCH_BYTES
@@ -350,16 +478,18 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
                 malformed = parsed
             else:
                 hunks, additions, deletions = parsed
-        if (
-            kind in (ChangeKind.added, ChangeKind.copied)
-            and old_path is not None
-            and section.kind_hint in (ChangeKind.added, None)
-        ):
-            old_path = None if kind is ChangeKind.added else old_path
+        if kind is ChangeKind.added and old_path is not None:
+            # `new file mode` beats the header guess: an added file has no
+            # old side, whatever `diff --git a/x b/x` implied.
+            old_path = None
         if kind is not ChangeKind.added and old_path is None:
             malformed = malformed or "missing old path"
         if kind is not ChangeKind.deleted and new_path is None:
             malformed = malformed or "missing new path"
+        if kind in (ChangeKind.renamed, ChangeKind.copied) and section.similarity is None:
+            # Degrading here keeps the section's neighbors intact; the
+            # final-validation net would refuse the whole document.
+            malformed = malformed or "rename or copy without a similarity index"
 
         if malformed:
             availability = Availability.unsupported
@@ -450,6 +580,19 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     )
     # model_construct skipped validation for speed while assembling; the
     # emitted document must still be format-valid, so validate once here.
+    # Totality is structural, not per-probe: an input this parser mapped
+    # to an invalid document is by definition malformed input, so it
+    # degrades to a warning-bearing empty document instead of raising on
+    # the file-open path.
+    from pydantic import ValidationError
+
     from metabrowser.diff.format import dump_document, validate_document
 
-    return validate_document(dump_document(document))
+    try:
+        return validate_document(dump_document(document))
+    except (ValidationError, ValueError) as exc:
+        reason = str(exc).splitlines()[0][:200]
+        document = _degraded_document(
+            digest, truncated, (*warnings, f"input could not be modeled: {reason}")
+        )
+        return validate_document(dump_document(document))

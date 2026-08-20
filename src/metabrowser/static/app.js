@@ -2159,7 +2159,8 @@ async function toggleTreeContainer(row) {
         ? renderContainerChildren(rows, { level: level })
         : '<div class="tree-empty-note">No entries in this file.</div>';
       children.dataset.loaded = "1";
-    } catch (_error) {
+    } catch (error) {
+      console.warn("container children failed for", row.dataset.path, error);
       children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
     }
     applyTreeFilters();

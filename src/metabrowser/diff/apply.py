@@ -169,7 +169,11 @@ def apply_file_change(
             raise ApplyError(f"change {change.id!r} deletes a path the base does not have")
         # A delete still asserts what it removes: replaying the hunks over the
         # base must consume the whole file, exactly as `git apply` checks.
-        if not change.binary and patch is not None:
+        # `ready` promises that patch; its absence is a producer bug, the
+        # same rule every other kind follows.
+        if not change.binary:
+            if patch is None:
+                raise NotFullyHydrated(f"change {change.id!r} is ready but its patch is absent")
             remnant = _patched_content(change, patch, base_entry.content)
             if remnant != b"":
                 raise ApplyError(
@@ -196,17 +200,22 @@ def apply_change_set(
     base: TreeSnapshot,
     resolve_content: ContentResolver = _no_resolver,
 ) -> TreeSnapshot:
-    """The oracle: base tree in, target tree out, or a precise refusal."""
-    result = TreeSnapshot(entries=dict(base.entries))
+    """The oracle: base tree in, target tree out, or a precise refusal.
+
+    Two phases, so the outcome cannot depend on manifest order: every
+    change reads its preimage from the immutable base and consumed old
+    paths are all removed before any produced entry lands (git's own
+    docs warn that sequential per-file application is incorrect). An
+    insert collision — two changes producing the same path, or an
+    `added` change whose path the base still holds — is a refusal, as
+    it is for `git apply`.
+    """
+    consumed: set[str] = set()
+    produced_entries: list[tuple[str, TreeEntry, FileChange]] = []
     for change in document.manifest.files:
         patch = document.patches.get(change.id)
         old_path = change.old.path if change.old is not None else None
         new_path = change.new.path if change.new is not None else None
-        # Old sides read from the immutable base, never the mutating
-        # result: every change's preimage is the base tree (a copy whose
-        # source was edited in the same change set copies the base
-        # bytes), per git's own warning that sequential per-file
-        # application is incorrect.
         base_entry = base.entries.get(old_path) if old_path is not None else None
         produced = apply_file_change(change, patch, base_entry, resolve_content)
         consumes_old = change.kind in (
@@ -216,7 +225,21 @@ def apply_change_set(
             ChangeKind.type_changed,
         )
         if consumes_old and old_path is not None:
-            result.entries.pop(old_path, None)
+            consumed.add(old_path)
         if produced is not None and new_path is not None:
-            result.entries[new_path] = produced
+            produced_entries.append((new_path, produced, change))
+
+    result = TreeSnapshot(entries=dict(base.entries))
+    for path in consumed:
+        result.entries.pop(path, None)
+    landed: set[str] = set()
+    for path, entry, change in produced_entries:
+        if path in landed:
+            raise ApplyError(
+                f"change {change.id!r} produces {path!r}, which another change produced"
+            )
+        if change.kind is ChangeKind.added and path in base.entries and path not in consumed:
+            raise ApplyError(f"change {change.id!r} adds {path!r}, which the base already has")
+        result.entries[path] = entry
+        landed.add(path)
     return result

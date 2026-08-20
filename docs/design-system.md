@@ -416,9 +416,9 @@ changing the selected file, folder, or top-level view.
 Folder Overview panels use a button inside their visible `h2`; rendered-document
 metadata keeps native `details` and `summary` semantics.
 Both forms place the same gray Lucide chevron immediately after the title with
-`--section-disclosure-chevron-gap`; a trigger whose content is row data rather than a
-bare heading may add `.section-disclosure-leading` to place the identical mark before
-the title instead — one mark, one asset, two positions.
+`--section-disclosure-chevron-gap`. Row-like triggers lead with the registry’s
+`toggle-chevron` glyph instead (see One Chevron, One Row Contract below); the primitive
+itself has no leading form.
 The mark uses `--section-disclosure-chevron-size` in `em`, so it remains proportional to
 the unchanged local heading typography at every type tier.
 It points right when collapsed and rotates down when expanded.

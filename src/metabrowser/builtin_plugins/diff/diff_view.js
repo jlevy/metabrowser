@@ -23,6 +23,7 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
 });
 
 let sectionSequence = 0;
+let foldSequence = 0;
 
 const SETTINGS = /** @type {Record<string, number>} */ (
   /** @type {{METABROWSER_SETTINGS?: Record<string, number>}} */ (globalThis)
@@ -110,7 +111,9 @@ function renderHunk(hunk) {
     if (folds && runIndex[index] === FOLD_VISIBLE) {
       // The break: an expander stating exactly how many lines it holds.
       const hidden = runLength[index] - FOLD_VISIBLE;
+      foldSequence += 1;
       foldGroup = el("div", "diff-fold-group diff-fold-collapsed");
+      foldGroup.setAttribute("id", `diff-fold-group-${foldSequence}`);
       section.append(renderFoldControl(foldGroup, hidden), foldGroup);
     }
     (folds && runIndex[index] >= FOLD_VISIBLE ? (foldGroup ?? section) : section).append(row);
@@ -139,6 +142,7 @@ function renderFoldControl(group, hidden) {
   const control = el("button", "diff-fold-control");
   control.setAttribute("type", "button");
   control.setAttribute("aria-expanded", "false");
+  control.setAttribute("aria-controls", group.getAttribute("id") || "");
   const chevron = el("span", "diff-fold-chevron");
   const svg = shellIcon("toggle");
   if (svg) {

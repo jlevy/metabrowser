@@ -31,6 +31,7 @@ const SNAPSHOT_KINDS = new Set(["commit", "tree", "index", "worktree", "patch", 
 const BASE_POLICIES = new Set(["direct", "merge_base", "first_parent"]);
 const LINE_OPS = new Set(["context", "add", "del"]);
 const CONTENT_KINDS = new Set(["git_object", "inline", "empty"]);
+const ALGORITHMS = new Set(["myers", "histogram", "patience", "minimal"]);
 const OID_RE = /^[0-9a-f]{40,64}$/;
 
 class FormatError extends Error {}
@@ -64,9 +65,22 @@ function forbidExtras(obj, allowed, where) {
   }
 }
 
+/**
+ * Optional fields treat an explicit null exactly as absence — the
+ * interchange rule the schema states, and the Pydantic side's native
+ * behavior, so the two implementations cannot drift on serializers
+ * that emit nulls.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function absent(value) {
+  return value === undefined || value === null;
+}
+
 /** @param {unknown} value @param {string} where */
 function optionalString(value, where) {
-  require(value === undefined || typeof value === "string", `${where}: string expected`);
+  require(absent(value) || typeof value === "string", `${where}: string expected`);
 }
 
 /** @param {unknown} value @param {string} where @param {number} [min] */
@@ -90,14 +104,13 @@ function validateContentRef(raw, where) {
   forbidExtras(ref, ["kind", "oid", "inline_b64", "generation"], where);
   require(CONTENT_KINDS.has(String(ref.kind)), `${where}: bad kind`);
   optionalString(ref.oid, `${where}.oid`);
-  if (ref.oid !== undefined) {
+  if (!absent(ref.oid)) {
     require(OID_RE.test(String(ref.oid)), `${where}: bad oid`);
   }
   optionalString(ref.inline_b64, `${where}.inline_b64`);
   optionalString(ref.generation, `${where}.generation`);
-  require(ref.kind !== "git_object" || ref.oid !== undefined, `${where}: git_object requires oid`);
-  require(ref.kind !== "inline" ||
-    ref.inline_b64 !== undefined, `${where}: inline requires inline_b64`);
+  require(ref.kind !== "git_object" || !absent(ref.oid), `${where}: git_object requires oid`);
+  require(ref.kind !== "inline" || !absent(ref.inline_b64), `${where}: inline requires inline_b64`);
 }
 
 /** @param {unknown} raw @param {string} where */
@@ -131,15 +144,19 @@ function validateFileChange(raw, where) {
   nullableCount(change.deletions, `${where}.deletions`);
   require("additions" in change &&
     "deletions" in change, `${where}: counts are required (nullable)`);
-  const hasOld = change.old !== undefined;
-  const hasNew = change.new !== undefined;
+  if (change.binary === true) {
+    require(change.additions === null &&
+      change.deletions === null, `${where}: binary changes carry no line counts`);
+  }
+  const hasOld = !absent(change.old);
+  const hasNew = !absent(change.new);
   if (hasOld) {
     validateSide(change.old, `${where}.old`);
   }
   if (hasNew) {
     validateSide(change.new, `${where}.new`);
   }
-  if (change.similarity !== undefined) {
+  if (!absent(change.similarity)) {
     requireInt(change.similarity, `${where}.similarity`);
     require(Number(change.similarity) <= 100, `${where}.similarity: <= 100`);
   }
@@ -150,7 +167,7 @@ function validateFileChange(raw, where) {
   } else if (kind === "renamed" || kind === "copied") {
     require(hasOld &&
       hasNew &&
-      change.similarity !== undefined, `${where}: ${kind} requires both sides and similarity`);
+      !absent(change.similarity), `${where}: ${kind} requires both sides and similarity`);
   } else {
     require(hasOld && hasNew, `${where}: ${kind} requires both sides`);
   }
@@ -244,6 +261,9 @@ function validateResolved(raw, where) {
     require(Number(options.rename_similarity) <= 100, `${where}.options.rename_similarity`);
   }
   optionalString(options.algorithm, `${where}.options.algorithm`);
+  if (!absent(options.algorithm)) {
+    require(ALGORITHMS.has(String(options.algorithm)), `${where}.options.algorithm: bad value`);
+  }
   const warnings = resolved.warnings;
   if (warnings !== undefined) {
     require(Array.isArray(warnings) &&
@@ -275,7 +295,9 @@ export function validateDocument(raw) {
     const ids = new Set();
     for (const [index, change] of files.entries()) {
       validateFileChange(change, `manifest.files[${index}]`);
-      ids.add(String(asObject(change, "change").id));
+      const id = String(asObject(change, "change").id);
+      require(!ids.has(id), `manifest.files[${index}]: duplicate id ${id}`);
+      ids.add(id);
     }
     const totals = asObject(manifest.totals, "manifest.totals");
     forbidExtras(totals, ["files", "additions", "deletions", "exact"], "manifest.totals");

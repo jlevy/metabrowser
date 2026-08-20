@@ -117,6 +117,9 @@ folder-like entry is a possible root.
 
 - A container’s children are entries, not mounts: nothing above the container changes,
   and closing it releases whatever it materialized.
+- Expansion state is held in the DOM, exactly as folder expansion is: a full tree
+  repaint renders containers collapsed again (one bounded refetch on re-expand), while
+  filter changes leave expanded children in place.
 - Overviews are views, so they follow the renderer rules — disposal paths, lazy
   mounting, measured size bounds.
 - Live updates follow the source: a directory’s children track the filesystem, an
