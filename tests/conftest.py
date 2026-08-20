@@ -36,3 +36,24 @@ def _reset_browser_inventory() -> Generator[None, None, None]:  # pyright: ignor
     except Exception:
         # Defensive: never let cleanup failure mask a test failure.
         pass
+
+
+class SyntheticIndexWriter:
+    """Dict-like façade for building an :class:`InventoryIndex` in tests.
+
+    Several rollup tests assemble an index in memory instead of on disk. The
+    index keeps derived structures alongside ``_entries`` (the parent/child
+    grouping and the subtree-aggregate memo), so assigning into ``_entries``
+    directly would leave those out of sync and produce empty rollups. Writing
+    through the real store path keeps a synthetic index behaving like a
+    walked one.
+    """
+
+    __slots__ = ("_index",)
+
+    def __init__(self, index: object) -> None:
+        self._index = index
+
+    def __setitem__(self, path: str, entry: object) -> None:
+        assert getattr(entry, "path", None) == path, "entry.path must match its key"
+        self._index._replace_index_entry(entry)  # type: ignore[attr-defined]

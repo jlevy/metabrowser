@@ -59,7 +59,6 @@ SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
 
 # ── InventoryIndex walker ────────────────────────────────────
 
-INVENTORY_FIRST_RENDER_DEPTH = 2
 INVENTORY_MAX_DEPTH = 20
 # Hard ceiling on files indexed by the BFS walker at startup. The
 # walker streams entries as it discovers them so /api/tree responds
@@ -278,7 +277,6 @@ __all__ = [
     "FOLDER_DISCOVERY_MAX_ENTRIES",
     "INDEX_PROGRESS_POLL_MS",
     "INDEX_PROGRESS_UPDATE_FILES",
-    "INVENTORY_FIRST_RENDER_DEPTH",
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_FILES",
     "INVENTORY_REFRESH_TTL_S",

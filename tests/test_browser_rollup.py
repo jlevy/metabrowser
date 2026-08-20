@@ -16,9 +16,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from conftest import SyntheticIndexWriter
 from watchfiles import Change
 
-from metabrowser import inventory as inventory_module
 from metabrowser.events import FsChange, FsEntry, FsUpsert
 from metabrowser.inventory import InventoryIndex
 from metabrowser.watch_backends import _emit_for_path
@@ -134,23 +134,20 @@ def test_rollup_none_for_files_and_unknown_paths(tmp_path: Path) -> None:
     assert index.rollup("missing", depth=2, top=10, ext_top=4) is None
 
 
-def test_rollup_reuses_child_index_until_inventory_changes(tmp_path: Path, monkeypatch) -> None:
+def test_rollup_reuses_child_index_until_inventory_changes(tmp_path: Path) -> None:
     (tmp_path / "leaf").mkdir()
     (tmp_path / "leaf" / "one.txt").write_text("one")
     index = _build_index(tmp_path)
-    group_calls = 0
-    original_group = inventory_module.group_rollup_children
 
-    def recording_group(entries):
-        nonlocal group_calls
-        group_calls += 1
-        return original_group(entries)
-
-    monkeypatch.setattr(inventory_module, "group_rollup_children", recording_group)
+    # The child index is maintained on write, so no rollup rebuilds it, and a
+    # repeated request reuses the cached subtree aggregate rather than
+    # re-walking the subtree.
     first = index.rollup("leaf", depth=1, top=10, ext_top=4)
+    cached_aggregate = index._subtree_aggregates.get("leaf")
+    assert cached_aggregate is not None
     second = index.rollup("leaf", depth=1, top=10, ext_top=4)
     assert first == second
-    assert group_calls == 1
+    assert index._subtree_aggregates.get("leaf") is cached_aggregate
 
     added = FsEntry.for_observed_file(
         path="leaf/two.md",
@@ -163,7 +160,6 @@ def test_rollup_reuses_child_index_until_inventory_changes(tmp_path: Path, monke
     refreshed = index.rollup("leaf", depth=1, top=10, ext_top=4)
     assert refreshed is not None
     assert refreshed["node"]["total_files"] == 2
-    assert group_calls == 2
 
 
 def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> None:
@@ -256,7 +252,7 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
     from metabrowser.settings import ROLLUP_MAX_NODES
 
     index = InventoryIndex()
-    entries = index._entries  # synthetic index setup, test-only
+    entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
     mtime_ns = 1_700_000_000_000_000_000
 
     def _add_dir(path: str, parent: str, name: str) -> None:
@@ -321,7 +317,7 @@ def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
     """
 
     index = InventoryIndex()
-    entries = index._entries  # synthetic index setup, test-only
+    entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
     root_placeholder = FsEntry.for_observed_dir(path="", parent="", name="root")
     dir_count = 200
     files_per_dir = 200

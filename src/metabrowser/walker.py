@@ -9,10 +9,11 @@ event bus.
 Walker semantics (verified by tests in
 ``metabrowser/tests/test_browser_inventory.py``):
 
-* **BFS for queueing.** First-render-depth (``DEFAULT_FIRST_RENDER_DEPTH``)
-  directories are scanned before deeper ones, so a request landing
-  ~500 ms into boot finds the visible part of the tree already
-  populated.
+* **Strict level-order BFS.** Every directory at depth N is scanned
+  before any at depth N+1, so the layers the nav tree shows — and the
+  ones a reader expands first — are complete long before the deep
+  tail, and a request landing early in the boot scan finds them
+  already populated.
 * **Post-order finalize.** A directory's ``FsEntry`` is replaced with
   populated ``total_files`` / ``total_size`` / ``newest_mtime_ns``
   only after every descendant has been walked.
@@ -38,7 +39,6 @@ from threading import Event
 from metabrowser.events import FsEntry
 from metabrowser.fs_paths import is_visible
 from metabrowser.settings import (
-    INVENTORY_FIRST_RENDER_DEPTH,
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_FILES,
     INVENTORY_REFRESH_TTL_S,
@@ -52,7 +52,6 @@ LOG = logging.getLogger(__name__)
 # :mod:`metabrowser.settings`; these names exist so callers
 # (InventoryIndex, tests) can reference them without reaching into
 # settings directly.
-DEFAULT_FIRST_RENDER_DEPTH = INVENTORY_FIRST_RENDER_DEPTH
 DEFAULT_MAX_DEPTH = INVENTORY_MAX_DEPTH
 DEFAULT_MAX_FILES = INVENTORY_MAX_FILES
 DEFAULT_REFRESH_TTL_S = INVENTORY_REFRESH_TTL_S
@@ -209,7 +208,6 @@ async def walk_tree(
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
-    first_render_depth: int = DEFAULT_FIRST_RENDER_DEPTH,
     gitignore_check: Callable[[Path, bool], bool] | None = None,
 ) -> AsyncIterator[FsEntry]:
     """BFS the filesystem rooted at *root*; yield ``FsEntry``
@@ -227,11 +225,8 @@ async def walk_tree(
        their aggregate-populated form. Aggregates propagate up
        the parent chain; the root yields its finalized form last.
 
-    The *first_render_depth* parameter is informational — BFS
-    naturally walks shallower dirs first; first_render_depth is
-    used for the BFS queue priority (``deque.popleft`` for
-    shallow, ``deque.append`` for deeper) but does not change the
-    final yield set.
+    The queue is strict FIFO, so discovery runs in level order and
+    shallow directories always finalize before deeper ones.
 
     *gitignore_check* is the same callable produced by
     ``tree.build_gitignore_check`` — when provided, the walker sets
@@ -433,14 +428,15 @@ async def walk_tree(
                 accum_unignored_size[child_rel] = 0
                 accum_newest[child_rel] = 0
                 yield placeholder
-                # First-render-depth dirs go to the front of the
-                # queue so they finalize before deeper ones; deeper
-                # dirs go to the back. This keeps tally-fill order
-                # roughly aligned with what the user sees first.
-                if depth + 1 <= first_render_depth:
-                    queue.appendleft((ce.abs_path, child_rel, depth + 1))
-                else:
-                    queue.append((ce.abs_path, child_rel, depth + 1))
+                # Strict FIFO, so the queue drains in level order: every
+                # directory at depth N is scanned before any at depth N+1.
+                # Pushing shallow directories to the front instead would make
+                # this band depth-first — the walker would follow one level-1
+                # directory all the way down before looking at its siblings,
+                # leaving the rest of the first level (the part the nav tree
+                # shows, and the part a reader expands first) unscanned for
+                # most of the crawl.
+                queue.append((ce.abs_path, child_rel, depth + 1))
             elif ce.is_symlink:
                 link_gi = parent_ignored or _gi(ce.abs_path, False)
                 yield FsEntry.for_observed_symlink(
@@ -490,7 +486,6 @@ async def walk_tree(
 
 
 __all__ = [
-    "DEFAULT_FIRST_RENDER_DEPTH",
     "DEFAULT_MAX_DEPTH",
     "DEFAULT_MAX_FILES",
     "DEFAULT_REFRESH_TTL_S",

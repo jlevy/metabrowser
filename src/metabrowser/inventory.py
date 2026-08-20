@@ -16,10 +16,11 @@ The inventory contract covers cold start, subtree invalidation, and realtime upd
 
 Walker semantics (verified by tests):
 
-* **BFS for queueing.** First-render-depth (``DEFAULT_FIRST_RENDER_DEPTH``)
-  directories are scanned before deeper ones, so a request landing
-  ~500 ms into boot finds the visible part of the tree already
-  populated.
+* **Strict level-order BFS.** Every directory at depth N is scanned
+  before any at depth N+1, so the layers the nav tree shows — and the
+  ones a reader expands first — are complete long before the deep
+  tail, and a request landing early in the boot scan finds them
+  already populated.
 * **Post-order finalize.** A directory's ``FsEntry`` is replaced with
   populated ``total_files`` / ``total_size`` / ``newest_mtime_ns``
   only after every descendant has been walked. Implementation:
@@ -46,7 +47,7 @@ import heapq
 import logging
 import threading
 import time
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Literal
@@ -75,8 +76,8 @@ from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.inventory_rollup import (
     RollupOptions,
     RollupRank,
+    SubtreeAggregateCache,
     build_rollup,
-    group_rollup_children,
 )
 from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
@@ -84,7 +85,6 @@ from metabrowser.settings import (
     ROLLUP_MAX_NODES,
 )
 from metabrowser.walker import (
-    DEFAULT_FIRST_RENDER_DEPTH,
     DEFAULT_MAX_DEPTH,
     DEFAULT_MAX_FILES,
     DEFAULT_REFRESH_TTL_S,
@@ -112,6 +112,44 @@ IndexStatus = Literal["idle", "scanning", "done", "truncated", "failed"]
 # ── InventoryIndex ──────────────────────────────────────────────
 
 
+class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
+    """Read-through view of ``InventoryIndex._children_index``.
+
+    A rollup visits only the directories whose aggregates are missing, so
+    copying every bucket up front is wasted work. Each lookup instead takes
+    the index lock and copies just that directory's children, which keeps the
+    walker's writes from resizing a bucket mid-iteration.
+    """
+
+    __slots__ = ("_index",)
+
+    def __init__(self, index: InventoryIndex) -> None:
+        self._index = index
+
+    def __getitem__(self, parent: str) -> Sequence[FsEntry]:
+        with self._index._rollup_cache_lock:
+            bucket = self._index._children_index.get(parent)
+            if bucket is None:
+                raise KeyError(parent)
+            return tuple(bucket.values())
+
+    def get(  # type: ignore[override]
+        self,
+        parent: str,
+        default: Sequence[FsEntry] = (),
+    ) -> Sequence[FsEntry]:
+        with self._index._rollup_cache_lock:
+            bucket = self._index._children_index.get(parent)
+            return tuple(bucket.values()) if bucket is not None else default
+
+    def __iter__(self) -> Iterator[str]:
+        with self._index._rollup_cache_lock:
+            return iter(tuple(self._index._children_index))
+
+    def __len__(self) -> int:
+        return len(self._index._children_index)
+
+
 class InventoryIndex:
     """Process-wide singleton holding the live filesystem
     inventory.
@@ -130,20 +168,30 @@ class InventoryIndex:
         *,
         max_files: int = DEFAULT_MAX_FILES,
         max_depth: int = DEFAULT_MAX_DEPTH,
-        first_render_depth: int = DEFAULT_FIRST_RENDER_DEPTH,
     ) -> None:
         self._root: Path | None = None
         self._entries: dict[str, FsEntry] = {}
         self._rollup_cache_lock = threading.Lock()
         self._rollup_generation = 0
-        self._rollup_cache: (
-            tuple[
-                int,
-                dict[str, FsEntry],
-                dict[str, tuple[FsEntry, ...]],
-            ]
-            | None
-        ) = None
+        # Per-directory subtree aggregates, retained across rollup requests.
+        # Without this, every ``/api/rollup`` re-walked every file under the
+        # requested path: measured at 580-720ms for a 100k-file root, and the
+        # cost grows with the index, so a scanning root got slower with each
+        # refresh until the client could never catch up. Writes evict the
+        # changed path's ancestor chain (see ``_evict_subtree_aggregates``),
+        # so a rollup during a scan recomputes only what actually moved.
+        self._subtree_aggregates: SubtreeAggregateCache = {}
+        # Monotonic eviction counter and the epoch each path was last evicted
+        # at. Together they let a rollup pass that ran concurrently with the
+        # walker publish only the aggregates the walker has not invalidated.
+        self._aggregate_epoch = 0
+        self._aggregate_evicted_at: dict[str, int] = {}
+        # Parent path -> {child path: entry}, maintained on every write. The
+        # rollup used to rebuild this grouping from a full copy of the index on
+        # each request, which cost ~155ms at 100k entries and grew with the
+        # index; keeping it incrementally lets a request read the few buckets
+        # it actually visits instead.
+        self._children_index: dict[str, dict[str, FsEntry]] = {}
         self._direct_child_counts: dict[str, int] = {}
         self._child_mtime_heaps: dict[str, list[tuple[int, str]]] = {}
         self._recorded_child_mtimes: dict[str, tuple[str, int]] = {}
@@ -161,7 +209,6 @@ class InventoryIndex:
         self._status: IndexStatus = "idle"
         self._max_files = max_files
         self._max_depth = max_depth
-        self._first_render_depth = first_render_depth
         self._files_indexed = 0
         self._started_at_ns: int = 0
         self._subscriber_overflows_since_log = 0
@@ -207,7 +254,10 @@ class InventoryIndex:
         with self._rollup_cache_lock:
             self._entries.clear()
             self._rollup_generation += 1
-            self._rollup_cache = None
+            self._children_index.clear()
+            self._subtree_aggregates.clear()
+            self._aggregate_evicted_at.clear()
+            self._aggregate_epoch += 1
         self._direct_child_counts.clear()
         self._child_mtime_heaps.clear()
         self._recorded_child_mtimes.clear()
@@ -525,32 +575,101 @@ class InventoryIndex:
             ext_rank=ext_rank,
             max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
         )
-        entries, children_by_parent = self._rollup_snapshot()
-        return build_rollup(
+        entries, children_by_parent, snapshot_epoch = self._rollup_view()
+        # Work on a private copy of the memo. ``build_rollup`` runs in a worker
+        # thread while the walker keeps mutating the index on the event loop,
+        # so writing the shared memo in place would let an aggregate computed
+        # from this snapshot land *after* a newer write evicted it, leaving a
+        # tally that is wrong and never corrects itself. Copying costs one
+        # reference per cached directory and keeps the shared memo untouched
+        # until the guarded merge below.
+        memo = self._subtree_aggregates_copy()
+        result = build_rollup(
             entries,
             children_by_parent,
             path,
             options,
             ancestor_gitignored=self._ancestor_gitignored(path, entries),
+            aggregates=memo,
         )
+        self._merge_subtree_aggregates(memo, snapshot_epoch)
+        return result
 
-    def _rollup_snapshot(
+    def _subtree_aggregates_copy(self) -> SubtreeAggregateCache:
+        """Snapshot the shared aggregate memo for one rollup pass."""
+
+        with self._rollup_cache_lock:
+            return dict(self._subtree_aggregates)
+
+    def _merge_subtree_aggregates(
         self,
-    ) -> tuple[dict[str, FsEntry], dict[str, tuple[FsEntry, ...]]]:
-        """Return one immutable-by-convention snapshot per inventory generation."""
+        memo: SubtreeAggregateCache,
+        snapshot_epoch: int,
+    ) -> None:
+        """Publish aggregates from one rollup pass, dropping the stale ones.
+
+        A directory is only republished when nothing has evicted it since
+        *snapshot_epoch* — the epoch that was current when the pass took its
+        entry snapshot. Anything evicted after that was computed from data the
+        walker has already moved past, so it is discarded rather than cached.
+        """
 
         with self._rollup_cache_lock:
-            cached = self._rollup_cache
-            if cached is not None and cached[0] == self._rollup_generation:
-                return cached[1], cached[2]
-            generation = self._rollup_generation
-            entries = dict(self._entries)
+            for directory_path, aggregate in memo.items():
+                if self._aggregate_evicted_at.get(directory_path, 0) <= snapshot_epoch:
+                    self._subtree_aggregates[directory_path] = aggregate
 
-        children_by_parent = group_rollup_children(entries)
+    def _rollup_view(
+        self,
+    ) -> tuple[Mapping[str, FsEntry], Mapping[str, Sequence[FsEntry]], int]:
+        """Return live read views of the index plus the current eviction epoch.
+
+        Nothing is copied. ``build_rollup`` reads both mappings only by key,
+        and a single ``dict`` lookup on string keys is atomic under the GIL,
+        so the entry map is safe to read from the rollup worker thread while
+        the walker keeps writing on the event loop. Child buckets are iterated
+        rather than looked up, so those go through ``_ChildrenView``, which
+        holds the index lock for the copy.
+
+        Reading live means a rollup can observe writes that land mid-build.
+        That is why the epoch returned here gates
+        :meth:`_merge_subtree_aggregates`: any directory written since this
+        moment is refused a cache entry, so only aggregates whose subtree
+        provably did not move are retained.
+        """
+
         with self._rollup_cache_lock:
-            if generation == self._rollup_generation:
-                self._rollup_cache = (generation, entries, children_by_parent)
-        return entries, children_by_parent
+            epoch = self._aggregate_epoch
+        return self._entries, _ChildrenView(self), epoch
+
+    def _evict_subtree_aggregates(self, path: str) -> None:
+        """Drop the cached aggregate for *path* and every ancestor up to root.
+
+        Caller must hold ``_rollup_cache_lock``.
+
+        A directory's aggregate summarizes everything beneath it, so a write
+        at *path* only invalidates *path* and its ancestors; sibling subtrees
+        stay valid and are reused, which is what keeps a rollup during a scan
+        proportional to what moved rather than to the whole index.
+
+        Cost is one chain walk per stored entry, bounded by ``INVENTORY_MAX_DEPTH``.
+        """
+
+        self._aggregate_epoch += 1
+        epoch = self._aggregate_epoch
+        # Only directories carry an aggregate, so this first pop is a no-op
+        # for a file; its parent chain is what actually has to go. Eviction
+        # epochs are recorded whether or not the path was cached, because a
+        # rollup pass already in flight may be about to publish one.
+        self._subtree_aggregates.pop(path, None)
+        self._aggregate_evicted_at[path] = epoch
+        cursor = path
+        while cursor:
+            cursor = cursor.rpartition("/")[0]
+            self._subtree_aggregates.pop(cursor, None)
+            self._aggregate_evicted_at[cursor] = epoch
+            if not cursor:
+                return
 
     def _replace_index_entry(self, entry: FsEntry) -> None:
         """Store an entry and invalidate cached rollup topology atomically."""
@@ -558,7 +677,11 @@ class InventoryIndex:
         with self._rollup_cache_lock:
             self._entries[entry.path] = entry
             self._rollup_generation += 1
-            self._rollup_cache = None
+            # The served root is its own parent; listing it as its own child
+            # would make subtree aggregation recurse forever.
+            if entry.path != entry.parent:
+                self._children_index.setdefault(entry.parent, {})[entry.path] = entry
+            self._evict_subtree_aggregates(entry.path)
 
     def _pop_index_entry(self, path: str) -> FsEntry | None:
         """Remove an entry and invalidate cached rollup topology atomically."""
@@ -567,7 +690,13 @@ class InventoryIndex:
             entry = self._entries.pop(path, None)
             if entry is not None:
                 self._rollup_generation += 1
-                self._rollup_cache = None
+                siblings = self._children_index.get(entry.parent)
+                if siblings is not None:
+                    siblings.pop(path, None)
+                    if not siblings:
+                        del self._children_index[entry.parent]
+                self._children_index.pop(path, None)
+                self._evict_subtree_aggregates(path)
             return entry
 
     def _ancestor_gitignored(self, path: str, entries: Mapping[str, FsEntry]) -> bool:
@@ -695,7 +824,6 @@ class InventoryIndex:
             target_resolved,
             max_depth=self._max_depth,
             max_files=self._max_files,
-            first_render_depth=self._first_render_depth,
             gitignore_check=gi_check,
         ):
             # ``walk_tree`` yields paths relative to *target_resolved*,
@@ -957,7 +1085,6 @@ class InventoryIndex:
                 root,
                 max_depth=self._max_depth,
                 max_files=self._max_files,
-                first_render_depth=self._first_render_depth,
                 gitignore_check=gi_check,
             ):
                 if entry.type == "dir" and entry.total_files is None:
@@ -1585,7 +1712,6 @@ def reset_instance_for_tests() -> None:
 
 # Re-export the non-trivial helpers used by tests and inventory consumers.
 __all__ = [
-    "DEFAULT_FIRST_RENDER_DEPTH",
     "DEFAULT_MAX_DEPTH",
     "DEFAULT_MAX_FILES",
     "DEFAULT_REFRESH_TTL_S",
