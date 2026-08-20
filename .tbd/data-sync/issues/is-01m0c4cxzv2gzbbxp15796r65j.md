@@ -5,7 +5,7 @@ title: "diff/service.py: resolution, self-describing IDs, bounded caches"
 kind: feature
 status: open
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies:
@@ -15,10 +15,10 @@ dependencies:
     target: is-01m0c4dg0mn2a39exqkjdvf6jv
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-08-19T04:27:46.535Z
-updated_at: 2026-08-19T16:19:42.458Z
+updated_at: 2026-08-20T17:24:04.327Z
 ---
 ComparisonService with register_adapter(name, source), create(intent), manifest(id), file_patch(id, file_id), content(id, file_id, side). comparison_id_for(resolved) derives the self-describing identifier so any GET can rebuild an evicted comparison rather than fail, and creation is idempotent. Bounded LRUs for manifests and patches; generation_token(resolved) backs the stale check for volatile comparisons.
 
 ## Notes
 
-Phase 1 shipped without this: the plugin data hook covers the patch-file source, and the CLI hydrates git comparisons directly. The service (self-describing IDs, bounded LRUs, generation tokens) becomes necessary with the Phase 2 shell comparison context and /api/diff/ routes.
+User hit the deferred dead end live: a >50-file commit click shows 'not been loaded yet' with no loader. Landing the thin slice now: comparison hook gains ?file=<path> narrowing (hydrates just that change), and the diff view renders a Load control on deferred sections that fetches and splices the hunks. The full service (cross-request caching, generation tokens, /api/diff collection) remains this bead.
