@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -104,7 +104,7 @@ class _SubtreeAggregate:
 # path. The aggregate values stay opaque to holders: only this module reads or
 # writes their fields. Owners are responsible for eviction — see
 # ``build_rollup``.
-SubtreeAggregateCache = dict[str, "_SubtreeAggregate"]
+SubtreeAggregateCache = MutableMapping[str, "_SubtreeAggregate"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,7 +182,7 @@ def _aggregate_subtree(
     directory_path: str,
     parent_ignored: bool,
     children_by_parent: Mapping[str, Sequence[FsEntry]],
-    aggregates: dict[str, _SubtreeAggregate],
+    aggregates: SubtreeAggregateCache,
 ) -> _SubtreeAggregate:
     # ``aggregates`` doubles as a memo. A directory's aggregate is a pure
     # function of its subtree, and the inherited ignore state is fixed by

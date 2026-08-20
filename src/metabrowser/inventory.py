@@ -47,6 +47,7 @@ import heapq
 import logging
 import threading
 import time
+from collections import ChainMap
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -588,30 +589,25 @@ class InventoryIndex:
             max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
         )
         entries, children_by_parent, snapshot_epoch = self._rollup_view()
-        # Work on a private copy of the memo. ``build_rollup`` runs in a worker
-        # thread while the walker keeps mutating the index on the event loop,
-        # so writing the shared memo in place would let an aggregate computed
-        # from this snapshot land *after* a newer write evicted it, leaving a
-        # tally that is wrong and never corrects itself. Copying costs one
-        # reference per cached directory and keeps the shared memo untouched
-        # until the guarded merge below.
-        memo = self._subtree_aggregates_copy()
+        # Reads fall through to the shared memo; writes land in ``computed``.
+        # ``build_rollup`` runs in a worker thread while the walker keeps
+        # mutating the index on the event loop, so writing the shared memo in
+        # place would let an aggregate computed here land *after* a newer
+        # write evicted it, leaving a tally that is wrong and never corrects
+        # itself. Keeping this pass's own results separate also means the
+        # guarded merge below touches only what this pass actually computed
+        # rather than everything already cached.
+        computed: SubtreeAggregateCache = {}
         result = build_rollup(
             entries,
             children_by_parent,
             path,
             options,
             ancestor_gitignored=self._ancestor_gitignored(path, entries),
-            aggregates=memo,
+            aggregates=ChainMap(computed, self._subtree_aggregates),
         )
-        self._merge_subtree_aggregates(memo, snapshot_epoch)
+        self._merge_subtree_aggregates(computed, snapshot_epoch)
         return result
-
-    def _subtree_aggregates_copy(self) -> SubtreeAggregateCache:
-        """Snapshot the shared aggregate memo for one rollup pass."""
-
-        with self._rollup_cache_lock:
-            return dict(self._subtree_aggregates)
 
     def _merge_subtree_aggregates(
         self,
