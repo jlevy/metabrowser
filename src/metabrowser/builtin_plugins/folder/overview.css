@@ -1,16 +1,30 @@
 .folder-overview-host {
-  --folder-overview-narrow-document-gutter: 1.25rem;
+  /* KPress's own inline padding on the article in its narrow band. Overview
+     zeroes that padding (see the .kpress rule below) and insets the panel
+     instead, so the inset has to be the same length or the README's text ends
+     up narrower here than the standalone page by twice the difference — it was
+     1.25rem, and the text ran 24px short. */
+  --folder-overview-narrow-document-gutter: 0.5rem;
   /* Mirror KPress's visible regular-band content card, not its wider article
      frame: the frame reserves 2rem per side for the floating TOC control. */
   --folder-overview-regular-card-width: min(calc(100% - 4rem), calc(var(--kpress-measure) - 2rem));
   --folder-overview-wide-document-gutter: 1rem;
   --folder-overview-wide-toc-width: 15rem;
   --folder-overview-wide-toc-gap: 3rem;
-  /* The wide column is exactly the prose measure. It used to be the measure
-     plus an inset per side, which left the README's visible card sitting 2.5rem
-     inside the column the other panels filled. Every panel now shares one edge,
-     and the card fills it rather than floating within it. */
-  --folder-overview-wide-card-width: var(--kpress-measure);
+  /* The wide column is KPress's wide-band content track, not the reading
+     measure alone: 48rem of text plus the 2.5rem KPress insets on each side.
+     Sized to the measure instead, the column is right but the text inside it
+     is not — KPress still pads .kpress-long-text by 2.5rem in this band, so
+     the README rendered at 43rem here against 48rem when the same file is
+     opened on its own. Text width is what a reader compares between the two,
+     so it is the thing that has to match; every panel still shares one edge,
+     which is now that track's edge. */
+  --folder-overview-wide-toc-inset: 2.5rem;
+  --folder-overview-wide-card-width: calc(
+    var(--kpress-measure) +
+    2 *
+    var(--folder-overview-wide-toc-inset)
+  );
 
   container-type: inline-size;
 }
@@ -141,7 +155,13 @@
   color: var(--muted);
 }
 
-@container (max-width: 47.99rem) {
+/* Both bands query `kpress-doc`, the container KPress names on the preview
+   pane, rather than this host. They are nearly the same width, and that was
+   the trap: the host is the pane minus its padding, so the two crossed 75rem
+   about 25px apart and there was a band of window widths where KPress had
+   switched and Overview had not — the README's text jumped while every other
+   panel stayed put. One document surface, one set of breakpoints. */
+@container kpress-doc (max-width: 47.99rem) {
   .folder-overview-panel-surface > .folder-overview-panel-heading,
   .folder-overview-panel-surface > .folder-overview-panel-body,
   .folder-overview-panel-document > .folder-overview-panel-heading,
@@ -150,7 +170,32 @@
   }
 }
 
-@container (min-width: 75rem) {
+@container kpress-doc (min-width: 75rem) {
+  /* KPress's own reading-measure cap, lifted for the same reason KPress lifts
+     it in this band: the cap and the 2.5rem inset it pads the prose with are
+     sized for different boxes. KPress reaches its wide band here — the nearest
+     container is this host, not the panel — but the README renders with no
+     table of contents, so it stays a single column and keeps the cap. The
+     inset is then measured against the cap instead of against the 53rem track
+     it was written for, and eats 5rem of measure: the README read at 43rem
+     where the same file opened on its own reads at 48rem.
+
+     KPress documents this fallback and offers `toc_rail: reserved` as the way
+     out, which holds a 15rem rail open. Overview has no use for a rail it
+     deliberately does not fill, so it lifts the cap instead and lets the
+     column be the track: 53rem of card, 48rem of text, the same two numbers
+     the standalone page produces.
+
+     Both caps, not one. KPress carries the measure on two elements — the
+     article at measure + 2rem and the layout at the measure — and warns that
+     lifting only the outer one leaves the inner still centred at the measure,
+     which reads as a wide left margin with the content spilling past its right
+     edge. */
+  .folder-overview-panel-document > .folder-overview-panel-body > .kpress,
+  .folder-overview-panel-document .kpress-doc-layout {
+    max-width: none;
+  }
+
   .folder-overview-panel-surface > .folder-overview-panel-heading,
   .folder-overview-panel-surface > .folder-overview-panel-body,
   .folder-overview-panel-document > .folder-overview-panel-heading,

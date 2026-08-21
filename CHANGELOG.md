@@ -6,6 +6,14 @@ All notable changes to Metabrowser are documented here.
 
 Folder Overview:
 
+- A README reads at the same measure in Overview as it does opened on its own, at every
+  breakpoint. Three things were out of step, each enough on its own: Overview’s
+  breakpoints were measured against its own host rather than the container KPress names,
+  so the two crossed 75rem about 25px apart and the text jumped in between; the wide
+  column was the reading measure rather than KPress’s content track, so the prose kept
+  insets sized for a track it was no longer in and read at 43rem against 48rem; and the
+  narrow inset did not match the article padding it replaced.
+
 - Files and File Breakdown are one **File Overview** section.
   They answer the same question at two resolutions, and splitting them meant collapsing
   or scrolling past the first to reach the second — and, worse, splitting one set of

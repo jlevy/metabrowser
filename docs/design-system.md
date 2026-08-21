@@ -1017,6 +1017,19 @@ final tie-breaker. Group order remains registry-defined.
 Changing the metric therefore reveals the relevant skew without making equal rows jump
 unpredictably.
 
+Overview renders the README at the same measure a reader gets opening that file on its
+own, at every breakpoint.
+Both surfaces run the same renderer over the same file, so the reader compares them
+directly and any difference reads as a defect rather than as a choice.
+Three things have to agree, and each one broke it alone: the band boundaries must query
+one container — KPress’s `kpress-doc` on the preview pane, not Overview’s own host,
+which is that pane minus its padding and so crosses 75rem about 25px later; the wide
+column must be KPress’s content track, the measure plus its 2.5rem insets, because
+sizing it to the measure leaves the prose padded for a track it is no longer in; and the
+narrow inset must equal the article padding Overview drops, or the text runs short by
+twice the difference.
+`test_one_document_surface_has_one_set_of_breakpoints` holds all three.
+
 The **File Overview** section begins expanded.
 It opens with one control row carrying the shared Files / Bytes measure and the **Show
 ignored** checkbox side by side, then a fixed two-row composition table, then the full
