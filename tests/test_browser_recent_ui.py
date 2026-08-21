@@ -104,6 +104,7 @@ def test_index_template_versions_core_static_assets() -> None:
         "/static/plugin_sdk.js",
         "/static/icons.js",
         "/static/tree_expansion.js",
+        "/static/tree_filter_model.js",
         "/static/known_file_catalog.js",
         "/static/catalog_feed.js",
         "/static/file_fuzzy_match.js",

@@ -725,43 +725,29 @@ var QUICK_FILE_RESULT_LIMIT = 100;
 // to, are both questions about a whole subtree — including the parts
 // this client has never been sent. Only the server can answer them, so
 // the filter travels with the request instead of being applied to the
-// rows that come back. See metabrowser/tree_filter.py.
-//
-// Recency is absent on purpose: while a recency window is set the panel
-// reads from /api/recent instead (see filesPanelUsesRecentSource), so in
-// this source it is always "all".
-function treeFilterParams() {
-  var params = [];
-  if (!filterState) {
-    return params;
-  }
-  var st = filterState.get();
-  if (st.types && st.types.length > 0) {
-    params.push(`types=${encodeURIComponent(st.types.join(","))}`);
-  }
-  var floor = filterState.SIZE_MIN_BYTES[st.size];
-  if (floor) {
-    params.push(`min_size=${floor}`);
-  }
-  if (st.showIgnored === false) {
-    params.push("include_ignored=0");
-  }
-  return params;
+// rows that come back. See metabrowser/tree_filter.py for the projection
+// and static/tree_filter_model.js for how a selection becomes a request.
+var treeFilterModel = /** @type {any} */ (window).MetabrowserTreeFilterModel;
+
+function currentFilterSnapshot() {
+  return filterState ? filterState.get() : null;
 }
 
-// Identity of the current filter, for caching a fetched subtree against
-// the selection it was fetched under. Without it, narrowing the filter
-// would expand folders from a cache filled while it was wider.
+function treeFilterSizeFloors() {
+  return filterState ? filterState.SIZE_MIN_BYTES : {};
+}
+
 function treeFilterKey() {
-  return treeFilterParams().join("&");
+  return treeFilterModel.requestKey(currentFilterSnapshot(), treeFilterSizeFloors());
 }
 
 function treeUrl(path, extraParams) {
-  var params = treeFilterParams().concat(extraParams || []);
-  if (path) {
-    params.unshift(`path=${encodeURIComponent(path)}`);
-  }
-  return params.length > 0 ? `/api/tree?${params.join("&")}` : "/api/tree";
+  return treeFilterModel.treeUrl(
+    path,
+    currentFilterSnapshot(),
+    treeFilterSizeFloors(),
+    extraParams,
+  );
 }
 
 async function loadTree() {
@@ -2364,6 +2350,7 @@ function setSelectedPath(path) {
   });
   if (!path) {
     treeKeyboard?.setSelectedPath(null);
+    renderSelectionOutsideFilterNote(null);
     return;
   }
   queryHtmlAll(".tree-item").forEach((el) => {
@@ -2372,6 +2359,52 @@ function setSelectedPath(path) {
     }
   });
   treeKeyboard?.setSelectedPath(path);
+  // The path explicitly: this runs before navigateToPath has committed it, so
+  // reading currentPath here would name the folder the reader just left.
+  renderSelectionOutsideFilterNote(path);
+}
+
+// A filter can exclude the folder the reader is standing in — open one from a
+// breadcrumb, a link, or a pasted URL and the tree legitimately has no row for
+// it. Say so, naming it, rather than leaving the panel silently unselected.
+//
+// Deliberately not a pinned row. Keeping the selection in the tree means
+// refetching as the reader navigates, and a refetch repaints the panel, which
+// collapses every folder they had open — the same cost this change already
+// refused to pay for filesystem bursts. A line costs nothing and answers the
+// question the empty selection actually raises.
+function renderSelectionOutsideFilterNote(selectedPath) {
+  var panel = document.getElementById("tab-files");
+  if (!panel) {
+    return;
+  }
+  var path = selectedPath === undefined ? currentPath : selectedPath;
+  var existing = panel.querySelector(".tree-selection-note");
+  var filtered = filterState ? filterHasConstraints(filterState.get()) : false;
+  var absent =
+    filtered &&
+    !!path &&
+    !panel.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`);
+  if (!absent) {
+    existing?.remove();
+    return;
+  }
+  var text = `${path} is outside this filter.`;
+  if (existing) {
+    existing.textContent = text;
+    return;
+  }
+  var note = document.createElement("div");
+  note.className = "tree-selection-note";
+  note.setAttribute("role", "status");
+  note.textContent = text;
+  var anchor =
+    panel.querySelector(".tree-summary-filtered") || panel.querySelector(".tree-summary");
+  if (anchor) {
+    anchor.insertAdjacentElement("afterend", note);
+  } else {
+    panel.insertAdjacentElement("afterbegin", note);
+  }
 }
 
 // ── Nav pane ────────────────────────────────────────────────────
@@ -4074,9 +4107,9 @@ function onFilterStateChange(state) {
 // ── Applying filters to the tree ────────────────────────────────
 //
 // Two sources, two answers. /api/tree is filtered server-side (see
-// treeFilterParams), so in that source there is nothing here to decide:
-// every row that arrived belongs, and folder aggregates already report
-// their matches. /api/recent returns a flat list of files inside a
+// treeFilterModel.requestParams), so in that source there is nothing here to
+// decide: every row that arrived belongs, and folder aggregates already
+// report their matches. /api/recent returns a flat list of files inside a
 // recency window, clustered into folders here, and the type and size
 // dimensions are still resolved over those rows — which is sound
 // because a cluster holds every matching file it has, unlike a
@@ -4117,68 +4150,29 @@ function applyTreeFilters() {
     for (var pageIndex = 0; pageIndex < pageRows.length; pageIndex++) {
       pageRows[pageIndex].classList.remove("tree-item-filter-hidden");
     }
-    // Clear the line too: this early return is the path taken when the last
-    // filter is removed, so leaving it would strand a "Filtered to N files"
+    // Clear the lines too: this early return is the path taken when the last
+    // filter is removed, so leaving them would strand a "Filtered to N files"
     // over an unfiltered tree.
     _renderFilteredTally(panel, st, null);
+    renderSelectionOutsideFilterNote();
     scheduleTreeSynchronize();
     return;
   }
   var nowSec = Date.now() / 1000;
-  var keep = new Map();
-  for (var i = rows.length - 1; i >= 0; i--) {
-    var row = rows[i];
-    var isDir = row.classList.contains("tree-folder");
-    var isSymlink = row.classList.contains("tree-symlink");
-    var gitignored = row.classList.contains("tree-item-gitignored");
-    var path = row.dataset.path || "";
-    var ok;
-    if (!st.showIgnored && gitignored) {
-      ok = false;
-    } else {
-      ok = filterState.rowMatches(
-        {
-          mtime: parseTipNumber(row.dataset.tipMtime),
-          size: isDir ? null : parseTipNumber(row.dataset.tipSize),
-          path: path,
-          // The renderer stamps the index's bounded compound-tail extension on
-          // every file row; matching on it keeps a compound pick
-          // (".min.js") agreeing with the tally that offered it.
-          ext: row.dataset.ext || "",
-          isDir: isDir,
-          isSymlink: isSymlink,
-        },
-        st,
-        nowSec,
-      );
-    }
-    if (isDir && ok) {
-      // A cluster folder in this source is built from the matching files
-      // themselves, so its children are all present and this verdict is
-      // complete — unlike the tree source, where a collapsed folder's
-      // contents were never sent and the same question is the server's.
-      var container = _childContainerFor(row);
-      var kids = container
-        ? Array.prototype.slice.call(container.querySelectorAll(":scope > .tree-item"))
-        : [];
-      ok = kids.length > 0 && kids.some((kid) => keep.get(kid) === true);
-    }
-    keep.set(row, ok);
-  }
-  // Forward pass so a pruned folder is seen before its descendants:
-  // its verdict propagates down, and a subtree never keeps an orphaned
-  // visible row under a parent that is gone.
-  var suppressed = new Set();
+  // Describe the rows, let the model decide, write the verdicts back. The
+  // decision — a cluster folder survives iff a child does, and a pruned
+  // folder takes its descendants with it — is in tree_filter_model.js, where
+  // it can be tested without a document.
+  var hidden = treeFilterModel.clusterHiddenIds(
+    rows.map((row, index) => ({
+      id: String(index),
+      parentId: _clusterParentId(row, rows),
+      isDir: row.classList.contains("tree-folder"),
+      matched: _rowPassesFilter(row, st, nowSec),
+    })),
+  );
   for (var j = 0; j < rows.length; j++) {
-    var el = rows[j];
-    var matched = !suppressed.has(el.parentElement) && keep.get(el) === true;
-    el.classList.toggle("tree-item-filter-hidden", !matched);
-    if (!matched) {
-      var kidContainer = _childContainerFor(el);
-      if (kidContainer) {
-        suppressed.add(kidContainer);
-      }
-    }
+    rows[j].classList.toggle("tree-item-filter-hidden", hidden.has(String(j)));
   }
   for (var pageRowIndex = 0; pageRowIndex < pageRows.length; pageRowIndex++) {
     var pageParent = pageRows[pageRowIndex].parentElement?.previousElementSibling;
@@ -4198,10 +4192,49 @@ function applyTreeFilters() {
       nowSec,
     ),
   );
+  renderSelectionOutsideFilterNote();
   // Scheduled, not immediate: every caller that needs focus repaired in this
   // turn follows applyTreeFilters() with synchronizeTreeNow(), which cancels
   // this task and runs once instead of walking the tree twice.
   scheduleTreeSynchronize();
+}
+
+// The row's own verdict, before anything about its descendants is considered.
+// Gitignored visibility is handled here rather than in the shared predicate
+// because only the caller knows a row's class.
+function _rowPassesFilter(row, state, nowSec) {
+  if (!state.showIgnored && row.classList.contains("tree-item-gitignored")) {
+    return false;
+  }
+  var isDir = row.classList.contains("tree-folder");
+  return filterState.rowMatches(
+    {
+      mtime: parseTipNumber(row.dataset.tipMtime),
+      size: isDir ? null : parseTipNumber(row.dataset.tipSize),
+      path: row.dataset.path || "",
+      // The renderer stamps the index's bounded compound-tail extension on
+      // every file row; matching on it keeps a compound pick (".min.js")
+      // agreeing with the tally that offered it.
+      ext: row.dataset.ext || "",
+      isDir: isDir,
+      isSymlink: row.classList.contains("tree-symlink"),
+    },
+    state,
+    nowSec,
+  );
+}
+
+// Index of the row that owns *row*'s group, as the model's parent id.
+// Rows nest through a .tree-children wrapper, so the owner is the element
+// before the wrapper rather than the wrapper itself.
+function _clusterParentId(row, rows) {
+  var container = row.parentElement;
+  if (!container?.classList.contains("tree-children")) {
+    return null;
+  }
+  var owner = container.previousElementSibling;
+  var index = owner ? rows.indexOf(/** @type {HTMLElement} */ (owner)) : -1;
+  return index >= 0 ? String(index) : null;
 }
 
 // The tree source: /api/tree was asked the question and answered it over the
@@ -4245,6 +4278,7 @@ function _applyTreeSourceFilters(panel, state) {
     row.classList.toggle("tree-item-filter-hidden", hide);
   }
   _renderFilteredTally(panel, state, _filteredTreeTotals ? _filteredTreeTotals.files : null);
+  renderSelectionOutsideFilterNote();
 }
 
 // How many files the filter is actually showing, as a second line

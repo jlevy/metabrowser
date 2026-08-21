@@ -2754,11 +2754,28 @@ html[data-prose-font="sans"] {
   font-size: var(--ui-small-font-size);
   border-bottom: 1px solid var(--border);
 }
+/* A filter can exclude the folder the reader is standing in, and the tree
+   then legitimately has no row to select. Same muted register as the
+   filtered count directly above it — this is the same kind of remark about
+   what the filter did, not a warning. Paths break anywhere rather than
+   widening the pane. */
+.tree-selection-note {
+  padding: 3px 12px 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+}
+.tree-summary-filtered:has(+ .tree-selection-note) {
+  border-bottom: none;
+}
 /* The tally and its filtered count are one block, so the rule belongs
    under the pair rather than between them: the totals are what the
    filtered figure reads against, and a border in between made them
    look like two unrelated bands. */
-.tree-summary:has(+ .tree-summary-filtered) {
+.tree-summary:has(+ .tree-summary-filtered),
+.tree-summary:has(+ .tree-selection-note) {
   border-bottom: none;
   padding-bottom: 0;
 }

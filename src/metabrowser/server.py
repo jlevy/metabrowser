@@ -819,6 +819,7 @@ async def index(_request: Request) -> HTMLResponse:
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree_expansion.js")
+    tree_filter_model_url = _static_asset_url("tree_filter_model.js")
     pending_tally_diagnostics_url = _static_asset_url("pending_tally_diagnostics.js")
     known_file_catalog_url = _static_asset_url("known_file_catalog.js")
     catalog_feed_url = _static_asset_url("catalog_feed.js")
@@ -1079,6 +1080,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>
+  <script src="{tree_filter_model_url}"></script>
   <script src="{pending_tally_diagnostics_url}"></script>
   <script src="{known_file_catalog_url}"></script>
   <script src="{catalog_feed_url}"></script>

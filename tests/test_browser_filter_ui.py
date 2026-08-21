@@ -982,10 +982,11 @@ def test_the_tree_source_asks_the_server_rather_than_judging_mounted_rows() -> N
     assert "_renderFilterNote" not in js
     assert "contain additional matches." not in js
 
-    params = js[js.index("function treeFilterParams()") : js.index("function treeFilterKey()")]
-    assert 'types=${encodeURIComponent(st.types.join(","))}' in params
-    assert "min_size=${floor}" in params
-    assert "include_ignored=0" in params
+    # The request itself is built in the model, where it is testable without a
+    # document (tests/dom/tree_filter_model_behavior.js); app.js only supplies
+    # the current snapshot.
+    assert "treeFilterModel.treeUrl(" in js
+    assert "treeFilterModel.requestKey(" in js
 
     # A subtree cached under a wider filter is not an answer for a narrower
     # one, so the cache key carries the selection.
@@ -1012,14 +1013,52 @@ def test_the_tree_source_asks_the_server_rather_than_judging_mounted_rows() -> N
     assert "applyTreeFilters();" in reapply
 
 
-def test_hidden_folders_suppress_their_descendants() -> None:
-    """Otherwise a matching row could survive inside a pruned subtree
-    and float under the wrong parent."""
+def test_a_filter_that_excludes_where_you_are_standing_says_so() -> None:
+    """Open a folder from a breadcrumb or a URL while a filter is on and the
+    tree legitimately has no row for it, so nothing is selected. Naming the
+    folder answers the question that raises.
+
+    Deliberately a line and not a pinned row: keeping the selection in the
+    tree means refetching as the reader navigates, and a refetch repaints the
+    panel and collapses every folder they had open."""
 
     js = _read("app.js")
-    fn_block = _apply_tree_filters_body(js)
-    assert "suppressed.add(kidContainer)" in fn_block
-    assert "suppressed.has(el.parentElement)" in fn_block
+    start = js.index("function renderSelectionOutsideFilterNote(selectedPath)")
+    block = js[start : start + 1800]
+    assert "filterHasConstraints(filterState.get())" in block
+    assert "escapePathForSelector(path)" in block
+    # Named from the path being selected, not from currentPath: this runs
+    # before navigateToPath commits it, so the latter is the folder just left.
+    assert "selectedPath === undefined ? currentPath : selectedPath" in block
+    assert "renderSelectionOutsideFilterNote(path);" in js
+    assert "is outside this filter." in block
+    assert 'note.setAttribute("role", "status")' in block
+
+    # Written on selection change and on every repaint, or it would survive a
+    # filter change that brought the folder back.
+    select_block = js[js.index("function setSelectedPath(path)") :][:1400]
+    assert "renderSelectionOutsideFilterNote(path);" in select_block
+    assert "renderSelectionOutsideFilterNote(null);" in select_block
+    assert js.count("renderSelectionOutsideFilterNote();") >= 3
+
+    css = _read("styles.css")
+    note_start = css.index(".tree-selection-note {")
+    assert "var(--muted)" in css[note_start : css.index("}", note_start)]
+
+
+def test_hidden_folders_suppress_their_descendants() -> None:
+    """Otherwise a matching row could survive inside a pruned subtree
+    and float under the wrong parent.
+
+    The rule itself lives in static/tree_filter_model.js and is exercised
+    there; this pins that app.js still routes the clustered source through it
+    rather than growing a second copy of the walk."""
+
+    js = _read("app.js")
+    assert "treeFilterModel.clusterHiddenIds(" in _apply_tree_filters_body(js)
+    model = _read("tree_filter_model.js")
+    assert "function clusterHiddenIds(rows)" in model
+    assert "hidden.has(row.parentId)" in model
 
 
 def test_filters_reapply_after_live_row_inserts() -> None:

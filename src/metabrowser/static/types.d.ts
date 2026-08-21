@@ -799,6 +799,28 @@ type MetabrowserTreeExpansion = {
   visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
 };
 
+type MetabrowserClusterRow = {
+  id: string;
+  parentId: string | null;
+  isDir: boolean;
+  matched: boolean;
+};
+
+type MetabrowserTreeFilterModel = {
+  clusterHiddenIds(rows: Array<MetabrowserClusterRow>): Set<string>;
+  requestKey(state: MetabrowserFilterSnapshot | null, sizeFloors: Record<string, number>): string;
+  requestParams(
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): string[];
+  treeUrl(
+    path: string,
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+    extraParams?: string[],
+  ): string;
+};
+
 type MetabrowserPendingTallyWatchdog = Readonly<{
   dispose(): void;
   reconcile(): void;
@@ -1492,6 +1514,7 @@ declare global {
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
+    MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserViewState: MetabrowserViewStateRuntime;

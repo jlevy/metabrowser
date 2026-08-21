@@ -22,6 +22,13 @@ Navigation filters:
   up to, in every walk output format.
   `metab ROOT --check-api` gained a filtered step.
 
+- A filter can exclude the folder you are standing in — reached from a breadcrumb, a
+  link, or a pasted URL — and the tree then has no row to select.
+  The panel names it (“docs/project is outside this filter.”) instead of going silently
+  unselected. Deliberately a line rather than a pinned row: keeping the selection in a
+  filtered tree means refetching as you navigate, and a refetch repaints the panel and
+  collapses every folder you had open.
+
 - Navigation rows span the full width of the panel at every depth.
   Indentation moved into the row’s own left padding, so the hover background, the
   selection background, and the accent bar are one constant shape instead of a box that
