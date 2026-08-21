@@ -42,7 +42,7 @@ if [[ "$command" == git\ push* ]] || [[ "$command" == *"&& git push"* ]] || [[ "
       tbd closing
     elif configured_fallback_version=$(tbd_configured_fallback_version ".tbd/config.yml"); then
       if command -v npx &> /dev/null; then
-        npx --yes --min-release-age=0 "get-tbd@$configured_fallback_version" closing
+        npx --yes "get-tbd@$configured_fallback_version" closing
       fi
     fi
   fi

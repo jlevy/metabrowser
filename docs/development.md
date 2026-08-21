@@ -164,6 +164,25 @@ Commit `uv.lock` with every Python dependency change and `package-lock.json` wit
 JavaScript tool change.
 Do not add requirements files, Poetry, or another environment manager.
 
+The cool-off is a control on third-party code, where an upstream publisher could be
+compromised without us knowing.
+First-party packages — the ones published from repositories this project controls, tbd
+among them — are outside it, because that risk is already managed by the process that
+releases them. Install and upgrade those the standard way their own documentation
+describes:
+
+```shell
+npm install -g get-tbd@latest
+tbd setup --auto
+```
+
+`tbd setup` owns the hook configs, session scripts, and agent skills it writes.
+Commit them exactly as generated and commit the diff the upgrade reports.
+Do not hand-patch them and do not add tests that assert their contents: the same upgrade
+runs across many repositories, and a local edit is silently reverted by the next one
+while a test that pins their contents turns a routine upgrade into a repair job.
+This repository learned that twice.
+
 Every direct runtime requirement declares the minimum version covered by the frozen
 release graph. `pyproject.toml` owns those requirements, while `uv.lock` records the
 resolved graph. Update both through uv and run the complete release gate after a
