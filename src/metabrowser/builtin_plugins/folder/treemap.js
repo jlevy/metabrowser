@@ -288,12 +288,7 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     function updateTotalsComposition() {
       try {
         totalsView.updateComposition(
-          buildFolderTotalsComposition(
-            totalsEnvelope,
-            mb.fileTypes,
-            state.metric,
-            state.includeIgnored,
-          ),
+          buildFolderTotalsComposition(totalsEnvelope, mb.fileTypes, state.metric),
           palette,
         );
       } catch (error) {

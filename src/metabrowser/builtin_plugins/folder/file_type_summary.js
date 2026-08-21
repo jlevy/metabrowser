@@ -46,12 +46,6 @@ export function mountFileTypeSummary(
     countClass: mb.countClass,
     sizeClass: mb.sizeClass,
   };
-  const scopeControls = document.createElement("div");
-  container.append(scopeControls);
-  const unmountScopeControls = rollupControls.mount(scopeControls, {
-    metric: false,
-    ignored: true,
-  });
   const view = mountDistributionView(container, model, palette, metricClasses, mb.fileTypeIcon);
 
   function render() {
@@ -160,38 +154,11 @@ export function mountFileTypeSummary(
     options.signal?.removeEventListener("abort", abort);
     watch.dispose();
     unsubscribeControls();
-    unmountScopeControls();
     unsubscribeActive();
     projection.release();
     palette.release();
   }
   return Object.freeze({
     dispose,
-  });
-}
-
-/** @param {MetabrowserPublicSdk} mb @param {SummaryPalettePool} palettePool @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls */
-export function createFileTypeSummaryPanel(mb, palettePool, projectionPool, rollupControls) {
-  return Object.freeze({
-    label: "File Breakdown",
-    placement: /** @type {const} */ ("summary"),
-    presentation: /** @type {const} */ ("surface"),
-    required: true,
-    collapsible: true,
-    defaultExpanded: true,
-    printable: false,
-    /** @param {{path?: string}} context */
-    resolve: (context) => Object.freeze({ key: context.path || "", data: null }),
-    /** @param {HTMLElement} container @param {{path?: string, raw?: unknown}} context @param {unknown} _data @param {{signal?: AbortSignal}} options */
-    mount: (container, context, _data, options) =>
-      mountFileTypeSummary(
-        container,
-        context,
-        mb,
-        palettePool,
-        projectionPool,
-        rollupControls,
-        options,
-      ),
   });
 }

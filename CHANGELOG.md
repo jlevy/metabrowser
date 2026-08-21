@@ -4,6 +4,27 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Folder Overview:
+
+- Files and File Breakdown are one **File Overview** section.
+  They answer the same question at two resolutions, and splitting them meant collapsing
+  or scrolling past the first to reach the second — and, worse, splitting one set of
+  controls: the Files/Bytes measure sat in one section and Show ignored in the other, so
+  each silently moved the other’s numbers.
+  Both now sit together in one control row above both bodies.
+
+- A **Total** row joins Files and Ignored.
+  The type distribution counts against the whole directory whenever Show ignored is on,
+  so without a Total track none of its percentages corresponded to any bar on screen.
+  Now one of the three always does: Total while Show ignored is on, Files while it is
+  off.
+
+- Show ignored no longer reorders the tally tracks.
+  It used to decide their shared segment order, so toggling it silently rearranged every
+  track — including Ignored, whose contents the checkbox has nothing to do with.
+  The order now comes from the combined population, and `buildFolderTotalsComposition`
+  no longer accepts the flag at all, so the tally rows cannot respond to it.
+
 Navigation filters:
 
 - A filtered navigation tree now shows only folders that contain a match, and each

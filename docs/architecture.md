@@ -134,32 +134,44 @@ The composer also renders every panel label as the same visible `h2` and aligns 
 content to the responsive Markdown document boundary.
 Each `h2` contains the shared trailing-chevron disclosure button.
 Each descriptor declares its initial disclosure state.
-Files and README begin expanded; File Breakdown begins collapsed.
+File Overview and README begin expanded.
 Toggling a heading changes only body visibility, so live rollup watches, rendered
 Markdown state, TOC state, and keyed panel mounts remain intact.
 In Overview, the Markdown mount keeps its ordinary document semantics, TOC, and card.
 The card retains its border and shadow at regular and wide document bands, then follows
 KPress’s standard borderless narrow layout.
-The Files and File Breakdown summaries remain flat chrome sections; their edges follow
-the README card when present and the README prose edge when the card collapses.
+The File Overview summary remains a flat chrome section; its edges follow the README
+card when present and the README prose edge when the card collapses.
 
 Core supplies only generic contribution-registry, resource-context, request, formatter,
 and view-state primitives.
 The folder plugin supplies the folder-panel schema and registry facade.
 A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
-The visible **Files** heading belongs to `folder.file-totals`. It renders the shared
-Files / Bytes chooser and the inventory-backed Files and Ignored tallies without waiting
-for the detailed rollup.
-Each row is its own complete population: Files means unignored files and Ignored means
-excluded files. A nonzero row therefore has a full-width composition track and no
-percentage label. The visible **File Breakdown** heading belongs to the stable
-`folder.file-types` panel ID. It renders the shared Show ignored checkbox and the
-rollup-backed type table using the packaged recommended definitions from File Rollup
-Format v0.1. Both panels observe one folder-rollup state, so the chooser in Files
-updates both panels and Treemap without a duplicate chooser in File Breakdown.
-File Breakdown owns the only Overview rollup watch and publishes each validated terminal
+The visible **File Overview** heading belongs to `folder.file-overview`. It answers what
+a folder holds at two resolutions in one section: the inventory-backed Files and Ignored
+tallies, which need no rollup and so paint immediately, and beneath them the
+rollup-backed type table built from the packaged recommended definitions in File Rollup
+Format v0.1. Each tally row is its own complete population: Files means unignored files,
+Ignored means excluded files, and Total is their sum.
+A nonzero row therefore has a full-width composition track and no percentage label.
+Total is what the type distribution counts against while Show ignored is on, so it is
+the track whose segment shares match the distribution’s percentages in that state; Files
+is that track when Show ignored is off.
+
+The section owns one control row above both bodies, carrying the shared Files / Bytes
+chooser and the Show ignored checkbox.
+They are the same kind of choice about the same numbers, and while they sat in separate
+sections each silently moved the other’s figures.
+One folder-rollup state stands behind them, so the row updates both bodies and Treemap.
+
+Show ignored changes the population the distribution counts and nothing else.
+The three tally rows are fixed populations, and `buildFolderTotalsComposition` does not
+accept the flag, so the checkbox cannot reach them.
+
+The two bodies stay separate modules because their data lifecycles differ.
+The type table owns the only Overview rollup watch and publishes each validated terminal
 envelope through a ref-counted, per-directory projection pool.
-Files subscribes to that projection and uses the same palette pool, which adds
+The tallies subscribe to that projection and use the same palette pool, which adds
 composition detail without a sibling DOM dependency or another request.
 Rollups aggregate every known family and its complete canonical children before
 independently bounding only No extension basenames and Other types extensions.
@@ -169,13 +181,13 @@ Every nonempty family can disclose exact extension rows, including a family with
 contributing extension, without adding group subtotals.
 No extension discloses exact basenames and Other types discloses raw extensions; both
 cap at 20 children and conserve their omitted values in an exact Others row.
-Each File Breakdown row renders the selected count or byte share as an inline bar beside
-its exact value and percentage.
-The two-row Files summary always leads with unignored Files and follows with Ignored.
+Each type-table row renders the selected count or byte share as an inline bar beside its
+exact value and percentage.
+The two-row tally summary always leads with unignored Files and follows with Ignored.
 The rows are disjoint and conserve the complete directory population.
 Each composition track normalizes its own row to 100% and segments it by the same
-top-level semantic file-type families shown in File Breakdown.
-Segment order also matches File Breakdown: registry group order first, then descending
+top-level semantic file-type families shown in the type table.
+Segment order also matches the type table: registry group order first, then descending
 selected-metric value within each group for the active Show ignored scope.
 Both tracks use this one order so Files and Ignored remain directly comparable.
 Hovering a segment uses the shared body-portaled navigation tooltip with the semantic

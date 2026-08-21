@@ -90,6 +90,14 @@
   border-bottom: 0;
 }
 
+/* Total sums the two disjoint rows above it rather than being a third
+   population beside them, so a hairline separates it the way a sum is set off
+   from its addends. It is the row the type distribution below counts against
+   while Show ignored is on. */
+.folder-totals-row-all > td {
+  border-top: 1px solid var(--border);
+}
+
 .folder-rollup-controls {
   display: flex;
   flex-wrap: wrap;

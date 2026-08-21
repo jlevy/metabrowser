@@ -20,6 +20,14 @@ class Element {
     this.style = {};
     this.attributes = {};
     this.listeners = {};
+    this.classList = {
+      add: (...names) => {
+        this.className = [...new Set([...this.className.split(" "), ...names])]
+          .filter(Boolean)
+          .join(" ");
+      },
+      contains: (name) => this.className.split(" ").includes(name),
+    };
     this.scope = "";
     this.textContent = "";
     this._innerHTML = "";
