@@ -1066,12 +1066,11 @@
     }
   }
 
-  // Wire KPress's TOC for a freshly mounted document and return its disposer.
-  // KPress's toc.js owns the behavior; the host's only jobs are to mark a scroll
-  // element [data-kpress-viewport] (the preview pane) and call this on mount /
-  // dispose on unmount. Returns null if toc.js has not loaded yet.
   // On-demand vendored libraries. asset_loader.js owns the loading; the SDK
   // only publishes it, so a plugin never reaches into a private global.
+  // A consumer awaits this before touching the library's global: Chart.js is
+  // on this tier, so metabrowser.chart() throws until ensureAsset("chart")
+  // has resolved.
   /** @param {string} name @returns {Promise<void>} */
   function ensureAsset(name) {
     const assets = global.MetabrowserAssets;
@@ -1081,6 +1080,10 @@
     return assets.ensureAsset(name);
   }
 
+  // Wire KPress's TOC for a freshly mounted document and return its disposer.
+  // KPress's toc.js owns the behavior; the host's only jobs are to mark a scroll
+  // element [data-kpress-viewport] (the preview pane) and call this on mount /
+  // dispose on unmount. Returns null if toc.js has not loaded yet.
   function kpressInitToc(container) {
     if (typeof _kpressInitTocFn !== "function" || !container) {
       return null;
@@ -1238,7 +1241,9 @@
 
   function chart(container, type, data, options) {
     if (typeof global.Chart === "undefined") {
-      throw new Error("metabrowser.chart: Chart.js is not loaded");
+      throw new Error(
+        'metabrowser.chart: Chart.js is on the on-demand tier; await metabrowser.ensureAsset("chart") first',
+      );
     }
     // Container can be either a <canvas> or a <div> we'll create a canvas in.
     let canvas;

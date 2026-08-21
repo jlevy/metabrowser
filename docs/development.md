@@ -118,11 +118,19 @@ one view calls.
 
 ### The Lazy Loading Mechanism
 
-On-demand and prefetched assets load through dynamic `import()`, not through an appended
-`<script>` tag. `plugin_sdk.js` shows the shape: import the module, capture its named
-export, and keep a loaded set plus an in-flight promise map so concurrent callers share
+The mechanism follows the library’s module format.
+Both shapes keep a loaded set and an in-flight promise map, so concurrent callers share
 one load and a repeat costs nothing.
 
+**A library that installs a global** loads through `static/asset_loader.js`. The server
+publishes named bundles as `window.METABROWSER_ASSET_BUNDLES`, and `ensureAsset(name)`
+appends that bundle’s scripts with `async = false` so they run in order — a Chart.js
+plugin is inert without `Chart`. `plugin_sdk.js` republishes it as
+`metabrowser.ensureAsset`, so a plugin reaches the loader through the documented SDK
+rather than a private global.
+
+**An ES module tree** loads through dynamic `import()`, as `loadKpressAssets` in
+`plugin_sdk.js` shows: import the module, capture its named export, and hold it.
 Two properties keep a vendored ESM tree loadable without a build step.
 Its specifiers must be relative, so no import map is needed; and where its filenames
 already carry content hashes, only the entry point needs the `?v=` cache-buster that

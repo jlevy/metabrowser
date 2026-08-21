@@ -289,8 +289,21 @@ Useful helpers include:
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
+- `ensureAsset(name)`;
 - `perf.measure` and `perf.measureAsync`.
 
+`ensureAsset(name)` loads a vendored library that the shell does not put on every page,
+and resolves once its globals are present.
+Await it before touching the library: a loaded bundle resolves immediately, simultaneous
+callers share one load, and it rejects for an unknown name or a script that fails, so a
+view can say so instead of rendering into a surface that will not work.
+The bundles the host publishes are named in `server.py`; `"chart"` is Chart.js with its
+annotation plugin and date adapter.
+See [Asset Loading Tiers](development.md#asset-loading-tiers) for which tier an asset
+belongs in.
+
+`chart(container, type, data, options)` requires that bundle:
+`await metabrowser.ensureAsset("chart")` first, or the call throws.
 Chart color fields may use host design-token references such as
 `var(--chart-series-info)`. The SDK resolves them for the current palette and updates
 the chart when the resolved theme changes.

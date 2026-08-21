@@ -960,8 +960,10 @@ async def index(_request: Request) -> HTMLResponse:
     # no external origins and works offline. Bump a version by updating
     # package.json + package-lock.json, then run `make vendor-assets`.
     # Prefetched tier: small relative to how likely they are to be wanted, and
-    # visibly late if they arrive after the view that uses them. Loaded after
-    # first paint by the chain below.
+    # visibly late if they arrive after the view that uses them. The chain
+    # below starts them on DOMContentLoaded; moving it to an idle callback,
+    # which is what docs/development.md asks of this tier, is tracked
+    # separately.
     optional_script_assets = [
         {"src": _static_asset_url("vendor/mustache.min.js")},
         {"src": _static_asset_url("vendor/highlight.min.js")},
