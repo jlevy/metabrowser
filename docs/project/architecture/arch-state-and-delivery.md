@@ -1,4 +1,4 @@
-# Architecture: Inventory State and Delivery
+# Architecture: State and Delivery
 
 **Author:** Metabrowser maintainers
 
@@ -6,22 +6,21 @@
 
 ## Overview
 
-Metabrowser holds one authoritative picture of the served tree and delivers it to
-browsers that are watching it change.
-This document is the engineering account of that picture: what state exists, who is
-allowed to write it, how derived state is invalidated, and how each kind of state
-reaches the client.
+Metabrowser holds one picture of the served tree, in a server that is watching it change
+and a browser that is watching the server.
+This document is the engineering account of that picture on both sides: what state
+exists, who is allowed to write it, how derived state is invalidated, how it crosses the
+wire, and what the browser does with it when it arrives.
 
-It exists because the same mistake was made independently in four places.
-Each of `/api/rollup`, `/api/tree`, the folder Overview, and the File Breakdown rebuilt
-or discarded whole-index state on every request, and each looked locally reasonable.
-The cost only appeared at scale, where it compounded: a 100,000-file root took about
-fifteen seconds to show a single number, and past roughly a quarter-million files the
-browser’s own refresh interval was shorter than the response it was waiting for, so the
-view stopped converging entirely.
+It is one document rather than a server one and a client one because the interesting
+failures live at the seam.
+A placeholder that the server knows is provisional becomes a confident zero three layers
+later; a structure the server rebuilds per request becomes a browser that never stops
+polling. Neither is visible from one side alone.
 
-The rule this architecture encodes is one sentence: **state that is proportional to the
-tree is built once and maintained incrementally, never rebuilt per request.**
+The rule the whole design encodes is one sentence: **state proportional to the tree is
+built once and maintained incrementally, never rebuilt per request** — and its corollary
+on the client, **what is provisional stays visibly provisional.**
 
 ## Goals and Non-Goals
 
@@ -32,6 +31,7 @@ tree is built once and maintained incrementally, never rebuilt per request.**
 - Serve any request in time proportional to its answer, not to the index
 - Let a reader see partial results immediately and refine them, rather than waiting
 - Keep a placeholder distinguishable from a measurement at every layer it crosses
+- Recover from a gap in the delta stream without a page reload
 
 ### Non-Goals
 
@@ -41,8 +41,42 @@ tree is built once and maintained incrementally, never rebuilt per request.**
   Each derived structure states its own invalidation rule next to itself.
 - Persisting the index across restarts.
   It is rebuilt by crawling.
+- A client-side framework.
+  The shell is plain modules over a small number of stores.
 
-## Concurrency Model
+## First Principles
+
+Two facts about the problem determine nearly everything below.
+
+**The tree can be large.** A hundred thousand files is the design center and half a
+million the cap.
+No response can carry it, so every response is bounded — and bounding is
+a ranking problem, not a truncation problem: what is omitted has to be the least useful
+thing, and the response has to say that it omitted something.
+
+**The tree changes while it is being read.** A crawl is filling in, and the filesystem
+moves underneath. So no state can be fetched once and trusted; it has to converge.
+Convergence needs three things the design supplies: a delta stream, an authoritative
+snapshot to fall back to when the stream has a gap, and a way to say “this number is not
+final yet.”
+
+Everything that follows is those two facts applied to a specific layer.
+
+## The Deployable Unit
+
+The server, the browser shell, and the built-in plugins ship as one artifact.
+The index route is served uncached, every script is stamped with a content-derived `?v=`
+token, and the browser’s configuration is inlined into that same response.
+An upgraded server therefore always serves the matching shell, settings, and plugins
+together.
+
+That is why `/api/*`, `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin
+manifest are internal contracts rather than versioned peers: a change to any of them
+lands in one commit across all three halves, and compatibility shims between them are
+forbidden. See
+[Compatibility and Legacy Code](../../development.md#compatibility-and-legacy-code).
+
+## Server: Concurrency Model
 
 **One writer, many readers.** Every inventory mutation — the boot walker, the filesystem
 watcher, the active-file tracker, and subtree rewalks — runs on the single asyncio event
@@ -87,20 +121,18 @@ most of the historical bugs came from treating one like the other.
 | Client state | Incremental stores patched by op | Envelope replaced wholesale |
 | Scope | Filtered to `root-depth-2` | Any path, any depth |
 
-The asymmetry in the last two rows is the remaining architectural debt, and it is
-deliberate: because SSE only carries entries within `root-depth-2`, a change deep in the
-tree never reaches the client, which is *why* aggregates are pulled at all.
-See [What Is Not Solved](#what-is-not-solved).
-
-### Why aggregates cannot simply be entries
-
 A directory’s aggregate summarizes its whole subtree, so a single file write invalidates
 every aggregate above it.
 Entries do not work that way: a file write invalidates exactly one entry.
 That difference is what makes aggregates expensive to keep current and cheap to keep
-*approximately* current, and it is the reason the delivery model differs.
+*approximately* current, and it is why the delivery model differs.
 
-## Server State
+The asymmetry in the last two rows is the remaining architectural debt, and it is
+deliberate: because the event stream only carries entries within `root-depth-2`, a
+change deep in the tree never reaches the client, which is *why* aggregates are pulled
+at all. See [What Is Not Solved](#what-is-not-solved).
+
+## Server: State
 
 ### Authoritative
 
@@ -125,7 +157,7 @@ this reason rather than assigning into `_entries`.
 | `_descendant_file_counts` and siblings | running per-directory totals | Adjusted per write, incrementally |
 | `_pending_dirs` | directories awaiting finalize | Post-order finalize, or end-of-walk repair |
 
-The two structures added to remove per-request O(N) work follow the same rule from
+The two structures that exist to remove per-request O(N) work follow the same rule from
 opposite directions:
 
 - `_children_index` is **maintained**. A write updates one bucket.
@@ -141,6 +173,11 @@ in flight may be about to publish one, and the epoch is what tells the merge to 
 it. Cost is one chain walk per write, bounded by `INVENTORY_MAX_DEPTH`. Only directories
 are tracked, so the epoch map grows with the directory count rather than the entry
 count.
+
+Separately, `projections.py` memoizes per-file derived projections (JSONL views, charts)
+in `MtimeCache` keyed by absolute path, with the entry’s mtime fingerprint checked on
+every read, so editing a file invalidates its projection automatically.
+Changing the served root clears these through `paths_safe.register_root_callback`.
 
 ### Response state
 
@@ -168,23 +205,139 @@ Three layers sit behind that tag, each covering a case the one before it does no
 During a scan the revision moves on every write, so none of the three reuses anything.
 That is correct: the answer really is changing then.
 
-## Client State
+## Delivery
 
-The browser keeps its own stores, patched by the same `fs.change` ops the server emits:
-`fileStore`, `metabrowserDirectoryTotalsStore`, and the Quick File catalog.
-Plugins read directory totals through `window.metabrowser.directoryTotals` rather than
-reaching into shell internals.
+### Validators
 
-Aggregates arrive differently.
-`watchRollup` refetches the whole envelope when an inventory change touches the watched
-subtree, coalescing bursts behind a debounce.
-That debounce is bounded by one window: a crawl emits changes continuously, and a
-debounce that restarted on every one would never fire until the stream paused, freezing
-a folder’s numbers mid-scan and then jumping.
+Every route that answers conditionally builds its validator in `http_caching.py`, and
+`tests/test_http_caching.py` fails the build if one is constructed anywhere else.
+That rule exists because the tag has to fold in the build’s identity, not just the
+source: Metabrowser answers with a *rendering* of a file, so a validator derived from
+the file alone will hand a browser back a stale rendering after an upgrade that changed
+how that file renders.
+Inventory-derived responses validate on the index revision instead of file metadata,
+because their bodies summarize many files rather than reproducing one.
+
+### The event stream
+
+`/api/events` is one Server-Sent Events connection per tab, carrying an ordered delta
+stream. `InventoryIndex._emit` pushes each event to every subscriber queue: one
+computation, N deliveries.
+
+| Event | Carries |
+| --- | --- |
+| `fs.snapshot` | Authoritative initial state at the connection’s scope |
+| `fs.change` | Ordered upsert and remove ops |
+| `catalog.change` | Quick File catalog deltas, emitted beside every `fs.change` |
+| `fs.resync_required` | A gap marker: drop derived state and resubscribe |
+| `capability.update` | Index completeness, watcher backends |
+| `projection.invalidate` / `projection.update` | Plugin projection lifecycle |
+| `file.append` / `truncate` / `rotate` / `closed` / `coalesced` | Live-file tailing |
+| `heartbeat` | Liveness |
+
+A subscriber whose queue fills cannot be sent a correct ordered stream any more, so
+`_emit` drains its backlog and replaces it with `fs.resync_required` — bounded memory,
+and an honest signal instead of a corrupted delta stream.
+
+Bulk state deliberately does not ride the stream.
+`/api/catalog` is a plain JSON response because the gzip middleware compresses it (SSE
+frames are never compressed), its ETag makes refetch-after-reconnect a `304`, and
+encoding runs off the event loop instead of as a synchronous dump inside the stream
+handler.
+Live catalog updates then arrive as `catalog.change`; the pair converges without
+a shared transaction because ops are idempotent by path.
+
+### Routes
+
+| Route | Purpose |
+| --- | --- |
+| `/view/{path}` | The canonical, reloadable document URL |
+| `/api/tree` | Nav subtree, bounded by depth |
+| `/api/rollup` | Bounded subtree aggregation for Overview and treemap |
+| `/api/file` | File envelope: kind, view descriptors, preview |
+| `/api/recent` | Top-N by mtime within a window, clustered |
+| `/api/catalog` | One-shot Quick File universe |
+| `/api/events`, `/api/stream` | Delta streams |
+| `/api/index/progress`, `/api/index/meta`, `/api/capabilities` | Index and backend status |
+| `/api/activity` | Active-file polling |
+| `/api/kpress/render`, `/api/kpress/export`, `/kpress-static/{path}` | Document rendering |
+| `/raw` | Bounded byte passthrough for embedded resources |
+
+A URL fragment identifies a location *inside* the selected document and never the file
+itself; query keys beginning with `_mb_` are reserved for presentation parameters and
+every other key belongs to the document.
+The full grammar is in [Browser URL Grammar](../../architecture.md#browser-url-grammar).
+
+## Client: State
+
+The shell is plain ES modules over a small number of stores.
+`static/app.js` owns navigation, the tree, tabs, and view mounting;
+`static/plugin_sdk.js` exposes `window.metabrowser`, the only surface plugins may use.
+The other modules are single-purpose seams the shell and the SDK share.
+
+Client state falls into three tiers that mirror the server’s.
+
+### Tier 1: live stores, patched per op
+
+These are the client’s half of the push layer.
+Each is populated by `fs.snapshot` and then patched by `fs.change` ops; none is ever
+refetched wholesale in normal operation.
+
+| Store | Module | Holds |
+| --- | --- | --- |
+| `fileStore` | `app.js` | path → `FsEntry`, the source of truth for tree decoration |
+| `metabrowserDirectoryTotalsStore` | `directory_totals_store.js` | Per-directory totals, the plugin-visible cache |
+| Known-file catalog | `known_file_catalog.js`, `catalog_feed.js` | The Quick File universe |
+
+Applying an op patches the store and the rendered row together, so a live update does
+not require a re-render of the tree.
+
+### Tier 2: envelopes, replaced wholesale
+
+These are the client’s half of the pull layer: a response that is refetched when
+something relevant changes, rather than patched.
+
+- `resource_context.js` — a multiplexed live envelope store for path-scoped resources,
+  so several views of one path share a single fetch.
+- `inventory_scope.js` — the shared primitive underneath both: *is this inventory event
+  relevant to my scope*, plus the debounced refresh lifecycle.
+  Its debounce is bounded by one window, because a crawl emits changes continuously and
+  a debounce that restarted on every one would never fire until the stream paused.
+- `watchRollup` in the SDK — the folder Overview’s and treemap’s refresh loop, built on
+  the above.
+
+### Tier 3: view and shell state
+
+State that belongs to what is on screen rather than to the tree.
+
+`view_state.js` (active-view subscriptions, print metadata), `tree_expansion.js`
+(disclosure state and the initial expansion plan), `filter_state.js` (the one filter
+vocabulary behind the nav controls), `theme_state.js` (the resolved-theme boundary the
+shell and canvas renderers share), `navigation.js` (canonical route construction),
+`contribution_registry.js` (deterministic registration for views and commands).
+
+Mounted plugin views are the disposable part of this tier.
+Replacing the preview pane runs every registered disposer; switching tabs does not, so a
+tab’s DOM and captured state survive until a different file replaces the pane.
+
+### Recovery
+
+The delta stream can develop a gap — a slow tab, a dropped connection, a server-side
+queue overflow. The client treats that as a first-class state, not an error: on
+`fs.resync_required` it clears the catalog, drops `fileStore`, notifies subscribers,
+restarts progress polling, and replaces the connection so the server sends an
+authoritative `fs.snapshot` before live updates resume.
+
+`EventSource` reconnects on its own for transient errors.
+On top of that the shell keeps a consecutive-error count and a circuit breaker: repeated
+failures close and recreate the connection with exponential backoff, and a connection
+that survives a stability interval resets it.
+The interval matters — resetting on `onopen` alone would let an overflow-resync cycle
+reconnect tightly forever.
 
 ### Placeholders are not measurements
 
-The rule that connects both layers, and the one most easily lost at a boundary: **a
+The rule that connects both halves, and the one most easily lost at a boundary: **a
 value the producer knows is provisional must stay distinguishable from a real one all
 the way to the pixel.**
 
@@ -203,6 +356,22 @@ During a crawl both are lower bounds that only grow, and either can be the stale
 the panel takes whichever has counted more — whole, never mixing fields — and never
 replaces numbers on screen with a spinner.
 
+## The Plugin Boundary
+
+Plugins are where domain knowledge lives; core stays consumer-agnostic.
+A manifest declares which kinds a plugin claims and which views it contributes, and the
+shell resolves each `(kind, view)` pair in the JavaScript registry.
+
+Plugins reach state only through `window.metabrowser`. That surface includes read access
+to the stores above (`directoryTotals`, `fileCatalog`, `folderContext`), bounded fetch
+helpers (`fetchPluginData`, `fetchText`, `fetchJsonl`, `fetchRollup`, `watchRollup`),
+navigation, and presentation utilities.
+The `Metabrowser*` globals the modules publish are shell-internal seams that the SDK
+proxies; a plugin that reaches into them is depending on something with no contract.
+
+Any view that captures state must register a disposer.
+See [Plugin authoring](../../plugins.md).
+
 ## Data Flow: Opening a Large Folder
 
 1. The walker crawls in **strict level order**. Every directory at depth N is scanned
@@ -211,7 +380,8 @@ replaces numbers on screen with a spinner.
    6.6-second walk.
 2. Entries are stored through `_replace_index_entry`, which maintains `_children_index`
    and evicts the ancestor chain from `_subtree_aggregates`.
-3. Batched `fs.change` events reach subscribers; client stores patch in place.
+3. Batched `fs.change` events reach subscribers; tier-1 client stores patch in place and
+   rendered rows update with them.
 4. `/api/tree` answers an expand by reading only the buckets in the requested subtree.
 5. `/api/rollup` answers with what has been counted so far.
    The Overview renders it labeled as in progress rather than withholding it, and
@@ -278,13 +448,21 @@ not.
 5. An aggregate computed against data the walker has moved past is discarded, not
    published.
 6. A value marked provisional never renders as a settled measurement.
+7. Every conditional response builds its validator in `http_caching.py`.
 
 ## Related Documentation
 
-- [Core architecture](../../architecture.md)
-- [Rendering large content](../../large-content-rendering.md)
-- [File Rollup Format](file-rollup-format/file-rollup-format.md)
-- [Development](../../development.md)
+- [Core architecture](../../architecture.md) — runtime shape, request flow, URL grammar
+- [Plugin authoring](../../plugins.md) — the `window.metabrowser` contract
+- [Rendering large content](../../large-content-rendering.md) — measuring before
+  bounding
+- [Design system](../../design-system.md) — tokens, and “everything is effortlessly
+  fast”
+- [File Rollup Format](file-rollup-format/file-rollup-format.md) — the aggregation
+  contract
+- [End-to-end testing](../../e2e-testing.md) — which layer each test covers
+- [Real-time debugging](../../realtime-debugging.md) — observing the live path
+- [Development](../../development.md) — workflow and dependency policy
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
