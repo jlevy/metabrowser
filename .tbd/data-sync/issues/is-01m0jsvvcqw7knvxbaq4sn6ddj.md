@@ -5,7 +5,7 @@ title: "CLI parity: every model reachable from metab, every one pinned by a gold
 kind: epic
 status: open
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies: []
@@ -23,7 +23,11 @@ child_order_hints:
   - is-01m0jsxgfznxwn8cwr2n3p01f4
   - is-01m0jsxgty51qvw61s6sfwv688
 created_at: 2026-08-21T18:38:22.102Z
-updated_at: 2026-08-21T18:39:16.829Z
+updated_at: 2026-08-21T18:39:37.614Z
+extensions:
+  linear:
+    id: 21c3ee1a-cf78-4125-9ff3-6e9a4ff80b80
+    linked_at: 2026-08-21T18:39:37.613Z
 ---
 Every model the browser draws should be reachable from `metab` without a browser or a listening port, and every one that is reachable should be pinned by a golden transcript. Today two of eleven data surfaces meet that bar.
 
