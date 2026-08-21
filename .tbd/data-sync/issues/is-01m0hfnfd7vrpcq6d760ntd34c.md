@@ -3,13 +3,15 @@ type: is
 id: is-01m0hfnfd7vrpcq6d760ntd34c
 title: Eviction-epoch guard has no test; invariant 5 is unenforced
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-08-21T06:20:53.021Z
-updated_at: 2026-08-21T06:43:46.229Z
+updated_at: 2026-08-21T06:52:23.485Z
+closed_at: 2026-08-21T06:52:23.484Z
+close_reason: null
 ---
 arch-state-and-delivery.md lists ten invariants and says each has a test that fails when
 it does not hold. Invariant 5 is: "An aggregate computed against data the walker has

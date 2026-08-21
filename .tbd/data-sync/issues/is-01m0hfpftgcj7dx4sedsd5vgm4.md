@@ -3,13 +3,15 @@ type: is
 id: is-01m0hfpftgcj7dx4sedsd5vgm4
 title: Two rollup tests pass with their mechanism removed
 kind: task
-status: open
+status: closed
 priority: 3
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-08-21T06:21:26.223Z
-updated_at: 2026-08-21T06:43:47.174Z
+updated_at: 2026-08-21T06:53:27.947Z
+closed_at: 2026-08-21T06:53:27.938Z
+close_reason: null
 ---
 PR #59 states that every new test was verified to fail when its mechanism is removed.
 Two do not, found by mutating the mechanism and re-running.
