@@ -5,13 +5,13 @@ title: Match GitHub's file-type colors where a reader would expect them
 kind: task
 status: open
 priority: 2
-version: 1
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 3
+spec_path: docs/project/specs/active/plan-2026-08-21-file-type-source-of-truth.md
 labels: []
 dependencies: []
-parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
+parent_id: is-01m0k63zme8wetezbbq59ys3k8
 created_at: 2026-08-21T21:54:08.361Z
-updated_at: 2026-08-21T21:54:08.361Z
+updated_at: 2026-08-21T22:12:53.458Z
 ---
 File-type colors should agree with GitHub's where a reader would expect them to. Someone who knows JavaScript is yellow and Go is cyan from every repository page should not have to relearn the vocabulary here.
 
