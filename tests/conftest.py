@@ -30,9 +30,11 @@ def _reset_browser_inventory() -> Generator[None, None, None]:  # pyright: ignor
         from metabrowser.inventory import (
             reset_instance_for_tests,
         )
+        from metabrowser.server import reset_response_caches_for_tests
 
         reset_instance_for_tests()
         reset_bus_for_tests()
+        reset_response_caches_for_tests()
     except Exception:
         # Defensive: never let cleanup failure mask a test failure.
         pass

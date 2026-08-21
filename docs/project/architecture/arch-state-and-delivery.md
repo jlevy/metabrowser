@@ -218,6 +218,67 @@ how that file renders.
 Inventory-derived responses validate on the index revision instead of file metadata,
 because their bodies summarize many files rather than reproducing one.
 
+### Why a conditional response is safe
+
+A validator is a claim, and the claim has to be checked.
+`/api/rollup` answers `304 Not Modified` on an unchanged index revision, so it is worth
+stating exactly what that promises and what it rests on.
+
+**The tag covers the whole body.** The response carries the rollup node, extension
+tallies, the file-type breakdown, `index_status`, `indexed_files`, `max_files`, and
+`truncated`. Every one of those is a function of the index contents, the request’s
+bounds, or a constant.
+`index_status` and the bounds are in the tag directly.
+The rest move only with the revision: `_entries` is mutated in exactly two places
+(`_replace_index_entry`, `_pop_index_entry`), both of which bump it, and
+`_files_indexed` is only ever adjusted in the same statement sequence as one of those
+calls. There is no path that changes what the body would say without changing the tag.
+
+**The revision only moves forward.** Swapping the served root calls
+`InventoryIndex.clear`, which bumps rather than resets, so a tag can never be reused for
+different content. Tests are the one caller that builds a whole new index and starts the
+revision at zero again, which is why the response caches are cleared alongside it — see
+`reset_response_caches_for_tests`.
+
+**So a `304` means “the index has not changed”.** It does not, by itself, mean the
+filesystem has not changed.
+Those are the same statement only while the index is tracking the filesystem, which is
+the watcher’s job:
+
+```
+filesystem change
+  → watcher (native inotify/FSEvents/kqueue, or 2s polling)
+  → apply_live_entry / remove
+  → _replace_index_entry / _pop_index_entry
+  → revision bumps
+  → new ETag, fs.change on the stream
+```
+
+Every link is checked except the first, and the first is where the honest limits are:
+
+- **Polling latency.** On a filesystem where native watches are unreliable — NFS, CIFS,
+  FUSE, or any type the selector does not recognize — the watcher polls every 2s, so a
+  change can be up to that old.
+  Unknown types default to polling rather than native, so the failure mode is *late*,
+  never *never*.
+- **A failed watch.** If the watch itself fails, live updates end.
+  Exhausting the inotify watch limit on a large tree lands here.
+  The watcher announces that on the event stream as a `capability.update` with
+  `state: "failed"` and logs it, because nothing downstream can distinguish a quiet
+  filesystem from a dead watch: requests keep being answered, and conditional ones keep
+  answering “not modified”, truthfully about an index that has stopped being about the
+  filesystem.
+- **Gitignore edits.** `FsEntry.gitignored` is stamped at write time from a checker
+  cached per served root, so editing a `.gitignore` does not re-flag entries already in
+  the index until they are rewalked.
+
+None of these are introduced by the validator; a request that recomputed the body from
+scratch every time would return exactly the same stale answer, because it would read the
+same stale index. The validator inherits the index’s freshness and adds nothing to it.
+What it changes is that a stale index is now *visible* — a client that keeps receiving
+`304` while it believes the tree is changing is being told, precisely, that the server
+has seen nothing.
+
 ### The event stream
 
 `/api/events` is one Server-Sent Events connection per tab, carrying an ordered delta
@@ -429,6 +490,13 @@ An attempt to fix this by yielding the event loop per batch made both worse (wal
 23 s, expand p90 166 ms → 211 ms) and was reverted; anything here needs measurement, not
 reasoning.
 
+**A failed watch is announced but not repaired.** The watcher publishes
+`state: "failed"` and stops; nothing retries it, and no surface turns that into
+something a reader sees.
+The information is on the stream for a client that wants it, which is the floor, not the
+finished behavior: a badge, and a bounded retry with backoff, are the obvious next
+steps.
+
 **Truncated scans leave unscanned directories pending.** Past `INVENTORY_MAX_FILES` the
 walker force-finalizes what it scanned and leaves the rest as placeholders.
 The end-of-walk repair is deliberately skipped, because descendant counts are incomplete
@@ -449,6 +517,9 @@ not.
    published.
 6. A value marked provisional never renders as a settled measurement.
 7. Every conditional response builds its validator in `http_caching.py`.
+8. Nothing changes what a response body would say without changing its validator.
+9. A watch that fails announces it rather than ending quietly.
+10. A client disconnecting cancels only its own wait, never a shared computation.
 
 ## Related Documentation
 

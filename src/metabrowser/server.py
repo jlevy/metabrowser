@@ -209,6 +209,20 @@ def _remember_rollup_body(etag: str, body: bytes | memoryview[int]) -> None:
 _ROLLUP_IN_FLIGHT: dict[str, asyncio.Task[bytes]] = {}
 
 
+def reset_response_caches_for_tests() -> None:
+    """Drop cached rollup responses so a fresh index cannot inherit them.
+
+    The rollup ETag is keyed on the index revision, which only ever moves
+    forward for a served root: swapping roots calls ``InventoryIndex.clear``,
+    which bumps it. Tests are the one caller that builds a whole new index,
+    starting the revision at zero again, so without this a body cached by one
+    test could be served to the next one under a colliding tag.
+    """
+
+    _ROLLUP_BODY_CACHE.clear()
+    _ROLLUP_IN_FLIGHT.clear()
+
+
 def _release_rollup_flight(etag: str, task: asyncio.Task[bytes]) -> None:
     """Retire a finished shared build and mark any failure as retrieved.
 

@@ -208,3 +208,42 @@ def test_stale_add_event_removes_now_absent_file(tmp_path: Path) -> None:
     removed, total_files = asyncio.run(run())
     assert removed
     assert total_files == 0
+
+
+def test_watcher_announces_a_failed_watch_instead_of_dying_silently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A watch that fails must say so on the event stream.
+
+    Everything downstream reads a still-answering index as a current one:
+    requests keep being served, and conditional ones keep answering "not
+    modified" — truthfully about the index, which has stopped being about the
+    filesystem. Exhausting the inotify watch limit on a large tree lands here,
+    so the failure has to be observable rather than a task that quietly ends.
+    """
+
+    import metabrowser.watch_backends as watch_backends
+
+    def exploding_awatch(*_args: object, **_kwargs: object) -> object:
+        raise OSError("inotify watch limit reached")
+
+    monkeypatch.setattr(watch_backends, "awatch", exploding_awatch)
+
+    async def scenario() -> list[object]:
+        inventory = get_instance()
+        queue = inventory.subscribe(max_queue=64)
+        # Returns rather than raising: the lifespan never observes this task.
+        await watch_backends.run_watcher(root=tmp_path, mode="native")
+        events: list[object] = []
+        while not queue.empty():
+            events.append(queue.get_nowait())
+        return events
+
+    events = asyncio.run(scenario())
+    states = [
+        backend.get("state")
+        for event in events
+        for backend in getattr(event, "backends", ())
+        if backend.get("kind") == "fs-watch"
+    ]
+    assert "failed" in states, f"watcher failure was not announced: {states}"
