@@ -213,8 +213,25 @@ def test_rollup_revalidates_and_reuses_an_unchanged_body(tmp_path: Path) -> None
         cold = await server.api_rollup(_mock_request({"path": ""}))
         assert cold.status_code == 200
         assert etag in server._ROLLUP_BODY_CACHE
-        reused = await server.api_rollup(_mock_request({"path": ""}))
+
+        # Byte equality alone would prove nothing: rebuilding produces the
+        # same bytes. What has to hold is that no aggregation ran at all, so
+        # count them rather than comparing the result.
+        aggregations = 0
+        real_rollup = inventory.rollup
+
+        def counting_rollup(*args: Any, **kwargs: Any) -> Any:
+            nonlocal aggregations
+            aggregations += 1
+            return real_rollup(*args, **kwargs)
+
+        inventory.rollup = counting_rollup  # type: ignore[method-assign]
+        try:
+            reused = await server.api_rollup(_mock_request({"path": ""}))
+        finally:
+            del inventory.rollup  # type: ignore[attr-defined]
         assert bytes(reused.body) == bytes(cold.body)
+        assert aggregations == 0, "the retained body was rebuilt instead of reused"
 
         # Different bounds must not share a validator: the shape differs.
         deeper = await server.api_rollup(_mock_request({"path": "", "depth": "1"}))
@@ -367,7 +384,16 @@ def test_rollup_validator_identifies_the_served_root(tmp_path: Path) -> None:
         inventory = get_inventory()
         inventory.start(root)
         await inventory.wait_until_done(10)
-        response = await server.api_rollup(_mock_request({"path": ""}))
+        # Pin the revision so the two roots report the same one. Revisions come
+        # from a process-wide counter, which already keeps two roots apart on
+        # its own -- and would therefore carry this test whether or not the tag
+        # named the root at all. Holding it fixed removes that second mechanism
+        # so only the root component can separate the tags.
+        inventory.rollup_revision = lambda: 4242  # type: ignore[method-assign]
+        try:
+            response = await server.api_rollup(_mock_request({"path": ""}))
+        finally:
+            del inventory.rollup_revision  # type: ignore[attr-defined]
         body = json.loads(bytes(response.body))
         return response.headers["etag"], body["node"]["total_size"]
 
