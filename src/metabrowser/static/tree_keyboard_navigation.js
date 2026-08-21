@@ -72,7 +72,11 @@
     let insideTree = false;
     let ancestor = /** @type {HTMLElement | null} */ (row.parentElement);
     while (ancestor) {
-      if (ancestor.hidden || ancestor.style?.display === "none") {
+      if (
+        ancestor.hidden ||
+        ancestor.style?.display === "none" ||
+        ancestor.classList?.contains("tree-children-collapsed")
+      ) {
         return false;
       }
       if (hasRole(ancestor, "tree")) {
@@ -94,7 +98,7 @@
   /** @param {HTMLElement} row */
   function firstChildRow(row) {
     const group = childGroup(row);
-    if (!group || group.style.display === "none") {
+    if (!group || group.classList.contains("tree-children-collapsed")) {
       return null;
     }
     return readVisibleRows(group)[0] || null;
@@ -214,13 +218,18 @@
           row.removeAttribute("aria-selected");
         }
 
+        // Disclosure state is a capability, not a row type: any row
+        // that owns a child group discloses it. Folders were the first
+        // such rows; container files (a patch file holding its change
+        // entries) are the second, and both get identical ARIA.
         const group = childGroup(row);
-        if (kind === "folder" && group && !isKnownEmptyFolder(row)) {
+        const discloses = kind === "folder" || row.dataset.containerChildren !== undefined;
+        if (discloses && group && !isKnownEmptyFolder(row)) {
           row.setAttribute("aria-owns", group.id);
-          const expanded = group.style.display !== "none" && !group.hidden;
+          const expanded = !group.classList.contains("tree-children-collapsed") && !group.hidden;
           row.setAttribute("aria-expanded", String(expanded));
           synchronizeBranch(group, level + 1);
-        } else if (kind === "folder") {
+        } else if (discloses) {
           row.removeAttribute("aria-owns");
           if (isKnownEmptyFolder(row)) {
             row.removeAttribute("aria-expanded");
@@ -403,12 +412,22 @@
       }
     }
 
+    /**
+     * Rows that own a disclosure group: folders and container files.
+     *
+     * @param {HTMLElement} row
+     * @returns {boolean}
+     */
+    function discloses(row) {
+      return rowKind(row) === "folder" || row.dataset.containerChildren !== undefined;
+    }
+
     function parentOrCollapse() {
       const row = focusedRow();
       if (!row) {
         return false;
       }
-      if (rowKind(row) === "folder" && row.getAttribute("aria-expanded") === "true") {
+      if (discloses(row) && row.getAttribute("aria-expanded") === "true") {
         changeFolder(row, false);
         return true;
       }
@@ -424,7 +443,7 @@
       if (!row) {
         return false;
       }
-      if (rowKind(row) !== "folder" || isKnownEmptyFolder(row)) {
+      if (!discloses(row) || isKnownEmptyFolder(row)) {
         return true;
       }
       if (row.getAttribute("aria-expanded") !== "true") {

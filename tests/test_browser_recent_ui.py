@@ -24,6 +24,20 @@ def _read_app_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("app.js").read_text()
 
 
+def _function_source(js: str, name: str) -> str:
+    """Return one top-level function's source, up to the next definition.
+
+    These assertions used a fixed character window, which made them fail
+    for the wrong reason: adding an unrelated line near the top of a
+    function pushed the asserted call past the cutoff even though the
+    behavior was intact. Nested functions are indented, so the next
+    column-zero ``function`` is the end of this one.
+    """
+    start = js.index(f"function {name}(")
+    end = js.find("\nfunction ", start + 1)
+    return js[start:] if end == -1 else js[start:end]
+
+
 def _read_styles_css() -> str:
     return proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
 
@@ -168,12 +182,93 @@ def test_dom_contract_filter_bar_sits_outside_the_scrolling_tree() -> None:
 
 
 def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
+    """Nav tabs are a registry, not a hardcoded click handler.
+
+    ``initNavTabs`` declares the server-rendered panels and binds each
+    tab button; ``activateNavPanel`` owns the visibility toggle. The
+    split is what lets a conditional panel (Git, which only exists in a
+    repository) register itself later without duplicating either half.
+    """
+
     js = _read_app_js()
     assert "function initNavTabs()" in js
-    fn_start = js.index("function initNavTabs()")
-    fn_block = js[fn_start : fn_start + 1500]
-    assert "nav-tab-bar" in fn_block
-    assert "data-tab-content" in fn_block
+    init_block = _function_source(js, "initNavTabs")
+    assert "nav-tab-bar" in init_block
+    # Files is declared here rather than discovered from the DOM, so a
+    # panel can carry its own lazy first-show hook.
+    assert 'registerNavPanel({ id: "files"' in init_block
+    assert "activateNavPanel(panelId)" in init_block
+
+    activate_block = _function_source(js, "activateNavPanel")
+    assert "data-tab-content" in activate_block
+    assert "aria-selected" in activate_block
+
+
+def test_recent_is_not_a_registered_nav_panel() -> None:
+    """Recent stopped being a tab when the filter work folded it into
+    the Files pane as the recency dimension.
+
+    Registering it would not merely be dead code. ``registerNavPanel``
+    creates the button for any panel the server-rendered markup does not
+    already carry — that is what lets Git add itself — so a leftover
+    registration puts the retired tab back on screen. The HTML
+    assertions above cannot catch that, because the tab would be built
+    at runtime.
+    """
+
+    js = _read_app_js()
+    init_block = _function_source(js, "initNavTabs")
+    assert 'id: "recent"' not in init_block
+    assert "loadRecent" not in init_block
+
+
+def test_switching_panels_hides_the_file_filter_bar() -> None:
+    """The filter bar sits outside the tab containers on purpose: a tree
+    reload replaces #tab-files wholesale, and the bar has to survive that
+    and stay put while the tree scrolls. Being outside means the
+    visibility loop does not reach it, so a panel that is not Files would
+    otherwise show file filters above content they cannot filter."""
+
+    js = _read_app_js()
+    activate_block = _function_source(js, "activateNavPanel")
+    assert 'getElementById("nav-filter-bar")' in activate_block
+    assert 'panelId === "files" ? "" : "none"' in activate_block
+
+
+def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
+    """The shadow marks the boundary of the scrolling region, so it has
+    to sit on the bottom-most chrome that is actually visible. Resolved
+    once at startup it stayed on the filter bar, which a non-Files panel
+    hides — leaving the scroll cue on a hidden element."""
+
+    js = _read_app_js()
+    block = _function_source(js, "initNavScrollShadow")
+    assert "offsetParent !== null" in block
+    # The loser is cleared, so a tab switch cannot arm two shadows.
+    assert 'other?.classList.remove("scrolled")' in block
+    # A tab switch fires no scroll event, so activation re-runs it.
+    activate_block = _function_source(js, "activateNavPanel")
+    assert "navScrollShadowUpdate?.()" in activate_block
+
+
+def test_nav_panels_support_an_every_show_retry_hook() -> None:
+    js = _read_app_js()
+    activate_block = _function_source(js, "activateNavPanel")
+    assert "panel?.onShow?.()" in activate_block
+    assert activate_block.index("panel?.onFirstShow?.()") < activate_block.index(
+        "panel?.onShow?.()"
+    )
+
+
+def test_preview_shell_uses_generation_claims_across_owners() -> None:
+    js = _read_app_js()
+    assert "function claimPreview(owner)" in js
+    assert "function isPreviewClaimCurrent(claim)" in js
+    activate_block = _function_source(js, "activateNavPanel")
+    assert "claimPreview(`nav:${panelId}`)" in activate_block
+    shell_block = js[js.index("window.MetabrowserShell = Object.freeze") :][:600]
+    assert "claimPreview" in shell_block
+    assert "isPreviewClaimCurrent" in shell_block
 
 
 def test_load_recent_fetches_api_recent_for_full_window_coverage() -> None:

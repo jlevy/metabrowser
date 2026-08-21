@@ -1,7 +1,6 @@
 # File Rollup Format
 
-**Format version:** v0.1\
-**Status:** Implemented draft standard
+**Status:** Implemented draft standard, format version v0.1
 
 The File Rollup Format is a small, reusable format for classifying files and reporting
 directory totals by file type.

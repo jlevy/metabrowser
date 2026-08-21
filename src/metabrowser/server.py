@@ -95,6 +95,7 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -116,6 +117,7 @@ from metabrowser.paths_safe import (
     _safe_subdir,
     _set_root_dir,
 )
+from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
 from metabrowser.repository_context import discover_repository_context
@@ -157,7 +159,11 @@ from metabrowser.tree import (
     inventory_has_data,
     inventory_status,
 )
-from metabrowser.view_routes import VIEW_ROUTE_PREFIX, decode_safe_view_path
+from metabrowser.view_routes import (
+    VIEW_ROUTE_PREFIX,
+    decode_safe_commit_route,
+    decode_safe_view_path,
+)
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -815,6 +821,8 @@ async def index(_request: Request) -> HTMLResponse:
     keyboard_help_url = _static_asset_url("keyboard_help.js")
     tree_keyboard_navigation_url = _static_asset_url("tree_keyboard_navigation.js")
     search_palette_url = _static_asset_url("search_palette.js")
+    git_graph_url = _static_asset_url("git_graph.js")
+    git_panel_url = _static_asset_url("git_panel.js")
     app_url = _static_asset_url("app.js")
     perf_block = (
         f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
@@ -824,6 +832,7 @@ async def index(_request: Request) -> HTMLResponse:
     # duplicating constants in the source.
     settings_block = (
         f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
+        f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
     repository_context_block = (
@@ -1072,6 +1081,10 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{keyboard_help_url}"></script>
   <script src="{tree_keyboard_navigation_url}"></script>
   <script src="{search_palette_url}"></script>
+  <!-- Git graph modules load before app.js: the shell's DOMContentLoaded
+       handler calls MetabrowserGitPanel.init(), which needs both present. -->
+  <script src="{git_graph_url}"></script>
+  <script src="{git_panel_url}"></script>
   <script src="{app_url}"></script>
   {plugin_scripts}
   {optional_assets_block}
@@ -1086,6 +1099,20 @@ async def view_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
+    return await index(request)
+
+
+async def commit_shell(request: Request) -> Response:
+    """Serve the SPA shell for ``/commit/<rev>[/<file>]``.
+
+    One route per address space (see the Browser URL Grammar): revisions
+    are not served-tree paths, so they are addressed here rather than
+    through an escape inside ``/view/``.
+    """
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
+        return PlainTextResponse("Invalid commit route.", status_code=400)
     return await index(request)
 
 
@@ -1611,11 +1638,20 @@ def _file_unavailable_response(subpath: str, target: Path | None) -> JSONRespons
 async def _api_file_impl(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
     target = _safe_path(subpath)
-    if target is None:
+    if target is None or (target.exists() and not target.is_dir() and not target.is_file()):
+        # Before declaring the path unavailable: a missing path whose
+        # nearest file ancestor is a container kind is that container's
+        # virtual child. Classification reads the file, so off the loop.
+        container = await asyncio.to_thread(_resolve_container_child, subpath)
+        if container is not None:
+            return container
         return _file_unavailable_response(subpath, target)
     if target.is_dir():
         return await _api_folder_envelope(subpath, target)
     if not target.is_file():
+        container = await asyncio.to_thread(_resolve_container_child, subpath)
+        if container is not None:
+            return container
         return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
@@ -2587,6 +2623,106 @@ def _classify_with_plugins(
     return classify_file_kind(target, ext, adapter)
 
 
+def _container_kinds() -> dict[str, dict[str, str]]:
+    """Kinds whose files are folder-like containers in the tree.
+
+    Maps kind id -> {"plugin": name, "children": data-hook route}. Built
+    from loaded plugin manifests; the shell and the /api/file container
+    resolution below both consume it, so the capability has exactly one
+    source of truth.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for plugin in _LOADED_PLUGINS:
+        for rule in plugin.manifest.kind:
+            if rule.container is not None:
+                out[rule.id] = {
+                    "plugin": plugin.name,
+                    "children": rule.container.children,
+                }
+    return out
+
+
+def _container_exts() -> dict[str, dict[str, str]]:
+    """Extension -> container info, for the tree's row affordance.
+
+    Only ext-matched kinds project here: a kind matched by content
+    sniffing cannot be recognized from a bare tree row. Such kinds still
+    resolve as containers server-side; their rows simply lack the
+    chevron until selected.
+    """
+    kinds = _container_kinds()
+    out: dict[str, dict[str, str]] = {}
+    for plugin in _LOADED_PLUGINS:
+        for rule in plugin.manifest.kind:
+            if rule.id not in kinds:
+                continue
+            exts = [rule.match.ext] if rule.match.ext else (rule.match.exts or [])
+            for ext in exts:
+                if ext:
+                    out[ext] = {"kind": rule.id, **kinds[rule.id]}
+    return out
+
+
+def _resolve_container_child(subpath: str) -> JSONResponse | None:
+    """Resolve ``<container-file>/<inner>`` to a file envelope.
+
+    Walks the requested path's ancestors from longest to shortest,
+    bounded, through the same safe-path gate as every other read. The
+    nearest existing ancestor decides: a directory means the request was
+    an ordinary missing file; a file whose kind declares the container
+    capability owns everything beneath it, and its views render the
+    virtual path. Returns None when no container claims the path.
+    """
+    parts = subpath.split("/")
+    if len(parts) < 2:
+        return None
+    kinds = _container_kinds()
+    if not kinds:
+        return None
+    for cut in range(len(parts) - 1, 0, -1):
+        prefix = "/".join(parts[:cut])
+        target = _safe_path(prefix)
+        if target is None:
+            continue
+        if target.is_dir():
+            # A real directory ancestor: the leaf is genuinely missing.
+            return None
+        if not target.is_file():
+            # Nothing at this depth; keep walking toward the root.
+            continue
+        artifact = ArtifactPath(target)
+        ext = artifact.logical_ext
+        kind = _classify_with_plugins(target, ext)
+        info = kinds.get(kind)
+        if info is None:
+            return None
+        if len(parts) - cut > MAX_CONTAINER_INNER_DEPTH:
+            # The bound is on the inner path, measured from the claiming
+            # file; the shared constant keeps this walk and the plugins'
+            # own walks agreeing.
+            return None
+        inner = "/".join(parts[cut:])
+        return JSONResponse(
+            {
+                "type": "text",
+                "kind": kind,
+                "views": _views_for_kind(kind),
+                "path": subpath,
+                "container": prefix,
+                "container_inner": inner,
+                "ext": ext,
+                "size": 0,
+                "mtime_hash": file_mtime_hash(target),
+                "content": "",
+                "content_offset": 0,
+                "content_bytes": 0,
+                "bytes_read": 0,
+                "content_truncated": False,
+            }
+        )
+    return None
+
+
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
@@ -2697,6 +2833,7 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
 routes = [
     Route("/", root_redirect),
     Route("/view/{path:path}", view_shell),
+    Route("/commit/{rest:path}", commit_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),
@@ -2709,6 +2846,10 @@ routes = [
     Route("/raw", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
+    # Read-only git history, kept as its own collection in
+    # ``metabrowser.git.routes``: separate wire model, separate failure
+    # modes, separate resource bounds.
+    *GIT_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
 

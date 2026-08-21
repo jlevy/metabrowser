@@ -291,7 +291,7 @@ const folder = treeItem(document, "folder", "folder:src", "src");
 folder.classList.add("collapsed");
 folder.setAttribute("aria-expanded", "false");
 const children = group(document, "tree-group-src");
-children.style.display = "none";
+children.classList.add("tree-children-collapsed");
 const first = treeItem(document, "file", "file:src/a.js", "src/a.js");
 const second = treeItem(document, "file", "file:src/b.js", "src/b.js");
 children.append(first, second);
@@ -323,7 +323,7 @@ const navigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
     row.classList.toggle("expanded", expanded);
     row.classList.toggle("collapsed", !expanded);
     if (childGroup?.getAttribute("role") === "group") {
-      childGroup.style.display = expanded ? "block" : "none";
+      childGroup.classList.toggle("tree-children-collapsed", !expanded);
     }
   },
   shortcuts,
@@ -490,7 +490,7 @@ check(
 folder.setAttribute("aria-expanded", "true");
 folder.classList.add("expanded");
 folder.classList.remove("collapsed");
-children.style.display = "block";
+children.classList.remove("tree-children-collapsed");
 navigator.synchronize();
 first.focus();
 container.dispatch("focusin", { target: first });

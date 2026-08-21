@@ -74,6 +74,26 @@ downloads, external URLs, and ordinary not-found handling retain browser behavio
 Fragment scrolling runs only after the matching asynchronous Markdown mount completes
 and ends with that mount’s disposer.
 
+## Git
+
+Read-only repository history lives in core, under `git/`, with its own endpoint
+collection at `/api/git/` and its own wire model in `git/wire.py`.
+
+Git is infrastructure here rather than a consumer domain: `ignore_filter.py` implements
+gitignore semantics, `tree.build_gitignore_check` performs repository-root discovery,
+and both the tree and recent wire models carry a `gitignored` flag.
+History reading extends a dependency core already has.
+
+Every git call goes through `git/process.py`, which spawns `git` with a fixed argument
+vector, a wall-clock timeout, and a cap on buffered stdout.
+Revisions are validated against a full-SHA pattern before they can reach an argument
+vector. Git’s stderr is logged and dropped: it contains absolute local paths.
+
+Swimlane layout is a browser concern.
+The server returns commits, parents, and references; `static/git_graph.js` assigns lanes
+and draws them, carrying lane state across pages.
+This is the same split `recent.py` makes, where clustering belongs to the renderer.
+
 ## Folder Views and Overview Composition
 
 Folder views extend the same request and registry flow to directories.
@@ -251,6 +271,12 @@ uniformly before classification and rendering.
 Specialized binary stores and their value schemas belong in separately installed
 plugins.
 
+The nav-panel tab list is a registry in `app.js` rather than fixed markup, which is what
+lets the Git tab appear only inside a repository.
+No plugin-facing registration API is exposed for it yet: the registry is reachable
+through `window.MetabrowserShell`, an internal seam for core modules, and is not part of
+the `window.metabrowser` SDK contract.
+
 Plugins own:
 
 - classification rules for their domain formats;
@@ -270,15 +296,60 @@ Plugin HTTP calls use `fetchPluginData`.
 
 ## Browser URL Grammar
 
-A `/view/` URL answers three separate questions, and each component answers exactly one:
+> [Views, models, and routes](project/architecture/arch-views-models-routes.md) maps
+> every kind, view, model, and route in one table; this section is the grammar behind
+> the route column.
+
+A browser URL answers four separate questions, and each component answers exactly one:
 
 | Component | Question | Owned by |
 | --- | --- | --- |
-| Path | Which content is selected | The served tree |
+| Route | Which kind of thing is selected | Metabrowser |
+| Path | Which one, within that kind | That kind’s address space |
 | Query | How it is presented | The link author |
 | Fragment | Where inside the rendered document | The document |
 
-Path and fragment are implemented.
+### Routes: one per address space
+
+Everything the shell can select is addressable, and the leading segment names the
+address space its path is written in.
+There is exactly one route per space, because a path only means something once you know
+which space it belongs to:
+
+| Route | Selects | Path is |
+| --- | --- | --- |
+| `/view/<path>` | Content in the served tree | A served-root-relative path |
+| `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
+| `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
+| `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
+| `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
+
+Revisions are not paths in the served tree, so they get their own route rather than a
+sigil inside `/view/`: a commit named as a `/view/` path would either collide with a
+real file or need an escape that every path handler would then have to know about.
+
+The shape after the route is deliberately uniform —
+**`<container address>/<inner path>`** — because it is the
+[container contract](project/architecture/arch-nav-containers.md) written as a URL. A
+patch file and a commit are both containers whose children are file changes; only the
+container’s own address differs, so `/view/changes.patch/src/app.py` and
+`/commit/abc123/src/app.py` are the same grammar over two address spaces.
+A future archive or pull-request container needs no new rule.
+
+Route invariants:
+
+- A route without a path selects that space’s root: `/view/` is the served root,
+  `/commit/<rev>` is the whole change set.
+- Every selection the shell can make has a URL, and reloading it restores that
+  selection. A panel that changes what the main pane shows changes the URL.
+- Query and fragment mean the same thing in every route: presentation and in-document
+  location. The `_mb_` reservation below applies unchanged.
+- Unknown routes are ordinary not-found responses, never a silent redirect to `/view/`.
+
+Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
+selection in the Git panel.
+`/compare/` is specified here and not yet built.
+
 The query slot is currently carried verbatim and never interpreted: it exists so a query
 an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
 
@@ -496,6 +567,7 @@ Core provides no global plugin payload cache.
 src/metabrowser/
 ├── builtin_plugins/   # Built-in manifests and renderers
 ├── cli/               # serve, remote, walk, and plugins commands
+├── git/               # Read-only history: process, repo, log, detail, wire, routes
 ├── logutil/           # Generic agent-log normalization
 ├── plugin_loader/     # Discovery, manifests, classification, and routes
 ├── static/            # Browser shell, SDK, charts, icons, and styles

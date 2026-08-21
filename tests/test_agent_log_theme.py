@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import colorsys
+import math
 import re
 from pathlib import Path
 
@@ -22,8 +22,8 @@ PALETTE_PAIRS = (
 )
 
 TOKEN_RE = re.compile(r"^\s*(--[\w-]+):\s*([^;]+);", re.MULTILINE)
-HSL_RE = re.compile(
-    r"hsl\(\s*(?P<hue>[\d.]+)\s+(?P<saturation>[\d.]+)%\s+(?P<lightness>[\d.]+)%\s*\)"
+OKLCH_RE = re.compile(
+    r"oklch\(\s*(?P<lightness>[\d.]+)%?\s+(?P<chroma>[\d.]+)\s+(?P<hue>[\d.]+)\s*\)"
 )
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
@@ -41,18 +41,31 @@ def _tokens(block: str) -> dict[str, str]:
 
 
 def _relative_luminance(value: str) -> float:
-    match = HSL_RE.fullmatch(value)
-    assert match is not None, f"Expected an opaque HSL color, got {value!r}"
-    red, green, blue = colorsys.hls_to_rgb(
-        float(match.group("hue")) / 360,
-        float(match.group("lightness")) / 100,
-        float(match.group("saturation")) / 100,
+    """Luminance of an opaque oklch() literal.
+
+    Every color in the stylesheets is oklch (see the design system's
+    Color and Theming section), so this converts back through OKLab
+    rather than reading a notation whose lightness is not luminance.
+    """
+    match = OKLCH_RE.fullmatch(value.strip())
+    assert match is not None, f"Expected an opaque oklch() color, got {value!r}"
+    lightness = float(match.group("lightness")) / 100
+    chroma = float(match.group("chroma"))
+    hue = math.radians(float(match.group("hue")))
+    a = chroma * math.cos(hue)
+    b = chroma * math.sin(hue)
+    long, medium, short = (
+        (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3,
+        (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3,
+        (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3,
     )
-
-    def linear(channel: float) -> float:
-        return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
-
-    return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    red, green, blue = (
+        +4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
+        -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
+        -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short,
+    )
+    # Already linear-light, which is what luminance wants.
+    return 0.2126 * max(0.0, red) + 0.7152 * max(0.0, green) + 0.0722 * max(0.0, blue)
 
 
 def _contrast_ratio(first: str, second: str) -> float:

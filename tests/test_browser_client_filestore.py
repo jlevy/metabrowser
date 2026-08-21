@@ -624,14 +624,27 @@ def test_styles_css_defines_index_progress_footer() -> None:
 
 
 def test_progress_spinners_use_neutral_gray_tokens() -> None:
+    """A spinner must not borrow an accent hue.
+
+    Asserted as the property rather than as literals: the tokens are
+    neutral when their chroma is zero, which stays true however the
+    palette is written.
+    """
     css = _read_styles_css()
     design_system = _read_design_system_md()
 
-    assert "--spinner-track: hsl(0 0% 90%)" in css
-    assert "--spinner-accent: hsl(0 0% 55%)" in css
-    assert "--spinner-mini-track: hsl(0 0% 87%)" in css
-    assert "--spinner-mini-accent: hsl(0 0% 55%)" in css
-    assert "--spinner-mini-accent: hsl(39" not in css
+    light = css[: css.index('[data-theme="dark"] {')]
+    for token in (
+        "--spinner-track",
+        "--spinner-accent",
+        "--spinner-mini-track",
+        "--spinner-mini-accent",
+    ):
+        match = re.search(rf"{token}: oklch\(\s*[\d.]+%?\s+([\d.]+)\s", light)
+        assert match is not None, f"{token} must be defined as an oklch color"
+        assert float(match.group(1)) == 0.0, (
+            f"{token} carries chroma {match.group(1)}; a spinner stays neutral"
+        )
     assert "Progress Spinners Stay Neutral" in design_system
 
 

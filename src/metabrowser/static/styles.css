@@ -295,6 +295,11 @@
   /* Section disclosures place one quiet chevron immediately after the title.
      The em-sized glyph follows the surrounding heading rather than creating a
      second icon tier. Folder-tree chevrons remain a separate leading control. */
+  /* One row height for every row-like activation target: tree rows,
+     tally rows, the diff file bar. 13px row text in a 19.5px line plus
+     2px pads — and exactly --icon-btn-size, so a revealed icon button
+     never stretches a row. */
+  --ui-row-height: 24px;
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
@@ -311,18 +316,18 @@
 
   /* Aggregate distributions — exact-category marks used to join stacked
      bars to semantic rows. Text never sits on these colors. */
-  --mb-distribution-category-1: hsl(211 70% 48%);
-  --mb-distribution-category-2: hsl(142 58% 38%);
-  --mb-distribution-category-3: hsl(28 80% 48%);
-  --mb-distribution-category-4: hsl(275 55% 54%);
-  --mb-distribution-category-5: hsl(350 66% 54%);
-  --mb-distribution-category-6: hsl(186 65% 38%);
-  --mb-distribution-category-7: hsl(48 82% 43%);
-  --mb-distribution-category-8: hsl(235 58% 61%);
-  --mb-distribution-category-9: hsl(101 46% 43%);
-  --mb-distribution-category-10: hsl(15 72% 56%);
-  --mb-distribution-category-11: hsl(315 48% 52%);
-  --mb-distribution-category-12: hsl(166 52% 35%);
+  --mb-distribution-category-1: oklch(56.91% 0.1568 253.7);
+  --mb-distribution-category-2: oklch(60.4% 0.145 151.1);
+  --mb-distribution-category-3: oklch(66.581% 0.15904 54.107);
+  --mb-distribution-category-4: oklch(55.9% 0.196 308.1);
+  --mb-distribution-category-5: oklch(59.27% 0.1905 15.95);
+  --mb-distribution-category-6: oklch(61% 0.0966 206.37);
+  --mb-distribution-category-7: oklch(72.9% 0.1455 92.48);
+  --mb-distribution-category-8: oklch(57.5% 0.1601 276.22);
+  --mb-distribution-category-9: oklch(63.8% 0.152 137.1);
+  --mb-distribution-category-10: oklch(65.28% 0.1615 38.64);
+  --mb-distribution-category-11: oklch(59.5% 0.18 338.7);
+  --mb-distribution-category-12: oklch(56.56% 0.0925 174.11);
   --mb-distribution-other: var(--muted);
   --mb-distribution-track: var(--viz-surface-sunken);
   --mb-distribution-track-height: 8px;
@@ -371,6 +376,9 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+  /* Square-ish corner for tag-like chips (branch refs): visibly not a
+     pill, still not a hard corner. */
+  --radius-tag: 3px;
   /* Transient loading chrome stays quiet through work that finishes within
      about three frames, which covers a cached subtree expansion and most
      local requests. The placeholder still reserves its layout while hidden,
@@ -417,24 +425,24 @@
      vars so active-state hue and border thickness stay locked in
      step across every tab in the UI; change here to retheme
      everywhere. */
-  --tab-active-color: hsl(216 98% 52%);
+  --tab-active-color: oklch(57.51% 0.2293 260.21);
   --tab-active-border-width: 2px;
 
   /* Colors — light theme */
-  --bg: hsl(0 0% 100%);
-  --text: hsl(0 0% 10%);
-  --border: hsl(0 0% 90%);
+  --bg: oklch(100% 0 89.9);
+  --text: oklch(21.6% 0 89.9);
+  --border: oklch(92.34231% 0 0);
   /* Top bar — light surface matching the sidebar, dark-grey text. The
      bar reads as another content pane rather than an inverse-styled
      banner. The nav tab bar (which sits below the header and above the
      scrollable tree) carries the drop shadow so the shadow falls onto
      the scrolling content rather than onto a fixed strip. */
   --header-bg: var(--sidebar-bg);
-  --header-text: hsl(0 0% 20%);
-  --sidebar-bg: hsl(210 17% 98%);
-  --hover-bg: hsl(0 0% 94%);
-  --link: hsl(205 80% 40%);
-  --muted: hsl(208 7% 46%);
+  --header-text: oklch(32.1% 0 89.9);
+  --sidebar-bg: oklch(98.44% 0.0015 247.84);
+  --hover-bg: oklch(95.4% 0 89.9);
+  --link: oklch(54.14% 0.1337 246.71);
+  --muted: oklch(56.1% 0.016 244.4);
   --dimmed-content-opacity: 0.45;
 
   /* Selection highlight — the "current item" indicator shared by the
@@ -464,7 +472,7 @@
   --search-palette-max-height: min(70vh, 640px);
 
   /* Code block backgrounds */
-  --code-bg: hsl(210 29% 97%);
+  --code-bg: oklch(97.6% 0.004 247.9);
   /* Inline code in a rendered document is a tint with the faintest possible
      edge — enough to close the shape, not enough to read as a chip. Prose that
      names many identifiers shows dozens of these in a paragraph, so this sits
@@ -477,22 +485,22 @@
      --code-bg; diff foregrounds are checked against their own surfaces.
      The async vendor stylesheet supplies layout only: the host mappings in
      the Highlight.js integration block below own every semantic color. */
-  --color-syntax-keyword: hsl(355 65% 44%);
-  --color-syntax-title: hsl(265 55% 46%);
-  --color-syntax-string: hsl(140 50% 32%);
-  --color-syntax-number: hsl(28 75% 38%);
+  --color-syntax-keyword: oklch(51.6% 0.181 22.4);
+  --color-syntax-title: oklch(47.03% 0.1915 297.54);
+  --color-syntax-string: oklch(51.7% 0.116 151);
+  --color-syntax-number: oklch(55.55% 0.1261 55.64);
   --color-syntax-bool: var(--color-syntax-title);
-  --color-syntax-null: hsl(208 7% 42%);
-  --color-syntax-key: hsl(208 60% 35%);
+  --color-syntax-null: oklch(52.54% 0.0147 244.44);
+  --color-syntax-key: oklch(46.53% 0.1006 248.34);
   --color-syntax-built-in: var(--color-syntax-number);
   --color-syntax-comment: var(--color-syntax-null);
   --color-syntax-tag: var(--color-syntax-string);
   --color-syntax-punct: var(--color-syntax-null);
   --color-syntax-summary: var(--color-syntax-null);
-  --color-syntax-addition: hsl(140 50% 28%);
-  --color-syntax-addition-bg: hsl(140 60% 95%);
-  --color-syntax-deletion: hsl(355 65% 40%);
-  --color-syntax-deletion-bg: hsl(355 70% 95%);
+  --color-syntax-addition: oklch(47.1% 0.104 151.2);
+  --color-syntax-addition-bg: oklch(97.1% 0.021 156.8);
+  --color-syntax-deletion: oklch(48.2% 0.168 22.3);
+  --color-syntax-deletion-bg: oklch(94.96% 0.0195 11.7);
 
   /* Row height for the structured plugin's virtualized list. Read at
      render time from --tree-row-height (parseFloat → px); changing
@@ -506,7 +514,7 @@
      "Go to file" filter input and the tree content when any filter
      (keyword / suffix / recency) is active, signaling a restricted view
      in the spirit of Google Sheets filter views. */
-  --filter-active-border: hsl(140 35% 60%);
+  --filter-active-border: oklch(73.7% 0.1 154.1);
 
   /* Scrollbar — shared geometry consumed by every scroll container
      in the app via the global rules near the bottom of this file.
@@ -516,8 +524,8 @@
      per-site override: containers that sit on a non-default surface
      (sidebar, code blocks) set it to their own background so the
      scrollbar disappears into whatever surface it sits on. */
-  --scrollbar-thumb: hsl(0 0% 75%);
-  --scrollbar-thumb-hover: hsl(0 0% 65%);
+  --scrollbar-thumb: oklch(80.5% 0 89.9);
+  --scrollbar-thumb-hover: oklch(72.4% 0 89.9);
   --scrollbar-width: 10px;
   --scrollbar-thumb-border-width: 2px;
   --scrollbar-thumb-radius: 5px;
@@ -528,7 +536,7 @@
      pulse signals "loading" without the noise of a spinner.
      applyCellPatch() in app.js replaces these in place once a
      ``fs.change`` op arrives on /api/events. */
-  --tally-skeleton-bg: hsl(0 0% 88%);
+  --tally-skeleton-bg: oklch(90.8% 0 89.9);
 
   /* Live-update row flash. Applied by app.js when the SPA inserts
      a freshly-created row (`.tree-item-flash-in`) or starts the
@@ -536,7 +544,7 @@
      Pale yellow that fades to transparent — visible enough to
      draw the eye, calm enough not to flicker on a burst of
      changes. */
-  --row-flash-bg: hsl(50 95% 86%);
+  --row-flash-bg: oklch(95.63% 0.0733 98.1);
 
   /* ── Viz palette (process-visualization plane) ─────────────── */
   /* Design-system rules (shared by steps / processes / deps, viz + drawer):
@@ -547,68 +555,68 @@
      - Strong/meta are reserved for headings and tertiary metadata.
      Keeping labels muted + values emphasized is the single rule that
      makes field rows and field pairs readable at a glance. */
-  --viz-text: hsl(0 0% 7%);
-  --viz-text-muted: hsl(220 9% 46%);
-  --viz-text-dim: hsl(218 11% 65%);
-  --viz-text-strong: hsl(244 47% 20%);
-  --viz-text-meta: hsl(217 19% 27%);
+  --viz-text: oklch(18.2% 0 89.9);
+  --viz-text-muted: oklch(55.03% 0.0235 264.36);
+  --viz-text-dim: oklch(71.4% 0.02 261.5);
+  --viz-text-strong: oklch(25.8% 0.086 281.5);
+  --viz-text-meta: oklch(37.6% 0.031 259.8);
 
   /* Surfaces */
-  --viz-surface: hsl(0 0% 100%);
-  --viz-surface-raised: hsl(0 0% 98%);
-  --viz-surface-toolbar: hsl(0 0% 97%);
-  --viz-surface-sunken: hsl(220 14% 96%);
-  --viz-surface-card: hsl(210 20% 98%);
-  --viz-surface-hover: hsl(0 0% 94%);
-  --viz-border: hsl(0 0% 89%);
-  --viz-border-strong: hsl(216 12% 84%);
-  --viz-border-subtle: hsl(220 13% 91%);
+  --viz-surface: oklch(100% 0 89.9);
+  --viz-surface-raised: oklch(98.5% 0 89.9);
+  --viz-surface-toolbar: oklch(97.7% 0 89.9);
+  --viz-surface-sunken: oklch(96.8% 0.003 264.5);
+  --viz-surface-card: oklch(98.4% 0.002 247.8);
+  --viz-surface-hover: oklch(95.4% 0 89.9);
+  --viz-border: oklch(91.6% 0 89.9);
+  --viz-border-strong: oklch(87.2% 0.009 258.3);
+  --viz-border-subtle: oklch(92.8% 0.006 264.5);
 
   /* Kind accents (step / dep / process / file)
      Design-system rule: each kind gets a light, logically-distinct bg so
      nested graph levels are visually distinguishable without chroma
      fighting — they share brightness but differ in hue.
-       - Steps:    cool near-white gray (hsl(210 20% 98%)) — intentionally the
+       - Steps:    cool near-white gray (oklch(98.4% 0.002 247.8)) — intentionally the
                    lightest surface so step cards read as the primary
                    "leaf" content; slightly brighter than the process
                    frame so nested process bg stays distinguishable
-       - Process:  very-light neutral-warm gray (hsl(45 18% 96%)) — darker than
+       - Process:  very-light neutral-warm gray (oklch(97.2% 0.004 91.4)) — darker than
                    steps by a hair and in a different (warm) hue, so a
                    process frame reads as a subtle container around its
                    step children and doesn't blend into them
-       - Deps:     pale peach (hsl(25 90% 96%)) — represent user-visible artifact
+       - Deps:     pale peach (oklch(97.1% 0.015 58.1)) — represent user-visible artifact
                    files. Kept in a warm hue distinct from warnings
                    (which are yellow) so the two don't collide visually,
                    and distinct from errors (which are red) so they
                    don't read as a problem.
      Icon + header text are always near-black so the kind label reads the
      same across cards and drawer. */
-  --viz-accent-step-bg: hsl(45 20% 96%);
-  --viz-accent-step-border: hsl(45 12% 84%);
-  --viz-accent-step-icon: hsl(0 0% 7%);
-  --viz-accent-dep-bg: hsl(25 90% 96%);
-  --viz-accent-dep-border: hsl(30 72% 83%);
-  --viz-accent-dep-icon: hsl(29 50% 36%);
-  --viz-accent-file-bg: hsl(210 40% 96%);
-  --viz-accent-file-border: hsl(213 27% 84%);
+  --viz-accent-step-bg: oklch(97.3% 0.004 91.4);
+  --viz-accent-step-border: oklch(88.4% 0.01 91.5);
+  --viz-accent-step-icon: oklch(18.2% 0 89.9);
+  --viz-accent-dep-bg: oklch(97.1% 0.015 58.1);
+  --viz-accent-dep-border: oklch(88.71% 0.0542 67.03);
+  --viz-accent-dep-icon: oklch(51.12% 0.0865 61.89);
+  --viz-accent-file-bg: oklch(96.8% 0.007 247.9);
+  --viz-accent-file-border: oklch(86.9% 0.02 253.4);
 
   /* Focus indicator (side-panel target). Desaturated blue keeps the
      ring noticeable without reading as an alert against near-white
      card surfaces. The hue remains in the same family as --link. */
-  --viz-accent-focus: hsl(217 55% 55%);
-  --viz-accent-focus-glow: hsl(217 55% 55% / 0.25);
+  --viz-accent-focus: oklch(59.39% 0.1308 259.5);
+  --viz-accent-focus-glow: oklch(59.39% 0.1308 259.5 / 0.25);
 
   /* Edge strokes — design-system rule: every arrow is a uniform-width
      1.4px stroke (set in viz.css). Kind is carried by color alone, not
      stroke-weight, so no arrow "outweighs" another visually. Colors are
      kept light + desaturated because arrows are connective tissue, not
      emphasis. */
-  --viz-edge-default: hsl(220 18% 65%);
+  --viz-edge-default: oklch(70.56% 0.0336 264.33);
   /* Data-flow arrow colors — light + desaturated so arrows read as
      connective tissue between boxes, not emphasis. Produces (blue) =
      step→artifact; consumes (green) = artifact→step. */
-  --viz-edge-produces: hsl(199 65% 74%);
-  --viz-edge-consumes: hsl(102 18% 75%); /* muted sage — lighter sibling of the
+  --viz-edge-produces: oklch(81.6% 0.0716 228.45);
+  --viz-edge-consumes: oklch(82.3% 0.036 136.2); /* muted sage — lighter sibling of the
                                        sky-blue produces stroke; both are
                                        low-chroma so neither outshouts the
                                        kind accents on the nodes they link */
@@ -626,36 +634,36 @@
      - Pill text uses --weight-medium — slightly heavier than body but
        not bold — set centrally on .viz-chip.
      Chip tokens below pair -bg / -border / -text per category. */
-  --viz-chip-bg: hsl(0 0% 100% / 0.75);
-  --viz-chip-border: hsl(0 0% 0% / 0.08);
-  --viz-chip-mode-bg: hsl(228 100% 94%);
-  --viz-chip-mode-border: hsl(228 96% 89%);
-  --viz-chip-mode-text: hsl(228 55% 41%);
+  --viz-chip-bg: oklch(100% 0 89.9 / 0.75);
+  --viz-chip-border: oklch(0% 0 0 / 0.08);
+  --viz-chip-mode-bg: oklch(92.93% 0.0339 274.56);
+  --viz-chip-mode-border: oklch(87.2% 0.061 274.1);
+  --viz-chip-mode-text: oklch(43.2% 0.151 268.7);
   /* Adapter — sea-green, dialed back from a vivid teal so the pill reads as
      a tag, not a status/alert. Still the strongest of the green pills
      (adapter = primary fact, model = sub-facet). */
-  --viz-chip-adapter-bg: hsl(162 47% 85%);
-  --viz-chip-adapter-border: hsl(162 38% 74%);
-  --viz-chip-adapter-text: hsl(162 57% 24%);
+  --viz-chip-adapter-bg: oklch(91% 0.04 175.3);
+  --viz-chip-adapter-border: oklch(83.6% 0.056 174.5);
+  --viz-chip-adapter-text: oklch(44% 0.077 168.9);
   /* Model — same sea-green hue as adapter, just lightened a few steps so
      the two chips read as "primary + secondary facet" of the same fact
      (adapter = runtime, model = which model that runtime is running).
      Keep the hue identical; vary only lightness so they stay in lockstep. */
-  --viz-chip-model-bg: hsl(191 46% 91%);
-  --viz-chip-model-border: hsl(191 33% 80%);
-  --viz-chip-model-text: hsl(191 44% 30%);
-  --viz-chip-fan-bg: hsl(60 52% 70%);
-  --viz-chip-fan-border: hsl(60 52% 42%);
-  --viz-chip-fan-text: hsl(60 88% 20%);
-  --viz-chip-variant-bg: hsl(250 91% 95%);
-  --viz-chip-variant-border: hsl(250 95% 92%);
-  --viz-chip-variant-text: hsl(263 69% 42%);
-  --viz-chip-role-bg: hsl(48 96% 89%);
-  --viz-chip-role-border: hsl(48 97% 77%);
-  --viz-chip-role-text: hsl(48 81% 29%);
-  --viz-chip-type-bg: hsl(220 14% 96%);
-  --viz-chip-type-border: hsl(220 13% 91%);
-  --viz-chip-type-text: hsl(221 13% 28%);
+  --viz-chip-model-bg: oklch(93.968% 0.01901 212.695);
+  --viz-chip-model-border: oklch(86% 0.031 212.8);
+  --viz-chip-model-text: oklch(46.4% 0.061 214.6);
+  --viz-chip-fan-bg: oklch(87.1% 0.101 108.3);
+  --viz-chip-fan-border: oklch(69.4% 0.131 109.4);
+  --viz-chip-fan-text: oklch(47.32% 0.1006 109.7);
+  --viz-chip-variant-bg: oklch(93.7% 0.031 293.4);
+  --viz-chip-variant-border: oklch(89.7% 0.053 292.9);
+  --viz-chip-variant-text: oklch(43% 0.209 292.4);
+  --viz-chip-role-bg: oklch(96.2% 0.057 95.6);
+  --viz-chip-role-border: oklch(92.57% 0.1141 95.75);
+  --viz-chip-role-text: oklch(54.55% 0.1075 93);
+  --viz-chip-type-bg: oklch(96.8% 0.003 264.5);
+  --viz-chip-type-border: oklch(92.8% 0.006 264.5);
+  --viz-chip-type-text: oklch(38.6% 0.023 265.6);
 
   /* Typography — shared header size for graph cards and frame headers. */
   --viz-header-font-size: var(--label-font-size);
@@ -702,16 +710,16 @@
   --viz-fade-ease: ease;
 
   /* Side panel */
-  --viz-panel-badge-bg: hsl(226 100% 94%);
-  --viz-panel-badge-text: hsl(242 47% 34%);
-  --viz-panel-link: hsl(224 66% 48%);
-  --viz-panel-row-muted: hsl(220 14% 96%);
-  --viz-panel-desc: hsl(217 19% 27%);
+  --viz-panel-badge-bg: oklch(93.13% 0.0327 272.26);
+  --viz-panel-badge-text: oklch(35.7% 0.133 278.7);
+  --viz-panel-link: oklch(49.3% 0.19 264.9);
+  --viz-panel-row-muted: oklch(96.8% 0.003 264.5);
+  --viz-panel-desc: oklch(37.6% 0.031 259.8);
 
   /* Toolbar toggle */
-  --viz-toggle-on-bg: hsl(214 95% 93%);
-  --viz-toggle-on-border: hsl(213 74% 68%);
-  --viz-toggle-on-text: hsl(224 64% 33%);
+  --viz-toggle-on-bg: oklch(93.46% 0.0305 255.11);
+  --viz-toggle-on-border: oklch(71.9% 0.113 254.1);
+  --viz-toggle-on-text: oklch(38.1% 0.136 265.3);
 
   /* Alert banners (errors + validation warnings).
      Design-system rule: every "this isn't right" callout shares the same
@@ -720,22 +728,22 @@
      banner use these tokens — distinction is in icon + copy, not hue. The
      bg is intentionally very light so the callout informs without
      dominating. */
-  --viz-error-bg: hsl(0 69% 97%); /* very-light warm red */
-  --viz-error-border: hsl(0 59% 86%); /* desaturated rose */
-  --viz-error-title: hsl(0 41% 38%); /* muted dark red — heading weight */
-  --viz-error-text: hsl(0 41% 25%); /* body text, deeper than title */
-  --viz-error-hint: hsl(0 31% 36%); /* tertiary hint text */
-  --viz-error-detail-bg: hsl(0 0% 100% / 0.6); /* nested detail box */
+  --viz-error-bg: oklch(97% 0.011 17.4); /* very-light warm red */
+  --viz-error-border: oklch(86.4% 0.048 18.1); /* desaturated rose */
+  --viz-error-title: oklch(45.32% 0.1093 22.43); /* muted dark red — heading weight */
+  --viz-error-text: oklch(34.1% 0.077 22); /* body text, deeper than title */
+  --viz-error-hint: oklch(43.97% 0.0793 20.78); /* tertiary hint text */
+  --viz-error-detail-bg: oklch(100% 0 89.9 / 0.6); /* nested detail box */
 
   /* Elevation — three semantic stops. See the design-system header
      for picking rules. Every box-shadow in the app MUST resolve to
      one of these (directly via var(--shadow-*) or via a semantic
      alias like --viz-shadow-card that points at them). */
-  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.04);
-  --shadow-md: 0 2px 6px hsl(0 0% 0% / 0.12);
-  --shadow-pane-right: 2px 0 6px hsl(0 0% 0% / 0.12);
-  --shadow-pane-left: -2px 0 6px hsl(0 0% 0% / 0.12);
-  --shadow-lg: 0 4px 12px hsl(0 0% 0% / 0.12);
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.04);
+  --shadow-md: 0 2px 6px oklch(0% 0 0 / 0.12);
+  --shadow-pane-right: 2px 0 6px oklch(0% 0 0 / 0.12);
+  --shadow-pane-left: -2px 0 6px oklch(0% 0 0 / 0.12);
+  --shadow-lg: 0 4px 12px oklch(0% 0 0 / 0.12);
   /* Viz aliases — keep existing viz-* names so consumers there don't
      care which primitive backs "card" vs "hover". */
   --viz-shadow-card: var(--shadow-sm);
@@ -746,36 +754,36 @@
      a size" reads as a single visual category. Two L/S stops so small
      sizes recede and big sizes stand out while staying in the same
      hue. To retune the overall feel, shift L/S here; keep hue 205. */
-  --size-color: hsl(225 30% 50%);
-  --size-color-bold: hsl(225 42% 40%);
+  --size-color: oklch(54.2% 0.093 269.1);
+  --size-color-bold: oklch(44.9% 0.108 268);
 
   /* Status palette — shared by stats, tally tree, badges, progress bars.
      Pair -bg / -text variants where the text sits on the tinted surface. */
-  --status-success: hsl(142 76% 36%);
-  --status-success-bg: hsl(141 84% 93%);
-  --status-success-soft-bg: hsl(134 41% 88%);
-  --status-success-soft-text: hsl(134 61% 21%);
-  --status-success-dot: hsl(134 61% 41%);
-  --status-warning: hsl(32 95% 44%);
-  --status-warning-strong: hsl(21 90% 48%);
-  --status-error: hsl(0 72% 51%);
-  --status-error-strong: hsl(0 84% 60%);
-  --status-info: hsl(217 81% 60%);
-  --status-info-bg: hsl(214 95% 93%);
-  --status-info-text: hsl(224 56% 48%);
+  --status-success: oklch(62.3% 0.1688 149.18);
+  --status-success-bg: oklch(96.5% 0.041 157.1);
+  --status-success-soft-bg: oklch(92.2% 0.037 152.6);
+  --status-success-soft-text: oklch(40.1% 0.103 147.4);
+  --status-success-dot: oklch(64.4% 0.175 146.9);
+  --status-warning: oklch(66.88% 0.1588 57.96);
+  --status-warning-strong: oklch(64.55% 0.1918 41.71);
+  --status-error: oklch(57.9% 0.214 27.2);
+  --status-error-strong: oklch(63.56% 0.2082 25.38);
+  --status-info: oklch(62.8% 0.167 259.5);
+  --status-info-bg: oklch(93.46% 0.0305 255.11);
+  --status-info-text: oklch(50% 0.163 265.7);
 
   /* Secondary muted tone (slate) for metadata/labels on charts & stats.
      Distinct from --muted which is the warmer bootstrap grey. */
-  --muted-slate: hsl(215 16% 47%);
+  --muted-slate: oklch(55.64% 0.0398 256.82);
 
   /* Spinner tokens — all progress spinners use a light grey track with
      a darker grey rotating segment. Do not use brand, link, status, or
      file-age hues for spinner rings; those colors are too loud for
      ambient background work. */
-  --spinner-track: hsl(0 0% 90%);
-  --spinner-accent: hsl(0 0% 55%);
-  --spinner-mini-track: hsl(0 0% 87%);
-  --spinner-mini-accent: hsl(0 0% 55%);
+  --spinner-track: oklch(92.34231% 0 0);
+  --spinner-accent: oklch(64.1% 0 89.9);
+  --spinner-mini-track: oklch(90% 0 89.9);
+  --spinner-mini-accent: oklch(64.1% 0 89.9);
 
   /* File-age design system (used by every ".age-*" class and Live badge).
      Rationale: the primary affordance of the file browser is "where did
@@ -827,20 +835,20 @@
          .form.md          → yellow (fill-in-the-blank scaffolds)
      Distinct hues rather than L-steps because the roles are different
      *kinds* of document, not severity levels. */
-  --ft-md: hsl(220 35% 50%); /* regular .md — blue (canonical docs) */
-  --ft-md-runbook: hsl(142 45% 50%); /* .runbook.md — green (procedural) */
-  --ft-md-template: hsl(45 52% 46%); /* .template.md / .form.md — yellow (fill-in) */
+  --ft-md: oklch(55.1% 0.1 263.3); /* regular .md — blue (canonical docs) */
+  --ft-md-runbook: oklch(70.2% 0.149 152.5); /* .runbook.md — green (procedural) */
+  --ft-md-template: oklch(67.7% 0.115 90.4); /* .template.md / .form.md — yellow (fill-in) */
   --ft-text: var(--muted); /* .txt / .pid / .pdf — muted grey */
   /* YAML: orange (not red) — data/config files are common, and a red
      icon reads as "error" at a glance, colliding with the status-error
      hue used by failure badges, threshold lines, and annotation
      callouts. Orange keeps data visually distinct from code without
      pretending to be a warning. */
-  --ft-yaml: hsl(28 65% 53%); /* .yaml / .yml / .json — orange (data/config) */
+  --ft-yaml: oklch(68.2% 0.134 58.5); /* .yaml / .yml / .json — orange (data/config) */
   --ft-config: var(--muted); /* .cfg / .ini — muted grey */
-  --ft-jsonl: hsl(247 40% 55%); /* .jsonl — indigo (log stream, distinct from md blue) */
-  --ft-code: hsl(162 40% 38%); /* .py / .sh / .ts / .toml — teal-green (non-purple) */
-  --ft-csv: hsl(60 52% 52%); /* .csv — yellow green (tabular) */
+  --ft-jsonl: oklch(53.8% 0.139 286); /* .jsonl — indigo (log stream, distinct from md blue) */
+  --ft-code: oklch(57% 0.085 170.8); /* .py / .sh / .ts / .toml — teal-green (non-purple) */
+  --ft-csv: oklch(79.77% 0.1465 109.31); /* .csv — yellow green (tabular) */
 
   /* Surface + border stops derived from the same hue as each --ft-<name>
      icon color. One design rule: bg ≈ hue at S≈40%, L≈94% (light wash);
@@ -850,24 +858,24 @@
      var(--ft-bg) / var(--ft-border) — the per-class rules below map
      each ft-<name> to its own triplet, so adding a new subtype means
      declaring one new class rule, not editing every consumer. */
-  --ft-md-bg: hsl(210 45% 95%);
-  --ft-md-border: hsl(210 30% 82%);
-  --ft-md-runbook-bg: hsl(142 40% 94%);
-  --ft-md-runbook-border: hsl(142 28% 80%);
-  --ft-md-template-bg: hsl(43 80% 94%);
-  --ft-md-template-border: hsl(43 58% 80%);
-  --ft-text-bg: hsl(208 10% 96%);
-  --ft-text-border: hsl(208 8% 85%);
-  --ft-yaml-bg: hsl(28 65% 94%);
-  --ft-yaml-border: hsl(28 45% 80%);
-  --ft-config-bg: hsl(208 10% 96%);
-  --ft-config-border: hsl(208 8% 85%);
-  --ft-jsonl-bg: hsl(247 45% 95%);
-  --ft-jsonl-border: hsl(247 30% 82%);
-  --ft-code-bg: hsl(162 35% 94%);
-  --ft-code-border: hsl(162 24% 80%);
-  --ft-csv-bg: hsl(41 70% 94%);
-  --ft-csv-border: hsl(41 48% 80%);
+  --ft-md-bg: oklch(95.921% 0.00985 247.929);
+  --ft-md-border: oklch(85.47% 0.0243 248.11);
+  --ft-md-runbook-bg: oklch(96.1% 0.016 158.3);
+  --ft-md-runbook-border: oklch(86.3% 0.039 157.7);
+  --ft-md-template-bg: oklch(97.086% 0.02425 88.932);
+  --ft-md-template-border: oklch(88.8% 0.059 89);
+  --ft-text-bg: oklch(96.9% 0.002 244.1);
+  --ft-text-border: oklch(88.35% 0.0053 244.16);
+  --ft-yaml-bg: oklch(95.8% 0.017 63.9);
+  --ft-yaml-border: oklch(85.5% 0.04 63.5);
+  --ft-config-bg: oklch(96.9% 0.002 244.1);
+  --ft-config-border: oklch(88.35% 0.0053 244.16);
+  --ft-jsonl-bg: oklch(94.9% 0.015 291.5);
+  --ft-jsonl-border: oklch(82.95% 0.0383 290.89);
+  --ft-code-bg: oklch(96.1% 0.012 176.3);
+  --ft-code-border: oklch(86.3% 0.028 175.7);
+  --ft-csv-bg: oklch(96.74% 0.0206 86.08);
+  --ft-csv-border: oklch(87.7% 0.0476 86.08);
 
   /* Chart palette — used by Chart.js configs emitted from Python
      and resolved
@@ -882,12 +890,12 @@
   --chart-label-text: var(--viz-text-meta); /* annotation label fg */
   --chart-annotation-default: var(--status-error-strong);
   --chart-series-info: var(--status-info); /* primary blue */
-  --chart-series-info-soft: hsl(213 94% 68%); /* secondary blue */
-  --chart-series-warning: hsl(38 92% 50%); /* amber */
+  --chart-series-info-soft: oklch(71.57% 0.1425 254.45); /* secondary blue */
+  --chart-series-warning: oklch(76.97% 0.1645 70.61); /* amber */
   --chart-series-error: var(--status-error-strong); /* red */
-  --chart-series-success: hsl(142 71% 45%); /* green */
-  --chart-series-result: hsl(160 84% 39%); /* emerald */
-  --chart-series-thinking: hsl(255 92% 76%); /* violet */
+  --chart-series-success: oklch(72% 0.192 149.5); /* green */
+  --chart-series-result: oklch(69% 0.148 162.4); /* emerald */
+  --chart-series-thinking: oklch(70.52% 0.1615 293.33); /* violet */
   --chart-series-init: var(--viz-text-muted); /* neutral grey */
   --chart-series-system: var(--viz-text-dim); /* neutral grey-dim */
 
@@ -895,143 +903,182 @@
      render_html.py when they emit self-contained documents (no
      browser runtime). The generated doc inlines these tokens into
      its own :root so the same naming works offline. */
-  --standalone-bg: hsl(0 0% 98%);
-  --standalone-surface: hsl(0 0% 100%);
-  --standalone-border: hsl(0 0% 87%);
-  --standalone-text: hsl(0 0% 7%);
-  --standalone-text-muted: hsl(0 0% 33%);
-  --standalone-node-fill: hsl(0 0% 97%);
-  --standalone-node-stroke: hsl(0 0% 20%);
-  --standalone-node-step-fill: hsl(210 100% 95%);
-  --standalone-node-dep-fill: hsl(40 100% 93%);
-  --standalone-label-kind: hsl(0 0% 40%);
-  --standalone-label-badge: hsl(0 0% 27%);
-  --standalone-edge: hsl(0 0% 33%);
+  --standalone-bg: oklch(98.5% 0 89.9);
+  --standalone-surface: oklch(100% 0 89.9);
+  --standalone-border: oklch(90% 0 89.9);
+  --standalone-text: oklch(18.2% 0 89.9);
+  --standalone-text-muted: oklch(44.6% 0 89.9);
+  --standalone-node-fill: oklch(97.7% 0 89.9);
+  --standalone-node-stroke: oklch(32.1% 0 89.9);
+  --standalone-node-step-fill: oklch(95.6% 0.022 248.1);
+  --standalone-node-dep-fill: oklch(96.8% 0.034 84.6);
+  --standalone-label-kind: oklch(51% 0 89.9);
+  --standalone-label-badge: oklch(39% 0 89.9);
+  --standalone-edge: oklch(44.6% 0 89.9);
+
+  /* Commit-graph branch lanes. These five are VS Code's graph
+     foreground colors, kept as a set rather than resampled per surface:
+     the five hues stay distinguishable from one another under the common
+     forms of color vision deficiency, which is a property of the set and
+     is lost as soon as one member is returned alone. The renderer
+     references them only as tokens (see git_graph.js). They are
+     identical in both themes: they are drawn as 1px strokes on either
+     background and already carry enough contrast on both. */
+  --git-lane-1: oklch(0.81 0.17 76.38);
+  --git-lane-2: oklch(0.6 0.22 357.69);
+  --git-lane-3: oklch(0.51 0.12 56.37);
+  --git-lane-4: oklch(0.69 0.1 186.78);
+  --git-lane-5: oklch(0.68 0.21 304.41);
+
+  /* Ref badges, and the lane color for the branch HEAD is on. Each is
+     text on the chip ground below, so all three sit at the same
+     lightness and differ by hue: local, remote, tag. */
+  --git-ref-local: oklch(0.5 0.1 259.52);
+  --git-ref-remote: oklch(0.5 0.1 301.25);
+  --git-ref-tag: oklch(0.5 0.14 71.1);
+  /* Branch and tag chips carry their own ground, so a ref never reads as
+     a filter chip: a near-neutral at the value of the surfaces beside
+     it, carrying just enough chroma to separate from them. */
+  --git-ref-bg: oklch(95% 0.005 240);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: hsl(225 18% 10%);
-  --text: hsl(210 20% 92%);
-  --border: hsl(220 13% 25%);
-  --header-bg: hsl(224 18% 13%);
-  --header-text: hsl(210 20% 90%);
-  --sidebar-bg: hsl(222 18% 15%);
-  --hover-bg: hsl(222 16% 22%);
-  --link: hsl(204 88% 66%);
-  --muted: hsl(215 12% 68%);
-  --code-bg: hsl(220 18% 14%);
+  --bg: oklch(20.6% 0.014 270.6);
+  --text: oklch(93.7% 0.007 247.9);
+  --border: oklch(35.9% 0.021 264.3);
+  --header-bg: oklch(23.7% 0.018 269.4);
+  --header-text: oklch(92.1% 0.009 247.9);
+  --sidebar-bg: oklch(25.8% 0.019 266.8);
+  --hover-bg: oklch(32.72% 0.0235 266.85);
+  --link: oklch(75% 0.1241 246.71);
+  --muted: oklch(74.1% 0.019 256.7);
+  --code-bg: oklch(25% 0.017 264.2);
 
-  --color-syntax-keyword: hsl(355 80% 72%);
-  --color-syntax-title: hsl(265 75% 78%);
-  --color-syntax-string: hsl(140 55% 68%);
-  --color-syntax-number: hsl(28 85% 70%);
+  --color-syntax-keyword: oklch(72.51% 0.1402 22.4);
+  --color-syntax-title: oklch(75.8% 0.123 297.54);
+  --color-syntax-string: oklch(81.7% 0.1216 151);
+  --color-syntax-number: oklch(80.432% 0.11214 55.64);
   --color-syntax-bool: var(--color-syntax-title);
   --color-syntax-null: var(--muted);
-  --color-syntax-key: hsl(208 80% 72%);
+  --color-syntax-key: oklch(77.22% 0.0993 248.34);
   --color-syntax-built-in: var(--color-syntax-number);
   --color-syntax-comment: var(--color-syntax-null);
   --color-syntax-tag: var(--color-syntax-string);
   --color-syntax-punct: var(--color-syntax-null);
   --color-syntax-summary: var(--color-syntax-null);
-  --color-syntax-addition: hsl(140 55% 75%);
-  --color-syntax-addition-bg: hsl(140 45% 16%);
-  --color-syntax-deletion: hsl(355 80% 82%);
-  --color-syntax-deletion-bg: hsl(355 55% 18%);
+  --color-syntax-addition: oklch(85.5% 0.096 151.2);
+  --color-syntax-addition-bg: oklch(31.8% 0.061 156.8);
+  --color-syntax-deletion: oklch(81.7% 0.087 22.3);
+  --color-syntax-deletion-bg: oklch(27.8% 0.077 18.8);
 
   /* Dark surfaces keep the same semantics and hue families while
      raising foreground lightness and fill alpha. */
   --file-age-live: oklch(78% 0.109 55);
   --file-age-sec: var(--file-age-live);
-  --file-age-min: oklch(89% 0.136 99.4);
+  --file-age-min: oklch(89% 0.136 97.5);
   --file-age-hr: oklch(86% 0.121 104);
-  --file-age-day: oklch(80.6% 0.088 106.5);
-  --file-age-wk: oklch(74.1% 0.043 107.4);
-  --file-age-old: oklch(69.7% 0.006 106.5);
+  --file-age-day: oklch(80.6% 0.088 107.1);
+  --file-age-wk: oklch(74.1% 0.043 107.8);
+  --file-age-old: oklch(69.7% 0.006 106.6);
 
   --file-age-fill-live: oklch(75.1% 0.126 55 / 0.26);
   --file-age-fill-sec: var(--file-age-fill-live);
-  --file-age-fill-min: oklch(85.9% 0.161 98.8 / 0.36);
-  --file-age-fill-hr: oklch(81.4% 0.149 104.1 / 0.3);
+  --file-age-fill-min: oklch(85.9% 0.161 97.5 / 0.36);
+  --file-age-fill-hr: oklch(81.4% 0.149 104 / 0.3);
   --file-age-fill-day: oklch(73% 0.116 107.1 / 0.24);
-  --file-age-fill-wk: oklch(61.7% 0.053 107.9 / 0.18);
+  --file-age-fill-wk: oklch(61.7% 0.053 107.8 / 0.18);
   --file-age-fill-old: oklch(55.2% 0.007 106.6 / 0.12);
 
-  --panel-header-bg: hsl(222 17% 18%);
-  --scrollbar-thumb: hsl(220 10% 36%);
-  --scrollbar-thumb-hover: hsl(220 10% 46%);
-  --tally-skeleton-bg: hsl(220 10% 31%);
-  --row-flash-bg: hsl(45 75% 28%);
-  --mb-distribution-category-1: hsl(211 78% 67%);
-  --mb-distribution-category-2: hsl(142 55% 60%);
-  --mb-distribution-category-3: hsl(28 82% 66%);
-  --mb-distribution-category-4: hsl(275 67% 72%);
-  --mb-distribution-category-5: hsl(350 72% 70%);
-  --mb-distribution-category-6: hsl(186 62% 59%);
-  --mb-distribution-category-7: hsl(48 80% 63%);
-  --mb-distribution-category-8: hsl(235 68% 76%);
-  --mb-distribution-category-9: hsl(101 48% 61%);
-  --mb-distribution-category-10: hsl(15 78% 70%);
-  --mb-distribution-category-11: hsl(315 55% 70%);
-  --mb-distribution-category-12: hsl(166 54% 58%);
+  --panel-header-bg: oklch(28.8% 0.021 266.8);
+  --scrollbar-thumb: oklch(46.2% 0.021 264.3);
+  --scrollbar-thumb-hover: oklch(54.9% 0.026 264.3);
+  --tally-skeleton-bg: oklch(41.7% 0.019 264.3);
+  --row-flash-bg: oklch(50.98% 0.0977 98.1);
+  --mb-distribution-category-1: oklch(71.9% 0.119 253.7);
+  --mb-distribution-category-2: oklch(77.7% 0.145 151.1);
+  --mb-distribution-category-3: oklch(77.8% 0.122 54.107);
+  --mb-distribution-category-4: oklch(71.7% 0.146 308.1);
+  --mb-distribution-category-5: oklch(71.26% 0.1365 15.95);
+  --mb-distribution-category-6: oklch(77.9% 0.105 206.37);
+  --mb-distribution-category-7: oklch(85.5% 0.142 92.48);
+  --mb-distribution-category-8: oklch(72.72% 0.1107 276.22);
+  --mb-distribution-category-9: oklch(77.7% 0.144 137.1);
+  --mb-distribution-category-10: oklch(75.4% 0.116 38.64);
+  --mb-distribution-category-11: oklch(73.5% 0.13 338.7);
+  --mb-distribution-category-12: oklch(77.65% 0.1125 174.11);
 
   /* Lift rather than deepen: the dark categorical palette is already light
      against a near-black page (see the light-theme note beside this token). */
   --viz-data-mark-hover-filter: brightness(1.2) saturate(1.08);
 
   --viz-text: var(--text);
-  --viz-text-muted: hsl(215 12% 68%);
-  --viz-text-dim: hsl(215 10% 52%);
-  --viz-text-strong: hsl(220 35% 88%);
-  --viz-text-meta: hsl(217 15% 76%);
-  --viz-surface: hsl(225 18% 10%);
-  --viz-surface-raised: hsl(222 18% 15%);
-  --viz-surface-toolbar: hsl(222 18% 16%);
-  --viz-surface-sunken: hsl(223 19% 12%);
-  --viz-surface-card: hsl(222 18% 15%);
+  --viz-text-muted: oklch(74.1% 0.019 256.7);
+  --viz-text-dim: oklch(60.5% 0.025 261.5);
+  --viz-text-strong: oklch(89.6% 0.021 281.5);
+  --viz-text-meta: oklch(80.5% 0.018 259.9);
+  --viz-surface: oklch(20.6% 0.014 270.6);
+  --viz-surface-raised: oklch(25.8% 0.019 266.8);
+  --viz-surface-toolbar: oklch(26.8% 0.02 266.8);
+  --viz-surface-sunken: oklch(22.7% 0.017 268.1);
+  --viz-surface-card: oklch(25.8% 0.019 266.8);
   --viz-surface-hover: var(--hover-bg);
   --viz-border: var(--border);
-  --viz-border-strong: hsl(218 13% 33%);
-  --viz-border-subtle: hsl(218 13% 24%);
-  --viz-chip-bg: hsl(222 18% 15% / 0.8);
-  --viz-chip-border: hsl(0 0% 100% / 0.12);
-  --viz-error-detail-bg: hsl(225 18% 10% / 0.65);
-  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.3);
-  --shadow-md: 0 2px 8px hsl(0 0% 0% / 0.35);
-  --shadow-pane-right: 2px 0 8px hsl(0 0% 0% / 0.35);
-  --shadow-pane-left: -2px 0 8px hsl(0 0% 0% / 0.35);
-  --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.4);
-  --size-color: hsl(211 42% 70%);
-  --size-color-bold: hsl(207 80% 78%);
-  --spinner-track: hsl(220 10% 30%);
-  --spinner-accent: hsl(220 10% 70%);
-  --spinner-mini-track: hsl(220 10% 30%);
-  --spinner-mini-accent: hsl(220 10% 70%);
+  --viz-border-strong: oklch(43.4% 0.025 261.4);
+  --viz-border-subtle: oklch(35.1% 0.019 261.4);
+  --viz-chip-bg: oklch(25.8% 0.019 266.8 / 0.8);
+  --viz-chip-border: oklch(100% 0 89.9 / 0.12);
+  --viz-error-detail-bg: oklch(20.6% 0.014 270.6 / 0.65);
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3);
+  --shadow-md: 0 2px 8px oklch(0% 0 0 / 0.35);
+  --shadow-pane-right: 2px 0 8px oklch(0% 0 0 / 0.35);
+  --shadow-pane-left: -2px 0 8px oklch(0% 0 0 / 0.35);
+  --shadow-lg: 0 8px 24px oklch(0% 0 0 / 0.4);
+  --size-color: oklch(75% 0.059 269.1);
+  --size-color-bold: oklch(82.3% 0.077 268);
+  --spinner-track: oklch(40.8% 0.018 264.3);
+  --spinner-accent: oklch(75.6% 0.016 264.5);
+  --spinner-mini-track: oklch(40.8% 0.018 264.3);
+  --spinner-mini-accent: oklch(75.6% 0.016 264.5);
 
-  --ft-text-bg: hsl(220 12% 18%);
-  --ft-text-border: hsl(220 10% 30%);
-  --ft-config-bg: hsl(220 12% 18%);
-  --ft-config-border: hsl(220 10% 30%);
+  --ft-text-bg: oklch(29.28% 0.0144 264.32);
+  --ft-text-border: oklch(40.8% 0.018 264.3);
+  --ft-config-bg: oklch(29.28% 0.0144 264.32);
+  --ft-config-border: oklch(40.8% 0.018 264.3);
   /* Hued file-type washes: same hue as the light triplets, dropped to
      dark-surface lightness. The treemap uses --ft-bg as large area
      fills, so every subtype needs a dark stop, not just the greys. */
-  --ft-md-bg: hsl(210 30% 18%);
-  --ft-md-border: hsl(210 22% 32%);
-  --ft-md-runbook-bg: hsl(142 25% 16%);
-  --ft-md-runbook-border: hsl(142 18% 30%);
-  --ft-md-template-bg: hsl(43 35% 16%);
-  --ft-md-template-border: hsl(43 28% 30%);
-  --ft-yaml-bg: hsl(28 35% 17%);
-  --ft-yaml-border: hsl(28 26% 31%);
-  --ft-jsonl-bg: hsl(247 25% 20%);
-  --ft-jsonl-border: hsl(247 18% 34%);
-  --ft-code-bg: hsl(162 25% 16%);
-  --ft-code-border: hsl(162 18% 30%);
-  --ft-csv-bg: hsl(41 32% 16%);
-  --ft-csv-border: hsl(41 25% 30%);
-  --chart-grid: hsl(220 13% 24%);
+  --ft-md-bg: oklch(29.5% 0.031 248.9);
+  --ft-md-border: oklch(42.93% 0.0374 248.11);
+  --ft-md-runbook-bg: oklch(29.9% 0.035 155.8);
+  --ft-md-runbook-border: oklch(44.1% 0.044 157.7);
+  --ft-md-template-bg: oklch(30.8% 0.035 88.932);
+  --ft-md-template-border: oklch(45.6% 0.048 89);
+  --ft-yaml-bg: oklch(30.1% 0.034 62.2);
+  --ft-yaml-border: oklch(44% 0.042 63.5);
+  --ft-jsonl-bg: oklch(28.5% 0.046 288.5);
+  --ft-jsonl-border: oklch(41.5% 0.052 290.89);
+  --ft-code-bg: oklch(30.15% 0.0286 173.47);
+  --ft-code-border: oklch(44.4% 0.036 175.7);
+  --ft-csv-bg: oklch(30.34% 0.0318 86.08);
+  --ft-csv-border: oklch(44.9% 0.043 86.08);
+  --chart-grid: oklch(35% 0.02 264.3);
   --chart-label-text: var(--viz-text-meta);
+
+  /* Lane colors are intentionally not overridden: the five graph
+     foregrounds are readable as thin strokes on both backgrounds, and
+     re-tuning them per theme would break the separation they were
+     chosen for as a set. Badge colors do need lifting — the light
+     values are text on a dark surface here, not on a light one. Each
+     keeps its hue and chroma and rises in lightness only, so the three
+     stay the same three colors. `--git-ref-local` is overridden here
+     too: it used to inherit a themed token, and a literal light value
+     would be unreadable on this background. */
+  --git-ref-local: oklch(0.74 0.1 259.52);
+  --git-ref-remote: oklch(0.74 0.1 301.25);
+  --git-ref-tag: oklch(0.76 0.14 71.1);
+  --git-ref-bg: oklch(26% 0.008 240);
 }
 
 .mb-distribution-slot-1 {
@@ -1947,6 +1994,7 @@ html[data-prose-font="sans"] {
 .tree-item {
   display: flex;
   align-items: center;
+  min-height: var(--ui-row-height);
   /* 2px transparent bar reserved on every row (coloured only when
      selected) so selecting never shifts the row; the 10px + 2px keeps the
      content's left inset at the original 12px. */
@@ -2105,15 +2153,27 @@ html[data-prose-font="sans"] {
 .age-old {
   --file-age-current: var(--file-age-old);
 }
+/* Every age anywhere — file rows, commit rows, commit detail — reads
+   the same: the tier hue, the shared weight, tabular numerals so
+   columns of ages line up. Call sites add positioning only, never
+   colour or weight, exactly as they do for `.size`. */
 :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   color: var(--file-age-current);
   font-weight: var(--file-age-weight);
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: var(--tabular-numerals);
 }
 :is(.age-live, .age-sec, .age-min) {
   font-weight: var(--file-age-weight-recent);
 }
 .tree-children {
   margin-left: 16px;
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: hidden;
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
 }
 .tree-folder .tree-item-icon {
   color: var(--text);
@@ -2194,7 +2254,7 @@ html[data-prose-font="sans"] {
 }
 /* `.icon-state` is a folder variant (logs/state dirs), not a file-type. */
 .tree-item-icon.icon-state {
-  color: hsl(261 51% 51%);
+  color: oklch(50.3% 0.189 294.7);
 }
 
 /* Muted states: gitignored entries and empty directories. Dim the whole row
@@ -2823,44 +2883,44 @@ html[data-prose-font="sans"] {
   flex-shrink: 0;
 }
 .badge-completed {
-  background: hsl(134 41% 88%);
-  color: hsl(134 61% 21%);
+  background: oklch(92.2% 0.037 152.6);
+  color: oklch(40.1% 0.103 147.4);
 }
 .badge-failed {
-  background: hsl(355 70% 91%);
-  color: hsl(354 61% 28%);
+  background: oklch(91% 0.036 12.1);
+  color: oklch(37.3% 0.12 19.9);
 }
 .badge-running {
-  background: hsl(46 100% 90%);
-  color: hsl(46 94% 27%);
+  background: oklch(96.4% 0.052 93.1);
+  color: oklch(53.05% 0.1071 88.17);
 }
 .badge-pending {
-  background: hsl(210 16% 93%);
-  color: hsl(210 9% 31%);
+  background: oklch(94.5% 0.005 247.9);
+  color: oklch(42.4% 0.015 248.2);
 }
 .badge-claude {
-  background: hsl(214 95% 93%);
-  color: hsl(214 71% 40%);
+  background: oklch(93.46% 0.0305 255.11);
+  color: oklch(48.3% 0.145 257);
 }
 .badge-gemini {
-  background: hsl(48 96% 89%);
-  color: hsl(48 82% 31%);
+  background: oklch(96.2% 0.057 95.6);
+  color: oklch(57.4% 0.1136 92.83);
 }
 .badge-pi {
-  background: hsl(251 91% 95%);
-  color: hsl(263 69% 42%);
+  background: oklch(93.7% 0.031 294.2);
+  color: oklch(43% 0.209 292.4);
 }
 .badge-adapter {
-  background: hsl(226 100% 94%);
-  color: hsl(226 55% 41%);
+  background: oklch(93.13% 0.0327 272.26);
+  color: oklch(44% 0.146 267.3);
 }
 .badge-compressed {
-  background: hsl(0 0% 92%);
-  color: hsl(0 0% 35%);
+  background: oklch(93.9% 0 89.9);
+  color: oklch(46.5% 0 89.9);
 }
 .badge-frontmatter-error {
-  background: hsl(355 70% 91%);
-  color: hsl(354 61% 28%);
+  background: oklch(91% 0.036 12.1);
+  color: oklch(37.3% 0.12 19.9);
   cursor: help;
 }
 
@@ -3451,7 +3511,7 @@ pre.code-block code.hljs {
   margin-right: 0.2em;
 }
 .md-body:not(.metabrowser-kpress-host) .checkbox.checked {
-  color: hsl(134 61% 41%);
+  color: oklch(64.4% 0.175 146.9);
 }
 
 /* ── Markdown panels: tables and frontmatter ─────────────────── */
@@ -3978,6 +4038,55 @@ pre.code-block code.hljs {
 
 /* ── Tree expand/collapse indicator ──────────────────────────── */
 
+/* The commit diff mounted by the diff plugin inside the Git commit
+   view: its own scroll rhythm, separated from the file list above. */
+.git-commit-diff {
+  margin-top: 16px;
+}
+.git-commit-diff:empty {
+  display: none;
+}
+
+/* ── Disclosure motion — one travel for every toggle ─────────────
+   Expand/collapse bodies travel on the same var(--transition-fast)
+   their chevrons rotate with, via height auto<->0. interpolate-size is
+   scoped to each animated body (Chromium animates keyword heights;
+   elsewhere the swap is instant, which was the prior behavior).
+   Collapsed bodies drop visibility so hidden rows leave the tab order
+   and the accessibility tree. Same recipe in the diff and folder
+   plugins' stylesheets; test_design_vocabulary.py pins all of it. */
+.tree-children-collapsed {
+  height: 0;
+  visibility: hidden;
+}
+
+/* Container rows: a file that is also folder-like. Its chevron sits in
+   the same 16px alignment box a folder's does, so names line up at every
+   indent level; its children carry a kind badge in place of an icon. */
+.tree-container > .tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  margin: 0 2px;
+  flex: none;
+}
+.tree-container-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-bold);
+}
+.tree-empty-note {
+  padding: 2px 12px 2px 28px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
 /* Shared toggle chevron (used by tree folders and tally tree) */
 .toggle-chevron {
   width: 12px;
@@ -4225,7 +4334,8 @@ pre.code-block code.hljs {
   .filter-drawer,
   .filter-drawer-toggle svg,
   .section-disclosure-trigger::after,
-  .metabrowser-kpress-host .kpress details > summary::after {
+  .metabrowser-kpress-host .kpress details > summary::after,
+  .tree-children {
     transition-duration: 1ms;
   }
   /* The bar's row-gap tracks the drawer, so it has to stop travelling
@@ -4336,4 +4446,345 @@ pre.code-block code.hljs {
   .kpress-print-surface {
     display: block;
   }
+}
+
+/* ── Git graph panel ──────────────────────────────────────────
+   Row proportions follow VS Code's Source Control Graph
+   (.history-item in src/vs/workbench/contrib/scm/browser/media/scm.css):
+   a fixed-width graph gutter exactly one row tall, then badges, subject,
+   and right-aligned author and age.
+
+   The 22px row height is not a style choice — it is SWIMLANE_HEIGHT in
+   git_graph.js, and each row's SVG is drawn to exactly that height.
+   Changing one without the other misaligns every lane against its row. */
+
+.git-graph-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-graph-row {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding-right: 12px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  font-size: var(--nav-font-size);
+  transition: background var(--transition-fast);
+}
+
+.git-graph-row:hover {
+  background: var(--hover-bg);
+}
+
+.git-graph-row.selected {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+
+.git-graph-row:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+/* Width is set per panel from the widest row loaded, so the subject
+   column stays put instead of stepping in and out as lanes open and
+   close. */
+/* Shrink-wraps this row's graph: the svg carries its own width, so the
+   subject starts immediately after the lanes that row actually uses
+   rather than after the widest row's. */
+.git-graph-gutter {
+  display: flex;
+  flex: none;
+  height: 22px;
+}
+
+.git-graph-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-grow: 1;
+  padding-left: 6px;
+}
+
+/* Ref chips shrink last, not first. Flex distributes shrinkage in
+   proportion to each item's shrink factor, so the subject's factor
+   below is large enough that it absorbs essentially all of it: chips
+   keep their full names until the subject has collapsed entirely,
+   which is the only point at which clipping a ref beats clipping the
+   message. Without this the chips shrank alongside the subject and a
+   single short branch name was cut in half on a half-empty row. */
+.git-graph-refs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.git-graph-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-grow: 1;
+  /* Absorbs the row's shrinkage so the ref chips beside it do not; an
+     ellipsized message still reads, a halved branch name does not. */
+  flex-shrink: 1000;
+}
+
+.git-graph-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+/* Positioning only — colour, weight, size, and numerals come from the
+   shared age primitive above. */
+.git-graph-age {
+  flex-shrink: 0;
+}
+
+.git-graph-more {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-graph-more-failed {
+  color: var(--status-error-strong);
+}
+
+.git-panel-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: var(--nav-font-size);
+}
+
+/* Rides the .btn primitive; only the spacing is local. */
+.git-panel-refresh {
+  margin-top: 10px;
+}
+
+/* ── Ref badges ─────────────────────────────────────────────── */
+
+/* Branch chips are their own vocabulary, not filter chips: at this
+   size the name carries the meaning, so it is always bold, and the
+   square corner separates "a ref" from "a filter" at a glance. */
+.git-ref {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  /* Wide enough for the branch names this project actually uses:
+     measured against this repository's refs, 140px clipped 18 of 41
+     chips, including ordinary names like `codex/help-keyboard-shortcuts`.
+     Still bounded, since one very long ref must not own the row. */
+  max-width: 220px;
+  padding: 0 5px;
+  border-radius: var(--radius-tag);
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--git-ref-bg);
+  /* The chip's own colour, named so the trunk form below can swap ink
+     and ground without the circularity currentcolor would create. */
+  --git-ref-ink: var(--git-ref-local);
+  color: var(--git-ref-ink);
+  font-size: var(--micro-font-size);
+  font-weight: var(--weight-bold);
+}
+
+.git-ref-remote {
+  --git-ref-ink: var(--git-ref-remote);
+  color: var(--git-ref-ink);
+}
+
+/* A tag is a different kind of thing from a branch, not a differently
+   coloured one: it carries a notched left edge, so `<tag)` and
+   `[branch]` are distinguishable without relying on hue — which colour
+   alone cannot do for a reader who does not separate these two hues.
+   The extra left padding keeps the text clear of the notch. */
+.git-ref-tag {
+  --git-ref-ink: var(--git-ref-tag);
+  color: var(--git-ref-ink);
+  padding-left: 9px;
+  clip-path: polygon(4px 0, 100% 0, 100% 100%, 4px 100%, 0 50%);
+}
+
+/* Trunk — the branch everything merges into — is the one branch worth
+   finding at a glance, so it takes the solid form: its colour becomes
+   the ground and the ground becomes its ink. Routed through
+   --git-ref-ink rather than currentcolor, which would be circular when
+   both roles are set on one element. */
+.git-ref-trunk {
+  background: var(--git-ref-ink);
+  color: var(--git-ref-bg);
+}
+
+/* HEAD is orthogonal to kind — it can sit on trunk, an ordinary
+   branch, or nothing — so it is marked with a ring rather than by
+   changing the chip's form. Every chip is bold, so weight cannot carry
+   this. */
+.git-ref-head {
+  outline: 1px solid currentcolor;
+  outline-offset: 1px;
+}
+
+/* ── Commit detail view ─────────────────────────────────────── */
+
+.git-commit-view {
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+
+.git-commit-subject {
+  margin: 0 0 8px;
+  font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+  line-height: 1.35;
+}
+
+.git-commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-commit-sha {
+  font-family: var(--font-mono);
+}
+
+.git-commit-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.git-commit-body {
+  margin: 16px 0;
+  padding: 12px;
+  border-radius: var(--radius-document);
+  background: var(--code-bg);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+}
+
+.git-commit-files {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.git-commit-files-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-commit-file {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: var(--radius-chrome);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--ui-small-font-size);
+  text-align: left;
+}
+
+.git-commit-file:hover {
+  background: var(--hover-bg);
+}
+
+/* .git-panel-refresh is not listed here: it rides .btn, which carries the
+   family's focus ring. .git-commit-file is a bare native button and needs
+   its own. */
+.git-commit-file:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+
+/* Files outside the served root, and deleted files, are listed but not
+   navigable — the shell has nothing to open. Styling them inert stops
+   the pointer from promising a click that does nothing. */
+.git-commit-file-inert,
+.git-commit-file-note {
+  cursor: default;
+  color: var(--muted);
+}
+
+.git-commit-file-inert:hover,
+.git-commit-file-note:hover {
+  background: transparent;
+}
+
+.git-file-status {
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
+  color: var(--muted);
+  font-weight: var(--weight-bold);
+}
+
+.git-file-added .git-file-status {
+  color: var(--status-success);
+}
+
+.git-file-deleted .git-file-status {
+  color: var(--status-error-strong);
+}
+
+.git-file-path {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-stat-add,
+.git-stat-del,
+.git-stat-binary {
+  flex-shrink: 0;
+  font-size: var(--micro-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.git-stat-add {
+  color: var(--status-success);
+  font-weight: var(--weight-bold);
+}
+
+.git-stat-del {
+  color: var(--status-error-strong);
+  font-weight: var(--weight-bold);
+}
+
+.git-stat-binary {
+  color: var(--muted);
 }

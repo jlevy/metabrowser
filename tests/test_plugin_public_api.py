@@ -37,6 +37,8 @@ PLUGIN_API_EXPORTS = {
     "relativize_path",
     "resolve_directory",
     "resolve_path",
+    "served_root",
+    "MAX_CONTAINER_INNER_DEPTH",
 }
 
 

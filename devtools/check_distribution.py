@@ -28,6 +28,7 @@ EXPECTED_LICENSE_METADATA = {
     "License-File: LICENSE",
     "License-File: NOTICE.md",
 }
+VSCODE_LICENSE_PATH = "metabrowser/static/vendor/licenses/vscode.txt"
 KEYBOARD_STATIC_ASSETS = {
     "keyboard_help.js",
     "keyboard_shortcuts.js",
@@ -85,6 +86,7 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/vendor/manifest.json",
             "metabrowser/static/vendor/highlight.min.js",
             "metabrowser/static/vendor/chart.umd.min.js",
+            VSCODE_LICENSE_PATH,
             "metabrowser/builtin_plugins/markdown/manifest.toml",
             "metabrowser/builtin_plugins/markdown/rendered.js",
             "metabrowser/builtin_plugins/folder/overview.js",
@@ -172,7 +174,7 @@ def _smoke_install(wheel: Path) -> None:
             "registry = load_file_type_registry(); "
             "plugins = discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
-            "required = {'agent-log', 'binary', 'folder', 'markdown', 'structured', "
+            "required = {'agent-log', 'binary', 'diff', 'folder', 'markdown', 'structured', "
             "'text', 'unknown-jsonl'}; "
             "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
             "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
@@ -184,6 +186,9 @@ def _smoke_install(wheel: Path) -> None:
             "'overlay_layer.js', 'tree_keyboard_navigation.js'); "
             "assert all(static.joinpath(asset).is_file() for asset in assets); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/diff/diff_view.js').is_file(); "
+            "assert files('metabrowser').joinpath("
+            "'data/file-diff-format/file-diff.schema.json').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
             "assert required == names; "
             "assert not plugins.errors; "

@@ -49,7 +49,11 @@ def test_shell_appends_rather_than_rerendering() -> None:
     # shape the append cannot safely touch.
     append_call = js.index("MetabrowserSourceAppend.appendSourceText")
     following = js[append_call : append_call + 800]
-    assert "renderFile(cached)" in following, "the fallback render should remain reachable"
+    # The fallback also asserts pane ownership: the Git panel renders into this
+    # same pane, so a late chunk must not repaint over it.
+    assert "renderFile(cached, undefined, previewClaim)" in following, (
+        "the fallback render should remain reachable"
+    )
     # Appending skips the plugin's render, so the partial-content banner has to
     # be brought back in line or it reports stale byte counts.
     assert "MetabrowserSourceAppend.syncTruncationWarning" in js
