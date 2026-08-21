@@ -34,7 +34,14 @@ from metabrowser.cli.diff_cli import run_diff
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
 from metabrowser.cli.remote import run_remote
 from metabrowser.cli.serve import run_serve
-from metabrowser.cli.walk_cli import run_walk, validate_detail, validate_format
+from metabrowser.cli.walk_cli import (
+    RECENCY_WINDOW_CHOICES,
+    run_walk,
+    validate_age,
+    validate_detail,
+    validate_format,
+    validate_min_size,
+)
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
@@ -53,7 +60,21 @@ _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
 # selectors) are never applicability-checked.
 _MODE_OPTIONS: dict[str, frozenset[str]] = {
     "serve": frozenset({"path", "port", "host", "no_open", "plugins_dir", "log_level"}),
-    "walk": frozenset({"fmt", "stream", "path", "detail", "max_depth", "max_files", "log_level"}),
+    "walk": frozenset(
+        {
+            "fmt",
+            "stream",
+            "path",
+            "detail",
+            "max_depth",
+            "max_files",
+            "log_level",
+            "filter_type",
+            "filter_age",
+            "filter_min_size",
+            "filter_ignored",
+        }
+    ),
     "diff": frozenset({"fmt", "diff_patch", "diff_check", "log_level"}),
     "check-api": frozenset({"plugins_dir", "log_level", "index_timeout"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
@@ -87,6 +108,10 @@ _OPTION_LABELS: dict[str, str] = {
     "detail": "--detail",
     "max_depth": "--max-depth",
     "max_files": "--max-files",
+    "filter_type": "--type",
+    "filter_age": "--age",
+    "filter_min_size": "--min-size",
+    "filter_ignored": "--ignored/--no-ignored",
     "index_timeout": "--index-timeout",
     "base_port": "--base-port",
     "ssh_options": "--ssh-options",
@@ -364,6 +389,40 @@ def _metab(
         help="Max files before truncation.",
         rich_help_panel=_PANEL_WALK,
     ),
+    # ── Walk filter options ───────────────────────────────────────
+    # The nav filter bar's own vocabulary, so "which folders survive this
+    # filter, and what do they add up to" is answerable from a terminal
+    # instead of from a browser. Same projection the /api/tree route uses.
+    filter_type: list[str] = typer.Option(
+        [],
+        "--type",
+        metavar="TOKEN",
+        help="Keep only files of this type: an extension (.md, .min.js) or a whole "
+        "filename (README). Repeatable, or comma-separated.",
+        rich_help_panel=_PANEL_WALK,
+    ),
+    filter_age: str = typer.Option(
+        "",
+        "--age",
+        callback=validate_age,
+        metavar="WINDOW",
+        help=f"Keep only files modified within a window: {', '.join(RECENCY_WINDOW_CHOICES)}.",
+        rich_help_panel=_PANEL_WALK,
+    ),
+    filter_min_size: str = typer.Option(
+        "",
+        "--min-size",
+        callback=validate_min_size,
+        metavar="SIZE",
+        help="Keep only files at least this large. Plain bytes or a k/m/g suffix (10m).",
+        rich_help_panel=_PANEL_WALK,
+    ),
+    filter_ignored: bool = typer.Option(
+        True,
+        "--ignored/--no-ignored",
+        help="Include gitignored entries in the filtered result.",
+        rich_help_panel=_PANEL_WALK,
+    ),
     # ── API check options ─────────────────────────────────────────
     index_timeout: float = typer.Option(
         60.0,
@@ -467,6 +526,10 @@ def _metab(
             max_depth=max_depth,
             max_files=max_files,
             log_level=log_level,
+            types=tuple(filter_type),
+            age=filter_age,
+            min_size=filter_min_size,
+            include_ignored=filter_ignored,
         )
     elif mode == "diff":
         assert diff is not None

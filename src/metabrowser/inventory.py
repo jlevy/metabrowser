@@ -288,6 +288,14 @@ class InventoryIndex:
     def catalog_revision(self) -> int:
         return self._catalog_revision
 
+    def rollup_generation(self) -> int:
+        """Counter bumped on every index write, for callers caching a
+        whole-index derivation. Reading it without the lock is deliberate:
+        a caller uses it as a cache key, so the worst a torn read can do is
+        recompute."""
+
+        return self._rollup_generation
+
     def catalog_files(self) -> list[tuple[str, str]]:
         """``(path, logical_ext)`` for every non-gitignored file in
         the index — the Quick File catalog universe. List-of-tuples

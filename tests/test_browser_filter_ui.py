@@ -718,15 +718,18 @@ def test_live_overlay_rows_carry_the_index_extension() -> None:
     assert "ext: entry.ext" in block
 
 
+def _apply_tree_filters_body(js: str) -> str:
+    start = js.index("function applyTreeFilters()")
+    return js[start : js.index("function _applyTreeSourceFilters(panel, state)")]
+
+
 def test_the_recency_tally_is_recomputed_not_cached() -> None:
     """Type and size changes run applyTreeFilters alone, so a count
     cached at render time kept its previous value while rows updated."""
 
     js = _read("app.js")
     assert "_recentFilteredCount" not in js
-    start = js.index("function applyTreeFilters()")
-    block = js[start : start + 4200]
-    assert "countRecentMatches(" in block
+    assert "countRecentMatches(" in _apply_tree_filters_body(js)
 
 
 def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
@@ -734,8 +737,8 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     time, not only when a response was capped."""
 
     js = _read("app.js")
-    start = js.index("function _renderFilteredTally(panel, shownFiles, state, recencyCount)")
-    block = js[start : start + 1600]
+    start = js.index("function _renderFilteredTally(panel, state, count)")
+    block = js[start : start + 1800]
     assert "filterHasConstraints(state)" in block
     assert "Filtered to ${" in block
     # The "of N matching" half is the capped-response disclosure only.
@@ -743,20 +746,24 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
 
     # Removing the last filter must clear the line, and that path is
     # the unconstrained early return.
-    apply_start = js.index("function applyTreeFilters()")
-    apply_block = js[apply_start : apply_start + 1400]
-    assert "_renderFilteredTally(panel, 0, st, null);" in apply_block
+    assert "_renderFilteredTally(panel, st, null);" in _apply_tree_filters_body(js)
 
 
-def test_the_recency_tally_counts_entries_not_rendered_rows() -> None:
-    """renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count reports
-    how much has been paged in rather than how many files passed."""
+def test_the_filtered_tally_counts_a_subtree_not_rendered_rows() -> None:
+    """renderTreeNodes pages at TREE_PAGE_SIZE and the tree is depth-capped,
+    so a DOM count reports how much has been paged in rather than how many
+    files matched. Each source hands the line a subtree total instead: the
+    server's for the tree, the window's own entries for recency."""
 
     js = _read("app.js")
     assert "function countRecentMatches(entries, nowSec)" in js
-    start = js.index("function _renderFilteredTally(panel, shownFiles, state, recencyCount)")
-    block = js[start : start + 1600]
-    assert "recencyCount !== null ? recencyCount : shownFiles" in block
+    assert "countRecentMatches(" in _apply_tree_filters_body(js)
+    leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
+    assert (
+        "_filteredTreeTotals ? _filteredTreeTotals.files : null"
+        in js[leaf_start : js.index("function _renderFilteredTally(")]
+    )
+    assert "_filteredTreeTotals = data.filtered || null;" in js
 
 
 def test_the_recency_cap_records_why_it_is_where_it_is() -> None:
@@ -958,26 +965,51 @@ def test_no_filters_leaves_the_rendered_dom_alone() -> None:
     nothing set, the pass removes its own classes and returns."""
 
     js = _read("app.js")
-    fn_start = js.index("function applyTreeFilters()")
-    fn_block = js[fn_start : fn_start + 1200]
+    fn_block = _apply_tree_filters_body(js)
     assert "if (!constrained) {" in fn_block
     assert 'rows[c].classList.remove("tree-item-filter-hidden")' in fn_block
 
 
-def test_folders_with_no_loaded_children_are_kept_and_counted() -> None:
-    """An unexpanded folder is unknown, not excluded. Hide mode says
-    so instead of implying the pruned tree is the whole answer."""
+def test_the_tree_source_asks_the_server_rather_than_judging_mounted_rows() -> None:
+    """Whether a folder survives a filter, and what it rolls up to, are
+    questions about a whole subtree — including the part this client was
+    never sent. Deciding them from mounted rows listed every folder whose
+    children had not loaded, then deleted it once expanding proved it held
+    nothing. The filter travels with the request instead."""
 
     js = _read("app.js")
-    fn_start = js.index("function applyTreeFilters()")
-    fn_block = js[fn_start : fn_start + 3000]
-    assert "unloadedFolders += 1" in fn_block
-    note_start = js.index("function _renderFilterNote(panel, unloadedFolders, state)")
-    note_block = js[note_start : note_start + 1600]
-    assert '"folder may" : "folders may"' in note_block
-    assert "contain additional matches." in note_block
-    assert 'Expand ${unloadedFolders === 1 ? "it" : "them"} to check.' in note_block
-    assert 'note.setAttribute("role", "status")' in note_block
+    assert "unloadedFolders" not in js
+    assert "_renderFilterNote" not in js
+    assert "contain additional matches." not in js
+
+    params = js[js.index("function treeFilterParams()") : js.index("function treeFilterKey()")]
+    assert 'types=${encodeURIComponent(st.types.join(","))}' in params
+    assert "min_size=${floor}" in params
+    assert "include_ignored=0" in params
+
+    # A subtree cached under a wider filter is not an answer for a narrower
+    # one, so the cache key carries the selection.
+    key_start = js.index("function subtreeCacheKey(path)")
+    key = js[key_start : js.index("}", js.index("return filter", key_start))]
+    assert "treeFilterKey()" in key
+
+    # And the tree source never re-decides a folder: it judges leaves only,
+    # which is all that rows arriving live can get wrong.
+    fn_block = _apply_tree_filters_body(js)
+    tree_source = fn_block[: fn_block.index("var rows =")]
+    assert "if (!filesPanelUsesRecentSource()) {" in tree_source
+    assert "_applyTreeSourceFilters(panel, st);" in tree_source
+
+    leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
+    leaf_block = js[leaf_start : js.index("function _renderFilteredTally(")]
+    assert ".tree-item.tree-file, .tree-item.tree-symlink" in leaf_block
+    assert "tree-folder" not in leaf_block
+
+    # And a filesystem burst must not repaint the panel: that would collapse
+    # the tree under a reader every time anything on disk changed.
+    reapply = js[js.index("function scheduleFilterReapply()") :][:900]
+    assert "loadTree()" not in reapply
+    assert "applyTreeFilters();" in reapply
 
 
 def test_hidden_folders_suppress_their_descendants() -> None:
@@ -985,8 +1017,7 @@ def test_hidden_folders_suppress_their_descendants() -> None:
     and float under the wrong parent."""
 
     js = _read("app.js")
-    fn_start = js.index("function applyTreeFilters()")
-    fn_block = js[fn_start : fn_start + 4200]
+    fn_block = _apply_tree_filters_body(js)
     assert "suppressed.add(kidContainer)" in fn_block
     assert "suppressed.has(el.parentElement)" in fn_block
 
@@ -1077,10 +1108,16 @@ def test_the_navigation_column_shares_one_left_inset() -> None:
     nav_tab_block = css[nav_tab_start : css.index("}", nav_tab_start)]
     assert "calc(var(--pane-header-padding-x) - var(--file-tab-padding-x))" in nav_tab_block
 
-    # Tree row: 10px padding + 2px selection bar = the same 12px.
+    # Tree row: 10px padding + 2px selection bar = the same 12px at the top
+    # level, plus one --tree-indent per level of nesting. The depth is in the
+    # padding, never in the box, so the row still spans the whole panel.
     row_start = css.index(".tree-item {")
     row_block = css[row_start : css.index("}", row_start)]
-    assert "padding: 2px 12px 2px 10px;" in row_block
+    assert "padding: 2px 12px 2px calc(10px + (var(--tree-depth, 1) - 1)" in row_block
+    assert (
+        "margin-left"
+        not in css[css.index(".tree-children {") : css.index("}", css.index(".tree-children {"))]
+    )
     assert "border-left: 2px solid transparent;" in row_block
 
 

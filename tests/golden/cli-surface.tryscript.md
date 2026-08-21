@@ -117,6 +117,25 @@ $ metab --help
 │ --max-files                     INTEGER RANGE [x>=1]  Max files before       │
 │                                                       truncation.            │
 │                                                       [default: 500000]      │
+│ --type                          TOKEN                 Keep only files of     │
+│                                                       this type: an          │
+│                                                       extension (.md,        │
+│                                                       .min.js) or a whole    │
+│                                                       filename (README).     │
+│                                                       Repeatable, or         │
+│                                                       comma-separated.       │
+│ --age                           WINDOW                Keep only files        │
+│                                                       modified within a      │
+│                                                       window: live, 1h, 24h, │
+│                                                       7d, 30d.               │
+│ --min-size                      SIZE                  Keep only files at     │
+│                                                       least this large.      │
+│                                                       Plain bytes or a k/m/g │
+│                                                       suffix (10m).          │
+│ --ignored      --no-ignored                           Include gitignored     │
+│                                                       entries in the         │
+│                                                       filtered result.       │
+│                                                       [default: ignored]     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ API check (--check-api) ────────────────────────────────────────────────────╮
 │ --index-timeout        SECONDS [x>=0.1]  Maximum time to wait for the        │
@@ -253,6 +272,25 @@ $ metab
 │ --max-files                     INTEGER RANGE [x>=1]  Max files before       │
 │                                                       truncation.            │
 │                                                       [default: 500000]      │
+│ --type                          TOKEN                 Keep only files of     │
+│                                                       this type: an          │
+│                                                       extension (.md,        │
+│                                                       .min.js) or a whole    │
+│                                                       filename (README).     │
+│                                                       Repeatable, or         │
+│                                                       comma-separated.       │
+│ --age                           WINDOW                Keep only files        │
+│                                                       modified within a      │
+│                                                       window: live, 1h, 24h, │
+│                                                       7d, 30d.               │
+│ --min-size                      SIZE                  Keep only files at     │
+│                                                       least this large.      │
+│                                                       Plain bytes or a k/m/g │
+│                                                       suffix (10m).          │
+│ --ignored      --no-ignored                           Include gitignored     │
+│                                                       entries in the         │
+│                                                       filtered result.       │
+│                                                       [default: ignored]     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ API check (--check-api) ────────────────────────────────────────────────────╮
 │ --index-timeout        SECONDS [x>=0.1]  Maximum time to wait for the        │

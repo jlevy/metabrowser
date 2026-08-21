@@ -155,9 +155,17 @@ from metabrowser.tree import (
     _subtree_is_empty,
     _subtree_summary,
     _tree_depth_from_query,
+    build_filtered_inventory_tree,
     build_gitignore_check,
     inventory_has_data,
     inventory_status,
+    parent_is_gitignored,
+)
+from metabrowser.tree_filter import (
+    TreeFilter,
+    parse_recency,
+    parse_size_floor,
+    parse_types,
 )
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
@@ -1160,6 +1168,35 @@ async def _ensure_inventory_serving(subpath: str) -> bool:
     return True if not subpath else inventory.get(subpath) is not None
 
 
+def _query_values(request: Request, key: str) -> list[str]:
+    """Repeated query values, tolerating the fake-request shims in tests."""
+
+    params = request.query_params
+    if hasattr(params, "getlist"):
+        return list(params.getlist(key))
+    single = params.get(key, "")
+    return [single] if single else []
+
+
+def tree_filter_from_request(request: Request) -> TreeFilter:
+    """Read the nav filter off a request.
+
+    Shares its vocabulary with ``static/filter_state.js``: ``recency`` names a
+    window from :data:`RECENT_WINDOW_SECONDS`, ``types`` carries extension or
+    filename tokens (repeated or comma-separated), ``min_size`` is a byte
+    floor, and ``include_ignored=0`` drops gitignored entries. An absent or
+    unrecognized value means "no constraint", so an older client sees more
+    rather than a 400.
+    """
+
+    return TreeFilter(
+        recency_seconds=parse_recency(request.query_params.get("recency", "")),
+        types=parse_types(_query_values(request, "types")),
+        min_size=parse_size_floor(request.query_params.get("min_size", "")),
+        include_ignored=request.query_params.get("include_ignored", "1") not in ("0", "false"),
+    )
+
+
 @log_async_calls()
 async def api_tree(request: Request) -> JSONResponse:
     subpath = request.query_params.get("path", "")
@@ -1169,12 +1206,43 @@ async def api_tree(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     remaining_depth = _tree_depth_from_query(depth_str)
+    tree_filter = tree_filter_from_request(request)
 
     inventory = get_inventory()
     root_dir = _resolved_root_dir()
     inv_can_serve = await _ensure_inventory_serving(subpath)
 
-    if inv_can_serve:
+    filtered = None
+    if inv_can_serve and tree_filter.active:
+        # Presence and aggregates both depend on the whole subtree, not on the
+        # slice this request returns, so the pass is O(index) and goes to a
+        # worker. Snapshot on the loop first: the walker writes into the live
+        # dictionary, and iterating it off-loop would race those writes.
+        filter_entries = inventory.entries(scope="all-known")
+        parent_ignored = parent_is_gitignored(subpath)
+        generation = inventory.rollup_generation()
+        now_sec = time.time()
+        filtered = await asyncio.to_thread(
+            build_filtered_inventory_tree,
+            entries=filter_entries,
+            parent_rel=subpath,
+            max_depth=remaining_depth,
+            root_abs=root_dir,
+            parent_ignored=parent_ignored,
+            tree_filter=tree_filter,
+            now_sec=now_sec,
+            generation=generation,
+        )
+        tree = filtered.tree
+        LOG.debug(
+            "api_tree (filtered) path=%r depth=%d entries=%d matched=%d status=%s",
+            subpath or "<root>",
+            remaining_depth,
+            len(tree),
+            filtered.matched_files,
+            inventory_status(),
+        )
+    elif inv_can_serve:
         tree = _build_inventory_tree(
             parent_rel=subpath,
             max_depth=remaining_depth,
@@ -1232,6 +1300,18 @@ async def api_tree(request: Request) -> JSONResponse:
         {
             "root": str(root_dir),
             "tree": tree,
+            # What the filter selected across the whole subtree, which the
+            # payload cannot be counted for: it is capped by depth, and the
+            # browser pages long child lists. Null when nothing is filtered.
+            "filtered": (
+                {
+                    "files": filtered.matched_files,
+                    "size": filtered.matched_size,
+                    "entries": filtered.matched_leaves,
+                }
+                if filtered is not None
+                else None
+            ),
             "tally_cache_status": tally_cache_status,
             "tally_cache_max_files": inventory.max_files(),
             # Tracked-versus-ignored split for the nav header, plus the age,
