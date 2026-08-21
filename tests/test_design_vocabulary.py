@@ -266,3 +266,51 @@ def test_git_history_vocabulary_is_documented() -> None:
         assert styles.count(f"--git-lane-{lane}:") == 1, (
             f"--git-lane-{lane} is defined per theme; the lane set is one set"
         )
+
+
+def test_one_document_surface_has_one_set_of_breakpoints() -> None:
+    """A README reads at the same measure in Overview as on its own.
+
+    The two surfaces render the same file through the same renderer, so the
+    reader compares them directly and any difference reads as a bug. Three
+    things have to agree for that to hold, and each one broke it on its own:
+
+    * the band boundaries, which must be the *same* container. Overview used
+      to query its own host, which is the preview pane minus its padding, so
+      the two crossed 75rem about 25px apart and there was a band of window
+      widths where the README's text jumped while every other panel stayed.
+    * the wide column, which is KPress's content track (the measure plus its
+      2.5rem insets), not the measure alone. Sized to the measure, the column
+      is right and the text inside it is 5rem short, because KPress still pads
+      the prose for a track it is no longer in.
+    * the narrow inset, which must equal the article padding Overview zeroes,
+      or the text runs short by twice the difference.
+    """
+
+    css = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
+        encoding="utf-8"
+    )
+    # One container names the bands for both surfaces.
+    assert "@container kpress-doc (min-width: 75rem)" in css
+    assert "@container kpress-doc (max-width: 47.99rem)" in css
+    assert "@container (min-width:" not in css, "an unnamed band drifts from KPress's"
+    assert "@container (max-width:" not in css, "an unnamed band drifts from KPress's"
+
+    # The wide column is the track, not the measure.
+    assert "--folder-overview-wide-card-width: calc(" in css
+    wide = css[css.index("--folder-overview-wide-card-width:") :][:200]
+    assert "var(--kpress-measure)" in wide and "--folder-overview-wide-toc-inset" in wide
+    # Both of KPress's measure caps are lifted, never one: lifting the outer
+    # alone leaves the inner centred at the measure, which reads as a wide left
+    # margin with the content spilling past its right edge.
+    assert ".folder-overview-panel-document > .folder-overview-panel-body > .kpress," in css
+    assert ".folder-overview-panel-document .kpress-doc-layout {" in css
+
+    # The narrow inset replaces the article padding Overview drops.
+    assert "--folder-overview-narrow-document-gutter: 0.5rem" in css
+    assert "padding-inline: 0" in css
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "Overview renders the README at the same measure" in doc, (
+        "the rule belongs in the design system, not only in the stylesheet"
+    )
