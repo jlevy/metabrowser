@@ -1,15 +1,15 @@
 ---
 type: is
-id: is-01m0k4p2d6xf80tn8qxhx6qavc
-title: Move highlight.js, the TOML grammar, and Mustache to the prefetched tier
+id: is-01m0k5xfv51f1d214g0fytptqs
+title: Collapse the per-folder /api/tree burst into what the viewport needs
 kind: task
 status: open
 priority: 2
-version: 3
+version: 1
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
-created_at: 2026-08-21T21:47:27.014Z
-updated_at: 2026-08-21T22:08:42.614Z
+created_at: 2026-08-21T22:08:58.725Z
+updated_at: 2026-08-21T22:08:58.725Z
 ---
