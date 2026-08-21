@@ -509,6 +509,9 @@
     return refs
       .map((ref) => {
         const classes = ["git-ref", `git-ref-${escapeHtml(ref.kind)}`];
+        if (ref.is_trunk) {
+          classes.push("git-ref-trunk");
+        }
         if (ref.is_head) {
           classes.push("git-ref-head");
         }

@@ -4598,23 +4598,48 @@ pre.code-block code.hljs {
   text-overflow: ellipsis;
   white-space: nowrap;
   background: var(--git-ref-bg);
-  color: var(--git-ref-local);
+  /* The chip's own colour, named so the trunk form below can swap ink
+     and ground without the circularity currentcolor would create. */
+  --git-ref-ink: var(--git-ref-local);
+  color: var(--git-ref-ink);
   font-size: var(--micro-font-size);
   font-weight: var(--weight-bold);
 }
 
 .git-ref-remote {
-  color: var(--git-ref-remote);
+  --git-ref-ink: var(--git-ref-remote);
+  color: var(--git-ref-ink);
 }
 
+/* A tag is a different kind of thing from a branch, not a differently
+   coloured one: it carries a notched left edge, so `<tag)` and
+   `[branch]` are distinguishable without relying on hue — which colour
+   alone cannot do for a reader who does not separate these two hues.
+   The extra left padding keeps the text clear of the notch. */
 .git-ref-tag {
-  color: var(--git-ref-tag);
+  --git-ref-ink: var(--git-ref-tag);
+  color: var(--git-ref-ink);
+  padding-left: 9px;
+  clip-path: polygon(4px 0, 100% 0, 100% 100%, 4px 100%, 0 50%);
 }
 
+/* Trunk — the branch everything merges into — is the one branch worth
+   finding at a glance, so it takes the solid form: its colour becomes
+   the ground and the ground becomes its ink. Routed through
+   --git-ref-ink rather than currentcolor, which would be circular when
+   both roles are set on one element. */
+.git-ref-trunk {
+  background: var(--git-ref-ink);
+  color: var(--git-ref-bg);
+}
+
+/* HEAD is orthogonal to kind — it can sit on trunk, an ordinary
+   branch, or nothing — so it is marked with a ring rather than by
+   changing the chip's form. Every chip is bold, so weight cannot carry
+   this. */
 .git-ref-head {
-  /* Every ref chip is bold now; HEAD keeps its distinction with a
-     hairline ring in its own color. */
-  box-shadow: inset 0 0 0 1px currentColor;
+  outline: 1px solid currentcolor;
+  outline-offset: 1px;
 }
 
 /* ── Commit detail view ─────────────────────────────────────── */

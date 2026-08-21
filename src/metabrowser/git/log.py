@@ -70,6 +70,19 @@ def trunk_refs() -> tuple[str, ...]:
     return (*TRUNK_BRANCH_NAMES, *remote_forms)
 
 
+def is_trunk_ref(name: str, kind: str) -> bool:
+    """Whether a short ref name is the branch the repository merges into.
+
+    Tags are never trunk however they are named; a tag called ``main``
+    is still a tag. Remote-tracking forms count too, so a clone whose
+    local branch is something else still shows its remote trunk as
+    trunk.
+    """
+    if kind == "tag":
+        return False
+    return name in trunk_refs()
+
+
 def _log_args(*, skip: int, limit: int, refs: Sequence[str] | None = None) -> list[str]:
     """Build the ``git log`` argument vector for one page.
 
@@ -162,6 +175,8 @@ def parse_decoration(decoration: str, revision: str) -> list[GitRef]:
             continue
         if is_head:
             ref["is_head"] = True
+        if is_trunk_ref(ref["name"], ref["kind"]):
+            ref["is_trunk"] = True
         refs.append(ref)
 
     refs.sort(key=_ref_sort_key)
@@ -415,6 +430,7 @@ __all__ = [
     "TRUNK_BRANCH_NAMES",
     "TRUNK_REMOTES",
     "parse_log_output",
+    "is_trunk_ref",
     "read_log_page",
     "resolve_default_scope",
     "trunk_refs",

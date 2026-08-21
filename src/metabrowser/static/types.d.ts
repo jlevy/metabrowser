@@ -1287,6 +1287,9 @@ declare global {
     revision: string;
     /** Present on the ref HEAD is currently on; never when detached. */
     is_head?: boolean;
+    /** Present on the branch the repository merges into (main/master,
+     * local or on a remote). Decided server-side. */
+    is_trunk?: boolean;
     remote?: string;
   };
 

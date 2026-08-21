@@ -81,6 +81,11 @@ class GitRef(TypedDict):
     # Conditional: true for the ref HEAD is currently on. At most one ref
     # in a response carries it, and never when HEAD is detached.
     is_head: NotRequired[bool]
+    # Conditional: true for the branch the repository merges into — main
+    # or master, local or on a tracked remote. Decided server-side from
+    # the same names that scope the history walk, so "what counts as
+    # trunk" has one definition rather than one per surface.
+    is_trunk: NotRequired[bool]
     # Conditional: remote name ("origin") when kind == "remote".
     remote: NotRequired[str]
 

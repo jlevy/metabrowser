@@ -234,3 +234,35 @@ def test_ref_colors_are_themed_and_distinguished_by_hue() -> None:
     light_tokens = _oklch_tokens(light)
     hues = [light_tokens[token][2] for token in tokens if token in light_tokens]
     assert len(set(hues)) == 3, f"ref kinds must differ by hue, got {hues}"
+
+
+def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
+    """A tag is a different kind of thing from a branch, and trunk is
+    the branch worth finding: each carries a form, so the vocabulary
+    survives a reader who does not separate the hues."""
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    tag = _rule(styles, ".git-ref-tag")
+    assert "clip-path:" in tag, "a tag must differ in shape, not only in color"
+    trunk = _rule(styles, ".git-ref-trunk")
+    assert "background: var(--git-ref-ink)" in trunk, "trunk takes the solid form"
+    head = _rule(styles, ".git-ref-head")
+    assert "outline:" in head, "HEAD is a ring, orthogonal to the chip's kind"
+    # The kind classes must reach the markup from the wire, not be guessed
+    # in the browser.
+    panel = (STATIC / "git_panel.js").read_text(encoding="utf-8")
+    assert "ref.is_trunk" in panel and "git-ref-trunk" in panel
+
+
+def test_git_history_vocabulary_is_documented() -> None:
+    """The git panel's own elements are design-system material, not
+    panel-local decisions."""
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    for heading in ("## Git History", "### Lane Colors", "### Commit Nodes", "### History Rows"):
+        assert heading in doc, f"the design system lost {heading!r}"
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    # The lane set is the documented exception to the hue rule: identical
+    # in both themes, so it must be defined exactly once.
+    for lane in range(1, 6):
+        assert styles.count(f"--git-lane-{lane}:") == 1, (
+            f"--git-lane-{lane} is defined per theme; the lane set is one set"
+        )

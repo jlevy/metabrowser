@@ -521,12 +521,76 @@ Call sites add positioning only, never color, weight, or their own abbreviations
 same discipline `.size` follows for byte counts.
 An exception needs a line in this document; otherwise there is one age.
 
+## Git History
+
+The history panel has its own vocabulary because it shows a structure nothing else in
+the product shows — a graph of commits — but it borrows every general element it can:
+ages come from [Age](#age), change counts from
+[Inline Change Stats](#inline-change-stats), and rows follow the shared row height and
+hover.
+
+### Lane Colors
+
+Five lane colors, `--git-lane-1` through `--git-lane-5`, assigned round-robin as lanes
+open. They are **one set, not five independent choices**: the property that matters is
+that the five stay distinguishable from one another, which belongs to the set, so a lane
+color is never adjusted on its own and the set is identical in both themes — thin
+strokes carry on either background.
+This is the documented exception to the hue rule in
+[Color and Theming](#color-and-theming).
+
+The lane a commit sits on colors its node, so a commit and the history below it read as
+one line. `HEAD`’s lane takes `--git-ref-local`, tying the graph to the chip that names
+the branch.
+
+### Commit Nodes
+
+**Every vertex is the same solid dot.** Shape carries no state.
+
+Rings and ring-plus-dot variants encoded HEAD and merges once, and the encoding failed
+twice over: at this radius the variants read as noise rather than meaning, and the
+hollow center had to be painted with a copy of the row’s background, so every row state
+— hover, selection, anything added later — had to restate that color or the node changed
+shape under the highlight.
+What matters stays legible where it already was: `HEAD` by its lane color and its chip,
+a merge by the arcs converging on it.
+
+### History Rows
+
+A row is the graph, then the commit, then who and when:
+
+| Part | Sizing |
+| --- | --- |
+| Graph gutter | Shrink-wraps **this row’s** lanes, so the subject starts where that row’s graph ends. A shared column would spend the widest row’s width on every row. |
+| Ref chips | Fixed; shrink last (see below) |
+| Subject | Takes the remaining space and absorbs the row’s shrinkage, ellipsizing |
+| Author and age | Fixed, right-aligned; slide outward as the panel widens |
+
+When a row cannot fit everything, the order it gives way in is **subject, then chips,
+never the age**: an age pushed off the row is information lost, an ellipsized message
+still reads, and a halved branch name does not.
+Rows are independent — no shared column — which is also what lets a new page of history
+be appended to the list instead of rebuilding every row above it.
+
 ### Branch Chips
 
 Git ref badges (`.git-ref`) are their own vocabulary, not filter chips: at
 `--micro-font-size` the name carries the meaning, so it is always `--weight-bold`, and
 the corner is `--radius-tag` (square-ish) so “a ref” and “a filter” never read as the
-same control. `HEAD`’s chip keeps its distinction with a hairline ring in its own color.
+same control.
+
+A chip answers two independent questions, and each has its own signal:
+
+| Question | Signal |
+| --- | --- |
+| What kind of ref is this? | **Form.** An ordinary branch is the plain chip. **Trunk** — `main` or `master`, local or on a remote — is solid: its color becomes the ground. A **tag** carries a notched left edge, so `<tag)` and `[branch]` differ in shape, not only in hue. |
+| Is HEAD here? | **A ring.** `HEAD` can sit on trunk, an ordinary branch, or nothing, so it is marked without changing the chip’s form. |
+
+Shape carries the kind because hue alone cannot: a reader who does not separate the
+branch and tag hues would otherwise see one vocabulary with two colors.
+Which refs count as trunk is decided server-side, by the same names that scope the
+history walk, so the answer cannot differ between the graph and the walk.
+Color still carries local, remote, and tag as a secondary signal.
 Their ground is `--git-ref-bg`, a near-neutral of its own rather than the shared chip
 surface, sitting at the value of the surfaces beside it with just enough chroma to
 separate from them. The three ref colors — `--git-ref-local`, `--git-ref-remote`,
