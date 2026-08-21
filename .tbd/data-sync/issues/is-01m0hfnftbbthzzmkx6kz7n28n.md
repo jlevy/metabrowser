@@ -3,13 +3,15 @@ type: is
 id: is-01m0hfnftbbthzzmkx6kz7n28n
 title: Root /api/tree still costs O(index) via navigation_tallies
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 3
+version: 5
 labels: []
 dependencies: []
 created_at: 2026-08-21T06:20:53.450Z
-updated_at: 2026-08-21T06:43:46.548Z
+updated_at: 2026-08-21T07:24:51.124Z
+closed_at: 2026-08-21T07:24:51.123Z
+close_reason: null
 ---
 arch-state-and-delivery.md, invariant 3: "No request path does work proportional to the
 index. A rollup costs what changed; a tree request costs the subtree it returns."
@@ -43,25 +45,28 @@ record this cost under What Is Not Solved with the measurement above.
 
 ## Notes
 
-Measured again from the browser at 400k files, with the probe from mb-fodz, which adds
-the part curl could not show: what this costs when more than one tab is open.
+Fixed for the repeat and multi-client case; the residual is mb-65mg.
 
-Single client, settled index, /api/tree?path=&depth=1:
+The tallies are memoized on the index revision, and recency windows are answered by
+binary search over a per-revision sorted mtime array rather than by another pass, so the
+memo key carries no clock term.
 
-  server-reported time: 1,960ms
+Measured, settled, root /api/tree depth=1:
 
-Eight tabs asking for the same thing at once:
+  100,000 entries    516ms -> 4.4ms
+  400,000 entries   2726ms -> 13-17ms, stable across a clock-crossing pause
 
-  8,557ms each, 68,459ms of total server work
+Simultaneous clients share one pass rather than each running their own, because the
+computation is held under a dedicated lock: under the GIL, serializing identical work
+costs nothing and saves N-1 passes.
 
-The route has no validator and no shared build, so every client pays in full, and the
-per-client cost then grows on top of that because the passes contend for the GIL. The
-same probe against /api/tree?path=top00&depth=2 costs 9.9ms per client, so this is the
-root request specifically, not the route.
+Invariant 3 in arch-state-and-delivery.md claimed no request path does work proportional
+to the index. That was false when written and is still not literally true, so it now says
+"repeats" and the residual is recorded under What Is Not Solved with its measurement --
+the first request after any change is still a full pass, and during a crawl the revision
+moves on every write.
 
-For contrast, on the same index /api/rollup answers 8 simultaneous clients at 7.1ms each
-and revalidates in 8ms with an empty body. The rollup route has the validator and the
-retained body; the tree route has neither.
-
-That makes the gap concrete: the first nav request on page load costs about two seconds
-of server work at the design-center size, and a second tab doubles it.
+One thing found along the way and filed separately: the nav filter menus in an open page
+freeze at whatever the crawl had reached and never refresh (mb-me9y). That is client-side
+and pre-existing -- reproduced at 40df198 before any of this work -- and the server
+response was verified correct while the stale menu was on screen.

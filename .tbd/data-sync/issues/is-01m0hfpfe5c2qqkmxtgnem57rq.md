@@ -3,13 +3,15 @@ type: is
 id: is-01m0hfpfe5c2qqkmxtgnem57rq
 title: Folder totals panel can latch a stale higher count and never correct
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-08-21T06:21:25.816Z
-updated_at: 2026-08-21T06:43:46.856Z
+updated_at: 2026-08-21T07:24:51.384Z
+closed_at: 2026-08-21T07:24:51.383Z
+close_reason: null
 ---
 Observed in a real browser on PR #59 at 40df198, serving a 400k-file tree, after a burst
 of adds and deletes under load: the folder Overview settled on 400,019 files and stayed

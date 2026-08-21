@@ -5,7 +5,7 @@ title: "Nav panel filtering: correct rollups, no empty folders, stable expansion
 kind: epic
 status: open
 priority: 1
-version: 10
+version: 11
 labels: []
 dependencies: []
 child_order_hints:
@@ -19,7 +19,11 @@ child_order_hints:
   - is-01m0hj5ass469axrp70tta93j9
   - is-01m0hj5b44s8vt9sap50651tzr
 created_at: 2026-08-21T06:54:11.533Z
-updated_at: 2026-08-21T07:04:30.083Z
+updated_at: 2026-08-21T07:05:39.736Z
+extensions:
+  linear:
+    id: e89638bb-383b-4fef-882b-93118c6efc17
+    linked_at: 2026-08-21T07:05:39.735Z
 ---
 Filtering and the navigation tree disagree once a filter is on. Reported from running Metabrowser on this repository, pulling out the nav panel, and filtering to a narrow type set (for example media files).
 
