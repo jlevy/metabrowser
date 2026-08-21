@@ -314,6 +314,60 @@ and there is no measurement of that cost yet.
   Silent truncation is not an option either way.
 - [ ] Re-measure and record the comparison
 
+## Reproducing the Measurements
+
+Every number in this document was taken by hand, outside the repository, because the
+page-load phase this plan asks for does not exist yet.
+That is a limitation of the evidence, not of the conclusions: the gaps are large enough
+that corpus shape moves them by percentages, not by orders.
+Still, a reader reproducing them needs to know exactly what was done, and a reader
+building the harness needs the definitions to carry over unchanged.
+
+### The corpus these numbers came from
+
+A generator outside the repository, not `build_corpus`. It made
+`pkgNNN/modNNN/fileNNNN.ext` three levels deep, 40 files per leaf directory, ten
+extensions cycling, bodies from empty to a few hundred bytes.
+
+`build_corpus` in `devtools/bench_serving.py` makes a different shape: 972 directories,
+wide at the top and deep in one branch, with file bodies from 64 B to 16 KiB. **The
+harness should use `build_corpus`, and its first run becomes the recorded baseline.**
+Expect its absolute numbers to differ from the ones above.
+What should survive the change of shape is the relation: usable tree data reaching the
+browser in hundreds of milliseconds while the first row waits seconds for the scan.
+
+### The definitions to carry over
+
+Navigate to `/view/` for tree measurements and `/view/README.md` for document ones.
+Take a median of at least five cold loads, each in a fresh browser context so no module
+or HTTP cache carries over.
+
+| Measure | How |
+| --- | --- |
+| First contentful paint | `performance.getEntriesByType("paint")`, the `first-contentful-paint` entry’s `startTime` |
+| DOMContentLoaded | the navigation entry’s `domContentLoadedEventEnd` |
+| `load` | the navigation entry’s `loadEventEnd` |
+| Time to first tree row | wall clock from navigation commit until a `[role="treeitem"]` element exists |
+| Rendered rows | `document.querySelectorAll('[role="treeitem"]').length` |
+| DOM nodes | `document.querySelectorAll("*").length` |
+| Transferred | the sum of `transferSize` across resource entries, which is compressed, so it moves far less than uncompressed size does |
+
+Time to first row is the one that matters most and the one a naive harness gets wrong.
+Waiting for `load` reports a page that painted its shell; waiting for a network idle
+reports a scan that finished.
+Neither is when the reader can use the tree.
+
+### What the environment needs
+
+Three things cost time to discover and are worth stating once.
+
+- `uv.toml` sets `exclude-newer = "14 days"`, a relative form that needs uv 0.11.26 or
+  newer. An older uv fails to parse it and `make install` stops there.
+- `package.json` requires Node 24; `npm ci` refuses on Node 22.
+- `metab` binds another port when the requested one is busy and prints the one it
+  settled on, so the banner is more reliable than the requested port.
+  `Server` in `bench_serving.py` already parses it.
+
 ## Testing Strategy
 
 Every phase reports through `devtools/bench_serving.py` with `--label` and `--baseline`,
