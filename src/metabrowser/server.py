@@ -1356,13 +1356,17 @@ async def api_rollup(request: Request) -> Response:
     inventory = get_inventory()
     inv_can_serve = await _ensure_inventory_serving(subpath)
 
-    # The body is a pure function of the index revision, the path, and the
-    # bounds that shape the response, so those three make an exact validator.
-    # The bounds have to be in it: two clients asking for different depths
-    # share a revision, and a tag that ignored the difference would hand one
-    # of them the other's shape.
+    # The body is a pure function of the served root, the index revision, the
+    # path, and the bounds that shape the response, so those make an exact
+    # validator. Each part is load-bearing. The bounds: two clients asking for
+    # different depths share a revision, and a tag that ignored the difference
+    # would hand one of them the other's shape. The root: a tag identifies the
+    # resource it validates, and "the rollup of this path" is a different
+    # resource under a different root — without it, serving a second root
+    # reuses the first one's body wherever the revisions happen to line up.
     etag = build_scoped_etag(
-        "rollup-{}-{}-{}-{}".format(
+        "rollup-{}-{}-{}-{}-{}".format(
+            _resolved_root_dir(),
             inventory_status(),
             inventory.rollup_revision(),
             subpath,
@@ -1370,7 +1374,7 @@ async def api_rollup(request: Request) -> Response:
         )
     )
     if matches_if_none_match(request, etag):
-        return Response(status_code=304, headers={"ETag": etag})
+        return Response(status_code=304, headers=etag_headers(etag))
     cached = _ROLLUP_BODY_CACHE.get(etag)
     if cached is not None:
         return Response(cached, media_type="application/json", headers=etag_headers(etag))
@@ -1388,6 +1392,8 @@ async def api_rollup(request: Request) -> Response:
                 filename_top=filename_top,
                 ext_rank=ext_rank,
             )
+        # Built through JSONResponse rather than json.dumps so the bytes are
+        # identical to what every other JSON route on this server produces.
         body = bytes(
             JSONResponse(
                 {

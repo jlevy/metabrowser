@@ -42,9 +42,10 @@ export function mountFileTotalsPanel(
     metric: true,
     ignored: false,
   });
+  const envelopeTotals = totalsFromFolderEnvelope(context.raw);
   const totalsView = mountFolderTotalsView(
     totalsContainer,
-    totalsFromFolderEnvelope(context.raw),
+    envelopeTotals,
     mb,
     controlsState.metric,
   );
@@ -66,8 +67,9 @@ export function mountFileTotalsPanel(
     // either can be the stale one: the directory index reports 0 for a root
     // it has not finalized, and the rollup lags behind its own refresh
     // debounce. Take the source that has seen more files, whole, rather than
-    // mixing fields from both — and never show a smaller count than the
-    // reader was already looking at. Once the crawl finishes the two agree.
+    // mixing fields from both. This is a max over the two current sources, not
+    // a ratchet over time: a fresh, smaller reading replaces an older one,
+    // because files really can be deleted. Once the crawl finishes both agree.
     const best =
       indexedTotals && rollupTotals
         ? (indexedTotals.totalFiles ?? 0) >= (rollupTotals.totalFiles ?? 0)
@@ -86,6 +88,14 @@ export function mountFileTotalsPanel(
       applyBestTotals();
     }
   }
+
+  // Seed with what the envelope already put on screen. subscribe() calls back
+  // synchronously, but only when the store already holds this path: on first
+  // paint the SSE snapshot may not have landed, and without this the first
+  // rollup projection wins unopposed and the panel drops from the envelope's
+  // count to the rollup's lower in-progress one — the regression the rule
+  // above exists to prevent.
+  offerIndexedTotals(envelopeTotals);
 
   const unsubscribeTotals = mb.directoryTotals.subscribe(path, (next) => {
     offerIndexedTotals(normalizeFolderTotals(next));
@@ -181,11 +191,14 @@ function totalsFromRollupProjection(raw) {
   if (!totals) {
     return normalizeFolderTotals(null);
   }
+  // normalizeFolderTotals accepts both the camelCase and snake_case spellings;
+  // use one of them so this does not read like a mistake. The camelCase byte
+  // fields are totalBytes / unignoredBytes, not *Size.
   return normalizeFolderTotals({
     totalFiles: totals.allFiles,
-    total_size: totals.allBytes,
+    totalBytes: totals.allBytes,
     unignoredFiles: totals.unignoredFiles,
-    unignored_size: totals.unignoredBytes,
+    unignoredBytes: totals.unignoredBytes,
   });
 }
 

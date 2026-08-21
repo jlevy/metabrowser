@@ -17,6 +17,7 @@ from unittest.mock import Mock
 from metabrowser import server
 from metabrowser.events import FsEntry
 from metabrowser.inventory import get_instance as get_inventory
+from metabrowser.inventory import reset_instance_for_tests
 from metabrowser.settings import ROLLUP_MAX_TOP
 from metabrowser.wire_models import validate_rollup_node
 
@@ -209,7 +210,6 @@ def test_rollup_revalidates_and_reuses_an_unchanged_body(tmp_path: Path) -> None
         assert not bytes(revalidated.body)
         assert revalidated.headers["etag"] == etag
 
-        server._ROLLUP_BODY_CACHE.clear()
         cold = await server.api_rollup(_mock_request({"path": ""}))
         assert cold.status_code == 200
         assert etag in server._ROLLUP_BODY_CACHE
@@ -262,7 +262,6 @@ def test_simultaneous_identical_rollups_compute_once(tmp_path: Path) -> None:
         inventory = get_inventory()
         inventory.start(tmp_path)
         await inventory.wait_until_done(10)
-        server._ROLLUP_BODY_CACHE.clear()
 
         calls = 0
         real_rollup = inventory.rollup
@@ -287,6 +286,10 @@ def test_simultaneous_identical_rollups_compute_once(tmp_path: Path) -> None:
     assert json.loads(bodies[0])["node"]["total_files"] == 5
 
 
+async def _wait(event: asyncio.Event) -> None:
+    await event.wait()
+
+
 def test_a_disconnecting_client_does_not_cancel_the_shared_build(tmp_path: Path) -> None:
     """One client going away must not fail the others waiting on its build.
 
@@ -301,19 +304,80 @@ def test_a_disconnecting_client_does_not_cancel_the_shared_build(tmp_path: Path)
     for index in range(4):
         (tmp_path / "src" / f"f{index}.py").write_text("x" * 16)
 
-    async def scenario() -> Any:
+    async def scenario() -> tuple[bytes, Any]:
         inventory = get_inventory()
         inventory.start(tmp_path)
         await inventory.wait_until_done(10)
-        server._ROLLUP_BODY_CACHE.clear()
 
-        leader = asyncio.create_task(server.api_rollup(_mock_request({"path": ""})))
-        await asyncio.sleep(0)  # let the leader register the shared build
-        joiner = asyncio.create_task(server.api_rollup(_mock_request({"path": ""})))
-        await asyncio.sleep(0)  # let the joiner attach to it
-        leader.cancel()
-        return await joiner
+        # Hold the aggregation open so the build is provably still running when
+        # the first client goes away. Gating on events rather than on loop turns
+        # keeps the ordering independent of how many iterations a task needs.
+        started = asyncio.Event()
+        release = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        real_rollup = inventory.rollup
 
-    response = asyncio.run(scenario())
-    assert response.status_code == 200
-    assert json.loads(bytes(response.body))["node"]["total_files"] == 4
+        def gated_rollup(*args: Any, **kwargs: Any) -> Any:
+            loop.call_soon_threadsafe(started.set)
+            asyncio.run_coroutine_threadsafe(_wait(release), loop).result()
+            return real_rollup(*args, **kwargs)
+
+        inventory.rollup = gated_rollup  # type: ignore[method-assign]
+        try:
+            leader = asyncio.create_task(server.api_rollup(_mock_request({"path": ""})))
+            await started.wait()
+            # Registered before the aggregation began, so this is the build the
+            # leader's own request would have returned.
+            shared = next(iter(server._ROLLUP_IN_FLIGHT.values()))
+            leader.cancel()
+            release.set()
+            # The build itself must survive the client that started it.
+            body = await shared
+        finally:
+            del inventory.rollup  # type: ignore[method-assign]
+
+        # And a request arriving afterwards is served the same answer.
+        later = await server.api_rollup(_mock_request({"path": ""}))
+        return body, later
+
+    body, later = asyncio.run(scenario())
+    assert json.loads(body)["node"]["total_files"] == 4
+    assert later.status_code == 200
+    assert bytes(later.body) == body
+
+
+def test_rollup_validator_identifies_the_served_root(tmp_path: Path) -> None:
+    """A tag identifies the resource it validates.
+
+    "The rollup of this path" is a different resource under a different root.
+    A validator that left the root out reused one root's body for another
+    wherever their revisions lined up — which a fresh index makes easy, since
+    a per-instance counter would restart at zero.
+    """
+
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "a").write_text("x" * 10)
+    (second / "a").write_text("x" * 999)
+
+    async def serve(root: Path) -> tuple[str, int]:
+        server._set_root_dir(root)
+        inventory = get_inventory()
+        inventory.start(root)
+        await inventory.wait_until_done(10)
+        response = await server.api_rollup(_mock_request({"path": ""}))
+        body = json.loads(bytes(response.body))
+        return response.headers["etag"], body["node"]["total_size"]
+
+    async def scenario() -> tuple[str, int, str, int]:
+        first_tag, first_size = await serve(first)
+        reset_instance_for_tests()  # what the autouse fixture does between tests
+        second_tag, second_size = await serve(second)
+        return first_tag, first_size, second_tag, second_size
+
+    first_tag, first_size, second_tag, second_size = asyncio.run(scenario())
+    assert first_size == 10
+    assert second_size == 999, "the second root was served the first root's body"
+    assert first_tag != second_tag

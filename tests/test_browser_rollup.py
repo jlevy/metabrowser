@@ -11,6 +11,7 @@ records the query-cost budget (spec: <=150 ms at 100k entries).
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -444,3 +445,79 @@ def test_derived_index_state_survives_writes_and_removals(tmp_path: Path) -> Non
     # keep/a.py, keep/c.py, keep/d.py survive; the drop/ subtree is gone.
     assert _total_files(index, "") == 3
     _assert_derived_state_matches_entries(index)
+
+
+def test_eviction_epochs_are_released_once_no_rollup_is_in_flight(tmp_path: Path) -> None:
+    """The epoch map is bounded by in-flight passes, not by paths ever seen.
+
+    An epoch only exists so a merge can refuse an aggregate the walker has
+    moved past. With no pass in flight there is no merge left to consult it.
+    Retaining them instead grows the map with every directory path seen in the
+    process lifetime, so a long session over a churning tree never gives any
+    of it back.
+    """
+
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "a.py").write_text("x" * 10)
+    index = _build_index(tmp_path)
+
+    index.rollup("", depth=3, top=40, ext_top=12)
+    assert index._aggregate_evicted_at == {}
+    assert index._rollup_passes_in_flight == 0
+
+    # Churn: each write evicts its ancestor chain and records epochs for it.
+    for generation in range(25):
+        directory = f"churn{generation}"
+        index.apply_live_entry(
+            FsEntry.for_observed_file(
+                path=f"{directory}/f.py",
+                parent=directory,
+                name="f.py",
+                size=8,
+                mtime_ns=1_700_000_000_000_000_000,
+            )
+        )
+    assert index._aggregate_evicted_at, "evictions should record epochs while they matter"
+
+    index.rollup("", depth=3, top=40, ext_top=12)
+    assert index._aggregate_evicted_at == {}, "epochs outlived the passes that needed them"
+    assert index._rollup_passes_in_flight == 0
+
+
+# Assignments into the index's entry map from outside its two write methods.
+# ``_entries[...] = x`` stores an entry without updating ``_children_index``,
+# so a later rollup reads the superseded FsEntry out of the child bucket.
+_DIRECT_ENTRY_WRITE_RE = re.compile(r"_entries\[[^\]]+\]\s*=(?!=)")
+
+_ENTRY_WRITE_METHODS = ("_replace_index_entry", "_pop_index_entry")
+
+
+def test_every_index_write_goes_through_the_two_write_methods() -> None:
+    """Invariant 2, enforced rather than asserted in prose.
+
+    ``_replace_index_entry`` and ``_pop_index_entry`` are where the derived
+    structures are kept in step with ``_entries``. A write that bypasses them
+    desynchronizes the index silently, and the shape it leaves behind — a stale
+    FsEntry still in its parent's child bucket — surfaces later as a wrong
+    tally rather than as an error.
+    """
+
+    root = Path(__file__).resolve().parent.parent
+    offenders: list[str] = []
+    for path in sorted((root / "src").rglob("*.py")) + sorted((root / "tests").rglob("*.py")):
+        if path.name == Path(__file__).name:
+            continue  # the pattern above lives here
+        source = path.read_text(encoding="utf-8")
+        in_write_method = False
+        for number, line in enumerate(source.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("def "):
+                in_write_method = any(name in stripped for name in _ENTRY_WRITE_METHODS)
+            if in_write_method:
+                continue
+            if _DIRECT_ENTRY_WRITE_RE.search(line):
+                offenders.append(f"{path.relative_to(root)}:{number}: {stripped}")
+    assert not offenders, (
+        "write through _replace_index_entry / _pop_index_entry, or "
+        "conftest.SyntheticIndexWriter in tests:\n  " + "\n  ".join(offenders)
+    )

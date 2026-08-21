@@ -230,9 +230,18 @@ ROLLUP_WATCH_DEBOUNCE_MS = 1_000
 # Encoded rollup bodies retained for reuse, keyed by ETag. One open folder
 # view asks for a handful of shapes at once (the Overview totals, the file-type
 # breakdown, the treemap at its own depth), and several tabs on the same folder
-# ask for the same ones, so a cache of a few entries covers the repeats. Bodies
-# from a superseded index revision are unreachable — their tag can never match
-# again — and age out through this bound rather than needing to be swept.
+# ask for the same ones, so a cache of a few entries covers the repeats.
+#
+# This bounds entries, not bytes. Measured on a 100k-file tree, the largest
+# shape the browser asks for (depth 3, default bounds) encodes to ~200 KB, and
+# a body is capped by ROLLUP_MAX_NODES regardless of tree size, so eight
+# entries is a ceiling near 1.6 MB rather than something that grows with the
+# root.
+#
+# This is a settled-index optimization. During a scan the revision has already
+# moved by the time a body is stored, so every stored body is unreachable the
+# moment it lands; the reuse shows up once the crawl finishes. Superseded
+# bodies age out by insertion order rather than needing to be swept.
 ROLLUP_BODY_CACHE_ENTRIES = 8
 
 

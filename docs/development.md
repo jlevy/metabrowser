@@ -178,6 +178,24 @@ tbd setup --auto
 
 `tbd setup` owns the hook configs, session scripts, and agent skills it writes.
 Commit them exactly as generated and commit the diff the upgrade reports.
+
+Three consequences of that are worth knowing rather than rediscovering, since each one
+was previously patched locally and is now left as generated:
+
+- **Hook commands resolve against the working directory.** `.claude/settings.json` and
+  `.codex/hooks.json` invoke `bash .claude/...` and `bash .codex/...` with no root
+  anchoring, so a session whose cwd is not the repository root runs nothing.
+- **The `npx` fallback fails for fourteen days after every tbd release**, because the
+  generated invocation omits `--min-release-age=0` and `.npmrc` sets a 14-day cool-off.
+  It is only reached when the local `tbd` CLI is missing or format-incompatible.
+  See
+  [supply-chain security](../SUPPLY-CHAIN-SECURITY.md#audited-first-party-exceptions).
+- **`ensure-gh-cli.sh` exits non-zero on a platform with no pinned checksum**, so the
+  session hook fails there rather than skipping an optional convenience.
+  Checksums cover linux and macOS on amd64 and arm64.
+
+Fix any of these upstream in tbd’s generator rather than in this repository, or the next
+`tbd setup` reverts the fix and someone has to notice.
 Do not hand-patch them and do not add tests that assert their contents: the same upgrade
 runs across many repositories, and a local edit is silently reverted by the next one
 while a test that pins their contents turns a routine upgrade into a repair job.

@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import heapq
+import itertools
 import logging
 import threading
 import time
@@ -105,6 +106,15 @@ LOG = logging.getLogger(__name__)
 _SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS = 30_000_000_000
 # Unit conversion for comparing second-based filter windows with inventory mtimes.
 _NANOSECONDS_PER_SECOND = 1_000_000_000
+
+
+# Rollup revisions come from one process-wide sequence rather than a
+# per-instance counter. The revision is what an /api/rollup ETag is keyed on,
+# so it must never repeat for different content within a process: a per-index
+# counter restarts at zero whenever a new InventoryIndex is built, which is
+# what ``reset_instance_for_tests`` does between tests, and two indexes would
+# then hand out the same tag for different trees.
+_ROLLUP_REVISIONS = itertools.count(1)
 
 
 IndexStatus = Literal["idle", "scanning", "done", "truncated", "failed"]
@@ -173,7 +183,7 @@ class InventoryIndex:
         self._root: Path | None = None
         self._entries: dict[str, FsEntry] = {}
         self._rollup_cache_lock = threading.Lock()
-        self._rollup_generation = 0
+        self._rollup_generation = next(_ROLLUP_REVISIONS)
         # Per-directory subtree aggregates, retained across rollup requests.
         # Without this, every ``/api/rollup`` re-walked every file under the
         # requested path: measured at 580-720ms for a 100k-file root, and the
@@ -187,6 +197,9 @@ class InventoryIndex:
         # walker publish only the aggregates the walker has not invalidated.
         self._aggregate_epoch = 0
         self._aggregate_evicted_at: dict[str, int] = {}
+        # Rollup passes between _rollup_view and their merge. The eviction
+        # epochs above are only consulted by a merge, so at zero they can go.
+        self._rollup_passes_in_flight = 0
         # Parent path -> {child path: entry}, maintained on every write. The
         # rollup used to rebuild this grouping from a full copy of the index on
         # each request, which cost ~155ms at 100k entries and grew with the
@@ -254,7 +267,7 @@ class InventoryIndex:
         self._walker_task = None
         with self._rollup_cache_lock:
             self._entries.clear()
-            self._rollup_generation += 1
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
             self._children_index.clear()
             self._subtree_aggregates.clear()
             self._aggregate_evicted_at.clear()
@@ -612,14 +625,20 @@ class InventoryIndex:
         # guarded merge below touches only what this pass actually computed
         # rather than everything already cached.
         computed: SubtreeAggregateCache = {}
-        result = build_rollup(
-            entries,
-            children_by_parent,
-            path,
-            options,
-            ancestor_gitignored=self._ancestor_gitignored(path, entries),
-            aggregates=ChainMap(computed, self._subtree_aggregates),
-        )
+        try:
+            result = build_rollup(
+                entries,
+                children_by_parent,
+                path,
+                options,
+                ancestor_gitignored=self._ancestor_gitignored(path, entries),
+                aggregates=ChainMap(computed, self._subtree_aggregates),
+            )
+        except BaseException:
+            # The pass is still counted in flight; retiring it here keeps a
+            # failed rollup from pinning the eviction-epoch map forever.
+            self._merge_subtree_aggregates({}, snapshot_epoch)
+            raise
         self._merge_subtree_aggregates(computed, snapshot_epoch)
         return result
 
@@ -640,6 +659,16 @@ class InventoryIndex:
             for directory_path, aggregate in memo.items():
                 if self._aggregate_evicted_at.get(directory_path, 0) <= snapshot_epoch:
                     self._subtree_aggregates[directory_path] = aggregate
+            self._rollup_passes_in_flight -= 1
+            if self._rollup_passes_in_flight == 0:
+                # The map only exists to let a merge refuse an aggregate the
+                # walker has moved past. With no pass in flight there is no
+                # merge left to consult it, so every epoch in it is now dead
+                # weight. Without this it grows with every directory path seen
+                # in the process lifetime rather than with the directory count,
+                # and a long session over a churning tree (build outputs,
+                # node_modules reinstalls, temp dirs) never gives any of it back.
+                self._aggregate_evicted_at.clear()
 
     def _rollup_view(
         self,
@@ -662,6 +691,7 @@ class InventoryIndex:
 
         with self._rollup_cache_lock:
             epoch = self._aggregate_epoch
+            self._rollup_passes_in_flight += 1
         return self._entries, _ChildrenView(self), epoch
 
     def _evict_subtree_aggregates(self, path: str, *, is_dir: bool) -> None:
@@ -701,7 +731,7 @@ class InventoryIndex:
 
         with self._rollup_cache_lock:
             self._entries[entry.path] = entry
-            self._rollup_generation += 1
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
             # The served root is its own parent; listing it as its own child
             # would make subtree aggregation recurse forever.
             if entry.path != entry.parent:
@@ -714,7 +744,7 @@ class InventoryIndex:
         with self._rollup_cache_lock:
             entry = self._entries.pop(path, None)
             if entry is not None:
-                self._rollup_generation += 1
+                self._rollup_generation = next(_ROLLUP_REVISIONS)
                 siblings = self._children_index.get(entry.parent)
                 if siblings is not None:
                     siblings.pop(path, None)

@@ -153,7 +153,7 @@ this reason rather than assigning into `_entries`.
 | --- | --- | --- |
 | `_children_index` | parent path → children | The write itself, in place |
 | `_subtree_aggregates` | directory → subtree aggregate | Eviction of the changed path’s ancestor chain |
-| `_aggregate_evicted_at` | directory → eviction epoch | Never; bounded by directory count |
+| `_aggregate_evicted_at` | directory → eviction epoch | Released once no rollup pass is in flight |
 | `_descendant_file_counts` and siblings | running per-directory totals | Adjusted per write, incrementally |
 | `_pending_dirs` | directories awaiting finalize | Post-order finalize, or end-of-walk repair |
 
@@ -166,6 +166,13 @@ opposite directions:
 - `_subtree_aggregates` is **evicted**. A write drops the changed path and its
   ancestors; sibling subtrees stay valid and are reused.
   A rollup then recomputes only what moved.
+
+An epoch exists only so a merge can refuse an aggregate the walker has moved past, so
+once no pass is in flight there is no merge left to consult one and the whole map is
+released. Retaining them instead would grow it with every directory path seen in the
+process lifetime rather than with the current directory count, and a long session over a
+churning tree — build outputs, dependency reinstalls, temp directories — would never
+give any of it back.
 
 Eviction walks the full ancestor chain rather than stopping early, because the epoch has
 to be recorded even for a directory that holds no aggregate right now — a rollup already
@@ -224,6 +231,10 @@ A validator is a claim, and the claim has to be checked.
 `/api/rollup` answers `304 Not Modified` on an unchanged index revision, so it is worth
 stating exactly what that promises and what it rests on.
 
+**The tag identifies the resource.** It carries the served root, because “the rollup of
+this path” is a different resource under a different root, and a validator that left the
+root out would reuse one root’s body for another wherever their revisions lined up.
+
 **The tag covers the whole body.** The response carries the rollup node, extension
 tallies, the file-type breakdown, `index_status`, `indexed_files`, `max_files`, and
 `truncated`. Every one of those is a function of the index contents, the request’s
@@ -234,11 +245,10 @@ The rest move only with the revision: `_entries` is mutated in exactly two place
 `_files_indexed` is only ever adjusted in the same statement sequence as one of those
 calls. There is no path that changes what the body would say without changing the tag.
 
-**The revision only moves forward.** Swapping the served root calls
-`InventoryIndex.clear`, which bumps rather than resets, so a tag can never be reused for
-different content. Tests are the one caller that builds a whole new index and starts the
-revision at zero again, which is why the response caches are cleared alongside it — see
-`reset_response_caches_for_tests`.
+**The revision only moves forward.** Revisions come from one process-wide sequence
+rather than a per-instance counter, so a tag can never be reused for different content —
+including across `reset_instance_for_tests`, which builds a whole new index and would
+otherwise restart the count at zero.
 
 **So a `304` means “the index has not changed”.** It does not, by itself, mean the
 filesystem has not changed.
@@ -504,8 +514,10 @@ and repairing would state a total that is wrong.
 
 ## Invariants
 
-Changes to any path above should preserve these; each has a test that fails when it does
-not.
+Changes to any path above should preserve these.
+Each has a test that fails when it does not; 2 and 7 are enforced by a scan over the
+source rather than by exercising a behavior, so a new violation fails the build wherever
+it is written.
 
 1. Every derived structure equals a from-scratch derivation from `_entries`, after
    writes and after removals.

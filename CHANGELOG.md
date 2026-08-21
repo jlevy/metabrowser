@@ -19,7 +19,7 @@ Large directories:
   Per-directory subtree aggregates and the parent/child index are kept up to date as
   entries arrive, so a rollup costs what changed rather than what is stored.
   On a 100,000-file tree with the Overview open, the median rollup fell from 610 ms to
-  76 ms and the full scan from 52 s to 17 s. Past roughly a quarter-million files the
+  83 ms and the full scan from 52 s to 16.5 s. Past roughly a quarter-million files the
   old cost exceeded the browser’s own refresh interval, so each response arrived already
   stale and the view could stop converging.
 
