@@ -2,35 +2,35 @@
   /* Summary and event headers share the host's secondary surface in both themes. */
   --agent-log-surface: var(--sidebar-bg);
   /* Event-kind badges keep one hue per meaning; unknown kinds use neutral. */
-  --agent-log-kind-neutral-bg: hsl(220 14% 96%);
-  --agent-log-kind-neutral-text: hsl(217 19% 27%);
-  --agent-log-kind-muted-text: hsl(220 9% 45%);
-  --agent-log-kind-init-bg: hsl(214 95% 93%);
-  --agent-log-kind-init-text: hsl(226 71% 40%);
-  --agent-log-kind-tool-bg: hsl(48 96% 89%);
-  --agent-log-kind-tool-text: hsl(23 82% 31%);
-  --agent-log-kind-thinking-bg: hsl(251 91% 95%);
-  --agent-log-kind-thinking-text: hsl(263 69% 42%);
-  --agent-log-kind-result-bg: hsl(149 80% 90%);
-  --agent-log-kind-result-text: hsl(163 88% 20%);
-  --agent-log-kind-error-bg: hsl(0 93% 94%);
-  --agent-log-kind-error-text: hsl(0 70% 35%);
+  --agent-log-kind-neutral-bg: oklch(96.8% 0.003 264.5);
+  --agent-log-kind-neutral-text: oklch(37.6% 0.031 259.8);
+  --agent-log-kind-muted-text: oklch(54.17% 0.0231 264.36);
+  --agent-log-kind-init-bg: oklch(93.46% 0.0305 255.11);
+  --agent-log-kind-init-text: oklch(42.26% 0.181 265.65);
+  --agent-log-kind-tool-bg: oklch(96.2% 0.057 95.6);
+  --agent-log-kind-tool-text: oklch(46.97% 0.1224 46.71);
+  --agent-log-kind-thinking-bg: oklch(93.7% 0.031 294.2);
+  --agent-log-kind-thinking-text: oklch(43% 0.209 292.4);
+  --agent-log-kind-result-bg: oklch(95% 0.051 162.8);
+  --agent-log-kind-result-text: oklch(43.45% 0.0872 166.71);
+  --agent-log-kind-error-bg: oklch(93.4% 0.031 17.7);
+  --agent-log-kind-error-text: oklch(44.1% 0.16 26.9);
 }
 
 [data-theme="dark"] {
-  --agent-log-kind-neutral-bg: hsl(220 13% 22%);
-  --agent-log-kind-neutral-text: hsl(215 14% 78%);
-  --agent-log-kind-muted-text: hsl(215 12% 68%);
-  --agent-log-kind-init-bg: hsl(222 55% 24%);
-  --agent-log-kind-init-text: hsl(214 90% 78%);
-  --agent-log-kind-tool-bg: hsl(38 52% 20%);
-  --agent-log-kind-tool-text: hsl(45 90% 72%);
-  --agent-log-kind-thinking-bg: hsl(255 32% 22%);
-  --agent-log-kind-thinking-text: hsl(258 75% 82%);
-  --agent-log-kind-result-bg: hsl(150 35% 18%);
-  --agent-log-kind-result-text: hsl(150 58% 72%);
-  --agent-log-kind-error-bg: hsl(0 40% 20%);
-  --agent-log-kind-error-text: hsl(0 78% 78%);
+  --agent-log-kind-neutral-bg: oklch(33.1% 0.018 264.3);
+  --agent-log-kind-neutral-text: oklch(82.3% 0.015 256.7);
+  --agent-log-kind-muted-text: oklch(74.1% 0.019 256.7);
+  --agent-log-kind-init-bg: oklch(31.93% 0.0878 264.51);
+  --agent-log-kind-init-text: oklch(79.8% 0.094 255.4);
+  --agent-log-kind-tool-bg: oklch(36.25% 0.056 79.08);
+  --agent-log-kind-tool-text: oklch(88.88% 0.1215 91.38);
+  --agent-log-kind-thinking-bg: oklch(29.8% 0.064 293.6);
+  --agent-log-kind-thinking-text: oklch(79.48% 0.0983 297.9);
+  --agent-log-kind-result-bg: oklch(33.4% 0.048 160.5);
+  --agent-log-kind-result-text: oklch(84.5% 0.1 161.5);
+  --agent-log-kind-error-bg: oklch(29.64% 0.0627 21.59);
+  --agent-log-kind-error-text: oklch(77.8% 0.105 19.7);
 }
 
 .log-summary {

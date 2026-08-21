@@ -167,11 +167,11 @@ def _theme_blocks() -> tuple[str, str]:
     return styles[:dark_start], styles[dark_start:]
 
 
-# Hue is a color's identity; lightness and chroma are how it is rendered
-# against a background. Measured across the tokens already in oklch, the
-# deliberate theme adjustments move lightness and chroma while hue drifts
-# at most ~2 degrees, which is tuning, not a different color.
-_THEME_HUE_TOLERANCE_DEGREES = 3.0
+# Below this chroma a color is a near-neutral and its hue is not
+# perceptible, so requiring hue equality there would constrain a number
+# nobody can see — and would force the dark theme's cool grays to take
+# the light theme's warm ones.
+_NEUTRAL_CHROMA = 0.02
 
 
 def test_themed_colors_keep_their_hue() -> None:
@@ -179,11 +179,12 @@ def test_themed_colors_keep_their_hue() -> None:
 
     A token defined in both themes names one color seen against two
     backgrounds: its hue is the invariant, while lightness and chroma
-    are tuned for the background it sits on (dark surfaces usually want
-    less chroma, not more of it). Stating colors in oklch is what makes
-    this checkable at all — the notation separates the three components,
-    which hex and hsl do not — so the check covers the tokens already
-    migrated and widens as the migration proceeds.
+    are tuned for the background it sits on (dark surfaces generally
+    want less chroma, not more). Near-neutrals are exempt, since hue is
+    imperceptible at their chroma.
+
+    Stating colors in oklch is what makes this checkable at all — the
+    notation separates the three components, which hex and hsl do not.
     """
     light_tokens = _oklch_tokens(_theme_blocks()[0])
     dark_tokens = _oklch_tokens(_theme_blocks()[1])
@@ -192,9 +193,10 @@ def test_themed_colors_keep_their_hue() -> None:
         light_value = light_tokens.get(name)
         if light_value is None or len(light_value) < 3 or len(dark_value) < 3:
             continue
+        if float(light_value[1]) < _NEUTRAL_CHROMA or float(dark_value[1]) < _NEUTRAL_CHROMA:
+            continue
         compared += 1
-        drift = abs(float(light_value[2]) - float(dark_value[2]))
-        assert drift <= _THEME_HUE_TOLERANCE_DEGREES, (
+        assert light_value[2] == dark_value[2], (
             f"{name} changes hue between themes (light {light_value[2]}, "
             f"dark {dark_value[2]}); a themed color keeps its hue and moves in "
             "lightness and chroma"
@@ -202,7 +204,23 @@ def test_themed_colors_keep_their_hue() -> None:
         assert light_value[0] != dark_value[0] or light_value[1] != dark_value[1], (
             f"{name} is identical in both themes; drop the override instead"
         )
-    assert compared >= 10, "the theming check lost its coverage"
+    assert compared >= 30, "the theming check lost its coverage"
+
+
+def test_colors_are_declared_in_oklch() -> None:
+    """One notation, so lightness, chroma, and hue are comparable across
+    every token — which is what let the drift above be found at all."""
+    sheets = [
+        STATIC / "styles.css",
+        *(REPO_ROOT / "src/metabrowser/builtin_plugins").glob("*/styles.css"),
+    ]
+    for sheet in sheets:
+        text = sheet.read_text(encoding="utf-8")
+        for notation in (r"hsla?\(", r"rgba?\(", r"#[0-9a-fA-F]{3,8}\b"):
+            found = re.findall(notation, text)
+            assert not found, (
+                f"{sheet.name} declares colors as {found[0]!r}; every color is written in oklch"
+            )
 
 
 def test_ref_colors_are_themed_and_distinguished_by_hue() -> None:

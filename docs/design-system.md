@@ -479,14 +479,21 @@ the motion, and reduced-motion drops every travel to 1ms while keeping the state
 
 ### Color and Theming
 
-Colors are declared in `oklch`, which separates the three things a theme has to reason
-about: lightness, chroma, and hue.
-That separation is what makes the theming rule statable and checkable rather than a
-matter of taste.
+**Every color is declared in `oklch`** — there are no hex, `hsl`, or `rgb` literals, and
+`tests/test_design_vocabulary.py` rejects new ones.
+One notation is not a style preference: `oklch` separates the three things a theme has
+to reason about — lightness, chroma, and hue — so they can be compared across tokens and
+across themes. In `hsl` they cannot, which is how a chip ground came to carry four times
+its neighbours’ chroma, and how thirty-five tokens came to shift hue between themes
+without anyone choosing that.
 
 > A token defined in both themes names **one color seen against two backgrounds**: its
 > **hue is the invariant**, while lightness and chroma are tuned for the background it
 > sits on — dark surfaces generally want less chroma, not more.
+
+Near-neutrals are the one exemption: below about `0.02` chroma the hue is not
+perceptible, so requiring it to match would constrain a number nobody can see — and
+would force the dark theme’s cool grays to adopt the light theme’s warm ones.
 
 Consequences worth knowing:
 
@@ -500,9 +507,8 @@ Consequences worth knowing:
   from one another, and that property belongs to the set rather than to any member, so
   they are identical in both themes and are never returned individually.
 
-`tests/test_design_vocabulary.py` enforces hue invariance across themes for every token
-already written in `oklch`; the coverage widens as the remaining hex and hsl literals
-migrate.
+`tests/test_design_vocabulary.py` enforces both halves: every color is `oklch`, and
+every chromatic token defined in both themes carries the same hue in each.
 
 ### Age
 
