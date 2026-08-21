@@ -5,7 +5,7 @@ title: "CLI parity: every model reachable from metab, every one pinned by a gold
 kind: epic
 status: open
 priority: 1
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies: []
@@ -23,7 +23,7 @@ child_order_hints:
   - is-01m0jsxgfznxwn8cwr2n3p01f4
   - is-01m0jsxgty51qvw61s6sfwv688
 created_at: 2026-08-21T18:38:22.102Z
-updated_at: 2026-08-21T18:39:37.614Z
+updated_at: 2026-08-21T20:19:28.866Z
 extensions:
   linear:
     id: 21c3ee1a-cf78-4125-9ff3-6e9a4ff80b80
@@ -40,3 +40,7 @@ A second finding shapes the design. `--walk` and `--diff` reach their models thr
 The work is a `--api <route>` mode through the real ASGI stack, a `--show <path>` mode reporting the four layers for one selection, one normalizer stating which fields are stable, a parity column in the map document, and a check in `make lint` that fails when a registered route, kind, or view has no CLI equivalent or no golden.
 
 Spec: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
+
+## Notes
+
+Spec PR: https://github.com/jlevy/metabrowser/pull/61 (branch claude/cli-parity-spec-a55071, based on main, docs only). Merge after #60: the audit table credits the filter goldens #60 adds, and #60 is the evidence for the library-versus-wire finding.
