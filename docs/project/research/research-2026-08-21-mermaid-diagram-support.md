@@ -487,9 +487,10 @@ Worth keeping as an opt-in under the conservative profile, not as the default.
 ## Next Steps
 
 Carried into
-[Mermaid diagrams and a loading policy for large browser assets](../specs/active/plan-2026-08-21-mermaid-diagrams-and-asset-loading.md),
-which owns the implementation and extends the loading decision below to the Chart.js
-stack.
+[Mermaid diagram rendering](../specs/active/plan-2026-08-21-mermaid-diagram-rendering.md),
+which owns the implementation.
+The loading decision below is generalized in
+[end-to-end load time](../specs/active/plan-2026-08-21-load-time-performance.md).
 
 - [ ] Extend `devtools/vendor_assets.py` with a directory-shaped vendor entry and raise
   the total cap with the measurement recorded.
