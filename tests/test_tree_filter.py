@@ -30,9 +30,6 @@ from metabrowser.tree_filter import (
     type_matches,
 )
 
-# The fixture's Markdown, by path and size, so the rollup assertions read as
-# arithmetic rather than as magic numbers.
-_DEEP_MD = "notes/deep/plan.md"
 _ROOT_MD = "README.md"
 
 
