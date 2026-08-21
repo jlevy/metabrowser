@@ -40,6 +40,16 @@ Large directories:
   6.4-second walk. The scan previously followed one top-level directory to the bottom
   before looking at its siblings.
 
+- A folder’s file count can no longer settle on a number that is too high and stay
+  there. A folder reads its totals from two places, and while a scan is running both are
+  partial, so the one reporting more files is the one further along.
+  Once the scan finishes that reasoning stops holding: each source keeps its last
+  reading, so if one stopped updating — a delta lost during heavy churn, say — its
+  larger stale number won every comparison after that and nothing could displace it.
+  Observed on a tree of 400,000 files, where a folder showed 400,019 and kept showing it
+  across a reload. A finished count now comes from the server’s own answer rather than
+  from whichever number is larger.
+
 ## 0.5.1
 
 Folder views:

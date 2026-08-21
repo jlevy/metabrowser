@@ -1,5 +1,6 @@
 import {
   buildFolderTotalsComposition,
+  chooseFolderTotals,
   mountFolderTotalsView,
   normalizeFolderTotals,
 } from "./folder_totals.js";
@@ -56,26 +57,16 @@ export function mountFileTotalsPanel(
   // root it stays pending for the whole crawl. The rollup meanwhile carries
   // counts for everything indexed so far. Keep the best of each and render
   // whichever is better, so a still-pending update can never replace numbers
-  // already on screen with a loading state.
+  // already on screen with a loading state. ``chooseFolderTotals`` owns the
+  // rule and states why it changes once the index settles.
   /** @type {FolderTotals | null} */
   let indexedTotals = null;
   /** @type {FolderTotals | null} */
   let rollupTotals = null;
+  let rollupSettled = false;
 
   function applyBestTotals() {
-    // While a crawl runs, both sources are lower bounds that only grow, and
-    // either can be the stale one: the directory index reports 0 for a root
-    // it has not finalized, and the rollup lags behind its own refresh
-    // debounce. Take the source that has seen more files, whole, rather than
-    // mixing fields from both. This is a max over the two current sources, not
-    // a ratchet over time: a fresh, smaller reading replaces an older one,
-    // because files really can be deleted. Once the crawl finishes both agree.
-    const best =
-      indexedTotals && rollupTotals
-        ? (indexedTotals.totalFiles ?? 0) >= (rollupTotals.totalFiles ?? 0)
-          ? indexedTotals
-          : rollupTotals
-        : (indexedTotals ?? rollupTotals);
+    const best = chooseFolderTotals(indexedTotals, rollupTotals, rollupSettled);
     if (best) {
       totalsView.update(best);
     }
@@ -129,6 +120,9 @@ export function mountFileTotalsPanel(
     const fromRollup = totalsFromRollupProjection(raw);
     if (fromRollup.state === "complete") {
       rollupTotals = fromRollup;
+      // Whether the index has stopped moving is a fact the server reports, so
+      // read it rather than inferring it from which number is larger.
+      rollupSettled = isSettledIndexStatus(raw);
       applyBestTotals();
     }
     updateComposition();
@@ -173,6 +167,20 @@ export function mountFileTotalsPanel(
       applyBestTotals();
     },
   });
+}
+
+/**
+ * Whether a rollup projection reports an index that has stopped moving.
+ *
+ * ``truncated`` counts: the crawl stopped at the file cap and will not add
+ * more, so its totals are as final as they are going to get.
+ *
+ * @param {unknown} raw
+ */
+function isSettledIndexStatus(raw) {
+  const envelope =
+    raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
+  return envelope.indexStatus === "done" || envelope.indexStatus === "truncated";
 }
 
 /**

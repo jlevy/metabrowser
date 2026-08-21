@@ -219,6 +219,49 @@ async function main() {
       `file-count composition does not conserve totals: ${JSON.stringify(fileComposition)}`,
     );
   }
+  // chooseFolderTotals: which of the two sources the panel renders.
+  const walkerTotals = model.normalizeFolderTotals({
+    totalFiles: 400019,
+    totalBytes: 1747488822,
+    unignoredFiles: 400019,
+    unignoredBytes: 1747488822,
+    state: "complete",
+  });
+  const rollupTotals = model.normalizeFolderTotals({
+    totalFiles: 400000,
+    totalBytes: 1747487872,
+    unignoredFiles: 400000,
+    unignoredBytes: 1747487872,
+    state: "complete",
+  });
+
+  // Still scanning: both are lower bounds that only grow, so the larger one
+  // wins and a pending source never replaces real numbers with a spinner.
+  if (model.chooseFolderTotals(walkerTotals, rollupTotals, false) !== walkerTotals) {
+    throw new Error("while scanning, the source that has seen more files should win");
+  }
+  if (model.chooseFolderTotals(rollupTotals, walkerTotals, false) !== walkerTotals) {
+    throw new Error("while scanning, the larger source should win from either side");
+  }
+
+  // Settled: the rollup is authoritative. Without this a store that drifted
+  // high during a churn burst stays on screen forever, because each source
+  // holds its last value and the larger one wins every later comparison.
+  if (model.chooseFolderTotals(walkerTotals, rollupTotals, true) !== rollupTotals) {
+    throw new Error("a settled rollup must win even when the other source reports more");
+  }
+
+  // One source only: use it, settled or not.
+  if (model.chooseFolderTotals(null, rollupTotals, false) !== rollupTotals) {
+    throw new Error("a lone rollup should be used");
+  }
+  if (model.chooseFolderTotals(walkerTotals, null, true) !== walkerTotals) {
+    throw new Error("a lone walker aggregate should be used");
+  }
+  if (model.chooseFolderTotals(null, null, true) !== null) {
+    throw new Error("with no source at all the choice is nothing");
+  }
+
   console.log(JSON.stringify({ ok: true }));
 }
 
