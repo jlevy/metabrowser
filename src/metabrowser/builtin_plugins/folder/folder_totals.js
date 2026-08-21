@@ -1,7 +1,8 @@
 /** @typedef {{state: "pending" | "complete", totalFiles?: number, totalBytes?: number, unignoredFiles?: number, unignoredBytes?: number}} FolderTotals */
 /** @typedef {{files: number, bytes: number, filesText: string, bytesText: string}} FolderTotalsMetricRow */
 /** @typedef {{key: string, label: string, paletteKey: string, files: number, bytes: number, value: number, share: number}} FolderTotalsSegment */
-/** @typedef {{metric: "files" | "size", files: {value: number, segments: ReadonlyArray<FolderTotalsSegment>}, ignored: {value: number, segments: ReadonlyArray<FolderTotalsSegment>}}} FolderTotalsComposition */
+/** @typedef {{value: number, segments: ReadonlyArray<FolderTotalsSegment>}} FolderTotalsPopulation */
+/** @typedef {{metric: "files" | "size", all: FolderTotalsPopulation, files: FolderTotalsPopulation, ignored: FolderTotalsPopulation}} FolderTotalsComposition */
 
 /** @param {unknown} value */
 const integer = (value) =>
@@ -114,6 +115,17 @@ export function buildFolderTotalsModel(totals, formatters) {
       filesText: formatters.formatFileCount(ignoredFiles),
       bytesText: formatters.formatSize(ignoredBytes),
     }),
+    // The union of the two rows above. It is what the type distribution
+    // below counts against whenever Show ignored is on, so without it on
+    // screen none of the distribution's percentages corresponds to any track
+    // a reader can see: each disjoint row normalizes to its own population,
+    // and the shares only add up across both.
+    all: Object.freeze({
+      files: totalFiles,
+      bytes: totalBytes,
+      filesText: formatters.formatFileCount(totalFiles),
+      bytesText: formatters.formatSize(totalBytes),
+    }),
   });
 }
 
@@ -150,10 +162,9 @@ function populationValue(tally, metric, population) {
  * @param {ReturnType<import("./file_type_summary_model.js").normalizeRollupEnvelope> | null} envelope
  * @param {MetabrowserPublicFileTypeTaxonomyRuntime} fileTypes
  * @param {"files" | "size"} metric
- * @param {boolean} includeIgnored
  * @returns {FolderTotalsComposition | null}
  */
-export function buildFolderTotalsComposition(envelope, fileTypes, metric, includeIgnored) {
+export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
   if (!envelope?.registry || !envelope.totals || !fileTypes) {
     return null;
   }
@@ -165,7 +176,19 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric, includ
     throw new TypeError("folder totals registry does not match the browser registry");
   }
   const selectedMetric = metric === "size" ? "size" : "files";
-  const sortPopulation = includeIgnored ? "all" : "files";
+  // Show ignored is not a parameter here, deliberately.
+  //
+  // These three rows are fixed populations — the unignored files, the ignored
+  // files, and their union — so nothing the checkbox selects can move them.
+  // It used to decide the shared segment order, which meant toggling it
+  // silently reordered every track, the Ignored row included, whose contents
+  // the checkbox has nothing to do with. Taking the argument away makes the
+  // invariant structural instead of merely true today: the top table cannot
+  // respond to Show ignored, only the distribution below it can.
+  //
+  // The order comes from the union, the one basis the three rows share, so a
+  // reader can compare them column by column.
+  const sortPopulation = "all";
   const groups = new Map(envelope.groups.map((group) => [group.id, group]));
   const families = new Map(fileTypes.families.map((family) => [family.id, family]));
   /** @type {Array<{key: string, label: string, paletteKey: string, groupId: string, tally: {allFiles: number, allBytes: number, unignoredFiles: number, unignoredBytes: number}}>} */
@@ -226,7 +249,7 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric, includ
       }),
   );
 
-  /** @param {"files" | "ignored"} population */
+  /** @param {"all" | "files" | "ignored"} population */
   const buildPopulation = (population) => {
     const value = populationValue(totals, selectedMetric, population);
     const populationFiles = populationValue(totals, "files", population);
@@ -256,6 +279,7 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric, includ
 
   return Object.freeze({
     metric: selectedMetric,
+    all: buildPopulation("all"),
     files: buildPopulation("files"),
     ignored: buildPopulation("ignored"),
   });
@@ -297,6 +321,8 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   let filesRow = null;
   /** @type {ReturnType<typeof totalsRow> | null} */
   let ignoredRow = null;
+  /** @type {ReturnType<typeof totalsRow> | null} */
+  let allRow = null;
   /** @type {HTMLTableCellElement | null} */
   let metricHeader = null;
   /** @type {FolderTotals} */
@@ -338,12 +364,15 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     body.className = "file-type-summary-group file-type-summary-totals";
     filesRow = totalsRow("Files");
     ignoredRow = totalsRow("Ignored");
-    body.append(filesRow.tr, ignoredRow.tr);
+    allRow = totalsRow("Total");
+    allRow.tr.classList.add("folder-totals-row-all");
+    // Last, after the two rows it sums: a reader adds downward.
+    body.append(filesRow.tr, ignoredRow.tr, allRow.tr);
     table.append(columns, head, body);
     root.append(table);
   }
 
-  /** @param {ReturnType<typeof totalsRow>} handle @param {"files" | "ignored"} population @param {number} value */
+  /** @param {ReturnType<typeof totalsRow>} handle @param {"all" | "files" | "ignored"} population @param {number} value */
   function updateTrack(handle, population, value) {
     const projected =
       currentComposition?.metric === currentMetric ? currentComposition[population] : null;
@@ -377,7 +406,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     );
   }
 
-  /** @param {FolderTotalsMetricRow} row @param {ReturnType<typeof totalsRow>} handle @param {"files" | "ignored"} population */
+  /** @param {FolderTotalsMetricRow} row @param {ReturnType<typeof totalsRow>} handle @param {"all" | "files" | "ignored"} population */
   function updateRow(row, handle, population) {
     const selected = selectFolderTotalsMetric(row, currentMetric);
     const displayKind = currentMetric === "files" ? "count" : "size";
@@ -396,6 +425,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
       table = null;
       filesRow = null;
       ignoredRow = null;
+      allRow = null;
       metricHeader = null;
       root.innerHTML =
         '<div class="folder-totals-loading mb-delayed-loading" aria-hidden="true"></div>' +
@@ -403,7 +433,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
       return;
     }
     ensureTable();
-    if (!filesRow || !ignoredRow) {
+    if (!filesRow || !ignoredRow || !allRow) {
       throw new TypeError("folder totals table failed to initialize");
     }
     if (metricHeader) {
@@ -411,6 +441,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     }
     updateRow(model.files, filesRow, "files");
     updateRow(model.ignored, ignoredRow, "ignored");
+    updateRow(model.all, allRow, "all");
   }
 
   /** @param {FolderTotals} nextTotals */

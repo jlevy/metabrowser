@@ -277,8 +277,10 @@ vm.runInContext(
      if (!raw || typeof raw !== "object") { throw new TypeError("bad envelope"); }
      return { registry: {revision: 1}, totals: {}, breakdown: raw.file_type_breakdown };
    }
-   function buildFolderTotalsComposition(envelope, _fileTypes, metric, includeIgnored) {
-     return envelope ? {metric, includeIgnored} : null;
+   function buildFolderTotalsComposition(envelope, _fileTypes, metric) {
+     return envelope
+       ? {metric, all: {segments: []}, files: {segments: []}, ignored: {segments: []}}
+       : null;
    }
    function mountFolderTotalsView(container, value, _mb, metric) {
      container.value = value;

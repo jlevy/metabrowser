@@ -1017,19 +1017,43 @@ final tie-breaker. Group order remains registry-defined.
 Changing the metric therefore reveals the relevant skew without making equal rows jump
 unpredictably.
 
-The **Files** section begins expanded.
-It contains the shared Files / Bytes control and a fixed two-row composition table.
+Overview renders the README at the same measure a reader gets opening that file on its
+own, at every breakpoint.
+Both surfaces run the same renderer over the same file, so the reader compares them
+directly and any difference reads as a defect rather than as a choice.
+Three things have to agree, and each one broke it alone: the band boundaries must query
+one container — KPress’s `kpress-doc` on the preview pane, not Overview’s own host,
+which is that pane minus its padding and so crosses 75rem about 25px later; the wide
+column must be KPress’s content track, the measure plus its 2.5rem insets, because
+sizing it to the measure leaves the prose padded for a track it is no longer in; and the
+narrow inset must equal the article padding Overview drops, or the text runs short by
+twice the difference.
+`test_one_document_surface_has_one_set_of_breakpoints` holds all three.
+
+The **File Overview** section begins expanded.
+It opens with one control row carrying the shared Files / Bytes measure and the **Show
+ignored** checkbox side by side, then a fixed two-row composition table, then the full
+type distribution beneath it.
 **Files** comes first and reports the unignored population immediately from the
 inventory snapshot. **Ignored** follows with the excluded population.
-These are disjoint rows whose counts and byte sizes sum to the complete selected
-directory. Each row displays one absolute selected-metric tally and treats its own
-population as 100%, so no percentage column appears.
-Its full-width track is segmented by the top-level semantic file types in File Breakdown
-and reuses their mounted palette assignments.
+Those two are disjoint.
+**Total** follows them, set off by a hairline, and is their sum.
+
+Each row displays one absolute selected-metric tally and treats its own population as
+100%, so no percentage column appears.
+Total earns its place despite being derivable: the type distribution below counts
+against the whole directory whenever Show ignored is on, so without a Total track none
+of its percentages corresponds to any bar on screen — a family reading 40% there would
+be some other share of both bars above it.
+With Total present, one of the three tracks always matches the distribution: Total while
+Show ignored is on, Files while it is off.
+Its full-width track is segmented by the top-level semantic file types in the type
+distribution below and reuses their mounted palette assignments.
 The segments follow registry group order and then descend by the selected Files or Bytes
 measure within each group.
-Sorting uses the population selected by Show ignored, and both Files and Ignored tracks
-keep that same order for comparison.
+Sorting uses the combined population, which is the one basis all three rows share and
+the only one that does not move when Show ignored does.
+All three tracks keep that same order so they stay comparable column by column.
 Hovering a colored segment uses the shared body-portaled navigation tooltip: the bold
 semantic family name is the first line, followed by the exact file count and byte size
 for that row’s disjoint population.
@@ -1039,8 +1063,8 @@ The filter preserves the mark’s hue and the contrast between its fill, border,
 nested content; hover never changes geometry, stacking, or opacity.
 It transitions with the shared visualization hover timing, while reduced-motion mode
 applies the state immediately.
-These supplemental hover tooltips do not create tab stops; the expanded File Breakdown
-remains the accessible source for the same values.
+These supplemental hover tooltips do not create tab stops; the type distribution remains
+the accessible source for the same values.
 The Ignored row dims its label, tally, track, and colors through
 `--dimmed-content-opacity`, the same token used by ignored navigation and Treemap
 entries.
@@ -1054,22 +1078,31 @@ A zero population renders no fill.
 If a stale projection does not conserve the current tally, the row stays neutral rather
 than showing a misleading composition.
 
-The **File Breakdown** section follows Files and begins collapsed.
-It contains the full type distribution and starts with the same labelled `.filter-check`
-**Show ignored** checkbox used by navigation.
-Show ignored begins checked when there is no saved preference and changes only the
-breakdown population and the matching top-track segment order; it never changes or hides
-the explicit Files and Ignored totals.
-File Breakdown does not render another metric chooser.
-Both sections observe the same state object, so the Files / Bytes choice in Files
-atomically updates the totals and the complete breakdown, including while the breakdown
-is collapsed.
+The type distribution follows the tallies inside the same section, under no heading of
+its own: it is the same question at a finer resolution, and a reader should not have to
+get past one to reach the other.
+
+The control row uses the same labelled `.filter-check` **Show ignored** checkbox as
+navigation, beside the measure chooser.
+Show ignored begins checked when there is no saved preference and changes the population
+the distribution counts, and nothing else.
+
+The three tally rows are fixed populations, so the checkbox cannot move their values,
+their segments, or their order.
+It once decided the shared segment order, which meant toggling it silently reordered
+every track — the Ignored row included, whose contents the checkbox has nothing to do
+with. `buildFolderTotalsComposition` no longer accepts the flag, so this is structural
+rather than a convention.
+There is exactly one chooser and one checkbox: the two controls act on the same numbers,
+and while they sat in separate sections each silently moved what the other reported.
+Both bodies observe the same state object, so either control atomically updates the
+totals and the complete distribution.
 
 Visual Type and metric column labels are unnecessary when every metric cell keeps the
 same aligned grammar.
-File Breakdown uses value, track, and percentage; Files uses value and composition
-track. The semantic table retains screen-reader-only headers and updates the selected
-metric header between Files and Bytes, so assistive technology receives the
+The type distribution uses value, track, and percentage; the tallies use value and
+composition track. The semantic table retains screen-reader-only headers and updates the
+selected metric header between Files and Bytes, so assistive technology receives the
 relationships that sighted users get from alignment.
 
 Zero totals do not produce a colored fill, division artifact, or header-only table.
@@ -1183,9 +1216,9 @@ Overview is one vertically ordered composition surface, not a fixed page templat
 Its panel registry lets a capability contribute a region without knowing which other
 regions are installed:
 
-- **Files** is the required totals panel for every folder and starts expanded.
-- **File Breakdown** is the required detailed type-distribution panel and starts
-  collapsed.
+- **File Overview** is the required panel for every folder and starts expanded.
+  It carries the rollup controls, the totals, and the detailed type distribution as one
+  section.
 - **README** is a content panel only when a direct-child README exists.
 - License and other future panels use the same contribution contract and appear only
   when applicable.
@@ -1204,16 +1237,16 @@ panel body. These headings use the tab bar’s uppercase, bold, tracked sans-ser
 at the body-text size, followed by a neutral separator.
 Collapsible headings contain the shared section-disclosure trigger, with its gray
 trailing chevron and unchanged heading typography.
-Files and README start expanded; File Breakdown starts collapsed.
-All three collapse in place without disposing their mounted contents.
-Files uses the stable internal panel ID `folder.file-totals`, and File Breakdown retains
-`folder.file-types`. The Files panel owns the only Overview metric chooser; shared state
-applies that choice to File Breakdown and Treemap.
+File Overview and README start expanded.
+Both collapse in place without disposing their mounted contents.
+File Overview uses the stable internal panel ID `folder.file-overview`. It owns the only
+Overview control row; shared state applies those choices to its own bodies and to
+Treemap.
 
 Panel bodies use one of two presentations:
 
 - A **surface panel** receives a flat host-rendered body and chrome typography.
-  Files and File Breakdown use this presentation without surrounding cards.
+  File Overview uses this presentation without surrounding cards.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
   its metadata, diagnostics, TOC, breakpoints, and print behavior.
@@ -1253,8 +1286,8 @@ selected folder and subscribe to the public directory-totals store for later rev
 Navigation must never replace a known total with a fabricated zero or a loading
 placeholder.
 
-File Breakdown and Treemap render only terminal rollup generations.
-File Breakdown also publishes its validated terminal envelope to the per-directory
+The type distribution and Treemap render only terminal rollup generations.
+The distribution also publishes its validated terminal envelope to the per-directory
 projection pool used by Files.
 While a scan is pending, they keep their geometry stable and render the same
 low-contrast pulsing block used by the navigation tally.

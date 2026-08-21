@@ -36,13 +36,8 @@ export function mountFileTotalsPanel(
   const projection = projectionPool.acquire(path);
   /** @type {Parameters<typeof buildFolderTotalsComposition>[0]} */
   let rollupEnvelope = null;
-  const metricControls = document.createElement("div");
   const totalsContainer = document.createElement("div");
-  container.append(metricControls, totalsContainer);
-  const unmountMetricControls = rollupControls.mount(metricControls, {
-    metric: true,
-    ignored: false,
-  });
+  container.append(totalsContainer);
   const envelopeTotals = totalsFromFolderEnvelope(context.raw);
   const totalsView = mountFolderTotalsView(
     totalsContainer,
@@ -98,10 +93,10 @@ export function mountFileTotalsPanel(
         rollupEnvelope,
         mb.fileTypes,
         controlsState.metric,
-        controlsState.includeIgnored,
       );
       const paletteKeys = composition
         ? [
+            ...composition.all.segments.map((segment) => segment.paletteKey),
             ...composition.files.segments.map((segment) => segment.paletteKey),
             ...composition.ignored.segments.map((segment) => segment.paletteKey),
           ]
@@ -150,7 +145,6 @@ export function mountFileTotalsPanel(
     unsubscribeControls();
     unsubscribeProjection();
     unsubscribeTotals();
-    unmountMetricControls();
     totalsView.dispose();
     projection.release();
     palette.release();
@@ -215,30 +209,4 @@ function totalsFromFolderEnvelope(raw) {
   const envelope =
     raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
   return normalizeFolderTotals(envelope.dir);
-}
-
-/** @param {MetabrowserPublicSdk} mb @param {{acquire(path: string): {sync(keys: Array<string>): void, classFor(key: string): string, release(): void}}} palettePool @param {{acquire(path: string): {subscribe(listener: (value: unknown) => void): () => void, release(): void}}} projectionPool @param {FolderRollupControls} rollupControls */
-export function createFileTotalsPanel(mb, palettePool, projectionPool, rollupControls) {
-  return Object.freeze({
-    label: "Files",
-    placement: /** @type {const} */ ("summary"),
-    presentation: /** @type {const} */ ("surface"),
-    required: true,
-    collapsible: true,
-    defaultExpanded: true,
-    printable: false,
-    /** @param {{path?: string}} context */
-    resolve: (context) => Object.freeze({ key: context.path || "", data: null }),
-    /** @param {HTMLElement} container @param {{path?: string, raw?: unknown}} context @param {unknown} _data @param {{signal?: AbortSignal}} options */
-    mount: (container, context, _data, options) =>
-      mountFileTotalsPanel(
-        container,
-        context,
-        mb,
-        palettePool,
-        projectionPool,
-        rollupControls,
-        options,
-      ),
-  });
 }

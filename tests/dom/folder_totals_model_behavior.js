@@ -175,7 +175,7 @@ async function main() {
       { id: "markdown", label: "Markdown", groupId: "documentation" },
     ],
   };
-  const composition = model.buildFolderTotalsComposition(rollup, fileTypes, "size", true);
+  const composition = model.buildFolderTotalsComposition(rollup, fileTypes, "size");
   const filesSegments = composition.files.segments;
   const ignoredSegments = composition.ignored.segments;
   if (
@@ -196,19 +196,54 @@ async function main() {
     throw new Error(`folder total composition is incorrect: ${JSON.stringify(composition)}`);
   }
 
-  const unignoredOrder = model.buildFolderTotalsComposition(rollup, fileTypes, "size", false);
-  if (
-    unignoredOrder.files.segments
-      .slice(0, 2)
-      .map((segment) => segment.label)
-      .join(",") !== "Python,JavaScript"
-  ) {
+  // The three rows are fixed populations, so Show ignored cannot reach them.
+  // It used to pick the shared segment order, which meant toggling the
+  // checkbox silently reordered every track — the Ignored row included, whose
+  // contents the checkbox has nothing to do with. The builder no longer takes
+  // the flag at all, so the invariant is structural: a caller cannot pass it.
+  if (model.buildFolderTotalsComposition.length !== 3) {
     throw new Error(
-      `composition order did not match the unignored breakdown: ${JSON.stringify(unignoredOrder)}`,
+      "buildFolderTotalsComposition must not take a Show ignored argument: " +
+        `arity is ${model.buildFolderTotalsComposition.length}`,
     );
   }
 
-  const fileComposition = model.buildFolderTotalsComposition(rollup, fileTypes, "files", true);
+  // The Total row is the union of the two disjoint rows above it, and it is
+  // what the type distribution counts against while Show ignored is on.
+  // Without it, no percentage in that distribution corresponds to any track a
+  // reader can see.
+  const allSegments = composition.all.segments;
+  if (
+    composition.all.value !== 900 ||
+    composition.all.value !== composition.files.value + composition.ignored.value ||
+    Math.abs(allSegments.reduce((sum, segment) => sum + segment.share, 0) - 100) > SHARE_TOLERANCE
+  ) {
+    throw new Error(`total composition does not sum its rows: ${JSON.stringify(composition)}`);
+  }
+  for (const segment of allSegments) {
+    const inFiles = filesSegments.find((candidate) => candidate.key === segment.key);
+    const inIgnored = ignoredSegments.find((candidate) => candidate.key === segment.key);
+    const summed = (inFiles?.bytes ?? 0) + (inIgnored?.bytes ?? 0);
+    if (segment.bytes !== summed) {
+      throw new Error(
+        `total segment ${segment.key} is ${segment.bytes}, not the ${summed} its rows carry`,
+      );
+    }
+  }
+  // One order across all three, so a reader can compare them column by column.
+  const order = (segments) => segments.map((segment) => segment.key).join(",");
+  const orderedKeys = order(allSegments);
+  for (const [name, segments] of [
+    ["files", filesSegments],
+    ["ignored", ignoredSegments],
+  ]) {
+    const present = orderedKeys.split(",").filter((key) => order(segments).includes(key));
+    if (order(segments) !== present.join(",")) {
+      throw new Error(`${name} segments do not follow the shared order: ${order(segments)}`);
+    }
+  }
+
+  const fileComposition = model.buildFolderTotalsComposition(rollup, fileTypes, "files");
   if (
     fileComposition.files.value !== 7 ||
     fileComposition.ignored.value !== 6 ||

@@ -78,24 +78,28 @@ global.window = { METABROWSER_SETTINGS: {} };
     )
     .replace(/^import[\s\S]*?from\s+"[^"]+";\n/gm, "")
     .replace(/^export\s+/gm, "");
-  const createFileTotalsPanel = new Function(
-    `${fileTotalsPanelSource}\nreturn createFileTotalsPanel;`,
+  const overviewPanelSource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/file_overview_panel.js"),
+      "utf8",
+    )
+    .replace(/^import[\s\S]*?from\s+"[^"]+";\n/gm, "")
+    .replace(/^export\s+/gm, "");
+  const createFileOverviewPanel = new Function(
+    `${overviewPanelSource}\nreturn createFileOverviewPanel;`,
   )();
-  const fileTotalsPanel = createFileTotalsPanel({}, {}, {}, {});
+  const fileOverviewPanel = createFileOverviewPanel({}, {}, {}, {});
+  // The totals and the breakdown answer the same question at two
+  // resolutions, so they are one open section rather than two the reader has
+  // to get past each other.
   check(
-    "Files totals are a separate open section",
-    fileTotalsPanel.label === "Files" && fileTotalsPanel.defaultExpanded === true,
-    JSON.stringify(fileTotalsPanel),
+    "totals and breakdown are one open File Overview section",
+    fileOverviewPanel.label === "File Overview" && fileOverviewPanel.defaultExpanded === true,
+    JSON.stringify(fileOverviewPanel),
   );
-  const createFileTypeSummaryPanel = new Function(
-    `${fileTypeSummarySource}\nreturn createFileTypeSummaryPanel;`,
-  )();
-  const fileTypeSummaryPanel = createFileTypeSummaryPanel({}, {}, {}, {});
   check(
-    "file breakdown is a separate open section",
-    fileTypeSummaryPanel.label === "File Breakdown" &&
-      fileTypeSummaryPanel.defaultExpanded === true,
-    JSON.stringify(fileTypeSummaryPanel),
+    "neither body registers a section of its own",
+    !fileTotalsPanelSource.includes("placement:") && !fileTypeSummarySource.includes("placement:"),
   );
   const registrySource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/overview_registry.js"),
@@ -105,12 +109,12 @@ global.window = { METABROWSER_SETTINGS: {} };
     `data:text/javascript;base64,${Buffer.from(registrySource).toString("base64")}`
   );
   const builtInOrder = [
-    { id: "folder.file-types", placement: "summary" },
-    { id: "folder.file-totals", placement: "summary" },
+    { id: "folder.readme", placement: "content" },
+    { id: "folder.file-overview", placement: "summary" },
   ].sort(registryModule.comparePanels);
   check(
-    "Files precedes File Breakdown in deterministic panel order",
-    builtInOrder.map((panel) => panel.id).join(",") === "folder.file-totals,folder.file-types",
+    "File Overview precedes content panels in deterministic panel order",
+    builtInOrder.map((panel) => panel.id).join(",") === "folder.file-overview,folder.readme",
   );
 
   let rollupApply = null;
@@ -212,18 +216,23 @@ global.window = { METABROWSER_SETTINGS: {} };
       };
     },
   };
-  const totalsCompositionScopes = [];
+  // How many arguments the panel hands the composition builder. Show ignored
+  // is not one of them: the three totals rows are fixed populations, so the
+  // checkbox must not be able to reach them.
+  const totalsCompositionArity = [];
   const mountFileTotalsPanel = new Function(
     "buildFolderTotalsComposition",
     "mountFolderTotalsView",
     "normalizeFolderTotals",
     `${fileTotalsPanelSource}\nreturn mountFileTotalsPanel;`,
   )(
-    (envelope, _fileTypes, metric, includeIgnored) => {
-      totalsCompositionScopes.push(includeIgnored);
+    (...args) => {
+      totalsCompositionArity.push(args.length);
+      const [envelope, , metric] = args;
       return envelope?.totals
         ? {
             metric,
+            all: { value: 10, segments: [] },
             files: { value: 8, segments: [] },
             ignored: { value: 2, segments: [] },
           }
@@ -273,14 +282,12 @@ global.window = { METABROWSER_SETTINGS: {} };
     summaryControls,
     {},
   );
+  // The bodies no longer mount controls at all; the section above them owns
+  // one row carrying both halves, so the measure and the gitignore switch
+  // cannot end up in two places each silently moving the other's numbers.
   check(
-    "Overview mounts one metric control in Files and one ignored checkbox in File Breakdown",
-    mountedControlParts.length === 2 &&
-      mountedControlParts[0].metric === true &&
-      mountedControlParts[0].ignored === false &&
-      mountedControlParts[1].metric === false &&
-      mountedControlParts[1].ignored === true &&
-      totalsMetrics[0] === "size",
+    "neither body mounts a control row of its own",
+    mountedControlParts.length === 0 && totalsMetrics[0] === "size",
     JSON.stringify({ mountedControlParts, totalsMetrics }),
   );
   function publishControls(nextState) {
@@ -292,12 +299,12 @@ global.window = { METABROWSER_SETTINGS: {} };
   const totalsUpdatesBeforeScopeChange = totalsMetrics.length;
   publishControls({ metric: "size", includeIgnored: true });
   check(
-    "Show ignored changes the breakdown population and shared composition ordering",
+    "Show ignored changes the distribution population but never the totals rows",
     totalsMetrics.length === totalsUpdatesBeforeScopeChange &&
       summaryModelCalls.at(-1).showIgnored === true &&
       summaryModelCalls.at(-1).metric === "size" &&
-      totalsCompositionScopes.at(-1) === true,
-    JSON.stringify({ totalsMetrics, summaryModelCalls, totalsCompositionScopes }),
+      totalsCompositionArity.every((count) => count === 3),
+    JSON.stringify({ totalsMetrics, summaryModelCalls, totalsCompositionArity }),
   );
   publishControls({ metric: "files", includeIgnored: true });
   check(
@@ -322,7 +329,7 @@ global.window = { METABROWSER_SETTINGS: {} };
     specialTypes: null,
   });
   check(
-    "File Breakdown projects its completed rollup into Files without another watcher",
+    "the breakdown projects its completed rollup into the totals without another watcher",
     totalsCompositions.at(-1)?.metric === "files" &&
       totalsCompositions.at(-1)?.files.value === 8 &&
       projectedRollup?.indexStatus === "done",
@@ -374,8 +381,8 @@ global.window = { METABROWSER_SETTINGS: {} };
   };
   const descriptors = [
     {
-      id: "folder.file-totals",
-      label: "Files",
+      id: "folder.file-overview",
+      label: "File Overview",
       placement: "summary",
       presentation: "surface",
       collapsible: true,
@@ -397,9 +404,12 @@ global.window = { METABROWSER_SETTINGS: {} };
         };
       },
     },
+    // A second summary panel that starts closed, so the composer's handling of
+    // defaultExpanded is exercised. Synthetic: the built-in summary panel is
+    // one section now.
     {
-      id: "folder.file-types",
-      label: "File Breakdown",
+      id: "example.details",
+      label: "Details",
       placement: "summary",
       presentation: "surface",
       collapsible: true,
@@ -444,12 +454,12 @@ global.window = { METABROWSER_SETTINGS: {} };
   check(
     "deterministic slots",
     stack.children.map((slot) => slot.dataset.panelId).join(",") ===
-      "folder.file-totals,folder.file-types,folder.readme,example.license",
+      "folder.file-overview,example.details,folder.readme,example.license",
   );
   check(
     "panels receive visible headings",
     stack.children.map((slot) => slot.children[0].children[0].textContent).join(",") ===
-      "Files,File Breakdown,README,License",
+      "File Overview,Details,README,License",
   );
   check(
     "panel headings use a shared semantic level",
@@ -470,7 +480,7 @@ global.window = { METABROWSER_SETTINGS: {} };
     }),
   );
   check(
-    "File Breakdown starts collapsed",
+    "a panel declaring defaultExpanded false starts collapsed",
     stack.children[1].children[1].className.includes("folder-overview-panel-body-collapsed"),
   );
   check("optional panel hidden", stack.children[2].hidden === true);

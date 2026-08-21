@@ -72,6 +72,7 @@ def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
     treemap = (folder_root / "treemap.js").read_text()
     file_totals = (folder_root / "file_totals_panel.js").read_text()
     file_types = (folder_root / "file_type_summary.js").read_text()
+    overview_panel = (folder_root / "file_overview_panel.js").read_text()
     plugin_css = (folder_root / "styles.css").read_text()
 
     assert "filterControls.groupHtml" in controls
@@ -79,22 +80,28 @@ def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
     assert "filterControls.checkHtml" in controls
     assert 'label: "Show ignored"' in controls
     assert "includeIgnored: value.includeIgnored !== false" in controls
-    for source in (treemap, file_totals):
-        assert "rollupControls.mount(metricControls" in source
-        assert "metric: true" in source
-        assert "ignored: false" in source
-    for source in (treemap, file_types):
-        assert "rollupControls.mount(scopeControls" in source
-        assert "metric: false" in source
-        assert "ignored: true" in source
-    assert "rollupControls.mount(metricControls" not in file_types
-    assert "rollupControls.mount(scopeControls" not in file_totals
+
+    # The treemap places the two halves in different parts of its own layout,
+    # so it still mounts them separately.
+    assert "rollupControls.mount(metricControls" in treemap
+    assert "rollupControls.mount(scopeControls" in treemap
+    assert "metric: true" in treemap
+    assert "ignored: true" in treemap
+
+    # Overview mounts one row carrying both, because the measure and the
+    # gitignore switch are the same kind of choice about the same numbers and
+    # splitting them across two sections meant each silently moved the
+    # other's. No parts argument is what asks for both.
+    assert "rollupControls.mount(controls)" in overview_panel
+    # And neither body owns a control row any more.
+    for body in (file_totals, file_types):
+        assert "rollupControls.mount(" not in body
     assert "segmentHtml" not in controls
     assert ".tm-seg" not in plugin_css
 
 
 def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
-    """Overview separates totals from details but keeps one selected metric.
+    """Overview keeps one selected metric across totals and details.
 
     Files, Ignored, and type rows must switch together instead of retaining
     parallel Files and Size columns that compete with the chooser.
@@ -105,20 +112,32 @@ def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
     totals = (folder_root / "folder_totals.js").read_text()
     file_totals = (folder_root / "file_totals_panel.js").read_text()
     file_types = (folder_root / "file_type_summary.js").read_text()
+    overview_panel = (folder_root / "file_overview_panel.js").read_text()
     distribution = (folder_root / "distribution_view.js").read_text()
     treemap = (folder_root / "treemap.js").read_text()
 
-    assert 'label: "Files"' in file_totals
-    assert "defaultExpanded: true" in file_totals
-    assert 'label: "File Breakdown"' in file_types
-    assert "defaultExpanded: true" in file_types
-    assert '"folder.file-totals"' in index
-    assert '"folder.file-types"' in index
+    assert 'label: "File Overview"' in overview_panel
+    assert "defaultExpanded: true" in overview_panel
+    assert '"folder.file-overview"' in index
     assert '<h2 class="tm-totals-heading">Files</h2>' in treemap
     assert "mountFolderTotalsView" in file_totals
     assert "mountFolderTotalsView" not in file_types
+    # The bodies stay separate modules and the section composes them, so the
+    # merge is a heading and a control row rather than an entanglement of two
+    # different data lifecycles.
+    assert "mountFileTotalsPanel" in overview_panel
+    assert "mountFileTypeSummary" in overview_panel
     assert 'filesRow = totalsRow("Files")' in totals
-    assert 'totalsRow("Total")' not in totals
+    # Total was once left out because the two disjoint rows already sum to it.
+    # It is back because the type distribution below counts against that sum
+    # whenever Show ignored is on, so without it no percentage in the
+    # distribution corresponds to any track a reader can see.
+    assert 'allRow = totalsRow("Total")' in totals
+    assert "body.append(filesRow.tr, ignoredRow.tr, allRow.tr)" in totals
+    # And Show ignored cannot reach the totals rows at all: the builder does
+    # not take it, so the invariant is structural rather than observed.
+    assert "buildFolderTotalsComposition(envelope, fileTypes, metric)" in totals
+    assert "includeIgnored" not in totals.split("export function buildFolderTotalsComposition")[1]
     assert 'head.className = "sr-only"' in totals
     assert 'for (const label of ["Population", "Files", "Size"])' not in totals
     assert 'for (const label of ["Type", "Files", "Size"])' not in distribution
