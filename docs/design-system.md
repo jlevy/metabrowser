@@ -397,6 +397,18 @@ so they cannot drift.
 Shift-activation applies the same open or close direction recursively, while still
 selecting the folder and opening Overview.
 
+### Container Rows
+
+A file whose kind declares the container capability keeps its file identity — icon,
+name, size, selection — and additionally leads with the tree’s disclosure chevron in the
+same 16px alignment box a folder uses, so names stay aligned at every indent.
+Its children are ordinary rows carrying a one-letter change badge in place of the file
+icon. Clicking is one gesture, as on a folder row: it opens the file *and* toggles its
+children. The keyboard splits them the same way, and every disclosure affordance in the
+tree — ARIA state, arrow keys, filtering — asks whether a row owns a child group, never
+what kind of row it is.
+See [nav containers](project/architecture/arch-nav-containers.md).
+
 ### Section Disclosure Headers
 
 Use the section-disclosure primitive when a labelled section may hide its body without
@@ -404,9 +416,12 @@ changing the selected file, folder, or top-level view.
 Folder Overview panels use a button inside their visible `h2`; rendered-document
 metadata keeps native `details` and `summary` semantics.
 Both forms place the same gray Lucide chevron immediately after the title with
-`--section-disclosure-chevron-gap`. The mark uses `--section-disclosure-chevron-size` in
-`em`, so it remains proportional to the unchanged local heading typography at every type
-tier. It points right when collapsed and rotates down when expanded.
+`--section-disclosure-chevron-gap`. Row-like triggers lead with the registry’s
+`toggle-chevron` glyph instead (see One Chevron, One Row Contract below); the primitive
+itself has no leading form.
+The mark uses `--section-disclosure-chevron-size` in `em`, so it remains proportional to
+the unchanged local heading typography at every type tier.
+It points right when collapsed and rotates down when expanded.
 
 The title and chevron form one focusable target.
 A button trigger declares `type="button"`, `aria-expanded`, and `aria-controls`; its
@@ -416,6 +431,183 @@ renderer. Overview panels start expanded on each mount.
 Markdown Frontmatter and Diagnostics disclosures start collapsed through the absence of
 the native `open` attribute.
 These defaults are not saved as user preferences.
+
+The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
+same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
+`expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
+`--hover-bg`, and reveals its `[data-copy-path]` copy control on row hover or focus —
+the file-header copy affordance, present wherever a filename is.
+Its content is left-aligned reading order — chevron, kind letter, filename in the
+shell’s file-path typography, then the stat pair beside the name — and the whole bar is
+one activation surface, the folder-row rule applied to a section header: clicking
+anywhere toggles, with only the copy control opting out.
+A collapsed section keeps the section’s own border as its single line.
+
+### One Chevron, One Row Contract
+
+Every disclosure chevron in the product is the same Lucide mark: the registry’s leading
+glyph on row-like targets (tree folders, tally tree, diff file bars) and the
+section-disclosure mask after heading-like titles, both in `--muted`, pointing right
+when closed and rotating to point down when open.
+Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agreements
+are enforced by `tests/test_design_vocabulary.py`, which fails when a surface forks the
+glyph, the row height, or the hover token.
+
+### Fold Expanders
+
+A run of content withheld until asked for — a long stretch of changed lines in a diff —
+sits behind a full-width control at `--ui-row-height` carrying the same registry
+chevron, in `--highlight-bg`, hovering with `--hover-bg`. The label states the count it
+holds (`86 more changed lines`) and becomes the inverse when open (`Hide 86 lines`),
+because a control that hides its size is a control the reader cannot judge.
+A fold inside another disclosure stops its click, so expanding a fold never collapses
+its container.
+
+### Disclosure Motion
+
+Every toggle travels the same way: the body animates `height` between `auto` and `0` on
+`var(--transition-fast)` — the same duration its chevron rotates with — with
+`overflow: hidden` during travel and `visibility: hidden` at rest so collapsed content
+leaves the tab order and the accessibility tree.
+`interpolate-size: allow-keywords` is scoped to each animated body; engines without it
+swap instantly, which was the prior behavior.
+Collapse is always class-driven (`.tree-children-collapsed`,
+`.diff-file-body-collapsed`, `.diff-fold-collapsed`,
+`.folder-overview-panel-body-collapsed`), never inline `display`, so the stylesheet owns
+the motion, and reduced-motion drops every travel to 1ms while keeping the state change.
+`tests/test_design_vocabulary.py` pins the recipe on every site.
+
+### Color and Theming
+
+**Every color is declared in `oklch`** — there are no hex, `hsl`, or `rgb` literals, and
+`tests/test_design_vocabulary.py` rejects new ones.
+One notation is not a style preference: `oklch` separates the three things a theme has
+to reason about — lightness, chroma, and hue — so they can be compared across tokens and
+across themes. In `hsl` they cannot, which is how a chip ground came to carry four times
+its neighbours’ chroma, and how thirty-five tokens came to shift hue between themes
+without anyone choosing that.
+
+> A token defined in both themes names **one color seen against two backgrounds**: its
+> **hue is the invariant**, while lightness and chroma are tuned for the background it
+> sits on — dark surfaces generally want less chroma, not more.
+
+Near-neutrals are the one exemption: below about `0.02` chroma the hue is not
+perceptible, so requiring it to match would constrain a number nobody can see — and
+would force the dark theme’s cool grays to adopt the light theme’s warm ones.
+
+Consequences worth knowing:
+
+- A token that needs a different hue in one theme is two different colors and should be
+  two tokens with names that say so.
+- A token defined in one theme only is a bug in waiting: a literal tuned for a light
+  background is unreadable on a dark one, which is exactly how `--git-ref-local` broke
+  when it stopped inheriting a themed token.
+- The graph lane colors are the documented exception, and the reason is in the
+  stylesheet beside them: they are one *set*, chosen so the five stay distinguishable
+  from one another, and that property belongs to the set rather than to any member, so
+  they are identical in both themes and are never returned individually.
+
+`tests/test_design_vocabulary.py` enforces both halves: every color is `oklch`, and
+every chromatic token defined in both themes carries the same hue in each.
+
+### Age
+
+An age is an age, wherever it appears — a file row, a commit row, a commit’s header.
+One primitive produces all of them: `MetabrowserFormatters.age()` returns the
+abbreviation (`<1m`, `5m`, `2h`, `3d`, `2w`) and the freshness class (`.age-live` …
+`.age-old`), and the `:is(...)` rule over those classes owns the hue, the weight, the
+small size, and tabular numerals.
+Call sites add positioning only, never color, weight, or their own abbreviations — the
+same discipline `.size` follows for byte counts.
+An exception needs a line in this document; otherwise there is one age.
+
+## Git History
+
+The history panel has its own vocabulary because it shows a structure nothing else in
+the product shows — a graph of commits — but it borrows every general element it can:
+ages come from [Age](#age), change counts from
+[Inline Change Stats](#inline-change-stats), and rows follow the shared row height and
+hover.
+
+### Lane Colors
+
+Five lane colors, `--git-lane-1` through `--git-lane-5`, assigned round-robin as lanes
+open. They are **one set, not five independent choices**: the property that matters is
+that the five stay distinguishable from one another, which belongs to the set, so a lane
+color is never adjusted on its own and the set is identical in both themes — thin
+strokes carry on either background.
+This is the documented exception to the hue rule in
+[Color and Theming](#color-and-theming).
+
+The lane a commit sits on colors its node, so a commit and the history below it read as
+one line. `HEAD`’s lane takes `--git-ref-local`, tying the graph to the chip that names
+the branch.
+
+### Commit Nodes
+
+**Every vertex is the same solid dot.** Shape carries no state.
+
+Rings and ring-plus-dot variants encoded HEAD and merges once, and the encoding failed
+twice over: at this radius the variants read as noise rather than meaning, and the
+hollow center had to be painted with a copy of the row’s background, so every row state
+— hover, selection, anything added later — had to restate that color or the node changed
+shape under the highlight.
+What matters stays legible where it already was: `HEAD` by its lane color and its chip,
+a merge by the arcs converging on it.
+
+### History Rows
+
+A row is the graph, then the commit, then who and when:
+
+| Part | Sizing |
+| --- | --- |
+| Graph gutter | Shrink-wraps **this row’s** lanes, so the subject starts where that row’s graph ends. A shared column would spend the widest row’s width on every row. |
+| Ref chips | Fixed; shrink last (see below) |
+| Subject | Takes the remaining space and absorbs the row’s shrinkage, ellipsizing |
+| Author and age | Fixed, right-aligned; slide outward as the panel widens |
+
+When a row cannot fit everything, the order it gives way in is **subject, then chips,
+never the age**: an age pushed off the row is information lost, an ellipsized message
+still reads, and a halved branch name does not.
+Rows are independent — no shared column — which is also what lets a new page of history
+be appended to the list instead of rebuilding every row above it.
+
+### Branch Chips
+
+Git ref badges (`.git-ref`) are their own vocabulary, not filter chips: at
+`--micro-font-size` the name carries the meaning, so it is always `--weight-bold`, and
+the corner is `--radius-tag` (square-ish) so “a ref” and “a filter” never read as the
+same control.
+
+A chip answers two independent questions, and each has its own signal:
+
+| Question | Signal |
+| --- | --- |
+| What kind of ref is this? | **Form.** An ordinary branch is the plain chip. **Trunk** — `main` or `master`, local or on a remote — is solid: its color becomes the ground. A **tag** carries a notched left edge, so `<tag)` and `[branch]` differ in shape, not only in hue. |
+| Is HEAD here? | **A ring.** `HEAD` can sit on trunk, an ordinary branch, or nothing, so it is marked without changing the chip’s form. |
+
+Shape carries the kind because hue alone cannot: a reader who does not separate the
+branch and tag hues would otherwise see one vocabulary with two colors.
+Which refs count as trunk is decided server-side, by the same names that scope the
+history walk, so the answer cannot differ between the graph and the walk.
+Color still carries local, remote, and tag as a secondary signal.
+Their ground is `--git-ref-bg`, a near-neutral of its own rather than the shared chip
+surface, sitting at the value of the surfaces beside it with just enough chroma to
+separate from them. The three ref colors — `--git-ref-local`, `--git-ref-remote`,
+`--git-ref-tag` — are one lightness and three hues, so a ref’s kind is legible without a
+second signal, and the dark theme raises only their lightness so they stay the same
+three colors.
+
+### Inline Change Stats
+
+The `+N` / `−N` pair that rides beside a filename wherever a surface reports change
+size: `.diff-stat-add` in `--status-success`, `.diff-stat-del` in `--status-error`,
+always in that order, using the true minus sign, at the local small-text size, and
+always `--weight-bold` — the pair is data, and it must read at a glance.
+The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same rule.
+The same pair is the summary line’s vocabulary, so a change set and its files read
+identically. Kind letters reuse the same mapping — added is `--status-success`, deleted
+is `--status-error` — and no diff surface introduces a local green or red.
 
 Section headings use `--section-heading-divider-gap` between their content and the
 divider. Components consume the token instead of choosing local bottom padding, so the

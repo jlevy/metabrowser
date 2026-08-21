@@ -169,6 +169,86 @@ state. An empty body never has to be interpreted.
 The renderer is a core static module rather than a plugin, for the same reason the
 Markdown mount is: more than one surface mounts it, and each should not carry its own.
 
+### Module and function map
+
+Signatures follow the conventions the Git package already established: `run_git` for
+every subprocess, a `GitError` hierarchy for failure, TypedDicts plus `validate_*`
+functions for the browser contract, and Pydantic `BaseModel` with
+`ConfigDict(extra="forbid")` for validated documents.
+
+**`diff/format.py`** — the Pydantic implementation of the checked-in schema.
+Enums `ChangeKind`, `EntryType`, `FileMode`, `Availability`, `Side`. Models
+`ContentRef`, `IntralineSpan`, `LineRecord`, `Hunk`, `FilePatch`, `FileChange`,
+`ChangeSetManifest`, `ResolvedComparison`, `ComparisonIntent`. `FileChange` is a
+discriminated union on `kind`, so a rename carries `old_path` and a similarity score by
+construction and a type change carries both entry types.
+`load_schema()` reads the checked-in JSON Schema; `validate_document(doc)` is the entry
+point the conformance corpus drives from the Python side.
+
+**`diff/apply.py`** — the correctness oracle.
+`apply_change_set(manifest, patches, base, resolve_content) -> TreeSnapshot` and
+`apply_file_change(change, patch, base_entry, resolve_content) -> TreeEntry`.
+`resolve_content` is the injected reader that makes content references work without
+embedding bytes. `TreeSnapshot.tree_hash()` produces the value the oracle compares.
+Raises `NotFullyHydrated` when a change lacks what applying it requires, which is what
+turns the availability states into a checked claim.
+
+**`diff/adapters/base.py`** — the port every source implements.
+`class DiffSource(Protocol)` with `resolve(intent) -> ResolvedComparison`,
+`manifest(resolved) -> ChangeSetManifest`, `file_patch(resolved, file_id) -> FilePatch`,
+and `content(resolved, file_id, side) -> AsyncIterator[bytes]`. Four methods, no
+source-specific vocabulary.
+
+**`diff/adapters/patch_file.py`** — the no-repository source.
+`parse_unified_patch(data: bytes) -> tuple[ChangeSetManifest, dict[str, FilePatch]]`,
+with `_split_file_sections`, `_parse_extended_headers` (rename, copy, mode, similarity,
+binary, dissimilarity), `_parse_hunk_header`, and `_parse_hunk_body`. Bounded by byte
+cap and section count; malformed input produces an `unsupported` availability rather
+than an exception.
+
+**`diff/adapters/git.py`** — the worktree-tied source.
+`class GitDiffSource(DiffSource)` over `run_git`. `resolve` runs `rev-parse` and, for
+pull requests and branches, `merge-base`. `_raw_changes` parses
+`git diff --raw -z -M -C` into `FileChange` records — the `-z` NUL framing and the
+newline-before-first-record quirk the history surface already documents apply here too.
+`_numstat` fills additions and deletions when cheap.
+`file_patch` runs a path-limited `git diff` and reuses the same parser as the patch-file
+source, which is the point of having one format.
+Merges pass `--diff-merges=first-parent`, matching the history surface.
+
+**`diff/service.py`** — resolution, identity, and bounds.
+`ComparisonService` with `register_adapter(name, source)`, `create(intent)`,
+`manifest(comparison_id)`, `file_patch(comparison_id, file_id)`, and
+`content(comparison_id, file_id, side)`. `comparison_id_for(resolved) -> str` derives
+the self-describing identifier, so any `GET` can rebuild an evicted comparison.
+Bounded LRUs for manifests and patches; `generation_token(resolved)` backs the `stale`
+check for volatile comparisons.
+
+**`diff/wire.py`** — the browser contract, mirroring `git/wire.py`. TypedDicts for every
+emitted shape and `validate_manifest`, `validate_file_patch`,
+`validate_resolved_comparison`, invoked from tests on everything the routes can emit.
+
+**`diff/routes.py`** — `DIFF_ROUTES`, registered the way `GIT_ROUTES` is.
+
+**`repo_cache.py`** — one acquisition workflow.
+`ensure_repo(source) -> CacheEntry` accepting a URL or a local path;
+`reference_clone(local_path)` borrows an on-disk repository without network;
+`fetch_refs(entry, refspecs)` covers pull refs and arbitrary revisions;
+`transient_worktree(entry, revision)` materializes a detached worktree inside the cache
+and is a context manager so it is purged on exit.
+Cloning and fetching live here rather than in `git/`, which keeps that package’s
+read-only contract intact.
+
+**`static/diff_model.js`** — the browser model.
+`parseManifest`, `parseFilePatch`, `fileChangeLabel(change)` for the indicator set, and
+`validateDocument` — the same corpus, the other side.
+
+**`static/diff_view.js`** — the renderer.
+`mountDiffView(container, patch, options) -> { dispose }`, with `renderHunk`,
+`renderLine`, `expandContext(hunk, direction)`, and `renderAvailability(state)` so every
+non-content state has one rendering path.
+Disposal releases observers and any workers, as every mounted view must.
+
 ### The comparison model
 
 The research’s layers are adopted with one adjustment: adapters own intent and
@@ -218,6 +298,22 @@ Each is a composition of layers that exist or are already planned:
 | Comparison | Manifest, file patches, renderer | This plan |
 | Annotation | Anchored threads and marks over a comparison | Deferred; anchor model reserved below |
 
+Two integration seams make the layers concrete inside the existing shell, and both are
+container adoptions rather than new surfaces:
+
+1. **Any patch or diff file browses in place.** Every file classifying as the diff kind
+   — a saved `.patch`, a downloaded PR `.diff`, output piped from any tool — is a
+   folder-like container entry wherever it sits in the tree: expand for its file
+   changes, outer-click for the change-set summary, inner-click for one file’s diff
+   tabs. This is deliberately generic groundwork, not a PR feature; the PR mirror is the
+   same affordance over an acquired comparison.
+2. **The Git history view opens comparisons, not its own diff surface.** Selecting a
+   commit in the Git tab resolves that commit’s first-parent comparison — exactly
+   `metab --diff REV` — and presents it through the same container: changed files as
+   children, summary as the outer view, one renderer.
+   Presets (HEAD vs worktree, staged, unstaged) and branch pickers are the same wiring
+   with different endpoints.
+
 The composition that proves the layering is **viewing a pull request**, because it
 exercises every layer and adds almost nothing of its own.
 GitHub exposes each pull request over plain git transport as `refs/pull/<n>/head` and
@@ -253,6 +349,11 @@ rather than as new renderer features.
 
 ### One acquisition workflow
 
+Acquisition is one instance of the container materialization rule in
+[nav containers](../../architecture/arch-nav-containers.md): bounded transient cache
+directories that the ordinary serving path routes into, shared as one mechanism by PR
+fetches, patch anchoring, and future archive unpacking.
+
 Three flows must feel like slight variations of one workflow, because they are: browsing
 a transient checkout of a repository URL, viewing a transient pull request, and viewing
 a pull request against a repository already on disk.
@@ -278,6 +379,16 @@ Reviewing a change set does not get a new surface.
 The existing shell maps onto it with three customizations, each extending a mechanism
 that already exists rather than adding one:
 
+0. **A comparison is a container in the tree.** The durable ontology is in
+   [nav containers](../../architecture/arch-nav-containers.md): every tree entry is
+   item-like (opens views), folder-like (expands to children; selecting the entry itself
+   opens an overview), or both, and directories are the already-working precedent rather
+   than a special case.
+   A patch file or PR mirror is a folder-like entry whose children are its file changes;
+   selecting the container opens the change-set summary, and selecting a child opens
+   that file’s diff tabs.
+   The two customizations below are the container contract applied to comparisons, and
+   the same contract later carries archives and zoomed (re-rooted) views.
 1. **The comparison scopes the tree, the way a filter already does.** The Files panel
    already swaps its data source — a recency window renders `/api/recent` through the
    same tree renderer — and the filter bar already narrows what the tree shows.
@@ -296,10 +407,18 @@ that already exists rather than adding one:
    Every later presentation — Before, After, rendered-at-revision for Markdown, an
    inline diff inside the rendered document — is another tab from the same diff layout,
    not a new mechanism.
-3. **The context is addressable.** A comparison scopes what the tree shows and what the
-   tabs mean, so it must live in the URL like every other selection since the `/view/`
-   scheme landed. That is the open URL-grammar decision, and this mapping is why it is
-   structural rather than cosmetic.
+3. **The context is addressable, on its own route.** A comparison scopes what the tree
+   shows and what the tabs mean, so it lives in the URL like every other selection.
+   The grammar is decided and documented in
+   [Browser URL Grammar](../../../architecture.md#browser-url-grammar): one route per
+   address space, with a uniform `<container address>/<inner path>` shape after it —
+   `/commit/<rev>` for a commit’s change set, `/commit/<rev>/<file>` for one file’s
+   diff, `/compare/<base>..<head>` for an explicit comparison.
+   Revisions get their own route because they are not served-tree paths; the shape after
+   the route is the container contract written as a URL, so a patch file
+   (`/view/changes.patch/src/app.py`) and a commit (`/commit/abc123/src/app.py`) read
+   identically. Every selection the shell can make is reloadable: a panel that changes
+   the main pane changes the URL.
 
 Live updates freeze differently here: a historical comparison is immutable, and an
 uncommitted one goes `stale` with a refresh offer rather than repainting under the

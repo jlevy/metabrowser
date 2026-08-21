@@ -320,6 +320,12 @@ def test_dir_tree_lazy_sentinel_flags_dir_of_only_empty_dirs(tmp_path: Path) -> 
 def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     # Cross-validate that our checker agrees with ``git check-ignore`` itself
     # on a concrete case. Skip gracefully if git isn't available.
+    #
+    # The repo-pinning variables must be scrubbed: under the pre-push gate
+    # this suite runs inside a githook, where git has exported GIT_DIR
+    # pointing at the real repository — and GIT_DIR outranks cwd, so the
+    # bare `git init` below would re-initialize the served repository as
+    # bare instead of creating the fixture repo.
     if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
         return
     git_env = _isolated_git_env()

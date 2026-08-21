@@ -8,7 +8,11 @@ from unittest.mock import patch
 
 import pytest
 
-from devtools.check_distribution import ROOT, _check_project_metadata, _smoke_install
+from devtools.check_distribution import (
+    ROOT,
+    _check_project_metadata,
+    _smoke_install,
+)
 
 
 def test_wheel_metadata_declares_project_license_and_notice() -> None:

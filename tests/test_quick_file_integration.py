@@ -61,6 +61,18 @@ def test_preview_is_a_programmatic_focus_destination() -> None:
     assert 'id="preview-pane" data-kpress-viewport tabindex="-1"' in html
 
 
+def test_file_preview_claims_and_checks_shell_ownership() -> None:
+    js = _read_app_js()
+    select_start = js.index("async function selectFile(path, preferredViewId)")
+    select_block = js[select_start : select_start + 5200]
+    assert 'claimPreview("file")' in select_block
+    assert "isPreviewClaimCurrent(previewClaim)" in select_block
+
+    render_start = js.index("function renderFile(data, preferredViewId, claim)")
+    render_block = js[render_start : render_start + 700]
+    assert "isPreviewClaimCurrent(renderClaim)" in render_block
+
+
 def test_application_initializes_one_injected_quick_file_finder() -> None:
     js = _read_app_js()
     init_start = js.index("function initQuickFileFinder()")
@@ -244,12 +256,12 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     assert "navigation: MetabrowserNavigationApi;" in types
 
     assert "async function selectFile(path, preferredViewId)" in js
-    assert "function renderFile(data, preferredViewId)" in js
+    assert "function renderFile(data, preferredViewId, claim)" in js
     assert "async function navigateToPath(path, preferredViewId, routeOptions)" in js
     assert "MetabrowserNavigationRoute.attachController(navigationController)" in js
     assert "metabrowser:open-path" not in js
 
-    render_start = js.index("function renderFile(data, preferredViewId)")
+    render_start = js.index("function renderFile(data, preferredViewId, claim)")
     render = js[render_start : render_start + 5000]
     assert "view.id === preferredViewId" in render
     assert "views.find((view) => view.default)" in render

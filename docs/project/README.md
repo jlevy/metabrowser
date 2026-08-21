@@ -7,8 +7,18 @@ Active feature plans define scoped work, rollout, testing, and acceptance criter
 
 ## Architecture
 
-- [Editor plugin editing contract](architecture/arch-editor-plugin-editing-contract.md)
+Start with [Views, models, and routes](architecture/arch-views-models-routes.md): it
+maps what the browser shows, what it shows it from, and how each thing is addressed, and
+links to the document that covers each in depth.
+
+- [Views, models, and routes](architecture/arch-views-models-routes.md) — the map
+- [Nav containers: item-like and folder-like roles](architecture/arch-nav-containers.md)
+- [State and delivery](architecture/arch-state-and-delivery.md) — what the inventory
+  holds, how derived state is invalidated, and what the browser does with it
+- [File Diff Format v1](architecture/file-diff-format/file-diff-format.md)
+- [Diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md)
+- [Editor plugin editing contract](architecture/arch-editor-plugin-editing-contract.md)
 - [VS Code extension host](architecture/arch-vscode-extension-host.md)
 
 ## Active Feature Plans

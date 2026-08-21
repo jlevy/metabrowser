@@ -4,6 +4,89 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Routing:
+
+- Commits are addressable: selecting one in the Git panel puts it at `/commit/<rev>`,
+  and opening that URL restores the panel and the commit.
+  The browser URL grammar now states the whole rule — one route per address space, with
+  a uniform `<container address>/<inner path>` shape after it — so a patch file
+  (`/view/changes.patch/src/app.py`) and a commit (`/commit/abc123/src/app.py`) read
+  identically. `/compare/<base>..<head>` is specified and not yet built.
+
+Design system:
+
+- Progress is a box, never prose: a diff whose file has not been fetched shows the
+  standard delayed spinner and loads itself, instead of stating that it has not loaded.
+  Loads that fail — or that overrun their expected time — always reach the console with
+  full detail (what was requested, which hook, elapsed milliseconds, the error).
+
+- Every expand/collapse now travels with one standard, short motion: bodies animate
+  height on the same 150ms the chevrons rotate with — tree folders, patch containers,
+  diff file sections, fold expanders, and folder Overview panels alike — and collapsed
+  content leaves the tab order.
+  Reduced-motion keeps the state change and drops the travel.
+
+- The green/red `+N −N` change stats are always bold, in the diff view and the commit
+  view alike.
+
+- Branch and tag chips are their own vocabulary: bold at their small size, square-ish
+  corners so a ref never reads as a filter chip; the `HEAD` chip keeps a hairline ring.
+
+- The commit graph is denser: lanes at a 9px pitch with smaller dots, so multi-branch
+  history spends its width on subjects, not spacing.
+
+Diff rendering:
+
+- Plugin render contexts gain a `revision` field: a surface may ask a registered view
+  for a Git comparison rather than a file, which is how the history view mounts the diff
+  view. Plugin-visible via the SDK’s `MetabrowserRenderContext` type.
+- **Long runs of changed lines fold behind an expander**, so one large rewrite cannot
+  bury the changes around it.
+  A contiguous run longer than 40 lines shows its first 20 and offers the rest behind a
+  control stating exactly how many it holds; folding is per run, not per file, so
+  ordinary edits beside a rewrite stay visible.
+  Measured on this project’s own 65-file pull request: 42 runs fold and 83% of the
+  changed lines start hidden, while most real changes are untouched.
+  `DIFF_FOLD_THRESHOLD` sets the bound; 0 disables folding.
+- **The Git history view shows real diffs.** Selecting a commit renders its first-parent
+  comparison through the diff view — the same renderer, model, and validation a patch
+  file uses — instead of a file list alone.
+  The commit header keeps only what that view cannot show: files outside the served
+  folder, and a statement when a very large commit’s diff is bounded.
+- **Patch and diff files expand in the navigation tree.** A `.patch` or `.diff` file
+  keeps its own row and views and gains a chevron: expanding lists the files it changes,
+  each with its change indicator, and selecting one opens just that file’s diff at its
+  own URL (`/view/changes.patch/src/app.py`). Keyboard navigation, filtering, and
+  selection work exactly as they do for folders, because disclosure is now a capability
+  any row can declare rather than something only directories have.
+  Plugins declare it in one manifest line, so archives and pull-request mirrors get the
+  same affordance without new tree machinery.
+- `.patch` and `.diff` files now open as rendered diffs: a change summary, per-file
+  sections with GitHub-style indicators (renames with the old path, mode changes, type
+  changes such as file to symlink, binary), and numbered unified hunks.
+  Each file sits under a sticky bar: the nav tree’s own chevron, the filename with its
+  green/red `+N −N` stat pair right beside it, change notes, and the standard copy-path
+  control revealed on hover.
+  The bar is a row in the design-system sense — tree-row height, the shared hover color,
+  one activation surface (clicking anywhere toggles), a single border when collapsed —
+  and these agreements are now test-enforced.
+  Sections start expanded, and collapsing keeps the rows mounted.
+  Line totals stay exact when a change set contains binaries: binary changes contribute
+  no lines (git’s own semantics), so a patch with images no longer shows
+  `+? −? (estimated)`, and the change-set summary reads at regular UI size instead of
+  small print. Every unavailable state is a labeled explanation rather than an empty box,
+  and input that is not a diff says so instead of claiming no changes.
+- New `metab --diff SPEC` mode: `BASE..TARGET`, a single revision (compared against its
+  first parent), or a `.patch`/`.diff` file.
+  `--format json` emits the full change-set document, `--diff-patch PATH` prints one
+  file’s hunks, and `--diff-check` applies the change set to the base tree and verifies
+  it reproduces the target tree exactly.
+- Both are built on File Diff Format v1, a documented change-set model with a JSON
+  Schema, a conformance corpus run by the Python and browser implementations alike, and
+  an apply oracle that proves a produced document captures everything — verified
+  byte-for-byte against git’s own trees, including renames, chmods, symlink type
+  changes, binaries, and missing trailing newlines.
+
 Large directories:
 
 - Opening a large folder is now fast regardless of how large it is, and its detail fills

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import colorsys
+import math
 import re
 from pathlib import Path
 
@@ -41,9 +41,6 @@ SYNTAX_DIFF_PAIRS = (
 )
 
 TOKEN_RE = re.compile(r"^\s*(--[\w-]+):\s*([^;]+);", re.MULTILINE)
-HSL_RE = re.compile(
-    r"hsl\(\s*(?P<hue>[\d.]+)\s+(?P<saturation>[\d.]+)%\s+(?P<lightness>[\d.]+)%\s*\)"
-)
 VAR_RE = re.compile(r"var\((?P<token>--[\w-]+)\)")
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
@@ -114,13 +111,46 @@ def _css_rules(css: str) -> tuple[tuple[str, str], ...]:
     )
 
 
-def _parse_hsl(value: str) -> tuple[float, float, float]:
-    match = HSL_RE.fullmatch(value)
-    assert match is not None, f"Expected an opaque hsl() color, got {value!r}"
-    hue = float(match.group("hue")) / HUE_CIRCLE_DEGREES
-    saturation = float(match.group("saturation")) / PERCENT_SCALE
-    lightness = float(match.group("lightness")) / PERCENT_SCALE
-    return colorsys.hls_to_rgb(hue, lightness, saturation)
+OKLCH_RE = re.compile(
+    r"oklch\(\s*(?P<lightness>[\d.]+)%?\s+(?P<chroma>[\d.]+)\s+(?P<hue>[\d.]+)\s*\)"
+)
+
+
+def _parse_color(value: str) -> tuple[float, float, float]:
+    """sRGB 0..1 for an opaque oklch() literal.
+
+    Every color in the stylesheets is oklch (see the design system's
+    Color and Theming section), so contrast is measured by converting
+    back through OKLab rather than by reading a notation that separates
+    lightness from luminance the way hsl did.
+    """
+    match = OKLCH_RE.fullmatch(value.strip())
+    assert match is not None, f"Expected an opaque oklch() color, got {value!r}"
+    lightness = float(match.group("lightness")) / 100
+    chroma = float(match.group("chroma"))
+    hue = math.radians(float(match.group("hue")))
+    a = chroma * math.cos(hue)
+    b = chroma * math.sin(hue)
+    l_, m_, s_ = (
+        lightness + 0.3963377774 * a + 0.2158037573 * b,
+        lightness - 0.1055613458 * a - 0.0638541728 * b,
+        lightness - 0.0894841775 * a - 1.2914855480 * b,
+    )
+    long, medium, short = l_**3, m_**3, s_**3
+    linear = (
+        +4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
+        -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
+        -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short,
+    )
+
+    def to_srgb(channel: float) -> float:
+        channel = max(0.0, min(1.0, channel))
+        if channel <= 0.0031308:
+            return channel * 12.92
+        return 1.055 * channel ** (1 / 2.4) - 0.055
+
+    red, green, blue = linear
+    return (to_srgb(red), to_srgb(green), to_srgb(blue))
 
 
 def _linear_channel(channel: float) -> float:
@@ -137,8 +167,8 @@ def _relative_luminance(color: tuple[float, float, float]) -> float:
 
 
 def _contrast_ratio(first: str, second: str) -> float:
-    first_luminance = _relative_luminance(_parse_hsl(first))
-    second_luminance = _relative_luminance(_parse_hsl(second))
+    first_luminance = _relative_luminance(_parse_color(first))
+    second_luminance = _relative_luminance(_parse_color(second))
     lighter = max(first_luminance, second_luminance)
     darker = min(first_luminance, second_luminance)
     return (lighter + CONTRAST_LUMINANCE_OFFSET) / (darker + CONTRAST_LUMINANCE_OFFSET)

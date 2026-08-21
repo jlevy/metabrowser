@@ -27,7 +27,7 @@ $ metab --help
 
  Serving is the default: `metab .` serves the current directory and opens
  it in your browser. Select another operation with a mode flag (--walk,
- --check-api, --remote, --plugins, --plugin, --doctor).
+ --diff, --check-api, --remote, --plugins, --plugin, --doctor).
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      PATH  Root directory to serve, check, or walk; a file may be   │
@@ -40,6 +40,9 @@ $ metab --help
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
 │ --walk                   Walk ROOT with the inventory walker and dump the    │
 │                          result (no server).                                 │
+│ --diff             SPEC  Show a change set: BASE..TARGET, one revision       │
+│                          (against its first parent), or a .patch/.diff file  │
+│                          under ROOT.                                         │
 │ --check-api              Run the navigation API scenario without a browser   │
 │                          or listening port.                                  │
 │ --remote           HOST  SSH into HOST, start metab there, and tunnel it to  │
@@ -48,6 +51,12 @@ $ metab --help
 │ --plugin           NAME  Print the full resolved manifest for one plugin.    │
 │ --doctor                 Validate every discovered plugin; exit non-zero on  │
 │                          any problem.                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
+│ --diff-patch        PATH  Print one changed file's hunks from the comparison │
+│                           (--diff only).                                     │
+│ --diff-check              Run the apply oracle: rebuild the target tree and  │
+│                           compare hashes (--diff only).                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
 │ --path               TEXT   Serve: relative path from ROOT to select on      │
@@ -154,7 +163,7 @@ $ metab
 
  Serving is the default: `metab .` serves the current directory and opens
  it in your browser. Select another operation with a mode flag (--walk,
- --check-api, --remote, --plugins, --plugin, --doctor).
+ --diff, --check-api, --remote, --plugins, --plugin, --doctor).
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      PATH  Root directory to serve, check, or walk; a file may be   │
@@ -167,6 +176,9 @@ $ metab
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
 │ --walk                   Walk ROOT with the inventory walker and dump the    │
 │                          result (no server).                                 │
+│ --diff             SPEC  Show a change set: BASE..TARGET, one revision       │
+│                          (against its first parent), or a .patch/.diff file  │
+│                          under ROOT.                                         │
 │ --check-api              Run the navigation API scenario without a browser   │
 │                          or listening port.                                  │
 │ --remote           HOST  SSH into HOST, start metab there, and tunnel it to  │
@@ -175,6 +187,12 @@ $ metab
 │ --plugin           NAME  Print the full resolved manifest for one plugin.    │
 │ --doctor                 Validate every discovered plugin; exit non-zero on  │
 │                          any problem.                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
+│ --diff-patch        PATH  Print one changed file's hunks from the comparison │
+│                           (--diff only).                                     │
+│ --diff-check              Run the apply oracle: rebuild the target tree and  │
+│                           compare hashes (--diff only).                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
 │ --path               TEXT   Serve: relative path from ROOT to select on      │

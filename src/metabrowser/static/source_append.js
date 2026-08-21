@@ -52,7 +52,7 @@
     if (!code) {
       return false;
     }
-    if (code.classList && code.classList.contains("hljs")) {
+    if (code.classList?.contains("hljs")) {
       return false;
     }
     // A text node, never innerHTML: the chunk is file content, and appending

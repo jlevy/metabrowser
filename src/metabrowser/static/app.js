@@ -302,41 +302,14 @@ function formatAge(mtimeSec) {
   if (mtimeSec === null) {
     return '<span class="tally-pending tally-pending-narrow"></span>';
   }
-  if (!mtimeSec) {
+  // One age primitive for the whole product (formatters.js): same
+  // abbreviations, same freshness tiers, same colours, wherever an age
+  // appears.
+  var age = window.MetabrowserFormatters.age(mtimeSec);
+  if (!age.label) {
     return "";
   }
-  var diffMs = Date.now() - mtimeSec * 1000;
-  var absMs = Math.abs(diffMs);
-  /** @type {Array<[string, number]>} */
-  var steps = [
-    ["y", 365 * 24 * 60 * 60 * 1000],
-    ["mo", 30 * 24 * 60 * 60 * 1000],
-    ["w", 7 * 24 * 60 * 60 * 1000],
-    ["d", 24 * 60 * 60 * 1000],
-    ["h", 60 * 60 * 1000],
-    ["m", 60 * 1000],
-  ];
-  var label = "<1m";
-  for (var i = 0; i < steps.length; i++) {
-    if (absMs >= steps[i][1]) {
-      label = Math.round(absMs / steps[i][1]) + steps[i][0];
-      break;
-    }
-  }
-  // Color code by freshness
-  var cls = "age-old";
-  if (absMs < 60 * 1000) {
-    cls = "age-sec";
-  } else if (absMs < 60 * 60 * 1000) {
-    cls = "age-min";
-  } else if (absMs < 24 * 60 * 60 * 1000) {
-    cls = "age-hr";
-  } else if (absMs < 7 * 24 * 60 * 60 * 1000) {
-    cls = "age-day";
-  } else if (absMs < 30 * 24 * 60 * 60 * 1000) {
-    cls = "age-wk";
-  }
-  return `<span class="${cls}">${label}</span>`;
+  return `<span class="${age.className}">${age.label}</span>`;
 }
 
 function formatTimestamp(mtimeSec) {
@@ -352,9 +325,12 @@ function formatExactSize(bytes) {
 
 // ── SVG Icons ───────────────────────────────────────────────────
 
-// Lucide `copy` (v1.17.0, ISC), used by clipboard actions.
-var ICON_COPY =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+// Lucide `copy` from the shared registry (icons.js loads first);
+// aliased so call sites keep the established name.
+var _iconRegistry = /** @type {Record<string, string>} */ (
+  (typeof window !== "undefined" && window.MetabrowserIcons) || {}
+);
+var ICON_COPY = _iconRegistry.copy || "";
 
 // ── Icon registry ──────────────────────────────────────────────
 // All SVG markup lives in static/icons.js, loaded before this file
@@ -1066,6 +1042,51 @@ function treeRootHtml(content) {
   return `<div class="tree-root" role="tree" aria-label="Files">${content}</div>`;
 }
 
+// Container kinds by extension, injected by the server from the loaded
+// plugin manifests (arch-nav-containers.md). A file whose extension is
+// listed plays the folder-like role in addition to its own.
+var CONTAINER_EXTS = window.METABROWSER_CONTAINER_EXTS || {};
+
+function containerForNode(node) {
+  var name = String(node?.name || "");
+  var dot = name.lastIndexOf(".");
+  if (dot <= 0) {
+    return null;
+  }
+  return CONTAINER_EXTS[name.slice(dot).toLowerCase()] || null;
+}
+
+// Child entries of a container render as ordinary item-like rows: the
+// same selection path, the same keyboard model, no new machinery.
+function renderContainerChildren(rows, options) {
+  var level = options.level;
+  var parts = [];
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var labelId = treeDomId("tree-label", `container-child:${row.path}`);
+    var attributes = treeItemAttributes({
+      kind: "file",
+      path: row.path,
+      level: level,
+      position: i + 1,
+      setSize: rows.length,
+      selected: currentPath === row.path,
+      labelId: labelId,
+    });
+    parts.push(
+      `<div class="tree-item tree-file tree-container-child${row.muted ? " tree-item-muted" : ""}"${attributes} data-action="select" data-path="${esc(row.path)}" data-tip-type="file" data-tip-name="${esc(row.name)}">`,
+      row.badge
+        ? `<span class="tree-container-badge" aria-hidden="true">${esc(row.badge)}</span>`
+        : '<span class="tree-item-icon"></span>',
+      `<span class="tree-item-name" id="${labelId}">`,
+      esc(row.name),
+      "</span>",
+      "</div>",
+    );
+  }
+  return parts.join("");
+}
+
 function treeItemAttributes(options) {
   var identity =
     options.kind === "page" ? `page:${options.pageId}` : `${options.kind}:${options.path || ""}`;
@@ -1198,7 +1219,7 @@ function renderTreeNodes(nodes, isRoot, options) {
       );
       if (hasPotentialChildren) {
         parts.push(
-          `<div class="tree-children" id="${groupId}" role="group" style="display:${expanded ? "block" : "none"}">`,
+          `<div class="tree-children${expanded ? "" : " tree-children-collapsed"}" id="${groupId}" role="group">`,
         );
         if (Array.isArray(node.children)) {
           parts.push(
@@ -1275,8 +1296,28 @@ function renderTreeNodes(nodes, isRoot, options) {
         selected: currentPath === node.path,
         labelId: fileLabelId,
       });
+      // A file whose kind declares the container capability is
+      // folder-like too (arch-nav-containers.md): it keeps its file
+      // identity and views, and gains a chevron that discloses the
+      // entries inside it, fetched on first expand.
+      var container = containerForNode(node);
+      var containerGroupId = container ? treeDomId("tree-group", `container:${node.path}`) : "";
+      if (container) {
+        fileAttributes = treeItemAttributes({
+          kind: "file",
+          path: node.path,
+          level: level,
+          position: position,
+          setSize: setSize,
+          selected: currentPath === node.path,
+          labelId: fileLabelId,
+          expanded: false,
+          ownedGroupId: containerGroupId,
+        });
+      }
       parts.push(
-        `<div class="tree-item tree-file${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
         '">',
@@ -1292,6 +1333,11 @@ function renderTreeNodes(nodes, isRoot, options) {
         sizeHtml(node.size, "tree-item-size"),
         "</div>",
       );
+      if (container) {
+        parts.push(
+          `<div class="tree-children tree-children-collapsed" id="${containerGroupId}" role="group"></div>`,
+        );
+      }
     }
   }
   if (hidden > 0) {
@@ -1416,7 +1462,7 @@ function subtreeIsExpanded(childrenEl) {
     !!folder &&
     folder.classList.contains("tree-folder") &&
     folder.classList.contains("expanded") &&
-    childrenEl.style.display !== "none"
+    !childrenEl.classList.contains("tree-children-collapsed")
   );
 }
 
@@ -2049,6 +2095,76 @@ async function toggleTreeFolder(row, options) {
   return row;
 }
 
+// Container expansion mirrors lazy folder expansion: fetch children on
+// first open, then toggle visibility. Failures state themselves in the
+// group rather than leaving an empty box.
+async function toggleTreeContainer(row) {
+  var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (!children?.classList.contains("tree-children")) {
+    return row;
+  }
+  var expanded = row.getAttribute("aria-expanded") === "true";
+  if (expanded) {
+    row.setAttribute("aria-expanded", "false");
+    row.classList.add("collapsed");
+    row.classList.remove("expanded");
+    children.classList.add("tree-children-collapsed");
+    synchronizeTreeNow();
+    return row;
+  }
+  row.setAttribute("aria-expanded", "true");
+  row.classList.add("expanded");
+  row.classList.remove("collapsed");
+  children.classList.remove("tree-children-collapsed");
+  if (!children.dataset.loaded) {
+    children.innerHTML =
+      '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
+      '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
+    var level = Number(row.dataset.treeLevel || "1") + 1;
+    var childrenStartedAt = Date.now();
+    try {
+      var payload = await window.metabrowser.fetchPluginData(
+        row.dataset.containerPlugin,
+        row.dataset.containerChildren,
+        { path: row.dataset.path || "" },
+      );
+      var rows = Array.isArray(payload?.children) ? payload.children : [];
+      children.innerHTML = rows.length
+        ? renderContainerChildren(rows, { level: level })
+        : '<div class="tree-empty-note">No entries in this file.</div>';
+      children.dataset.loaded = "1";
+    } catch (error) {
+      console.error(
+        "metabrowser tree: container children failed",
+        {
+          path: row.dataset.path,
+          plugin: row.dataset.containerPlugin,
+          hook: row.dataset.containerChildren,
+          elapsedMs: Date.now() - childrenStartedAt,
+        },
+        error,
+      );
+      children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
+    }
+    applyTreeFilters();
+  }
+  synchronizeTreeNow();
+  return row;
+}
+
+// The keyboard's one disclosure entry point. Folders and container
+// files both expand through it, each by its own path, so the navigation
+// module never asks what kind of row it is holding.
+function setRowExpanded(row, expanded) {
+  if (!row.dataset.containerChildren) {
+    return setFolderExpanded(row, expanded);
+  }
+  if (row.getAttribute("aria-expanded") === String(expanded)) {
+    return undefined;
+  }
+  return toggleTreeContainer(row);
+}
+
 function mountNextTreePage(row) {
   var pageId = row.dataset.pageId;
   var page = pendingTreePages.get(pageId);
@@ -2102,6 +2218,11 @@ async function activateTreeRow(row, options) {
   if (action === "select" && row.dataset.path) {
     setSelectedPath(row.dataset.path);
     void navigateToPath(row.dataset.path);
+    // A container file is one target like a folder row: opening it also
+    // discloses what is inside it.
+    if (row.dataset.containerChildren) {
+      return toggleTreeContainer(row);
+    }
   }
   return row;
 }
@@ -2133,6 +2254,9 @@ async function activateTreeRowFromKeyboard(row, options) {
   }
   if (action === "page-more") {
     return mountNextTreePage(row);
+  }
+  if (row.dataset.containerChildren) {
+    return toggleTreeContainer(row);
   }
   return row;
 }
@@ -2539,26 +2663,223 @@ function startIndexProgressPolling() {
   }, INDEX_PROGRESS_POLL_MS);
 }
 
+// ── Nav panel registry ─────────────────────────────────────────
+//
+// The tab bar used to be hardcoded buttons and a click handler that knew
+// each panel by name. It is a registry now for two reasons: a panel can
+// be conditional (Git appears only when the served root resolves to a
+// repository, which is not known until /api/git/repo answers), and a
+// panel's first-show hook belongs beside its declaration rather than in
+// an if-chain inside the handler.
+//
+// Files stays in the server-rendered HTML — it is first-paint critical,
+// and creating it in JS would flash an empty nav. Panels registered
+// later create their own button and container, which is what makes a
+// stale registration dangerous rather than merely dead: registering a
+// retired panel would put its tab back on screen.
+// This is the seam a plugin-facing registerNavPanel would build on; no
+// such SDK surface is exposed yet.
+
+/**
+ * @typedef {object} NavPanel
+ * @property {string} id
+ * @property {string} label
+ * @property {(() => void) | null} onFirstShow Runs once, the first time
+ *   the panel is shown. Lazy loading is the whole point: Recent and Git
+ *   both cost a request that a user who never opens them should not pay.
+ * @property {(() => void) | null | undefined} [onShow] Runs every time
+ *   the panel is activated, including the first. Panels use this only
+ *   for cheap refresh/retry checks after their lazy initialization.
+ */
+
+/** @type {NavPanel[]} */
+var navPanels = [];
+/** @type {Set<string>} */
+var navPanelsShown = new Set();
+var previewClaimGeneration = 0;
+
+/**
+ * Claim the shared preview pane for one navigation owner.
+ *
+ * Async preview producers keep the returned generation and check it
+ * before every write. A later file, commit, or nav action increments the
+ * generation, making all older writes harmless.
+ *
+ * @param {string} owner
+ * @returns {number}
+ */
+function claimPreview(owner) {
+  previewClaimGeneration += 1;
+  const preview = document.getElementById("preview-pane");
+  if (preview) {
+    preview.dataset.previewOwner = owner;
+  }
+  return previewClaimGeneration;
+}
+
+/** @param {number} claim */
+function isPreviewClaimCurrent(claim) {
+  return claim === previewClaimGeneration;
+}
+
+function registerNavPanel(panel) {
+  if (navPanels.some((existing) => existing.id === panel.id)) {
+    return;
+  }
+  navPanels.push(panel);
+  ensureNavPanelElements(panel);
+}
+
+// Create the button and container for a panel that was not in the
+// server-rendered markup. Idempotent, so a re-registration after a root
+// change does not duplicate the tab.
+function ensureNavPanelElements(panel) {
+  const navBar = queryHtml(".nav-tab-bar");
+  const content = document.getElementById("tree-content");
+  if (!navBar || !content) {
+    return;
+  }
+  if (!navBar.querySelector(`.tab-btn[data-tab="${panel.id}"]`)) {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn";
+    btn.type = "button";
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", "false");
+    btn.dataset.tab = panel.id;
+    btn.textContent = panel.label;
+    btn.addEventListener("click", () => activateNavPanel(panel.id));
+    navBar.appendChild(btn);
+  }
+  if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
+    const container = document.createElement("div");
+    container.id = `tab-${panel.id}`;
+    container.dataset.tabContent = panel.id;
+    container.style.display = "none";
+    content.appendChild(container);
+  }
+}
+
+function removeNavPanel(panelId) {
+  navPanels = navPanels.filter((panel) => panel.id !== panelId);
+  navPanelsShown.delete(panelId);
+  const navBar = queryHtml(".nav-tab-bar");
+  const button = navBar?.querySelector(`.tab-btn[data-tab="${panelId}"]`);
+  const container = document.querySelector(`[data-tab-content="${panelId}"]`);
+  const wasActive = button?.classList.contains("active");
+  button?.remove();
+  container?.remove();
+  // Never leave the nav with no active tab: if the panel being removed
+  // was the visible one, fall back to Files.
+  if (wasActive) {
+    activateNavPanel("files");
+  }
+}
+
+function activateNavPanel(panelId) {
+  const navBar = queryHtml(".nav-tab-bar");
+  if (!navBar) {
+    return;
+  }
+  claimPreview(`nav:${panelId}`);
+  // Claiming invalidates any in-flight file or commit load, but the
+  // placeholder those loads already painted is still on screen and their
+  // responses can no longer replace it — so the pane would keep showing a
+  // spinner until some unrelated navigation redraws it. Retire the
+  // placeholder here. Rendered content is left alone: it is still a valid
+  // preview, and a tab switch is not a reason to throw it away.
+  const preview = document.getElementById("preview-pane");
+  if (preview?.firstElementChild?.classList.contains("loading")) {
+    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
+  }
+  queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
+    const selected = btn.dataset.tab === panelId;
+    btn.classList.toggle("active", selected);
+    btn.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+  queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
+    panel.style.display = panel.dataset.tabContent === panelId ? "" : "none";
+  });
+  // The filter bar is chrome for the file tree, and it sits outside the
+  // tab containers on purpose — a tree reload replaces #tab-files
+  // wholesale, and the bar has to survive that and stay put while the
+  // tree scrolls. Being outside means the loop above does not reach it,
+  // so a panel that is not Files would otherwise keep a bar of file
+  // filters on screen above content they cannot filter.
+  const filterBar = document.getElementById("nav-filter-bar");
+  if (filterBar) {
+    filterBar.style.display = panelId === "files" ? "" : "none";
+  }
+  // Hiding or restoring the bar changes which chrome the scroll shadow
+  // belongs to, and no scroll event fires on a tab switch.
+  navScrollShadowUpdate?.();
+
+  const panel = navPanels.find((candidate) => candidate.id === panelId);
+  if (!navPanelsShown.has(panelId)) {
+    navPanelsShown.add(panelId);
+    panel?.onFirstShow?.();
+  }
+  panel?.onShow?.();
+}
+
 function initNavTabs() {
   const navBar = queryHtml(".nav-tab-bar");
   if (!navBar) {
     return;
   }
+  // Files needs no first-show hook: the tree is already loading when the
+  // shell boots, and Files is the panel that starts visible.
+  //
+  // Recent is deliberately absent. It was a panel here until the filter
+  // work folded it into the Files pane as the recency dimension, and
+  // registering it now would not merely be dead code: a registration
+  // whose button is not in the server-rendered markup *creates* one, so
+  // this would put the retired tab back on screen.
+  registerNavPanel({ id: "files", label: "Files", onFirstShow: null });
+  navPanelsShown.add("files");
+
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      var tabId = btn.dataset.tab;
-      navBar.querySelectorAll(".tab-btn").forEach((b) => {
-        b.classList.remove("active");
-        b.setAttribute("aria-selected", "false");
-      });
-      btn.classList.add("active");
-      btn.setAttribute("aria-selected", "true");
-      queryHtmlAll("[data-tab-content]", treePane).forEach((panel) => {
-        panel.style.display = panel.dataset.tabContent === tabId ? "" : "none";
-      });
-    });
+    const panelId = btn.dataset.tab;
+    if (!panelId) {
+      return;
+    }
+    btn.addEventListener("click", () => activateNavPanel(panelId));
   });
 }
+
+// Replace the preview pane's contents with shell-owned HTML.
+//
+// Disposal is the reason this is a function rather than an innerHTML
+// assignment at each call site: replacing the pane detaches whatever
+// plugin views are mounted, and skipping their disposers leaks their
+// listeners and retained resources.
+function renderPreviewHtml(html, claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return null;
+  }
+  const preview = document.getElementById("preview-pane");
+  if (!preview) {
+    return null;
+  }
+  disposeActivePluginViews();
+  preview.innerHTML = html;
+  return preview;
+}
+
+// The seam between the shell and modules that are not file renderers.
+//
+// Deliberately narrow, and deliberately not `window.metabrowser`: that
+// object is the documented plugin SDK with a compatibility contract,
+// whereas this is an internal boundary that core modules loaded by the
+// shell may use. Exposing it at all is what lets git_panel.js stay out
+// of app.js instead of adding a thousand lines to it.
+window.MetabrowserShell = Object.freeze({
+  activateNavPanel,
+  claimPreview,
+  isPreviewClaimCurrent,
+  registerNavPanel,
+  removeNavPanel,
+  renderPreviewHtml,
+});
 
 // Toggle the nav chrome's drop shadow based on whether the
 // tree-content scroll position is at the top. At scrollTop=0 the
@@ -2570,21 +2891,29 @@ function initNavTabs() {
 // The shadow rides the filter bar, not the tab bar: the filter bar is
 // the bottom-most chrome above the scroll owner, so a shadow on the
 // tab bar would land on the filter bar instead of on the content.
+/** @type {(() => void) | null} */
+var navScrollShadowUpdate = null;
+
 function initNavScrollShadow() {
-  const shadowTarget = document.getElementById("nav-filter-bar") || queryHtml(".nav-tab-bar");
+  const filterBar = document.getElementById("nav-filter-bar");
+  const tabBar = queryHtml(".nav-tab-bar");
   const content = document.getElementById("tree-content");
-  if (!shadowTarget || !content) {
+  if (!content || (!filterBar && !tabBar)) {
     return;
   }
-  const scrollNavBar = shadowTarget;
   const scrollContent = content;
   function update() {
-    if (scrollContent.scrollTop > 0) {
-      scrollNavBar.classList.add("scrolled");
-    } else {
-      scrollNavBar.classList.remove("scrolled");
-    }
+    // Resolved per call rather than once at startup: the filter bar is
+    // hidden on panels that are not Files, and a shadow on a hidden
+    // element is no cue at all. Whichever chrome is bottom-most *and
+    // visible* carries it, and the other is cleared so a tab switch
+    // cannot leave two shadows armed.
+    const target = filterBar && filterBar.offsetParent !== null ? filterBar : tabBar;
+    const other = target === filterBar ? tabBar : filterBar;
+    other?.classList.remove("scrolled");
+    target?.classList.toggle("scrolled", scrollContent.scrollTop > 0);
   }
+  navScrollShadowUpdate = update;
   // Passive listener — we never preventDefault — so the browser
   // can keep scroll responsive while we just read scrollTop.
   scrollContent.addEventListener("scroll", update, { passive: true });
@@ -3925,6 +4254,9 @@ function cachePut(cache, key, value, maxSize, onEvict) {
 }
 
 var textChunkLoadInFlight = false;
+/** @type {number | null} */
+var filePreviewClaim = null;
+
 /**
  * Bytes the next Load more will request. Each click doubles up to the cap, so
  * reaching a large file takes a handful of clicks rather than dozens while no
@@ -3959,6 +4291,7 @@ async function loadMoreCurrentText() {
 
   textChunkLoadInFlight = true;
   var path = currentPath;
+  var previewClaim = filePreviewClaim;
   var offset = cached.bytes_read || 0;
   var requested = textChunkNextBytes;
   try {
@@ -3978,7 +4311,7 @@ async function loadMoreCurrentText() {
       () => resp.json(),
       responsePerfMeta(resp, path, { offset: offset }),
     );
-    if (currentPath !== path) {
+    if (currentPath !== path || previewClaim === null || !isPreviewClaimCurrent(previewClaim)) {
       return;
     }
     if (chunk.mtime_hash && cached.mtime_hash && chunk.mtime_hash !== cached.mtime_hash) {
@@ -4009,7 +4342,7 @@ async function loadMoreCurrentText() {
         window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
       );
     } else {
-      renderFile(cached);
+      renderFile(cached, undefined, previewClaim);
     }
   } catch (e) {
     console.warn("Failed to load text chunk", e);
@@ -4031,6 +4364,8 @@ var selectFileAbortController = null;
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, preferredViewId) {
+  var previewClaim = claimPreview("file");
+  filePreviewClaim = previewClaim;
   return _perf.measureAsync(
     "selectFile",
     async () => {
@@ -4058,7 +4393,7 @@ async function selectFile(path, preferredViewId) {
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
         navigationController.canonicalizePath(path, cached.kind === "folder");
-        renderFile(cached, preferredViewId);
+        renderFile(cached, preferredViewId, previewClaim);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
       }
@@ -4068,7 +4403,7 @@ async function selectFile(path, preferredViewId) {
       }
       loadingIndicatorTimer = setTimeout(() => {
         loadingIndicatorTimer = null;
-        if (currentPath !== path) {
+        if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
           return;
         }
         disposeActivePluginViews();
@@ -4101,13 +4436,13 @@ async function selectFile(path, preferredViewId) {
           // Server confirmed the cached payload is still fresh — zero-byte
           // body, render from memory.
           fileNeedsRevalidate.delete(path);
-          if (currentPath === path) {
+          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
             if (loadingIndicatorTimer) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
             navigationController.canonicalizePath(path, cached.kind === "folder");
-            renderFile(cached, preferredViewId);
+            renderFile(cached, preferredViewId, previewClaim);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
           }
@@ -4140,13 +4475,13 @@ async function selectFile(path, preferredViewId) {
           }
         }
         fileNeedsRevalidate.delete(path);
-        if (currentPath === path) {
+        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
           }
           navigationController.canonicalizePath(path, data.kind === "folder");
-          renderFile(data, preferredViewId);
+          renderFile(data, preferredViewId, previewClaim);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
         }
@@ -4157,7 +4492,7 @@ async function selectFile(path, preferredViewId) {
           return { status: "cancelled" };
         }
         var notFound = caught?.notFound === true;
-        if (currentPath === path) {
+        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
           if (loadingIndicatorTimer) {
             clearTimeout(loadingIndicatorTimer);
             loadingIndicatorTimer = null;
@@ -4519,7 +4854,14 @@ function mountPluginView(container, pluginView, ctx) {
   }
 }
 
-function renderFile(data, preferredViewId) {
+function renderFile(data, preferredViewId, claim) {
+  // Ownership, not staleness: the Git panel renders into this same pane, so a
+  // file render that lost the pane must not paint over it. currentPath cannot
+  // express that, because the owner changed rather than the path.
+  var renderClaim = claim ?? filePreviewClaim;
+  if (renderClaim === null || !isPreviewClaimCurrent(renderClaim)) {
+    return;
+  }
   return _perf.measure(
     `renderFile:${data.kind || data.type || "?"}`,
     () => {
@@ -5746,7 +6088,7 @@ function applyCellPatch(entry) {
             var groupId = treeDomId("tree-group", entry.path);
             row.insertAdjacentHTML(
               "afterend",
-              `<div class="tree-children" id="${groupId}" role="group" style="display:none">` +
+              `<div class="tree-children tree-children-collapsed" id="${groupId}" role="group">` +
                 '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
                 ' role="status" aria-label="Loading">' +
                 '<span class="spinner spinner-sm" aria-hidden="true"></span></div></div>',
@@ -6088,6 +6430,13 @@ function deliverNavigationFragment(target) {
 
 async function applyNavigationTarget(target, context) {
   if (!target) {
+    // A null target usually means "no selection". A /commit/ URL is a
+    // selection in another address space (Browser URL Grammar), owned
+    // by the Git panel — so the file pane must not claim the preview
+    // with its empty landing state.
+    if (window.MetabrowserNavigationRoute.parseCommit(window.location.pathname)) {
+      return { status: "cancelled" };
+    }
     showNavigationLanding();
     return { status: "cancelled" };
   }
@@ -6134,7 +6483,7 @@ async function revealInTree(path) {
         if (children.querySelector(":scope > .tree-lazy-placeholder")) {
           await loadSubtree(current, children);
         }
-        if (children.style.display === "none") {
+        if (children.classList.contains("tree-children-collapsed")) {
           await setFolderExpanded(folder, true);
         }
       }
@@ -6228,7 +6577,7 @@ function initKeyboardInfrastructure() {
     container: treePane,
     document: document,
     navigate: openTreeRow,
-    setFolderExpanded: setFolderExpanded,
+    setFolderExpanded: setRowExpanded,
     shortcuts: shortcutRegistry,
   });
   applicationFocusListener = (event) => {
@@ -6386,6 +6735,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavScrollShadow();
   initKeyboardInfrastructure();
   initQuickFileFinder();
+  // Not awaited: whether the served root is a repository is irrelevant
+  // to first paint, and blocking the tree walk on a git call would make
+  // every non-repository directory pay for a feature it will not show.
+  window.MetabrowserGitPanel?.init()?.catch((error) => {
+    console.error("metabrowser git panel: init failed", { url: location.pathname }, error);
+  });
   // Start the URL-pinned file fetch in parallel with the tree walk. Only a
   // /view/ pathname selects a file; a hash is document state, never identity.
   var initialTarget = window.MetabrowserNavigationRoute.parse(

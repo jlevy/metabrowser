@@ -30,6 +30,7 @@ import typer
 
 from metabrowser import __version__
 from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, validate_log_level
+from metabrowser.cli.diff_cli import run_diff
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
 from metabrowser.cli.remote import run_remote
 from metabrowser.cli.serve import run_serve
@@ -42,6 +43,7 @@ _PANEL_MODES = "Modes (default: serve ROOT)"
 _PANEL_SHARED = "Shared by multiple modes (each option names its modes)"
 _PANEL_SERVE = "Serve"
 _PANEL_WALK = "Walk (--walk)"
+_PANEL_DIFF = "Diff (--diff SPEC)"
 _PANEL_CHECK_API = "API check (--check-api)"
 _PANEL_REMOTE = "Remote (--remote)"
 _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
@@ -52,6 +54,7 @@ _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
 _MODE_OPTIONS: dict[str, frozenset[str]] = {
     "serve": frozenset({"path", "port", "host", "no_open", "plugins_dir", "log_level"}),
     "walk": frozenset({"fmt", "stream", "path", "detail", "max_depth", "max_files", "log_level"}),
+    "diff": frozenset({"fmt", "diff_patch", "diff_check", "log_level"}),
     "check-api": frozenset({"plugins_dir", "log_level", "index_timeout"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
@@ -62,6 +65,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
 _MODE_LABELS: dict[str, str] = {
     "serve": "serve mode (the default)",
     "walk": "--walk",
+    "diff": "--diff",
     "check-api": "--check-api",
     "remote": "--remote",
     "plugins": "--plugins",
@@ -77,6 +81,8 @@ _OPTION_LABELS: dict[str, str] = {
     "plugins_dir": "--plugins-dir",
     "log_level": "--log-level",
     "fmt": "--format",
+    "diff_patch": "--diff-patch",
+    "diff_check": "--diff-check",
     "stream": "--stream/--all-at-once",
     "detail": "--detail",
     "max_depth": "--max-depth",
@@ -116,6 +122,7 @@ def _resolve_mode(
     ctx: typer.Context,
     *,
     walk: bool,
+    diff: str | None,
     check_api: bool,
     remote: str | None,
     plugins: bool,
@@ -127,6 +134,7 @@ def _resolve_mode(
         label
         for label, on in (
             ("--walk", walk),
+            ("--diff", diff is not None),
             ("--check-api", check_api),
             ("--remote", remote is not None),
             ("--plugins", plugins),
@@ -202,6 +210,29 @@ def _metab(
         "--walk",
         help="Walk ROOT with the inventory walker and dump the result (no server).",
         rich_help_panel=_PANEL_MODES,
+    ),
+    diff: str | None = typer.Option(
+        None,
+        "--diff",
+        metavar="SPEC",
+        help=(
+            "Show a change set: BASE..TARGET, one revision (against its first "
+            "parent), or a .patch/.diff file under ROOT."
+        ),
+        rich_help_panel=_PANEL_MODES,
+    ),
+    diff_patch: str | None = typer.Option(
+        None,
+        "--diff-patch",
+        metavar="PATH",
+        help="Print one changed file's hunks from the comparison (--diff only).",
+        rich_help_panel=_PANEL_DIFF,
+    ),
+    diff_check: bool = typer.Option(
+        False,
+        "--diff-check",
+        help="Run the apply oracle: rebuild the target tree and compare hashes (--diff only).",
+        rich_help_panel=_PANEL_DIFF,
     ),
     check_api: bool = typer.Option(
         False,
@@ -398,11 +429,12 @@ def _metab(
 
     Serving is the default: `metab .` serves the current directory and opens
     it in your browser. Select another operation with a mode flag (--walk,
-    --check-api, --remote, --plugins, --plugin, --doctor).
+    --diff, --check-api, --remote, --plugins, --plugin, --doctor).
     """
     mode = _resolve_mode(
         ctx,
         walk=walk,
+        diff=diff,
         check_api=check_api,
         remote=remote,
         plugins=plugins,
@@ -435,6 +467,15 @@ def _metab(
             max_depth=max_depth,
             max_files=max_files,
             log_level=log_level,
+        )
+    elif mode == "diff":
+        assert diff is not None
+        run_diff(
+            _require_root(ctx, root, mode),
+            spec=diff,
+            fmt=fmt,
+            patch_path=diff_patch,
+            check=diff_check,
         )
     elif mode == "check-api":
         from metabrowser.cli.check_api import run_api_check

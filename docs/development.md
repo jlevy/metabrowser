@@ -431,6 +431,32 @@ and dated research briefs under `research/`. Dated records capture rationale as 
 date and receive addenda rather than rewrites; when a research brief produces decisions
 the code must follow, extract them into a plan under `specs/active/` instead of treating
 the brief as the contract.
+
+### Architecture Documents
+
+Architecture documents are reference material, so their layout is a convention rather
+than a preference, and the parts a machine can hold are enforced by
+`tests/test_docs_discipline.py`:
+
+- **Start with the map.**
+  [Views, models, and routes](project/architecture/arch-views-models-routes.md) is the
+  index of what the browser shows, from what, and at what address; every architecture
+  document is reachable from it or from `docs/project/README.md`, and the test fails
+  when one is not.
+- **State status first.** A `**Status:**` line near the top says whether the document
+  describes what exists, what is partly built, or what is only designed.
+  It is the first thing a reader needs and the first thing to go stale.
+- **One subject per document, linked rather than repeated.** A fact belongs in exactly
+  one document; everywhere else links to it.
+  Duplicated prose is duplicated maintenance, and the copies diverge silently.
+- **A table of registered surfaces names its check.** A document that tabulates what the
+  code registers — kinds, views, routes, formats — must name the test that compares the
+  table to the code, so a reader knows the table is enforced rather than hopeful.
+  A table nothing checks is worse than no table.
+- **Update the document in the change that moves the code.** Registering a kind, view,
+  route, or format is not finished until the map and any affected document say so; the
+  tests above make that a gate rather than a habit.
+
 The public-hygiene gate rejects references to the private guidance tree and other
 non-public residue; see `devtools/public_hygiene.py` for the enforced rules.
 `make lint-check` runs it on every change, so a release needs no separate pass.
