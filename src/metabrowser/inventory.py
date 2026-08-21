@@ -107,6 +107,14 @@ _SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS = 30_000_000_000
 # Unit conversion for comparing second-based filter windows with inventory mtimes.
 _NANOSECONDS_PER_SECOND = 1_000_000_000
 
+# Clock resolution the navigation-tally memo is keyed at. The tallies depend on
+# the wall clock only through the recency cutoffs, and the shortest of those
+# windows is LIVE_FILE_WINDOW_S (90 s), so rounding the clock to a second can
+# move a file between buckets at most a second early or late. That is invisible
+# against a 90-second window, and it caps recomputation at once per second no
+# matter how many tabs ask.
+_NAVIGATION_TALLY_CLOCK_BUCKET_NS = _NANOSECONDS_PER_SECOND
+
 
 # Rollup revisions come from one process-wide sequence rather than a
 # per-instance counter. The revision is what an /api/rollup ETag is keyed on,
@@ -183,6 +191,23 @@ class InventoryIndex:
         self._root: Path | None = None
         self._entries: dict[str, FsEntry] = {}
         self._rollup_cache_lock = threading.Lock()
+        # Navigation tallies are one full pass over every file entry: 486ms at
+        # 100k on the reference machine, and the root nav request is the first
+        # one the browser makes. The pass is a pure function of the entries and
+        # the clock, so it is memoized on the index revision rather than
+        # recomputed per request.
+        #
+        # A dedicated lock, held across the computation. Not
+        # ``_rollup_cache_lock``: the walker takes that on every write, and
+        # holding it for half a second would stall the crawl. Held across the
+        # pass rather than around the dict operations because that is what makes
+        # simultaneous askers share one pass -- under the GIL, running the same
+        # aggregation N times in parallel costs N times as much as running it
+        # once, so serializing identical work loses nothing and saves N-1 of it.
+        self._navigation_tally_lock = threading.Lock()
+        # One entry. A superseded revision can never be requested again, so
+        # there is nothing to evict and nothing to bound.
+        self._navigation_tally_memo: tuple[object, NavigationTallies] | None = None
         self._rollup_generation = next(_ROLLUP_REVISIONS)
         # Per-directory subtree aggregates, retained across rollup requests.
         # Without this, every ``/api/rollup`` re-walked every file under the
@@ -434,6 +459,7 @@ class InventoryIndex:
         *,
         now_ns: int | None = None,
         entries: Sequence[FsEntry] | None = None,
+        revision: int | None = None,
     ) -> NavigationTallies:
         """
         Return root, file-type, and cumulative recency tallies in one index pass.
@@ -441,10 +467,51 @@ class InventoryIndex:
         Every row is ``[key, tracked_files, ignored_files]``. Keeping the two
         populations separate lets the browser use the same snapshot when the user
         changes whether gitignored files are shown.
+
+        Pass *revision* -- the value :meth:`rollup_revision` reported when
+        *entries* was snapshotted -- to memoize the result. The pass costs one
+        visit per file entry, so on a settled index every root request would
+        otherwise redo the same half-second of work, once per open tab. Omit it
+        for a self-contained tally.
         """
 
         snapshot = self.entries(scope="all-known") if entries is None else entries
         current_ns = time.time_ns() if now_ns is None else now_ns
+        if revision is None:
+            return self._compute_navigation_tallies(
+                presets, recency_windows, limit, current_ns, snapshot
+            )
+        # Everything the answer depends on. The bounds and the two definition
+        # sets are caller-supplied, so they belong in the key even though the
+        # server passes module constants: a key that assumed them would hand a
+        # future second caller the first one's shape.
+        key = (
+            revision,
+            limit,
+            current_ns // _NAVIGATION_TALLY_CLOCK_BUCKET_NS,
+            tuple((preset_id, tuple(sorted(values))) for preset_id, values in presets),
+            tuple(recency_windows),
+        )
+        with self._navigation_tally_lock:
+            memo = self._navigation_tally_memo
+            if memo is not None and memo[0] == key:
+                return memo[1]
+            tallies = self._compute_navigation_tallies(
+                presets, recency_windows, limit, current_ns, snapshot
+            )
+            self._navigation_tally_memo = (key, tallies)
+            return tallies
+
+    def _compute_navigation_tallies(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        recency_windows: Sequence[tuple[str, float]],
+        limit: int,
+        current_ns: int,
+        snapshot: Sequence[FsEntry],
+    ) -> NavigationTallies:
+        """One pass over *snapshot*. Pure; see :meth:`navigation_tallies`."""
+
         recency_cutoffs = [
             (key, current_ns - int(seconds * _NANOSECONDS_PER_SECOND))
             for key, seconds in recency_windows

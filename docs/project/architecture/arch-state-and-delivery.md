@@ -156,6 +156,7 @@ this reason rather than assigning into `_entries`.
 | `_aggregate_evicted_at` | directory → eviction epoch | Released once no rollup pass is in flight |
 | `_descendant_file_counts` and siblings | running per-directory totals | Adjusted per write, incrementally |
 | `_pending_dirs` | directories awaiting finalize | Post-order finalize, or end-of-walk repair |
+| `_navigation_tally_memo` | the root request’s index-wide tallies | A new revision, or a new clock second |
 
 The two structures that exist to remove per-request O(N) work follow the same rule from
 opposite directions:
@@ -499,6 +500,27 @@ Tracked as `mb-gqci` under epic `mb-48vd`, deferred with the measurements record
 because the fix breaks three internal contracts and the two cheap fixes captured the
 steady-state win.
 
+**The root request’s tally is still a full pass the first time.** `/api/tree` with an
+empty path needs the index-wide navigation tallies — extension, family, preset, and
+recency counts over every file entry.
+That pass is proportional to the index and nothing else on the request path is: measured
+at 486 ms for 100,000 entries, against a 3.8 KB response, while a 123 KB subtree
+response costs 6 ms.
+
+It is now memoized on the index revision, so the cost is paid once rather than per
+request or per tab: the root request falls from 516 ms to 4.4 ms on repeat, and clients
+arriving together share one pass rather than each running their own.
+What remains is the first request after any change — and during a crawl the revision
+moves constantly, so every root refresh while scanning pays it again.
+
+Removing it means making the tallies incremental, which is harder than the structures
+above because the recency windows move with the wall clock rather than with a write: a
+file changes recency bucket while nothing writes at all.
+The shape that would work is a per-revision sorted mtime array plus a binary search per
+window, which makes the clock-dependent part logarithmic and lets the rest be memoized
+without a clock term at all.
+Tracked as `mb-65mg`.
+
 **No admission control between foreground and background.** At a realistic interaction
 rate the crawl converges normally.
 Under sustained saturation — requests issued back-to-back with no think time — the
@@ -529,8 +551,12 @@ it is written.
 1. Every derived structure equals a from-scratch derivation from `_entries`, after
    writes and after removals.
 2. Every index write goes through `_replace_index_entry` or `_pop_index_entry`.
-3. No request path does work proportional to the index.
-   A rollup costs what changed; a tree request costs the subtree it returns.
+3. No request path *repeats* work proportional to the index.
+   A rollup costs what changed; a tree expansion costs the subtree it returns; the root
+   request’s index-wide tally is computed once per revision and reused.
+   The weaker word is deliberate — the root tally is a full pass the first time it is
+   asked for, and that is recorded in [What Is Not Solved](#what-is-not-solved) rather
+   than claimed away.
 4. The walker discovers in strict level order.
 5. An aggregate computed against data the walker has moved past is discarded, not
    published.

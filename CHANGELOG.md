@@ -40,6 +40,14 @@ Large directories:
   6.4-second walk. The scan previously followed one top-level directory to the bottom
   before looking at its siblings.
 
+- Loading the navigation tree no longer re-counts the whole index every time.
+  The counts behind the type and age filters cover every file, so they were rebuilt on
+  each request for the root of the tree — 516 ms on a 100,000-file tree, for a 4 KB
+  response, paid again by every browser tab.
+  They are now computed once per change and reused, which brings that request to 4 ms
+  and lets tabs opening together share one count.
+  Expanding a folder was already unaffected; this was the request the page makes first.
+
 - A folder’s file count can no longer settle on a number that is too high and stay
   there. A folder reads its totals from two places, and while a scan is running both are
   partial, so the one reporting more files is the one further along.

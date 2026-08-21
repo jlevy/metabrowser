@@ -237,6 +237,7 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
             *,
             now_ns: int | None = None,
             entries: Sequence[FsEntry] | None = None,
+            revision: int | None = None,
         ) -> NavigationTallies:
             if entries is None:
                 raise RuntimeError("dictionary changed size during iteration")
@@ -246,6 +247,7 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
                 limit=limit,
                 now_ns=now_ns,
                 entries=entries,
+                revision=revision,
             )
 
     original_root = paths_safe.ROOT_DIR

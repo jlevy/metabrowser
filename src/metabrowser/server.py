@@ -1249,9 +1249,16 @@ async def api_tree(request: Request) -> JSONResponse:
     tally_cache_status = inventory_status()
     if inv_can_serve and not subpath:
         # Inventory writes are owned by the event loop. Snapshot there before
-        # handing the O(index) tally pass to a worker; iterating the live dictionary
+        # handing the tally pass to a worker; iterating the live dictionary
         # off-loop races the still-running walker.
+        #
+        # The revision is read in the same loop tick as the snapshot, with no
+        # await between them, so it names exactly the entries handed over. That
+        # is what lets the pass be memoized: without it the worker could only
+        # ask for a revision that had already moved, and would cache the answer
+        # under a key that never matches.
         tally_entries = inventory.entries(scope="all-known")
+        tally_revision = inventory.rollup_revision()
         navigation_tallies = await asyncio.to_thread(
             lambda: inventory.navigation_tallies(
                 [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
@@ -1261,6 +1268,7 @@ async def api_tree(request: Request) -> JSONResponse:
                     if seconds is not None
                 ],
                 entries=tally_entries,
+                revision=tally_revision,
             )
         )
     return JSONResponse(
