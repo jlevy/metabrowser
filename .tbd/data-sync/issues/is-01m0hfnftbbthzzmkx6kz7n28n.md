@@ -5,11 +5,12 @@ title: Root /api/tree still costs O(index) via navigation_tallies
 kind: bug
 status: closed
 priority: 2
-version: 5
+version: 6
 labels: []
 dependencies: []
+parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T06:20:53.450Z
-updated_at: 2026-08-21T07:24:51.124Z
+updated_at: 2026-08-21T18:31:16.091Z
 closed_at: 2026-08-21T07:24:51.123Z
 close_reason: null
 ---

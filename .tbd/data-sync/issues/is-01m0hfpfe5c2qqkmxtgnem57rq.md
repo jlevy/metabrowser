@@ -5,11 +5,12 @@ title: Folder totals panel can latch a stale higher count and never correct
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T06:21:25.816Z
-updated_at: 2026-08-21T07:24:51.384Z
+updated_at: 2026-08-21T18:31:16.543Z
 closed_at: 2026-08-21T07:24:51.383Z
 close_reason: null
 ---

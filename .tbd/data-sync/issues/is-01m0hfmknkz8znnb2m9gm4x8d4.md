@@ -1,15 +1,16 @@
 ---
 type: is
 id: is-01m0hfmknkz8znnb2m9gm4x8d4
-title: "[task] Browser-side measurement: request consolidation and ETag behavior"
+title: "Browser-side measurement: request consolidation and ETag behavior"
 kind: task
 status: closed
 priority: 1
-version: 3
+version: 5
 labels: []
 dependencies: []
+parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T06:20:24.616Z
-updated_at: 2026-08-21T06:43:36.079Z
+updated_at: 2026-08-21T18:31:18.857Z
 closed_at: 2026-08-21T06:43:36.078Z
 close_reason: null
 ---

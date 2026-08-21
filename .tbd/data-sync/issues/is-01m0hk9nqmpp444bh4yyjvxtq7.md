@@ -5,11 +5,12 @@ title: Nav filter counts freeze mid-crawl and never refresh
 kind: bug
 status: closed
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
+parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T07:24:20.594Z
-updated_at: 2026-08-21T15:46:52.935Z
+updated_at: 2026-08-21T18:31:17.467Z
 closed_at: 2026-08-21T15:46:52.934Z
 close_reason: null
 ---

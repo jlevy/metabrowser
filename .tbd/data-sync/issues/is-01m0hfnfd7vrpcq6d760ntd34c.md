@@ -5,11 +5,12 @@ title: Eviction-epoch guard has no test; invariant 5 is unenforced
 kind: bug
 status: closed
 priority: 1
-version: 3
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T06:20:53.021Z
-updated_at: 2026-08-21T06:52:23.485Z
+updated_at: 2026-08-21T18:31:15.643Z
 closed_at: 2026-08-21T06:52:23.484Z
 close_reason: null
 ---

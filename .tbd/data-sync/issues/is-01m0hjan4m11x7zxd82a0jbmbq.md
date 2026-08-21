@@ -5,11 +5,12 @@ title: Maintain navigation tallies per write so the first root request is bounde
 kind: feature
 status: open
 priority: 3
-version: 2
+version: 3
 labels: []
 dependencies: []
+parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T07:07:24.179Z
-updated_at: 2026-08-21T07:16:55.044Z
+updated_at: 2026-08-21T18:31:17.929Z
 ---
 The root /api/tree request needs index-wide navigation tallies: extension, canonical
 extension, family, preset, and recency counts over every file entry. That pass is

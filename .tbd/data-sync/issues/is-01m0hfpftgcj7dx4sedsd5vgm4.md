@@ -5,11 +5,12 @@ title: Two rollup tests pass with their mechanism removed
 kind: task
 status: closed
 priority: 3
-version: 3
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T06:21:26.223Z
-updated_at: 2026-08-21T06:53:27.947Z
+updated_at: 2026-08-21T18:31:17.006Z
 closed_at: 2026-08-21T06:53:27.938Z
 close_reason: null
 ---
