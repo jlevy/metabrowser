@@ -4,14 +4,14 @@ id: is-01m0h1nftt0z940hj2p13rmsn1
 title: "PR #59 review R4: tbd npx fallback fails for 14 days after every tbd release"
 kind: bug
 status: open
-priority: 1
-version: 3
+priority: 3
+version: 4
 labels:
   - upstream-tbd
 dependencies: []
 parent_id: is-01m0h1neycr90x9zn2evw9vnjq
 created_at: 2026-08-21T02:16:13.402Z
-updated_at: 2026-08-21T02:28:50.102Z
+updated_at: 2026-08-21T05:40:31.292Z
 ---
 PR #59 review R4 (High). Reproduced live on 2026-08-21:
 
