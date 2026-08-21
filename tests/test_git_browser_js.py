@@ -47,20 +47,20 @@ def test_git_panel_behavior_assertions_pass() -> None:
     _run_node_suite(GIT_PANEL_TEST_JS)
 
 
-def test_node_markers_do_not_restate_the_row_background() -> None:
-    """A node's shape must not depend on the row's state.
+def test_every_vertex_is_a_solid_dot() -> None:
+    """Node shape carries no state, so no row state can change it.
 
-    The hollow centre used to be a disc painted with a copy of the row
-    background, so every row state had to restate that colour and any
-    state that did not left a filled-looking node. The hole is punched
-    now (one evenodd path), so the row's own background shows through
-    whatever it is — and no stylesheet rule may reintroduce a fill.
+    Hollow variants (a ring for HEAD, a ring around a dot for a merge)
+    took their centre fill from the row background, which is how a node
+    came to look different under hover and selection. Every vertex is
+    one filled dot now: the fill is required at the drawing site, and no
+    stylesheet rule may paint graph markers.
     """
-    css = (Path(__file__).resolve().parents[1] / "src/metabrowser/static/styles.css").read_text()
+    root = Path(__file__).resolve().parents[1]
+    css = (root / "src/metabrowser/static/styles.css").read_text()
     assert ".git-graph-svg > circle" not in css, (
         "a rule filling graph markers reintroduces state-dependent node shapes"
     )
-    graph = (
-        Path(__file__).resolve().parents[1] / "src/metabrowser/static/git_graph.js"
-    ).read_text()
-    assert 'setAttribute("fill-rule", "evenodd")' in graph, "the ring must punch a real hole"
+    graph = (root / "src/metabrowser/static/git_graph.js").read_text()
+    assert "circle.style.fill = color;" in graph, "every vertex must be filled at the draw site"
+    assert "if (color) {" not in graph, "an optional fill lets an unfilled vertex be drawn"

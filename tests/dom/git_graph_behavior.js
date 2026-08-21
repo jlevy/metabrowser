@@ -290,26 +290,17 @@ function countTags(svg, tagName) {
   const { rows } = graph.computeSwimlanes(commits, { headRevision: "m" });
 
   const headSvg = graph.renderCommitGraph(rows[0]);
-  // HEAD is a ring whose hole is a real hole — one evenodd path, no
-  // background-coloured disc — so its shape cannot change with the row
-  // state (hover, selection, or any state added later).
-  const headRing = headSvg.children.find(
-    (child) => child.tagName === "path" && child.getAttribute("fill-rule") === "evenodd",
-  );
-  assertTrue("render: HEAD draws a punched ring", Boolean(headRing));
-  assertEqual("render: HEAD adds no filled centre", countTags(headSvg, "circle"), 0);
+  // Every vertex is the same solid dot: shape carries no state, so no
+  // row state can change it. HEAD is distinguished by its lane colour.
+  assertEqual("render: HEAD draws one solid dot", countTags(headSvg, "circle"), 1);
   assertEqual("render: row is one row tall", headSvg.style.height, "22px");
   assertTrue("render: svg is class-tagged", headSvg.classNames.has("git-graph-svg"));
 
   const mergeRows = graph.computeSwimlanes(commits).rows;
   const mergeSvg = graph.renderCommitGraph(mergeRows[0]);
-  // A merge keeps its ring + dot distinction without growing beyond a
-  // plain vertex: a punched ring plus one filled centre dot.
-  const mergeRing = mergeSvg.children.find(
-    (child) => child.tagName === "path" && child.getAttribute("fill-rule") === "evenodd",
-  );
-  assertTrue("render: merge draws a punched ring", Boolean(mergeRing));
-  assertEqual("render: merge draws one centre dot", countTags(mergeSvg, "circle"), 1);
+  // A merge is the same dot as any other commit; the arcs converging on
+  // it are what make it a merge.
+  assertEqual("render: merge draws one solid dot", countTags(mergeSvg, "circle"), 1);
   // The merge fan-out is an arc; a merge drawn with only straight lines
   // would not read as a merge.
   const mergePaths = mergeSvg.children.filter((child) => child.tagName === "path");
@@ -320,23 +311,23 @@ function countTags(svg, tagName) {
 
   const plainSvg = graph.renderCommitGraph(mergeRows[1]);
   assertEqual("render: plain commit draws one circle", countTags(plainSvg, "circle"), 1);
-  // Every vertex occupies the same outer radius, whether it is drawn as
-  // a punched ring or a plain filled circle.
-  const outerRadii = [headSvg, mergeSvg, plainSvg].map((svg) => {
-    const ring = svg.children.find(
-      (child) => child.tagName === "path" && child.getAttribute("fill-rule") === "evenodd",
-    );
-    if (ring) {
-      // `M <cx - r> <cy> a <r> <r> ...` — the first arc radius is the outer one.
-      return (ring.getAttribute("d") ?? "").split(" a ")[1]?.split(" ")[0];
-    }
-    return svg.children.find((child) => child.tagName === "circle")?.getAttribute("r");
-  });
+  const outerRadii = [headSvg, mergeSvg, plainSvg].map((svg) =>
+    svg.children.find((child) => child.tagName === "circle")?.getAttribute("r"),
+  );
   assertEqual(
     "render: every vertex uses the same outer radius",
     outerRadii,
     outerRadii.map(() => `${graph.CIRCLE_RADIUS}`),
   );
+
+  for (const [label, svg] of [
+    ["HEAD", headSvg],
+    ["merge", mergeSvg],
+    ["plain", plainSvg],
+  ]) {
+    const dot = svg.children.find((child) => child.tagName === "circle");
+    assertTrue(`render: ${label} vertex is filled`, Boolean(dot?.style?.fill));
+  }
 
   const rootSvg = graph.renderCommitGraph(mergeRows[3]);
   // A root commit has no parent, so nothing is drawn below its node.

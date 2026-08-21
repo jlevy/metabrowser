@@ -55,10 +55,9 @@
   const SWIMLANE_MIDLINE = SWIMLANE_HEIGHT / 2;
   const SWIMLANE_CURVE_RADIUS = 5;
   // Marker geometry deliberately diverges from upstream: topology is
-  // expressed by the lanes, while concentric shapes carry node state.
+  // expressed by the lanes, and every vertex is the same solid dot.
   const CIRCLE_RADIUS = 3;
   const CIRCLE_STROKE_WIDTH = 2;
-  const CIRCLE_CENTER_RADIUS = 1;
 
   const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -270,11 +269,17 @@
   }
 
   /**
+   * A vertex: a filled dot in its lane's colour.
+   *
+   * The colour is required. It used to be optional, for a hollow inner
+   * circle that took its fill from CSS — which is how a node's shape
+   * came to depend on the row's state; an unfilled circle now cannot be
+   * drawn by accident.
+   *
    * @param {number} index Lane index.
    * @param {number} radius
    * @param {number} strokeWidth
-   * @param {string} [color] Omitted for the hollow inner circle, whose
-   *   fill comes from CSS so it matches the row background.
+   * @param {string} color
    * @returns {SVGCircleElement}
    */
   function drawCircle(index, radius, strokeWidth, color) {
@@ -283,59 +288,7 @@
     circle.setAttribute("cy", `${SWIMLANE_MIDLINE}`);
     circle.setAttribute("r", `${radius}`);
     circle.style.strokeWidth = `${strokeWidth}px`;
-    if (color) {
-      circle.style.fill = color;
-    }
-    return circle;
-  }
-
-  /**
-   * A ring with a real hole: one path, two subpaths, `evenodd`.
-   *
-   * The hole used to be a smaller circle filled with a copy of the row
-   * background, which meant every row state (hover, selected, and any
-   * state added later) had to restate that colour or the marker showed
-   * a wrong-coloured disc — a node that changed shape with the
-   * highlight. Punching the hole makes the row's own background show
-   * through whatever it is, so shape encodes commit state and nothing
-   * else.
-   *
-   * @param {number} index
-   * @param {number} outerRadius
-   * @param {number} innerRadius
-   * @param {string} color
-   * @returns {SVGPathElement}
-   */
-  function drawRing(index, outerRadius, innerRadius, color) {
-    const path = document.createElementNS(SVG_NAMESPACE, "path");
-    const cx = SWIMLANE_WIDTH * (index + 1);
-    const cy = SWIMLANE_MIDLINE;
-    const circle = (/** @type {number} */ radius) =>
-      [
-        `M ${cx - radius} ${cy}`,
-        `a ${radius} ${radius} 0 1 0 ${radius * 2} 0`,
-        `a ${radius} ${radius} 0 1 0 ${-radius * 2} 0`,
-      ].join(" ");
-    path.setAttribute("d", `${circle(outerRadius)} ${circle(innerRadius)}`);
-    path.setAttribute("fill-rule", "evenodd");
-    path.style.fill = color;
-    return path;
-  }
-
-  /**
-   * @param {number} index
-   * @param {number} strokeWidth
-   * @param {string} color
-   * @returns {SVGCircleElement}
-   */
-  function drawDashedCircle(index, strokeWidth, color) {
-    const circle = document.createElementNS(SVG_NAMESPACE, "circle");
-    circle.setAttribute("cx", `${SWIMLANE_WIDTH * (index + 1)}`);
-    circle.setAttribute("cy", `${SWIMLANE_MIDLINE}`);
-    circle.setAttribute("r", `${CIRCLE_RADIUS - CIRCLE_CENTER_RADIUS}`);
-    circle.style.stroke = color;
-    circle.style.strokeWidth = `${strokeWidth}px`;
-    circle.style.strokeDasharray = "4,2";
+    circle.style.fill = color;
     return circle;
   }
 
@@ -514,43 +467,22 @@
   }
 
   /**
-   * Draw the node itself. Four variants, each visually distinct at a
-   * glance: HEAD, incoming/outgoing changes, a merge, and a plain commit.
+   * Draw the node itself: one filled dot, the same shape for every
+   * commit.
+   *
+   * Shape used to encode state — a ring for HEAD, a ring around a dot
+   * for a merge — but at this size the variants read as noise rather
+   * than meaning, and a reader scanning lanes cannot tell a deliberate
+   * ring from a rendering artifact. State that matters is carried where
+   * it is legible: HEAD by its lane colour, a merge by the arcs
+   * converging on it.
    *
    * @param {SVGSVGElement} svg
-   * @param {MetabrowserGitGraphRow} row
+   * @param {MetabrowserGitGraphRow} _row
    * @param {number} circleIndex
    * @param {string} circleColor
    */
-  function appendCommitNode(svg, row, circleIndex, circleColor) {
-    if (row.kind === "HEAD") {
-      // A ring: the hole is a hole, so it reads the same on every row
-      // state.
-      svg.append(drawRing(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
-      return;
-    }
-
-    // Not produced yet — incoming/outgoing rows are a non-goal for this
-    // version — but kept so adding them is a data change, not a
-    // renderer change.
-    if (row.kind === "incoming-changes" || row.kind === "outgoing-changes") {
-      svg.append(
-        drawRing(circleIndex, CIRCLE_RADIUS, CIRCLE_RADIUS - CIRCLE_CENTER_RADIUS, circleColor),
-      );
-      svg.append(
-        drawDashedCircle(circleIndex, CIRCLE_STROKE_WIDTH - CIRCLE_CENTER_RADIUS, circleColor),
-      );
-      return;
-    }
-
-    if (row.commit.parent_ids.length > 1) {
-      // Merge: a ring around a smaller filled dot, kept inside the same
-      // outer radius as every other vertex.
-      svg.append(drawRing(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
-      svg.append(drawCircle(circleIndex, CIRCLE_CENTER_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
-      return;
-    }
-
+  function appendCommitNode(svg, _row, circleIndex, circleColor) {
     svg.append(drawCircle(circleIndex, CIRCLE_RADIUS, CIRCLE_STROKE_WIDTH, circleColor));
   }
 

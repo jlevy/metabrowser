@@ -933,9 +933,12 @@
   --git-ref-local: var(--status-info);
   --git-ref-remote: hsl(265 75% 58%);
   --git-ref-tag: hsl(38 92% 40%);
-  /* Branch and tag chips carry their own very pale warm ground, so a ref
-     never reads as a filter chip. */
-  --git-ref-bg: oklch(95.5% 0.035 75);
+  /* Branch and tag chips carry their own ground, so a ref never reads as
+     a filter chip: a tan at the same value as the neighbouring sunken
+     surface, with just enough chroma to register as warm. Sitting near
+     the surface chroma (~0.008) rather than above it is what keeps it a
+     tint instead of a highlight. */
+  --git-ref-bg: oklch(96.5% 0.014 82);
 }
 
 [data-theme="dark"] {
@@ -1069,7 +1072,7 @@
      values are text on a dark surface here, not fills on a light one. */
   --git-ref-remote: hsl(265 75% 74%);
   --git-ref-tag: hsl(38 92% 62%);
-  --git-ref-bg: oklch(32% 0.04 70);
+  --git-ref-bg: oklch(27% 0.016 82);
 }
 
 .mb-distribution-slot-1 {
