@@ -3,9 +3,9 @@ type: is
 id: is-01m0jt1hr4r6yqhgxkv0bpyayj
 title: "Reconcile PR #60 nav filtering with #59's tree and tally work"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 7
+version: 8
 assignee: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -16,7 +16,9 @@ child_order_hints:
   - is-01m0jt3enztskcdvmnkb4pdtyc
   - is-01m0jt3f1hdn6aqt75q7ct5bpn
 created_at: 2026-08-21T18:41:28.834Z
-updated_at: 2026-08-21T18:49:28.232Z
+updated_at: 2026-08-21T19:05:29.879Z
+closed_at: 2026-08-21T19:05:29.878Z
+close_reason: "R1-R4 fixed in 20a0dbb, R5 deferred as agreed. main merged, CI green on all five jobs, disposition map posted to PR #60."
 ---
 PR #60 (nav tree filtering) branched from de6dff96, before #59 merged as b72f807. The two
 touch the same four files, and a trial merge shows the seam is where the risk is, not
