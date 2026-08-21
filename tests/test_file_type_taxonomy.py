@@ -69,8 +69,8 @@ def test_projected_families_track_the_registry() -> None:
 def test_catalog_validation_rejects_duplicate_members() -> None:
     categories = (FileTypeCategory("code", "Code", ()),)
     families = (
-        FileTypeFamily("first", "First", "code", (".x",)),
-        FileTypeFamily("second", "Second", "code", (".x",)),
+        FileTypeFamily("first", "First", "code", (".x",), 12.5),
+        FileTypeFamily("second", "Second", "code", (".x",), 200.0),
     )
     try:
         validate_file_type_taxonomy(categories, families)
@@ -86,7 +86,7 @@ def test_catalog_validation_rejects_duplicate_members() -> None:
     try:
         validate_file_type_taxonomy(
             overlapping_categories,
-            (FileTypeFamily("first", "First", "code", (".x",)),),
+            (FileTypeFamily("first", "First", "code", (".x",), 12.5),),
         )
     except ValueError as error:
         assert "both a family member and category-only value" in str(error)
@@ -99,7 +99,7 @@ def test_client_settings_publish_one_authoritative_registry() -> None:
     assert "FILE_TYPE_TAXONOMY" not in settings
     registry = settings["FILE_TYPE_REGISTRY"]
     assert isinstance(registry, dict)
-    assert registry["schema"] == "file-type-registry-v1"
+    assert registry["schema"] == "file-type-registry-v2"
 
 
 def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:
@@ -107,3 +107,25 @@ def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:
     html = bytes(response.body).decode()
     assert "/static/file_type_taxonomy.js?v=" in html
     assert html.index("/static/file_type_taxonomy.js") < html.index("/static/plugin_sdk.js")
+
+
+def test_distribution_colors_cover_every_family_on_both_themes() -> None:
+    """The browser gets finished colors, not hues, because the chroma pullback
+    cannot happen in CSS without moving hue. This is the join between the
+    registry's hue and the theme's tone, and nothing else may add a family."""
+
+    from metabrowser.color_oklch import DARK_THEME, LIGHT_THEME
+    from metabrowser.file_type_filters import serialize_distribution_colors
+    from metabrowser.file_type_registry import load_file_type_registry
+
+    families = load_file_type_registry().families
+    colors = serialize_distribution_colors()
+    assert [entry["key"] for entry in colors] == [family.distribution_key for family in families]
+    for family, entry in zip(families, colors, strict=True):
+        assert entry["light"] == LIGHT_THEME.at(family.hue).css()
+        assert entry["dark"] == DARK_THEME.at(family.hue).css()
+        # Every color states the theme's lightness, whatever chroma sRGB allowed.
+        assert entry["light"].startswith(f"oklch({LIGHT_THEME.lightness * 100:.2f}%")
+        assert entry["dark"].startswith(f"oklch({DARK_THEME.lightness * 100:.2f}%")
+        assert entry["light"].endswith(f"{family.hue:.2f})")
+        assert entry["dark"].endswith(f"{family.hue:.2f})")

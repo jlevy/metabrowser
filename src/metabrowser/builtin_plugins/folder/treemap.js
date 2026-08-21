@@ -23,12 +23,12 @@ import {
 import { layoutTree } from "./treemap_layout.js";
 import { parentNavigation } from "./treemap_model.js";
 
-/** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} TreemapPalette */
+/** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
 
-/** @param {MetabrowserPublicSdk} mb @param {TreemapPalettePool} palettePool @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
-export function registerTreemap(mb, palettePool, rollupControls) {
+/** @param {MetabrowserPublicSdk} mb @param {TreemapPalette} palette @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
+export function registerTreemap(mb, palette, rollupControls) {
   const TREEMAP_VIEW_ID = "treemap";
   /** Minimum paint thresholds; type size itself comes from cell geometry. */
   const LABEL_MIN_W = 56;
@@ -43,21 +43,25 @@ export function registerTreemap(mb, palettePool, rollupControls) {
   const VIEWPORT_BOTTOM_RESERVE = 64;
 
   /**
-   * File-type class for a cell: real path for files, a synthetic name
-   * carrying the dominant extension for directories.
+   * The distribution key for a cell: the family behind a file's extension, and
+   * the neutral fallback for the remainder cell that stands for what did not
+   * fit.
    * @param {Record<string, any>} cell
-   * @param {{classFor: (key: string) => string}} palette
    * @returns {string}
    */
-  function typeFillClass(cell, palette) {
+  function cellPaletteKey(cell) {
     const extension = cell.ext || "(none)";
-    const key = cell.kind === "rest" ? "" : mb.fileTypes.distributionKeyForExtension(extension);
-    return palette.classFor(key);
+    return cell.kind === "rest" ? "" : mb.fileTypes.distributionKeyForExtension(extension);
   }
 
-  /** @param {Record<string, any>} cell @param {TreemapState} state @param {{classFor: (key: string) => string}} palette */
-  function cellClasses(cell, state, palette) {
-    const cls = ["tm-cell", `tm-${cell.kind}`, "tm-type-fill", typeFillClass(cell, palette)];
+  /** @param {Record<string, any>} cell @param {TreemapState} state */
+  function cellClasses(cell, state) {
+    const cls = [
+      "tm-cell",
+      `tm-${cell.kind}`,
+      "tm-type-fill",
+      palette.classFor(cellPaletteKey(cell)),
+    ];
     if (cellIsActionable(cell)) {
       cls.push("tm-actionable");
     }
@@ -115,13 +119,12 @@ export function registerTreemap(mb, palettePool, rollupControls) {
    * @param {Record<string, any>} cell
    * @param {TreemapState} state
    * @param {number} index
-   * @param {TreemapPalette} palette
    */
-  function cellHtml(cell, state, index, palette) {
+  function cellHtml(cell, state, index) {
     const style =
       `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
       `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px;` +
-      `--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px`;
+      `--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px;`;
     const labelLineHeight = cell.labelPx * 1.2;
     const valueLineHeight = cell.valuePx * 1.2;
     const showLabel = cell.w >= LABEL_MIN_W && cell.h >= Math.max(LABEL_MIN_H, labelLineHeight + 2);
@@ -161,9 +164,9 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
       : ` role="group" aria-label="${aria}"`;
     return (
-      `<div class="${cellClasses(cell, state, palette)}"${outerAttrs}` +
+      `<div class="${cellClasses(cell, state)}"${outerAttrs}` +
       ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
-      ` style="${style}">${label}</div>`
+      ` style="${style}${palette.styleFor(cellPaletteKey(cell))}">${label}</div>`
     );
   }
 
@@ -220,7 +223,6 @@ export function registerTreemap(mb, palettePool, rollupControls) {
   function renderTreemap(container, ctx) {
     /** @type {TreemapState} */
     let state = rollupControls.get();
-    const palette = palettePool.acquire(ctx.path || "");
     /** @type {Record<string, any> | null} */
     let envelope = null;
     /** @type {Record<string, any>[]} */
@@ -367,7 +369,7 @@ export function registerTreemap(mb, palettePool, rollupControls) {
           includeIgnored: state.includeIgnored,
         },
       );
-      const html = cells.map((cell, i) => cellHtml(cell, state, i, palette)).join("");
+      const html = cells.map((cell, i) => cellHtml(cell, state, i)).join("");
       viewport.innerHTML =
         html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
       // Roving tabindex over actionable cells only (dir/file); ext and
@@ -501,16 +503,6 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         totalsView.update(normalizeFolderTotals(env.node));
       }
       const breakdown = env.file_type_breakdown;
-      palette.sync(
-        breakdown
-          ? [
-              ...breakdown.groups.flatMap((group) =>
-                group.families.map((family) => `family:${family.id}`),
-              ),
-              ...breakdown.remaining_types.extensions.map((row) => row.extension),
-            ]
-          : [],
-      );
       try {
         totalsEnvelope = breakdown ? normalizeRollupEnvelope(env) : null;
       } catch (error) {
@@ -570,7 +562,6 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         resizeObserver.disconnect();
       }
       mb.tooltip.hide();
-      palette.release();
     };
     return Object.freeze({ dispose });
   }

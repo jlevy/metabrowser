@@ -141,6 +141,10 @@ type MetabrowserFileTypeFamily = Readonly<{
   category: MetabrowserFileTypeCategoryId;
   order: number;
   extensions: ReadonlyArray<string>;
+  /** The family's color, in oklch hue degrees; the theme supplies the rest. */
+  hue: number;
+  /** GitHub linguist language the hue came from, or null for a chosen hue. */
+  linguist: string | null;
 }>;
 
 type MetabrowserFileTypeKind = Readonly<{
@@ -173,13 +177,13 @@ type MetabrowserFileTypeFamilyMatch = Readonly<{
 }>;
 
 type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
-  schema: "file-type-registry-v1";
-  schemaVersion: 1;
+  schema: "file-type-registry-v2";
+  schemaVersion: 2;
   revision: number;
   fingerprint: string;
   maxExtensionComponents: 2;
   registryIdentity: Readonly<{
-    schemaVersion: 1;
+    schemaVersion: 2;
     revision: number;
     fingerprint: string;
   }>;
@@ -191,6 +195,7 @@ type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
   canonicalExtension(extension: unknown): string;
   groupForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
   distributionKeyForExtension(extension: unknown): string;
+  hueForDistributionKey(key: unknown): number | null;
 }>;
 
 type MetabrowserInventoryWatch = Readonly<{
@@ -1528,9 +1533,11 @@ declare global {
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
+      /** Each family's distribution key with its color on each theme. */
+      DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;
       FILE_TYPE_REGISTRY?: {
-        schema: "file-type-registry-v1";
-        schema_version: 1;
+        schema: "file-type-registry-v2";
+        schema_version: 2;
         revision: number;
         fingerprint: string;
         max_extension_components: 2;
@@ -1541,6 +1548,8 @@ declare global {
           group_id: string;
           order: number;
           extensions: Array<string>;
+          hue: number;
+          linguist: string | null;
         }>;
         kinds: Array<{
           id: string;
@@ -1579,7 +1588,6 @@ declare global {
       ROLLUP_FILE_TYPE_REMAINING_LIMIT?: number;
       ROLLUP_DEFAULT_TOP?: number;
       ROLLUP_WATCH_DEBOUNCE_MS?: number;
-      DISTRIBUTION_PALETTE_SLOTS?: number;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
       TEXT_PREVIEW_CHUNK_BYTES?: number;
       TEXT_PREVIEW_MAX_CHUNK_BYTES?: number;

@@ -935,27 +935,52 @@ It is distinct from the broad `ft-*` identity system: several exact extensions m
 intentionally share one file icon, while semantic families such as JavaScript and YAML
 need stable distribution identities of their own.
 
-The component uses a bounded light/dark categorical palette, a neutral **Other** token,
-a track token, and a named track-height token.
-Consumers select palette classes; they do not copy color literals or set theme colors
-inline. Inline percentage widths are allowed because they encode data rather than theme.
+The component uses a declared categorical palette, a neutral **Other** token, a track
+token, and a named track-height token.
+Consumers apply the palette through `category_palette.js`; they do not copy color
+literals or compose colors themselves.
+Inline percentage widths are allowed because they encode data rather than theme.
 
-The token family is `--mb-distribution-category-1` through
-`--mb-distribution-category-12`, plus `--mb-distribution-other`,
-`--mb-distribution-track`, `--mb-distribution-track-height`, and
-`--mb-distribution-segment-gap`. The segment-gap token remains available to consumers
-that place categorical segments beside one another.
-Shared `.mb-distribution-slot-*` and `.mb-distribution-other` utility classes map those
-tokens to a component color variable.
+#### The categorical palette
+
+A file-type family owns one number: its hue, declared in the type registry (see
+[Family Fields](project/architecture/file-rollup-format/file-rollup-format.md#family-fields)).
+Where GitHub’s linguist names a color for the language, the hue is that color’s,
+unchanged; families GitHub names no color for take a hue clear of every other.
+That is what makes the palette recognizable — Ruby is red because Ruby is red
+everywhere.
+
+Lightness and chroma are not the family’s. Each theme states one pair for the whole set,
+in `color_oklch.py`, so two segments of a stacked bar differ in hue and in nothing else
+and no segment looks heavier than its size.
+Chroma is a target rather than a constant: it is set high enough to stay vivid, above
+what sRGB holds at every hue, so the cyan-blue band comes in under it.
+That pullback happens in Python, not in CSS, because a browser handed an out-of-gamut
+`oklch()` clips it — moving lightness and hue by as much as nine degrees, more than the
+separation the palette is built on.
+
+The server therefore ships finished colors.
+`METABROWSER_SETTINGS.DISTRIBUTION_COLORS` carries each family’s distribution key with
+its color on both themes, and `category_palette.js` writes both onto the element as
+`--mb-distribution-color-light` and `--mb-distribution-color-dark`.
+`.mb-distribution-mark` selects between them by theme and `.mb-distribution-other` takes
+the neutral, so a theme change is a selector switch rather than a repaint.
+The remaining tokens are `--mb-distribution-other`, `--mb-distribution-track`,
+`--mb-distribution-track-height`, and `--mb-distribution-segment-gap`; the segment-gap
+token remains available to consumers that place categorical segments beside one another.
 Core owns these tokens and utilities; the folder plugin owns File types and Treemap
 layout selectors.
 
-When a selected metric changes, the table keeps the same category set and color map.
+`make lint` runs `devtools/check_file_type_colors.py`, which holds the upstream
+correspondence, the separation floor, and the tone.
+Adding a family GitHub has no color for starts with `--suggest`, which prints the widest
+free hue.
+
+When a selected metric changes, the table keeps the same category set and colors.
 The active measure controls values, percentage widths, emphasis classes, and row order
-as one update. Categories keep their assigned slot for the mounted folder even when live
-updates change rank, and Other stays last and neutral.
-A related visualization, such as the extension-colored Treemap for that folder, reuses
-the same mounted mapping when both views exist.
+as one update, and Other stays last and neutral.
+A family’s color does not depend on which folder is open or which views are mounted, so
+a related visualization such as the Treemap agrees with the table without coordinating.
 
 The semantic table is the visual summary and the source of exact values.
 Every row names its category and reports absolute values and percentages; the colored
@@ -1048,7 +1073,7 @@ be some other share of both bars above it.
 With Total present, one of the three tracks always matches the distribution: Total while
 Show ignored is on, Files while it is off.
 Its full-width track is segmented by the top-level semantic file types in the type
-distribution below and reuses their mounted palette assignments.
+distribution below and carries their declared colors.
 The segments follow registry group order and then descend by the selected Files or Bytes
 measure within each group.
 Sorting uses the combined population, which is the one basis all three rows share and
@@ -1137,9 +1162,10 @@ intact.
 
 There is no separate color selector.
 Every file maps its exact extension through the taxonomy’s distribution key, every
-folder maps its dominant extension through the same helper, and remainder cells use the
-neutral Other slot. The File types panel and Treemap acquire the same per-folder palette
-session, so a semantic family keeps the same color across both views.
+folder maps its dominant extension through the same helper, and remainder cells take the
+neutral Other color.
+The File types panel and Treemap read the same declared palette, so a semantic family
+keeps the same color across both views and across folders.
 Modification age remains available in the tooltip; it does not compete with file type as
 a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base

@@ -16,6 +16,7 @@ from strif import atomic_output_file
 
 from metabrowser.events import FsEntry
 from metabrowser.file_type_registry import (
+    FILE_TYPE_REGISTRY_SCHEMA_VERSION,
     FileTypeClassification,
     load_file_type_registry,
 )
@@ -144,7 +145,7 @@ def _aggregate_cases() -> list[dict[str, object]]:
 def _minimal_registry() -> str:
     return dedent(
         """
-        schema_version = 1
+        schema_version = 2
         registry_revision = 1
         max_extension_components = 2
 
@@ -163,6 +164,9 @@ def _minimal_registry() -> str:
         label = "Python"
         group = "code"
         order = 10
+        linguist = "Python"
+        linguist_color = "#3572a5"
+        hue = 246.50
 
         [[kind]]
         id = "python"
@@ -199,13 +203,14 @@ def _invalid_registry_cases() -> list[dict[str, str]]:
         label = "Empty"
         group = "code"
         order = 30
+        hue = 12.5
         """
     )
     raw_cases = (
         ("invalid-toml", "not = [valid", "invalid-toml"),
         (
             "unsupported-schema",
-            base.replace("schema_version = 1", "schema_version = 2"),
+            base.replace("schema_version = 2", "schema_version = 3"),
             "unsupported-schema-version",
         ),
         (
@@ -250,6 +255,12 @@ def _invalid_registry_cases() -> list[dict[str, str]]:
             "invalid-extension",
         ),
         ("duplicate-evidence", base + duplicate_kind, "duplicate-evidence"),
+        ("invalid-hue", base.replace("hue = 246.50", "hue = 361.0"), "invalid-hue"),
+        (
+            "linguist-without-color",
+            base.replace('linguist_color = "#3572a5"\n', ""),
+            "invalid-linguist",
+        ),
         (
             "familyless-kind-without-group",
             base
@@ -497,7 +508,7 @@ def verify_packet(destination: Path) -> None:
         raise RuntimeError("File Rollup Format packet manifest has an unsupported schema")
     if not isinstance(manifest.get("source_revision"), str) or not manifest["source_revision"]:
         raise RuntimeError("File Rollup Format packet manifest has an invalid source revision")
-    if manifest.get("registry_schema_version") != 1:
+    if manifest.get("registry_schema_version") != FILE_TYPE_REGISTRY_SCHEMA_VERSION:
         raise RuntimeError("File Rollup Format packet manifest has an unsupported registry schema")
     if (
         not isinstance(manifest.get("registry_revision"), int)

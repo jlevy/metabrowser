@@ -42,6 +42,14 @@
   }
 
   /** @param {unknown} value @param {string} label */
+  function hueValue(value, label) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value >= 360) {
+      throw new TypeError(`${label} must be a hue in [0, 360) degrees`);
+    }
+    return value;
+  }
+
+  /** @param {unknown} value @param {string} label */
   function stringArray(value, label) {
     if (!Array.isArray(value)) {
       throw new TypeError(`${label} must be an array`);
@@ -72,7 +80,7 @@
   /** @param {unknown} rawRegistry */
   function createRuntime(rawRegistry) {
     const raw = objectValue(rawRegistry, "FILE_TYPE_REGISTRY");
-    if (raw.schema !== "file-type-registry-v1" || raw.schema_version !== 1) {
+    if (raw.schema !== "file-type-registry-v2" || raw.schema_version !== 2) {
       throw new TypeError("unsupported file-type registry schema");
     }
     const revision = integerValue(raw.revision, "file-type registry revision");
@@ -134,6 +142,12 @@
         category: groupId,
         order: integerValue(value.order, `order for ${id}`),
         extensions,
+        // The family's whole color. Lightness and chroma live in the
+        // stylesheet, one pair per theme, so a family is a hue and nothing
+        // else — see color_oklch.py for why that is the entire rule.
+        hue: hueValue(value.hue, `hue for ${id}`),
+        linguist:
+          value.linguist === null ? null : stringValue(value.linguist, `linguist for ${id}`),
       });
     });
     const familiesById = new Map(families.map((family) => [family.id, family]));
@@ -314,15 +328,28 @@
       return family ? `${FAMILY_KEY_PREFIX}${family.id}` : normalized;
     }
 
+    /**
+     * The hue for a distribution key, or null where there is no family behind
+     * it — the remaining-types bucket and the extensions inside it, which the
+     * palette colors on its own.
+     * @param {unknown} key
+     */
+    function hueForDistributionKey(key) {
+      if (typeof key !== "string" || !key.startsWith(FAMILY_KEY_PREFIX)) {
+        return null;
+      }
+      return familiesById.get(key.slice(FAMILY_KEY_PREFIX.length))?.hue ?? null;
+    }
+
     const frozenGroups = Object.freeze(groups);
     const frozenFamilies = Object.freeze(families);
     return Object.freeze({
-      schema: "file-type-registry-v1",
-      schemaVersion: 1,
+      schema: "file-type-registry-v2",
+      schemaVersion: 2,
       revision,
       fingerprint,
       maxExtensionComponents,
-      registryIdentity: Object.freeze({ schemaVersion: 1, revision, fingerprint }),
+      registryIdentity: Object.freeze({ schemaVersion: 2, revision, fingerprint }),
       groups: frozenGroups,
       families: frozenFamilies,
       kinds: Object.freeze(kinds),
@@ -331,6 +358,7 @@
       canonicalExtension,
       groupForFile,
       distributionKeyForExtension,
+      hueForDistributionKey,
     });
   }
 

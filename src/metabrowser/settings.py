@@ -21,6 +21,7 @@ from typing import Any
 
 from metabrowser.file_type_filters import (
     FILTER_TYPE_PRESETS,
+    serialize_distribution_colors,
     serialize_file_type_registry,
 )
 
@@ -223,7 +224,6 @@ ROLLUP_MAX_EXT_TOP = 32
 ROLLUP_DEFAULT_EXT_RANK = "bytes"
 ROLLUP_FILE_TYPE_FILENAME_LIMIT = 20
 ROLLUP_FILE_TYPE_REMAINING_LIMIT = 20
-DISTRIBUTION_PALETTE_SLOTS = 12
 FOLDER_DISCOVERY_MAX_ENTRIES = 4_096
 
 # Global emission budget for one rollup response. ``top`` bounds a
@@ -322,6 +322,7 @@ def client_settings_dict() -> dict[str, Any]:
 
     return {
         "FILE_TYPE_REGISTRY": serialize_file_type_registry(),
+        "DISTRIBUTION_COLORS": serialize_distribution_colors(),
         "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
@@ -344,7 +345,6 @@ def client_settings_dict() -> dict[str, Any]:
         "ROLLUP_DEFAULT_EXT_RANK": ROLLUP_DEFAULT_EXT_RANK,
         "ROLLUP_FILE_TYPE_FILENAME_LIMIT": ROLLUP_FILE_TYPE_FILENAME_LIMIT,
         "ROLLUP_FILE_TYPE_REMAINING_LIMIT": ROLLUP_FILE_TYPE_REMAINING_LIMIT,
-        "DISTRIBUTION_PALETTE_SLOTS": DISTRIBUTION_PALETTE_SLOTS,
         "ROLLUP_WATCH_DEBOUNCE_MS": ROLLUP_WATCH_DEBOUNCE_MS,
         "DIFF_FOLD_THRESHOLD": DIFF_FOLD_THRESHOLD,
         "DIFF_FOLD_VISIBLE": DIFF_FOLD_VISIBLE,
@@ -358,7 +358,6 @@ __all__ = [
     "ACTIVE_TRACKER_QUIET_POLLS",
     "DEFAULT_BROWSER_PORT",
     "DEFAULT_EXECUTOR_WORKERS",
-    "DISTRIBUTION_PALETTE_SLOTS",
     "FOLDER_DISCOVERY_MAX_ENTRIES",
     "GIT_COMMIT_MAX_FILES",
     "GIT_DETAIL_CACHE_SIZE",

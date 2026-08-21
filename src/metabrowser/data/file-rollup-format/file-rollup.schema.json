@@ -41,7 +41,7 @@
       "type": "object",
       "required": ["schema_version", "revision", "fingerprint"],
       "properties": {
-        "schema_version": { "const": 1 },
+        "schema_version": { "type": "integer", "minimum": 1 },
         "revision": { "type": "integer", "minimum": 1 },
         "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       }

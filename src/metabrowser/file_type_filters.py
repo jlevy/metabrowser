@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import TypedDict
 
+from metabrowser.color_oklch import DARK_THEME, LIGHT_THEME
 from metabrowser.file_type_registry import (
     FILE_TYPE_FAMILY_KEY_PREFIX,
     FILE_TYPE_NO_EXTENSION_KEY,
@@ -34,12 +35,13 @@ class FileTypeCategory:
 
 @dataclass(frozen=True, slots=True)
 class FileTypeFamily:
-    """A readable semantic type and its canonical extension suffixes."""
+    """A readable semantic type, its canonical extension suffixes, and its hue."""
 
     id: str
     label: str
     category: str
     extensions: tuple[str, ...]
+    hue: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +80,7 @@ FILE_TYPE_FAMILIES: tuple[FileTypeFamily, ...] = tuple(
         label=family.label,
         category=family.group_id,
         extensions=family.extensions,
+        hue=family.hue,
     )
     for family in _REGISTRY.families
 )
@@ -225,6 +228,31 @@ def serialize_file_type_registry() -> dict[str, object]:
     return _REGISTRY.projection()
 
 
+def serialize_distribution_colors() -> list[dict[str, str]]:
+    """Return each family's distribution key with its color on each theme.
+
+    The registry declares a hue and stops there, because a hue is tool-neutral
+    and a theme's lightness is not. This is where the two meet, and it is
+    deliberately here rather than in the browser: sRGB cannot hold the target
+    chroma at every hue, something has to pull it back, and a browser asked to
+    paint an out-of-gamut ``oklch()`` clips it — moving hue by as much as nine
+    degrees, which is more than the separation the palette is built on. Pulling
+    chroma back here keeps every hue exactly where it was declared.
+
+    Ordered by the registry, so a consumer with a key the registry does not
+    know can index into the list rather than inventing a color.
+    """
+
+    return [
+        {
+            "key": family.distribution_key,
+            "light": LIGHT_THEME.at(family.hue).css(),
+            "dark": DARK_THEME.at(family.hue).css(),
+        }
+        for family in _REGISTRY.families
+    ]
+
+
 __all__ = [
     "FILE_TYPE_CATEGORIES",
     "FILE_TYPE_FAMILIES",
@@ -240,6 +268,7 @@ __all__ = [
     "category_for_file",
     "distribution_key_for_extension",
     "family_for_extension",
+    "serialize_distribution_colors",
     "serialize_file_type_registry",
     "validate_file_type_taxonomy",
 ]

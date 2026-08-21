@@ -53,7 +53,7 @@ function normalizeBreakdown(raw) {
       ? /** @type {Record<string, unknown>} */ (value.registry)
       : null;
   if (
-    registry?.schema_version !== 1 ||
+    registry?.schema_version !== 2 ||
     !Number.isInteger(registry.revision) ||
     typeof registry.fingerprint !== "string"
   ) {

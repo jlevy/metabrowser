@@ -328,7 +328,7 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
       }
       rowHandle.tr.id = controlledRowId(handle, row.key);
       rowHandle.tr.classList?.toggle("file-type-summary-child-row", row.child === true);
-      const colorClass = handle.palette.classFor(row.paletteKey ?? row.key);
+      const paletteKey = row.paletteKey ?? row.key;
       const extension = row.extension || (row.key.startsWith(".") ? row.key : null);
       const iconPath = row.iconPath || (extension ? `x${extension}` : "file");
       const showIcon = Boolean(extension) || row.kind === "filename";
@@ -372,7 +372,10 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
         isFiles ? row.filesText : row.bytesText,
         handle.metricClasses,
       );
-      rowHandle.metricFill.className = `file-type-summary-fill ${colorClass}`;
+      rowHandle.metricFill.className = "file-type-summary-fill";
+      // After the class assignment above, which would otherwise drop the
+      // neutral class paint adds for a segment with no family behind it.
+      handle.palette.paint(rowHandle.metricFill, paletteKey);
       rowHandle.metricFill.style.width = `${isFiles ? row.fileShare : row.byteShare}%`;
       rowHandle.metricPercent.textContent = isFiles ? row.filePercent : row.bytePercent;
       group.body.append(rowHandle.tr);
@@ -394,7 +397,7 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
 
 /** @typedef {{id: string, label: string}} SummaryGroup */
 /** @typedef {{key: string, rawKey?: string | null, extension?: string | null, iconPath?: string | null, label: string, category: string, kind?: string, child?: boolean, paletteKey?: string, disclosable?: boolean, children?: ReadonlyArray<SummaryRow>, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
-/** @typedef {{classFor: (key: string) => string}} Palette */
+/** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} Palette */
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
 /** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, groups?: ReadonlyArray<SummaryGroup>, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */

@@ -310,16 +310,17 @@ sandbox.MetabrowserFileTypes = {
 };
 vm.runInContext(
   `registerTreemap(metabrowser, {
-    acquire() {
-      return {
-        sync() {}, release() {},
-        classFor(key) {
-          if (key === "family:python") return "mb-distribution-slot-7";
-          if (key === "family:markdown") return "mb-distribution-slot-3";
-          return key ? "mb-distribution-slot-1" : "mb-distribution-other";
-        }
-      };
-    }
+    classFor(key) {
+      return key ? "mb-distribution-mark" : "mb-distribution-other";
+    },
+    styleFor(key) {
+      if (key === "family:python") return "--mb-distribution-color-light:python;";
+      if (key === "family:markdown") return "--mb-distribution-color-light:markdown;";
+      return key ? "--mb-distribution-color-light:other-type;" : "";
+    },
+    paint(element, key) {
+      element.classList.add(key ? "mb-distribution-mark" : "mb-distribution-other");
+    },
   }, createFolderRollupControls(metabrowser));`,
   sandbox,
 );
@@ -521,8 +522,8 @@ sandbox.MetabrowserNavigationRoute.attachController({
   check(
     "type fill always uses the shared palette",
     container.viewport.innerHTML.includes("tm-type-fill") &&
-      container.viewport.innerHTML.includes("mb-distribution-slot-7") &&
-      container.viewport.innerHTML.includes("mb-distribution-slot-3"),
+      container.viewport.innerHTML.includes("--mb-distribution-color-light:python;") &&
+      container.viewport.innerHTML.includes("--mb-distribution-color-light:markdown;"),
     container.viewport.innerHTML,
   );
   check(

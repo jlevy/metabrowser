@@ -318,20 +318,16 @@
   --panel-header-bg: var(--sidebar-bg);
   --panel-cell-padding: 0.35rem 0.6rem;
 
-  /* Aggregate distributions — exact-category marks used to join stacked
-     bars to semantic rows. Text never sits on these colors. */
-  --mb-distribution-category-1: oklch(56.91% 0.1568 253.7);
-  --mb-distribution-category-2: oklch(60.4% 0.145 151.1);
-  --mb-distribution-category-3: oklch(66.581% 0.15904 54.107);
-  --mb-distribution-category-4: oklch(55.9% 0.196 308.1);
-  --mb-distribution-category-5: oklch(59.27% 0.1905 15.95);
-  --mb-distribution-category-6: oklch(61% 0.0966 206.37);
-  --mb-distribution-category-7: oklch(72.9% 0.1455 92.48);
-  --mb-distribution-category-8: oklch(57.5% 0.1601 276.22);
-  --mb-distribution-category-9: oklch(63.8% 0.152 137.1);
-  --mb-distribution-category-10: oklch(65.28% 0.1615 38.64);
-  --mb-distribution-category-11: oklch(59.5% 0.18 338.7);
-  --mb-distribution-category-12: oklch(56.56% 0.0925 174.11);
+  /* Aggregate distributions — the marks that join a stacked bar to the rows
+     below it. Text never sits on these colors.
+
+     A file type's color is not here. The registry declares its hue, the server
+     resolves that hue against both themes at one lightness and one chroma
+     target, and category_palette.js writes both answers onto the element as
+     --mb-distribution-color-light and -dark. Composing the color in CSS was
+     the obvious alternative and does not work: sRGB cannot hold the target
+     chroma at every hue, and a browser handed an out-of-gamut oklch() clips
+     it, moving hue by as much as nine degrees. See color_oklch.py. */
   --mb-distribution-other: var(--muted);
   --mb-distribution-track: var(--viz-surface-sunken);
   --mb-distribution-track-height: 8px;
@@ -1000,19 +996,6 @@
   --scrollbar-thumb-hover: oklch(54.9% 0.026 264.3);
   --tally-skeleton-bg: oklch(41.7% 0.019 264.3);
   --row-flash-bg: oklch(50.98% 0.0977 98.1);
-  --mb-distribution-category-1: oklch(71.9% 0.119 253.7);
-  --mb-distribution-category-2: oklch(77.7% 0.145 151.1);
-  --mb-distribution-category-3: oklch(77.8% 0.122 54.107);
-  --mb-distribution-category-4: oklch(71.7% 0.146 308.1);
-  --mb-distribution-category-5: oklch(71.26% 0.1365 15.95);
-  --mb-distribution-category-6: oklch(77.9% 0.105 206.37);
-  --mb-distribution-category-7: oklch(85.5% 0.142 92.48);
-  --mb-distribution-category-8: oklch(72.72% 0.1107 276.22);
-  --mb-distribution-category-9: oklch(77.7% 0.144 137.1);
-  --mb-distribution-category-10: oklch(75.4% 0.116 38.64);
-  --mb-distribution-category-11: oklch(73.5% 0.13 338.7);
-  --mb-distribution-category-12: oklch(77.65% 0.1125 174.11);
-
   /* Lift rather than deepen: the dark categorical palette is already light
      against a near-black page (see the light-theme note beside this token). */
   --viz-data-mark-hover-filter: brightness(1.2) saturate(1.08);
@@ -1085,41 +1068,15 @@
   --git-ref-bg: oklch(26% 0.008 240);
 }
 
-.mb-distribution-slot-1 {
-  --mb-distribution-color: var(--mb-distribution-category-1);
+/* Which of the two colors on the element is live. Both are written once, when
+   the segment is painted, so a theme change is a selector switch rather than a
+   repaint. Segments with no color behind them — the treemap remainder cell,
+   the Other types parent — carry .mb-distribution-other and take the neutral. */
+.mb-distribution-mark {
+  --mb-distribution-color: var(--mb-distribution-color-light);
 }
-.mb-distribution-slot-2 {
-  --mb-distribution-color: var(--mb-distribution-category-2);
-}
-.mb-distribution-slot-3 {
-  --mb-distribution-color: var(--mb-distribution-category-3);
-}
-.mb-distribution-slot-4 {
-  --mb-distribution-color: var(--mb-distribution-category-4);
-}
-.mb-distribution-slot-5 {
-  --mb-distribution-color: var(--mb-distribution-category-5);
-}
-.mb-distribution-slot-6 {
-  --mb-distribution-color: var(--mb-distribution-category-6);
-}
-.mb-distribution-slot-7 {
-  --mb-distribution-color: var(--mb-distribution-category-7);
-}
-.mb-distribution-slot-8 {
-  --mb-distribution-color: var(--mb-distribution-category-8);
-}
-.mb-distribution-slot-9 {
-  --mb-distribution-color: var(--mb-distribution-category-9);
-}
-.mb-distribution-slot-10 {
-  --mb-distribution-color: var(--mb-distribution-category-10);
-}
-.mb-distribution-slot-11 {
-  --mb-distribution-color: var(--mb-distribution-category-11);
-}
-.mb-distribution-slot-12 {
-  --mb-distribution-color: var(--mb-distribution-category-12);
+[data-theme="dark"] .mb-distribution-mark {
+  --mb-distribution-color: var(--mb-distribution-color-dark);
 }
 .mb-distribution-other {
   --mb-distribution-color: var(--mb-distribution-other);

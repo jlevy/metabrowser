@@ -17,7 +17,7 @@ from metabrowser.fs_paths import derive_ext
 def _minimal_registry() -> str:
     return dedent(
         """
-        schema_version = 1
+        schema_version = 2
         registry_revision = 1
         max_extension_components = 2
 
@@ -36,6 +36,9 @@ def _minimal_registry() -> str:
         label = "Python"
         group = "code"
         order = 10
+        linguist = "Python"
+        linguist_color = "#3572a5"
+        hue = 246.50
 
         [[kind]]
         id = "python"
@@ -75,7 +78,7 @@ def test_packaged_registry_is_cached_ordered_and_self_describing() -> None:
         .is_file()
     )
     projection = registry.projection()
-    assert projection["schema"] == "file-type-registry-v1"
+    assert projection["schema"] == "file-type-registry-v2"
     assert projection["fingerprint"] == registry.fingerprint
 
 
@@ -149,11 +152,12 @@ def test_registry_rejects_each_structural_validation_class() -> None:
         label = "Empty"
         group = "code"
         order = 30
+        hue = 12.5
         """
     )
     cases = (
         ("not = [valid", "invalid-toml"),
-        (base.replace("schema_version = 1", "schema_version = 2"), "unsupported-schema-version"),
+        (base.replace("schema_version = 2", "schema_version = 3"), "unsupported-schema-version"),
         (
             base.replace("max_extension_components = 2", "max_extension_components = 3"),
             "unsupported-extension-components",
@@ -188,6 +192,9 @@ def test_registry_rejects_each_structural_validation_class() -> None:
         ),
         (base.replace('family = "python"', 'family = "python"\ngroup = "other"'), "group-mismatch"),
         (base + empty_family, "empty-family"),
+        (base.replace("hue = 246.50", "hue = 361.0"), "invalid-hue"),
+        (base.replace("hue = 246.50", 'hue = "246.50"'), "invalid-field"),
+        (base.replace('linguist_color = "#3572a5"\n', ""), "invalid-linguist"),
         (base.replace('extensions = ["py"]', "extensions = []"), "missing-evidence"),
     )
     assert [_error_code(text) for text, _expected in cases] == [

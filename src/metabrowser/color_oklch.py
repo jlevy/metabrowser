@@ -1,22 +1,27 @@
-"""Oklch color math: the plain sRGB conversion, plus a legibility clamp.
+"""Oklch color math, and the tone system a file-type family is painted in.
 
-A file-type family declares its color as an upstream sRGB hex — GitHub's, for
-the families GitHub names — and this module converts it the same way a browser
-does. ``hex_to_oklch("#3572a5")`` returns ``oklch(53.50% 0.1016 246.53)``,
-which is what dev tools report for that color.
+A family declares one number: its hue. Everything else is the same for every
+family, so the palette reads as one set rather than as fifty-six imported
+colors.
 
-Conversion is the whole mapping. Hue and chroma are kept as converted, so the
-palette is GitHub's palette rather than an interpretation of it.
+**Hue is identity.** Where GitHub's linguist names a color for a language, the
+family takes that color's hue, converted the way a browser's dev tools convert
+it: ``hex_to_oklch("#3572a5").hue`` is 246.5, and Python is that hue. Families
+GitHub has no color for take a hue from the widest remaining gap. That is the
+whole hue rule — no adjustment of GitHub's hues, including where GitHub's own
+are close together, because a reader who knows Ruby is red is better served by
+red than by a hue we moved to win a distance metric.
 
-The one adjustment is lightness, and only where a color is otherwise unusable.
-Upstream lightness runs from 0.27 (Lua's navy) to 0.90 (JavaScript's yellow),
-and the ends of that range disappear against one theme or the other. Each theme
-therefore clamps lightness into a band it can show, and pulls chroma back to
-whatever sRGB holds at the resulting lightness. Colors already inside the band —
-most of them — pass through untouched.
+**Lightness and chroma are the system.** Upstream lightness runs from Lua's
+0.27 navy to JavaScript's 0.90 yellow, which is a palette assembled by hundreds
+of people over a decade and looks like it. Rather than clamp that range into
+something usable, each theme states one lightness and one chroma and every
+family is painted at them: :data:`LIGHT_THEME` and :data:`DARK_THEME`. The only
+per-family variation is the sRGB gamut itself — cyan holds about half the
+chroma red does — so chroma drops to whatever the hue can hold.
 
 No third-party color library: these are the standard Oklab matrices, and a
-dependency for thirty lines of arithmetic would not survive
+dependency for forty lines of arithmetic would not survive
 SUPPLY-CHAIN-SECURITY.md's cost test.
 """
 
@@ -25,27 +30,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-# ── Theme legibility bands ──────────────────────────────────────
-#
-# The range of lightness a theme can actually show. A color inside its band is
-# used as converted; one outside moves to the nearest edge, which is the least
-# change that makes it visible.
-#
-# Set wide on purpose. Upstream lightness across the 38 languages we map spans
-# 0.19 to 0.90 with a median of 0.60, so a narrow band would collapse most of
-# the set onto its edges and throw away the distinctions GitHub draws — an
-# earlier pair at 0.45-0.75 and 0.60-0.88 clamped 11 and 21 of them. These
-# clamp 8 and 7, which is about the count that is genuinely unusable: navies
-# near 0.2 on either ground, and JavaScript's 0.90 yellow on the light one.
-LIGHT_THEME_LIGHTNESS = (0.40, 0.78)
-"""Usable lightness on a near-white ground: below reads as a smudge, above
-washes out."""
-
-DARK_THEME_LIGHTNESS = (0.45, 0.90)
-"""Usable lightness on a dark ground. Both ends sit higher than the light
-theme's, because the same color needs more lightness to read against dark."""
-
 _SRGB_EPSILON = 1e-4
+
+# Below this chroma a color has no usable hue: #292929 is grey, and the hue
+# angle its conversion reports is rounding noise rather than a color anyone
+# chose. Families whose upstream color is grey take a gap hue instead.
+ACHROMATIC_CHROMA = 0.02
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,31 +52,71 @@ class Oklch:
         return f"oklch({self.lightness * 100:.2f}% {self.chroma:.4f} {self.hue:.2f})"
 
 
+@dataclass(frozen=True, slots=True)
+class Tone:
+    """The lightness and chroma one theme paints every family at."""
+
+    lightness: float
+    chroma: float
+
+    def at(self, hue: float) -> Oklch:
+        """This tone at *hue*, with chroma pulled back into sRGB if it must be.
+
+        The pullback is the one place families differ in anything but hue, and
+        it is not a choice: sRGB simply holds less chroma in the cyan-green
+        band than it does in red, at any lightness.
+
+        It has to happen here rather than in a stylesheet. A browser handed an
+        out-of-gamut ``oklch()`` clips it, which moves lightness and hue —
+        measured at up to nine degrees of hue, more than the separation the
+        palette is built on. Reducing chroma keeps the hue exactly where the
+        registry declared it.
+        """
+
+        hue %= 360
+        return Oklch(self.lightness, min(self.chroma, max_chroma(self.lightness, hue)), hue)
+
+
+# ── The two tones ───────────────────────────────────────────────
+#
+# Lightness comes from the hand-tuned twelve-slot ramp these replace, which
+# centered on 0.60 light and 0.77 dark after many iterations by eye.
+#
+# Chroma is a target rather than a guarantee, and it is set high — near what
+# sRGB holds at the roomiest hues, not at the tightest. A target low enough for
+# every hue to reach exactly does exist (0.1055 light, 0.1275 dark, both set by
+# the cyan-blue band, which holds roughly half what red does) and produces a
+# perfectly even set that reads as washed out. Chroma this far up is worth the
+# unevenness: most hues reach it and the cyans come in under, which is the same
+# trade the old ramp made when it gave its teal slot 0.09 against 0.15
+# elsewhere.
+#
+# What does not vary is lightness, and that is the half that matters for a
+# stacked bar: a segment never looks heavier than its size because its neighbor
+# is darker.
+
+LIGHT_THEME = Tone(lightness=0.62, chroma=0.180)
+"""Filled swatches on a near-white ground."""
+
+DARK_THEME = Tone(lightness=0.75, chroma=0.150)
+"""The same hues on a dark ground. Lighter, because a color needs more
+lightness to carry against dark, and less saturated, because sRGB holds less
+chroma up there — 0.75 is past the peak."""
+
+
 def hex_to_oklch(value: str) -> Oklch:
     """Convert an sRGB hex string, the way a browser's dev tools do."""
 
     text = value.strip().lstrip("#")
     if len(text) != 6:
         raise ValueError(f"expected a six-digit hex color, got {value!r}")
-    red, green, blue = (int(text[index : index + 2], 16) / 255 for index in (0, 2, 4))
+    try:
+        red, green, blue = (int(text[index : index + 2], 16) / 255 for index in (0, 2, 4))
+    except ValueError as error:
+        raise ValueError(f"expected a six-digit hex color, got {value!r}") from error
     return _linear_srgb_to_oklch(
         (_srgb_to_linear(red), _srgb_to_linear(green), _srgb_to_linear(blue))
     )
-
-
-def for_theme(color: Oklch, band: tuple[float, float]) -> Oklch:
-    """The color as this theme can show it.
-
-    Lightness is clamped into *band*; chroma follows only if that move takes it
-    out of gamut, in which case it drops to what sRGB holds at the new
-    lightness. Hue never changes, which is what keeps a family the same color on
-    both themes.
-    """
-
-    low, high = band
-    lightness = min(max(color.lightness, low), high)
-    chroma = min(color.chroma, max_chroma(lightness, color.hue))
-    return Oklch(lightness, chroma, color.hue % 360)
 
 
 def oklch_to_srgb(color: Oklch) -> tuple[float, float, float]:
@@ -135,6 +165,25 @@ def hue_distance(left: float, right: float) -> float:
     return min(delta, 360 - delta)
 
 
+def widest_hue_gap(taken: tuple[float, ...]) -> float:
+    """The hue furthest from every hue in *taken*, to a tenth of a degree.
+
+    How a family GitHub names no color for gets one. A sweep rather than
+    midpoint arithmetic because the answer has to be the same one the check
+    computes, and a sweep is obviously that.
+    """
+
+    if not taken:
+        return 0.0
+    best, best_gap = 0.0, -1.0
+    for step in range(3600):
+        hue = step / 10
+        gap = min(hue_distance(hue, other) for other in taken)
+        if gap > best_gap:
+            best, best_gap = hue, gap
+    return best
+
+
 def _srgb_to_linear(channel: float) -> float:
     return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
 
@@ -152,13 +201,15 @@ def _linear_srgb_to_oklch(rgb: tuple[float, float, float]) -> Oklch:
 
 
 __all__ = [
-    "DARK_THEME_LIGHTNESS",
-    "LIGHT_THEME_LIGHTNESS",
+    "ACHROMATIC_CHROMA",
+    "DARK_THEME",
+    "LIGHT_THEME",
     "Oklch",
-    "for_theme",
+    "Tone",
     "hex_to_oklch",
     "hue_distance",
     "in_srgb_gamut",
     "max_chroma",
     "oklch_to_srgb",
+    "widest_hue_gap",
 ]

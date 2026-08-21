@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Implemented
 
 ## Overview
 
@@ -72,10 +72,12 @@ Three consequences, all measured on this repository’s root:
 
 ### What linguist offers, converted to oklch
 
-688 languages upstream carry a `color:`. **38 of our 56 families** map to one; the other
-18 are not languages — `plain-text`, `pdf`, `word`, `rich-text`, `open-document`,
-`epub`, `parquet`, `arrow`, `avro`, `orc`, `protocol-buffers`, `sqlite`, `archives`,
-`images`, `videos`, `audio`, `fonts`, `log-files` — and need hues of our own.
+688 languages upstream carry a `color:`. **38 of our 56 families** map to one — though
+only 35 end up with a usable hue, because three of those upstream colors are greys.
+The other 18 are not languages — `plain-text`, `pdf`, `word`, `rich-text`,
+`open-document`, `epub`, `parquet`, `arrow`, `avro`, `orc`, `protocol-buffers`,
+`sqlite`, `archives`, `images`, `videos`, `audio`, `fonts`, `log-files` — and need hues
+of our own.
 
 Converted from sRGB hex to oklch, the upstream values look like this:
 
@@ -102,9 +104,12 @@ on one theme or the other.
 There is nothing to borrow, so JSON needs a house hue like the 18 non-languages do.
 
 **Some upstream hues collide with each other.** Python is 246.5° and TypeScript is
-253.3° — **6.8° apart**. Borrowing hue faithfully would put two of the most commonly
-co-occurring families in a repository almost on top of each other, which is precisely
-the defect this work exists to fix.
+253.3° — **6.8° apart** — and HTML and Svelte are closer still, at 0.65°. This looked at
+first like the defect the work exists to fix, and it is not.
+The defect is CSS and Markdown landing on nearly the same color for no reason anyone
+chose; two languages GitHub itself paints alike is a decision a reader has already
+absorbed, and undoing it would cost more recognizability than it buys distinctness.
+See [The rule for hue](#the-rule-for-hue).
 
 ### What the current ramp already does, unstated
 
@@ -121,71 +126,84 @@ that lightness and hue:
 | cat-1 (blue, 254°) | 0.569 | 0.157 | 0.180 | 87% |
 | cat-5 (red, 16°) | 0.593 | 0.191 | 0.237 | 81% |
 
-So the ramp is already, roughly, *as vivid as the gamut allows near each hue’s peak*.
-Yellow sits high because yellow can only be vivid when it is light; blue sits low for
-the same reason in reverse.
-That is the right instinct and it is nowhere written down, which is why the numbers look
-like 56 independent decisions waiting to happen.
+So the ramp is already, roughly, *as vivid as the gamut allows near each hue*.
+
+The tempting reading is that lightness follows the gamut cusp per hue, and a rule could
+be derived from it. That reading does not survive measurement: across the twelve slots,
+lightness correlates with cusp lightness at **r=0.44**, which is noise wearing a
+pattern. What the table actually shows is one lightness band and a chroma target the
+gamut cuts into at some hues — which is the rule this plan states, with the numbers
+written down instead of implied by twelve literals.
 
 ## Design
 
 ### Hue is borrowed; lightness and chroma are ours
 
 A family declares **one number**: its hue.
-Where linguist has an opinion, the hue is its color converted to oklch and rounded.
-Where it does not — the 18 non-languages, plus achromatic cases like JSON — we choose
+Where linguist names a color for the language, the hue is that color converted to oklch,
+unchanged. Where it does not — the 18 non-languages, plus achromatic cases like JSON and
+reStructuredText, whose upstream color is a grey and carries no hue at all — we choose
 one.
 
-Lightness and chroma never come from upstream.
-They are derived for every family by the same rule, which is what makes the set coherent
-and what keeps every member inside our own contrast requirements on both themes.
+Lightness and chroma never come from upstream, and never vary by family.
+Each theme states one pair for the whole set, which is what makes it read as a set and
+what keeps every member inside the same contrast behavior on both themes.
+
+### The rule for hue
+
+Two rules, and no third:
+
+- A family that names a `linguist` language takes that language’s hue exactly —
+  **including** where two of GitHub’s own colors land close together.
+  HTML and Svelte are 0.65° apart upstream, Ruby and YAML 1.13°, and they stay that way.
+  A reader who knows Ruby is red is better served by red than by a hue we moved to win a
+  distance metric, and GitHub’s crowded regions are GitHub’s to redistribute, not ours.
+- A family GitHub names no color for takes a hue at least five degrees clear of every
+  other declared hue. The floor is low on purpose: 56 families cannot be spread evenly
+  around a circle whose crowded regions are fixed.
+  `check_file_type_colors.py --suggest` hands out the widest remaining gap, so the
+  families placed so far clear the floor with room to spare (5.6° at the tightest).
+
+An earlier draft of this plan separated close upstream pairs and derived lightness from
+the sRGB cusp per hue.
+Both were dropped. The separation traded recognizability for a metric; the cusp rule was
+fitting noise — the existing hand-tuned ramp’s lightness correlates with cusp lightness
+at r=0.44.
 
 ### The rule for lightness and chroma
 
-For a given hue, sRGB’s most saturated point sits at a particular lightness — the cusp —
-and both the achievable chroma and that lightness move with hue.
-The rule follows the cusp rather than fighting it:
+One lightness and one chroma per theme, applied to every family:
+`LIGHT_THEME = Tone(0.62, 0.180)` and `DARK_THEME = Tone(0.75, 0.150)` in
+`color_oklch.py`. Lightness comes from the ramp these replace, whose light slots
+centered on 0.60 and dark on 0.77 after many iterations by eye.
 
-- find the cusp for the hue: the lightness at which chroma peaks;
-- take the family’s chroma as a fixed fraction of that peak;
-- take its lightness as the cusp lightness, pulled toward a mid target so the extremes
-  do not run away.
+Chroma is a **target**, not a constant.
+A target low enough for every hue to reach exactly does exist — 0.1055 light and 0.1275
+dark, both set by the cyan-blue band, which holds roughly half what red does — and
+produces a perfectly even set that reads as washed out.
+The shipped targets sit well above it, so most hues reach them and the cyans come in
+under: the same trade the old ramp made when it gave its teal slot 0.09 against 0.15
+elsewhere.
+Lightness is the half that never varies, and it is the half that matters for a
+stacked bar: no segment looks heavier than its size because its neighbor is darker.
 
-Two constants — the chroma fraction and how hard lightness is pulled toward the middle —
-are the entire tuning surface, they apply to all 56 families equally, and they are
-measured and recorded beside the ramp the way this repository requires of every bound.
-The table above says roughly where they will land: something near 0.9 of peak chroma
-reproduces the current ramp’s character.
+### The pullback happens in Python, not CSS
 
-Each theme derives its own pair from the same declared hue, which is how hue stays
-constant across themes — the property the design system already holds.
+Composing the color in CSS — `oklch(var(--lightness) var(--chroma) var(--hue))`, one
+declaration, hue as the only per-family value — was the obvious design and does not
+work. When the target chroma is outside sRGB at some hue, a browser clips rather than
+reducing chroma. Measured in Chromium: `oklch(62% 0.18 206)` paints as lightness 0.652,
+chroma 0.115, **hue 214.6** — 8.6° of drift, more than the five-degree separation the
+palette is built on.
 
-### Approximate, deliberately
-
-Two families whose borrowed hues land within the distinctness floor get separated: the
-better-known one keeps its hue, the other moves by the smallest amount that clears the
-floor, and the deviation is recorded beside the declaration with its reason.
-Python and TypeScript at 6.8° apart are the case that forces this.
-
-A reader recognizing “blue-ish means TypeScript” is worth far more than TypeScript being
-exactly 253.3°, and a palette where two common languages are indistinguishable is worth
-nothing at all.
-
-### Modern color practice
-
-- Colors are stated in oklch and only in oklch, which is what makes a perceptual
-  distinctness floor meaningful and what makes the cusp rule computable.
-- Derived states — hover, dimmed, ignored — come from `color-mix()` against the declared
-  color rather than from separate literals, so a family has one definition and its
-  states follow. Relative color syntax (`oklch(from …)`) is worth evaluating for the
-  theme variants; the stylesheet uses none today.
-- Gamut is stated, not assumed: every derived color is verified inside sRGB, with
-  display-p3 as progressive enhancement under `@media (color-gamut: p3)` if the extra
-  chroma proves worth it.
+So the server resolves both themes and ships finished colors.
+The registry keeps only the hue, which is the tool-neutral part; the theme’s tone lives
+in Metabrowser and reaches the browser through `METABROWSER_SETTINGS`, which is the
+documented channel for exactly this.
 
 ### Components
 
-**`recommended-file-types.toml`** gains two fields per family, and stays TOML:
+**`recommended-file-types.toml`** gains three fields per family, and stays TOML:
 
 ```toml
 [[family]]
@@ -193,88 +211,93 @@ id = "css"
 label = "CSS"
 group = "code"
 order = 130
-linguist = "CSS"     # upstream correspondence, or omitted where there is none
-hue = 303            # oklch hue; L and C are derived
+linguist = "CSS"                 # upstream correspondence, or omitted where there is none
+linguist_color = "#663399"       # its color, so the check needs no clone
+hue = 303.37                     # oklch hue; L and C belong to the theme
 ```
 
-**`file_type_registry.py`** exposes `hue` and `linguist`. **`file_type_contract.py`**
-resolves hue to the per-theme oklch pair and emits it in the projection, so the browser
-receives finished colors and holds no second table.
+`linguist_color` is recorded beside the name so a family’s provenance is auditable in
+one diff and checkable without a clone of linguist or a network call.
 
-**`devtools/check_file_type_colors.py`**, in `make lint`, holds three rules: no two
-families within the distinctness floor; every declared hue either matches its linguist
-correspondence or records why it deviates; and every derived color sits inside sRGB.
-Upstream agreement is skipped when no clone is present, so the check never needs the
-network.
+**`file_type_registry.py`** parses and validates all three and exposes them on
+`FileTypeFamily`; the projection carries `hue` and `linguist`.
+**`file_type_filters.serialize_distribution_colors`** joins hue to tone and is what the
+browser receives.
 
-**`category_palette.js`** stops hashing.
-The slot pool and `DISTRIBUTION_PALETTE_SLOTS` go, and with them the collisions and the
-instability.
+**`devtools/check_file_type_colors.py`**, in `make lint`, holds: every `linguist`
+family’s hue matches its recorded upstream color; every chosen hue clears the floor; and
+every painted color keeps its lightness and hue and lands inside sRGB. `--suggest`
+prints a free hue for a new family.
+
+**`category_palette.js`** stops hashing families.
+The slot pool, the per-folder session, the reservation table, and
+`DISTRIBUTION_PALETTE_SLOTS` all go.
+A hash remains for the extensions inside **Other types**, which are unfamilied by
+definition and only need telling apart from each other.
 
 ### API Changes
 
-The registry projection gains a color per family — additive, on an internal contract
-versioned with the shell and built-in plugins as one artifact, noted in `CHANGELOG.md`.
-
-Adding fields changes the definition-file structure, so `schema_version` becomes 2 and
-`registry_revision` 3, which changes the registry fingerprint and therefore rollup
+`schema_version` becomes 2, the projection schema `file-type-registry-v2`, and
+`registry_revision` 3 — which changes the registry fingerprint and therefore rollup
 identity. Consumers already refuse to combine rollups across identities.
+
+The rollup and conformance schemas stop pinning the registry schema version to 1. The
+format document has always said the registry versions independently; the `const`
+contradicted it.
 
 ## Implementation Plan
 
 ### Phase 1: Declare the colors
 
-- [ ] Derive the cusp rule and fix its two constants against the current ramp, recording
-  the measurement beside them
-- [ ] Add `hue` and `linguist` to all 56 families: 38 converted from upstream, 18
-  chosen, every deviation from an upstream hue recorded with its reason
-- [ ] Resolve hue to per-theme oklch in the generator; `schema_version` 2,
-  `registry_revision` 3; regenerate the projection, schemas, and conformance corpus
-- [ ] `devtools/check_file_type_colors.py` with all three rules, wired into `make lint`
-- [ ] Update the format document’s definitions section and version-model note
+- [x] Add `hue`, `linguist`, and `linguist_color` to all 56 families: 35 carrying
+  GitHub’s hue, 21 placed in free gaps
+- [x] `schema_version` 2, `registry_revision` 3; regenerate the projection, schemas, and
+  conformance corpus
+- [x] `devtools/check_file_type_colors.py`, wired into `make lint` and `make lint-check`
+- [x] Update the format document’s definitions section and version-model note
 
 ### Phase 2: Everything reads from it
 
-- [ ] `category_palette.js` reads the declared color; hash, probe, and slot pool go
-- [ ] Overview, Treemap, and navigation file icons take color from the same field
-- [ ] A DOM test that no two families resolve to the same color, and that a family’s
-  color does not depend on which other families are present
-- [ ] `CHANGELOG.md` for the visible change
+- [x] `serialize_distribution_colors` joins hue to tone; `category_palette.js` reads it
+- [x] Overview and Treemap take color from the same field; hash, probe, and slot pool go
+- [x] Tests that a family’s color is the same in any palette and does not depend on
+  which other families are present, and that the shipped colors match the registry
+- [x] `CHANGELOG.md` and `docs/design-system.md` for the visible change
 
 ## Testing Strategy
 
-- The cusp rule is tested as a function: given a hue it returns a color inside sRGB, at
-  the stated fraction of peak chroma, on both themes.
-- The three lint rules are each tested with an input that must fail — two families too
-  close, a hue that silently disagrees with upstream, a color out of gamut — and each
-  must name the family.
+- `tests/test_color_oklch.py` holds the conversion against values a maintainer can check
+  in dev tools, and the tone: one lightness at every hue, chroma never above target,
+  never outside sRGB, and chroma the only thing the pullback moves.
+- `tests/test_file_type_taxonomy.py` binds the shipped colors to the registry: one entry
+  per family, in registry order, each stating the theme’s lightness and the family’s
+  hue.
+- `check_file_type_colors.py` is itself the check for the two hue rules, and reports the
+  close upstream pairs it deliberately permits.
 - Classification results must not move: the conformance corpus is regenerated and
-  reviewed as a diff, and nothing but color should appear in it.
-- Phase 2 adds the DOM test above and a visual check of a directory rich enough to paint
-  most families at once.
+  reviewed as a diff, and nothing but the registry identity should appear in it.
+- `tests/dom/folder_overview_models_behavior.js` holds the palette properties the old
+  allocator could not give.
 
 ## Rollout Plan
 
-Both phases land together.
+Both phases landed together.
 Phase 1 alone leaves declared colors that nothing reads, which is dead data in the
 document whose whole claim is to be the source.
 
 ## Open Questions
 
-- What is the distinctness floor, in oklch terms?
-  It is a claim about telling two segments apart in a bar a few pixels tall, so it wants
-  measuring against real rendered output rather than picking a number from a paper.
 - Does the icon belong here too?
   It is display metadata like color and label, and leaving it in `icons.js` keeps a
   family’s identity in two places.
   Against: an icon is a glyph reference rather than a value, and the format is meant to
   stay tool-neutral.
-- Should the 18 house hues be chosen to fill the gaps the borrowed 38 leave, so the
-  whole set is evenly spaced?
-  That is more beautiful and less mnemonic, since the house families would no longer sit
-  where a reader might guess.
 - Is `linguist` the right field name, or a general `upstream` naming its source, so
   another registry could be referenced later?
+- Display-p3 under `@media (color-gamut: p3)` would let the cyan band reach the target
+  chroma the rest of the palette already does.
+  Worth measuring against a real display before deciding it is worth a second set of
+  colors.
 
 ## References
 

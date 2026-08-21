@@ -329,7 +329,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   let currentTotals = totals;
   /** @type {FolderTotalsComposition | null} */
   let currentComposition = null;
-  /** @type {{classFor(key: string): string} | null} */
+  /** @type {{classFor(key: string): string, paint(element: HTMLElement, key: string): void} | null} */
   let currentPalette = null;
   /** @type {"files" | "size"} */
   let currentMetric = initialMetric === "size" ? "size" : "files";
@@ -392,7 +392,8 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     handle.metric.track.replaceChildren(
       ...segments.map((segment) => {
         const fill = document.createElement("span");
-        fill.className = `file-type-summary-fill ${palette.classFor(segment.paletteKey)}`;
+        fill.className = "file-type-summary-fill";
+        palette.paint(fill, segment.paletteKey);
         fill.dataset.segmentKey = segment.key;
         fill.style.width = `${segment.share}%`;
         const tooltip = `<strong>${mb.escapeHtml(segment.label)}</strong><br>${mb.formatFileCount(
@@ -460,7 +461,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     render();
   }
 
-  /** @param {FolderTotalsComposition | null} composition @param {{classFor(key: string): string} | null} palette */
+  /** @param {FolderTotalsComposition | null} composition @param {{classFor(key: string): string, paint(element: HTMLElement, key: string): void} | null} palette */
   function updateComposition(composition, palette) {
     currentComposition = composition;
     currentPalette = palette;

@@ -183,6 +183,10 @@ global.document = { createElement: (tag) => new Element(tag) };
   };
   view.updateComposition(composition, {
     classFor: (key) => `slot-${key.replace("family:", "")}`,
+    styleFor: () => "",
+    paint: (element, key) => {
+      element.classList.add(`slot-${key.replace("family:", "")}`);
+    },
   });
   check(
     "Files bar is segmented with shared file-type colors",

@@ -1,4 +1,4 @@
-"""The oklch conversion, and the clamp that makes a color usable on a theme.
+"""The oklch conversion, and the tone every family is painted at.
 
 The conversion is the same one a browser's dev tools perform, so the values
 below are checkable by hand: paste the hex into dev tools and read the oklch
@@ -11,14 +11,16 @@ from __future__ import annotations
 import pytest
 
 from metabrowser.color_oklch import (
-    DARK_THEME_LIGHTNESS,
-    LIGHT_THEME_LIGHTNESS,
+    ACHROMATIC_CHROMA,
+    DARK_THEME,
+    LIGHT_THEME,
     Oklch,
-    for_theme,
+    Tone,
     hex_to_oklch,
     hue_distance,
     in_srgb_gamut,
     max_chroma,
+    widest_hue_gap,
 )
 
 # hex, lightness, chroma, hue — as Chrome dev tools reports them.
@@ -40,13 +42,13 @@ def test_conversion_matches_what_dev_tools_report(
     assert color.hue == pytest.approx(hue, abs=0.05)
 
 
-def test_black_and_white_convert_without_a_hue() -> None:
-    """Achromatic input has no hue to carry, which is what makes a grey
-    upstream color unusable as an identity: there is nothing to preserve."""
+def test_grey_converts_below_the_achromatic_threshold() -> None:
+    """Why a grey upstream color cannot be a family's identity: it has no hue
+    to take. GitHub gives JSON #292929, and the hue that converts to is
+    rounding noise."""
 
-    assert hex_to_oklch("#000000").chroma == pytest.approx(0.0, abs=1e-6)
-    assert hex_to_oklch("#ffffff").lightness == pytest.approx(1.0, abs=1e-3)
-    assert hex_to_oklch("#292929").chroma == pytest.approx(0.0, abs=1e-3)
+    for grey in ("#000000", "#292929", "#141414", "#ffffff"):
+        assert hex_to_oklch(grey).chroma < ACHROMATIC_CHROMA
 
 
 def test_a_bad_hex_is_refused() -> None:
@@ -55,50 +57,62 @@ def test_a_bad_hex_is_refused() -> None:
             hex_to_oklch(bad)
 
 
-def test_a_color_inside_the_band_is_left_alone() -> None:
-    """Most upstream colors pass through untouched; that is why the bands are
-    wide. A clamp that moved everything would be a palette of its own."""
+def test_a_tone_gives_every_hue_the_same_lightness() -> None:
+    """The half of the tone that never varies, and the half that matters for a
+    stacked bar: no segment looks heavier than its size because its neighbor is
+    darker. Chroma is a target rather than a constant — see below."""
 
-    python = hex_to_oklch("#3572a5")
-    assert for_theme(python, LIGHT_THEME_LIGHTNESS) == python
-
-
-def test_a_color_outside_the_band_moves_to_the_nearest_edge() -> None:
-    javascript = hex_to_oklch("#f1e05a")  # lightness 0.896, above the light band
-    adapted = for_theme(javascript, LIGHT_THEME_LIGHTNESS)
-    assert adapted.lightness == pytest.approx(LIGHT_THEME_LIGHTNESS[1])
-    assert adapted.hue == pytest.approx(javascript.hue)
-
-    lua = hex_to_oklch("#000080")  # lightness 0.271, below both bands
-    for band in (LIGHT_THEME_LIGHTNESS, DARK_THEME_LIGHTNESS):
-        assert for_theme(lua, band).lightness == pytest.approx(band[0])
+    for tone in (LIGHT_THEME, DARK_THEME):
+        assert {tone.at(hue).lightness for hue in range(0, 360, 7)} == {tone.lightness}
 
 
-def test_hue_survives_the_clamp_on_both_themes() -> None:
-    """A family is one color across themes, which is only true if the clamp
-    never touches hue."""
+def test_a_tone_never_exceeds_its_chroma_and_stays_inside_srgb() -> None:
+    """Chroma is a ceiling in both directions: no hue is painted more saturated
+    than the target, and none is painted outside what sRGB can show."""
 
-    for value in ("#3572a5", "#f1e05a", "#663399", "#000080", "#cb171e"):
-        color = hex_to_oklch(value)
-        for band in (LIGHT_THEME_LIGHTNESS, DARK_THEME_LIGHTNESS):
-            assert for_theme(color, band).hue == pytest.approx(color.hue)
+    for tone in (LIGHT_THEME, DARK_THEME):
+        for hue in range(0, 360, 3):
+            painted = tone.at(hue)
+            assert painted.chroma <= tone.chroma
+            assert in_srgb_gamut(painted)
 
 
-def test_every_adapted_color_is_inside_srgb() -> None:
-    """Moving lightness raises the chroma ceiling in some places and lowers it
-    in others; the clamp has to follow it down or it emits an unpaintable
-    color."""
+def test_the_shipped_tones_are_set_above_the_srgb_floor() -> None:
+    """Deliberately, and the reason the palette does not look washed out. A
+    target low enough for every hue to reach exactly exists and produces an
+    even, muted set; these sit above it, so most hues reach the target and the
+    cyan band comes in under."""
 
-    for value in ("#3572a5", "#f1e05a", "#663399", "#083fa1", "#000080", "#cb171e", "#00add8"):
-        color = hex_to_oklch(value)
-        for band in (LIGHT_THEME_LIGHTNESS, DARK_THEME_LIGHTNESS):
-            assert in_srgb_gamut(for_theme(color, band))
+    for tone in (LIGHT_THEME, DARK_THEME):
+        floor = min(max_chroma(tone.lightness, hue / 10) for hue in range(3600))
+        assert tone.chroma > floor
+        assert any(tone.at(hue).chroma == tone.chroma for hue in range(0, 360, 3))
+
+
+def test_a_tone_pulls_chroma_back_rather_than_moving_lightness_or_hue() -> None:
+    """Why the pullback lives here and not in a stylesheet: a browser handed an
+    out-of-gamut oklch() clips it, which moves both. Chroma is the only thing
+    that may give."""
+
+    vivid = Tone(lightness=0.62, chroma=0.4)
+    painted = vivid.at(206.0)
+    assert painted.chroma < vivid.chroma
+    assert painted.lightness == vivid.lightness
+    assert painted.hue == pytest.approx(206.0)
+    assert in_srgb_gamut(painted)
+
+
+def test_a_tone_keeps_the_hue_it_is_given() -> None:
+    for tone in (LIGHT_THEME, DARK_THEME):
+        for hue in (0.0, 102.08, 246.5, 359.9):
+            assert tone.at(hue).hue == pytest.approx(hue)
+    assert LIGHT_THEME.at(370.0).hue == pytest.approx(10.0)
 
 
 def test_chroma_ceiling_depends_on_hue() -> None:
-    """The fact that makes a categorical palette hard: at one lightness sRGB
-    gives red roughly twice the chroma it gives cyan, so equal saturation
-    across hues is not available."""
+    """The fact that forces one chroma for the whole set: at one lightness sRGB
+    gives red roughly twice the chroma it gives cyan, so a higher target would
+    be reachable by some hues and not others."""
 
     red, cyan = max_chroma(0.62, 27.0), max_chroma(0.62, 206.0)
     assert red > cyan * 1.8
@@ -108,6 +122,14 @@ def test_hue_distance_wraps() -> None:
     assert hue_distance(10, 350) == pytest.approx(20)
     assert hue_distance(350, 10) == pytest.approx(20)
     assert hue_distance(0, 180) == pytest.approx(180)
+
+
+def test_the_widest_gap_is_the_hue_furthest_from_what_is_taken() -> None:
+    assert widest_hue_gap((0.0, 180.0)) in (90.0, 270.0)
+    assert widest_hue_gap(()) == 0.0
+    taken = (10.0, 20.0, 30.0, 200.0)
+    gap = widest_hue_gap(taken)
+    assert min(hue_distance(gap, hue) for hue in taken) == pytest.approx(85.0, abs=0.1)
 
 
 def test_css_renders_the_form_a_stylesheet_wants() -> None:

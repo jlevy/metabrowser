@@ -4,6 +4,36 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+File-type colors:
+
+- Every file-type family now has its own color, taken from GitHub where GitHub names
+  one. There were twelve colors for fifty-six families, handed out by hashing a family
+  name to a starting slot and probing forward for a free one, per folder — so CSS and
+  Markdown came out nearly the same color, a family’s color depended on which other
+  families happened to be visible beside it, and the same language could be two colors
+  in two folders.
+
+- The type registry declares a `hue` per family, with the `linguist` language and its
+  upstream color recorded beside it.
+  Thirty-five families carry GitHub’s hue exactly, including where two of GitHub’s own
+  colors are close together; the twenty-one GitHub names no color for take a hue at
+  least five degrees clear of every other.
+  `devtools/check_file_type_colors.py` holds both rules and runs in `make lint`.
+
+- Lightness and chroma are the theme’s, one pair for the whole palette, so segments of a
+  stacked bar differ in hue and in nothing else and none looks heavier than its size.
+  The server ships finished colors for both themes rather than hues composed in CSS,
+  because a browser handed an out-of-gamut `oklch()` clips it — moving hue by as much as
+  nine degrees, more than the separation the palette is built on.
+
+- The registry schema version is now `2` and its projection is `file-type-registry-v2`,
+  carrying `hue` and `linguist` on each family.
+  `--mb-distribution-category-1` through `-12`, the `.mb-distribution-slot-*` classes,
+  and `DISTRIBUTION_PALETTE_SLOTS` are gone; `.mb-distribution-mark` and
+  `METABROWSER_SETTINGS.DISTRIBUTION_COLORS` replace them.
+  The File Rollup Format rollup and conformance schemas no longer pin the registry
+  schema version, which the format has always said versions independently.
+
 Folder Overview:
 
 - A README reads at the same measure in Overview as it does opened on its own, at every
