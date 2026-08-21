@@ -48,9 +48,11 @@ import itertools
 import logging
 import threading
 import time
+from array import array
+from bisect import bisect_left
 from collections import ChainMap
 from collections.abc import Collection, Iterator, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -99,21 +101,17 @@ from metabrowser.walker import (
 from metabrowser.walker import (
     depth_of as _depth_of,
 )
-from metabrowser.wire_models import NavigationTallies, RollupResult
+from metabrowser.wire_models import (
+    FileTypeRegistryIdentity,
+    NavigationTallies,
+    RollupResult,
+)
 
 LOG = logging.getLogger(__name__)
 
 _SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS = 30_000_000_000
 # Unit conversion for comparing second-based filter windows with inventory mtimes.
 _NANOSECONDS_PER_SECOND = 1_000_000_000
-
-# Clock resolution the navigation-tally memo is keyed at. The tallies depend on
-# the wall clock only through the recency cutoffs, and the shortest of those
-# windows is LIVE_FILE_WINDOW_S (90 s), so rounding the clock to a second can
-# move a file between buckets at most a second early or late. That is invisible
-# against a 90-second window, and it caps recomputation at once per second no
-# matter how many tabs ask.
-_NAVIGATION_TALLY_CLOCK_BUCKET_NS = _NANOSECONDS_PER_SECOND
 
 
 # Rollup revisions come from one process-wide sequence rather than a
@@ -126,6 +124,32 @@ _ROLLUP_REVISIONS = itertools.count(1)
 
 
 IndexStatus = Literal["idle", "scanning", "done", "truncated", "failed"]
+
+
+@dataclass(frozen=True, slots=True)
+class _NavigationTallyBase:
+    """The clock-independent half of the navigation tallies, plus sorted mtimes.
+
+    Everything here is a pure function of the index entries, so it can be
+    memoized on the index revision with no time term. The mtimes are kept
+    sorted and typed rather than as row counts, because that is what lets a
+    recency window be answered by a binary search instead of another pass:
+    the answer to "how many files are newer than this cutoff" is the length
+    minus the insertion point.
+
+    ``array("q")`` rather than a list: at the half-million-entry cap two lists
+    of Python ints cost tens of megabytes where two int64 arrays cost about
+    eight.
+    """
+
+    summary: dict[str, int]
+    file_type_registry: FileTypeRegistryIdentity
+    extensions: list[list[object]]
+    canonical_extensions: list[list[object]]
+    type_families: list[list[object]]
+    type_presets: list[list[object]]
+    tracked_mtimes: array[int]
+    ignored_mtimes: array[int]
 
 
 # ── InventoryIndex ──────────────────────────────────────────────
@@ -169,6 +193,40 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
         return len(self._index._children_index)
 
 
+def _with_recency(
+    base: _NavigationTallyBase,
+    recency_windows: Sequence[tuple[str, float]],
+    current_ns: int,
+) -> NavigationTallies:
+    """Add the clock-dependent rows to a memoized base.
+
+    Each window is one binary search per population rather than a pass over
+    the index: the mtimes are sorted ascending, so everything at or after the
+    cutoff's insertion point is inside the window.
+
+    The row lists from *base* are shared rather than copied. Every consumer
+    treats them as read-only -- they are serialized straight to JSON -- and
+    copying them per request would reintroduce a cost proportional to the
+    index, which is the thing being removed.
+    """
+
+    rows: list[list[object]] = []
+    for window_key, seconds in recency_windows:
+        cutoff_ns = current_ns - int(seconds * _NANOSECONDS_PER_SECOND)
+        tracked = len(base.tracked_mtimes) - bisect_left(base.tracked_mtimes, cutoff_ns)
+        ignored = len(base.ignored_mtimes) - bisect_left(base.ignored_mtimes, cutoff_ns)
+        rows.append([window_key, tracked, ignored])
+    return {
+        "summary": base.summary,
+        "file_type_registry": base.file_type_registry,
+        "extensions": base.extensions,
+        "canonical_extensions": base.canonical_extensions,
+        "type_families": base.type_families,
+        "type_presets": base.type_presets,
+        "recency_tallies": rows,
+    }
+
+
 class InventoryIndex:
     """Process-wide singleton holding the live filesystem
     inventory.
@@ -207,7 +265,7 @@ class InventoryIndex:
         self._navigation_tally_lock = threading.Lock()
         # One entry. A superseded revision can never be requested again, so
         # there is nothing to evict and nothing to bound.
-        self._navigation_tally_memo: tuple[object, NavigationTallies] | None = None
+        self._navigation_tally_memo: tuple[object, _NavigationTallyBase] | None = None
         self._rollup_generation = next(_ROLLUP_REVISIONS)
         # Per-directory subtree aggregates, retained across rollup requests.
         # Without this, every ``/api/rollup`` re-walked every file under the
@@ -478,50 +536,54 @@ class InventoryIndex:
         snapshot = self.entries(scope="all-known") if entries is None else entries
         current_ns = time.time_ns() if now_ns is None else now_ns
         if revision is None:
-            return self._compute_navigation_tallies(
-                presets, recency_windows, limit, current_ns, snapshot
-            )
-        # Everything the answer depends on. The bounds and the two definition
-        # sets are caller-supplied, so they belong in the key even though the
-        # server passes module constants: a key that assumed them would hand a
-        # future second caller the first one's shape.
+            base = self._compute_navigation_tallies(presets, limit, snapshot)
+            return _with_recency(base, recency_windows, current_ns)
+        # Everything the pass depends on, and nothing else. The bounds and the
+        # preset definitions are caller-supplied, so they belong in the key
+        # even though the server passes module constants: a key that assumed
+        # them would hand a future second caller the first one's shape.
+        #
+        # No clock term, deliberately. An earlier version keyed on a rounded
+        # second, which fails exactly where this is needed: at 400,000 entries
+        # the pass takes about two seconds, so every request landed in a later
+        # bucket than the one before it and the memo never hit. The recency
+        # windows are the only clock-dependent part, and they are now answered
+        # from sorted mtimes below rather than recomputed.
         key = (
             revision,
             limit,
-            current_ns // _NAVIGATION_TALLY_CLOCK_BUCKET_NS,
             tuple((preset_id, tuple(sorted(values))) for preset_id, values in presets),
-            tuple(recency_windows),
         )
         with self._navigation_tally_lock:
             memo = self._navigation_tally_memo
             if memo is not None and memo[0] == key:
-                return memo[1]
-            tallies = self._compute_navigation_tallies(
-                presets, recency_windows, limit, current_ns, snapshot
-            )
-            self._navigation_tally_memo = (key, tallies)
-            return tallies
+                base = memo[1]
+            else:
+                base = self._compute_navigation_tallies(presets, limit, snapshot)
+                self._navigation_tally_memo = (key, base)
+        return _with_recency(base, recency_windows, current_ns)
 
     def _compute_navigation_tallies(
         self,
         presets: Sequence[tuple[str, Collection[str]]],
-        recency_windows: Sequence[tuple[str, float]],
         limit: int,
-        current_ns: int,
         snapshot: Sequence[FsEntry],
-    ) -> NavigationTallies:
-        """One pass over *snapshot*. Pure; see :meth:`navigation_tallies`."""
+    ) -> _NavigationTallyBase:
+        """One pass over *snapshot*, with nothing in it that depends on the clock.
 
-        recency_cutoffs = [
-            (key, current_ns - int(seconds * _NANOSECONDS_PER_SECOND))
-            for key, seconds in recency_windows
-        ]
+        Recency is the only clock-dependent part, and bucketing it here would
+        tie the whole result to the moment it was computed. Instead the pass
+        collects sorted mtimes, which the caller searches per window. That
+        keeps everything above memoizable on the index revision alone.
+        """
+
         files = size = ignored_files = ignored_size = 0
+        tracked_mtimes: array[int] = array("q")
+        ignored_mtimes: array[int] = array("q")
         extension_counts: dict[str, list[int]] = {}
         canonical_extension_counts: dict[str, list[int]] = {}
         family_counts: dict[str, list[int]] = {}
         preset_counts: dict[str, list[int]] = {}
-        recency_counts: dict[str, list[int]] = {key: [0, 0] for key, _cutoff in recency_cutoffs}
         normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
         for preset_id, values in presets:
             extensions: set[str] = set()
@@ -569,9 +631,7 @@ class InventoryIndex:
                 ):
                     preset_counts[preset_id][ignored_index] += 1
 
-            for window_key, cutoff_ns in recency_cutoffs:
-                if entry.mtime_ns >= cutoff_ns:
-                    recency_counts[window_key][ignored_index] += 1
+            (ignored_mtimes if entry.gitignored else tracked_mtimes).append(entry.mtime_ns)
 
         summary = {
             "files": files,
@@ -603,23 +663,23 @@ class InventoryIndex:
         preset_rows: list[list[object]] = [
             [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
         ]
-        recency_rows: list[list[object]] = [
-            [window_key, counts[0], counts[1]] for window_key, counts in recency_counts.items()
-        ]
         registry = load_file_type_registry()
-        return {
-            "summary": summary,
-            "file_type_registry": {
+        tracked_mtimes = array("q", sorted(tracked_mtimes))
+        ignored_mtimes = array("q", sorted(ignored_mtimes))
+        return _NavigationTallyBase(
+            summary=summary,
+            file_type_registry={
                 "schema_version": registry.schema_version,
                 "revision": registry.revision,
                 "fingerprint": registry.fingerprint,
             },
-            "extensions": extension_rows,
-            "canonical_extensions": canonical_rows,
-            "type_families": family_rows,
-            "type_presets": preset_rows,
-            "recency_tallies": recency_rows,
-        }
+            extensions=extension_rows,
+            canonical_extensions=canonical_rows,
+            type_families=family_rows,
+            type_presets=preset_rows,
+            tracked_mtimes=tracked_mtimes,
+            ignored_mtimes=ignored_mtimes,
+        )
 
     def file_type_tallies(
         self,

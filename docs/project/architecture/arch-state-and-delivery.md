@@ -156,7 +156,7 @@ this reason rather than assigning into `_entries`.
 | `_aggregate_evicted_at` | directory → eviction epoch | Released once no rollup pass is in flight |
 | `_descendant_file_counts` and siblings | running per-directory totals | Adjusted per write, incrementally |
 | `_pending_dirs` | directories awaiting finalize | Post-order finalize, or end-of-walk repair |
-| `_navigation_tally_memo` | the root request’s index-wide tallies | A new revision, or a new clock second |
+| `_navigation_tally_memo` | the root request’s index-wide tallies | A new revision |
 
 The two structures that exist to remove per-request O(N) work follow the same rule from
 opposite directions:
@@ -504,22 +504,26 @@ steady-state win.
 empty path needs the index-wide navigation tallies — extension, family, preset, and
 recency counts over every file entry.
 That pass is proportional to the index and nothing else on the request path is: measured
-at 486 ms for 100,000 entries, against a 3.8 KB response, while a 123 KB subtree
-response costs 6 ms.
+at 486 ms for 100,000 entries and 2.7 s for 400,000, against a 3.8 KB response, while a
+123 KB subtree response costs 6 ms.
 
-It is now memoized on the index revision, so the cost is paid once rather than per
-request or per tab: the root request falls from 516 ms to 4.4 ms on repeat, and clients
-arriving together share one pass rather than each running their own.
+It is memoized on the index revision, so the cost is paid once per change rather than
+once per request or per tab: repeat root requests fall to 4 ms at 100,000 entries and 15
+ms at 400,000, and clients arriving together share one pass.
+
+The memo key carries no clock term, which matters more than it sounds.
+Recency windows are the one clock-dependent part, and an earlier version keyed the memo
+on a rounded second to cover them.
+That fails exactly where the memo is needed: at 400,000 entries the pass takes longer
+than the bucket, so every request landed in a later bucket than the one before it and
+the memo never hit at all.
+Recency is now answered from a sorted mtime array by binary search per window, so the
+memoized half depends only on the entries.
+
 What remains is the first request after any change — and during a crawl the revision
-moves constantly, so every root refresh while scanning pays it again.
-
-Removing it means making the tallies incremental, which is harder than the structures
-above because the recency windows move with the wall clock rather than with a write: a
-file changes recency bucket while nothing writes at all.
-The shape that would work is a per-revision sorted mtime array plus a binary search per
-window, which makes the clock-dependent part logarithmic and lets the rest be memoized
-without a clock term at all.
-Tracked as `mb-65mg`.
+moves on every write, so a root refresh while scanning pays the pass again.
+Removing that means maintaining the counts per write, the way `_children_index` is,
+which is tracked as `mb-65mg`.
 
 **No admission control between foreground and background.** At a realistic interaction
 rate the crawl converges normally.
