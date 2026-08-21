@@ -72,7 +72,7 @@ def test_collect_recent_entries_window_filters_by_mtime(tmp_path: Path) -> None:
     old_ns = int((__import__("time").time() - 60 * 60 * 48) * 1_000_000_000)
     e = inv.get("docs.md")
     assert e is not None
-    inv._entries["docs.md"] = replace(e, mtime_ns=old_ns)
+    inv.apply_live_entry(replace(e, mtime_ns=old_ns))
 
     # 24h window excludes docs.md (now 48h old).
     result = collect_recent_entries(root=tmp_path, window="24h", limit=200)
@@ -96,8 +96,8 @@ def test_live_is_one_ninety_second_window_for_every_file(tmp_path: Path) -> None
     agent_log = inv.get("runs/x/a.jsonl")
     assert docs is not None
     assert agent_log is not None
-    inv._entries["docs.md"] = replace(docs, mtime_ns=recent_ns)
-    inv._entries["runs/x/a.jsonl"] = replace(agent_log, mtime_ns=stale_ns)
+    inv.apply_live_entry(replace(docs, mtime_ns=recent_ns))
+    inv.apply_live_entry(replace(agent_log, mtime_ns=stale_ns))
 
     result = collect_recent_entries(root=tmp_path, window="live", limit=200)
     paths = {entry["path"] for entry in result.entries_flat}

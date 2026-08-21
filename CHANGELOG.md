@@ -87,6 +87,68 @@ Diff rendering:
   byte-for-byte against git’s own trees, including renames, chmods, symlink type
   changes, binaries, and missing trailing newlines.
 
+Large directories:
+
+- Opening a large folder is now fast regardless of how large it is, and its detail fills
+  in while the crawl runs instead of after it.
+  Previously a folder Overview showed a loading box for the whole scan — about fifteen
+  seconds on a 100,000-file tree — and then filled in at once.
+  The counts were already available throughout; the browser discarded them until the
+  index reported itself complete.
+  A folder now shows what has been counted so far, labeled as still scanning, and
+  refines as the crawl proceeds.
+
+- Folder rollups no longer re-read the whole index on every request.
+  Per-directory subtree aggregates and the parent/child index are kept up to date as
+  entries arrive, so a rollup costs what changed rather than what is stored.
+  On a 100,000-file tree with the Overview open, the median rollup fell from 610 ms to
+  83 ms and the full scan from 52 s to 16.5 s. Past roughly a quarter-million files the
+  old cost exceeded the browser’s own refresh interval, so each response arrived already
+  stale and the view could stop converging.
+
+- Expanding a folder in the navigation tree no longer scans the whole index first.
+  Expansion now costs what the response contains instead of what the tree holds: on a
+  100,000-file tree, expanding a small folder fell from 63 ms to 7 ms, and no longer
+  depends on whether a scan is running.
+
+- Several browser tabs open on the same folder no longer each pay for the same answer.
+  A folder summary is now revalidated against the index revision, so a tab that already
+  holds the current one is told so instead of being sent it again, and tabs that ask at
+  the same moment share a single computation.
+  On a settled 100,000-file tree, eight tabs cost what one used to.
+
+- The crawl now visits directories in strict level order, so the layers the navigation
+  tree shows are complete early.
+  On a 100,000-file tree the first two levels are discovered 2 ms and 21 ms into a
+  6.4-second walk. The scan previously followed one top-level directory to the bottom
+  before looking at its siblings.
+
+- Loading the navigation tree no longer re-counts the whole index every time.
+  The counts behind the type and age filters cover every file, so they were rebuilt on
+  each request for the root of the tree — 516 ms on a 100,000-file tree, for a 4 KB
+  response, paid again by every browser tab.
+  They are now computed once per change and reused, which brings that request to 4 ms
+  and lets tabs opening together share one count.
+  Expanding a folder was already unaffected; this was the request the page makes first.
+
+- The type and age filter counts in the navigation sidebar no longer freeze partway
+  through a scan. On a large tree the first page paint can land before the index can
+  answer, which rendered a fallback summary row — and the refresh that would replace
+  that row was gated on the row it installs, so it never ran again.
+  The counts beside it kept updating, which made the stale ones easy to trust: on a
+  400,000-file tree the menu offered “past day 198,998” for a tree the server already
+  reported as 400,002. Reloading fixed it; nothing else did.
+
+- A folder’s file count can no longer settle on a number that is too high and stay
+  there. A folder reads its totals from two places, and while a scan is running both are
+  partial, so the one reporting more files is the one further along.
+  Once the scan finishes that reasoning stops holding: each source keeps its last
+  reading, so if one stopped updating — a delta lost during heavy churn, say — its
+  larger stale number won every comparison after that and nothing could displace it.
+  Observed on a tree of 400,000 files, where a folder showed 400,019 and kept showing it
+  across a reload. A finished count now comes from the server’s own answer rather than
+  from whichever number is larger.
+
 ## 0.5.1
 
 Folder views:

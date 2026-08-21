@@ -52,7 +52,7 @@ from typing import Literal
 from watchfiles import Change, awatch
 
 from metabrowser.cancellable_thread import run_cancellable_thread
-from metabrowser.events import FsEntry, ProjectionInvalidate
+from metabrowser.events import CapabilityUpdate, FsEntry, ProjectionInvalidate
 from metabrowser.fs_paths import is_visible_segment as _is_visible_segment
 from metabrowser.inventory import InventoryIndex
 from metabrowser.inventory import get_instance as get_inventory
@@ -353,12 +353,17 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
     hook; cancel on shutdown.
 
     Selects native vs polling automatically (override via *mode*
-    for tests). All errors are logged; the loop keeps running.
-    Terminating cleanly on cancellation is critical so the
-    lifespan teardown completes.
+    for tests). A failure to observe one path is logged and the
+    loop keeps running. A failure of the watch itself ends the
+    watch — the backend cannot be trusted to report changes after
+    it — and is announced rather than left silent, because
+    everything downstream reads a still-answering index as a
+    current one. Terminating cleanly on cancellation is critical
+    so the lifespan teardown completes.
     """
 
     inventory = get_inventory()
+    reason = "override"
     if mode is None:
         mode, reason = await asyncio.to_thread(select_watch_mode, root)
         LOG.debug("watcher starting at %s mode=%s reason=%s", root, mode, reason)
@@ -367,6 +372,13 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
 
     force_polling = mode == "polling"
     poll_delay_ms = 2000 if force_polling else 50
+    inventory.emit_event(
+        CapabilityUpdate(
+            backends=({"kind": "fs-watch", "mode": mode, "reason": reason, "state": "running"},),
+            index={},
+            events={},
+        )
+    )
 
     try:
         async for changes in awatch(
@@ -384,6 +396,29 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
     except asyncio.CancelledError:
         LOG.debug("watcher cancelled")
         raise
+    except Exception as error:
+        # The index is only current because this loop keeps it current, and
+        # nothing downstream can tell a quiet filesystem from a dead watch:
+        # requests keep being answered, and conditional ones keep answering
+        # "not modified" — truthfully about the index, which has stopped
+        # being about the filesystem. Exhausting the inotify watch limit on
+        # a large tree lands here. Say so loudly and on the event stream.
+        LOG.exception("watcher stopped at %s mode=%s; live updates have ended", root, mode)
+        inventory.emit_event(
+            CapabilityUpdate(
+                backends=(
+                    {
+                        "kind": "fs-watch",
+                        "mode": mode,
+                        "state": "failed",
+                        "detail": f"{type(error).__name__}: {error}",
+                    },
+                ),
+                index={},
+                events={},
+            )
+        )
+        return
 
 
 __all__ = [

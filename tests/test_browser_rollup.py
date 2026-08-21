@@ -11,14 +11,16 @@ records the query-cost budget (spec: <=150 ms at 100k entries).
 from __future__ import annotations
 
 import asyncio
+import re
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from conftest import SyntheticIndexWriter
 from watchfiles import Change
 
-from metabrowser import inventory as inventory_module
 from metabrowser.events import FsChange, FsEntry, FsUpsert
 from metabrowser.inventory import InventoryIndex
 from metabrowser.watch_backends import _emit_for_path
@@ -134,23 +136,20 @@ def test_rollup_none_for_files_and_unknown_paths(tmp_path: Path) -> None:
     assert index.rollup("missing", depth=2, top=10, ext_top=4) is None
 
 
-def test_rollup_reuses_child_index_until_inventory_changes(tmp_path: Path, monkeypatch) -> None:
+def test_rollup_reuses_child_index_until_inventory_changes(tmp_path: Path) -> None:
     (tmp_path / "leaf").mkdir()
     (tmp_path / "leaf" / "one.txt").write_text("one")
     index = _build_index(tmp_path)
-    group_calls = 0
-    original_group = inventory_module.group_rollup_children
 
-    def recording_group(entries):
-        nonlocal group_calls
-        group_calls += 1
-        return original_group(entries)
-
-    monkeypatch.setattr(inventory_module, "group_rollup_children", recording_group)
+    # The child index is maintained on write, so no rollup rebuilds it, and a
+    # repeated request reuses the cached subtree aggregate rather than
+    # re-walking the subtree.
     first = index.rollup("leaf", depth=1, top=10, ext_top=4)
+    cached_aggregate = index._subtree_aggregates.get("leaf")
+    assert cached_aggregate is not None
     second = index.rollup("leaf", depth=1, top=10, ext_top=4)
     assert first == second
-    assert group_calls == 1
+    assert index._subtree_aggregates.get("leaf") is cached_aggregate
 
     added = FsEntry.for_observed_file(
         path="leaf/two.md",
@@ -163,7 +162,6 @@ def test_rollup_reuses_child_index_until_inventory_changes(tmp_path: Path, monke
     refreshed = index.rollup("leaf", depth=1, top=10, ext_top=4)
     assert refreshed is not None
     assert refreshed["node"]["total_files"] == 2
-    assert group_calls == 2
 
 
 def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> None:
@@ -256,7 +254,7 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
     from metabrowser.settings import ROLLUP_MAX_NODES
 
     index = InventoryIndex()
-    entries = index._entries  # synthetic index setup, test-only
+    entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
     mtime_ns = 1_700_000_000_000_000_000
 
     def _add_dir(path: str, parent: str, name: str) -> None:
@@ -321,7 +319,7 @@ def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
     """
 
     index = InventoryIndex()
-    entries = index._entries  # synthetic index setup, test-only
+    entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
     root_placeholder = FsEntry.for_observed_dir(path="", parent="", name="root")
     dir_count = 200
     files_per_dir = 200
@@ -359,3 +357,245 @@ def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
     assert result["node"]["total_files"] == total
     print(f"rollup budget: {total} files in {elapsed_ms:.1f}ms (spec: 150ms at 100k entries)")
     assert elapsed_ms < 1_000, f"rollup took {elapsed_ms:.1f}ms on {total} synthetic entries"
+
+
+def _assert_derived_state_matches_entries(index: InventoryIndex) -> None:
+    """The index keeps derived structures beside ``_entries``; they must agree.
+
+    ``_children_index`` and ``_subtree_aggregates`` are maintained on every
+    write rather than rebuilt per request, which is what keeps a rollup
+    proportional to what changed. That trade only holds while they stay in
+    step with the entries they summarize, and a missed eviction is invisible
+    until a folder reports a stale count, so check them against a from-scratch
+    derivation.
+    """
+
+    expected_children: dict[str, dict[str, FsEntry]] = {}
+    for entry in index._entries.values():
+        if entry.path == entry.parent:
+            continue  # the served root is not its own child
+        expected_children.setdefault(entry.parent, {})[entry.path] = entry
+    assert index._children_index == expected_children, "child index drifted from entries"
+
+    # Every cached aggregate must equal what a cold rollup would compute.
+    for path in list(index._subtree_aggregates):
+        cached = index.rollup(path, depth=0, top=0, ext_top=0)
+        cold = InventoryIndex()
+        for entry in index._entries.values():
+            cold._replace_index_entry(entry)
+        fresh = cold.rollup(path, depth=0, top=0, ext_top=0)
+        assert cached == fresh, f"stale aggregate cached for {path!r}"
+
+
+def _total_files(index: InventoryIndex, path: str) -> int:
+    result = index.rollup(path, depth=0, top=0, ext_top=0)
+    assert result is not None, f"no rollup for {path!r}"
+    return result["node"]["total_files"]
+
+
+def test_derived_index_state_survives_writes_and_removals(tmp_path: Path) -> None:
+    """Adding and removing entries must leave no stale derived state."""
+
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "a.py").write_text("x" * 10)
+    (tmp_path / "drop").mkdir()
+    (tmp_path / "drop" / "nested").mkdir()
+    (tmp_path / "drop" / "nested" / "b.md").write_text("y" * 20)
+    index = _build_index(tmp_path)
+
+    # Populate the aggregate memo, then mutate underneath it.
+    index.rollup("", depth=3, top=40, ext_top=12)
+    _assert_derived_state_matches_entries(index)
+
+    # Store a file the way the walker does — a leaf write with no accompanying
+    # rewrite of its ancestor directory entries. Every directory above it still
+    # has to lose its cached aggregate, or the folder keeps reporting the count
+    # it had before the file arrived.
+    index._replace_index_entry(
+        FsEntry.for_observed_file(
+            path="keep/c.py",
+            parent="keep",
+            name="c.py",
+            size=30,
+            mtime_ns=1_700_000_000_000_000_000,
+        )
+    )
+    assert _total_files(index, "keep") == 2
+    assert _total_files(index, "") == 3
+    _assert_derived_state_matches_entries(index)
+
+    index.apply_live_entry(
+        FsEntry.for_observed_file(
+            path="keep/d.py",
+            parent="keep",
+            name="d.py",
+            size=30,
+            mtime_ns=1_700_000_000_000_000_000,
+        )
+    )
+    index.rollup("", depth=3, top=40, ext_top=12)
+    assert _total_files(index, "keep") == 3
+    _assert_derived_state_matches_entries(index)
+
+    # Removing a directory must drop the whole subtree from every structure.
+    index.remove("drop")
+    index.rollup("", depth=3, top=40, ext_top=12)
+    assert index.get("drop/nested/b.md") is None
+    assert "drop" not in index._children_index
+    assert "drop/nested" not in index._children_index
+    # keep/a.py, keep/c.py, keep/d.py survive; the drop/ subtree is gone.
+    assert _total_files(index, "") == 3
+    _assert_derived_state_matches_entries(index)
+
+
+def test_eviction_epochs_are_released_once_no_rollup_is_in_flight(tmp_path: Path) -> None:
+    """The epoch map is bounded by in-flight passes, not by paths ever seen.
+
+    An epoch only exists so a merge can refuse an aggregate the walker has
+    moved past. With no pass in flight there is no merge left to consult it.
+    Retaining them instead grows the map with every directory path seen in the
+    process lifetime, so a long session over a churning tree never gives any
+    of it back.
+    """
+
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "a.py").write_text("x" * 10)
+    index = _build_index(tmp_path)
+
+    index.rollup("", depth=3, top=40, ext_top=12)
+    assert index._aggregate_evicted_at == {}
+    assert index._rollup_passes_in_flight == 0
+
+    # Churn: each write evicts its ancestor chain and records epochs for it.
+    for generation in range(25):
+        directory = f"churn{generation}"
+        index.apply_live_entry(
+            FsEntry.for_observed_file(
+                path=f"{directory}/f.py",
+                parent=directory,
+                name="f.py",
+                size=8,
+                mtime_ns=1_700_000_000_000_000_000,
+            )
+        )
+    assert index._aggregate_evicted_at, "evictions should record epochs while they matter"
+
+    index.rollup("", depth=3, top=40, ext_top=12)
+    assert index._aggregate_evicted_at == {}, "epochs outlived the passes that needed them"
+    assert index._rollup_passes_in_flight == 0
+
+
+def test_aggregate_computed_against_moved_data_is_never_published(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Invariant 5: a stale aggregate is discarded rather than cached.
+
+    ``/api/rollup`` runs ``build_rollup`` in a worker thread while the walker
+    keeps writing on the event loop, so a pass can finish computing a
+    directory *after* a write has invalidated it. Publishing that result would
+    leave a tally that is wrong and never corrects itself: nothing evicts the
+    directory a second time, so the folder keeps reporting the count it had
+    before the write until something else happens to write beneath it.
+
+    Reproducing it needs the interleave in one specific place. ``_rollup_view``
+    hands out live views rather than copies, so a pass blocked *before* it
+    reads a directory's children simply sees the newer data and is correct.
+    The window is after the read and before the merge, which is what the stub
+    below recreates.
+    """
+
+    import metabrowser.inventory_rollup as inventory_rollup
+
+    (tmp_path / "d").mkdir()
+    index = _build_index(tmp_path)
+
+    read_children = threading.Event()
+    writes_landed = threading.Event()
+    original = inventory_rollup._aggregate_subtree
+
+    def aggregate_then_wait(
+        directory_path: str,
+        parent_ignored: bool,
+        children_by_parent: Any,
+        aggregates: Any,
+    ) -> Any:
+        result = original(directory_path, parent_ignored, children_by_parent, aggregates)
+        if directory_path == "d":
+            # Computed from what the worker could see; now let the walker move
+            # past it before this pass merges.
+            read_children.set()
+            assert writes_landed.wait(5), "writer never ran"
+        return result
+
+    monkeypatch.setattr(inventory_rollup, "_aggregate_subtree", aggregate_then_wait)
+
+    async def scenario() -> None:
+        pass_done = asyncio.get_running_loop().run_in_executor(
+            None, lambda: index.rollup("", depth=2, top=40, ext_top=12)
+        )
+        assert read_children.wait(5), "rollup pass never reached the directory"
+        for number in range(50):
+            index._replace_index_entry(
+                FsEntry.for_observed_file(
+                    path=f"d/f{number}.py",
+                    parent="d",
+                    name=f"f{number}.py",
+                    size=10,
+                    mtime_ns=1_700_000_000_000_000_000,
+                )
+            )
+        writes_landed.set()
+        await pass_done
+
+    asyncio.run(scenario())
+
+    # What the folder reports once everything has settled must equal what the
+    # same entries produce with no cache at all.
+    settled = index.rollup("", depth=2, top=40, ext_top=12)
+    assert settled is not None
+    cold = InventoryIndex()
+    for entry in index._entries.values():
+        cold._replace_index_entry(entry)
+    expected = cold.rollup("", depth=2, top=40, ext_top=12)
+    assert expected is not None
+    assert settled["node"]["total_files"] == expected["node"]["total_files"] == 50
+    _assert_derived_state_matches_entries(index)
+
+
+# Assignments into the index's entry map from outside its two write methods.
+# ``_entries[...] = x`` stores an entry without updating ``_children_index``,
+# so a later rollup reads the superseded FsEntry out of the child bucket.
+_DIRECT_ENTRY_WRITE_RE = re.compile(r"_entries\[[^\]]+\]\s*=(?!=)")
+
+_ENTRY_WRITE_METHODS = ("_replace_index_entry", "_pop_index_entry")
+
+
+def test_every_index_write_goes_through_the_two_write_methods() -> None:
+    """Invariant 2, enforced rather than asserted in prose.
+
+    ``_replace_index_entry`` and ``_pop_index_entry`` are where the derived
+    structures are kept in step with ``_entries``. A write that bypasses them
+    desynchronizes the index silently, and the shape it leaves behind — a stale
+    FsEntry still in its parent's child bucket — surfaces later as a wrong
+    tally rather than as an error.
+    """
+
+    root = Path(__file__).resolve().parent.parent
+    offenders: list[str] = []
+    for path in sorted((root / "src").rglob("*.py")) + sorted((root / "tests").rglob("*.py")):
+        if path.name == Path(__file__).name:
+            continue  # the pattern above lives here
+        source = path.read_text(encoding="utf-8")
+        in_write_method = False
+        for number, line in enumerate(source.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("def "):
+                in_write_method = any(name in stripped for name in _ENTRY_WRITE_METHODS)
+            if in_write_method:
+                continue
+            if _DIRECT_ENTRY_WRITE_RE.search(line):
+                offenders.append(f"{path.relative_to(root)}:{number}: {stripped}")
+    assert not offenders, (
+        "write through _replace_index_entry / _pop_index_entry, or "
+        "conftest.SyntheticIndexWriter in tests:\n  " + "\n  ".join(offenders)
+    )

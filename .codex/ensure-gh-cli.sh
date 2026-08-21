@@ -91,12 +91,9 @@ else
 
     EXPECTED=$(checksum_for "$PLATFORM")
     if [ -z "$EXPECTED" ]; then
-        # Nothing is installed either way; failing here would only break the
-        # session hook on a platform this script was never pinned for.
-        echo "[gh] WARNING: no pinned checksum for platform ${PLATFORM}"
-        echo "[gh] Add the checksum from gh_${GH_VERSION}_checksums.txt to install here"
-        echo "[gh] Unsupported platform; skipping automatic installation"
-        exit 0
+        echo "[gh] ERROR: no pinned checksum for platform ${PLATFORM}; refusing to install"
+        echo "[gh] Add the checksum from gh_${GH_VERSION}_checksums.txt to this script"
+        exit 1
     fi
 
     ASSET="gh_${GH_VERSION}_${PLATFORM}"

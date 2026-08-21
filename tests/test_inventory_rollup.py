@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Any, cast
 
 import pytest
+from conftest import SyntheticIndexWriter
 
 import metabrowser.inventory_rollup as inventory_rollup
 from metabrowser.events import FsEntry
@@ -16,9 +17,10 @@ from metabrowser.inventory_rollup import RollupOptions, RollupRank
 
 def _synthetic_index(files: list[tuple[str, int, bool]]) -> InventoryIndex:
     index = InventoryIndex()
+    entries = SyntheticIndexWriter(index)
     mtime_ns = 1_700_000_000_000_000_000
     root = FsEntry.for_observed_dir(path="", parent="", name="root")
-    index._entries[""] = replace(
+    entries[""] = replace(
         root,
         total_files=len(files),
         total_size=sum(size for _name, size, _ignored in files),
@@ -32,7 +34,7 @@ def _synthetic_index(files: list[tuple[str, int, bool]]) -> InventoryIndex:
             size=size,
             mtime_ns=mtime_ns,
         )
-        index._entries[name] = replace(entry, gitignored=ignored)
+        entries[name] = replace(entry, gitignored=ignored)
     return index
 
 

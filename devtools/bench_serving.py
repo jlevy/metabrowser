@@ -1,0 +1,571 @@
+"""Measure how fast a large tree becomes usable, and stays usable.
+
+The costs that matter here are not visible from a single timing. Opening a
+large folder is fast or slow depending on *when* you ask: the walker is still
+crawling, the aggregate cache is still filling, and background scan work and
+foreground requests take CPU from each other under the GIL. A mean hides all
+of that. So this harness reports the shape of each cost rather than one
+number, and separates the paths that only look alike:
+
+* A cold scan with nothing attached is walker throughput alone. It is not the
+  number a reader experiences, and it is not the number that regressed
+  historically -- a client polling during the crawl slows the crawl down.
+* A settled rollup has three distinct paths -- a real aggregation, a retained
+  body served without one, and a ``304`` revalidation -- and only one of them
+  costs anything. Averaging them together reports a cache hit rate, not a
+  latency.
+* A tree request at the root and at a subtree are different requests. Reporting
+  them against response size is what makes a cost proportional to the index
+  visible as one, instead of looking like a large response.
+
+Every phase writes JSON so two runs can be diffed. Pass ``--label`` to name a
+run (a branch, a commit, "before"), ``--json`` to write it somewhere, and
+``--baseline`` to print the comparison directly.
+
+The client half -- request coalescing and validator behavior as the browser
+actually experiences them -- is not visible from here. ``--browser-probe``
+prints the in-page probe; see ``devtools/bench_browser_probe.js``.
+
+Usage::
+
+    uv --config-file uv.toml run --frozen python -m devtools.bench_serving \\
+        --files 100000 --label before --json bench-before.json
+
+    uv --config-file uv.toml run --frozen python -m devtools.bench_serving \\
+        --files 100000 --label after --baseline bench-before.json
+
+Run the two on the same machine and the same corpus size; the absolute numbers
+move a lot with the filesystem and the page cache, and only the comparison
+carries over.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import random
+import re
+import shutil
+import socket
+import statistics
+import subprocess
+import time
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+REPO = Path(__file__).resolve().parent.parent
+PROBE_PATH = Path(__file__).resolve().parent / "bench_browser_probe.js"
+
+# The bounds the folder Overview actually asks for. Measuring a shape the
+# browser never requests would report a cost no reader pays.
+OVERVIEW_QUERY = "path=&depth=0&top=0&ext_top=0&filename_top=20&remaining_top=20&ext_rank=dual"
+TREEMAP_QUERY = "path=&depth=3"
+
+# Extensions spread across the file-type registry's families, so the rollup's
+# classification pass does representative work rather than tallying one type.
+CORPUS_EXTS = (
+    ".py", ".js", ".ts", ".md", ".json", ".txt", ".yaml", ".css", ".html",
+    ".go", ".rs", ".java", ".c", ".h", ".sh", ".toml", ".csv", ".log", ".png", ".bin",
+)  # fmt: skip
+
+# Long enough that a slow machine still converges, short enough that a run
+# that never will reports so instead of hanging. A scan that hits this is
+# itself the finding, so it is recorded rather than raised.
+SCAN_TIMEOUT_S = 600.0
+
+# The banner metab prints once it is listening, which also reports the port it
+# settled on -- it picks another when the requested one is busy, so parsing
+# this is more reliable than assuming the port we asked for.
+_BANNER_RE = re.compile(r"http://(?P<host>[^:/]+):(?P<port>\d+)/view/")
+# Emitted by InventoryIndex when the boot crawl finishes. This is the walker's
+# own elapsed time, which is what a cold scan has to be measured by: polling
+# for it would make it a scan with a client attached.
+_WALK_DONE_RE = re.compile(
+    r"inventory walker complete: status=(?P<status>\w+) "
+    r"files=(?P<files>\d+) entries=\d+ elapsed=(?P<ms>\d+)ms"
+)
+
+
+@dataclass
+class Timing:
+    """One latency sample set, reported as a distribution rather than a mean."""
+
+    samples: list[float] = field(default_factory=list)
+
+    def add(self, ms: float) -> None:
+        self.samples.append(ms)
+
+    def summary(self) -> dict[str, Any]:
+        if not self.samples:
+            return {"n": 0}
+        ordered = sorted(self.samples)
+        return {
+            "n": len(ordered),
+            "p50": round(statistics.median(ordered), 1),
+            "p95": round(ordered[max(0, int(len(ordered) * 0.95) - 1)], 1),
+            "max": round(ordered[-1], 1),
+        }
+
+
+def _http(
+    url: str, etag: str | None = None, timeout: float = 120.0
+) -> tuple[int, str | None, bytes, float]:
+    """One request, returning ``(status, etag, body, elapsed_ms)``.
+
+    Failures are returned rather than raised: a refused connection during
+    startup is a measurement outcome, not an exception the caller wants.
+    """
+    headers = {"If-None-Match": etag} if etag else {}
+    request = urllib.request.Request(url, headers=headers)
+    started = time.perf_counter()
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read()
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            return response.status, response.headers.get("ETag"), body, elapsed_ms
+    except urllib.error.HTTPError as error:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        return error.code, error.headers.get("ETag"), error.read(), elapsed_ms
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return 0, None, b"", (time.perf_counter() - started) * 1000
+
+
+# ── Corpus ───────────────────────────────────────────────────
+
+
+def build_corpus(root: Path, target_files: int) -> dict[str, Any]:
+    """Create (or reuse) a synthetic tree of *target_files* files.
+
+    Wide at the top and deep in one branch, because both shapes are load
+    bearing: breadth is what level-order discovery has to get through before
+    the nav tree is usable, and depth is what aggregate eviction walks. A
+    marker file records the size, so rerunning at the same size reuses the
+    tree instead of paying to rebuild it.
+    """
+    marker = root / ".bench-corpus.json"
+    if marker.is_file():
+        try:
+            existing: dict[str, Any] = json.loads(marker.read_text())
+        except (OSError, ValueError):
+            existing = {}
+        if existing.get("files") == target_files:
+            return existing
+
+    if root.exists():
+        shutil.rmtree(root)
+    rng = random.Random(1234)
+
+    directories: list[Path] = []
+    for top in range(12):
+        for mid in range(10):
+            for leaf in range(8):
+                directories.append(root / f"top{top:02d}" / f"mid{mid:02d}" / f"leaf{leaf:02d}")
+    deep = root
+    for level in range(12):
+        deep = deep / f"deep{level:02d}"
+        directories.append(deep)
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    made = 0
+    per_directory = target_files // len(directories) + 1
+    for directory in directories:
+        for index in range(per_directory):
+            if made >= target_files:
+                break
+            path = directory / f"file{index:04d}{rng.choice(CORPUS_EXTS)}"
+            path.write_bytes(b"x" * rng.choice((64, 256, 1024, 4096, 16384)))
+            made += 1
+        if made >= target_files:
+            break
+
+    info: dict[str, Any] = {"files": made, "dirs": len(directories), "path": str(root)}
+    marker.write_text(json.dumps(info))
+    return info
+
+
+# ── Server lifecycle ─────────────────────────────────────────
+
+
+class Server:
+    """A ``metab`` subprocess, with its log tailed for the facts only it knows."""
+
+    def __init__(self, root: Path, log_path: Path) -> None:
+        self._root = root
+        self._log_path = log_path
+        self._process: subprocess.Popen[bytes] | None = None
+        self.base_url = ""
+
+    def __enter__(self) -> Server:
+        executable = shutil.which("metab")
+        if executable is None:
+            raise SystemExit(
+                "metab is not on PATH. Run this through the locked environment:\n"
+                "  uv --config-file uv.toml run --frozen python -m devtools.bench_serving"
+            )
+        # metab rejects port 0, so ask the kernel for a free one and hand over
+        # the number. Another process can still take it in between; metab
+        # falls forward to the next free port when that happens, which is why
+        # the banner below is the authority on where it actually bound.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        with self._log_path.open("wb") as handle:
+            self._process = subprocess.Popen(
+                [executable, str(self._root), "--no-open", "--port", str(port)],
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                cwd=REPO,
+            )
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            match = _BANNER_RE.search(self._log_text())
+            if match is not None:
+                self.base_url = f"http://{match['host']}:{match['port']}"
+                # The banner prints before the first request is served, so
+                # wait for the socket to actually answer.
+                for _ in range(200):
+                    if _http(f"{self.base_url}/api/rollup?{OVERVIEW_QUERY}", timeout=5)[0] == 200:
+                        return self
+                    time.sleep(0.05)
+            if self._process.poll() is not None:
+                raise SystemExit(f"metab exited during startup; see {self._log_path}")
+            time.sleep(0.05)
+        raise SystemExit(f"metab did not start within 60s; see {self._log_path}")
+
+    def __exit__(self, *_exc: object) -> None:
+        if self._process is not None and self._process.poll() is None:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+
+    def _log_text(self) -> str:
+        try:
+            return self._log_path.read_text(errors="replace")
+        except OSError:
+            return ""
+
+    def walk_result(self) -> dict[str, Any] | None:
+        """The walker's own completion record, or None while it is still crawling."""
+        match = _WALK_DONE_RE.search(self._log_text())
+        if match is None:
+            return None
+        return {
+            "status": match["status"],
+            "files": int(match["files"]),
+            "walk_ms": int(match["ms"]),
+        }
+
+    def await_walk(self, timeout_s: float = SCAN_TIMEOUT_S) -> dict[str, Any] | None:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            result = self.walk_result()
+            if result is not None:
+                return result
+            time.sleep(0.05)
+        return None
+
+
+# ── Phases ───────────────────────────────────────────────────
+
+
+def phase_cold_scan(root: Path, log_dir: Path) -> dict[str, Any]:
+    """Walker throughput with nothing attached.
+
+    Read from the walker's own log record rather than by polling, because
+    polling is exactly what the next phase deliberately does.
+    """
+    with Server(root, log_dir / "cold.log") as server:
+        result = server.await_walk()
+    if result is None:
+        return {"converged": False, "timeout_s": SCAN_TIMEOUT_S}
+    return {"converged": True, **result}
+
+
+def phase_scan_with_client(root: Path, log_dir: Path) -> dict[str, Any]:
+    """The scan a reader actually experiences.
+
+    A client refreshing the folder view competes with the walker for CPU, so
+    this is not the cold scan time. It also records when the first real count
+    reached the wire -- the whole point of serving partial results -- and the
+    rollup latency distribution while the index is moving, which is the case
+    no cache can help because the validator changes on every request.
+    """
+    rollup = Timing()
+    first_count_s: float | None = None
+    walk: dict[str, Any] | None = None
+    started = time.time()
+    with Server(root, log_dir / "attached.log") as server:
+        url = f"{server.base_url}/api/rollup?{OVERVIEW_QUERY}"
+        while time.time() - started < SCAN_TIMEOUT_S:
+            status, _etag, body, elapsed_ms = _http(url)
+            if status != 200:
+                continue
+            rollup.add(elapsed_ms)
+            payload: dict[str, Any] = json.loads(body)
+            node: dict[str, Any] = payload.get("node") or {}
+            if first_count_s is None and node.get("total_files"):
+                first_count_s = round(time.time() - started, 2)
+            if payload.get("index_status") in ("done", "truncated"):
+                walk = server.walk_result()
+                break
+        wall_s = round(time.time() - started, 1)
+    return {
+        "converged": walk is not None,
+        "wall_s": wall_s if walk is not None else None,
+        "timed_out_at_s": None if walk is not None else SCAN_TIMEOUT_S,
+        "walk_ms": walk["walk_ms"] if walk else None,
+        "files": walk["files"] if walk else None,
+        "first_count_s": first_count_s,
+        "requests_issued": len(rollup.samples),
+        "rollup_ms": rollup.summary(),
+    }
+
+
+def phase_settled(root: Path, log_dir: Path, clients: int) -> dict[str, Any]:
+    """Costs once the index has stopped moving.
+
+    The three rollup paths are measured apart because they are three different
+    amounts of work. Forcing a fresh revision -- by touching a file -- is what
+    makes the aggregating path measurable at all on a settled index; every
+    other request would be answered from the retained body.
+    """
+    with Server(root, log_dir / "settled.log") as server:
+        if server.await_walk() is None:
+            return {"converged": False}
+        base = server.base_url
+        overview = f"{base}/api/rollup?{OVERVIEW_QUERY}"
+        treemap = f"{base}/api/rollup?{TREEMAP_QUERY}"
+
+        aggregated, retained, revalidated = Timing(), Timing(), Timing()
+        marker = root / ".bench-touch"
+        for round_index in range(8):
+            # A write moves the index revision, so the next request cannot be
+            # answered from the retained body and has to aggregate.
+            marker.write_text(str(round_index))
+            time.sleep(0.35)  # let the watcher apply it
+            status, etag, _body, elapsed_ms = _http(treemap)
+            if status != 200:
+                continue
+            # Recorded regardless of whether this server emits a validator:
+            # a build with no caching at all still has this path, and leaving
+            # the row blank there would hide the number worth comparing.
+            aggregated.add(elapsed_ms)
+            # The same answer again. With a retained body this is a lookup;
+            # without one it is a second aggregation, which is the point.
+            retained.add(_http(treemap)[3])
+            if not etag:
+                continue
+            # The same answer with the validator: a 304, carrying no body.
+            status_304, _e, body_304, ms_304 = _http(treemap, etag=etag)
+            if status_304 == 304 and not body_304:
+                revalidated.add(ms_304)
+        marker.unlink(missing_ok=True)
+
+        trees: list[dict[str, Any]] = []
+        for path, depth in (("", 1), ("", 2), ("top00", 2), ("top00/mid00", 2)):
+            timing, size = Timing(), 0
+            for _ in range(10):
+                _status, _etag, body, elapsed_ms = _http(
+                    f"{base}/api/tree?path={path}&depth={depth}"
+                )
+                timing.add(elapsed_ms)
+                size = len(body)
+            trees.append(
+                {"path": path or "<root>", "depth": depth, "bytes": size, **timing.summary()}
+            )
+
+        staggered = Timing()
+        for _ in range(clients):
+            staggered.add(_http(overview)[3])
+            time.sleep(0.02)
+
+        # Arriving together is the case single-flight exists for: without it
+        # each client aggregates the same answer independently.
+        simultaneous = Timing()
+
+        def one_client(_index: int) -> float:
+            return _http(overview)[3]
+
+        with ThreadPoolExecutor(max_workers=clients) as pool:
+            for elapsed_ms in pool.map(one_client, range(clients)):
+                simultaneous.add(elapsed_ms)
+
+    return {
+        "converged": True,
+        "rollup_aggregated_ms": aggregated.summary(),
+        "rollup_retained_body_ms": retained.summary(),
+        "rollup_revalidated_304_ms": revalidated.summary(),
+        "tree": trees,
+        "clients": clients,
+        "clients_staggered_ms": staggered.summary(),
+        "clients_simultaneous_ms": simultaneous.summary(),
+    }
+
+
+# ── Reporting ────────────────────────────────────────────────
+
+
+def _fmt(value: Any, suffix: str = "") -> str:
+    if value is None:
+        return "--"
+    if isinstance(value, float):
+        return f"{value:g}{suffix}"
+    return f"{value}{suffix}"
+
+
+def _ratio(before: Any, after: Any) -> str:
+    """How *after* compares to *before*, as a speedup or a slowdown."""
+    if not isinstance(before, (int, float)) or not isinstance(after, (int, float)):
+        return "--"
+    if before <= 0 or after <= 0:
+        return "--"
+    if after <= before:
+        return f"{before / after:.1f}x faster"
+    return f"{after / before:.1f}x slower"
+
+
+def _rows(result: dict[str, Any]) -> list[tuple[str, Any]]:
+    """The comparable scalars, flattened, in report order."""
+    attached = result.get("scan_with_client", {})
+    settled = result.get("settled", {})
+    rows: list[tuple[str, Any]] = [
+        ("cold scan, walker only (ms)", result.get("cold_scan", {}).get("walk_ms")),
+        ("scan with a client attached (s)", attached.get("wall_s")),
+        ("first folder count on the wire (s)", attached.get("first_count_s")),
+        ("rollup during scan p50 (ms)", attached.get("rollup_ms", {}).get("p50")),
+        ("rollup during scan p95 (ms)", attached.get("rollup_ms", {}).get("p95")),
+        ("settled rollup, aggregated p50 (ms)", settled.get("rollup_aggregated_ms", {}).get("p50")),
+        (
+            "settled rollup, retained body p50 (ms)",
+            settled.get("rollup_retained_body_ms", {}).get("p50"),
+        ),
+        ("settled rollup, 304 p50 (ms)", settled.get("rollup_revalidated_304_ms", {}).get("p50")),
+        (
+            f"{settled.get('clients', '?')} clients staggered p50 (ms)",
+            settled.get("clients_staggered_ms", {}).get("p50"),
+        ),
+        (
+            f"{settled.get('clients', '?')} clients simultaneous p50 (ms)",
+            settled.get("clients_simultaneous_ms", {}).get("p50"),
+        ),
+    ]
+    for tree in settled.get("tree", []):
+        # The label is the join key between two runs, so it carries only the
+        # request. Response size moves a little run to run, and putting it here
+        # would stop the rows lining up at all.
+        rows.append((f"/api/tree {tree['path']} depth={tree['depth']} p50 (ms)", tree.get("p50")))
+    return rows
+
+
+def render_report(result: dict[str, Any], baseline: dict[str, Any] | None) -> str:
+    corpus = result.get("corpus", {})
+    lines = [
+        "",
+        f"Metabrowser serving benchmark -- {result.get('label')}",
+        f"corpus: {corpus.get('files')} files in {corpus.get('dirs')} dirs",
+        "",
+    ]
+    attached = result.get("scan_with_client", {})
+    if not attached.get("converged", True):
+        lines.append(
+            f"  NOTE: the scan did not converge within {attached.get('timed_out_at_s')}s "
+            f"with a client attached ({attached.get('requests_issued')} requests issued)."
+        )
+        lines.append("")
+
+    rows = _rows(result)
+    if baseline is None:
+        width = max(len(name) for name, _ in rows)
+        for name, value in rows:
+            lines.append(f"  {name:<{width}}  {_fmt(value)}")
+    else:
+        base_rows = dict(_rows(baseline))
+        width = max(len(name) for name, _ in rows)
+        lines.append(
+            f"  {'':<{width}}  {baseline.get('label', 'baseline'):>12}  {result.get('label'):>12}   change"
+        )
+        for name, value in rows:
+            before = base_rows.get(name)
+            lines.append(
+                f"  {name:<{width}}  {_fmt(before):>12}  {_fmt(value):>12}   {_ratio(before, value)}"
+            )
+
+    # Response sizes, so the tree rows above can be read as cost against the
+    # size of the answer. A root request that costs more than a larger subtree
+    # response is doing work proportional to something other than its output.
+    trees = result.get("settled", {}).get("tree", [])
+    if trees:
+        lines.append("")
+        lines.append("  tree response sizes:")
+        for tree in trees:
+            lines.append(f"    {tree['path']} depth={tree['depth']}: {tree['bytes']} bytes")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Benchmark Metabrowser scan and serve latency end to end.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--files", type=int, default=100_000, help="corpus size (default 100000)")
+    parser.add_argument("--label", default="run", help="name for this run, shown in the report")
+    parser.add_argument("--corpus-dir", type=Path, default=None, help="where to build the tree")
+    parser.add_argument("--clients", type=int, default=8, help="concurrent clients (default 8)")
+    parser.add_argument("--json", type=Path, default=None, help="write the full result here")
+    parser.add_argument(
+        "--baseline", type=Path, default=None, help="compare against a previous --json"
+    )
+    parser.add_argument(
+        "--skip-cold-scan",
+        action="store_true",
+        help="skip the unattached scan, which costs one full crawl",
+    )
+    parser.add_argument(
+        "--browser-probe",
+        action="store_true",
+        help="print the in-page probe for the client-side half, then exit",
+    )
+    args = parser.parse_args(argv)
+
+    if args.browser_probe:
+        print(PROBE_PATH.read_text())
+        return 0
+
+    corpus_dir = args.corpus_dir or (REPO / ".bench" / f"corpus-{args.files}")
+    log_dir = REPO / ".bench" / "logs"
+    corpus_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"building corpus ({args.files} files) at {corpus_dir} ...", flush=True)
+    corpus = build_corpus(corpus_dir, args.files)
+
+    result: dict[str, Any] = {"label": args.label, "corpus": corpus}
+    if not args.skip_cold_scan:
+        print("phase 1/3: cold scan, nothing attached ...", flush=True)
+        result["cold_scan"] = phase_cold_scan(corpus_dir, log_dir)
+    print("phase 2/3: scan with a client attached ...", flush=True)
+    result["scan_with_client"] = phase_scan_with_client(corpus_dir, log_dir)
+    print("phase 3/3: settled index ...", flush=True)
+    result["settled"] = phase_settled(corpus_dir, log_dir, args.clients)
+
+    baseline: dict[str, Any] | None = None
+    if args.baseline is not None:
+        baseline = json.loads(args.baseline.read_text())
+    print(render_report(result, baseline))
+
+    if args.json is not None:
+        args.json.write_text(json.dumps(result, indent=2) + "\n")
+        print(f"wrote {args.json}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -28,6 +28,13 @@
     let staleValue = false;
     /** @type {number | undefined} */
     let timer;
+    // When the oldest change still waiting behind the debounce arrived. A
+    // crawl emits inventory changes continuously, and a debounce that
+    // restarts on each one would never fire until the stream paused, so a
+    // folder's numbers would sit frozen for the whole scan and then jump.
+    // Bounding the wait by one window makes the refresh coalesce bursts
+    // while still landing at a steady cadence under a continuous stream.
+    let oldestPendingAt = 0;
     /** @type {AbortController | undefined} */
     let controller;
 
@@ -63,9 +70,14 @@
       if (disposed || !pathsIntersectScope(detail?.paths, scopePath)) {
         return;
       }
-      if (timer !== undefined) {
+      const windowMs = options.debounceMs ?? 0;
+      const now = Date.now();
+      if (timer === undefined) {
+        oldestPendingAt = now;
+      } else {
         clearTimeout(timer);
       }
+      const delay = Math.max(0, Math.min(windowMs, oldestPendingAt + windowMs - now));
       timer = window.setTimeout(() => {
         timer = undefined;
         if (options.active && !options.active()) {
@@ -73,7 +85,7 @@
           return;
         }
         void refresh();
-      }, options.debounceMs ?? 0);
+      }, delay);
     }
 
     window.addEventListener("metabrowser:inventory-change", handleChange);

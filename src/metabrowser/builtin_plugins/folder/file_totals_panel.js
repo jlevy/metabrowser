@@ -1,9 +1,11 @@
 import {
   buildFolderTotalsComposition,
+  chooseFolderTotals,
   mountFolderTotalsView,
   normalizeFolderTotals,
 } from "./folder_totals.js";
 
+/** @typedef {import("./folder_totals.js").FolderTotals} FolderTotals */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} FolderRollupState */
 /** @typedef {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => FolderRollupState, subscribe: (listener: (state: FolderRollupState) => void) => () => void}} FolderRollupControls */
 
@@ -41,17 +43,53 @@ export function mountFileTotalsPanel(
     metric: true,
     ignored: false,
   });
+  const envelopeTotals = totalsFromFolderEnvelope(context.raw);
   const totalsView = mountFolderTotalsView(
     totalsContainer,
-    totalsFromFolderEnvelope(context.raw),
+    envelopeTotals,
     mb,
     controlsState.metric,
   );
-  const unsubscribeTotals = mb.directoryTotals.subscribe(path, (next) => {
-    const normalized = normalizeFolderTotals(next);
-    if (normalized.state === "complete") {
-      totalsView.update(normalized);
+
+  // Totals arrive from two places and neither is reliably first. The
+  // directory index carries the walker's aggregate, but the walker only
+  // finalizes a directory once every descendant is walked, so for a large
+  // root it stays pending for the whole crawl. The rollup meanwhile carries
+  // counts for everything indexed so far. Keep the best of each and render
+  // whichever is better, so a still-pending update can never replace numbers
+  // already on screen with a loading state. ``chooseFolderTotals`` owns the
+  // rule and states why it changes once the index settles.
+  /** @type {FolderTotals | null} */
+  let indexedTotals = null;
+  /** @type {FolderTotals | null} */
+  let rollupTotals = null;
+  let rollupSettled = false;
+
+  function applyBestTotals() {
+    const best = chooseFolderTotals(indexedTotals, rollupTotals, rollupSettled);
+    if (best) {
+      totalsView.update(best);
     }
+  }
+
+  /** @param {FolderTotals} next */
+  function offerIndexedTotals(next) {
+    if (next.state === "complete") {
+      indexedTotals = next;
+      applyBestTotals();
+    }
+  }
+
+  // Seed with what the envelope already put on screen. subscribe() calls back
+  // synchronously, but only when the store already holds this path: on first
+  // paint the SSE snapshot may not have landed, and without this the first
+  // rollup projection wins unopposed and the panel drops from the envelope's
+  // count to the rollup's lower in-progress one — the regression the rule
+  // above exists to prevent.
+  offerIndexedTotals(envelopeTotals);
+
+  const unsubscribeTotals = mb.directoryTotals.subscribe(path, (next) => {
+    offerIndexedTotals(normalizeFolderTotals(next));
   });
 
   function updateComposition() {
@@ -79,6 +117,14 @@ export function mountFileTotalsPanel(
 
   const unsubscribeProjection = projection.subscribe((raw) => {
     rollupEnvelope = /** @type {Parameters<typeof buildFolderTotalsComposition>[0]} */ (raw);
+    const fromRollup = totalsFromRollupProjection(raw);
+    if (fromRollup.state === "complete") {
+      rollupTotals = fromRollup;
+      // Whether the index has stopped moving is a fact the server reports, so
+      // read it rather than inferring it from which number is larger.
+      rollupSettled = isSettledIndexStatus(raw);
+      applyBestTotals();
+    }
     updateComposition();
   });
   const unsubscribeControls = rollupControls.subscribe((nextState) => {
@@ -114,8 +160,53 @@ export function mountFileTotalsPanel(
     dispose,
     /** @param {{raw?: unknown}} nextContext */
     update(nextContext) {
-      totalsView.update(totalsFromFolderEnvelope(nextContext.raw));
+      // A folder envelope refreshed mid-crawl still carries the walker's
+      // unfinalized aggregate. Offer it, but fall back to the best totals
+      // already known rather than dropping the panel back to a spinner.
+      offerIndexedTotals(totalsFromFolderEnvelope(nextContext.raw));
+      applyBestTotals();
     },
+  });
+}
+
+/**
+ * Whether a rollup projection reports an index that has stopped moving.
+ *
+ * ``truncated`` counts: the crawl stopped at the file cap and will not add
+ * more, so its totals are as final as they are going to get.
+ *
+ * @param {unknown} raw
+ */
+function isSettledIndexStatus(raw) {
+  const envelope =
+    raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
+  return envelope.indexStatus === "done" || envelope.indexStatus === "truncated";
+}
+
+/**
+ * Folder totals from a rollup projection, covering what the crawl has indexed
+ * so far. Returns a pending value when the projection carries no totals yet.
+ *
+ * @param {unknown} raw
+ */
+function totalsFromRollupProjection(raw) {
+  const envelope =
+    raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
+  const totals =
+    envelope.totals && typeof envelope.totals === "object"
+      ? /** @type {Record<string, unknown>} */ (envelope.totals)
+      : null;
+  if (!totals) {
+    return normalizeFolderTotals(null);
+  }
+  // normalizeFolderTotals accepts both the camelCase and snake_case spellings;
+  // use one of them so this does not read like a mistake. The camelCase byte
+  // fields are totalBytes / unignoredBytes, not *Size.
+  return normalizeFolderTotals({
+    totalFiles: totals.allFiles,
+    totalBytes: totals.allBytes,
+    unignoredFiles: totals.unignoredFiles,
+    unignoredBytes: totals.unignoredBytes,
   });
 }
 

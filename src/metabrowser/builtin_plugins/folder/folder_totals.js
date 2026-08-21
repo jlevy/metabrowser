@@ -15,6 +15,13 @@ export function normalizeFolderTotals(raw) {
     return Object.freeze({ state: "pending" });
   }
   const value = /** @type {Record<string, unknown>} */ (raw);
+  // A producer that knows its totals are provisional says so. The directory
+  // totals store zero-fills the aggregates the walker has not finalized, so
+  // re-deriving completeness from the numbers alone would read those
+  // placeholders as a real "0 files" and state it with confidence.
+  if (value.state === "pending") {
+    return Object.freeze({ state: "pending" });
+  }
   const totalFiles = integer(value.totalFiles ?? value.total_files);
   const totalBytes = integer(value.totalBytes ?? value.total_size);
   const unignoredFiles = integer(value.unignoredFiles ?? value.unignored_files);
@@ -34,6 +41,49 @@ export function normalizeFolderTotals(raw) {
     unignoredFiles: Math.min(totalFiles, unignoredFiles),
     unignoredBytes: Math.min(totalBytes, unignoredBytes),
   });
+}
+
+/**
+ * Choose between the two sources of a folder's totals.
+ *
+ * They arrive from different places and neither is reliably first. The
+ * directory totals store carries the walker's aggregate, applied
+ * incrementally from the delta stream; the rollup carries a count of
+ * everything indexed so far, fetched whole.
+ *
+ * While the index is still scanning, both are lower bounds that only grow,
+ * and either can be the stale one — the store reports nothing for a root the
+ * walker has not finalized, and the rollup lags its own refresh debounce. So
+ * take whichever has seen more files, whole rather than field by field, which
+ * keeps a still-pending update from replacing real numbers with a spinner.
+ *
+ * Once the index is settled that rule stops being safe, and this is the part
+ * worth being careful about. Each source is a variable holding its last
+ * value, so "larger" only means "fresher" while both keep refreshing. If one
+ * stops — a store that missed a deletion in a churn burst, a rollup whose
+ * debounce has gone quiet — the larger stale reading wins every subsequent
+ * comparison and nothing can dislodge it. Observed in a browser: a folder
+ * settled on 400,019 files and stayed there while the filesystem and the
+ * server both said 400,000, surviving a reload.
+ *
+ * A settled rollup is authoritative, so prefer it outright. That keeps the
+ * in-progress behavior the max rule exists for and removes its ability to
+ * latch, because the state is a fact the server reports rather than one
+ * inferred from which number is bigger.
+ *
+ * @param {FolderTotals | null} indexed totals from the directory totals store
+ * @param {FolderTotals | null} rollup totals derived from a rollup projection
+ * @param {boolean} rollupSettled whether the rollup reported a finished index
+ * @returns {FolderTotals | null}
+ */
+export function chooseFolderTotals(indexed, rollup, rollupSettled) {
+  if (!indexed || !rollup) {
+    return indexed ?? rollup;
+  }
+  if (rollupSettled) {
+    return rollup;
+  }
+  return (indexed.totalFiles ?? 0) >= (rollup.totalFiles ?? 0) ? indexed : rollup;
 }
 
 /**

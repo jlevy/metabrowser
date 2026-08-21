@@ -19,7 +19,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -596,12 +596,11 @@ def _build_inventory_tree(
         return []
 
     inv = get_inventory()
-    # Single O(N) parent→children scan, reused across every level
-    # of the recursion. Without this, a depth-D request rescans the
-    # full index D times; at 200k entries that's seconds of CPU.
-    by_parent: dict[str, list[Any]] = {}
-    for entry in inv.entries(scope="all-known"):
-        by_parent.setdefault(entry.parent, []).append(entry)
+    # The index keeps a parent→children map up to date on every write, so the
+    # recursion looks up each level directly. Building that map per request
+    # instead — the previous approach — cost one full pass over the index no
+    # matter how small the requested subtree was: ~63ms at 117k entries, on
+    # the event loop, for expanding a folder whose response was 6KB.
     # ``parent_ignored`` carries forward "an ancestor was gitignored
     # so this whole subtree paints gray." Look the parent up in the
     # inventory; if we don't have an entry for it (stub or root),
@@ -610,7 +609,7 @@ def _build_inventory_tree(
     parent_entry = inv.get(parent_rel) if parent_rel else None
     parent_ignored = bool(parent_entry.gitignored) if parent_entry else False
     return _build_inventory_subtree(
-        by_parent=by_parent,
+        children_of=inv.children_of,
         parent_rel=parent_rel,
         max_depth=max_depth,
         parent_ignored=parent_ignored,
@@ -620,7 +619,7 @@ def _build_inventory_tree(
 
 def _build_inventory_subtree(
     *,
-    by_parent: dict[str, list[Any]],
+    children_of: Callable[[str], Sequence[Any]],
     parent_rel: str,
     max_depth: int,
     parent_ignored: bool,
@@ -631,7 +630,7 @@ def _build_inventory_subtree(
     # The root entry has parent == "" == its own path; skip it
     # so the root doesn't render as a sibling of its own children.
     siblings = sorted(
-        (e for e in by_parent.get(parent_rel, []) if e.path != parent_rel),
+        (e for e in children_of(parent_rel) if e.path != parent_rel),
         key=lambda e: (e.type != "dir", e.name),
     )
     out: list[dict[str, Any]] = []
@@ -646,7 +645,7 @@ def _build_inventory_subtree(
             children: list[dict[str, Any]] | None
             if max_depth - 1 > 0:
                 children = _build_inventory_subtree(
-                    by_parent=by_parent,
+                    children_of=children_of,
                     parent_rel=entry.path,
                     max_depth=max_depth - 1,
                     parent_ignored=ignored,
@@ -673,7 +672,7 @@ def _build_inventory_subtree(
             # has_children flag. A finalized empty dir would
             # otherwise show a lazy-load spinner that resolves to
             # nothing, leaving the spinner spinning forever.
-            inv_child_count = sum(1 for c in by_parent.get(entry.path, []) if c.path != entry.path)
+            inv_child_count = sum(1 for c in children_of(entry.path) if c.path != entry.path)
             entry_dict: dict[str, Any] = {
                 "name": entry.name,
                 "path": entry.path,

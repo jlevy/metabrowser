@@ -23,6 +23,8 @@ from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any, cast, override
 
+from conftest import SyntheticIndexWriter
+
 from metabrowser import inventory as inventory_module
 from metabrowser import paths_safe
 from metabrowser import server as proc_browser
@@ -129,7 +131,7 @@ def test_inventory_backed_tree_emits_none_aggregates_when_walker_in_progress(
     reset_instance_for_tests()
     inv = get_instance()
 
-    inv._entries["docs"] = FsEntry(
+    SyntheticIndexWriter(inv)["docs"] = FsEntry(
         path="docs",
         parent="",
         name="docs",
@@ -235,6 +237,7 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
             *,
             now_ns: int | None = None,
             entries: Sequence[FsEntry] | None = None,
+            revision: int | None = None,
         ) -> NavigationTallies:
             if entries is None:
                 raise RuntimeError("dictionary changed size during iteration")
@@ -244,6 +247,7 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
                 limit=limit,
                 now_ns=now_ns,
                 entries=entries,
+                revision=revision,
             )
 
     original_root = paths_safe.ROOT_DIR
@@ -252,7 +256,7 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
     inv = WorkerUnsafeTallies()
     inv._root = resolved_root
     inv._status = "scanning"
-    inv._entries["README.md"] = FsEntry.for_observed_file(
+    SyntheticIndexWriter(inv)["README.md"] = FsEntry.for_observed_file(
         path="README.md",
         parent="",
         name="README.md",
@@ -297,7 +301,7 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
     inv._root = tmp_path
     inv._status = "scanning"
 
-    inv._entries["runs/local"] = FsEntry(
+    SyntheticIndexWriter(inv)["runs/local"] = FsEntry(
         path="runs/local",
         parent="runs",
         name="local",
@@ -309,7 +313,7 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
         mtime_hash="",
         active=False,
     )
-    inv._entries["runs/local/known"] = FsEntry(
+    SyntheticIndexWriter(inv)["runs/local/known"] = FsEntry(
         path="runs/local/known",
         parent="runs/local",
         name="known",
