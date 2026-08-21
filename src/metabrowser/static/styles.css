@@ -300,6 +300,10 @@
      2px pads — and exactly --icon-btn-size, so a revealed icon button
      never stretches a row. */
   --ui-row-height: 24px;
+  /* One nesting step in the file tree. Rows keep a full-width box and add
+     this to their left padding per level, so depth reads in the text
+     position while the hover and selection shapes stay constant. */
+  --tree-indent: 16px;
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
@@ -1979,7 +1983,7 @@ html[data-prose-font="sans"] {
    of children for a directory that exceeded TREE_PAGE_SIZE. Compact
    and visually subordinate to real tree rows. */
 .tree-item.tree-page-more {
-  padding: 2px 12px 2px 32px;
+  padding: 2px 12px 2px calc(32px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   cursor: pointer;
   user-select: var(--toggle-user-select);
   color: var(--muted-slate);
@@ -1997,8 +2001,13 @@ html[data-prose-font="sans"] {
   min-height: var(--ui-row-height);
   /* 2px transparent bar reserved on every row (coloured only when
      selected) so selecting never shifts the row; the 10px + 2px keeps the
-     content's left inset at the original 12px. */
-  padding: 2px 12px 2px 10px;
+     content's left inset at the original 12px.
+     Depth is added to the padding, never to the box: the row spans the full
+     panel width at every level, so the hover and selection backgrounds and
+     the accent bar are one constant shape a reader can track down the tree
+     instead of a box that narrows as they go deeper. --tree-depth is
+     published by the enclosing .tree-root / .tree-children group. */
+  padding: 2px 12px 2px calc(10px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   border-left: 2px solid transparent;
   cursor: pointer;
   user-select: var(--toggle-user-select);
@@ -2166,8 +2175,10 @@ html[data-prose-font="sans"] {
 :is(.age-live, .age-sec, .age-min) {
   font-weight: var(--file-age-weight-recent);
 }
+/* No margin: indentation is the rows' own left padding (see .tree-item),
+   so a nested row's box still starts at the panel edge. The group only
+   publishes the depth its contents read. */
 .tree-children {
-  margin-left: 16px;
   interpolate-size: allow-keywords;
   height: auto;
   overflow: hidden;
@@ -2715,22 +2726,13 @@ html[data-prose-font="sans"] {
   justify-content: flex-end;
   padding-top: 4px;
 }
-/* Honest incompleteness: hide mode prunes what it has loaded and says
-   so rather than implying the tree is now the whole answer. */
-.filter-note {
-  padding: 8px 12px;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  font-style: italic;
-}
-
-/* Filtering prunes; there is no dim/hide switch, because removing what
-   does not match is what a filter is for. Only .tree-item rows carry
-   this — the .tree-children wrapper is left alone because the
-   expansion code owns its inline display, and the wrapper has no box
-   of its own (margin only), so a container whose rows are all hidden
-   collapses to nothing by itself. app.js propagates a hidden folder's
-   verdict down to its descendants so there is never an orphaned
+/* Only the recency source hides rows this way: the tree source is
+   filtered by /api/tree, which sends nothing that should be hidden. Only
+   .tree-item rows carry the class — the .tree-children wrapper is left
+   alone because the expansion code owns its collapse state, and the
+   wrapper has no box of its own, so a container whose rows are all
+   hidden collapses to nothing by itself. app.js propagates a hidden
+   folder's verdict down to its descendants so there is never an orphaned
    visible row inside a pruned subtree. Gitignored rows keep the tree's
    existing dimmed treatment when shown; unchecking removes them. */
 .tree-item-filter-hidden {
@@ -2752,11 +2754,28 @@ html[data-prose-font="sans"] {
   font-size: var(--ui-small-font-size);
   border-bottom: 1px solid var(--border);
 }
+/* A filter can exclude the folder the reader is standing in, and the tree
+   then legitimately has no row to select. Same muted register as the
+   filtered count directly above it — this is the same kind of remark about
+   what the filter did, not a warning. Paths break anywhere rather than
+   widening the pane. */
+.tree-selection-note {
+  padding: 3px 12px 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+}
+.tree-summary-filtered:has(+ .tree-selection-note) {
+  border-bottom: none;
+}
 /* The tally and its filtered count are one block, so the rule belongs
    under the pair rather than between them: the totals are what the
    filtered figure reads against, and a border in between made them
    look like two unrelated bands. */
-.tree-summary:has(+ .tree-summary-filtered) {
+.tree-summary:has(+ .tree-summary-filtered),
+.tree-summary:has(+ .tree-selection-note) {
   border-bottom: none;
   padding-bottom: 0;
 }
@@ -4026,7 +4045,7 @@ pre.code-block code.hljs {
 .tree-lazy-placeholder {
   display: flex;
   align-items: center;
-  padding: 2px 12px 2px 28px;
+  padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   font-style: italic;
@@ -4082,7 +4101,7 @@ pre.code-block code.hljs {
   font-weight: var(--weight-bold);
 }
 .tree-empty-note {
-  padding: 2px 12px 2px 28px;
+  padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }

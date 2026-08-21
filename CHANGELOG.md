@@ -4,6 +4,36 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Navigation filters:
+
+- A filtered navigation tree now shows only folders that contain a match, and each
+  folder’s count, size, and age are rolled up from the matches inside it.
+  Filtering had been a pass over the rows the browser happened to have mounted, so every
+  folder whose children had not loaded was kept — and then disappeared the moment
+  expanding it proved there was nothing inside.
+  `/api/tree` resolves the filter itself (`types`, `recency`, `min_size`,
+  `include_ignored`) over the whole index and returns the pruned tree with filtered
+  aggregates, plus a `filtered` envelope block carrying the true match count.
+  The “N collapsed folders may contain additional matches” note is gone with the problem
+  it described.
+
+- Filtering is answerable from a terminal: `metab ROOT --walk --type .md`, `--age`,
+  `--min-size`, and `--no-ignored` print which folders survive and what each one rolls
+  up to, in every walk output format.
+  `metab ROOT --check-api` gained a filtered step.
+
+- A filter can exclude the folder you are standing in — reached from a breadcrumb, a
+  link, or a pasted URL — and the tree then has no row to select.
+  The panel names it (“docs/project is outside this filter.”) instead of going silently
+  unselected. Deliberately a line rather than a pinned row: keeping the selection in a
+  filtered tree means refetching as you navigate, and a refetch repaints the panel and
+  collapses every folder you had open.
+
+- Navigation rows span the full width of the panel at every depth.
+  Indentation moved into the row’s own left padding, so the hover background, the
+  selection background, and the accent bar are one constant shape instead of a box that
+  narrowed and shifted right with each level of nesting.
+
 Routing:
 
 - Commits are addressable: selecting one in the Git panel puts it at `/commit/<rev>`,

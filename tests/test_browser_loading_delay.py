@@ -141,8 +141,8 @@ def test_expandable_folders_are_prefetched_so_expansion_needs_no_load() -> None:
     sweep = sweep[: sweep.index("function scheduleSubtreePrefetch()")]
     assert 'querySelectorAll("[data-tree-lazy-stub]")' in sweep
     # Already cached or already being fetched are both "no request needed".
-    assert "!subtreeCache.has(path)" in sweep
-    assert "!subtreeRequests.has(path)" in sweep
+    assert "!subtreeCache.has(key)" in sweep
+    assert "!subtreeRequests.has(key)" in sweep
 
     # Warming the tree must never compete with the request a reader is waiting
     # on: bounded lanes, a bounded sweep, and only while the browser is idle.
@@ -161,9 +161,9 @@ def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:
         app.index("function fetchSubtree(path)") : app.index("async function loadSubtree(")
     ]
 
-    assert "const existing = subtreeRequests.get(path)" in fetch_block
+    assert "const existing = subtreeRequests.get(key)" in fetch_block
     assert "return existing" in fetch_block
-    assert "subtreeRequests.set(path, request)" in fetch_block
+    assert "subtreeRequests.set(key, request)" in fetch_block
     # The entry is dropped on both settle paths, or one failure would pin a
     # rejected promise as the answer for that folder forever.
     assert "request.then(forget, forget)" in fetch_block

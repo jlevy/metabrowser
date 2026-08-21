@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -38,7 +39,13 @@ from metabrowser.inventory import (
     get_instance,
     walk_tree,
 )
-from metabrowser.tree import _build_inventory_tree, inventory_status
+from metabrowser.tree import (
+    _build_inventory_tree,
+    build_filtered_inventory_tree,
+    inventory_status,
+    parent_is_gitignored,
+)
+from metabrowser.tree_filter import TreeFilter
 from metabrowser.walker import build_gitignore_check_for
 
 # Detail levels, coarse → fine.
@@ -214,6 +221,91 @@ def walk_report(
     return render_report(result, detail=detail)
 
 
+def describe_filter(tree_filter: TreeFilter) -> str:
+    """One-line rendering of a filter selection, for the report header."""
+
+    parts: list[str] = []
+    if tree_filter.types:
+        parts.append(f"types={','.join(tree_filter.types)}")
+    if tree_filter.recency_seconds:
+        parts.append(f"age<={tree_filter.recency_seconds}s")
+    if tree_filter.min_size:
+        parts.append(f"size>={tree_filter.min_size}")
+    if not tree_filter.include_ignored:
+        parts.append("ignored=excluded")
+    return " ".join(parts) if parts else "none"
+
+
+def _render_filtered_rows(nodes: list[dict[str, Any]], detail: Detail) -> list[str]:
+    """Flatten a filtered tree into the report's one-line-per-entry shape.
+
+    Flat paths rather than indentation, matching the unfiltered report and
+    keeping a golden diff readable when one folder's contents change.
+    """
+
+    lines: list[str] = []
+    for node in nodes:
+        flags = " [gitignored]" if node.get("gitignored") else ""
+        if node["type"] == "dir":
+            lines.append(
+                f"  {node['path']} [dir] "
+                f"files={node['total_files']} size={node['total_size']}{flags}"
+            )
+            children = node.get("children")
+            if children:
+                lines.extend(_render_filtered_rows(children, detail))
+        elif detail != "dirs":
+            kind = "symlink" if node["type"] == "symlink" else "file"
+            lines.append(f"  {node['path']} [{kind}] size={node.get('size', 0)}{flags}")
+    return lines
+
+
+def filtered_walk_report(
+    root: Path,
+    *,
+    tree_filter: TreeFilter,
+    detail: Detail = "all",
+    subpath: str = "",
+    max_depth: int = DEFAULT_MAX_DEPTH,
+    max_files: int = DEFAULT_MAX_FILES,
+    now_sec: float | None = None,
+) -> str:
+    """Text report of what a filter selects, from the route's own projection.
+
+    This is the CLI answer to the two questions the nav panel raises and a
+    screenshot cannot settle: which folders a filter leaves standing, and what
+    each of them rolls up to. Both come from
+    :func:`metabrowser.tree.build_filtered_inventory_tree`, the same call the
+    ``/api/tree`` route makes, so what this prints is what the panel paints.
+    """
+
+    if detail not in DETAIL_LEVELS:
+        raise ValueError(f"unknown detail {detail!r}; expected one of {DETAIL_LEVELS}")
+    envelope = asyncio.run(
+        build_tree_envelope(
+            root,
+            subpath=subpath,
+            max_depth=max_depth,
+            max_files=max_files,
+            tree_filter=tree_filter,
+            now_sec=now_sec,
+        )
+    )
+    matched = envelope["filtered"] or {"files": 0, "size": 0, "entries": 0}
+    lines = [
+        f"walk: {root.name or root}",
+        f"status: {envelope['tally_cache_status']}",
+        f"filter: {describe_filter(tree_filter)}",
+        f"matched: files={matched['files']} size={matched['size']}",
+    ]
+    if detail == "summary":
+        return "\n".join(lines) + "\n"
+    lines.append("")
+    lines.append("entries:")
+    lines.extend(_render_filtered_rows(envelope["tree"], detail))
+    return "\n".join(lines) + "\n"
+
+
 # ── Machine-readable dumps (JSON / YAML) ──────────────────────────
 #
 # Everything the server's nav panel renders comes from two data
@@ -253,6 +345,8 @@ async def build_tree_envelope(
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
     timeout: float = 60.0,
+    tree_filter: TreeFilter | None = None,
+    now_sec: float | None = None,
 ) -> dict[str, Any]:
     """Reproduce the exact ``/api/tree`` response envelope for *root*.
 
@@ -260,6 +354,10 @@ async def build_tree_envelope(
     same object the server uses) and assembles the response with the
     same builder as the route, so this is a faithful stand-in for an
     HTTP ``GET /api/tree?path=<subpath>``.
+
+    An active *tree_filter* takes the route's filtered path, so the pruning
+    and the rolled-up folder totals a reader sees in the nav panel are the
+    ones this dump shows.
     """
 
     inv = get_instance()
@@ -274,10 +372,34 @@ async def build_tree_envelope(
     inv._max_files = max_files
     inv.start(root)
     await inv.wait_until_done(timeout=timeout)
-    tree = _build_inventory_tree(parent_rel=subpath, max_depth=max_depth, root_abs=root)
+    filtered = None
+    if tree_filter is not None and tree_filter.active:
+        filtered = build_filtered_inventory_tree(
+            entries=inv.entries(scope="all-known"),
+            children_of=inv.children_of,
+            parent_rel=subpath,
+            max_depth=max_depth,
+            root_abs=root,
+            parent_ignored=parent_is_gitignored(subpath),
+            tree_filter=tree_filter,
+            now_sec=time.time() if now_sec is None else now_sec,
+            generation=inv.rollup_revision(),
+        )
+        tree = filtered.tree
+    else:
+        tree = _build_inventory_tree(parent_rel=subpath, max_depth=max_depth, root_abs=root)
     return {
         "root": str(root),
         "tree": tree,
+        "filtered": (
+            {
+                "files": filtered.matched_files,
+                "size": filtered.matched_size,
+                "entries": filtered.matched_leaves,
+            }
+            if filtered is not None
+            else None
+        ),
         "tally_cache_status": inventory_status(),
         "tally_cache_max_files": inv.max_files(),
     }
@@ -290,13 +412,22 @@ def dump_tree(
     subpath: str = "",
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
+    tree_filter: TreeFilter | None = None,
+    now_sec: float | None = None,
 ) -> str:
     """All-at-once: the ``/api/tree`` envelope as JSON or YAML text."""
 
     if fmt not in ("json", "yaml"):
         raise ValueError(f"dump_tree expects json|yaml, got {fmt!r}")
     envelope = asyncio.run(
-        build_tree_envelope(root, subpath=subpath, max_depth=max_depth, max_files=max_files)
+        build_tree_envelope(
+            root,
+            subpath=subpath,
+            max_depth=max_depth,
+            max_files=max_files,
+            tree_filter=tree_filter,
+            now_sec=now_sec,
+        )
     )
     if fmt == "json":
         return json.dumps(envelope, indent=2) + "\n"

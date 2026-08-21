@@ -24,7 +24,9 @@ GOLDEN_DIR = Path(__file__).parent.parent / "tests" / "golden"
 
 FIXUPS: list[tuple[str, str]] = [
     (r"Usage: metab \[OPTIONS\] \[ROOT\]", "Usage: metab [OPTIONS] [ROOT_ARG]"),
-    (r"\S*/tryscript-[A-Za-z0-9]+", "[CWD]"),
+    # Not \S*: the sandbox path is often quoted in a JSON envelope, and a
+    # non-space run swallows the opening quote along with the path.
+    (r'[^\s"]*/tryscript-[A-Za-z0-9]+', "[CWD]"),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),
     (r"^metab \d+\S*$", "metab [VERSION]"),
 ]

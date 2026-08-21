@@ -19,7 +19,9 @@ def test_tree_subtree_fetches_remain_depth_bounded() -> None:
     js = _browser_app_js()
 
     assert "TREE_SUBTREE_FETCH_DEPTH" in js
-    assert "&depth=${TREE_SUBTREE_FETCH_DEPTH}" in js
+    # Built through treeUrl, which also carries the active filter, so the
+    # depth parameter is one of the pieces rather than a whole query string.
+    assert "`depth=${TREE_SUBTREE_FETCH_DEPTH}`" in js
 
 
 def test_hover_prefetch_skips_expensive_file_types() -> None:

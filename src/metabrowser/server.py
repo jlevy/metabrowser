@@ -160,9 +160,18 @@ from metabrowser.tree import (
     _subtree_is_empty,
     _subtree_summary,
     _tree_depth_from_query,
+    build_filtered_inventory_tree,
     build_gitignore_check,
     inventory_has_data,
     inventory_status,
+    parent_is_gitignored,
+)
+from metabrowser.tree_filter import (
+    TreeFilter,
+    parse_recency,
+    parse_size_floor,
+    parse_types,
+    reset_rollup_cache_for_tests,
 )
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
@@ -227,6 +236,7 @@ def reset_response_caches_for_tests() -> None:
 
     _ROLLUP_BODY_CACHE.clear()
     _ROLLUP_IN_FLIGHT.clear()
+    reset_rollup_cache_for_tests()
 
 
 def _release_rollup_flight(etag: str, task: asyncio.Task[bytes]) -> None:
@@ -873,6 +883,7 @@ async def index(_request: Request) -> HTMLResponse:
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree_expansion.js")
+    tree_filter_model_url = _static_asset_url("tree_filter_model.js")
     pending_tally_diagnostics_url = _static_asset_url("pending_tally_diagnostics.js")
     known_file_catalog_url = _static_asset_url("known_file_catalog.js")
     catalog_feed_url = _static_asset_url("catalog_feed.js")
@@ -1133,6 +1144,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>
+  <script src="{tree_filter_model_url}"></script>
   <script src="{pending_tally_diagnostics_url}"></script>
   <script src="{known_file_catalog_url}"></script>
   <script src="{catalog_feed_url}"></script>
@@ -1222,6 +1234,35 @@ async def _ensure_inventory_serving(subpath: str) -> bool:
     return True if not subpath else inventory.get(subpath) is not None
 
 
+def _query_values(request: Request, key: str) -> list[str]:
+    """Repeated query values, tolerating the fake-request shims in tests."""
+
+    params = request.query_params
+    if hasattr(params, "getlist"):
+        return list(params.getlist(key))
+    single = params.get(key, "")
+    return [single] if single else []
+
+
+def tree_filter_from_request(request: Request) -> TreeFilter:
+    """Read the nav filter off a request.
+
+    Shares its vocabulary with ``static/filter_state.js``: ``recency`` names a
+    window from :data:`RECENT_WINDOW_SECONDS`, ``types`` carries extension or
+    filename tokens (repeated or comma-separated), ``min_size`` is a byte
+    floor, and ``include_ignored=0`` drops gitignored entries. An absent or
+    unrecognized value means "no constraint", so an older client sees more
+    rather than a 400.
+    """
+
+    return TreeFilter(
+        recency_seconds=parse_recency(request.query_params.get("recency", "")),
+        types=parse_types(_query_values(request, "types")),
+        min_size=parse_size_floor(request.query_params.get("min_size", "")),
+        include_ignored=request.query_params.get("include_ignored", "1") not in ("0", "false"),
+    )
+
+
 @log_async_calls()
 async def api_tree(request: Request) -> JSONResponse:
     subpath = request.query_params.get("path", "")
@@ -1231,12 +1272,65 @@ async def api_tree(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     remaining_depth = _tree_depth_from_query(depth_str)
+    tree_filter = tree_filter_from_request(request)
 
     inventory = get_inventory()
     root_dir = _resolved_root_dir()
     inv_can_serve = await _ensure_inventory_serving(subpath)
 
-    if inv_can_serve:
+    # One snapshot and one revision for every O(index) pass this request makes.
+    # A root request with a filter active needs two of them — the filtered
+    # rollup and the nav tallies — and they read the same entries for
+    # overlapping reasons. Taking a snapshot each would copy the index twice on
+    # the request the page makes first, and would let the two passes describe
+    # different indexes.
+    #
+    # Both are read in the same loop tick, with no await between them, so the
+    # revision names exactly the entries handed over. That is what lets either
+    # pass be memoized: otherwise a worker could only ask for a revision that
+    # had already moved, and would cache its answer under a key that never
+    # matches. Inventory writes are owned by the loop, so iterating the live
+    # dictionary off-loop would race the still-running walker.
+    #
+    # The response status joins them: the walker can finish while a worker
+    # runs, and reporting that newer "done" beside partial tallies would make
+    # the browser stop polling before it requests the final snapshot.
+    index_entries: list[Any] | None = None
+    index_revision = 0
+    tally_cache_status = inventory_status()
+    if inv_can_serve and (tree_filter.active or not subpath):
+        index_entries = inventory.entries(scope="all-known")
+        index_revision = inventory.rollup_revision()
+        tally_cache_status = inventory_status()
+
+    filtered = None
+    if inv_can_serve and tree_filter.active and index_entries is not None:
+        # Presence and aggregates both depend on the whole subtree, not on the
+        # slice this request returns, so the pass is O(index) and goes to a
+        # worker. Structure comes from the index's own child map instead, which
+        # is why the subtree build stays cheap for a deep, narrow request.
+        filtered = await asyncio.to_thread(
+            build_filtered_inventory_tree,
+            entries=index_entries,
+            children_of=inventory.children_of,
+            parent_rel=subpath,
+            max_depth=remaining_depth,
+            root_abs=root_dir,
+            parent_ignored=parent_is_gitignored(subpath),
+            tree_filter=tree_filter,
+            now_sec=time.time(),
+            generation=index_revision,
+        )
+        tree = filtered.tree
+        LOG.debug(
+            "api_tree (filtered) path=%r depth=%d entries=%d matched=%d status=%s",
+            subpath or "<root>",
+            remaining_depth,
+            len(tree),
+            filtered.matched_files,
+            inventory_status(),
+        )
+    elif inv_can_serve:
         tree = _build_inventory_tree(
             parent_rel=subpath,
             max_depth=remaining_depth,
@@ -1269,23 +1363,9 @@ async def api_tree(request: Request) -> JSONResponse:
     # the event stream at the design-center index size for the same reason
     # api_catalog offloads its own pass.
     navigation_tallies = None
-    # Keep the response status in the same event-loop epoch as the tree and
-    # tally snapshots. The walker can finish while the O(index) worker runs;
-    # reporting that newer "done" state beside partial tallies would make the
-    # browser stop polling before it requests the final snapshot.
-    tally_cache_status = inventory_status()
-    if inv_can_serve and not subpath:
-        # Inventory writes are owned by the event loop. Snapshot there before
-        # handing the tally pass to a worker; iterating the live dictionary
-        # off-loop races the still-running walker.
-        #
-        # The revision is read in the same loop tick as the snapshot, with no
-        # await between them, so it names exactly the entries handed over. That
-        # is what lets the pass be memoized: without it the worker could only
-        # ask for a revision that had already moved, and would cache the answer
-        # under a key that never matches.
-        tally_entries = inventory.entries(scope="all-known")
-        tally_revision = inventory.rollup_revision()
+    if inv_can_serve and not subpath and index_entries is not None:
+        tally_entries = index_entries
+        tally_revision = index_revision
         navigation_tallies = await asyncio.to_thread(
             lambda: inventory.navigation_tallies(
                 [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
@@ -1302,6 +1382,18 @@ async def api_tree(request: Request) -> JSONResponse:
         {
             "root": str(root_dir),
             "tree": tree,
+            # What the filter selected across the whole subtree, which the
+            # payload cannot be counted for: it is capped by depth, and the
+            # browser pages long child lists. Null when nothing is filtered.
+            "filtered": (
+                {
+                    "files": filtered.matched_files,
+                    "size": filtered.matched_size,
+                    "entries": filtered.matched_leaves,
+                }
+                if filtered is not None
+                else None
+            ),
             "tally_cache_status": tally_cache_status,
             "tally_cache_max_files": inventory.max_files(),
             # Tracked-versus-ignored split for the nav header, plus the age,

@@ -500,7 +500,7 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
     # Caching an empty subtree because the scan has not reached it yet would
     # answer every later expansion with a folder that has contents.
     assert fetch_block.index("const scanning =") < fetch_block.index(
-        "subtreeCache.set(path, data.tree)"
+        "subtreeCache.set(key, data.tree)"
     )
     assert "if (!scanning)" in fetch_block
 

@@ -94,6 +94,7 @@ $ metab walkroot --walk --format json
       "ext": ".jsonl"
     }
   ],
+  "filtered": null,
   "tally_cache_status": "done",
   "tally_cache_max_files": 500000
 }
@@ -132,6 +133,7 @@ tree:
   size: 37
   mtime: 1700000000.0
   ext: .jsonl
+filtered: null
 tally_cache_status: done
 tally_cache_max_files: 500000
 ? 0
@@ -167,6 +169,7 @@ $ metab walkroot --walk --format json --path logs
       "ext": ".log"
     }
   ],
+  "filtered": null,
   "tally_cache_status": "done",
   "tally_cache_max_files": 500000
 }

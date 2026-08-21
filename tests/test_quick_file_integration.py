@@ -139,7 +139,7 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     ]
     assert "knownFileCatalog?.observeLazyTree(data.tree)" in fetch_subtree
     assert fetch_subtree.index("observeLazyTree") < fetch_subtree.index(
-        "subtreeCache.set(path, data.tree)"
+        "subtreeCache.set(key, data.tree)"
     )
 
     recent = js[
