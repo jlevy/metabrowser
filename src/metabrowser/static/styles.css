@@ -4510,9 +4510,13 @@ pre.code-block code.hljs {
   padding-left: 6px;
 }
 
-/* Ref chips yield space first. The row's priority is age, then
-   subject, then chips: an age pushed off the row is information lost,
-   while a clipped chip is still recognisable. */
+/* Ref chips shrink last, not first. Flex distributes shrinkage in
+   proportion to each item's shrink factor, so the subject's factor
+   below is large enough that it absorbs essentially all of it: chips
+   keep their full names until the subject has collapsed entirely,
+   which is the only point at which clipping a ref beats clipping the
+   message. Without this the chips shrank alongside the subject and a
+   single short branch name was cut in half on a half-empty row. */
 .git-graph-refs {
   display: flex;
   align-items: center;
@@ -4528,6 +4532,9 @@ pre.code-block code.hljs {
   white-space: nowrap;
   min-width: 0;
   flex-grow: 1;
+  /* Absorbs the row's shrinkage so the ref chips beside it do not; an
+     ellipsized message still reads, a halved branch name does not. */
+  flex-shrink: 1000;
 }
 
 .git-graph-meta {
@@ -4579,7 +4586,11 @@ pre.code-block code.hljs {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  max-width: 140px;
+  /* Wide enough for the branch names this project actually uses:
+     measured against this repository's refs, 140px clipped 18 of 41
+     chips, including ordinary names like `codex/help-keyboard-shortcuts`.
+     Still bounded, since one very long ref must not own the row. */
+  max-width: 220px;
   padding: 0 5px;
   border-radius: var(--radius-tag);
   line-height: 16px;
