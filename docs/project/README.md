@@ -29,6 +29,7 @@ links to the document that covers each in depth.
 - [Full-page HTML rendering and an explicit trust model](specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+- [Mermaid diagrams and a loading policy for large browser assets](specs/active/plan-2026-08-21-mermaid-diagrams-and-asset-loading.md)
 
 ## Research
 
