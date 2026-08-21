@@ -3,15 +3,17 @@ type: is
 id: is-01m0k65ab493q97zpw6hgcjjsc
 title: "Phase 2: every surface reads the declared color"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-08-21-file-type-source-of-truth.md
 labels: []
 dependencies: []
 parent_id: is-01m0k63zme8wetezbbq59ys3k8
 created_at: 2026-08-21T22:13:15.234Z
-updated_at: 2026-08-21T22:13:15.234Z
+updated_at: 2026-08-21T23:49:44.730Z
+closed_at: 2026-08-21T23:49:44.729Z
+close_reason: "serialize_distribution_colors joins hue to tone server-side and ships both themes in METABROWSER_SETTINGS.DISTRIBUTION_COLORS. category_palette.js is a lookup: slot pool, per-folder session, reservation table, and DISTRIBUTION_PALETTE_SLOTS all removed. Overview, totals, and treemap read the same declared color."
 ---
 Phase 2 of the spec: everything that draws a file reads its color from the registry.
 

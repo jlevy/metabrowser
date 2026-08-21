@@ -3,15 +3,17 @@ type: is
 id: is-01m0k52aba17zgc5njavnj58xq
 title: Match GitHub's file-type colors where a reader would expect them
 kind: task
-status: open
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-21-file-type-source-of-truth.md
 labels: []
 dependencies: []
 parent_id: is-01m0k63zme8wetezbbq59ys3k8
 created_at: 2026-08-21T21:54:08.361Z
-updated_at: 2026-08-21T22:12:53.458Z
+updated_at: 2026-08-21T23:49:45.037Z
+closed_at: 2026-08-21T23:49:45.036Z
+close_reason: 35 of 56 families carry GitHub's linguist hue unchanged, including where two of GitHub's own colors are close (html/svelte 0.65 deg, ruby/yaml 1.13 deg) — moving a familiar hue to win a distance metric costs more recognizability than it buys.
 ---
 File-type colors should agree with GitHub's where a reader would expect them to. Someone who knows JavaScript is yellow and Go is cyan from every repository page should not have to relearn the vocabulary here.
 
