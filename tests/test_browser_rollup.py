@@ -385,6 +385,12 @@ def _assert_derived_state_matches_entries(index: InventoryIndex) -> None:
         assert cached == fresh, f"stale aggregate cached for {path!r}"
 
 
+def _total_files(index: InventoryIndex, path: str) -> int:
+    result = index.rollup(path, depth=0, top=0, ext_top=0)
+    assert result is not None, f"no rollup for {path!r}"
+    return result["node"]["total_files"]
+
+
 def test_derived_index_state_survives_writes_and_removals(tmp_path: Path) -> None:
     """Adding and removing entries must leave no stale derived state."""
 
@@ -412,8 +418,8 @@ def test_derived_index_state_survives_writes_and_removals(tmp_path: Path) -> Non
             mtime_ns=1_700_000_000_000_000_000,
         )
     )
-    assert index.rollup("keep", depth=0, top=0, ext_top=0)["node"]["total_files"] == 2
-    assert index.rollup("", depth=0, top=0, ext_top=0)["node"]["total_files"] == 3
+    assert _total_files(index, "keep") == 2
+    assert _total_files(index, "") == 3
     _assert_derived_state_matches_entries(index)
 
     index.apply_live_entry(
@@ -426,7 +432,7 @@ def test_derived_index_state_survives_writes_and_removals(tmp_path: Path) -> Non
         )
     )
     index.rollup("", depth=3, top=40, ext_top=12)
-    assert index.rollup("keep", depth=0, top=0, ext_top=0)["node"]["total_files"] == 3
+    assert _total_files(index, "keep") == 3
     _assert_derived_state_matches_entries(index)
 
     # Removing a directory must drop the whole subtree from every structure.
@@ -436,5 +442,5 @@ def test_derived_index_state_survives_writes_and_removals(tmp_path: Path) -> Non
     assert "drop" not in index._children_index
     assert "drop/nested" not in index._children_index
     # keep/a.py, keep/c.py, keep/d.py survive; the drop/ subtree is gone.
-    assert index.rollup("", depth=0, top=0, ext_top=0)["node"]["total_files"] == 3
+    assert _total_files(index, "") == 3
     _assert_derived_state_matches_entries(index)
