@@ -3,13 +3,15 @@ type: is
 id: is-01m0hk9nqmpp444bh4yyjvxtq7
 title: Nav filter counts freeze mid-crawl and never refresh
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-21T07:24:20.594Z
-updated_at: 2026-08-21T07:24:20.594Z
+updated_at: 2026-08-21T15:46:52.935Z
+closed_at: 2026-08-21T15:46:52.934Z
+close_reason: null
 ---
 Leave a page open across a large crawl and the nav filter counts freeze at whatever the
 crawl had reached, while everything around them finishes correctly.
