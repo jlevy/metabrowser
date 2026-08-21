@@ -477,6 +477,33 @@ Collapse is always class-driven (`.tree-children-collapsed`,
 the motion, and reduced-motion drops every travel to 1ms while keeping the state change.
 `tests/test_design_vocabulary.py` pins the recipe on every site.
 
+### Color and Theming
+
+Colors are declared in `oklch`, which separates the three things a theme has to reason
+about: lightness, chroma, and hue.
+That separation is what makes the theming rule statable and checkable rather than a
+matter of taste.
+
+> A token defined in both themes names **one color seen against two backgrounds**: its
+> **hue is the invariant**, while lightness and chroma are tuned for the background it
+> sits on — dark surfaces generally want less chroma, not more.
+
+Consequences worth knowing:
+
+- A token that needs a different hue in one theme is two different colors and should be
+  two tokens with names that say so.
+- A token defined in one theme only is a bug in waiting: a literal tuned for a light
+  background is unreadable on a dark one, which is exactly how `--git-ref-local` broke
+  when it stopped inheriting a themed token.
+- The graph lane colors are the documented exception, and the reason is in the
+  stylesheet beside them: they are one *set*, chosen so the five stay distinguishable
+  from one another, and that property belongs to the set rather than to any member, so
+  they are identical in both themes and are never returned individually.
+
+`tests/test_design_vocabulary.py` enforces hue invariance across themes for every token
+already written in `oklch`; the coverage widens as the remaining hex and hsl literals
+migrate.
+
 ### Age
 
 An age is an age, wherever it appears — a file row, a commit row, a commit’s header.
@@ -494,8 +521,12 @@ Git ref badges (`.git-ref`) are their own vocabulary, not filter chips: at
 `--micro-font-size` the name carries the meaning, so it is always `--weight-bold`, and
 the corner is `--radius-tag` (square-ish) so “a ref” and “a filter” never read as the
 same control. `HEAD`’s chip keeps its distinction with a hairline ring in its own color.
-Their ground is `--git-ref-bg`, a very pale warm tint of its own rather than the neutral
-chip surface, so a ref is identifiable before its text is read.
+Their ground is `--git-ref-bg`, a near-neutral of its own rather than the shared chip
+surface, sitting at the value of the surfaces beside it with just enough chroma to
+separate from them. The three ref colors — `--git-ref-local`, `--git-ref-remote`,
+`--git-ref-tag` — are one lightness and three hues, so a ref’s kind is legible without a
+second signal, and the dark theme raises only their lightness so they stay the same
+three colors.
 
 ### Inline Change Stats
 

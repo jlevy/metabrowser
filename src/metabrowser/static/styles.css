@@ -917,28 +917,29 @@
   --standalone-edge: hsl(0 0% 33%);
 
   /* Commit-graph branch lanes. These five are VS Code's graph
-     foreground colors, chosen upstream to stay distinguishable under
-     the common forms of color vision deficiency — which is why they are
-     kept as a set rather than resampled from the app palette. The
-     renderer references them only as tokens (see git_graph.js). They
-     are identical in both themes: they are drawn as 1px strokes on
-     either background and already carry enough contrast on both. */
-  --git-lane-1: #ffb000;
-  --git-lane-2: #dc267f;
-  --git-lane-3: #994f00;
-  --git-lane-4: #40b0a6;
-  --git-lane-5: #b66dff;
+     foreground colors, kept as a set rather than resampled per surface:
+     the five hues stay distinguishable from one another under the common
+     forms of color vision deficiency, which is a property of the set and
+     is lost as soon as one member is returned alone. The renderer
+     references them only as tokens (see git_graph.js). They are
+     identical in both themes: they are drawn as 1px strokes on either
+     background and already carry enough contrast on both. */
+  --git-lane-1: oklch(0.81 0.17 76.38);
+  --git-lane-2: oklch(0.6 0.22 357.69);
+  --git-lane-3: oklch(0.51 0.12 56.37);
+  --git-lane-4: oklch(0.69 0.1 186.78);
+  --git-lane-5: oklch(0.68 0.21 304.41);
 
-  /* Ref badges, and the lane color for the branch HEAD is on. */
-  --git-ref-local: var(--status-info);
-  --git-ref-remote: hsl(265 75% 58%);
-  --git-ref-tag: hsl(38 92% 40%);
+  /* Ref badges, and the lane color for the branch HEAD is on. Each is
+     text on the chip ground below, so all three sit at the same
+     lightness and differ by hue: local, remote, tag. */
+  --git-ref-local: oklch(0.5 0.1 259.52);
+  --git-ref-remote: oklch(0.5 0.1 301.25);
+  --git-ref-tag: oklch(0.5 0.14 71.1);
   /* Branch and tag chips carry their own ground, so a ref never reads as
-     a filter chip: a tan at the same value as the neighbouring sunken
-     surface, with just enough chroma to register as warm. Sitting near
-     the surface chroma (~0.008) rather than above it is what keeps it a
-     tint instead of a highlight. */
-  --git-ref-bg: oklch(96.5% 0.014 82);
+     a filter chip: a near-neutral at the value of the surfaces beside
+     it, carrying just enough chroma to separate from them. */
+  --git-ref-bg: oklch(95% 0.005 240);
 }
 
 [data-theme="dark"] {
@@ -1067,12 +1068,17 @@
 
   /* Lane colors are intentionally not overridden: the five graph
      foregrounds are readable as thin strokes on both backgrounds, and
-     re-tuning them per theme would break the colorblind-safe spacing
-     they were chosen for. Badge colors do need lifting — the light
-     values are text on a dark surface here, not fills on a light one. */
-  --git-ref-remote: hsl(265 75% 74%);
-  --git-ref-tag: hsl(38 92% 62%);
-  --git-ref-bg: oklch(27% 0.016 82);
+     re-tuning them per theme would break the separation they were
+     chosen for as a set. Badge colors do need lifting — the light
+     values are text on a dark surface here, not on a light one. Each
+     keeps its hue and chroma and rises in lightness only, so the three
+     stay the same three colors. `--git-ref-local` is overridden here
+     too: it used to inherit a themed token, and a literal light value
+     would be unreadable on this background. */
+  --git-ref-local: oklch(0.74 0.1 259.52);
+  --git-ref-remote: oklch(0.74 0.1 301.25);
+  --git-ref-tag: oklch(0.76 0.14 71.1);
+  --git-ref-bg: oklch(26% 0.008 240);
 }
 
 .mb-distribution-slot-1 {

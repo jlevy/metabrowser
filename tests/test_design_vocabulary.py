@@ -118,3 +118,101 @@ def test_row_targets_share_the_hover_token() -> None:
     assert "background: var(--hover-bg);" in _rule(
         diff_css, ".metabrowser-diff-host .diff-file-bar:hover"
     )
+
+
+def test_age_is_one_primitive_everywhere() -> None:
+    """An age is an age: one formatter, one styling rule, and call sites
+    that add positioning only."""
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
+    assert "function age(epochSeconds)" in formatters, "the shared age primitive moved"
+    for name in ("git_panel.js", "app.js"):
+        consumer = (STATIC / name).read_text(encoding="utf-8")
+        assert "MetabrowserFormatters" in consumer and "age(" in consumer, (
+            f"{name} must take its ages from the shared primitive"
+        )
+    tiers = _rule(
+        styles, ":is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
+    )
+    for declaration in ("color:", "font-weight:", "font-size:", "font-variant-numeric:"):
+        assert declaration in tiers, f"the age primitive lost {declaration}"
+    # A call site that restates color or weight has forked the vocabulary.
+    graph_age = _rule(styles, ".git-graph-age")
+    assert "color:" not in graph_age and "font-weight:" not in graph_age, (
+        ".git-graph-age must carry positioning only"
+    )
+
+
+def test_branch_chips_have_their_own_ground() -> None:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert "background: var(--git-ref-bg)" in _rule(styles, ".git-ref")
+    assert "--git-ref-bg: var(--viz-surface-sunken)" not in styles, (
+        "ref chips must not reuse the shared chip ground"
+    )
+    assert styles.count("--git-ref-bg:") >= 2, "both themes must define the ref-chip ground"
+
+
+# ── Theming: one hue, two lightnesses ──────────────────────────────
+
+_OKLCH_TOKEN = re.compile(r"^\s*(--[a-z0-9-]+):\s*oklch\(([^)]+)\)", re.MULTILINE)
+
+
+def _oklch_tokens(block: str) -> dict[str, list[str]]:
+    return {name: value.split() for name, value in _OKLCH_TOKEN.findall(block)}
+
+
+def _theme_blocks() -> tuple[str, str]:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    dark_start = styles.index('[data-theme="dark"] {')
+    return styles[:dark_start], styles[dark_start:]
+
+
+# Hue is a color's identity; lightness and chroma are how it is rendered
+# against a background. Measured across the tokens already in oklch, the
+# deliberate theme adjustments move lightness and chroma while hue drifts
+# at most ~2 degrees, which is tuning, not a different color.
+_THEME_HUE_TOLERANCE_DEGREES = 3.0
+
+
+def test_themed_colors_keep_their_hue() -> None:
+    """The systematic rule for two themes.
+
+    A token defined in both themes names one color seen against two
+    backgrounds: its hue is the invariant, while lightness and chroma
+    are tuned for the background it sits on (dark surfaces usually want
+    less chroma, not more of it). Stating colors in oklch is what makes
+    this checkable at all — the notation separates the three components,
+    which hex and hsl do not — so the check covers the tokens already
+    migrated and widens as the migration proceeds.
+    """
+    light_tokens = _oklch_tokens(_theme_blocks()[0])
+    dark_tokens = _oklch_tokens(_theme_blocks()[1])
+    compared = 0
+    for name, dark_value in dark_tokens.items():
+        light_value = light_tokens.get(name)
+        if light_value is None or len(light_value) < 3 or len(dark_value) < 3:
+            continue
+        compared += 1
+        drift = abs(float(light_value[2]) - float(dark_value[2]))
+        assert drift <= _THEME_HUE_TOLERANCE_DEGREES, (
+            f"{name} changes hue between themes (light {light_value[2]}, "
+            f"dark {dark_value[2]}); a themed color keeps its hue and moves in "
+            "lightness and chroma"
+        )
+        assert light_value[0] != dark_value[0] or light_value[1] != dark_value[1], (
+            f"{name} is identical in both themes; drop the override instead"
+        )
+    assert compared >= 10, "the theming check lost its coverage"
+
+
+def test_ref_colors_are_themed_and_distinguished_by_hue() -> None:
+    """Three ref kinds, one lightness, three hues — each themed, since a
+    single literal cannot be readable on both backgrounds."""
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    tokens = ("--git-ref-local", "--git-ref-remote", "--git-ref-tag")
+    for token in tokens:
+        assert styles.count(f"{token}:") >= 2, f"{token} must be defined for both themes"
+    light, _dark = _theme_blocks()
+    light_tokens = _oklch_tokens(light)
+    hues = [light_tokens[token][2] for token in tokens if token in light_tokens]
+    assert len(set(hues)) == 3, f"ref kinds must differ by hue, got {hues}"
