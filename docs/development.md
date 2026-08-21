@@ -111,8 +111,16 @@ uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
 
 The corpus, server logs, and result JSON live in `.bench/`, which is not committed.
 A corpus is reused when it already matches `--files`, so repeat runs skip the build.
-Run both sides on the same machine and the same corpus size: the absolute numbers move a
-great deal with the filesystem and the page cache, and only the comparison carries over.
+
+Take both sides back to back, on the same machine and the same corpus size.
+Only the comparison carries over; the absolute numbers move a great deal with the
+filesystem, the page cache, and whatever else is running.
+A stored `--json` from an earlier session is a weak baseline for that last reason —
+under an unrelated load spike every row of a comparison shifted by 1.2× to 1.8×, which
+reads convincingly like a regression and was not one.
+A uniform shift across every row is the tell: real changes move the rows their mechanism
+touches and leave the rest alone.
+Re-measure both sides together before believing any of it.
 
 Three of the reported rows exist because a single blended latency hides what matters.
 
