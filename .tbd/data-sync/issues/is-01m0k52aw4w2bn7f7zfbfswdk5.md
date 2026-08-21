@@ -5,15 +5,15 @@ title: "File-type colors collide and move between folders: the palette is a slot
 kind: bug
 status: open
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 4
+spec_path: docs/project/specs/active/plan-2026-08-21-file-type-source-of-truth.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0k52aba17zgc5njavnj58xq
-parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
+parent_id: is-01m0k63zme8wetezbbq59ys3k8
 created_at: 2026-08-21T21:54:08.899Z
-updated_at: 2026-08-21T21:55:23.805Z
+updated_at: 2026-08-21T22:12:53.932Z
 ---
 Two file types can render in near-identical colors, and a family's color changes between folders. Both follow from the same cause: the palette is positional, not an identity.
 
