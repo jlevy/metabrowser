@@ -5,12 +5,12 @@ title: "R5: make the recency filter cacheable via sorted mtimes and binary searc
 kind: feature
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0jt1hr4r6yqhgxkv0bpyayj
 created_at: 2026-08-21T18:42:31.600Z
-updated_at: 2026-08-21T18:42:31.600Z
+updated_at: 2026-08-21T19:03:45.048Z
 ---
 PR #60 review finding R5 (medium; opportunity rather than defect).
 
@@ -34,3 +34,7 @@ inventory.py on main.
 
 Applying the same shape here would make the recency filter cacheable like every other
 dimension. Not a merge blocker; worth doing before the prefetch sweep meets a large tree.
+
+## Notes
+
+Deferred from the PR #60 review as agreed: an opportunity, not a defect. The pattern to reuse is _with_recency in inventory.py on main — a per-revision sorted array of mtimes answered by binary search, so the memo key carries no clock term. Do it before the prefetch sweep meets a large tree: today a recency filter runs the full O(index) pass on every request in the fan-out.

@@ -3,14 +3,17 @@ type: is
 id: is-01m0jt2jfea3xk3q7g7n2pnbq1
 title: "R1: keep children_of when merging #60's filtered tree path"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 3
+assignee: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m0jt1hr4r6yqhgxkv0bpyayj
 created_at: 2026-08-21T18:42:02.349Z
-updated_at: 2026-08-21T18:42:02.349Z
+updated_at: 2026-08-21T19:03:43.770Z
+closed_at: 2026-08-21T19:03:43.769Z
+close_reason: "Resolved by combining: children_of from #59 for structure, the matches parameter from #60 for aggregates, one code path. build_filtered_inventory_tree takes both — entries because a rollup needs every one, children_of because the tree shape needs one subtree. Pinned by a test, since picking a side is the natural way to resolve this conflict."
 ---
 PR #60 review finding R1 (high).
 

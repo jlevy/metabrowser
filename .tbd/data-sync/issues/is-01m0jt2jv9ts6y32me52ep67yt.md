@@ -3,14 +3,17 @@ type: is
 id: is-01m0jt2jv9ts6y32me52ep67yt
 title: "R2: merged root request takes two snapshots and two O(index) passes"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 3
+assignee: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m0jt1hr4r6yqhgxkv0bpyayj
 created_at: 2026-08-21T18:42:02.728Z
-updated_at: 2026-08-21T18:42:02.728Z
+updated_at: 2026-08-21T19:03:44.086Z
+closed_at: 2026-08-21T19:03:44.085Z
+close_reason: "One snapshot, one revision read, one status read, all in the same loop tick. Fusing the two passes rejected on measurement: at most 22% of a memoized, off-loop cost (121ms of 548ms at 100k entries; 480ms of 2226ms at 400k), against coupling a bottom-up per-directory rollup to a flat per-extension tally. Numbers recorded beside the constant."
 ---
 PR #60 review finding R2 (high). This one auto-merges clean, which is what makes it
 dangerous -- nothing flags it.

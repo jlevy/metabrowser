@@ -3,14 +3,17 @@ type: is
 id: is-01m0jt3enztskcdvmnkb4pdtyc
 title: "R4: tree_filter._ROLLUP_CACHE has no test reset and relies on process-wide revisions"
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 3
+assignee: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m0jt1hr4r6yqhgxkv0bpyayj
 created_at: 2026-08-21T18:42:31.229Z
-updated_at: 2026-08-21T18:42:31.229Z
+updated_at: 2026-08-21T19:03:44.728Z
+closed_at: 2026-08-21T19:03:44.727Z
+close_reason: Added reset_rollup_cache_for_tests, called from the server's existing reset_response_caches_for_tests so a test resets every response-shaped cache through one door, and stated the process-wide-revision dependency beside the cache. A test fails if the hook stops clearing it.
 ---
 PR #60 review finding R4 (medium).
 
