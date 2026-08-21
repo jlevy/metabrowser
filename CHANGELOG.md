@@ -131,6 +131,14 @@ Large directories:
   and lets tabs opening together share one count.
   Expanding a folder was already unaffected; this was the request the page makes first.
 
+- The type and age filter counts in the navigation sidebar no longer freeze partway
+  through a scan. On a large tree the first page paint can land before the index can
+  answer, which rendered a fallback summary row — and the refresh that would replace
+  that row was gated on the row it installs, so it never ran again.
+  The counts beside it kept updating, which made the stale ones easy to trust: on a
+  400,000-file tree the menu offered “past day 198,998” for a tree the server already
+  reported as 400,002. Reloading fixed it; nothing else did.
+
 - A folder’s file count can no longer settle on a number that is too high and stay
   there. A folder reads its totals from two places, and while a scan is running both are
   partial, so the one reporting more files is the one further along.

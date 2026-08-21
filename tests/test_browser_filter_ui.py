@@ -882,7 +882,10 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
 
     js = _read("app.js")
     start = js.index("function scheduleRootSummaryRefresh()")
-    block = js[start : start + 1800]
+    # Slice to the next top-level function rather than a fixed character
+    # count: a comment added inside this one pushed the last assertion out
+    # of an 1800-character window and failed a behavior that had not changed.
+    block = js[start : js.index("\nfunction ", start + 1)]
     assert "filterOpenMenu === null" in block
     # Both caches move together, or the tally reverts to first-paint
     # figures under a recency filter.
