@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -482,6 +483,83 @@ def test_eviction_epochs_are_released_once_no_rollup_is_in_flight(tmp_path: Path
     index.rollup("", depth=3, top=40, ext_top=12)
     assert index._aggregate_evicted_at == {}, "epochs outlived the passes that needed them"
     assert index._rollup_passes_in_flight == 0
+
+
+def test_aggregate_computed_against_moved_data_is_never_published(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Invariant 5: a stale aggregate is discarded rather than cached.
+
+    ``/api/rollup`` runs ``build_rollup`` in a worker thread while the walker
+    keeps writing on the event loop, so a pass can finish computing a
+    directory *after* a write has invalidated it. Publishing that result would
+    leave a tally that is wrong and never corrects itself: nothing evicts the
+    directory a second time, so the folder keeps reporting the count it had
+    before the write until something else happens to write beneath it.
+
+    Reproducing it needs the interleave in one specific place. ``_rollup_view``
+    hands out live views rather than copies, so a pass blocked *before* it
+    reads a directory's children simply sees the newer data and is correct.
+    The window is after the read and before the merge, which is what the stub
+    below recreates.
+    """
+
+    import metabrowser.inventory_rollup as inventory_rollup
+
+    (tmp_path / "d").mkdir()
+    index = _build_index(tmp_path)
+
+    read_children = threading.Event()
+    writes_landed = threading.Event()
+    original = inventory_rollup._aggregate_subtree
+
+    def aggregate_then_wait(
+        directory_path: str,
+        parent_ignored: bool,
+        children_by_parent: Any,
+        aggregates: Any,
+    ) -> Any:
+        result = original(directory_path, parent_ignored, children_by_parent, aggregates)
+        if directory_path == "d":
+            # Computed from what the worker could see; now let the walker move
+            # past it before this pass merges.
+            read_children.set()
+            assert writes_landed.wait(5), "writer never ran"
+        return result
+
+    monkeypatch.setattr(inventory_rollup, "_aggregate_subtree", aggregate_then_wait)
+
+    async def scenario() -> None:
+        pass_done = asyncio.get_running_loop().run_in_executor(
+            None, lambda: index.rollup("", depth=2, top=40, ext_top=12)
+        )
+        assert read_children.wait(5), "rollup pass never reached the directory"
+        for number in range(50):
+            index._replace_index_entry(
+                FsEntry.for_observed_file(
+                    path=f"d/f{number}.py",
+                    parent="d",
+                    name=f"f{number}.py",
+                    size=10,
+                    mtime_ns=1_700_000_000_000_000_000,
+                )
+            )
+        writes_landed.set()
+        await pass_done
+
+    asyncio.run(scenario())
+
+    # What the folder reports once everything has settled must equal what the
+    # same entries produce with no cache at all.
+    settled = index.rollup("", depth=2, top=40, ext_top=12)
+    assert settled is not None
+    cold = InventoryIndex()
+    for entry in index._entries.values():
+        cold._replace_index_entry(entry)
+    expected = cold.rollup("", depth=2, top=40, ext_top=12)
+    assert expected is not None
+    assert settled["node"]["total_files"] == expected["node"]["total_files"] == 50
+    _assert_derived_state_matches_entries(index)
 
 
 # Assignments into the index's entry map from outside its two write methods.
