@@ -199,21 +199,28 @@ def _remember_rollup_body(etag: str, body: bytes | memoryview[int]) -> None:
 # Rollup bodies currently being built, keyed by the ETag that identifies them.
 # The retained body only helps a request that arrives after one finished;
 # clients that arrive together — several tabs refreshing off the same inventory
-# change — would each aggregate the same answer. The first to arrive computes,
-# and the rest await its result.
-_ROLLUP_IN_FLIGHT: dict[str, asyncio.Future[bytes]] = {}
+# change — would each aggregate the same answer.
+#
+# The build is its own task rather than work owned by whichever request arrived
+# first, and every request awaits it through a shield. That way a client
+# disconnecting cancels only its own wait: the shared build runs to completion
+# for everyone still waiting, and its body is still cached for whoever asks
+# next.
+_ROLLUP_IN_FLIGHT: dict[str, asyncio.Task[bytes]] = {}
 
 
-def _discard_future_error(future: asyncio.Future[bytes]) -> None:
-    """Mark a failed shared computation's error as retrieved.
+def _release_rollup_flight(etag: str, task: asyncio.Task[bytes]) -> None:
+    """Retire a finished shared build and mark any failure as retrieved.
 
-    Every waiter, including the request that started it, raises on its own.
-    Without this, a failure with no waiters left would surface as an
-    "exception was never retrieved" warning from the event loop.
+    Every waiter raises on its own, so the task's exception would otherwise
+    surface as an "exception was never retrieved" warning once the last one
+    goes away.
     """
 
-    if not future.cancelled():
-        future.exception()
+    if _ROLLUP_IN_FLIGHT.get(etag) is task:
+        del _ROLLUP_IN_FLIGHT[etag]
+    if not task.cancelled():
+        task.exception()
 
 
 # ── Performance logging setup ───────────────────────────────────
@@ -1354,19 +1361,7 @@ async def api_rollup(request: Request) -> Response:
     if cached is not None:
         return Response(cached, media_type="application/json", headers=etag_headers(etag))
 
-    # Nothing between this lookup and the registration below awaits, so two
-    # requests cannot both decide they are the one computing.
-    shared = _ROLLUP_IN_FLIGHT.get(etag)
-    if shared is not None:
-        return Response(
-            await shared,
-            media_type="application/json",
-            headers=etag_headers(etag),
-        )
-    pending: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
-    _ROLLUP_IN_FLIGHT[etag] = pending
-
-    try:
+    async def build() -> bytes:
         result = None
         if inv_can_serve:
             result = await asyncio.to_thread(
@@ -1379,34 +1374,40 @@ async def api_rollup(request: Request) -> Response:
                 filename_top=filename_top,
                 ext_rank=ext_rank,
             )
-        response = JSONResponse(
-            {
-                "root": str(_resolved_root_dir()),
-                "path": subpath,
-                "node": result["node"] if result is not None else None,
-                "ext_tallies": result["ext_tallies"] if result is not None else [],
-                "file_type_breakdown": (
-                    result["file_type_breakdown"] if result is not None else None
-                ),
-                "index_status": inventory_status(),
-                "indexed_files": inventory.files_indexed(),
-                "max_files": inventory.max_files(),
-                "truncated": inventory_status() == "truncated",
-            },
-            headers=etag_headers(etag),
+        body = bytes(
+            JSONResponse(
+                {
+                    "root": str(_resolved_root_dir()),
+                    "path": subpath,
+                    "node": result["node"] if result is not None else None,
+                    "ext_tallies": result["ext_tallies"] if result is not None else [],
+                    "file_type_breakdown": (
+                        result["file_type_breakdown"] if result is not None else None
+                    ),
+                    "index_status": inventory_status(),
+                    "indexed_files": inventory.files_indexed(),
+                    "max_files": inventory.max_files(),
+                    "truncated": inventory_status() == "truncated",
+                }
+            ).body
         )
-        body = bytes(response.body)
         _remember_rollup_body(etag, body)
-        pending.set_result(body)
-    except BaseException as error:
-        # Includes cancellation: a client that disconnects mid-build must not
-        # leave everyone waiting on it stranded on a future that never lands.
-        pending.add_done_callback(_discard_future_error)
-        pending.set_exception(error)
-        raise
-    finally:
-        del _ROLLUP_IN_FLIGHT[etag]
-    return response
+        return body
+
+    # Nothing between this lookup and the registration below awaits, so two
+    # requests cannot both start a build for the same answer.
+    shared = _ROLLUP_IN_FLIGHT.get(etag)
+    if shared is None:
+        shared = asyncio.ensure_future(build())
+        _ROLLUP_IN_FLIGHT[etag] = shared
+        shared.add_done_callback(functools.partial(_release_rollup_flight, etag))
+    # Shielded, so a client that disconnects cancels its own wait and not the
+    # build the others are still waiting on.
+    return Response(
+        await asyncio.shield(shared),
+        media_type="application/json",
+        headers=etag_headers(etag),
+    )
 
 
 @log_async_calls()

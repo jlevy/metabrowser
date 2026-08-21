@@ -285,3 +285,35 @@ def test_simultaneous_identical_rollups_compute_once(tmp_path: Path) -> None:
     assert calls == 1, f"expected one shared aggregation, got {calls}"
     assert len(set(bodies)) == 1
     assert json.loads(bodies[0])["node"]["total_files"] == 5
+
+
+def test_a_disconnecting_client_does_not_cancel_the_shared_build(tmp_path: Path) -> None:
+    """One client going away must not fail the others waiting on its build.
+
+    Requests that arrive together share one aggregation. If that build were
+    owned by whichever request happened to arrive first, the others would
+    inherit its cancellation when that client disconnected — closing a tab
+    would fail every other tab's in-flight request.
+    """
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "src").mkdir()
+    for index in range(4):
+        (tmp_path / "src" / f"f{index}.py").write_text("x" * 16)
+
+    async def scenario() -> Any:
+        inventory = get_inventory()
+        inventory.start(tmp_path)
+        await inventory.wait_until_done(10)
+        server._ROLLUP_BODY_CACHE.clear()
+
+        leader = asyncio.create_task(server.api_rollup(_mock_request({"path": ""})))
+        await asyncio.sleep(0)  # let the leader register the shared build
+        joiner = asyncio.create_task(server.api_rollup(_mock_request({"path": ""})))
+        await asyncio.sleep(0)  # let the joiner attach to it
+        leader.cancel()
+        return await joiner
+
+    response = asyncio.run(scenario())
+    assert response.status_code == 200
+    assert json.loads(bytes(response.body))["node"]["total_files"] == 4
