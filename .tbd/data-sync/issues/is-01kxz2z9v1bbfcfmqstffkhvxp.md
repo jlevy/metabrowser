@@ -5,7 +5,7 @@ title: Folder views and treemap overview
 kind: epic
 status: open
 priority: 1
-version: 61
+version: 65
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
 labels: []
 dependencies: []
@@ -67,8 +67,12 @@ child_order_hints:
   - is-01m01vm44p61h5rg11vb2frysy
   - is-01m01wcqa58freyzs7amv7359h
   - is-01m01x5vbrd6cr5vh199c3k50v
+  - is-01m0k52aba17zgc5njavnj58xq
+  - is-01m0k52aw4w2bn7f7zfbfswdk5
+  - is-01m0k536dmsjghcf1hs38rv2gz
+  - is-01m0k536rmz4gptv9bzhftagk1
 created_at: 2026-07-20T06:21:20.085Z
-updated_at: 2026-08-16T08:06:35.551Z
+updated_at: 2026-08-21T21:54:37.460Z
 extensions:
   linear:
     id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc
