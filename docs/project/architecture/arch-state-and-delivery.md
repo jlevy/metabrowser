@@ -467,6 +467,13 @@ A 100,000-file tree (17,542 directories), browser attached, on the reference mac
 These are the numbers the design is accountable to; re-measure rather than trusting them
 after changing any of the paths above.
 
+`devtools/bench_serving.py` reproduces every row below, and its `--browser-probe` half
+covers the client behavior the server cannot see — whether validators are working and
+what simultaneous clients actually cost.
+See [Benchmarking Scan and Serve](../../development.md#benchmarking-scan-and-serve).
+Absolute numbers move with the machine and the filesystem, so compare a before and an
+after from one machine rather than against the table.
+
 |  | Before | Now |
 | --- | --- | --- |
 | First numbers on screen | 14.6 s | 2.4 s |
