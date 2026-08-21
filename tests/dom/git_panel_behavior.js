@@ -130,6 +130,14 @@ class FakeElement {
     return this.attributes.has(name) ? this.attributes.get(name) : null;
   }
   appendChild(child) {
+    if (child.isFragment) {
+      // A real fragment empties into its new parent.
+      for (const node of child.children.splice(0)) {
+        node.parentNode = this;
+        this.children.push(node);
+      }
+      return child;
+    }
     child.parentNode = this;
     this.children.push(child);
     return child;
@@ -218,6 +226,14 @@ class FakeDocument {
   }
   createElementNS(_ns, tagName) {
     return new FakeSvgElement(tagName, this);
+  }
+  createDocumentFragment() {
+    // A fragment behaves like a container whose children move to the
+    // parent it is appended to, which is the only property the panel
+    // relies on (one insertion per page rather than per row).
+    const fragment = new FakeElement("#document-fragment", this);
+    fragment.isFragment = true;
+    return fragment;
   }
   register(id, element) {
     element.dataset.id = id;
@@ -536,7 +552,7 @@ async function run() {
     const trailing = afterFirst.trailingSwimlanes.map((lane) => lane.id);
     assertEqual("paging: trailing lane leads to the next commit", trailing, [SHA_C]);
 
-    internals.appendPage([commit(SHA_C, [], "root")], null);
+    const secondPageRows = internals.appendPage([commit(SHA_C, [], "root")], null);
     const afterSecond = internals.stateForTests();
     assertEqual("paging: rows accumulate", afterSecond.rows.length, 3);
     assertEqual("paging: end of history clears the cursor", afterSecond.cursor, null);
@@ -547,7 +563,20 @@ async function run() {
       afterSecond.rows[2].inputSwimlanes.map((lane) => lane.id),
       [SHA_C],
     );
-    assertTrue("paging: gutter width is set", afterSecond.gutterWidth > 0);
+    // Rows are independent: each gutter is exactly its own row's graph,
+    // so a later page cannot change how an earlier row lays out. That
+    // independence is what lets a page be appended rather than
+    // triggering a rebuild of the whole history.
+    // Rows are independent — each gutter is exactly its own row's graph
+    // — so a later page cannot change how an earlier row lays out. That
+    // independence is what lets a page be appended to the rendered list
+    // instead of rebuilding the whole history on every "load more".
+    assertEqual("paging: a page reports only its own rows", secondPageRows.length, 1);
+    assertEqual(
+      "paging: a rejected page reports no rows",
+      internals.appendPage([commit(SHA_D, [])], null).length,
+      0,
+    );
   }
 
   // ── History retention is explicitly bounded ───────────────

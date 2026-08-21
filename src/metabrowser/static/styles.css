@@ -4492,9 +4492,12 @@ pre.code-block code.hljs {
 /* Width is set per panel from the widest row loaded, so the subject
    column stays put instead of stepping in and out as lanes open and
    close. */
+/* Shrink-wraps this row's graph: the svg carries its own width, so the
+   subject starts immediately after the lanes that row actually uses
+   rather than after the widest row's. */
 .git-graph-gutter {
   display: flex;
-  flex-shrink: 0;
+  flex: none;
   height: 22px;
 }
 
@@ -4505,6 +4508,18 @@ pre.code-block code.hljs {
   min-width: 0;
   flex-grow: 1;
   padding-left: 6px;
+}
+
+/* Ref chips yield space first. The row's priority is age, then
+   subject, then chips: an age pushed off the row is information lost,
+   while a clipped chip is still recognisable. */
+.git-graph-refs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
 }
 
 .git-graph-subject {
