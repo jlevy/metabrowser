@@ -219,6 +219,15 @@ Page load:
   from 823,391 to 732,836. First contentful paint did not move, at 76 ms either way: the
   chain never blocked paint, it competed with the tree render behind it.
 
+- highlight.js, its TOML grammar, and Mustache now load on the first idle callback
+  rather than the moment the document parses.
+  They were fetched and evaluated in the same window as the first tree fetch, and the
+  `load` event stayed open until the whole chain finished.
+  Measured on a 100,000-file tree, median of three cold loads: `load` fell from 3,883 ms
+  to 750 ms. Time to first tree row did not measurably change.
+  A source view still highlights: the libraries arrive during idle and re-enhance what
+  is already on screen, so nothing waits for them.
+
 Plugin SDK:
 
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the

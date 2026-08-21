@@ -286,7 +286,15 @@ and there is no measurement of that cost yet.
   853 ms to 411 ms, transferred 823,391 B to 732,836 B, vendored files on load 6 to 3.
   First contentful paint did not move, which is the expected result: the chain never
   blocked paint, it competed with the tree render behind it.
-- [ ] Move highlight.js, the TOML grammar, and Mustache to prefetch-on-idle
+- [x] Move highlight.js, the TOML grammar, and Mustache to prefetch-on-idle.
+  The chain now starts on the first idle callback after `DOMContentLoaded`, with a 2,000
+  ms floor so a busy main thread cannot defer highlighting forever.
+  Measured on the 100,000-file bench corpus, median of three cold loads of `/view/`
+  each, a fresh port and a fresh server per run so both the browser cache and the index
+  start cold: `load` 3,883 ms to 750 ms.
+  Time to first tree row did not measurably change — 854 ms against 999 ms, on ranges of
+  678-1,591 ms and 690-1,106 ms that overlap almost completely.
+  Accepted on the tier policy and the `load` result, not on a first-row win
 - [ ] Re-measure and record the comparison
 
 ### Phase 2: Time to First Row
