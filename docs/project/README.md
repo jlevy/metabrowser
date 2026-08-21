@@ -29,6 +29,8 @@ links to the document that covers each in depth.
 - [Full-page HTML rendering and an explicit trust model](specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+- [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
+- [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 
 ## Research
 
@@ -36,6 +38,7 @@ links to the document that covers each in depth.
 - [Fuzzy file ranking contract and measurements](research/research-2026-07-31-fuzzy-file-ranking.md)
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
+- [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
 
 ## Done Plans
 

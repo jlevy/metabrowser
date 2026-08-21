@@ -81,6 +81,37 @@ def test_vendored_toml_is_the_official_hljs_ini_grammar() -> None:
     assert 'hljs.registerLanguage("ini"' in text
 
 
+def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
+    """Chart.js is 297,531 bytes read by one view.
+
+    Eager loading measured about 374 ms of every document's load event whether
+    or not that view was ever opened, so the shell must publish it as a bundle
+    for asset_loader.js and must not put it in the chain that runs on load.
+    See docs/development.md "Asset Loading Tiers".
+    """
+    html = _index_html()
+    bundles_start = html.index("window.METABROWSER_ASSET_BUNDLES=")
+    bundles = html[bundles_start : html.index("</script>", bundles_start)]
+    chain_start = html.index("var assets = ")
+    chain = html[chain_start : html.index("</script>", chain_start)]
+
+    for name in (
+        "vendor/chart.umd.min.js",
+        "vendor/chartjs-plugin-annotation.min.js",
+        "vendor/chartjs-adapter-date-fns.bundle.min.js",
+    ):
+        assert name in bundles, f"on-demand asset missing from the bundle map: {name}"
+        assert name not in chain, f"on-demand asset is still loaded on every page: {name}"
+
+    # The prefetched tier still runs on load: a source view that highlights a
+    # beat late is visible, and these are small.
+    for name in ("vendor/highlight.min.js", "vendor/mustache.min.js"):
+        assert name in chain, f"prefetched asset missing from the load chain: {name}"
+
+    # The loader has to be present before anything can ask it for a bundle.
+    assert "/static/asset_loader.js" in html
+
+
 def test_local_core_scripts_load_before_optional_assets() -> None:
     """The shell must not wait on optional libraries before registering its app."""
     html = _index_html()

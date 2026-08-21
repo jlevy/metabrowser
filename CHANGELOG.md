@@ -208,6 +208,27 @@ Large directories:
   across a reload. A finished count now comes from the server’s own answer rather than
   from whichever number is larger.
 
+Page load:
+
+- Chart.js no longer loads on every document.
+  It and its two plugins are 297,531 bytes read by one view — the agent-log charts — and
+  parse and evaluate were paid on every page whether or not that view was ever opened.
+  They now load the first time a chart is asked for.
+  Measured on this repository in Chromium 141, median of five cold loads of
+  `/view/README.md`, the load event fell from 853 ms to 411 ms and transferred bytes
+  from 823,391 to 732,836. First contentful paint did not move, at 76 ms either way: the
+  chain never blocked paint, it competed with the tree render behind it.
+
+Plugin SDK:
+
+- `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the
+  every-page path, and resolves once its globals are present.
+  A loaded bundle resolves immediately and simultaneous callers share one load.
+
+- `metabrowser.chart()` now requires the chart bundle:
+  `await metabrowser.ensureAsset("chart")` before the first call, or it throws saying
+  so. A plugin that renders charts adds that one await; nothing else in the SDK changed.
+
 ## 0.5.1
 
 Folder views:

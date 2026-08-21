@@ -19,6 +19,8 @@ Checked items below are supported today; unchecked items are planned work.
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Web diff viewer research](docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md) | Research only; no plan yet |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
+| Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
+| Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
 
 Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
 the navigation baseline, folder Overview and file-type summaries, semantic file-type
