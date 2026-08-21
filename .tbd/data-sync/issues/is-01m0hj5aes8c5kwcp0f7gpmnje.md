@@ -3,14 +3,17 @@ type: is
 id: is-01m0hj5aes8c5kwcp0f7gpmnje
 title: "Filtered tree projection on /api/tree: prune empty subtrees, roll up matches"
 kind: feature
-status: open
+status: closed
 priority: 0
-version: 1
+version: 3
+assignee: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m0hhjf2e1w8tp30ay4tj8183
 created_at: 2026-08-21T07:04:29.400Z
-updated_at: 2026-08-21T07:04:29.400Z
+updated_at: 2026-08-21T07:42:03.428Z
+closed_at: 2026-08-21T07:42:03.427Z
+close_reason: New metabrowser/tree_filter.py plus build_filtered_inventory_tree; /api/tree takes types/recency/min_size/include_ignored and returns the pruned tree, filtered folder aggregates, and a filtered totals block.
 ---
 The nav filter is applied in the browser as a class-toggling pass over rows that are already mounted (`applyTreeFilters` in static/app.js). That layer cannot answer the two questions the filter actually raises, because it does not have the data:
 

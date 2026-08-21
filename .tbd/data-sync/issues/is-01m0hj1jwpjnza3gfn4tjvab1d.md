@@ -3,14 +3,17 @@ type: is
 id: is-01m0hj1jwpjnza3gfn4tjvab1d
 title: Filtered nav lists folders whose subtree has no matches
 kind: bug
-status: open
+status: closed
 priority: 0
-version: 1
+version: 3
+assignee: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m0hhjf2e1w8tp30ay4tj8183
 created_at: 2026-08-21T07:02:26.964Z
-updated_at: 2026-08-21T07:02:26.964Z
+updated_at: 2026-08-21T07:42:03.989Z
+closed_at: 2026-08-21T07:42:03.988Z
+close_reason: A directory is listed only when its subtree holds a match. The collapsed-folders note is gone with the design that needed it.
 ---
 With a filter on, the nav tree lists folders whose entire subtree matches nothing.
 

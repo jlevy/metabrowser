@@ -3,14 +3,16 @@ type: is
 id: is-01m0hj1n6r1sqrabjrxat3a6xp
 title: Nav selection box narrows and shifts right with depth
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0hhjf2e1w8tp30ay4tj8183
 created_at: 2026-08-21T07:02:29.335Z
-updated_at: 2026-08-21T07:02:29.335Z
+updated_at: 2026-08-21T07:25:52.256Z
+closed_at: 2026-08-21T07:25:52.255Z
+close_reason: Rows now span the full panel at every depth; indentation moved into the row's own left padding via --tree-depth / --tree-indent.
 ---
 Nav rows narrow and shift right with nesting depth, so the hover background, the selected background, and the 2px accent bar all start further in at each level.
 

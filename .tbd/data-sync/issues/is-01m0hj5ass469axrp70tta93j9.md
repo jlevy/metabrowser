@@ -3,14 +3,16 @@ type: is
 id: is-01m0hj5ass469axrp70tta93j9
 title: "Test filtering from the CLI: walk filter flags, goldens, check-api step"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0hhjf2e1w8tp30ay4tj8183
 created_at: 2026-08-21T07:04:29.752Z
-updated_at: 2026-08-21T07:04:29.752Z
+updated_at: 2026-08-21T07:42:05.078Z
+closed_at: 2026-08-21T07:42:05.077Z
+close_reason: metab --walk gained --type/--age/--min-size/--no-ignored with a golden (tests/golden/cli-walk-filter.tryscript.md), --check-api gained a filtered step, and tests/test_tree_filter.py covers the projection.
 ---
 Make the filter answerable from the command line, so folder, filter, and rollup logic is tested as data rather than by looking at a browser.
 

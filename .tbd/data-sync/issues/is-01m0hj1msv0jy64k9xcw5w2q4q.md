@@ -3,14 +3,17 @@ type: is
 id: is-01m0hj1msv0jy64k9xcw5w2q4q
 title: Filter misses matches past the 200-row page cap
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 3
+assignee: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m0hhjf2e1w8tp30ay4tj8183
 created_at: 2026-08-21T07:02:28.922Z
-updated_at: 2026-08-21T07:02:28.922Z
+updated_at: 2026-08-21T07:42:04.804Z
+closed_at: 2026-08-21T07:42:04.804Z
+close_reason: Presence and totals come from the index, not from mounted rows, so a match past the 200-row page cap keeps its folder.
 ---
 `renderTreeNodes` pages children at `TREE_PAGE_SIZE` (200). `applyTreeFilters` judges a folder on the rows that are mounted, so a folder whose first page holds no match is hidden along with its `.tree-page-more` row, and the matches on later pages become unreachable.
 

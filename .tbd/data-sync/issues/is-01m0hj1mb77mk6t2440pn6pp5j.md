@@ -3,14 +3,16 @@ type: is
 id: is-01m0hj1mb77mk6t2440pn6pp5j
 title: Filtered tree expansion reads as unresponsive
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0hhjf2e1w8tp30ay4tj8183
 created_at: 2026-08-21T07:02:28.453Z
-updated_at: 2026-08-21T07:02:28.453Z
+updated_at: 2026-08-21T07:42:04.531Z
+closed_at: 2026-08-21T07:42:04.530Z
+close_reason: "Both mechanisms are gone: no row moves as a result of its own activation, and a listed folder always has a match below it, so it is never marked empty and never refuses to expand."
 ---
 In a filtered tree, repeated expand clicks stop doing what the user means, which reads as the panel becoming unresponsive.
 

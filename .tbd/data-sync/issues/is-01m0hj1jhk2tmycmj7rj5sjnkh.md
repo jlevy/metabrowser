@@ -3,14 +3,17 @@ type: is
 id: is-01m0hj1jhk2tmycmj7rj5sjnkh
 title: Filtered folder rows show unfiltered count, size, and age
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 3
+assignee: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m0hhjf2e1w8tp30ay4tj8183
 created_at: 2026-08-21T07:02:26.610Z
-updated_at: 2026-08-21T07:02:26.610Z
+updated_at: 2026-08-21T07:42:03.712Z
+closed_at: 2026-08-21T07:42:03.711Z
+close_reason: Folder count, size, and age now roll up from the matching leaves in the subtree; verified against the running repo (node_modules 116.5 MB to 23.9 KB under the Media preset).
 ---
 Under an active filter, every folder row still shows the unfiltered aggregates the inventory computed for the whole directory.
 
