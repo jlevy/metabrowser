@@ -597,34 +597,18 @@ def _build_inventory_tree(
 
     if max_depth <= 0:
         return []
-    entries = _inventory_entries()
-    return _build_inventory_subtree(
-        by_parent=_group_by_parent(entries),
-        parent_rel=parent_rel,
-        max_depth=max_depth,
-        parent_ignored=parent_is_gitignored(parent_rel),
-        root_abs=root_abs,
-    )
-
-
-def _inventory_entries() -> list[Any]:
     # Deferred to break the tree → inventory → walker → tree cycle.
     from metabrowser.inventory import (
         get_instance as get_inventory,
     )
 
-    return get_inventory().entries(scope="all-known")
-
-
-def _group_by_parent(entries: Sequence[Any]) -> dict[str, list[Any]]:
-    """Single O(N) parent-to-children scan, reused across every level
-    of the recursion. Without this, a depth-D request rescans the
-    full index D times; at 200k entries that's seconds of CPU."""
-
-    by_parent: dict[str, list[Any]] = {}
-    for entry in entries:
-        by_parent.setdefault(entry.parent, []).append(entry)
-    return by_parent
+    return _build_inventory_subtree(
+        children_of=get_inventory().children_of,
+        parent_rel=parent_rel,
+        max_depth=max_depth,
+        parent_ignored=parent_is_gitignored(parent_rel),
+        root_abs=root_abs,
+    )
 
 
 def parent_is_gitignored(parent_rel: str) -> bool:
@@ -662,6 +646,7 @@ class FilteredTree:
 def build_filtered_inventory_tree(
     *,
     entries: Sequence[Any],
+    children_of: Callable[[str], Sequence[Any]],
     parent_rel: str,
     max_depth: int,
     root_abs: Path,
@@ -678,10 +663,15 @@ def build_filtered_inventory_tree(
     facts come from one rollup over the whole index, which is why they can be
     right for a folder whose children were never sent.
 
-    Takes *entries* rather than reading the inventory, because this is an
-    O(index) pass and belongs on a worker. Inventory writes are owned by the
-    event loop, so the caller snapshots there and hands the snapshot over —
-    the same split :func:`InventoryIndex.navigation_tallies` already uses.
+    Two different reads, for two different reasons. *entries* is a snapshot the
+    caller took on the event loop, because the rollup is an O(index) pass and
+    belongs on a worker — the same split
+    :func:`InventoryIndex.navigation_tallies` already uses. Structure comes from
+    *children_of* instead, which serves each level from the index the inventory
+    maintains on write: grouping the snapshot by parent would cost a second full
+    pass to answer a question about one subtree, which is the cost
+    :func:`InventoryIndex.children_of` exists to remove. It is safe off the loop
+    because it copies each bucket under the index lock.
 
     *generation* is the inventory's rollup generation, which keys the memo in
     :func:`cached_rollups` so one filter change costs one pass rather than one
@@ -695,7 +685,7 @@ def build_filtered_inventory_tree(
     subtree = matches_for(totals, parent_rel)
     tree = (
         _build_inventory_subtree(
-            by_parent=_group_by_parent(entries),
+            children_of=children_of,
             parent_rel=parent_rel,
             max_depth=max_depth,
             parent_ignored=parent_ignored,
@@ -727,7 +717,7 @@ def _dir_mtime_seconds(entry: Any, dir_matches: DirMatches | None) -> float | No
 
 def _build_inventory_subtree(
     *,
-    by_parent: dict[str, list[Any]],
+    children_of: Callable[[str], Sequence[Any]],
     parent_rel: str,
     max_depth: int,
     parent_ignored: bool,
@@ -741,7 +731,7 @@ def _build_inventory_subtree(
     # The root entry has parent == "" == its own path; skip it
     # so the root doesn't render as a sibling of its own children.
     siblings = sorted(
-        (e for e in by_parent.get(parent_rel, []) if e.path != parent_rel),
+        (e for e in children_of(parent_rel) if e.path != parent_rel),
         key=lambda e: (e.type != "dir", e.name),
     )
     out: list[dict[str, Any]] = []
@@ -773,7 +763,7 @@ def _build_inventory_subtree(
             children: list[dict[str, Any]] | None
             if max_depth - 1 > 0:
                 children = _build_inventory_subtree(
-                    by_parent=by_parent,
+                    children_of=children_of,
                     parent_rel=entry.path,
                     max_depth=max_depth - 1,
                     parent_ignored=ignored,
@@ -803,7 +793,7 @@ def _build_inventory_subtree(
             # has_children flag. A finalized empty dir would
             # otherwise show a lazy-load spinner that resolves to
             # nothing, leaving the spinner spinning forever.
-            inv_child_count = sum(1 for c in by_parent.get(entry.path, []) if c.path != entry.path)
+            inv_child_count = sum(1 for c in children_of(entry.path) if c.path != entry.path)
             # Under a filter the chip answers "what of what I asked for is in
             # here", so the aggregates are the subtree's matches rather than
             # the directory's own totals. The row was kept because that count

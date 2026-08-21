@@ -70,7 +70,6 @@ SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
 
 # ── InventoryIndex walker ────────────────────────────────────
 
-INVENTORY_FIRST_RENDER_DEPTH = 2
 INVENTORY_MAX_DEPTH = 20
 # Hard ceiling on files indexed by the BFS walker at startup. The
 # walker streams entries as it discovers them so /api/tree responds
@@ -239,6 +238,23 @@ ROLLUP_MAX_NODES = 1_200
 # read by the SDK's watchRollup.
 ROLLUP_WATCH_DEBOUNCE_MS = 1_000
 
+# Encoded rollup bodies retained for reuse, keyed by ETag. One open folder
+# view asks for a handful of shapes at once (the Overview totals, the file-type
+# breakdown, the treemap at its own depth), and several tabs on the same folder
+# ask for the same ones, so a cache of a few entries covers the repeats.
+#
+# This bounds entries, not bytes. Measured on a 100k-file tree, the largest
+# shape the browser asks for (depth 3, default bounds) encodes to ~200 KB, and
+# a body is capped by ROLLUP_MAX_NODES regardless of tree size, so eight
+# entries is a ceiling near 1.6 MB rather than something that grows with the
+# root.
+#
+# This is a settled-index optimization. During a scan the revision has already
+# moved by the time a body is stored, so every stored body is unreachable the
+# moment it lands; the reuse shows up once the crawl finishes. Superseded
+# bodies age out by insertion order rather than needing to be swept.
+ROLLUP_BODY_CACHE_ENTRIES = 8
+
 
 # ── Git graph panel ──────────────────────────────────────────
 
@@ -356,7 +372,6 @@ __all__ = [
     "GIT_SUBPROCESS_TIMEOUT_S",
     "INDEX_PROGRESS_POLL_MS",
     "INDEX_PROGRESS_UPDATE_FILES",
-    "INVENTORY_FIRST_RENDER_DEPTH",
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_FILES",
     "INVENTORY_REFRESH_TTL_S",
@@ -371,6 +386,7 @@ __all__ = [
     "RECENT_MAX_LIMIT",
     "RECENT_RECLUSTER_DEBOUNCE_MS",
     "RECENT_WINDOW_SECONDS",
+    "ROLLUP_BODY_CACHE_ENTRIES",
     "ROLLUP_DEFAULT_DEPTH",
     "ROLLUP_DEFAULT_EXT_RANK",
     "ROLLUP_DEFAULT_EXT_TOP",

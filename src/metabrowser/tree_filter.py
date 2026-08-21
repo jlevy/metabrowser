@@ -272,18 +272,37 @@ def matches_for(totals: Mapping[str, DirMatches], path: str) -> DirMatches:
 
 # One filter change fans out into many requests that all need the same
 # rollup: the tree itself, plus a subtree fetch for every lazy stub the
-# idle prefetch sweep warms. The pass costs about 1.2 microseconds per
-# entry (11 ms over the 9k entries of this repository, measured with
-# `filtered_rollups` on a warm index), which is nothing once and a quarter
-# second per request at the 200k-entry design centre — times the sweep's
-# 32 requests. The answer does not vary by subtree, so it is computed once
-# per (index generation, filter) instead.
+# idle prefetch sweep warms. Measured with `filtered_rollups` over a
+# synthetic index: 121 ms at 100k entries and 480 ms at 400k, which is
+# nothing once and minutes across the sweep's 32 requests. The answer does
+# not vary by subtree, so it is computed once per (index revision, filter).
 #
-# Small on purpose: the useful entries are the current filter and whatever
-# the reader just came from, and every stale generation is dead weight.
+# Small on purpose, and a settled-index optimization rather than a general
+# one: the revision is part of the key, so during a crawl every write makes
+# every entry unreachable. That is the same bargain `/api/rollup`'s body
+# cache makes. The useful entries are the current filter and whatever the
+# reader just came from.
 _ROLLUP_CACHE_MAX = 4
+# Keyed on the index revision, which `InventoryIndex` draws from a
+# process-wide counter so a freshly built index can never reuse one. This
+# cache depends on that: with a per-instance counter, two tests that each
+# build an index and share a TreeFilter would collide on (1, filter) and one
+# would be served the other's rollups. `reset_rollup_cache_for_tests` makes
+# the dependency something a test can discharge rather than something that
+# has to stay true by luck.
 _ROLLUP_CACHE: OrderedDict[tuple[int, TreeFilter], dict[str, DirMatches]] = OrderedDict()
 _ROLLUP_CACHE_LOCK = Lock()
+
+
+def reset_rollup_cache_for_tests() -> None:
+    """Drop memoized rollups so a fresh index cannot inherit them.
+
+    Called from :func:`metabrowser.server.reset_response_caches_for_tests`, so
+    a test resets every response-shaped cache through one door.
+    """
+
+    with _ROLLUP_CACHE_LOCK:
+        _ROLLUP_CACHE.clear()
 
 
 def cached_rollups(

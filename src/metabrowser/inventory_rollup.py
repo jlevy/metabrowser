@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -100,6 +100,13 @@ class _SubtreeAggregate:
         self.no_ext_bytes_unignored.update(other.no_ext_bytes_unignored)
 
 
+# A caller-owned memo of per-directory subtree aggregates, keyed by directory
+# path. The aggregate values stay opaque to holders: only this module reads or
+# writes their fields. Owners are responsible for eviction — see
+# ``build_rollup``.
+SubtreeAggregateCache = MutableMapping[str, "_SubtreeAggregate"]
+
+
 @dataclass(frozen=True, slots=True)
 class _FileTypePartition:
     """One registry classification pass shared by every wire projection."""
@@ -115,14 +122,23 @@ def build_rollup(
     root_path: str,
     options: RollupOptions,
     ancestor_gitignored: bool,
+    aggregates: SubtreeAggregateCache | None = None,
 ) -> RollupResult | None:
-    """Build a bounded node tree from a snapshot and its reusable child index."""
+    """Build a bounded node tree from a snapshot and its reusable child index.
+
+    *aggregates* is an optional persistent memo of per-directory subtree
+    aggregates, reused across calls. Callers that own one must invalidate a
+    directory's whole ancestor chain whenever an entry beneath it changes;
+    :class:`~metabrowser.inventory.InventoryIndex` does this on every write.
+    Omit it for a self-contained, purely functional rollup.
+    """
 
     root_entry = entries.get(root_path)
     if root_entry is None or root_entry.type != "dir":
         return None
 
-    aggregates: dict[str, _SubtreeAggregate] = {}
+    if aggregates is None:
+        aggregates = {}
     root_ignored = ancestor_gitignored or root_entry.gitignored
     root_aggregate = _aggregate_subtree(
         root_path,
@@ -166,8 +182,18 @@ def _aggregate_subtree(
     directory_path: str,
     parent_ignored: bool,
     children_by_parent: Mapping[str, Sequence[FsEntry]],
-    aggregates: dict[str, _SubtreeAggregate],
+    aggregates: SubtreeAggregateCache,
 ) -> _SubtreeAggregate:
+    # ``aggregates`` doubles as a memo. A directory's aggregate is a pure
+    # function of its subtree, and the inherited ignore state is fixed by
+    # the real ancestor chain, so a present entry is reusable as-is. When
+    # the caller passes a persistent cache (see
+    # ``InventoryIndex._subtree_aggregates``) an unchanged subtree costs one
+    # dict lookup instead of a walk over every file beneath it — the
+    # difference between O(subtree) and O(1) on each rollup request.
+    cached = aggregates.get(directory_path)
+    if cached is not None:
+        return cached
     aggregate = _SubtreeAggregate()
     for child in children_by_parent.get(directory_path, ()):
         ignored = parent_ignored or child.gitignored

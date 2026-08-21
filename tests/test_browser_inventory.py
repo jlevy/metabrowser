@@ -53,7 +53,6 @@ from metabrowser.events import (
 from metabrowser.fs_paths import derive_ext as _ext_of
 from metabrowser.fs_paths import is_visible, is_visible_segment
 from metabrowser.inventory import (
-    DEFAULT_FIRST_RENDER_DEPTH,
     InventoryIndex,
     walk_tree,
 )
@@ -100,7 +99,6 @@ async def _collect(
     *,
     max_depth: int = 20,
     max_files: int = 20_000,
-    first_render_depth: int = 2,
 ) -> list[FsEntry]:
     return [
         e
@@ -108,7 +106,6 @@ async def _collect(
             root,
             max_depth=max_depth,
             max_files=max_files,
-            first_render_depth=first_render_depth,
         )
     ]
 
@@ -221,21 +218,33 @@ def test_walk_tree_skips_dotfiles_except_logs_state(tmp_path: Path) -> None:
     assert "visible.txt" in paths
 
 
-def test_walk_tree_first_render_depth_does_not_change_yield_set(tmp_path: Path) -> None:
-    """Changing first_render_depth changes BFS *order* but not
-    the *set* of yielded entries."""
-    _build_tree(tmp_path)
+def test_walk_tree_discovers_strictly_in_level_order(tmp_path: Path) -> None:
+    """Every directory at depth N is scanned before any at depth N+1.
 
-    def _signature(frd: int) -> set[tuple[str, str]]:
-        out = asyncio.run(_collect(tmp_path, first_render_depth=frd))
-        # Use (path, type, has_aggregates) so we count
-        # placeholder-vs-final correctly.
-        return {(e.path, e.type) for e in out}
+    This is what makes the nav tree usable during a crawl: the shallow
+    layers a reader sees and expands first are complete early, instead of
+    the walker following one branch to the bottom before looking at its
+    siblings. A wide, deep fixture makes the difference observable — a
+    depth-first walker would emit ``wide0/d0/d0`` before ``wide9``.
+    """
 
-    sig_a = _signature(0)
-    sig_b = _signature(DEFAULT_FIRST_RENDER_DEPTH)
-    sig_c = _signature(10)
-    assert sig_a == sig_b == sig_c
+    for top in range(10):
+        branch = tmp_path / f"wide{top}"
+        (branch / "d0" / "d0").mkdir(parents=True)
+        (branch / "d0" / "d0" / "leaf.txt").write_bytes(b"x")
+
+    entries = asyncio.run(_collect(tmp_path))
+    # Placeholders are emitted at discovery time; finalized dir entries come
+    # later by design (post-order), so order is judged on first sighting.
+    first_seen: list[str] = []
+    for entry in entries:
+        if entry.type == "dir" and entry.path not in first_seen:
+            first_seen.append(entry.path)
+
+    depths = [_depth_of(path) for path in first_seen]
+    assert depths == sorted(depths), f"not level-order: {first_seen}"
+    # And the whole first level really does precede the second.
+    assert set(first_seen[1:11]) == {f"wide{i}" for i in range(10)}
 
 
 # ── path helpers ─────────────────────────────────────────────

@@ -878,3 +878,38 @@ def test_text_selection_rule_is_documented_in_design_system() -> None:
     assert "Never put `user-select: none` on a container" in css
     assert "Text selection is content behavior" in design_doc
     assert "Do not set `user-select: none` on a broad container" in design_doc
+
+
+def test_summary_refresh_is_not_gated_on_the_row_it_installs() -> None:
+    """The tally refresh must reach the fallback summary row too.
+
+    Two summary rows exist and they refresh by different means. The plain
+    ``.tree-summary`` row carries ``.tree-summary-count`` /
+    ``.tree-summary-size``, which ``updateRootAggregatePresentation`` patches
+    live from the walker's root upsert. The split row owns the filter tallies
+    and refreshes them by refetching ``/api/tree?depth=0``.
+
+    Gating that refetch on ``.tree-summary-split`` made it unreachable from the
+    fallback: a first paint that landed before the index could answer rendered
+    the plain row, and the refresh that would replace it was the only thing
+    that could — so the type and age menus kept their partial counts for the
+    life of the page while the totals beside them stayed live. Measured on a
+    400,000-file tree: the menu offered "past day 198,998" against a server
+    reporting 400,002, and no refresh was issued for the whole crawl.
+    """
+
+    js = _read_app_js()
+    start = js.index("function scheduleRootSummaryRefresh()")
+    block = js[start : js.index("\nfunction ", start + 1)]
+    guard = block[: block.index("_summaryRefreshHandle = setTimeout")]
+    assert '.querySelector(".tree-summary")' in guard, (
+        "the refresh must run for either summary row, not only the split one"
+    )
+    assert '.querySelector(".tree-summary-split")' not in guard, (
+        "gating on the split row makes the refresh unreachable from the fallback row"
+    )
+    # The cached chrome is rewritten by regex; if it only matches the split
+    # spelling, the cache keeps a stale summary after the live row is replaced.
+    assert "tree-summary(?: tree-summary-split)?" in block, (
+        "the chrome-cache regex must match the fallback row as well"
+    )

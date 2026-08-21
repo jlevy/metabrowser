@@ -63,6 +63,7 @@ def _walk(root: Path) -> None:
 def _filtered(root: Path, tree_filter: TreeFilter, *, depth: int = 20, subpath: str = ""):
     return build_filtered_inventory_tree(
         entries=get_instance().entries(scope="all-known"),
+        children_of=get_instance().children_of,
         parent_rel=subpath,
         max_depth=depth,
         root_abs=root,
@@ -82,6 +83,55 @@ def _by_path(nodes: list[dict[str, object]]) -> dict[str, dict[str, object]]:
         if isinstance(children, list):
             flat.update(_by_path(children))
     return flat
+
+
+def test_the_filtered_path_reads_structure_from_the_index(tmp_path: Path) -> None:
+    """Two reads, two reasons: the rollup needs every entry, the tree shape
+    needs one subtree. Grouping the snapshot by parent answers the second with
+    a full index pass, which is the cost `InventoryIndex.children_of` exists to
+    remove — 63 ms to 7 ms for a folder expansion at 117k entries.
+
+    This branch and the child index landed on separate branches, and the
+    natural way to resolve the conflict between them was to pick a side. This
+    fails if the per-request grouping ever comes back."""
+
+    source = (Path(__file__).resolve().parents[1] / "src/metabrowser/tree.py").read_text()
+    assert "by_parent" not in source
+    assert "children_of=get_inventory().children_of" in source
+    assert "children_of: Callable[[str], Sequence[Any]]" in source
+
+    # And the filtered builder threads it through rather than rebuilding one.
+    start = source.index("def build_filtered_inventory_tree(")
+    block = source[start : source.index("\ndef ", start + 1)]
+    assert "children_of=children_of" in block
+    assert "entries" in block  # the rollup still needs the whole index
+
+    # Behaviour, not only shape: a caller that hands over a child map covering
+    # one subtree still gets that subtree, so nothing depends on the map being
+    # complete.
+    _build_fixture(tmp_path)
+    _walk(tmp_path)
+    inv = get_instance()
+    seen: list[str] = []
+
+    def counting_children_of(parent: str):
+        seen.append(parent)
+        return inv.children_of(parent)
+
+    result = build_filtered_inventory_tree(
+        entries=inv.entries(scope="all-known"),
+        children_of=counting_children_of,
+        parent_rel="notes",
+        max_depth=20,
+        root_abs=tmp_path,
+        parent_ignored=False,
+        tree_filter=TreeFilter(types=(".md",)),
+        now_sec=time.time(),
+    )
+    assert result.matched_files == 1
+    # Only the requested subtree is walked, never the root.
+    assert "" not in seen
+    assert all(path == "notes" or path.startswith("notes/") for path in seen), seen
 
 
 # ── The predicate ────────────────────────────────────────────────
@@ -315,6 +365,32 @@ def test_the_rollup_memo_answers_the_same_question_only_once() -> None:
     first = cached_rollups(entries, tree_filter=tree_filter, now_sec=0.0, generation=7)
     assert cached_rollups(entries, tree_filter=tree_filter, now_sec=0.0, generation=7) is first
     assert cached_rollups(entries, tree_filter=tree_filter, now_sec=0.0, generation=8) is not first
+
+
+def test_the_memo_is_reset_through_the_one_test_door() -> None:
+    """The key's uniqueness rests on revisions being process-wide, which is
+    InventoryIndex's business rather than this cache's. The reset makes that
+    dependency something a test discharges instead of something that has to
+    stay true by luck — and routing it through the server's hook means a test
+    resets every response-shaped cache at once.
+
+    Fails if the hook stops clearing this cache, which is the way the coupling
+    would otherwise break: silently, in tests first."""
+
+    from metabrowser import server
+    from metabrowser.tree_filter import reset_rollup_cache_for_tests
+
+    entries = [_entry("", kind="dir"), _entry("a", kind="dir"), _entry("a/x.md", size=3)]
+    tree_filter = TreeFilter(types=(".md",))
+    first = cached_rollups(entries, tree_filter=tree_filter, now_sec=0.0, generation=1)
+    assert cached_rollups(entries, tree_filter=tree_filter, now_sec=0.0, generation=1) is first
+
+    reset_rollup_cache_for_tests()
+    assert cached_rollups(entries, tree_filter=tree_filter, now_sec=0.0, generation=1) is not first
+
+    warmed = cached_rollups(entries, tree_filter=tree_filter, now_sec=0.0, generation=1)
+    server.reset_response_caches_for_tests()
+    assert cached_rollups(entries, tree_filter=tree_filter, now_sec=0.0, generation=1) is not warmed
 
 
 def test_a_recency_filter_is_never_memoized() -> None:

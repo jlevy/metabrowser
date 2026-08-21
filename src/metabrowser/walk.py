@@ -34,7 +34,6 @@ import yaml
 from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry
 from metabrowser.inventory import (
-    DEFAULT_FIRST_RENDER_DEPTH,
     DEFAULT_MAX_DEPTH,
     DEFAULT_MAX_FILES,
     get_instance,
@@ -96,7 +95,6 @@ async def walk_collect(
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
-    first_render_depth: int = DEFAULT_FIRST_RENDER_DEPTH,
 ) -> WalkResult:
     """Run the inventory walker once over *root* and collect the
     finalized entry for every path, annotated with symlink info.
@@ -121,7 +119,6 @@ async def walk_collect(
         root,
         max_depth=max_depth,
         max_files=max_files,
-        first_render_depth=first_render_depth,
         gitignore_check=gi_check,
     ):
         latest[entry.path] = entry
@@ -379,13 +376,14 @@ async def build_tree_envelope(
     if tree_filter is not None and tree_filter.active:
         filtered = build_filtered_inventory_tree(
             entries=inv.entries(scope="all-known"),
+            children_of=inv.children_of,
             parent_rel=subpath,
             max_depth=max_depth,
             root_abs=root,
             parent_ignored=parent_is_gitignored(subpath),
             tree_filter=tree_filter,
             now_sec=time.time() if now_sec is None else now_sec,
-            generation=inv.rollup_generation(),
+            generation=inv.rollup_revision(),
         )
         tree = filtered.tree
     else:
@@ -441,7 +439,6 @@ async def stream_entries(
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
-    first_render_depth: int = DEFAULT_FIRST_RENDER_DEPTH,
 ) -> AsyncIterator[FsEntry]:
     """Yield each walker record in walk order — the streaming surface
     (mirrors the server's ``fs.change`` upserts)."""
@@ -456,7 +453,6 @@ async def stream_entries(
         root,
         max_depth=max_depth,
         max_files=max_files,
-        first_render_depth=first_render_depth,
         gitignore_check=gi_check,
     ):
         yield entry

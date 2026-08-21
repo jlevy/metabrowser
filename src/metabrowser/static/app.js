@@ -907,7 +907,16 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
 // root aggregate is patched repeatedly while the walk converges.
 var _summaryRefreshHandle = null;
 function scheduleRootSummaryRefresh() {
-  if (_summaryRefreshHandle || !document.querySelector(".tree-summary-split")) {
+  // Either summary row, not just the split one. A first paint that
+  // landed before the index could answer renders the plain fallback
+  // row, and gating on the split row means the refresh that would
+  // replace it can never run — so the filter tallies keep whatever
+  // partial counts they were built with, for the life of the page,
+  // while the totals beside them stay live because
+  // updateRootAggregatePresentation patches those directly. Selecting
+  // the shared class lets the fallback be upgraded once the index has
+  // something to say.
+  if (_summaryRefreshHandle || !document.querySelector(".tree-summary")) {
     return;
   }
   _summaryRefreshHandle = setTimeout(() => {
@@ -918,7 +927,7 @@ function scheduleRootSummaryRefresh() {
         if (!data?.summary || !_lastTreeRender) {
           return;
         }
-        var row = document.querySelector(".tree-summary-split");
+        var row = document.querySelector(".tree-summary");
         if (!row) {
           return;
         }
@@ -941,7 +950,7 @@ function scheduleRootSummaryRefresh() {
         // showing first-paint figures under a recency filter.
         _lastTreeSummaryHtml = html;
         _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-          /<div class="tree-summary tree-summary-split">.*?<\/div>$/,
+          /<div class="tree-summary(?: tree-summary-split)?">.*?<\/div>$/,
           html,
         );
       })

@@ -101,7 +101,11 @@ from metabrowser.gz_io import (
     ArtifactDecompressionLimitError,
     ArtifactPath,
 )
-from metabrowser.http_caching import build_scoped_etag, matches_if_none_match
+from metabrowser.http_caching import (
+    build_scoped_etag,
+    etag_headers,
+    matches_if_none_match,
+)
 from metabrowser.inventory import get_instance as get_inventory
 from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
@@ -124,6 +128,7 @@ from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     RECENT_WINDOW_SECONDS,
+    ROLLUP_BODY_CACHE_ENTRIES,
     ROLLUP_DEFAULT_DEPTH,
     ROLLUP_DEFAULT_EXT_RANK,
     ROLLUP_DEFAULT_EXT_TOP,
@@ -166,6 +171,7 @@ from metabrowser.tree_filter import (
     parse_recency,
     parse_size_floor,
     parse_types,
+    reset_rollup_cache_for_tests,
 )
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
@@ -187,6 +193,64 @@ LOG = logging.getLogger(__name__)
 # this below the first-paint budget: large trees return partial inventory
 # state instead of blocking on a filesystem walk.
 _TREE_COLD_START_WAIT_S = 0.10
+
+# Encoded rollup bodies keyed by their ETag. The validator alone only helps a
+# client that already holds the answer; a second tab opening the same folder,
+# or a reconnect, arrives without one and would otherwise re-aggregate and
+# re-serialize a body the server just produced. Bounded by
+# ``ROLLUP_BODY_CACHE_ENTRIES``: entries from a superseded index revision can
+# never be requested again, so they age out by insertion order.
+_ROLLUP_BODY_CACHE: dict[str, bytes] = {}
+
+
+def _remember_rollup_body(etag: str, body: bytes | memoryview[int]) -> None:
+    """Retain one encoded rollup body for reuse by an identical request."""
+
+    _ROLLUP_BODY_CACHE[etag] = bytes(body)
+    while len(_ROLLUP_BODY_CACHE) > ROLLUP_BODY_CACHE_ENTRIES:
+        _ROLLUP_BODY_CACHE.pop(next(iter(_ROLLUP_BODY_CACHE)))
+
+
+# Rollup bodies currently being built, keyed by the ETag that identifies them.
+# The retained body only helps a request that arrives after one finished;
+# clients that arrive together — several tabs refreshing off the same inventory
+# change — would each aggregate the same answer.
+#
+# The build is its own task rather than work owned by whichever request arrived
+# first, and every request awaits it through a shield. That way a client
+# disconnecting cancels only its own wait: the shared build runs to completion
+# for everyone still waiting, and its body is still cached for whoever asks
+# next.
+_ROLLUP_IN_FLIGHT: dict[str, asyncio.Task[bytes]] = {}
+
+
+def reset_response_caches_for_tests() -> None:
+    """Drop cached rollup responses so a fresh index cannot inherit them.
+
+    The rollup ETag is keyed on the index revision, which only ever moves
+    forward for a served root: swapping roots calls ``InventoryIndex.clear``,
+    which bumps it. Tests are the one caller that builds a whole new index,
+    starting the revision at zero again, so without this a body cached by one
+    test could be served to the next one under a colliding tag.
+    """
+
+    _ROLLUP_BODY_CACHE.clear()
+    _ROLLUP_IN_FLIGHT.clear()
+    reset_rollup_cache_for_tests()
+
+
+def _release_rollup_flight(etag: str, task: asyncio.Task[bytes]) -> None:
+    """Retire a finished shared build and mark any failure as retrieved.
+
+    Every waiter raises on its own, so the task's exception would otherwise
+    surface as an "exception was never retrieved" warning once the last one
+    goes away.
+    """
+
+    if _ROLLUP_IN_FLIGHT.get(etag) is task:
+        del _ROLLUP_IN_FLIGHT[etag]
+    if not task.cancelled():
+        task.exception()
 
 
 # ── Performance logging setup ───────────────────────────────────
@@ -1214,26 +1278,48 @@ async def api_tree(request: Request) -> JSONResponse:
     root_dir = _resolved_root_dir()
     inv_can_serve = await _ensure_inventory_serving(subpath)
 
+    # One snapshot and one revision for every O(index) pass this request makes.
+    # A root request with a filter active needs two of them — the filtered
+    # rollup and the nav tallies — and they read the same entries for
+    # overlapping reasons. Taking a snapshot each would copy the index twice on
+    # the request the page makes first, and would let the two passes describe
+    # different indexes.
+    #
+    # Both are read in the same loop tick, with no await between them, so the
+    # revision names exactly the entries handed over. That is what lets either
+    # pass be memoized: otherwise a worker could only ask for a revision that
+    # had already moved, and would cache its answer under a key that never
+    # matches. Inventory writes are owned by the loop, so iterating the live
+    # dictionary off-loop would race the still-running walker.
+    #
+    # The response status joins them: the walker can finish while a worker
+    # runs, and reporting that newer "done" beside partial tallies would make
+    # the browser stop polling before it requests the final snapshot.
+    index_entries: list[Any] | None = None
+    index_revision = 0
+    tally_cache_status = inventory_status()
+    if inv_can_serve and (tree_filter.active or not subpath):
+        index_entries = inventory.entries(scope="all-known")
+        index_revision = inventory.rollup_revision()
+        tally_cache_status = inventory_status()
+
     filtered = None
-    if inv_can_serve and tree_filter.active:
+    if inv_can_serve and tree_filter.active and index_entries is not None:
         # Presence and aggregates both depend on the whole subtree, not on the
         # slice this request returns, so the pass is O(index) and goes to a
-        # worker. Snapshot on the loop first: the walker writes into the live
-        # dictionary, and iterating it off-loop would race those writes.
-        filter_entries = inventory.entries(scope="all-known")
-        parent_ignored = parent_is_gitignored(subpath)
-        generation = inventory.rollup_generation()
-        now_sec = time.time()
+        # worker. Structure comes from the index's own child map instead, which
+        # is why the subtree build stays cheap for a deep, narrow request.
         filtered = await asyncio.to_thread(
             build_filtered_inventory_tree,
-            entries=filter_entries,
+            entries=index_entries,
+            children_of=inventory.children_of,
             parent_rel=subpath,
             max_depth=remaining_depth,
             root_abs=root_dir,
-            parent_ignored=parent_ignored,
+            parent_ignored=parent_is_gitignored(subpath),
             tree_filter=tree_filter,
-            now_sec=now_sec,
-            generation=generation,
+            now_sec=time.time(),
+            generation=index_revision,
         )
         tree = filtered.tree
         LOG.debug(
@@ -1277,16 +1363,9 @@ async def api_tree(request: Request) -> JSONResponse:
     # the event stream at the design-center index size for the same reason
     # api_catalog offloads its own pass.
     navigation_tallies = None
-    # Keep the response status in the same event-loop epoch as the tree and
-    # tally snapshots. The walker can finish while the O(index) worker runs;
-    # reporting that newer "done" state beside partial tallies would make the
-    # browser stop polling before it requests the final snapshot.
-    tally_cache_status = inventory_status()
-    if inv_can_serve and not subpath:
-        # Inventory writes are owned by the event loop. Snapshot there before
-        # handing the O(index) tally pass to a worker; iterating the live dictionary
-        # off-loop races the still-running walker.
-        tally_entries = inventory.entries(scope="all-known")
+    if inv_can_serve and not subpath and index_entries is not None:
+        tally_entries = index_entries
+        tally_revision = index_revision
         navigation_tallies = await asyncio.to_thread(
             lambda: inventory.navigation_tallies(
                 [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
@@ -1296,6 +1375,7 @@ async def api_tree(request: Request) -> JSONResponse:
                     if seconds is not None
                 ],
                 entries=tally_entries,
+                revision=tally_revision,
             )
         )
     return JSONResponse(
@@ -1349,7 +1429,7 @@ async def api_tree(request: Request) -> JSONResponse:
 
 
 @log_async_calls(if_slower_than=0.1)
-async def api_rollup(request: Request) -> JSONResponse:
+async def api_rollup(request: Request) -> Response:
     """Bounded treemap rollup for a directory subtree.
 
     `GET /api/rollup?path=&depth=&top=&ext_top=&filename_top=&remaining_top=`
@@ -1402,30 +1482,78 @@ async def api_rollup(request: Request) -> JSONResponse:
 
     inventory = get_inventory()
     inv_can_serve = await _ensure_inventory_serving(subpath)
-    result = None
-    if inv_can_serve:
-        result = await asyncio.to_thread(
-            inventory.rollup,
+
+    # The body is a pure function of the served root, the index revision, the
+    # path, and the bounds that shape the response, so those make an exact
+    # validator. Each part is load-bearing. The bounds: two clients asking for
+    # different depths share a revision, and a tag that ignored the difference
+    # would hand one of them the other's shape. The root: a tag identifies the
+    # resource it validates, and "the rollup of this path" is a different
+    # resource under a different root — without it, serving a second root
+    # reuses the first one's body wherever the revisions happen to line up.
+    etag = build_scoped_etag(
+        "rollup-{}-{}-{}-{}-{}".format(
+            _resolved_root_dir(),
+            inventory_status(),
+            inventory.rollup_revision(),
             subpath,
-            depth=depth,
-            top=top,
-            ext_top=ext_top,
-            remaining_top=remaining_top,
-            filename_top=filename_top,
-            ext_rank=ext_rank,
+            f"{depth}.{top}.{ext_top}.{remaining_top}.{filename_top}.{ext_rank}",
         )
-    return JSONResponse(
-        {
-            "root": str(_resolved_root_dir()),
-            "path": subpath,
-            "node": result["node"] if result is not None else None,
-            "ext_tallies": result["ext_tallies"] if result is not None else [],
-            "file_type_breakdown": (result["file_type_breakdown"] if result is not None else None),
-            "index_status": inventory_status(),
-            "indexed_files": inventory.files_indexed(),
-            "max_files": inventory.max_files(),
-            "truncated": inventory_status() == "truncated",
-        }
+    )
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=etag_headers(etag))
+    cached = _ROLLUP_BODY_CACHE.get(etag)
+    if cached is not None:
+        return Response(cached, media_type="application/json", headers=etag_headers(etag))
+
+    async def build() -> bytes:
+        result = None
+        if inv_can_serve:
+            result = await asyncio.to_thread(
+                inventory.rollup,
+                subpath,
+                depth=depth,
+                top=top,
+                ext_top=ext_top,
+                remaining_top=remaining_top,
+                filename_top=filename_top,
+                ext_rank=ext_rank,
+            )
+        # Built through JSONResponse rather than json.dumps so the bytes are
+        # identical to what every other JSON route on this server produces.
+        body = bytes(
+            JSONResponse(
+                {
+                    "root": str(_resolved_root_dir()),
+                    "path": subpath,
+                    "node": result["node"] if result is not None else None,
+                    "ext_tallies": result["ext_tallies"] if result is not None else [],
+                    "file_type_breakdown": (
+                        result["file_type_breakdown"] if result is not None else None
+                    ),
+                    "index_status": inventory_status(),
+                    "indexed_files": inventory.files_indexed(),
+                    "max_files": inventory.max_files(),
+                    "truncated": inventory_status() == "truncated",
+                }
+            ).body
+        )
+        _remember_rollup_body(etag, body)
+        return body
+
+    # Nothing between this lookup and the registration below awaits, so two
+    # requests cannot both start a build for the same answer.
+    shared = _ROLLUP_IN_FLIGHT.get(etag)
+    if shared is None:
+        shared = asyncio.ensure_future(build())
+        _ROLLUP_IN_FLIGHT[etag] = shared
+        shared.add_done_callback(functools.partial(_release_rollup_flight, etag))
+    # Shielded, so a client that disconnects cancels its own wait and not the
+    # build the others are still waiting on.
+    return Response(
+        await asyncio.shield(shared),
+        media_type="application/json",
+        headers=etag_headers(etag),
     )
 
 

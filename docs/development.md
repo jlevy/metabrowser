@@ -94,6 +94,62 @@ rendering, and the in-process navigation API check.
 The installed wheel must also pass `metab --doctor`, so the release gate validates the
 user-facing plugin diagnostics rather than only importing plugin internals.
 
+## Benchmarking Scan and Serve
+
+`devtools/bench_serving.py` measures how fast a tree becomes usable and stays usable.
+Use it whenever a change touches the walker, the derived index state, or the delivery
+layer, and record the comparison in the pull request.
+
+```shell
+# Establish a baseline, then measure the change against it.
+uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
+  --files 100000 --label before --json bench-before.json
+
+uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
+  --files 100000 --label after --baseline bench-before.json
+```
+
+The corpus, server logs, and result JSON live in `.bench/`, which is not committed.
+A corpus is reused when it already matches `--files`, so repeat runs skip the build.
+
+Take both sides back to back, on the same machine and the same corpus size.
+Only the comparison carries over; the absolute numbers move a great deal with the
+filesystem, the page cache, and whatever else is running.
+A stored `--json` from an earlier session is a weak baseline for that last reason —
+under an unrelated load spike every row of a comparison shifted by 1.2× to 1.8×, which
+reads convincingly like a regression and was not one.
+A uniform shift across every row is the tell: real changes move the rows their mechanism
+touches and leave the rest alone.
+Re-measure both sides together before believing any of it.
+
+Three of the reported rows exist because a single blended latency hides what matters.
+
+- The **cold scan** runs with nothing attached and is walker throughput alone.
+  It is read from the walker’s own completion record rather than by polling, because
+  polling is what the next phase deliberately does.
+  A change that leaves this row alone and moves the next one has removed contention, not
+  work.
+- The **scan with a client attached** is what a reader experiences.
+  Rollup work and the walker take CPU from each other, so this is not the cold number.
+- The **settled rollup** is reported as three rows, because a real aggregation, a
+  retained body, and a `304` revalidation are three different amounts of work.
+  Averaging them reports a cache hit rate rather than a latency, and a build with no
+  validators shows up as an absent `304` row instead of a fast one.
+
+Tree latency is reported against response size for the same reason: a request that costs
+more than a larger response is doing work proportional to something other than its
+answer.
+
+The client half is not visible from the server.
+`--browser-probe` prints `devtools/bench_browser_probe.js`; load it in an open folder
+view and call `await metabrowserBench.run({clients: 8})`. It reads the `Server-Timing`
+header every route already emits, because request count cannot distinguish a shared
+computation from a repeated one — N requests are N requests either way, and what differs
+is the work the server did.
+It reports, per query shape, whether validators are working and what N simultaneous
+clients cost, and it separates coalescing from the retained body rather than crediting
+one for the other.
+
 ## File Rollup Format Maintenance
 
 The [File Rollup Format](project/architecture/file-rollup-format/file-rollup-format.md)
@@ -163,6 +219,43 @@ uv --config-file uv.toml lock --upgrade-package package-name
 Commit `uv.lock` with every Python dependency change and `package-lock.json` with every
 JavaScript tool change.
 Do not add requirements files, Poetry, or another environment manager.
+
+The cool-off is a control on third-party code, where an upstream publisher could be
+compromised without us knowing.
+First-party packages — the ones published from repositories this project controls, tbd
+among them — are outside it, because that risk is already managed by the process that
+releases them. Install and upgrade those the standard way their own documentation
+describes:
+
+```shell
+npm install -g get-tbd@latest
+tbd setup --auto
+```
+
+`tbd setup` owns the hook configs, session scripts, and agent skills it writes.
+Commit them exactly as generated and commit the diff the upgrade reports.
+
+Three consequences of that are worth knowing rather than rediscovering, since each one
+was previously patched locally and is now left as generated:
+
+- **Hook commands resolve against the working directory.** `.claude/settings.json` and
+  `.codex/hooks.json` invoke `bash .claude/...` and `bash .codex/...` with no root
+  anchoring, so a session whose cwd is not the repository root runs nothing.
+- **The `npx` fallback fails for fourteen days after every tbd release**, because the
+  generated invocation omits `--min-release-age=0` and `.npmrc` sets a 14-day cool-off.
+  It is only reached when the local `tbd` CLI is missing or format-incompatible.
+  See
+  [supply-chain security](../SUPPLY-CHAIN-SECURITY.md#audited-first-party-exceptions).
+- **`ensure-gh-cli.sh` exits non-zero on a platform with no pinned checksum**, so the
+  session hook fails there rather than skipping an optional convenience.
+  Checksums cover linux and macOS on amd64 and arm64.
+
+Fix any of these upstream in tbd’s generator rather than in this repository, or the next
+`tbd setup` reverts the fix and someone has to notice.
+Do not hand-patch them and do not add tests that assert their contents: the same upgrade
+runs across many repositories, and a local edit is silently reverted by the next one
+while a test that pins their contents turns a routine upgrade into a repair job.
+This repository learned that twice.
 
 Every direct runtime requirement declares the minimum version covered by the frozen
 release graph. `pyproject.toml` owns those requirements, while `uv.lock` records the

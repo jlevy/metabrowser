@@ -46,7 +46,11 @@ this repository’s structural facts and standing answers.
   second environment manager.
 - Read [SUPPLY-CHAIN-SECURITY.md](SUPPLY-CHAIN-SECURITY.md) before any dependency or
   tool change.
-- Preserve the 14-day cool-off and exact first-party exceptions.
+- Preserve the 14-day cool-off for third-party packages, where an upstream publisher
+  could be compromised without us knowing.
+  First-party packages, tbd among them, are outside it and are installed and upgraded
+  the standard way their own documentation describes; commit what their setup generates
+  without hand-patching it.
   Commit `uv.lock` and `package-lock.json` when their dependencies change.
 - Support the Python range in `pyproject.toml` and add complete annotations to changed
   code.
