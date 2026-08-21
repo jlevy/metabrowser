@@ -1070,6 +1070,17 @@
   // KPress's toc.js owns the behavior; the host's only jobs are to mark a scroll
   // element [data-kpress-viewport] (the preview pane) and call this on mount /
   // dispose on unmount. Returns null if toc.js has not loaded yet.
+  // On-demand vendored libraries. asset_loader.js owns the loading; the SDK
+  // only publishes it, so a plugin never reaches into a private global.
+  /** @param {string} name @returns {Promise<void>} */
+  function ensureAsset(name) {
+    const assets = global.MetabrowserAssets;
+    if (!assets || typeof assets.ensureAsset !== "function") {
+      return Promise.reject(new Error("metabrowser.ensureAsset: asset loader is not available"));
+    }
+    return assets.ensureAsset(name);
+  }
+
   function kpressInitToc(container) {
     if (typeof _kpressInitTocFn !== "function" || !container) {
       return null;
@@ -1538,6 +1549,7 @@
     renderTextLoadMoreFooter: renderTextLoadMoreFooter,
     partialNoticeHtml: partialNoticeHtml,
     loadKpressAssets: loadKpressAssets,
+    ensureAsset: ensureAsset,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,
     chart: chart,

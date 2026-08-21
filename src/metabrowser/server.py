@@ -866,6 +866,7 @@ async def index(_request: Request) -> HTMLResponse:
     initial_path = _initial_path_html()
     repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
+    asset_loader_url = _static_asset_url("asset_loader.js")
     theme_state_url = _static_asset_url("theme_state.js")
     request_error_url = _static_asset_url("request_error.js")
     formatters_url = _static_asset_url("formatters.js")
@@ -958,20 +959,36 @@ async def index(_request: Request) -> HTMLResponse:
     # static/vendor/manifest.json) and served same-origin, so the page has
     # no external origins and works offline. Bump a version by updating
     # package.json + package-lock.json, then run `make vendor-assets`.
+    # Prefetched tier: small relative to how likely they are to be wanted, and
+    # visibly late if they arrive after the view that uses them. Loaded after
+    # first paint by the chain below.
     optional_script_assets = [
         {"src": _static_asset_url("vendor/mustache.min.js")},
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
-        {"src": _static_asset_url("vendor/chart.umd.min.js")},
-        {
-            "src": _static_asset_url("vendor/chartjs-plugin-annotation.min.js"),
-            "requires": "Chart",
-        },
-        {
-            "src": _static_asset_url("vendor/chartjs-adapter-date-fns.bundle.min.js"),
-            "requires": "Chart",
-        },
     ]
+    # On-demand tier: fetched by asset_loader.js the first time a consumer asks.
+    # Chart.js and its two plugins are 297,531 bytes read by one view, and
+    # eager loading measured ~374 ms of every document's load event whether or
+    # not that view was ever opened. See docs/development.md "Asset Loading
+    # Tiers" and the load-time plan for the measurement.
+    on_demand_script_bundles = {
+        "chart": [
+            {"src": _static_asset_url("vendor/chart.umd.min.js")},
+            {
+                "src": _static_asset_url("vendor/chartjs-plugin-annotation.min.js"),
+                "requires": "Chart",
+            },
+            {
+                "src": _static_asset_url("vendor/chartjs-adapter-date-fns.bundle.min.js"),
+                "requires": "Chart",
+            },
+        ],
+    }
+    asset_bundles_block = (
+        f"<script>window.METABROWSER_ASSET_BUNDLES="
+        f"{_json.dumps(on_demand_script_bundles)};</script>"
+    )
     optional_assets_block = f"""<script>
   (function () {{
     var assets = {_json.dumps(optional_script_assets)};
@@ -1127,6 +1144,8 @@ async def index(_request: Request) -> HTMLResponse:
   {perf_block}
   {settings_block}
   {repository_context_block}
+  {asset_bundles_block}
+  <script src="{asset_loader_url}"></script>
   <script src="{theme_state_url}"></script>
   <script src="{request_error_url}"></script>
   <script src="{formatters_url}"></script>

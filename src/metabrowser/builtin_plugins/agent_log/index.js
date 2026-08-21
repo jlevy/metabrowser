@@ -406,6 +406,12 @@
     if (generation !== chartsRenderGeneration) {
       return;
     }
+    // Chart.js is on the on-demand tier, so this view pays for it and no
+    // other document does. Resolves immediately once it has been loaded.
+    await mb.ensureAsset("chart");
+    if (generation !== chartsRenderGeneration) {
+      return;
+    }
     if (!window.MetabrowserCharts) {
       throw new Error("Chart rendering is unavailable.");
     }

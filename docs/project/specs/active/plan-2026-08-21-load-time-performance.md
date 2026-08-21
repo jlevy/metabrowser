@@ -241,6 +241,32 @@ observable, so it lands in `CHANGELOG.md` and in
 
 ## Implementation Plan
 
+### Ordering: Cost, Effort, and What Blocks What
+
+The phases below are grouped by layer because that is how the code is organized.
+The order to *work* them is by measured cost over effort, and the two are not the same.
+Read this table first.
+
+| Item | Wins | Effort | Order |
+| --- | --- | --- | --- |
+| Chart.js to on demand | 297,531 B and ~374 ms of `load`, every document | Small: one consumer, an existing `typeof Chart` guard, no protocol | **done** |
+| Rows from partial index state | 4.2 s at 100k, 22 s at 1M | Medium: the data already arrives at 319 ms; the gate is in the client | **2** |
+| `/api/catalog` to on demand | 4,580,060 B off the critical path at 100k | Medium, not small: `pendingChanges` in `catalog_feed.js` is unbounded, so a deferred first fetch needs a buffering policy, not a moved call | **3** |
+| Row windowing | 276,789 DOM nodes at 1M | Medium: a rendering change with a find-in-page trade to measure | 4 |
+| highlight.js and Mustache to prefetch | ~135,000 B off the eager chain | Small, but the win is small too | 5 |
+| Whole-tree `/api/tree` cost | 4,990 ms and 3.68 MB at 1M | Large: a response-shape question | 6 |
+| Startup that scales with the tree | 1.8 s at 1M | Unknown until attributed | 7 |
+| `INVENTORY_MAX_FILES` | Correctness, not speed | Large: needs the walk work first | 8 |
+
+The page-load harness is not on that list because it is not a win.
+It is what makes every row of it checkable, so it comes before all of them.
+
+Two orderings are load-bearing and should not be rearranged for convenience.
+Rows-from-partial-state comes before any server work, because a client that waits for
+the scan makes every server cost look like scan cost.
+And the walk attribution comes before the file cap, because a cap is a claim about cost
+and there is no measurement of that cost yet.
+
 ### Phase 1: The Harness and the Front-End Payload
 
 - [ ] Add a page-load phase to `devtools/bench_serving.py`: headless Chromium against
@@ -253,8 +279,13 @@ observable, so it lands in `CHANGELOG.md` and in
   the strict `tsconfig.json` gate
 - [ ] Publish a tiered asset descriptor from `server.py` in place of the inline chain,
   keeping the `metabrowser:optional-asset*` re-enhance events firing
-- [ ] Move the Chart.js stack to on demand and make `charts.js` await it where it guards
-  on `typeof Chart` today
+- [x] Move the Chart.js stack to on demand.
+  `static/asset_loader.js` owns the loading, `plugin_sdk.js` publishes it as
+  `ensureAsset`, and the agent-log charts view awaits it.
+  Measured on this repository, median of five cold loads of `/view/README.md`: `load`
+  853 ms to 411 ms, transferred 823,391 B to 732,836 B, vendored files on load 6 to 3.
+  First contentful paint did not move, which is the expected result: the chain never
+  blocked paint, it competed with the tree render behind it.
 - [ ] Move highlight.js, the TOML grammar, and Mustache to prefetch-on-idle
 - [ ] Re-measure and record the comparison
 
