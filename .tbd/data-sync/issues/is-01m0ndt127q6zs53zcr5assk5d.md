@@ -5,12 +5,12 @@ title: File tree icons and colors are a separate taxonomy from the rollup regist
 kind: bug
 status: open
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T19:05:22.759Z
-updated_at: 2026-08-22T19:05:22.759Z
+updated_at: 2026-08-22T21:14:57.215Z
 ---
 Raised in QA: extensions in one rollup family should share an icon and a color.
 
@@ -27,3 +27,7 @@ Concretely, using the reviewer's own example:
 What to do: derive the tree's icon and colour from the registry classification rather than from a second extension list, so a family's identity is declared once. The registry has no icon field today -- family carries id, label, group_id, order, extensions, hue, linguist, linguist_color -- so this means adding an icon per family (or per group, with family override) and having the tree resolve through the same classifier the rollup uses. plugin_sdk.js exposes iconFor/classFor on window.MetabrowserFileTypes, so the SDK surface changes with it.
 
 Note the ordering dependency: doing this makes every tree row take its family's registry hue, which spreads the palette's collisions (siblings mb-oq6j and mb-6g81) from the Overview bars into the file tree. Worth settling the palette first.
+
+## Notes
+
+Palette is settled (mb-0ov6 closed), so the ordering dependency this bead recorded is cleared: deriving the tree's icon and colour from the registry now spreads a palette whose closest pair is 0.0156 rather than 0.0020, instead of spreading the collisions. The one exception to know about is swift/svelte in dark (mb-oq6j). Nothing else about this bead's scope changed - it is still the larger piece of work: adding an icon per family or group to the registry and routing the tree through the same classifier the rollup uses.
