@@ -822,19 +822,21 @@ class _SlowRequestLogMiddleware:
 
 
 def _initial_path_html() -> str:
-    """Server-render the served-root path so it shows on first paint."""
-    root_str = str(_paths_safe.ROOT_DIR.resolve())
+    """Server-render the served root's *name* so it shows on first paint.
+
+    The name and not the path: the directories above the served root are
+    the same on every row of every view, and the navigation column is the
+    scarcest width in the app. The whole path is one hover away on the
+    anchor's title, and the file header across the divider spells it out.
+    """
     base = _paths_safe.ROOT_DIR.resolve().name
-    if base:
-        dir_part = html_escape(root_str[: -len(base)])
-        base_part = html_escape(base)
-        return (
-            f'<span class="path">'
-            f'<span class="path-dir">{dir_part}</span>'
-            f'<span class="path-base">{base_part}</span>'
-            f"</span>"
-        )
-    return f'<span class="path"><span class="path-base">{html_escape(root_str)}</span></span>'
+    label = base or str(_paths_safe.ROOT_DIR.resolve())
+    return f'<span class="path"><span class="path-base">{html_escape(label)}</span></span>'
+
+
+def _served_root_str() -> str:
+    """The served root, absolute. Displayed by the file header's prefix."""
+    return str(_paths_safe.ROOT_DIR.resolve())
 
 
 def _static_asset_url(rel_path: str) -> str:
@@ -875,6 +877,8 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
+    initial_root = html_escape(_served_root_str(), quote=True)
+    initial_root_title = html_escape(f"{_served_root_str()} — jump to root", quote=True)
     repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset_loader.js")
@@ -1105,18 +1109,28 @@ async def index(_request: Request) -> HTMLResponse:
   <main class="container">
     <div class="tree-pane" id="tree-pane">
       <header class="app-header">
-        <span class="header-brand">Metabrowser</span>
-        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" title="Jump to root">{initial_path}</a>
-        <!-- Settings menu. A gear button opens a menu with two icon-segment
-             choosers (theme + reading font) and a small font-set dropdown
+        <!-- data-served-root is the one place the absolute root is written:
+             the file header reads it back to render its dimmed prefix, so
+             the two headers cannot disagree about what the root is. -->
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" title="{initial_root_title}"
+           data-served-root="{initial_root}">{initial_path}</a>
+        <!-- The Metabrowser menu. The gear names the product rather than
+             standing as an unlabelled settings control: the wordmark that
+             used to sit on its own line above the path is this menu's title,
+             which returns that line of the navigation column — the app's
+             scarcest width — to the path. Inside: two icon-segment choosers
+             (theme + reading font) and a small font-set dropdown
              (#app-font-select, options from _FONT_SETS). Choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
-             menu's visibility via CSS. -->
+             menu's visibility via CSS. The title is aria-hidden because the
+             menu already carries the same name. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
-                  aria-haspopup="true" title="Settings" aria-label="Settings"></button>
-          <div class="settings-menu menu" role="menu" aria-label="Settings">
+                  aria-haspopup="true" title="Metabrowser" aria-label="Metabrowser menu"></button>
+          <div class="settings-menu menu" role="menu" aria-label="Metabrowser">
+            <div class="menu-title" aria-hidden="true">Metabrowser</div>
+            <div class="menu-separator"></div>
             <div class="menu-chooser" role="group" aria-label="Theme">
               <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="system" title="System theme" aria-label="System theme"></button>
               <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="light" title="Light theme" aria-label="Light theme"></button>

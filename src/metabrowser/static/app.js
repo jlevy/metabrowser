@@ -236,6 +236,67 @@ function pathHtml(path, extraClass) {
   return `<span class="${cls}"><span class="path-dir">${esc(dir)}</span><span class="path-base">${esc(base)}</span></span>`;
 }
 
+/**
+ * Just the last component of `path`, wrapped the same way pathHtml wraps a
+ * whole one so it inherits the same emphasis. This is what the navigation
+ * heading shows: the directories above the served root never change, and
+ * the column they would spend width on is the narrowest in the app.
+ */
+function pathBaseHtml(path) {
+  var trimmed = String(path == null ? "" : path).replace(/\/+$/, "");
+  var base = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+  return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
+}
+
+/**
+ * Record the absolute served root on the element showing its name. The file
+ * header reads it back for its dimmed prefix, and the title keeps the whole
+ * path one hover away from a heading that no longer spells it out.
+ */
+function setServedRoot(pathEl, root) {
+  var text = typeof root === "string" ? root : "";
+  pathEl.dataset.servedRoot = text;
+  pathEl.title = text ? `${text} — jump to root` : "Jump to root";
+}
+
+// The served root, absolute, from the one element that carries it.
+function servedRoot() {
+  return queryHtml(".header-path")?.dataset.servedRoot || "";
+}
+
+/**
+ * The main view's address: the served root dimmed, the root slash, then one
+ * control per component beneath it.
+ *
+ * The prefix is dim because it is identical on every page — context, not
+ * content — and everything from the slash rightward is live. The final
+ * component is a control too. On the page you are already looking at it
+ * changes nothing, but a run of links with one dead segment in the middle
+ * reads as a bug rather than as a rule.
+ *
+ * @param {string} path served-root-relative path; "" is the root itself
+ * @param {boolean} isFile whether the last component names a file
+ */
+function headerAddressHtml(path, isFile) {
+  var root = servedRoot();
+  var prefix = root ? `<span class="file-header-root">${esc(root)}</span>` : "";
+  var rootCrumb =
+    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" title="Served root">/</button>';
+  var segments = path ? path.split("/") : [];
+  var crumbs = [];
+  var walked = "";
+  for (var i = 0; i < segments.length; i++) {
+    walked = walked ? `${walked}/${segments[i]}` : segments[i];
+    var last = i === segments.length - 1;
+    var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
+    var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
+    crumbs.push(
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}">${esc(segments[i])}</button>`,
+    );
+  }
+  return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
+}
+
 function getExt(name) {
   const i = name.lastIndexOf(".");
   return i >= 0 ? name.slice(i) : "";
@@ -770,7 +831,8 @@ async function loadTree() {
     knownFileCatalog?.observeInitialTree(data.tree);
     var pathEl = queryHtml(".header-path");
     if (pathEl) {
-      pathEl.innerHTML = pathHtml(data.root);
+      pathEl.innerHTML = pathBaseHtml(data.root);
+      setServedRoot(pathEl, data.root);
     }
     // Aggregate root size + file count + newest-mtime from top-level
     // children. Same shape as a folder tooltip — the served root reads
@@ -4742,19 +4804,6 @@ function navigateToFolder(path) {
 function renderFolderHeader(data) {
   var path = typeof data.path === "string" ? data.path : "";
   var segments = path ? path.split("/") : [];
-  var rootCrumb =
-    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" title="Served root">/</button>';
-  var crumbs = [];
-  var prefix = "";
-  for (var i = 0; i < segments.length; i++) {
-    prefix = prefix ? `${prefix}/${segments[i]}` : segments[i];
-    var isLast = i === segments.length - 1;
-    crumbs.push(
-      isLast
-        ? `<span class="folder-crumb folder-crumb-current">${esc(segments[i])}</span>`
-        : `<button type="button" class="folder-crumb" data-nav-dir="${esc(prefix)}">${esc(segments[i])}</button>`,
-    );
-  }
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
   var parentLabel =
     parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
@@ -4766,7 +4815,7 @@ function renderFolderHeader(data) {
   return (
     '<div class="file-header folder-header">' +
     upButton +
-    `<span class="file-header-path folder-breadcrumb">${rootCrumb}${crumbs.join('<span class="folder-crumb-sep">/</span>')}</span>` +
+    `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
     '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
     (ICONS.print || "") +
@@ -5083,8 +5132,8 @@ function renderFile(data, preferredViewId, claim) {
         var badges = renderBadges(data);
         html = '<div class="file-header">';
         html +=
-          '<span class="file-header-path">' +
-          esc(data.path) +
+          '<span class="file-header-path folder-breadcrumb">' +
+          headerAddressHtml(data.path, true) +
           `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-copy-path="${esc(data.path)}" title="Copy path" aria-label="Copy path">` +
           ICON_COPY +
           "</button>" +
@@ -5323,6 +5372,14 @@ document.addEventListener("click", (e) => {
   var navBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-dir]"));
   if (navBtn && !navBtn.hasAttribute("disabled")) {
     navigateToFolder(navBtn.dataset.navDir ?? "");
+    return;
+  }
+  // The address bar's last crumb names a file rather than a directory. It
+  // re-opens what is already open, which is the point: every segment of the
+  // address behaves alike.
+  var fileBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-file]"));
+  if (fileBtn && !fileBtn.hasAttribute("disabled")) {
+    void navigateToPath(fileBtn.dataset.navFile ?? "");
     return;
   }
   var copyBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-copy-path]"));

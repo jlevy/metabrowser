@@ -409,12 +409,11 @@
   --preview-message-max-width: 42rem;
   --embedded-document-padding-top: 8px;
   /* The navigation column has one left inset, and everything in it
-     lines up on that edge: the brand, the served path, the Files tab,
-     the filter chips, the tally row, and every tree row. 12px is the
-     tree row's own content inset (10px padding + the 2px selection
-     bar), so the chrome above aligns to the content rather than the
-     content having to move. Controls with internal padding cancel it
-     — see .header-brand's negative margin and .nav-tab-bar below — so
+     lines up on that edge: the served path, the Files tab, the filter
+     chips, the tally row, and every tree row. 12px is the tree row's own
+     content inset (10px padding + the 2px selection bar), so the chrome
+     above aligns to the content rather than the content having to move.
+     Controls with internal padding cancel it — see .nav-tab-bar below — so
      their *text* lands on the inset; bordered controls like chips
      align their border instead, since that is their visual edge. */
   --pane-header-padding-x: 12px;
@@ -1139,14 +1138,18 @@ body {
 
 /* ── Header ──────────────────────────────────────────────────── */
 
+/* One row — the path, then the Metabrowser menu — which is the shape
+   .file-header has on the other side of the divider, so the two headers
+   read as one bar across the top of the app rather than as two headers
+   that happen to be adjacent. */
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
   letter-spacing: 0.1em;
@@ -1165,16 +1168,6 @@ body {
 .app-header a:hover {
   background: var(--hover-bg);
 }
-/* Product-name brand label at the very top of the nav header. Not a
-   link (the path immediately below already jumps to root) — just a
-   small uppercase muted line so the SPA name is present without
-   competing with the path for attention. */
-.header-brand {
-  font-size: var(--micro-font-size);
-  color: var(--muted);
-  padding: 0 4px;
-  margin-left: -4px;
-}
 /* Path is the primary piece of information in the header — bold,
    mixed-case, sans-serif at the tree-row size. Click jumps back to
    the served root. */
@@ -1187,6 +1180,13 @@ body {
   font-size: var(--nav-font-size);
   padding: 2px 0;
   border-radius: var(--radius-chrome);
+  /* Grows and truncates exactly as .file-header-path does, so both
+     headers shorten the same way when the panes are resized. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* ── Text buttons — shared labelled action primitive ─────────────
    A compact action with a persistent surface and border. Use-site
@@ -1356,16 +1356,18 @@ body {
 }
 
 /* ── Settings toggle (gear → theme + reading-font choosers) ───────
-   A gear button pinned to the header's top-right opens a .menu holding
-   two segmented choosers (theme, reading font). Click-to-open-then-pick,
-   never click-to-cycle. The button itself is the .icon-btn primitive
-   above; only the trigger's placement and the menu's anchored
-   positioning live here, the menu surface comes from the .menu
-   primitive, and the segments from the .menu-chooser primitive below. */
+   The gear at the end of the nav header opens a .menu holding the product
+   name and two segmented choosers (theme, reading font). Click-to-open-
+   then-pick, never click-to-cycle. It sits in the header's flex row rather
+   than pinned over it, so it shares the row's vertical centring with the
+   path the way .file-header's controls share theirs. `relative` is what
+   the menu below anchors against. The button itself is the .icon-btn
+   primitive above; only the trigger's placement and the menu's anchored
+   positioning live here, the menu surface comes from the .menu primitive,
+   and the segments from the .menu-chooser primitive below. */
 .settings-toggle {
-  position: absolute;
-  top: 6px;
-  right: 8px;
+  position: relative;
+  flex: 0 0 auto;
 }
 /* Anchored placement under the trigger; the .menu primitive supplies the
    surface styling. Scoped under .settings-toggle so this `display: none`
@@ -1470,6 +1472,20 @@ body {
   height: 1px;
   margin: 4px 0;
   background: var(--border);
+}
+/* The menu's own name, at its top. Metabrowser's wordmark lives here now:
+   the gear is the product's menu, and a menu that names itself does not
+   need a line of the navigation column to do it. Same small-caps register
+   as .menu-section-label, without that rule's icon-column inset — a title
+   is not a row. */
+.menu-title {
+  padding: 2px 8px 3px;
+  color: var(--label-color);
+  font-family: var(--font-sans);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
 }
 .menu-section-label {
   padding: 3px 8px 2px 32px;
@@ -1627,14 +1643,6 @@ html.theme-anim .menu {
 .path-dir {
   color: var(--muted);
   font-weight: var(--weight-normal);
-}
-/* Header path is the document headline — both the dir-prefix
-   and the basename inherit the header's bold weight + dark
-   text color. Other call sites (file header, etc.) keep the
-   normal-weight muted dir prefix from the rule above. */
-.header-path .path-dir {
-  font-weight: inherit;
-  color: inherit;
 }
 
 /* ── Keyboard keys — shared inline primitive ─────────────────────
@@ -2287,8 +2295,8 @@ html[data-prose-font="sans"] {
    the shadow is the additive cue. */
 .tab-bar.nav-tab-bar {
   /* Cancel the tab's own horizontal padding so the *label* sits on the
-     column inset, the same trick .header-brand uses. Left-padding the
-     bar instead would inset the label twice. */
+     column inset. Left-padding the bar instead would inset the label
+     twice. */
   padding-left: calc(var(--pane-header-padding-x) - var(--file-tab-padding-x));
   position: relative;
   z-index: 1;
@@ -2794,6 +2802,11 @@ html[data-prose-font="sans"] {
 .folder-breadcrumb {
   gap: 2px;
 }
+/* Crumbs keep their size; only the dimmed root prefix above gives way. */
+.folder-breadcrumb .folder-crumb,
+.folder-breadcrumb .folder-crumb-sep {
+  flex: 0 0 auto;
+}
 .folder-crumb {
   font: inherit;
   border: 0;
@@ -2810,10 +2823,26 @@ html[data-prose-font="sans"] {
   outline: 2px solid var(--link);
   outline-offset: -1px;
 }
+/* The component you are standing on: darker and bold so the address has a
+   focus, but still a control. It navigates to where you already are, which
+   changes nothing — the point is that the address has no dead segment in
+   the middle of a run of live ones. */
 .folder-crumb-current {
   color: var(--text);
-  cursor: default;
   font-weight: var(--weight-bold);
+}
+/* The served root, absolute, ahead of the first slash. Dimmed because it
+   is identical on every page of the app: context for the live part of the
+   address rather than part of it. It gives up its width first, so a long
+   root elides before a filename does. */
+.file-header-root {
+  color: var(--muted);
+  font-weight: var(--weight-normal);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
 }
 .folder-crumb-sep {
   color: var(--muted);

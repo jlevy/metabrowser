@@ -159,6 +159,29 @@ def test_header_root_link_uses_the_canonical_view_route(tmp_path: Path) -> None:
     assert '<a href="/" class="header-path"' not in response.text
 
 
+def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Path) -> None:
+    """The navigation column spends its width on the name, not the path.
+
+    The directories above the served root are the same on every row of
+    every view, and the column is the narrowest in the app. Nothing is
+    lost: the anchor's title still shows the whole path on hover, and
+    ``data-served-root`` is the value the file header reads back to draw
+    its dimmed prefix, so the two headers cannot disagree about the root.
+    """
+
+    root = (tmp_path / "wrk" / "foo").resolve()
+    root.mkdir(parents=True)
+    server._set_root_dir(root)
+    try:
+        response = TestClient(server.app).get("/view/")
+    finally:
+        server._set_root_dir(Path())
+    assert '<span class="path-base">foo</span>' in response.text
+    assert '<span class="path-dir">' not in response.text
+    assert f'data-served-root="{root}"' in response.text
+    assert f'title="{root} — jump to root"' in response.text
+
+
 def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None:
     target = tmp_path / "docs" / "雪 #1%.md"
     target.parent.mkdir()

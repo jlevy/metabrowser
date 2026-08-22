@@ -609,6 +609,46 @@ def test_index_progress_updates_by_file_count_bucket() -> None:
     assert "indexProgressBucket(meta.indexed_files)" in fn_block
 
 
+def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
+    """The file header carries the whole address; every segment is live.
+
+    The served root is a dimmed prefix because it is identical on every
+    page — context rather than content. Everything from the root slash
+    rightward navigates, including the last component: on the page you
+    are already looking at it changes nothing, but a run of links with
+    one dead segment in the middle reads as a bug rather than a rule.
+    """
+
+    js = _read_app_js()
+    fn_start = js.index("function headerAddressHtml(path, isFile)")
+    fn_block = js[fn_start : fn_start + 1400]
+    assert 'class="file-header-root"' in fn_block
+    assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in fn_block
+    # The final component navigates too — as a file when it names one.
+    assert 'last && isFile ? "data-nav-file" : "data-nav-dir"' in fn_block
+    assert "folder-crumb-current" in fn_block
+
+    # Both headers build their address from this one helper.
+    assert js.count("headerAddressHtml(") == 3
+
+    # A file crumb opens the file rather than a directory.
+    click_start = js.index('origin.closest("[data-nav-file]")')
+    assert "navigateToPath(fileBtn.dataset.navFile" in js[click_start : click_start + 300]
+
+
+def test_navigation_heading_shows_only_the_root_name() -> None:
+    """The heading renders the basename; the absolute root rides alongside."""
+
+    js = _read_app_js()
+    fn_start = js.index("function pathBaseHtml(path)")
+    fn_block = js[fn_start : fn_start + 500]
+    assert 'class="path-base"' in fn_block
+    assert "path-dir" not in fn_block
+    # loadTree refreshes both the label and the value the file header reads.
+    tree_start = js.index("pathEl.innerHTML = pathBaseHtml(data.root)")
+    assert "setServedRoot(pathEl, data.root)" in js[tree_start : tree_start + 200]
+
+
 def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:
     """Finishing a crawl must reach the rollup watches.
 
