@@ -2928,8 +2928,9 @@ html[data-prose-font="sans"] {
   flex: 0 20000 auto;
   /* Truncates from the START, so the part of the root nearest what you are
      looking at is the part that survives: "…/wrk/github/project /" rather
-     than "/Users/someone/wrk/git… /". The end of a path carries the
-     information; the beginning is the same on every page of the app.
+     than a home directory spelled out in full and the project name cut off.
+     The end of a path carries the information; the beginning is the same on
+     every page of the app.
 
      direction: rtl moves the overflow — and so the ellipsis — to the left
      edge. The text itself must not be reordered by that, which is what the
