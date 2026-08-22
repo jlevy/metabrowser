@@ -232,17 +232,19 @@ global.document = { createElement: (tag) => new Element(tag) };
   );
   // A tally track is eight pixels tall, so the filter alone reads as nothing
   // happening. The siblings have to recede for the hovered segment to be
-  // findable, which means the rule must key off the track rather than the
-  // segment, and the hovered segment must win its opacity back.
+  // findable, which means the rule keys off the track rather than the segment.
+  // :not(:hover) is what keeps it off the segment being pointed at: the recede
+  // rule is the more specific of the two, so without it the whole bar fades
+  // uniformly and nothing is picked out.
+  const recedeSelector = styles
+    .slice(0, styles.indexOf("opacity: var(--mb-distribution-segment-recede)"))
+    .replace(/\s+/g, " ");
   check(
-    "hovering a segment recedes the rest of the track",
-    styles.includes(
-      ".folder-totals .file-type-summary-track:hover .file-type-summary-fill[data-segment-key]",
-    ) &&
-      styles.includes("opacity: var(--mb-distribution-segment-recede);") &&
-      styles.includes("opacity: 1;") &&
+    "hovering a segment recedes the rest of the track, but not the segment itself",
+    recedeSelector.includes(".file-type-summary-track:hover") &&
+      recedeSelector.endsWith(".file-type-summary-fill[data-segment-key]:not(:hover) { ") &&
       sharedStyles.includes("--mb-distribution-segment-recede:"),
-    styles,
+    recedeSelector.slice(-140),
   );
   // Segment widths are percentages that sum to 100, so the hairline between
   // them cannot occupy layout or the last segment leaves the track.
