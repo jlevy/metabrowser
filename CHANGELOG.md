@@ -50,6 +50,18 @@ Folder Overview:
   percentages that sum to 100 and anything occupying layout would push the last segment
   past the end of the track.
 
+- **`PLUGIN_SDK_VERSION` is `0.3`.** An external plugin must set `sdk_version = "0.3"`
+  and update its tooltip call sites: `mb.tooltip.show` takes the anchor element rather
+  than a `MouseEvent`, and `mb.tooltip.move` is gone.
+
+- Tooltips are placed relative to the element they annotate and hold still once shown.
+  They used to follow the pointer, which jitters while you are trying to read one and —
+  worse, in a stacked bar or a treemap where the annotated things are adjacent and small
+  — says nothing about which one the tooltip is about.
+  Moving onto a different element dismisses the old tooltip and opens a new one; moving
+  within one changes nothing.
+  `mb.tooltip.show` now takes the anchor element and `mb.tooltip.move` is gone.
+
 - Hovering a segment of a tally bar now recedes the rest of the track, so the segment
   the tooltip describes is findable.
   The shared brightness filter was doing the whole job on a track eight pixels tall,

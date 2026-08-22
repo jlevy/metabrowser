@@ -1357,13 +1357,37 @@ difference between a tooltip, menu, and dialog.
 
 | Pattern | Purpose and semantics | Focus and dismissal |
 | --- | --- | --- |
-| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls | Opens for pointer hover and keyboard focus; closes on pointer leave, blur, or Escape |
+| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls; anchored to the element it describes and fixed once shown | Opens for pointer hover and keyboard focus; closes on pointer leave, blur, or Escape |
 | Anchored popup | A menu, listbox, or other pattern anchored to a trigger or pointer; the content role defines its semantics | Uses that pattern’s focus model; closes on Escape and outside interaction |
 | Modal dialog | A labelled task or information surface with `role="dialog"` and `aria-modal="true"` | Moves focus inside, contains Tab, makes background content inert, and closes through Escape, an explicit control, or the scrim |
 
 A compact surface can still be a modal dialog.
 Help is a dialog because it contains a link and controls and temporarily owns focus; it
 is not a tooltip or menu.
+
+### A Tooltip Holds Still
+
+**A tooltip is placed relative to the thing it annotates, not to the pointer, and it
+does not move while it is up.**
+
+Position is read from the anchor element once, when the tooltip appears.
+Pointer movement never repositions a visible tooltip.
+Moving onto a different annotated element dismisses the old tooltip and opens a new one
+for the new anchor; moving *within* one element changes nothing at all, including when a
+delegated listener fires again for a descendant the pointer crossed.
+
+Two reasons, and the second is the important one.
+A tooltip that tracks the cursor jitters, because it re-renders on every mousemove while
+the reader is trying to read it.
+And a tooltip placed where the pointer happened to be says nothing about *which* thing
+it describes — in a stacked bar or a treemap, where the annotated elements are adjacent
+and small, that is the only question the tooltip exists to answer.
+
+`mb.tooltip.show(html, anchor)` takes the element, and there is deliberately no
+`move()`. The controller centers the tooltip under its anchor, flips above when there is
+no room below, and clamps to the viewport.
+Calling `show` again with the same anchor is how a surface says “still here”: it cancels
+a pending hide and leaves the tooltip exactly where it is.
 
 ### Shared Overlay Lifecycle
 

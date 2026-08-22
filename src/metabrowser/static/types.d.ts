@@ -707,8 +707,9 @@ type MetabrowserSdk = {
   };
   tooltip: {
     hide(): void;
-    move(event: MouseEvent): void;
-    show(html: string, event: MouseEvent): void;
+    /** Show `html` anchored to the element it describes. No move(): a tooltip
+     *  holds still once shown; see docs/design-system.md. */
+    show(html: string, anchor: Element | null): void;
   };
   watchRollup(
     path: string,
@@ -1532,8 +1533,7 @@ declare global {
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
       hide(): void;
-      move(event: MouseEvent): void;
-      show(html: string, event: MouseEvent): void;
+      show(html: string, anchor: Element | null): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     /** Container kinds by extension; see arch-nav-containers.md. */

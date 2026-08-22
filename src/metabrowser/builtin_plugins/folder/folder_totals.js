@@ -399,8 +399,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
         const tooltip = `<strong>${mb.escapeHtml(segment.label)}</strong><br>${mb.formatFileCount(
           segment.files,
         )} · ${mb.formatSize(segment.bytes)}`;
-        fill.addEventListener("mouseover", (event) => mb.tooltip.show(tooltip, event));
-        fill.addEventListener("mousemove", (event) => mb.tooltip.move(event));
+        fill.addEventListener("mouseover", () => mb.tooltip.show(tooltip, fill));
         fill.addEventListener("mouseout", () => mb.tooltip.hide());
         return fill;
       }),

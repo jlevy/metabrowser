@@ -385,15 +385,21 @@ export function registerTreemap(mb, palette, rollupControls) {
     }
 
     /**
-     * Cell for hover/tooltip lookup: every cell carries data-tm-cell.
+     * The cell element under `el`, which is what a tooltip anchors to.
+     * Every cell carries data-tm-cell.
+     * @param {Element | null} el
+     */
+    function cellElementFor(el) {
+      return el ? /** @type {HTMLElement | null} */ (el.closest("[data-tm-cell]")) : null;
+    }
+
+    /**
+     * Cell record for hover/tooltip lookup.
      * @param {Element | null} el
      * @returns {Record<string, any> | null}
      */
     function cellForElement(el) {
-      if (!el) {
-        return null;
-      }
-      const host = /** @type {HTMLElement | null} */ (el.closest("[data-tm-cell]"));
+      const host = cellElementFor(el);
       if (!host) {
         return null;
       }
@@ -436,14 +442,16 @@ export function registerTreemap(mb, palette, rollupControls) {
         activateCell(cell);
       }
     });
+    // One delegated pair for the whole map. mouseover fires again for every
+    // descendant the pointer crosses inside a cell, so the tooltip is anchored
+    // to the cell's own element: re-announcing the same anchor holds it still,
+    // and crossing into a different cell replaces it.
     viewport.addEventListener("mouseover", (e) => {
+      const host = cellElementFor(/** @type {Element} */ (e.target));
       const cell = cellForElement(/** @type {Element} */ (e.target));
-      if (cell) {
-        mb.tooltip.show(tooltipHtml(cell, state), e);
+      if (host && cell) {
+        mb.tooltip.show(tooltipHtml(cell, state), host);
       }
-    });
-    viewport.addEventListener("mousemove", (e) => {
-      mb.tooltip.move(e);
     });
     viewport.addEventListener("mouseout", () => {
       mb.tooltip.hide();

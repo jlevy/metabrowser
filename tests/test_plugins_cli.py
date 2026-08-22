@@ -43,7 +43,7 @@ def test_plugins_list_json_emits_structured_output() -> None:
 def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> None:
     broken = tmp_path / "broken"
     broken.mkdir()
-    (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\nsdk_version = "0.2"\n')
+    (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\nsdk_version = "0.3"\n')
 
     table_result = _runner.invoke(
         _app,
@@ -124,7 +124,7 @@ def test_plugins_doctor_rejects_local_python_data_hook(tmp_path: Path) -> None:
         """
 [plugin]
 name = "broken"
-sdk_version = "0.2"
+sdk_version = "0.3"
 
 [[kind]]
 id = "x"
@@ -161,7 +161,7 @@ def test_plugins_diagnostics_do_not_advertise_disabled_local_hooks(tmp_path: Pat
         """
 [plugin]
 name = "local-demo"
-sdk_version = "0.2"
+sdk_version = "0.3"
 
 [[kind]]
 id = "x"
