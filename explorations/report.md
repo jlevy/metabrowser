@@ -35,6 +35,7 @@ against one that did.
 | exp-002 | [The subtree sweep warms what is on screen](experiments/exp-002-subtree-prefetch-bounded-to-the-viewport.md) | H2, H3 | `subtree_requests` | accepted |
 | exp-003 | [The navigation tallies stop being recomputed per request](experiments/exp-003-navigation-tallies-on-a-staleness-bound.md) | H8, H23 | `srv_scanning_ms` | accepted |
 | exp-004 | [The shell carries the tree’s first rows](experiments/exp-004-the-shell-carries-the-first-rows.md) | H20 | `first_row_ms` | accepted |
+| exp-005 | [A real tree changes the priorities](experiments/exp-005-a-real-tree-changes-the-priorities.md) | H16 | `walk_elapsed_ms` | baseline |
 
 ## Absolute numbers, per condition
 
@@ -60,6 +61,45 @@ Conditions are grouped by corpus, because none of these numbers compare across o
 | `dom_nodes` | 3,735 | 3,478 |
 | `transferred_kb` | 1,185 | 709 |
 | `vendor_first_start_ms` | 368 (152-1,176) | 594 (156-800) |
+
+### 241,084 files
+
+**What a reader gets** — browser probe
+
+| metric | real-tree-browser (n=1) |
+| --- | ---: |
+| `first_row_ms` | 527 |
+| `load_tree_ms` | 27 |
+| `tree_fetch_total_ms` | 11 |
+| `tree_fetch_kb` | 7 |
+| `dcl_ms` | 504 |
+| `load_ms` | 504 |
+| `last_resource_ms` | 27,232 |
+| `subtree_requests` | 0 |
+| `tree_items` | 315 |
+| `lazy_stubs` | 173 |
+| `dom_nodes` | 5,149 |
+| `transferred_kb` | 650 |
+| `long_tasks` | 1 |
+| `long_task_ms_total` | 51 |
+| `render_spans` | 2 |
+| `render_ms_total` | 8 |
+| `tree_reprobe_ms` | 191 |
+| `tree_reprobe_srv_ms` | 188 |
+| `viewport_w` | 1,280 |
+| `viewport_h` | 900 |
+
+**What a route costs** — server probe
+
+| metric | real-tree-with-client (n=1) | real-tree-baseline (n=1) |
+| --- | ---: | ---: |
+| `srv_scanning_ms` | 746 | 822 |
+| `srv_settled_ms` | 6 | 8 |
+| `wall_scanning_ms` | 749 | 829 |
+| `wall_settled_ms` | 7 | 13 |
+
+Walk elapsed across these runs: 208,885-208,885 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
 
 ### 300,000 files
 
@@ -141,6 +181,9 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-004 | fetch-first-rows | 2026-08-22T18:28 | 6115a41+dirty | 300000 | 14,147 ms | 1280x900 |
 | exp-004 | fetch-first-rows | 2026-08-22T18:29 | 6115a41+dirty | 300000 | 16,880 ms | 1280x900 |
 | exp-004 | fetch-first-rows | 2026-08-22T18:30 | 6115a41+dirty | 300000 | 15,728 ms | 1280x900 |
+| exp-005 | real-tree-browser | 2026-08-22T20:06 | d3c4c95+dirty | 241084 | 208,885 ms | 1280x900 |
+| exp-005 | real-tree-with-client | 2026-08-22T20:06 | d3c4c95+dirty | 241084 | 208,885 ms | unrecorded |
+| exp-005 | real-tree-baseline | 2026-08-22T20:06 | d3c4c95+dirty | 241084 | 208,885 ms | unrecorded |
 
 <!-- Generated file.
 Regenerate with `explorations/run.py report`. -->

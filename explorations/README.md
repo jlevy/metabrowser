@@ -205,6 +205,31 @@ If the ranges overlap, the finding is “no detectable effect”, not “a small
 predicted, missing, and then finding another metric that passes is not an accept.
 Say what moved and say the prediction failed.
 
+## Measure a real tree, not only the synthetic one
+
+```shell
+$UV explorations/run.py count /path/to/tree          # files and dirs, the walker's rule
+$UV explorations/run.py serve --tree /path/to/tree --files <count> --exp exp-00N --label before
+```
+
+A real tree is recorded by its basename plus a hash of its path, never by the path:
+someone’s working directory is not a fact about Metabrowser and does not belong in a
+committed ledger.
+
+**Do this before trusting any synthetic result.** exp-005 is the cautionary tale:
+`build_corpus` puts 309 files in every directory and a real working tree puts 2.4, a
+128× difference in how often every per-directory cost is paid, and nothing measured
+before that round could see it.
+It overturned the plan’s ordering and showed exp-004’s headline result to be conditional
+on state a first open does not have.
+
+**A client perturbs the thing it measures.** On a real tree the walk takes 21 s
+unattached and 258 s with one polling client.
+So `probe-server` is measuring the route *and* changing the scan it measures.
+When the walk’s own duration is the subject, time it with nothing attached; when the
+route is the subject, `probe-server` is right and the walk figure it records should be
+read as “under load.”
+
 ## The corpus
 
 `devtools/bench_serving.py`’s `build_corpus` builds it, and `run.py serve` builds it on
@@ -214,6 +239,9 @@ under `.bench/corpus-<files>/` (gitignored, about 625 MB at 100,000 files).
 Absolute numbers move with hardware and page cache and do not carry between machines.
 The relation is what carries, so every experiment records its own before alongside its
 after rather than comparing against a number from another day.
+
+**`/` is a 307 to `/view/`.** Curl the shell at `/view/`; a `curl` of `/` returns an
+empty body and reads as a broken server.
 
 **A fresh server is not a cold scan.** `serve` restarts the process, so the index starts
 empty, but the operating system’s metadata cache does not.

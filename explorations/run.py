@@ -33,7 +33,9 @@ file computes.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
 import shutil
 import socket
@@ -103,6 +105,30 @@ METRICS = (
 
 def _corpus_dir(files: int) -> Path:
     return REPO / ".bench" / f"corpus-{files}"
+
+
+def _tree_label(root: Path) -> str:
+    """A stable identity for a real tree that carries none of its name.
+
+    Not the path, and not the basename either: a directory name is usually a
+    project name, and AGENTS.md keeps private repository and organization names
+    out of committed material. A hash of the absolute path identifies the same
+    tree across runs, which is all a ledger needs; what kind of tree it was
+    belongs in the experiment's prose, described rather than named.
+    """
+    return "tree-" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:8]
+
+
+def _count_tree(root: Path) -> tuple[int, int]:
+    """Files and directories, by the same visibility rule the walker uses."""
+    files = dirs = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        if Path(dirpath) != root and Path(dirpath).name.startswith("."):
+            continue
+        dirs += len(dirnames)
+        files += sum(1 for name in filenames if not name.startswith("."))
+    return files, dirs
 
 
 def _used_ports() -> set[int]:
@@ -218,6 +244,11 @@ def _read_pending() -> dict[str, Any]:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
+    if args.tree:
+        real = Path(args.tree).expanduser().resolve()
+        if not real.is_dir():
+            raise SystemExit(f"not a directory: {real}")
+        return _serve_root(args, real, _tree_label(real), args.files)
     corpus = _corpus_dir(args.files)
     if not corpus.is_dir():
         print(f"building corpus ({args.files} files) at {corpus} ...", flush=True)
@@ -226,7 +257,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
         from devtools.bench_serving import build_corpus
 
         build_corpus(corpus, args.files)
+    return _serve_root(args, corpus, str(corpus.relative_to(REPO)), args.files)
 
+
+def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: int) -> int:
     subprocess.run(["pkill", "-f", "metab .*--no-open --port"], check=False)
     while (
         subprocess.run(
@@ -243,7 +277,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     log = HERE / "results" / f"server-{port}.log"
     with log.open("w", encoding="utf-8") as handle:
         subprocess.Popen(
-            ["uv", "run", "--frozen", "metab", str(corpus), "--no-open", "--port", str(port)],
+            ["uv", "run", "--frozen", "metab", str(root), "--no-open", "--port", str(port)],
             cwd=REPO,
             stdout=handle,
             stderr=subprocess.STDOUT,
@@ -271,8 +305,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 "experiment": args.exp,
                 "label": args.label,
                 "port": port,
-                "files": args.files,
-                "corpus": str(corpus.relative_to(REPO)),
+                "files": files,
+                "corpus": corpus_label,
                 "commit": _git_commit(),
                 "dirty": _git_dirty(),
                 "note": args.note,
@@ -286,7 +320,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     print(f"experiment  {args.exp or '(unset)'}   label {args.label or '(unset)'}")
     print(f"port        {port}   (unused, so the browser cache starts empty)")
-    print(f"corpus      {corpus.relative_to(REPO)}  ({args.files} files)")
+    print(f"corpus      {corpus_label}  ({files} files)")
     print(f"url         {url}")
     print()
     print("1. size the browser pane to at least 1280x900 and load that URL cold")
@@ -498,6 +532,15 @@ def cmd_probe_server(args: argparse.Namespace) -> int:
     }
     print()
     print(json.dumps(payload))
+    return 0
+
+
+def cmd_count(args: argparse.Namespace) -> int:
+    root = Path(args.tree).expanduser().resolve()
+    files, dirs = _count_tree(root)
+    print(f"label   {_tree_label(root)}")
+    print(f"files   {files:,}")
+    print(f"dirs    {dirs:,}")
     return 0
 
 
@@ -735,6 +778,12 @@ def main(argv: list[str] | None = None) -> int:
 
     serve = sub.add_parser("serve", help="restart the server on an unused port")
     serve.add_argument("--files", type=int, default=100_000)
+    serve.add_argument(
+        "--tree",
+        default="",
+        help="serve a real directory instead of a synthetic corpus; recorded by name "
+        "and a hash of its path, never by the path itself",
+    )
     serve.add_argument("--exp", default="", help="experiment id this run belongs to, e.g. exp-003")
     serve.add_argument("--label", default="", help="condition name, e.g. before / after")
     serve.add_argument("--note", default="")
@@ -761,6 +810,10 @@ def main(argv: list[str] | None = None) -> int:
     compare = sub.add_parser("compare", help="median and range per label")
     compare.add_argument("labels", nargs="+")
     compare.set_defaults(func=cmd_compare)
+
+    count = sub.add_parser("count", help="files and directories in a real tree")
+    count.add_argument("tree")
+    count.set_defaults(func=cmd_count)
 
     report = sub.add_parser("report", help="regenerate report.md from runs and artifacts")
     report.set_defaults(func=cmd_report)
