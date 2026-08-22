@@ -356,13 +356,35 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
       rowHandle.tr.id = controlledRowId(handle, row.key);
       rowHandle.tr.classList?.toggle("file-type-summary-child-row", row.child === true);
       const paletteKey = row.paletteKey ?? row.key;
+      // Which rows carry an icon is the model's answer, given as a path.
+      // It used to be inferred here from "does this row name an extension",
+      // which put an icon on every extension and none on the family they
+      // belong to — the inverse of what the rows mean.
+      //
+      // A row inside a family never carries one, whatever it names: the family
+      // above it holds the single icon for all of its extensions. A top-level
+      // row that names an extension still falls back to that extension, since
+      // there is no family row above it to do the naming.
       const extension = row.extension || (row.key.startsWith(".") ? row.key : null);
-      const iconPath = row.iconPath || (extension ? `x${extension}` : "file");
-      const showIcon = Boolean(extension) || row.kind === "filename";
-      const fileIcon = showIcon ? handle.fileTypeIcon(iconPath) : { className: "", svg: "" };
+      const iconPath = row.iconPath ?? (row.child === true || !extension ? null : `x${extension}`);
+      const fileIcon = iconPath ? handle.fileTypeIcon(iconPath) : { className: "", svg: "" };
+      // A family's icon takes the family's own colour, so the glyph, the bar
+      // and the row all say the same thing about which family this is. The
+      // class rides in the assignment rather than through classList, which is
+      // the one write this element gets.
+      const familyIcon = row.kind === "family";
       rowHandle.icon.hidden = !fileIcon.svg;
-      rowHandle.icon.className = `file-identity-icon ${fileIcon.className}`.trim();
+      rowHandle.icon.className = [
+        "file-identity-icon",
+        fileIcon.className,
+        familyIcon ? "file-identity-icon-family" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
       rowHandle.icon.innerHTML = fileIcon.svg;
+      if (familyIcon) {
+        handle.palette.paint(rowHandle.icon, paletteKey);
+      }
       rowHandle.label.textContent = row.label;
       rowHandle.disclosureLabel.textContent = row.label;
       const disclosable = row.disclosable === true;

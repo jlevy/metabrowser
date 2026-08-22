@@ -2251,6 +2251,17 @@ html[data-prose-font="sans"] {
 .file-identity-icon.ft-csv {
   color: var(--ft-color);
 }
+/* A family's icon is painted in that family's own colour, so the glyph, the
+   bar beside it and the row all name the same family.
+
+   After the ft-* rules above deliberately: those colour a glyph from the old
+   sixteen-entry extension table, which does not know about registry families —
+   it is the second taxonomy mb-xrh8 is about. On a family row the registry is
+   the authority, so its colour wins. The fallback keeps a family the palette
+   has no colour for looking like every other muted glyph. */
+.file-identity-icon.file-identity-icon-family {
+  color: var(--mb-distribution-color, var(--muted));
+}
 /* `.icon-state` is a folder variant (logs/state dirs), not a file-type. */
 .tree-item-icon.icon-state {
   color: oklch(50.3% 0.189 294.7);

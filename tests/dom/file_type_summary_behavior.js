@@ -134,6 +134,9 @@ function familyRow() {
   return {
     ...row("family:javascript", "JavaScript", "code", 80, 50, "80%", "50%"),
     kind: "family",
+    // The family's canonical extension, which is what the model derives from
+    // the registry's first extension for the family.
+    iconPath: "x.js",
     paletteKey: "family:javascript",
     disclosable: true,
     children: [
@@ -315,8 +318,9 @@ function familyRow() {
   view.updateDistributionView(handle, { ...updated, rows: [familyRow()] });
   const family = handle.rows.get("family:javascript");
   check(
-    "family parent starts collapsed without an icon",
-    family.icon.hidden === true &&
+    "family parent starts collapsed and carries the family's icon",
+    family.icon.hidden === false &&
+      family.icon.innerHTML === '<svg data-file-icon="x.js"></svg>' &&
       family.disclosure.hidden === false &&
       family.disclosure.className.includes("section-disclosure-trigger") &&
       family.disclosure.attributes["aria-expanded"] === "false" &&
@@ -338,8 +342,18 @@ function familyRow() {
     "family disclosure reveals canonical extension rows",
     family.disclosure.attributes["aria-expanded"] === "true" &&
       family.disclosure.attributes["aria-controls"].split(" ").includes(jsChild.tr.id) &&
-      jsChild.label.textContent === ".js" &&
-      jsChild.icon.innerHTML === '<svg data-file-icon="x.js"></svg>',
+      jsChild.label.textContent === ".js",
+  );
+  // One icon for the family, on the family, in the family's colour — and none
+  // on the extensions inside it. Per-extension icons resolved through the old
+  // extension table, so .js and .mjs came out as two different glyphs inside
+  // one family while the family row itself had none.
+  check(
+    "the family carries the icon and its extensions carry none",
+    family.icon.hidden === false &&
+      family.icon.className.includes("file-identity-icon-family") &&
+      jsChild.icon.hidden === true &&
+      jsChild.icon.innerHTML === "",
   );
   check(
     "family parent and child share one palette identity",
@@ -365,7 +379,7 @@ function familyRow() {
   const noExtension = {
     ...row("(none)", "No extension", "other", 60, 20, "60%", "20%"),
     kind: "special",
-    iconPath: "file",
+    iconPath: null,
     paletteKey: "",
     disclosable: true,
     children: [
@@ -380,7 +394,7 @@ function familyRow() {
         ...row("no-extension/others", "3 more", "other", 10, 5, "10%", "5%"),
         kind: "others",
         child: true,
-        iconPath: "file",
+        iconPath: null,
         paletteKey: "",
       },
     ],
@@ -388,7 +402,7 @@ function familyRow() {
   const remainingTypes = {
     ...row("", "Other types", "other", 2, 10, "2%", "10%"),
     kind: "special",
-    iconPath: "file",
+    iconPath: null,
     paletteKey: "",
     disclosable: true,
     children: [
