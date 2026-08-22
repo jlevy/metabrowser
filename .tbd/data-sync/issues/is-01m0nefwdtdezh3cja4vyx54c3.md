@@ -3,14 +3,16 @@ type: is
 id: is-01m0nefwdtdezh3cja4vyx54c3
 title: Nav heading shows the folder name; file header shows the full path with a dimmed prefix
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T19:17:18.906Z
-updated_at: 2026-08-22T19:17:18.906Z
+updated_at: 2026-08-22T19:46:50.659Z
+closed_at: 2026-08-22T19:46:50.659Z
+close_reason: Nav heading shows the folder name; the file header carries the full address with a dimmed root and no dead segment.
 ---
 Follows the wordmark move (sibling bead) -- do that first, since both change the same header.
 

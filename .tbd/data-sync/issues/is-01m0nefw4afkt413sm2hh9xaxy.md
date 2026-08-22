@@ -3,14 +3,16 @@ type: is
 id: is-01m0nefw4afkt413sm2hh9xaxy
 title: Move the Metabrowser wordmark into the gear menu and align the nav header with the file header
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T19:17:18.602Z
-updated_at: 2026-08-22T19:17:18.602Z
+updated_at: 2026-08-22T19:46:50.408Z
+closed_at: 2026-08-22T19:46:50.408Z
+close_reason: Wordmark is the gear menu's title; nav header is one row matching .file-header.
 ---
 Raised in QA: the nav column is the scarcest horizontal space in the app and the wordmark is spending it.
 
