@@ -166,9 +166,15 @@ def test_inventory_has_data_false_when_idle() -> None:
 
 
 def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
-    """When the inventory is populated, /api/tree's response
-    carries the entries from the cache and the response envelope
-    includes ``tally_cache_status``."""
+    """When the inventory is populated, /api/tree's response carries the
+    entries from the cache and the response envelope includes
+    ``tally_cache_status``.
+
+    The tallies are requested at ``depth=0``, which is the channel that is
+    allowed to pay for them: they cost one visit per entry in the index and the
+    rows do not, so a request carrying rows never waits for that pass. See
+    explorations/experiments/exp-007.
+    """
 
     _build_fixture(tmp_path)
 
@@ -179,9 +185,14 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
         try:
             await _drive_walker(tmp_path)
             resp = await proc_browser.api_tree(cast(Any, _FakeRequest()))
+            tallies = await proc_browser.api_tree(cast(Any, _FakeRequest({"depth": "0"})))
         finally:
             paths_safe._set_root_dir(original_root)
-        return json.loads(bytes(resp.body))
+        rows = json.loads(bytes(resp.body))
+        # Rows and tallies now come from different requests; merge them here so
+        # the assertions below still read as one description of the surface.
+        rows.update({k: v for k, v in json.loads(bytes(tallies.body)).items() if k != "tree"})
+        return rows
 
     body = asyncio.run(_run())
     assert "tally_cache_status" in body
@@ -275,7 +286,7 @@ def test_api_tree_snapshots_tallies_before_worker_thread(
     monkeypatch.setattr(proc_browser.asyncio, "to_thread", finish_inventory_during_tallies)
 
     try:
-        response = asyncio.run(proc_browser.api_tree(cast(Any, _FakeRequest())))
+        response = asyncio.run(proc_browser.api_tree(cast(Any, _FakeRequest({"depth": "0"}))))
     finally:
         paths_safe._set_root_dir(original_root)
 
@@ -422,3 +433,38 @@ def test_inventory_and_filesystem_paths_agree_on_trackable_set(tmp_path: Path) -
     assert inv_out is not None
     inv_paths = {p.relative_to(tmp_path).as_posix() for p in inv_out}
     assert fs_paths == inv_paths
+
+
+def test_a_row_request_does_not_pay_for_the_tallies(tmp_path: Path) -> None:
+    """The split H27 introduced, stated as a contract rather than a timing.
+
+    Tallies cost one visit per entry in the index and rows do not. Sharing one
+    response made a reader wait for the expensive half to see the cheap one --
+    most of a second at 240,000 files, and worse, work that competes with the
+    walker. A row request now carries tallies only if they happen to be
+    memoized; ``depth=0`` is the channel that computes them.
+    """
+
+    _build_fixture(tmp_path)
+
+    async def _run() -> tuple[dict[str, Any], dict[str, Any]]:
+        original_root = paths_safe.ROOT_DIR
+        paths_safe._set_root_dir(tmp_path)
+        try:
+            await _drive_walker(tmp_path)
+            rows = await proc_browser.api_tree(cast(Any, _FakeRequest()))
+            tallies = await proc_browser.api_tree(cast(Any, _FakeRequest({"depth": "0"})))
+        finally:
+            paths_safe._set_root_dir(original_root)
+        return json.loads(bytes(rows.body)), json.loads(bytes(tallies.body))
+
+    rows, tallies = asyncio.run(_run())
+
+    # The rows arrive either way, and so does the scan-state label the client
+    # uses to decide whether to trust what it has.
+    assert rows["tree"], "a row request must still carry rows"
+    assert "tally_cache_status" in rows
+
+    # And the tally channel answers with them.
+    assert tallies["summary"] is not None
+    assert tallies["type_presets"] is not None

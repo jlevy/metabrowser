@@ -944,6 +944,14 @@ async function loadTree() {
     if (!filesPanelUsesRecentSource()) {
       renderFilesFromTree();
     }
+    // Rows are on screen; now go get the numbers that ride beside them. The
+    // server answers a row request from its tally memo or not at all, so that
+    // the reader never waits on a pass over every entry in the index to see a
+    // tree. This is the request that is allowed to pay for it, and it runs
+    // after the render rather than in front of it.
+    if (!data.summary) {
+      scheduleRootSummaryRefresh();
+    }
   });
 }
 

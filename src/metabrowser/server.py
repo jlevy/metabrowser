@@ -1544,7 +1544,25 @@ async def api_tree(request: Request) -> JSONResponse:
             NAVIGATION_TALLY_LIMIT,
             min_stale_s=NAVIGATION_TALLY_MIN_STALE_S,
         )
-        if navigation_tallies is None and index_entries is not None:
+        # A request carrying rows never waits for the pass that produces these.
+        #
+        # The tallies cost one visit per entry in the index; the rows do not.
+        # Sharing one response made the reader wait for the expensive half to
+        # see the cheap one, and during a scan that was most of a second at
+        # 240,000 files -- 0.37 s at 60,000 indexed, 1.30 s at 220,000, growing
+        # as the walk proceeds. Worse, the wait is not just the reader's: that
+        # work competes with the walker, so watching a scan slowed it twelvefold
+        # (exp-005).
+        #
+        # ``depth=0`` is the client's tally channel and is allowed to pay. It
+        # carries no rows to delay, ``scheduleRootSummaryRefresh`` already
+        # fetches it behind the render, and every tally field in this payload is
+        # nullable and guarded field-by-field on the client, so a row request
+        # that arrives without them is a shape the browser already handles.
+        wants_tallies = remaining_depth == 0
+        if navigation_tallies is None and not wants_tallies:
+            pass
+        elif navigation_tallies is None and index_entries is not None:
             # A filter is active, so the snapshot already exists and both
             # passes must describe the same index. Reuse it rather than
             # copying the index a second time.

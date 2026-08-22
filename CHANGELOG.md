@@ -423,6 +423,18 @@ Page load:
   The full tree still arrives a moment later and replaces what was shown; the difference
   is that there is something to look at in the meantime.
 
+- Opening a large folder is dramatically faster to become usable, and the improvement
+  compounds across three changes.
+  Loading the ignore rules used to walk the whole tree a second time before the real
+  scan started, so on a 241,000-file working tree nothing could appear for the first
+  twenty seconds; that walk now skips what it cannot use and takes about two.
+  And the navigation counts — which cost a pass over every file — no longer travel in
+  the same response as the folder rows, so asking for rows during a scan went from about
+  three quarters of a second to six milliseconds.
+  Those requests had been taking processor time from the scan itself, so the scan also
+  finishes sooner: on that tree, with a browser watching, 258 seconds to 50. The filter
+  counts now arrive a moment after the rows rather than holding them up.
+
 Plugin SDK:
 
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the

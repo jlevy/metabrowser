@@ -22,6 +22,7 @@ fast -- only that it moved.
 | `srv_scanning_ms` | 650 | **394** | exp-003 |
 | `first_row_ms` | 1,604 | **242** | exp-004 |
 | `gitignore_build_ms_real_tree_a` | 21,370 | **2,180** | exp-006 |
+| `srv_scanning_ms` | 311 | **2** | exp-007 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -38,6 +39,7 @@ against one that did.
 | exp-004 | [The shell carries the tree’s first rows](experiments/exp-004-the-shell-carries-the-first-rows.md) | H20 | `first_row_ms` | accepted |
 | exp-005 | [A real tree changes the priorities](experiments/exp-005-a-real-tree-changes-the-priorities.md) | H16 | `walk_elapsed_ms` | baseline |
 | exp-006 | [The gitignore pre-walk stops traversing what it cannot use](experiments/exp-006-the-gitignore-prewalk-stops-traversing-what-it-cannot-use.md) | H30 | `gitignore_build_ms_real_tree_a` | accepted |
+| exp-007 | [Rows stop waiting for the tally pass](experiments/exp-007-rows-stop-waiting-for-the-tally-pass.md) | H27, H31 | `srv_scanning_ms` | accepted |
 
 ## Absolute numbers, per condition
 
@@ -45,6 +47,20 @@ Median with the range beside it, over every recorded run of that condition.
 Absolute rather than relative on purpose: a percentage cannot be checked against a later
 run, and cannot say whether the thing is fast -- only that it moved.
 Conditions are grouped by corpus, because none of these numbers compare across one.
+
+### 17,103 files
+
+**What a route costs** — server probe
+
+| metric | rows-with-tallies (n=2) | rows-without-tallies (n=2) |
+| --- | ---: | ---: |
+| `srv_scanning_ms` | 311 (292-330) | 2 (2-2) |
+| `srv_settled_ms` | 3 (3-3) | 4 (3-4) |
+| `wall_scanning_ms` | 313 (296-330) | 4 (3-4) |
+| `wall_settled_ms` | 4 (4-4) | 4 (4-5) |
+
+Walk elapsed across these runs: 1,439-1,439 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
 
 ### 100,000 files
 
@@ -186,6 +202,10 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-005 | real-tree-browser | 2026-08-22T20:06 | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
 | exp-005 | real-tree-with-client | 2026-08-22T20:06 | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
 | exp-005 | real-tree-baseline | 2026-08-22T20:06 | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
+| exp-007 | rows-with-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-with-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-without-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-without-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/run.py report`. -->
