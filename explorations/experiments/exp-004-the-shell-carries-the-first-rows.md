@@ -146,6 +146,26 @@ inlined rows are on screen, so the viewport-bounded sweep from
 That is the sweep doing its job a second earlier, not a leak — the control warmed
 nothing on load only because it had nothing on screen to warm.
 
+### What it costs the shell, and what happens before the index is warm
+
+Checked directly across a cold start, sampling `/view/` as the walk progressed:
+
+| index state | inlined rows | shell bytes | render |
+| --- | ---: | ---: | ---: |
+| 0 files | none | 43,309 | 12 ms |
+| 2,472 files | 13 | 45,542 | 17 ms |
+| 60,873 files | 13 | 45,581 | 52 ms |
+| 106,914 files | 13 | 45,621 | 22 ms |
+
+Two things worth having measured rather than assumed.
+**It degrades to the old behavior** rather than failing: with nothing in the index there
+is nothing to inline, the block is omitted, and the page is the one that shipped before
+this change. And **the shell render does not slow down as the tree grows** — 12–52 ms
+across the walk, with the variation tracking scan contention rather than tree size,
+which is what a depth-1 read off the index should look like.
+
+The cost is about 2.2 KB of HTML for thirteen rows.
+
 ## Limitations
 
 One corpus, one machine, n=3 per condition, and a root of thirteen entries.
