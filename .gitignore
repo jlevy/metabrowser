@@ -205,3 +205,6 @@ attic/
 # (explorations/results/runs.jsonl); the logs beside them carry absolute paths
 # and belong to one machine.
 explorations/results/server-*.log
+# What `serve` last set up, so `record` can find it. One machine's in-flight
+# state, not a result.
+explorations/results/pending.json

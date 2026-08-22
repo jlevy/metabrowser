@@ -227,6 +227,13 @@ def _with_recency(
     }
 
 
+# The navigation tally memo's key: the index revision it was computed at, the
+# row cap, and the caller's preset shape. Only the last two identify *what* was
+# computed -- the revision says when, and the staleness bound reads it from the
+# clock instead, because during a walk the revision moves on every write.
+_NavigationTallyKey = tuple[int, int, tuple[tuple[str, tuple[str, ...]], ...]]
+
+
 class InventoryIndex:
     """Process-wide singleton holding the live filesystem
     inventory.
@@ -263,9 +270,18 @@ class InventoryIndex:
         # aggregation N times in parallel costs N times as much as running it
         # once, so serializing identical work loses nothing and saves N-1 of it.
         self._navigation_tally_lock = threading.Lock()
+        # When the memoized tallies were computed, monotonic. During a walk the
+        # revision they key on advances on every write, so revision equality can
+        # never hold and age is the only usable freshness test.
+        self._navigation_tally_at: float = 0.0
+        # How long the last tally pass took, seconds. The staleness bound is
+        # derived from this rather than fixed: the pass costs one visit per
+        # entry, so what is affordable to repeat scales with the tree, and a
+        # constant that is right at 10,000 files is wrong at a million.
+        self._navigation_tally_cost_s: float = 0.0
         # One entry. A superseded revision can never be requested again, so
         # there is nothing to evict and nothing to bound.
-        self._navigation_tally_memo: tuple[object, _NavigationTallyBase] | None = None
+        self._navigation_tally_memo: tuple[_NavigationTallyKey, _NavigationTallyBase] | None = None
         self._rollup_generation = next(_ROLLUP_REVISIONS)
         # Per-directory subtree aggregates, retained across rollup requests.
         # Without this, every ``/api/rollup`` re-walked every file under the
@@ -559,9 +575,88 @@ class InventoryIndex:
             if memo is not None and memo[0] == key:
                 base = memo[1]
             else:
+                started = time.monotonic()
                 base = self._compute_navigation_tallies(presets, limit, snapshot)
+                finished = time.monotonic()
                 self._navigation_tally_memo = (key, base)
+                self._navigation_tally_at = finished
+                self._navigation_tally_cost_s = finished - started
         return _with_recency(base, recency_windows, current_ns)
+
+    def navigation_tallies_fresh_within(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        recency_windows: Sequence[tuple[str, float]],
+        limit: int,
+        *,
+        min_stale_s: float,
+        now_ns: int | None = None,
+    ) -> NavigationTallies | None:
+        """The memoized tallies if they are younger than *max_stale_s*, else None.
+
+        Cheap enough for the event loop: a tuple compare and a clock read, no
+        index pass and no snapshot. That is the point of having it separate --
+        the caller can find out whether it needs to pay O(index) *before*
+        paying the O(index) list copy that feeding the pass requires.
+
+        Freshness is by age rather than by revision because during a walk
+        ``rollup_revision`` advances on every write -- roughly ninety times a
+        second at the emit batch size -- so a revision test can never hold
+        while scanning, which is exactly when the pass is most expensive and
+        most repeated. The numbers are already labelled provisional to the
+        client (``tally_cache_status``), so serving them a beat stale says
+        nothing new; recomputing them per request during a scan is what the
+        client never asked for.
+
+        The bound is *at least* ``min_stale_s`` and at least as long as the
+        last pass took. Deriving it from the measured cost is what keeps it
+        right across corpus sizes: the pass visits every entry, so a bound
+        that is generous at ten thousand files starves the event loop at a
+        million. Refusing to spend more than about half the time recomputing a
+        number the client is already told is provisional is the rule; the
+        constant is only the floor for a tree small enough that the pass is
+        free.
+        """
+
+        key_presets = tuple((preset_id, tuple(sorted(values))) for preset_id, values in presets)
+        with self._navigation_tally_lock:
+            memo = self._navigation_tally_memo
+            if memo is None:
+                return None
+            memo_key, base = memo
+            # The key is (revision, limit, presets); everything after the
+            # revision is what this caller's shape has to match. The revision
+            # itself is deliberately ignored -- that is the whole point.
+            if memo_key[1:] != (limit, key_presets):
+                return None
+            bound = max(min_stale_s, self._navigation_tally_cost_s)
+            if time.monotonic() - self._navigation_tally_at > bound:
+                return None
+        current_ns = time.time_ns() if now_ns is None else now_ns
+        return _with_recency(base, recency_windows, current_ns)
+
+    def navigation_tallies_snapshotting(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        recency_windows: Sequence[tuple[str, float]],
+        limit: int,
+    ) -> NavigationTallies:
+        """Take the index snapshot and compute the tallies, both off the loop.
+
+        The snapshot is a list copy of every known entry -- 300,000 of them on
+        the bench corpus -- so taking it in the caller means the event loop
+        pays it even when the pass that needs it is about to be memoized away.
+        Pairing the two here lets the route hand the whole cost to a thread.
+        """
+
+        snapshot = self.entries(scope="all-known")
+        return self.navigation_tallies(
+            presets,
+            recency_windows,
+            limit,
+            entries=snapshot,
+            revision=self.rollup_revision(),
+        )
 
     def _compute_navigation_tallies(
         self,

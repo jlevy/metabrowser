@@ -194,6 +194,27 @@ LOG = logging.getLogger(__name__)
 # state instead of blocking on a filesystem walk.
 _TREE_COLD_START_WAIT_S = 0.10
 
+# How stale the navigation tallies may be before a root /api/tree recomputes
+# them. They cost one pass over every entry in the index, and during a walk the
+# revision they memoize on advances on every write, so without an age bound
+# every request during the scan repeats the pass: measured at 837-1,567 ms per
+# root request on a 300,000-file tree against 15 ms once settled.
+#
+# This is the floor, not the bound. The bound the index applies is the larger
+# of this and however long the last pass actually took, so the server never
+# spends much over half its time recomputing a number the client is already
+# told is provisional -- and so the policy scales with the tree instead of
+# being tuned for one size. A fixed half second was measured first and moved
+# the scanning cost only 638 ms to 518 ms, because the nav polls once a second
+# and a bound shorter than the poll period can never be hit by a poller.
+#
+# The floor matters on a small tree, where the pass is cheap enough that its
+# own duration would allow a recompute per request for no benefit.
+NAVIGATION_TALLY_MIN_STALE_S = 0.5
+# The tally pass's own row cap, passed explicitly so the memo key the route
+# asks for is the memo key the route gets.
+NAVIGATION_TALLY_LIMIT = 200
+
 # Encoded rollup bodies keyed by their ETag. The validator alone only helps a
 # client that already holds the answer; a second tab opening the same folder,
 # or a reconnect, arrives without one and would otherwise re-aggregate and
@@ -1394,9 +1415,17 @@ async def api_tree(request: Request) -> JSONResponse:
     index_entries: list[Any] | None = None
     index_revision = 0
     tally_cache_status = inventory_status()
-    if inv_can_serve and (tree_filter.active or not subpath):
+    if inv_can_serve and tree_filter.active:
+        # Only the filter path needs the entries here. The tally path used to
+        # share this snapshot, which meant every unfiltered root request paid a
+        # list copy of the whole index on the event loop -- 300,000 entries on
+        # the bench corpus -- before discovering its tallies were memoized.
+        # It now takes its own snapshot inside the thread, and only when it has
+        # to recompute.
         index_entries = inventory.entries(scope="all-known")
         index_revision = inventory.rollup_revision()
+        tally_cache_status = inventory_status()
+    elif inv_can_serve and not subpath:
         tally_cache_status = inventory_status()
 
     filtered = None
@@ -1459,21 +1488,44 @@ async def api_tree(request: Request) -> JSONResponse:
     # the event stream at the design-center index size for the same reason
     # api_catalog offloads its own pass.
     navigation_tallies = None
-    if inv_can_serve and not subpath and index_entries is not None:
-        tally_entries = index_entries
-        tally_revision = index_revision
-        navigation_tallies = await asyncio.to_thread(
-            lambda: inventory.navigation_tallies(
-                [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
-                [
-                    (window_key, seconds)
-                    for window_key, seconds in RECENT_WINDOW_SECONDS.items()
-                    if seconds is not None
-                ],
-                entries=tally_entries,
-                revision=tally_revision,
-            )
+    if inv_can_serve and not subpath:
+        tally_presets = [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
+        tally_windows = [
+            (window_key, seconds)
+            for window_key, seconds in RECENT_WINDOW_SECONDS.items()
+            if seconds is not None
+        ]
+        # Ask for a fresh-enough answer first. This is a tuple compare and a
+        # clock read, so it costs nothing when it misses -- and when it hits it
+        # skips both O(index) costs: the snapshot and the pass.
+        navigation_tallies = inventory.navigation_tallies_fresh_within(
+            tally_presets,
+            tally_windows,
+            NAVIGATION_TALLY_LIMIT,
+            min_stale_s=NAVIGATION_TALLY_MIN_STALE_S,
         )
+        if navigation_tallies is None and index_entries is not None:
+            # A filter is active, so the snapshot already exists and both
+            # passes must describe the same index. Reuse it rather than
+            # copying the index a second time.
+            tally_entries = index_entries
+            tally_revision = index_revision
+            navigation_tallies = await asyncio.to_thread(
+                lambda: inventory.navigation_tallies(
+                    tally_presets,
+                    tally_windows,
+                    NAVIGATION_TALLY_LIMIT,
+                    entries=tally_entries,
+                    revision=tally_revision,
+                )
+            )
+        elif navigation_tallies is None:
+            navigation_tallies = await asyncio.to_thread(
+                inventory.navigation_tallies_snapshotting,
+                tally_presets,
+                tally_windows,
+                NAVIGATION_TALLY_LIMIT,
+            )
     return JSONResponse(
         {
             "root": str(root_dir),

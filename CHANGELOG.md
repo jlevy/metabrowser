@@ -404,6 +404,16 @@ Page load:
   Speculative warming — on first load, and while scrolling — still waits for idle, which
   is what idle is for.
 
+- While a large folder is still being scanned, the navigation counts are no longer
+  recomputed from scratch for every request that arrives.
+  They cost one pass over every file in the index, and the cache they used to rely on
+  was keyed on a number that changes on every write during a scan — about ninety times a
+  second — so during the very window the server is busiest, no request could ever reuse
+  another’s work. Measured on a 300,000-file tree: the median root request fell from 650
+  ms to 394 ms while scanning, and from 12 ms to 6 ms once settled.
+  The counts can now lag the scan by at most one pass, which is the same beat the
+  progress row already tells you they are provisional for.
+
 Plugin SDK:
 
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the
