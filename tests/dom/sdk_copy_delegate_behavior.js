@@ -75,7 +75,7 @@ if (typeof clickHandler !== "function") {
     const classes = new Set();
     const codeNode = { textContent: "print('hi')" };
     const btn = {
-      title: "Copy content",
+      dataset: { tipText: "Copy content" },
       classList: {
         add: (c) => classes.add(c),
         remove: (c) => classes.delete(c),
@@ -102,16 +102,16 @@ if (typeof clickHandler !== "function") {
       if (clipboardWrites.length !== 1 || clipboardWrites[0] !== "print('hi')") {
         failures.push(`expected one code write, got ${JSON.stringify(clipboardWrites)}`);
       }
-      if (!first.btn.classList.has("copied") || first.btn.title !== "Copied!") {
+      if (!first.btn.classList.has("copied") || first.btn.dataset.tipText !== "Copied!") {
         failures.push(
-          `expected copied feedback, got title=${first.btn.title} classes=${[...first.btn._classes]}`,
+          `expected copied feedback, got tip=${first.btn.dataset.tipText} classes=${[...first.btn._classes]}`,
         );
       }
       // Feedback timer restores the resting state.
       for (const fn of timers.splice(0)) {
         fn();
       }
-      if (first.btn.classList.has("copied") || first.btn.title !== "Copy content") {
+      if (first.btn.classList.has("copied") || first.btn.dataset.tipText !== "Copy content") {
         failures.push("copied state did not reset after the feedback timer");
       }
 
@@ -122,8 +122,8 @@ if (typeof clickHandler !== "function") {
       return Promise.resolve()
         .then(() => {})
         .then(() => {
-          if (second.btn.title !== "Copy failed" || second.btn.classList.has("copied")) {
-            failures.push(`expected rejection feedback, got title=${second.btn.title}`);
+          if (second.btn.dataset.tipText !== "Copy failed" || second.btn.classList.has("copied")) {
+            failures.push(`expected rejection feedback, got tip=${second.btn.dataset.tipText}`);
           }
         });
     })

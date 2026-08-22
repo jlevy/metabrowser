@@ -332,12 +332,6 @@
   --mb-distribution-track: var(--viz-surface-sunken);
   --mb-distribution-track-height: 8px;
   --mb-distribution-segment-gap: 1px;
-  /* How far a segment recedes while a sibling is hovered. A tally track is
-     eight pixels tall, so a brightness shift on the hovered segment alone has
-     almost no area to register in and reads as nothing happening. Dimming
-     everything else is legible at any hue and at any segment width, and it
-     answers the question the tooltip raises: which one is this. */
-  --mb-distribution-segment-recede: 0.32;
 
   /* Icons — one glyph size for every icon in the chrome, whether it is a
      button (gear, printer, copy), a file-type mark in a row, or a menu
@@ -690,6 +684,19 @@
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
   --viz-data-mark-hover-filter: brightness(0.88) saturate(1.18);
+  /* The outline on a hovered data mark. Translucent black here and
+     translucent white on dark, so it reads against any family's colour rather
+     than against one assumed background — which matters more now that
+     families sit across a lightness band instead of sharing one tone.
+
+     An outline and a lift together, because either alone is too little: a
+     distribution track is eight pixels tall, so a brightness shift has almost
+     no area to register in, and an outline on a one-pixel segment is the whole
+     segment. Both are drawn on the hovered mark and nothing is drawn on its
+     neighbours — see "Hover Styles the Thing Under the Pointer" in
+     docs/design-system.md. */
+  --viz-hover-outline: oklch(0% 0 0 / 0.5);
+  --viz-hover-outline-width: 1px;
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -1004,6 +1011,7 @@
   /* Lift rather than deepen: the dark categorical palette is already light
      against a near-black page (see the light-theme note beside this token). */
   --viz-data-mark-hover-filter: brightness(1.2) saturate(1.08);
+  --viz-hover-outline: oklch(100% 0 0 / 0.62);
 
   --viz-text: var(--text);
   --viz-text-muted: oklch(74.1% 0.019 256.7);

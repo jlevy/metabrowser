@@ -164,9 +164,13 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
 
     The directories above the served root are the same on every row of
     every view, and the column is the narrowest in the app. Nothing is
-    lost: the anchor's title still shows the whole path on hover, and
-    ``data-served-root`` is the value the file header reads back to draw
-    its dimmed prefix, so the two headers cannot disagree about the root.
+    lost: ``data-served-root`` is both what the file header reads back to
+    draw its dimmed prefix — so the two headers cannot disagree about the
+    root — and what this heading's own tooltip is built from in app.js.
+
+    The heading carries no tooltip attribute of its own, deliberately. It
+    has a richer tooltip in app.js, and an element announcing through two
+    mechanisms is what the one-tooltip rule exists to prevent.
     """
 
     root = (tmp_path / "wrk" / "foo").resolve()
@@ -179,7 +183,10 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
     assert '<span class="path-base">foo</span>' in response.text
     assert '<span class="path-dir">' not in response.text
     assert f'data-served-root="{root}"' in response.text
-    assert f'title="{root} — jump to root"' in response.text
+    # One tooltip mechanism on this element, and it is app.js's own.
+    header_anchor = response.text[response.text.index('class="header-path"') :][:400]
+    assert "data-tip-text=" not in header_anchor
+    assert "title=" not in header_anchor
 
 
 def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None:

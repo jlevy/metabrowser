@@ -235,13 +235,12 @@ function pathBaseHtml(path) {
 
 /**
  * Record the absolute served root on the element showing its name. The file
- * header reads it back for its dimmed prefix, and the title keeps the whole
- * path one hover away from a heading that no longer spells it out.
+ * header reads it back for its dimmed prefix, and the heading's own tooltip
+ * keeps the whole path one hover away from a name that no longer spells it out.
  */
 function setServedRoot(pathEl, root) {
   var text = typeof root === "string" ? root : "";
   pathEl.dataset.servedRoot = text;
-  pathEl.title = text ? `${text} — jump to root` : "Jump to root";
 }
 
 // The served root, absolute, from the one element that carries it.
@@ -259,7 +258,7 @@ function servedRoot() {
  * changes nothing, but a run of links with one dead segment in the middle
  * reads as a bug rather than as a rule.
  *
- * Each crumb carries the path it navigates to as its title, because a narrow
+ * Each crumb carries the path it navigates to as its tooltip, because a narrow
  * pane ellipsizes the crumbs themselves and the hover is then the only place
  * the whole component is legible.
  *
@@ -270,7 +269,7 @@ function headerAddressHtml(path, isFile) {
   var root = servedRoot();
   var prefix = root ? `<span class="file-header-root">${esc(root)}</span>` : "";
   var rootCrumb =
-    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" title="Served root">/</button>';
+    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" data-tip-text="Served root">/</button>';
   var segments = path ? path.split("/") : [];
   var crumbs = [];
   var walked = "";
@@ -280,7 +279,7 @@ function headerAddressHtml(path, isFile) {
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" title="${esc(walked)}">${esc(segments[i])}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" data-tip-text="${esc(walked)}">${esc(segments[i])}</button>`,
     );
   }
   return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
@@ -1080,18 +1079,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   headerPath.addEventListener("mouseenter", () => {
     var d = headerPath.dataset;
+    // The heading shows the folder name alone, so the whole served root lives
+    // here — as one tooltip. It used to be here and in a native `title` as
+    // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
+      showTooltip(
+        `${esc(d.servedRoot || "")}<div class="tip-detail">Jump to root</div>`,
+        headerPath,
+      );
       return;
     }
-    showTooltip(
-      folderTooltipHtml(
-        d.tipName,
-        parseTipNumber(d.tipFiles),
-        parseTipNumber(d.tipSize),
-        parseTipNumber(d.tipMtime),
-      ),
-      headerPath,
+    var folderTip = folderTooltipHtml(
+      d.tipName,
+      parseTipNumber(d.tipFiles),
+      parseTipNumber(d.tipSize),
+      parseTipNumber(d.tipMtime),
     );
+    showTooltip(`${folderTip}<div class="tip-detail">Jump to root</div>`, headerPath);
   });
   headerPath.addEventListener("mouseleave", hideTooltip);
 });
@@ -1387,7 +1391,7 @@ function renderTreeNodes(nodes, isRoot, options) {
       var compressionName = node.compression || "compressed";
       var compressionGlyph = compressionName === "gzip" ? "G" : "Z";
       var compressionBadge = compressed
-        ? `<span class="compression-badge" title="${esc(compressionName)} compressed">${compressionGlyph}</span>`
+        ? `<span class="compression-badge" data-tip-text="${esc(compressionName)} compressed">${compressionGlyph}</span>`
         : "";
       var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
       // The index's bounded compound-tail extension, which the type filter
@@ -1908,6 +1912,52 @@ if (typeof window !== "undefined") {
     hide: hideTooltip,
   };
 }
+
+/**
+ * The plain-text half of the one tooltip: anything carrying `data-tip-text`
+ * gets the app's tooltip, and nothing in the app uses the browser's own.
+ *
+ * A native `title` is a second tooltip system running beside this one. It
+ * cannot be styled or placed, it appears on the platform's timer rather than
+ * ours, and on a surface that already announces a tooltip it shows a second
+ * one alongside — which is the bug that produced this rule. `data-tip-text`
+ * exists so that having something to say is never a reason to reach for
+ * `title`: the common case is a short string, and it should be one attribute.
+ *
+ * `aria-label` is untouched and still required where it was. It is the
+ * accessible name, not a tooltip; a screen reader never reads this attribute,
+ * so a glyph-only control needs both.
+ *
+ * Delegated from the document, so it covers markup that does not exist yet,
+ * including a plugin's. Focus is included because a keyboard user gets no
+ * hover, and a native `title` never gave them one either.
+ */
+function tipTextAnchor(event) {
+  var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
+  return anchor instanceof HTMLElement ? anchor : null;
+}
+
+/** @param {Event} e */
+function showTipText(e) {
+  var anchor = tipTextAnchor(e);
+  if (anchor) {
+    showTooltip(esc(anchor.dataset.tipText || ""), anchor);
+  }
+}
+
+/** @param {Event} e */
+function hideTipText(e) {
+  if (tipTextAnchor(e)) {
+    hideTooltip();
+  }
+}
+
+// mouseenter/mouseleave do not bubble, so these listen in the capture phase;
+// focus does bubble as focusin/focusout, so those do not need it.
+document.addEventListener("mouseenter", showTipText, true);
+document.addEventListener("mouseleave", hideTipText, true);
+document.addEventListener("focusin", showTipText);
+document.addEventListener("focusout", hideTipText);
 
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
@@ -3738,7 +3788,7 @@ var FILTER_RECENCY_OPTIONS = [
   {
     value: "live",
     label: "Live",
-    title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
+    tip: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
     ageClass: "age-live",
   },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
@@ -4011,7 +4061,7 @@ function renderNavFilterBar() {
       ariaLabel:
         (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
         (count > 0 ? ` (${count} active)` : ""),
-      title: filterDrawerOpen ? "Fewer filters" : "More filters",
+      tip: filterDrawerOpen ? "Fewer filters" : "More filters",
       controls: "filter-drawer",
     }) +
     "</span></div>";
@@ -4042,7 +4092,7 @@ function renderNavFilterBar() {
       key: "showIgnored",
       label: "Show ignored",
       checked: st.showIgnored,
-      title: "Show gitignored entries, dimmed",
+      tip: "Show gitignored entries, dimmed",
     }) +
     "</div></div>";
   bar.innerHTML = main + drawer;
@@ -4798,15 +4848,15 @@ function renderFolderHeader(data) {
     parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
   var upButton =
     parent === null
-      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
-      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
+      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
+      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
   var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
   return (
     '<div class="file-header folder-header">' +
     upButton +
     `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
-    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
     (ICONS.print || "") +
     "</button>" +
     "</div>"
@@ -4875,7 +4925,7 @@ function renderBadges(data) {
       ? data.compression.charAt(0).toUpperCase() + data.compression.slice(1)
       : "Compressed";
     badges +=
-      '<span class="file-header-badge badge-compressed" title="On-disk file is ' +
+      '<span class="file-header-badge badge-compressed" data-tip-text="On-disk file is ' +
       esc(label.toLowerCase()) +
       '-compressed">' +
       esc(label) +
@@ -4920,7 +4970,7 @@ function renderBadges(data) {
   // ignored rather than silently using an unparsable value.
   if (data.frontmatter_error) {
     badges +=
-      '<span class="file-header-badge badge-frontmatter-error" title="' +
+      '<span class="file-header-badge badge-frontmatter-error" data-tip-text="' +
       esc(data.frontmatter_error) +
       '">Frontmatter error</span>';
   }
@@ -5123,14 +5173,14 @@ function renderFile(data, preferredViewId, claim) {
         html +=
           '<span class="file-header-path folder-breadcrumb">' +
           headerAddressHtml(data.path, true) +
-          `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-copy-path="${esc(data.path)}" title="Copy path" aria-label="Copy path">` +
+          `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-copy-path="${esc(data.path)}" data-tip-text="Copy path" aria-label="Copy path">` +
           ICON_COPY +
           "</button>" +
           "</span>";
         html += badges;
         html += sizeHtml(data.size, "file-header-size");
         html +=
-          '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+          '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
           (ICONS.print || "") +
           "</button>";
         html += "</div>";
@@ -5340,10 +5390,10 @@ function toggleEvent(header) {
 function copyPath(btn, path) {
   navigator.clipboard.writeText(path).then(() => {
     btn.classList.add("copied");
-    btn.title = "Copied!";
+    btn.dataset.tipText = "Copied!";
     setTimeout(() => {
       btn.classList.remove("copied");
-      btn.title = "Copy path";
+      btn.dataset.tipText = "Copy path";
     }, 1500);
   });
 }
@@ -5384,10 +5434,10 @@ function copyContent(btn) {
   var text = code ? code.textContent : "";
   navigator.clipboard.writeText(text).then(() => {
     btn.classList.add("copied");
-    btn.title = "Copied!";
+    btn.dataset.tipText = "Copied!";
     setTimeout(() => {
       btn.classList.remove("copied");
-      btn.title = "Copy content";
+      btn.dataset.tipText = "Copy content";
     }, 1500);
   });
 }

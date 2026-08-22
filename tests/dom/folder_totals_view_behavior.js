@@ -241,21 +241,31 @@ global.document = { createElement: (tag) => new Element(tag) };
       sharedStyles.lastIndexOf("--viz-data-mark-hover-filter:") > darkStart,
     styles,
   );
-  // A tally track is eight pixels tall, so the filter alone reads as nothing
-  // happening. The siblings have to recede for the hovered segment to be
-  // findable, which means the rule keys off the track rather than the segment.
-  // :not(:hover) is what keeps it off the segment being pointed at: the recede
-  // rule is the more specific of the two, so without it the whole bar fades
-  // uniformly and nothing is picked out.
-  const recedeSelector = styles
-    .slice(0, styles.indexOf("opacity: var(--mb-distribution-segment-recede)"))
-    .replace(/\s+/g, " ");
+  // Hover is drawn on the hovered segment and nowhere else. Nothing may key off
+  // the track to reach a segment's siblings, and no rule may dim one: that was
+  // the old treatment, and it made pointing at one segment restyle fifty.
+  // A tally track is eight pixels tall, so the lift needs the outline beside it
+  // to register at all — which is why both are asserted rather than either.
+  const flattened = styles.replace(/\s+/g, " ");
   check(
-    "hovering a segment recedes the rest of the track, but not the segment itself",
-    recedeSelector.includes(".file-type-summary-track:hover") &&
-      recedeSelector.endsWith(".file-type-summary-fill[data-segment-key]:not(:hover) { ") &&
-      sharedStyles.includes("--mb-distribution-segment-recede:"),
-    recedeSelector.slice(-140),
+    "the hovered segment carries an outline as well as the lift",
+    flattened.includes(
+      ".folder-totals .file-type-summary-fill[data-segment-key]:hover { " +
+        "filter: var(--viz-data-mark-hover-filter); " +
+        "box-shadow: inset 0 0 0 var(--viz-hover-outline-width) var(--viz-hover-outline); }",
+    ),
+    flattened.slice(0, 200),
+  );
+  check(
+    "the outline flips with the theme, dark on light and light on dark",
+    sharedStyles.indexOf("--viz-hover-outline:") < darkStart &&
+      sharedStyles.lastIndexOf("--viz-hover-outline:") > darkStart,
+    "--viz-hover-outline must be declared in both theme blocks",
+  );
+  check(
+    "no rule dims a segment to pick out one of its siblings",
+    !styles.includes(":not(:hover)") && !sharedStyles.includes("--mb-distribution-segment-recede"),
+    styles.slice(0, 200),
   );
   // Segment widths are percentages that sum to 100, so the hairline between
   // them cannot occupy layout or the last segment leaves the track.

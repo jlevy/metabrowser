@@ -83,15 +83,24 @@
   background: var(--viz-surface);
   overflow: hidden;
   cursor: default;
-  transition: filter var(--viz-hover-duration) var(--viz-hover-ease);
+  transition:
+    filter var(--viz-hover-duration) var(--viz-hover-ease),
+    border-color var(--viz-hover-duration) var(--viz-hover-ease);
 }
 
 .tm-actionable {
   cursor: pointer;
 }
 
+/* The same treatment every data mark gets: lift the hovered cell's own colour
+   and outline it, and leave every other cell alone. See "Hover Styles the Thing
+   Under the Pointer" in docs/design-system.md.
+
+   A cell already carries a 1px border, so the outline replaces its colour for
+   the duration rather than adding a second line inside it. */
 .tm-cell:hover {
   filter: var(--viz-data-mark-hover-filter);
+  border-color: var(--viz-hover-outline);
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so

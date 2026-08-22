@@ -35,7 +35,9 @@ def test_render_badges_emits_frontmatter_error_badge() -> None:
     badges_block_start = src.index("data.frontmatter_error")
     badges_block_end = badges_block_start + 400
     block = src[badges_block_start:badges_block_end]
-    assert "title=" in block, "frontmatter-error badge must include a title tooltip"
+    assert "data-tip-text=" in block, (
+        "frontmatter-error badge must announce through the app's tooltip"
+    )
     assert "esc(data.frontmatter_error)" in block, "tooltip must HTML-escape the parser message"
 
 

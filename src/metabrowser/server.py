@@ -878,7 +878,6 @@ async def index(_request: Request) -> HTMLResponse:
 
     initial_path = _initial_path_html()
     initial_root = html_escape(_served_root_str(), quote=True)
-    initial_root_title = html_escape(f"{_served_root_str()} — jump to root", quote=True)
     repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset_loader.js")
@@ -1111,8 +1110,16 @@ async def index(_request: Request) -> HTMLResponse:
       <header class="app-header">
         <!-- data-served-root is the one place the absolute root is written:
              the file header reads it back to render its dimmed prefix, so
-             the two headers cannot disagree about what the root is. -->
-        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" title="{initial_root_title}"
+             the two headers cannot disagree about what the root is. It is also
+             what this heading's tooltip is built from.
+
+             No data-tip-text here, deliberately. This element has a tooltip of
+             its own in app.js — the folder's counts and age, not just its
+             path — and an element carrying both would announce through two
+             mechanisms at once, which is the bug the one-tooltip rule exists
+             to prevent. See "One Tooltip, and It Is Ours" in
+             docs/design-system.md. -->
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path"
            data-served-root="{initial_root}">{initial_path}</a>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
@@ -1127,19 +1134,19 @@ async def index(_request: Request) -> HTMLResponse:
              menu already carries the same name. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
-                  aria-haspopup="true" title="Metabrowser" aria-label="Metabrowser menu"></button>
+                  aria-haspopup="true" data-tip-text="Metabrowser" aria-label="Metabrowser menu"></button>
           <div class="settings-menu menu" role="menu" aria-label="Metabrowser">
             <div class="menu-title" aria-hidden="true">Metabrowser</div>
             <div class="menu-separator"></div>
             <div class="menu-chooser" role="group" aria-label="Theme">
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="system" title="System theme" aria-label="System theme"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="light" title="Light theme" aria-label="Light theme"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="dark" title="Dark theme" aria-label="Dark theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="system" data-tip-text="System theme" aria-label="System theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="light" data-tip-text="Light theme" aria-label="Light theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="dark" data-tip-text="Dark theme" aria-label="Dark theme"></button>
             </div>
             <div class="menu-separator"></div>
             <div class="menu-chooser" role="group" aria-label="Reading font">
-              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="serif" title="Serif reading font" aria-label="Serif reading font"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" title="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="serif" data-tip-text="Serif reading font" aria-label="Serif reading font"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" data-tip-text="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
             </div>
             <div class="menu-separator"></div>
             <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>

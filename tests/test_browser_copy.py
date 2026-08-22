@@ -88,4 +88,4 @@ def test_live_filter_exposes_its_exact_cutoff() -> None:
     controls = _read(STATIC / "filter_controls.js")
 
     assert "Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds" in app
-    assert 'const title = opt.title ? ` title="${esc(opt.title)}"` : "";' in controls
+    assert 'const tip = opt.tip ? ` data-tip-text="${esc(opt.tip)}"` : "";' in controls

@@ -767,7 +767,7 @@
     const onclick = action === null ? "" : ` onclick="${action || "loadMoreCurrentText()"}"`;
     return (
       `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
-      `${onclick} title="Load more of this file">Load more</button>`
+      `${onclick} data-tip-text="Load more of this file">Load more</button>`
     );
   }
 
@@ -1368,7 +1368,7 @@
     return (
       '<div class="content-copy-wrap">' +
       '<button class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' +
-      ' type="button" data-mb-copy="wrap" title="Copy content" aria-label="Copy content">' +
+      ' type="button" data-mb-copy="wrap" data-tip-text="Copy content" aria-label="Copy content">' +
       ICON_COPY +
       "</button>" +
       innerHtml +
@@ -1446,7 +1446,7 @@
   // wrapWithCopy behavior cannot change when app.js internals do. Scoped
   // to buttons carrying data-mb-copy so plugin- or shell-built copy
   // buttons with their own listeners are never double-handled.
-  /** @param {Element & {classList?: DOMTokenList, title?: string}} btn */
+  /** @param {Element & {classList?: DOMTokenList, dataset?: DOMStringMap}} btn */
   function _handleCopyClick(btn) {
     var wrap = typeof btn.closest === "function" ? btn.closest(".content-copy-wrap") : null;
     if (!wrap) {
@@ -1467,17 +1467,21 @@
     if (!clipboard || typeof clipboard.writeText !== "function") {
       return;
     }
-    /** @param {string} title @param {boolean} copied */
-    function feedback(title, copied) {
+    /** @param {string} tip @param {boolean} copied */
+    function feedback(tip, copied) {
       if (copied && btn.classList) {
         btn.classList.add("copied");
       }
-      btn.title = title;
+      if (btn.dataset) {
+        btn.dataset.tipText = tip;
+      }
       setTimeout(() => {
         if (btn.classList) {
           btn.classList.remove("copied");
         }
-        btn.title = "Copy content";
+        if (btn.dataset) {
+          btn.dataset.tipText = "Copy content";
+        }
       }, 1500);
     }
     clipboard.writeText(text).then(

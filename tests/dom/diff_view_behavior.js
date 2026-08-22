@@ -49,6 +49,7 @@ class FakeElement {
     this.textContent = "";
     this.innerHTML = "";
     this.title = "";
+    this.dataset = {};
     this.children = [];
     this.parentNode = null;
     this.attributes = new Map();

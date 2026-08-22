@@ -295,6 +295,59 @@ typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
 
+### One Tooltip, and It Is Ours
+
+The app has its own tooltip: anchored to the element it describes, styled, themed, and
+on the app’s timer. The browser’s native `title` is a second tooltip system, and a
+surface carrying both shows the reader two tooltips side by side on different timers.
+That happened on the navigation heading, so the rule is enforced rather than remembered.
+
+**No `title` attribute, and no `.title =` assignment, anywhere the app owns the markup**
+— browser sources, built-in plugins, and the HTML the server renders.
+`devtools/check_tooltips.py` fails the build on one, and runs in `make lint`.
+
+| Need | Use |
+| --- | --- |
+| A short string | `data-tip-text="…"` |
+| Rich content — counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
+
+`data-tip-text` is read by a delegated listener on the document, so it works on markup
+that does not exist yet, including a plugin’s, and on focus as well as hover.
+
+This is not a rule about accessible names.
+`aria-label` is unaffected and still required wherever it was: a screen reader does not
+read `data-tip-text`, so an icon-only control needs both.
+
+### Hover Styles the Thing Under the Pointer
+
+A hover is a statement about one element, so it is drawn **on that element** and nowhere
+else. Dimming, fading, or desaturating an item’s neighbours to pick it out is not
+available: it is a larger visual event than the interaction earns, it makes the reader’s
+eye track motion across the whole component rather than the one thing they pointed at,
+and a dimmed neighbour reads as *excluded* or *inactive*, which is a claim the hover is
+not making.
+
+For a segment of a bar, a treemap cell, a chart mark, or any other measure the reader
+can point at:
+
+| Do | Do not |
+| --- | --- |
+| Outline the hovered mark with `--viz-hover-outline`, at `--viz-hover-outline-width` | Dim, fade, or desaturate the other marks |
+| Lift its own color a step with `--viz-data-mark-hover-filter` | Change the mark’s size, position, or width |
+| Leave every other mark exactly as it was | Move the layout |
+
+Both, not either. On an eight-pixel track a brightness shift has almost no area to
+register in, and on a very narrow segment the inset outline *is* the segment — which is
+the same case where the lift has least to work with.
+
+Both are relative to the mark’s own color rather than a fixed overlay:
+`--viz-hover-outline` is translucent black on light and translucent white on dark, and
+the lift darkens on light and brightens on dark.
+That matters because file-type families no longer share one lightness — they sit in a
+band, and a deviating family sits outside it — so a fixed delta lands differently on a
+pale family than on a dark one.
+See [color and theming](#color-and-theming).
+
 ### Continuing Partial Content
 
 A view that shows part of a file offers the control that loads the rest **at both ends

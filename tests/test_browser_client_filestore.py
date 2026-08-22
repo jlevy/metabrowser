@@ -636,8 +636,11 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     assert "navigateToPath(fileBtn.dataset.navFile" in js[click_start : click_start + 300]
 
     # A narrow pane ellipsizes the crumbs, so each one names its whole
-    # component on hover rather than only the head of it.
-    assert 'title="${esc(walked)}"' in fn_block
+    # component on hover rather than only the head of it — through the app's
+    # own tooltip, because the browser's would be a second one on the same
+    # surface. See devtools/check_tooltips.py.
+    assert 'data-tip-text="${esc(walked)}"' in fn_block
+    assert "title=" not in fn_block
 
 
 def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:

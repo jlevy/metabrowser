@@ -156,7 +156,7 @@
   background: var(--mb-distribution-color);
   transition:
     width 140ms ease,
-    opacity var(--viz-hover-duration) var(--viz-hover-ease),
+    box-shadow var(--viz-hover-duration) var(--viz-hover-ease),
     filter var(--viz-hover-duration) var(--viz-hover-ease);
 }
 
@@ -180,21 +180,35 @@
   box-shadow: inset calc(-1 * var(--mb-distribution-segment-gap)) 0 0 var(--viz-surface);
 }
 
-/* While the track is hovered, every segment but the hovered one recedes toward
-   the track behind it. See --mb-distribution-segment-recede for why the hovered
-   segment cannot carry the whole affordance on its own.
+/* Hover is drawn on the segment under the pointer and on nothing else.
 
-   :not(:hover) rather than restoring opacity on the hovered segment below: this
-   rule is the more specific of the two, so a plain descendant selector here
-   would win against it and dim the segment the reader is pointing at along with
-   the rest — which reads as the whole bar fading and nothing being picked out. */
-.folder-totals .file-type-summary-track:hover
-  .file-type-summary-fill[data-segment-key]:not(:hover) {
-  opacity: var(--mb-distribution-segment-recede);
-}
+   This used to dim every other segment instead. That picks the hovered one out
+   by changing fifty things around it — a far bigger visual event than pointing
+   at something earns, and a dimmed neighbour reads as excluded or inactive,
+   which is not what a hover says. See "Hover Styles the Thing Under the
+   Pointer" in docs/design-system.md; the rule is general, not local to this
+   component.
 
+   Outline and lift together, because on an eight-pixel track neither carries it
+   alone: the lift has almost no area to register in, and on a very narrow
+   segment the inset outline is the entire segment — which is exactly the case
+   where the lift has the least to work with. Both are relative to the segment's
+   own colour, since families no longer share one lightness.
+
+   The outline is an inset shadow rather than a border or an outline property:
+   segment widths are percentages summing to 100, so anything occupying layout
+   would push the last segment past the end of the track. */
 .folder-totals .file-type-summary-fill[data-segment-key]:hover {
   filter: var(--viz-data-mark-hover-filter);
+  box-shadow: inset 0 0 0 var(--viz-hover-outline-width) var(--viz-hover-outline);
+}
+
+/* Keeping the between-segment hairline while hovered: the rule above replaces
+   the shadow that draws it, so a hovered segment has to restate both. */
+.folder-totals .file-type-summary-fill[data-segment-key]:not(:last-child):hover {
+  box-shadow:
+    inset 0 0 0 var(--viz-hover-outline-width) var(--viz-hover-outline),
+    inset calc(-1 * var(--mb-distribution-segment-gap)) 0 0 var(--viz-surface);
 }
 
 .file-type-summary-percent {

@@ -539,7 +539,7 @@
       if (!rowElement.matches(":hover")) {
         return;
       }
-      rowElement.title = hoverText(detail);
+      rowElement.dataset.tipText = hoverText(detail);
     }, HOVER_DEBOUNCE_MS);
   }
 
@@ -785,7 +785,7 @@
 
     return (
       `<${tag} class="${classes.join(" ")}"${attrs}>` +
-      `<span class="git-file-status" title="${escapeHtml(file.status)}">` +
+      `<span class="git-file-status" data-tip-text="${escapeHtml(file.status)}">` +
       `${escapeHtml(file.status.charAt(0).toUpperCase())}</span>` +
       `<span class="git-file-path">${name}</span>${counts}</${tag}>`
     );
