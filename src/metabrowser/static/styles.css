@@ -412,6 +412,15 @@
      align their border instead, since that is their visual edge. */
   --pane-header-padding-x: 12px;
   --pane-header-padding-y: 8px;
+  /* The height of the path row on BOTH sides of the divider, border included,
+     so the two headers meet exactly and the hairline under them is one line
+     across the app rather than two that happen to be close.
+
+     Driven from here rather than from each side's content, which is how they
+     drifted: the navigation header came out 40.5px against the file header's
+     41px — invisible in review, and enough for the rules to miss each other by
+     half a pixel. Both rows are border-box, so this is the whole row. */
+  --pane-header-row-height: 41px;
   --file-header-padding-y: var(--pane-header-padding-y);
   --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
@@ -1150,10 +1159,17 @@ body {
    .file-header has on the other side of the divider, so the two headers
    read as one bar across the top of the app rather than as two headers
    that happen to be adjacent. */
+/* The navigation column's path row. Its twin across the divider is
+   .file-header: same height, same hairline, so the top of the app reads as one
+   band rather than as two panes that happen to be adjacent. Anything that
+   changes the height of one belongs in --pane-header-row-height, which changes
+   both. */
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  height: var(--pane-header-row-height);
+  border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -2775,8 +2791,11 @@ html[data-prose-font="sans"] {
 
 /* ── File header ─────────────────────────────────────────────── */
 
+/* The main view's path row, and the twin of .app-header across the divider.
+   See --pane-header-row-height. */
 .file-header {
   padding: var(--file-header-padding-y) var(--content-padding-x);
+  height: var(--pane-header-row-height);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   display: flex;
@@ -2868,15 +2887,49 @@ html[data-prose-font="sans"] {
    is identical on every page of the app: context for the live part of the
    address rather than part of it. It gives up its width first, so a long
    root elides before a filename does — the shrink weight is what puts it
-   first, against the 4 and the 1 the crumbs above carry. */
+   first, against the 4 and the 1 the crumbs above carry.
+
+   The weight is enormous on purpose, because flex-shrink is proportional
+   rather than sequential: every shrinkable item gives up something at every
+   step, so a crumb takes a sliver even while the root still has hundreds of
+   pixels to give. A sliver is not harmless once crumbs ellipsize — any overflow
+   at all, however small, paints the ellipsis and eats real characters, so a
+   fifth of a pixel turns "metabrowser" into "metabrow…".
+
+   Measured on a 900px window showing ~/wrk/.../<root> / src / metabrowser /
+   color_oklch.py, as the largest width any crumb gave up:
+
+     weight    1000   0.164px   ellipsis
+     weight    5000   0.031px   clean
+     weight   20000   0.008px   clean
+     weight  100000   0.000px   clean
+
+   5000 is where it stops; 20000 is that with room, and still finite so the
+   ordering below stays real. Once the root reaches zero flex freezes it and
+   redistributes the rest, so the 4-to-1 ordering between the directories and
+   the filename applies from there down. */
 .file-header-root {
   color: var(--muted);
-  font-weight: var(--weight-normal);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 0 100 auto;
+  flex: 0 20000 auto;
+  /* Truncates from the START, so the part of the root nearest what you are
+     looking at is the part that survives: "…/wrk/github/project /" rather
+     than "/Users/someone/wrk/git… /". The end of a path carries the
+     information; the beginning is the same on every page of the app.
+
+     direction: rtl moves the overflow — and so the ellipsis — to the left
+     edge. The text itself must not be reordered by that, which is what the
+     <bdi> around it is for: it isolates the path as one left-to-right run, so
+     a leading "~" or "/" cannot be reordered to the far end the way a bare
+     neutral character would be. */
+  direction: rtl;
+  text-align: left;
+}
+.file-header-root > bdi {
+  direction: ltr;
 }
 .folder-crumb-sep {
   color: var(--muted);

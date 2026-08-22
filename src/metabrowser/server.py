@@ -835,8 +835,37 @@ def _initial_path_html() -> str:
 
 
 def _served_root_str() -> str:
-    """The served root, absolute. Displayed by the file header's prefix."""
+    """The served root, absolute. What the API reports and paths resolve against."""
     return str(_paths_safe.ROOT_DIR.resolve())
+
+
+def _display_root_str() -> str:
+    """The served root as a header shows it, with the home directory as ``~``.
+
+    Display only, and only a shortening: the prefix is the same on every page
+    of the app, so every character it spends is width taken from the part of
+    the address that changes. A root under the home directory is the common
+    case and ``~`` is the shortest true name for it.
+
+    Falls through to the absolute path whenever the substitution would be a
+    guess rather than a fact — a root outside the home directory, or a
+    platform that does not report one.
+    """
+
+    resolved = _paths_safe.ROOT_DIR.resolve()
+    try:
+        home = Path.home().resolve()
+    except (OSError, RuntimeError):
+        return str(resolved)
+    if resolved == home:
+        return "~"
+    try:
+        relative = resolved.relative_to(home)
+    except ValueError:
+        return str(resolved)
+    # Through Path rather than a slash join, so the separator is the
+    # platform's rather than this file's assumption about it.
+    return str(Path("~") / relative)
 
 
 def _static_asset_url(rel_path: str) -> str:
@@ -877,7 +906,7 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
-    initial_root = html_escape(_served_root_str(), quote=True)
+    initial_root = html_escape(_display_root_str(), quote=True)
     repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset_loader.js")

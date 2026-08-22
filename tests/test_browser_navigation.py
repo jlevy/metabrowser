@@ -241,3 +241,54 @@ def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(
     assert result.exit_code == 0, result.exception
     assert "at http://127.0.0.1:8411/view/\n" in result.output
     server_class.assert_called_once()
+
+
+def test_a_root_under_the_home_directory_is_shown_with_a_tilde(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The prefix is identical on every page, so every character it spends is
+    width taken from the part of the address that changes.
+
+    A shortening and not a rewrite: it happens only where it is a fact, and
+    falls through to the absolute path everywhere else.
+    """
+
+    home = (tmp_path / "home" / "someone").resolve()
+    (home / "wrk" / "project").mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+    server._set_root_dir(home / "wrk" / "project")
+    try:
+        assert server._display_root_str() == str(Path("~") / "wrk" / "project")
+        # The absolute root is still what the API reports and paths resolve on.
+        assert server._served_root_str() == str(home / "wrk" / "project")
+
+        server._set_root_dir(home)
+        assert server._display_root_str() == "~"
+
+        outside = (tmp_path / "elsewhere").resolve()
+        outside.mkdir()
+        server._set_root_dir(outside)
+        assert server._display_root_str() == str(outside)
+    finally:
+        server._set_root_dir(Path())
+
+
+def test_the_header_prefix_gives_way_from_its_start_and_reads_at_row_weight() -> None:
+    """Two properties of the dimmed prefix, both about what survives.
+
+    It truncates from the START, because the end of a path is the half that
+    says where you are and the beginning is the same on every page. And it is
+    bold like the crumbs after it: grey already carries "this is context",
+    so the weight does not need to say it a second time, and one address at
+    two weights reads as two things.
+    """
+
+    css = (Path(server.STATIC_DIR) / "styles.css").read_text()
+    start = css.index(".file-header-root {")
+    block = css[start : css.index("}", start)]
+    assert "direction: rtl" in block
+    assert "text-overflow: ellipsis" in block
+    assert "font-weight" not in block, (
+        "the prefix inherits the container's weight rather than setting its own"
+    )

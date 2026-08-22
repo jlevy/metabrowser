@@ -233,16 +233,6 @@ function pathBaseHtml(path) {
   return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
 }
 
-/**
- * Record the absolute served root on the element showing its name. The file
- * header reads it back for its dimmed prefix, and the heading's own tooltip
- * keeps the whole path one hover away from a name that no longer spells it out.
- */
-function setServedRoot(pathEl, root) {
-  var text = typeof root === "string" ? root : "";
-  pathEl.dataset.servedRoot = text;
-}
-
 // The served root, absolute, from the one element that carries it.
 function servedRoot() {
   return queryHtml(".header-path")?.dataset.servedRoot || "";
@@ -267,7 +257,9 @@ function servedRoot() {
  */
 function headerAddressHtml(path, isFile) {
   var root = servedRoot();
-  var prefix = root ? `<span class="file-header-root">${esc(root)}</span>` : "";
+  // <bdi> isolates the path from the start-truncation direction on the
+  // wrapper; see .file-header-root. It carries no style of its own.
+  var prefix = root ? `<span class="file-header-root"><bdi>${esc(root)}</bdi></span>` : "";
   var rootCrumb =
     '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" data-tip-text="Served root">/</button>';
   var segments = path ? path.split("/") : [];
@@ -820,7 +812,6 @@ async function loadTree() {
     var pathEl = queryHtml(".header-path");
     if (pathEl) {
       pathEl.innerHTML = pathBaseHtml(data.root);
-      setServedRoot(pathEl, data.root);
     }
     // Aggregate root size + file count + newest-mtime from top-level
     // children. Same shape as a folder tooltip — the served root reads
@@ -870,7 +861,10 @@ async function loadTree() {
     // Carry aggregates on the path link so the header tooltip handler
     // can pull them on hover without rebuilding from DOM.
     if (pathEl) {
-      pathEl.dataset.tipName = data.root;
+      // The display form, so the tooltip and the file header's prefix say the
+      // same thing about the root — one of them abbreviating the home
+      // directory and the other not would read as two different roots.
+      pathEl.dataset.tipName = pathEl.dataset.servedRoot || data.root;
       pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
       pathEl.dataset.tipSize = nullableDataValue(summarySize);
       pathEl.dataset.tipMtime = nullableDataValue(newestMtime);

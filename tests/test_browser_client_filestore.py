@@ -683,16 +683,26 @@ def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
 
 
 def test_navigation_heading_shows_only_the_root_name() -> None:
-    """The heading renders the basename; the absolute root rides alongside."""
+    """The heading renders the basename; the served root rides alongside.
+
+    The root itself is written once, by the shell, because it is a property
+    of the server process rather than of a tree response and cannot change
+    while the page lives. Re-deriving it per response is how the tooltip and
+    the file header's prefix came to disagree about whether the home
+    directory is spelled out or abbreviated.
+    """
 
     js = _read_app_js()
     fn_start = js.index("function pathBaseHtml(path)")
     fn_block = js[fn_start : fn_start + 500]
     assert 'class="path-base"' in fn_block
     assert "path-dir" not in fn_block
-    # loadTree refreshes both the label and the value the file header reads.
+    # loadTree refreshes the label, and reads the root rather than rewriting it.
     tree_start = js.index("pathEl.innerHTML = pathBaseHtml(data.root)")
-    assert "setServedRoot(pathEl, data.root)" in js[tree_start : tree_start + 200]
+    assert "setServedRoot" not in js
+    assert (
+        "pathEl.dataset.tipName = pathEl.dataset.servedRoot" in js[tree_start : tree_start + 2600]
+    )
 
 
 def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:
@@ -1028,3 +1038,37 @@ def test_summary_refresh_is_not_gated_on_the_row_it_installs() -> None:
     assert "tree-summary(?: tree-summary-split)?" in block, (
         "the chrome-cache regex must match the fallback row as well"
     )
+
+
+def test_both_panes_build_their_top_rows_from_one_height() -> None:
+    """The two sides of the divider share a structure, not a resemblance.
+
+    Path row, hairline, tabs row, hairline — the same on both sides, with each
+    row the same height as its opposite number, so every rule meets its twin
+    across the divider and nothing steps up or down as the eye crosses it.
+
+    Asserted as "both read the same token" rather than as a measurement,
+    because a look-alike value on each side is exactly how they drifted: the
+    navigation header came out half a pixel taller than the file header, which
+    no review catches and which leaves the hairline broken at the divider.
+    """
+
+    css = _read_styles_css()
+
+    def block(selector: str) -> str:
+        start = css.index(f"{selector} {{")
+        return css[start : css.index("}", start)]
+
+    nav = block(".app-header")
+    view = block(".file-header")
+    for name, rule in (("nav", nav), ("view", view)):
+        assert "height: var(--pane-header-row-height)" in rule, (
+            f"the {name} path row must take its height from the shared token"
+        )
+        assert "border-bottom: 1px solid var(--border)" in rule, (
+            f"the {name} path row must carry the shared hairline"
+        )
+    # A floor is what let them differ, each side still growing to its own
+    # content. The token has to be the height, not a minimum.
+    assert "min-height: var(--pane-header-row-height)" not in css
+    assert "--pane-header-row-height:" in css
