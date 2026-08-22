@@ -3,15 +3,17 @@ type: is
 id: is-01m0k5xfv51f1d214g0fytptqs
 title: Collapse the per-folder /api/tree burst into what the viewport needs
 kind: task
-status: open
+status: closed
 priority: 0
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-21T22:08:58.725Z
-updated_at: 2026-08-21T23:49:24.407Z
+updated_at: 2026-08-22T01:21:10.099Z
+closed_at: 2026-08-22T01:21:10.099Z
+close_reason: "Landed as a viewport bound on pendingSubtreePaths plus re-arming on scroll and on expansion, with an expansion's sweep on a 50 ms timer rather than an idle callback. Measured at 300k files, 1280x900, median of three cold loads: 32 subtree requests and 1,566 KB to 0 and 517 KB. Expanding warms exactly the newly visible children in ~1.2 s; the click after costs no request and paints in 75-77 ms. exp-002."
 ---
 Measured on the 100,000-file bench corpus (972 dirs), Chromium, cold load of /view/ with a fresh server so the scan is running.
 
