@@ -21,7 +21,7 @@ fast -- only that it moved.
 | `subtree_requests` | 32 | **0** | exp-002 |
 | `srv_scanning_ms` | 650 | **394** | exp-003 |
 | `first_row_ms` | 1,604 | **242** | exp-004 |
-| `gitignore_build_ms_real_tree_a` | 21,370 | **2,540** | exp-006 |
+| `gitignore_build_ms_real_tree_a` | 21,370 | **2,180** | exp-006 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
