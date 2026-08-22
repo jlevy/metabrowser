@@ -176,6 +176,23 @@ start-to-serving phase; H15 is a correctness claim.
 Each hypothesis names its instrument in the plan table, and a hypothesis whose
 instrument does not exist yet is marked blocked rather than measured badly.
 
+## Known gaps in this loop
+
+Raised in review and tracked rather than fixed here, because each changes how every
+later round is judged and deserves its own change:
+
+- **The accept rule gets stricter as evidence accumulates** (`mb-wnrv`). The band is
+  min–max, which widens monotonically with n, so collecting more data makes a real
+  effect *harder* to confirm — exp-003 is the worked example, 342–413 at n=3 widening to
+  342–561 at n=6 for the same effect.
+  A fixed-percentile band or a rank test is stable in n.
+- **There is no measured noise floor** (`mb-ot8o`). An A/A control — the same build
+  under two labels — would measure the harness’s own resolution, so “the ranges do not
+  overlap” is judged against a known floor instead of an assumed one.
+- **Nothing guards the wins** (`mb-c7ck`). Every number here was measured once.
+  A small committed corpus and a deliberately generous CI threshold would catch an
+  order-of-magnitude regression without making CI flaky.
+
 ## The accept rule
 
 A candidate is accepted when all of these hold:
