@@ -15,7 +15,7 @@ import {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} context
  * @param {MetabrowserPublicSdk} mb
- * @param {{acquire(path: string): {sync(keys: Array<string>): void, classFor(key: string): string, release(): void}}} palettePool
+ * @param {{classFor(key: string): string, styleFor(key: string): string, paint(element: HTMLElement, key: string): void}} palette
  * @param {{acquire(path: string): {subscribe(listener: (value: unknown) => void): () => void, release(): void}}} projectionPool
  * @param {FolderRollupControls} rollupControls
  * @param {{signal?: AbortSignal}} options
@@ -24,7 +24,7 @@ export function mountFileTotalsPanel(
   container,
   context,
   mb,
-  palettePool,
+  palette,
   projectionPool,
   rollupControls,
   options,
@@ -32,7 +32,6 @@ export function mountFileTotalsPanel(
   let disposed = false;
   let controlsState = rollupControls.get();
   const path = context.path || "";
-  const palette = palettePool.acquire(path);
   const projection = projectionPool.acquire(path);
   /** @type {Parameters<typeof buildFolderTotalsComposition>[0]} */
   let rollupEnvelope = null;
@@ -94,17 +93,8 @@ export function mountFileTotalsPanel(
         mb.fileTypes,
         controlsState.metric,
       );
-      const paletteKeys = composition
-        ? [
-            ...composition.all.segments.map((segment) => segment.paletteKey),
-            ...composition.files.segments.map((segment) => segment.paletteKey),
-            ...composition.ignored.segments.map((segment) => segment.paletteKey),
-          ]
-        : [];
-      palette.sync(paletteKeys);
       totalsView.updateComposition(composition, palette);
     } catch (error) {
-      palette.sync([]);
       totalsView.updateComposition(null, null);
       console.warn("Could not compose folder population bars.", error);
     }
@@ -147,7 +137,6 @@ export function mountFileTotalsPanel(
     unsubscribeTotals();
     totalsView.dispose();
     projection.release();
-    palette.release();
   }
 
   return Object.freeze({

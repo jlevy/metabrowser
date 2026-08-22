@@ -95,8 +95,7 @@ global.document = { createElement: (tag) => new Element(tag) };
     sizeClass: () => "",
     tooltip: {
       hide: () => tooltipCalls.push({ action: "hide" }),
-      move: (event) => tooltipCalls.push({ action: "move", event }),
-      show: (html, event) => tooltipCalls.push({ action: "show", event, html }),
+      show: (html, anchor) => tooltipCalls.push({ action: "show", anchor, html }),
     },
   };
   const totals = module.normalizeFolderTotals({
@@ -183,6 +182,10 @@ global.document = { createElement: (tag) => new Element(tag) };
   };
   view.updateComposition(composition, {
     classFor: (key) => `slot-${key.replace("family:", "")}`,
+    styleFor: () => "",
+    paint: (element, key) => {
+      element.classList.add(`slot-${key.replace("family:", "")}`);
+    },
   });
   check(
     "Files bar is segmented with shared file-type colors",
@@ -202,16 +205,28 @@ global.document = { createElement: (tag) => new Element(tag) };
   );
   tooltipCalls.length = 0;
   const hoverEvent = { clientX: 20, clientY: 30 };
-  filesTrack.children[0].emit("mouseover", hoverEvent);
-  filesTrack.children[0].emit("mousemove", hoverEvent);
-  filesTrack.children[0].emit("mouseout", hoverEvent);
+  const segment = filesTrack.children[0];
+  segment.emit("mouseover", hoverEvent);
+  segment.emit("mousemove", hoverEvent);
+  segment.emit("mouseout", hoverEvent);
   check(
     "semantic family segments reuse the shared nav tooltip",
     tooltipCalls[0]?.action === "show" &&
       tooltipCalls[0]?.html === "<strong>Python</strong><br>18 files · 180 B" &&
-      tooltipCalls[1]?.action === "move" &&
-      tooltipCalls[2]?.action === "hide",
-    JSON.stringify(tooltipCalls),
+      tooltipCalls[1]?.action === "hide",
+    JSON.stringify(tooltipCalls.map((c) => c.action)),
+  );
+  // A tooltip names the segment it is on, so it is anchored to the segment and
+  // never to the pointer. Moving the mouse across a segment must produce no
+  // call at all: a tooltip that repositions while it is up jitters, and one
+  // placed where the pointer happened to be does not say which segment it is
+  // about. See docs/design-system.md, "A Tooltip Holds Still".
+  check(
+    "the tooltip anchors to the segment and ignores pointer movement",
+    tooltipCalls[0]?.anchor === segment &&
+      tooltipCalls.length === 2 &&
+      !tooltipCalls.some((call) => call.action === "move"),
+    JSON.stringify(tooltipCalls.map((c) => c.action)),
   );
   // The hover shift runs opposite ways per theme (deepen on the light page,
   // lift on the dark one), so both declarations have to be present. Their
@@ -226,11 +241,36 @@ global.document = { createElement: (tag) => new Element(tag) };
       sharedStyles.lastIndexOf("--viz-data-mark-hover-filter:") > darkStart,
     styles,
   );
+  // A tally track is eight pixels tall, so the filter alone reads as nothing
+  // happening. The siblings have to recede for the hovered segment to be
+  // findable, which means the rule keys off the track rather than the segment.
+  // :not(:hover) is what keeps it off the segment being pointed at: the recede
+  // rule is the more specific of the two, so without it the whole bar fades
+  // uniformly and nothing is picked out.
+  const recedeSelector = styles
+    .slice(0, styles.indexOf("opacity: var(--mb-distribution-segment-recede)"))
+    .replace(/\s+/g, " ");
+  check(
+    "hovering a segment recedes the rest of the track, but not the segment itself",
+    recedeSelector.includes(".file-type-summary-track:hover") &&
+      recedeSelector.endsWith(".file-type-summary-fill[data-segment-key]:not(:hover) { ") &&
+      sharedStyles.includes("--mb-distribution-segment-recede:"),
+    recedeSelector.slice(-140),
+  );
+  // Segment widths are percentages that sum to 100, so the hairline between
+  // them cannot occupy layout or the last segment leaves the track.
+  check(
+    "segments are separated by an inset hairline of the page ground",
+    styles.includes("box-shadow: inset calc(-1 * var(--mb-distribution-segment-gap)) 0 0") &&
+      styles.includes(":not(:last-child)") &&
+      sharedStyles.includes("--mb-distribution-segment-gap:"),
+    styles,
+  );
   view.dispose();
   check(
     "disposing Files clears the shared tooltip",
     tooltipCalls.at(-1)?.action === "hide",
-    JSON.stringify(tooltipCalls),
+    JSON.stringify(tooltipCalls.map((call) => call.action)),
   );
   check(
     "ignored row reuses the shared dimmed-content token",

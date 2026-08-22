@@ -169,6 +169,10 @@ function familyRow() {
   );
   const palette = {
     classFor: (key) => (key ? `slot-${key.slice(1)}` : "slot-other"),
+    styleFor: () => "",
+    paint: (element, key) => {
+      element.className = `${element.className} ${key ? `slot-${key.slice(1)}` : "slot-other"}`;
+    },
   };
   const metricClasses = {
     countClass: (value) => (value >= 50 ? "count-large" : ""),

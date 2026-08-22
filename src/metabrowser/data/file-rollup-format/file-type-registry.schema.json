@@ -14,47 +14,113 @@
     "kinds"
   ],
   "properties": {
-    "schema": { "const": "file-type-registry-v1" },
-    "schema_version": { "const": 1 },
-    "revision": { "type": "integer", "minimum": 1 },
-    "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "max_extension_components": { "const": 2 },
+    "schema": {
+      "const": "file-type-registry-v2"
+    },
+    "schema_version": {
+      "const": 2
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "max_extension_components": {
+      "const": 2
+    },
     "groups": {
       "type": "array",
-      "items": { "$ref": "#/$defs/group" }
+      "items": {
+        "$ref": "#/$defs/group"
+      }
     },
     "families": {
       "type": "array",
-      "items": { "$ref": "#/$defs/family" }
+      "items": {
+        "$ref": "#/$defs/family"
+      }
     },
     "kinds": {
       "type": "array",
-      "items": { "$ref": "#/$defs/kind" }
+      "items": {
+        "$ref": "#/$defs/kind"
+      }
     }
   },
   "$defs": {
-    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
     "group": {
       "type": "object",
-      "required": ["id", "label", "order"],
+      "required": [
+        "id",
+        "label",
+        "order"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "label": { "type": "string", "minLength": 1 },
-        "order": { "type": "integer" }
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer"
+        }
       }
     },
     "family": {
       "type": "object",
-      "required": ["id", "label", "group_id", "order", "extensions"],
+      "required": [
+        "id",
+        "label",
+        "group_id",
+        "order",
+        "extensions",
+        "hue",
+        "linguist"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "label": { "type": "string", "minLength": 1 },
-        "group_id": { "$ref": "#/$defs/id" },
-        "order": { "type": "integer" },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "group_id": {
+          "$ref": "#/$defs/id"
+        },
+        "order": {
+          "type": "integer"
+        },
         "extensions": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "pattern": "^\\.[a-z0-9]+(?:\\.[a-z0-9]+)?$" }
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[a-z0-9]+(?:\\.[a-z0-9]+)?$"
+          }
+        },
+        "hue": {
+          "description": "Family color as an oklch hue in degrees; lightness and chroma belong to the consumer's theme.",
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360
+        },
+        "linguist": {
+          "description": "GitHub linguist language this hue was taken from, or null when the hue came from the widest remaining gap.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
         }
       }
     },
@@ -71,19 +137,56 @@
         "priority"
       ],
       "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "family_id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
-        "group_id": { "$ref": "#/$defs/id" },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "family_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "group_id": {
+          "$ref": "#/$defs/id"
+        },
         "content_family": {
-          "enum": ["code", "prose", "markup", "data", "binary", "unknown"]
+          "enum": [
+            "code",
+            "prose",
+            "markup",
+            "data",
+            "binary",
+            "unknown"
+          ]
         },
         "extensions": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^\\.[a-z0-9]+(?:\\.[a-z0-9]+)?$" }
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[a-z0-9]+(?:\\.[a-z0-9]+)?$"
+          }
         },
-        "filenames": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "shebangs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "priority": { "type": "integer" }
+        "filenames": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "shebangs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "priority": {
+          "type": "integer"
+        }
       }
     }
   }

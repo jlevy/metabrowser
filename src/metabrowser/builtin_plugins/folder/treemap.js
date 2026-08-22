@@ -23,12 +23,12 @@ import {
 import { layoutTree } from "./treemap_layout.js";
 import { parentNavigation } from "./treemap_model.js";
 
-/** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} TreemapPalette */
+/** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
 
-/** @param {MetabrowserPublicSdk} mb @param {TreemapPalettePool} palettePool @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
-export function registerTreemap(mb, palettePool, rollupControls) {
+/** @param {MetabrowserPublicSdk} mb @param {TreemapPalette} palette @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
+export function registerTreemap(mb, palette, rollupControls) {
   const TREEMAP_VIEW_ID = "treemap";
   /** Minimum paint thresholds; type size itself comes from cell geometry. */
   const LABEL_MIN_W = 56;
@@ -43,21 +43,25 @@ export function registerTreemap(mb, palettePool, rollupControls) {
   const VIEWPORT_BOTTOM_RESERVE = 64;
 
   /**
-   * File-type class for a cell: real path for files, a synthetic name
-   * carrying the dominant extension for directories.
+   * The distribution key for a cell: the family behind a file's extension, and
+   * the neutral fallback for the remainder cell that stands for what did not
+   * fit.
    * @param {Record<string, any>} cell
-   * @param {{classFor: (key: string) => string}} palette
    * @returns {string}
    */
-  function typeFillClass(cell, palette) {
+  function cellPaletteKey(cell) {
     const extension = cell.ext || "(none)";
-    const key = cell.kind === "rest" ? "" : mb.fileTypes.distributionKeyForExtension(extension);
-    return palette.classFor(key);
+    return cell.kind === "rest" ? "" : mb.fileTypes.distributionKeyForExtension(extension);
   }
 
-  /** @param {Record<string, any>} cell @param {TreemapState} state @param {{classFor: (key: string) => string}} palette */
-  function cellClasses(cell, state, palette) {
-    const cls = ["tm-cell", `tm-${cell.kind}`, "tm-type-fill", typeFillClass(cell, palette)];
+  /** @param {Record<string, any>} cell @param {TreemapState} state */
+  function cellClasses(cell, state) {
+    const cls = [
+      "tm-cell",
+      `tm-${cell.kind}`,
+      "tm-type-fill",
+      palette.classFor(cellPaletteKey(cell)),
+    ];
     if (cellIsActionable(cell)) {
       cls.push("tm-actionable");
     }
@@ -115,13 +119,12 @@ export function registerTreemap(mb, palettePool, rollupControls) {
    * @param {Record<string, any>} cell
    * @param {TreemapState} state
    * @param {number} index
-   * @param {TreemapPalette} palette
    */
-  function cellHtml(cell, state, index, palette) {
+  function cellHtml(cell, state, index) {
     const style =
       `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
       `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px;` +
-      `--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px`;
+      `--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px;`;
     const labelLineHeight = cell.labelPx * 1.2;
     const valueLineHeight = cell.valuePx * 1.2;
     const showLabel = cell.w >= LABEL_MIN_W && cell.h >= Math.max(LABEL_MIN_H, labelLineHeight + 2);
@@ -161,9 +164,9 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
       : ` role="group" aria-label="${aria}"`;
     return (
-      `<div class="${cellClasses(cell, state, palette)}"${outerAttrs}` +
+      `<div class="${cellClasses(cell, state)}"${outerAttrs}` +
       ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
-      ` style="${style}">${label}</div>`
+      ` style="${style}${palette.styleFor(cellPaletteKey(cell))}">${label}</div>`
     );
   }
 
@@ -220,7 +223,6 @@ export function registerTreemap(mb, palettePool, rollupControls) {
   function renderTreemap(container, ctx) {
     /** @type {TreemapState} */
     let state = rollupControls.get();
-    const palette = palettePool.acquire(ctx.path || "");
     /** @type {Record<string, any> | null} */
     let envelope = null;
     /** @type {Record<string, any>[]} */
@@ -240,18 +242,19 @@ export function registerTreemap(mb, palettePool, rollupControls) {
 
     container.innerHTML =
       '<h2 class="tm-totals-heading">Files</h2>' +
-      '<div class="tm-metric-controls folder-rollup-controls"></div>' +
+      // One row for both halves, above the bars they govern — the same
+      // arrangement as the Overview's File Overview. They used to sit apart,
+      // the measure above the tally bars and the gitignore switch below them,
+      // so the two choices about the same numbers were in two places and each
+      // silently moved the other's.
+      '<div class="tm-rollup-controls folder-rollup-controls"></div>' +
       '<div class="tm-totals"></div>' +
-      '<div class="tm-scope-controls folder-rollup-controls"></div>' +
       parentControlHtml +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
       '<div class="tm-status" role="status"></div>';
     const totalsContainer = /** @type {HTMLElement} */ (container.querySelector(".tm-totals"));
-    const metricControls = /** @type {HTMLElement} */ (
-      container.querySelector(".tm-metric-controls")
-    );
-    const scopeControls = /** @type {HTMLElement} */ (
-      container.querySelector(".tm-scope-controls")
+    const rollupControlsHost = /** @type {HTMLElement} */ (
+      container.querySelector(".tm-rollup-controls")
     );
     const parentControl = parent
       ? /** @type {HTMLButtonElement} */ (container.querySelector(".tm-parent-nav"))
@@ -296,14 +299,8 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         console.warn("Could not compose treemap population bars.", error);
       }
     }
-    const unmountMetricControls = rollupControls.mount(metricControls, {
-      metric: true,
-      ignored: false,
-    });
-    const unmountScopeControls = rollupControls.mount(scopeControls, {
-      metric: false,
-      ignored: true,
-    });
+    // No parts argument: this row is both halves.
+    const unmountControls = rollupControls.mount(rollupControlsHost);
 
     function openParent() {
       if (parent) {
@@ -367,7 +364,7 @@ export function registerTreemap(mb, palettePool, rollupControls) {
           includeIgnored: state.includeIgnored,
         },
       );
-      const html = cells.map((cell, i) => cellHtml(cell, state, i, palette)).join("");
+      const html = cells.map((cell, i) => cellHtml(cell, state, i)).join("");
       viewport.innerHTML =
         html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
       // Roving tabindex over actionable cells only (dir/file); ext and
@@ -388,15 +385,21 @@ export function registerTreemap(mb, palettePool, rollupControls) {
     }
 
     /**
-     * Cell for hover/tooltip lookup: every cell carries data-tm-cell.
+     * The cell element under `el`, which is what a tooltip anchors to.
+     * Every cell carries data-tm-cell.
+     * @param {Element | null} el
+     */
+    function cellElementFor(el) {
+      return el ? /** @type {HTMLElement | null} */ (el.closest("[data-tm-cell]")) : null;
+    }
+
+    /**
+     * Cell record for hover/tooltip lookup.
      * @param {Element | null} el
      * @returns {Record<string, any> | null}
      */
     function cellForElement(el) {
-      if (!el) {
-        return null;
-      }
-      const host = /** @type {HTMLElement | null} */ (el.closest("[data-tm-cell]"));
+      const host = cellElementFor(el);
       if (!host) {
         return null;
       }
@@ -439,14 +442,16 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         activateCell(cell);
       }
     });
+    // One delegated pair for the whole map. mouseover fires again for every
+    // descendant the pointer crosses inside a cell, so the tooltip is anchored
+    // to the cell's own element: re-announcing the same anchor holds it still,
+    // and crossing into a different cell replaces it.
     viewport.addEventListener("mouseover", (e) => {
+      const host = cellElementFor(/** @type {Element} */ (e.target));
       const cell = cellForElement(/** @type {Element} */ (e.target));
-      if (cell) {
-        mb.tooltip.show(tooltipHtml(cell, state), e);
+      if (host && cell) {
+        mb.tooltip.show(tooltipHtml(cell, state), host);
       }
-    });
-    viewport.addEventListener("mousemove", (e) => {
-      mb.tooltip.move(e);
     });
     viewport.addEventListener("mouseout", () => {
       mb.tooltip.hide();
@@ -501,16 +506,6 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         totalsView.update(normalizeFolderTotals(env.node));
       }
       const breakdown = env.file_type_breakdown;
-      palette.sync(
-        breakdown
-          ? [
-              ...breakdown.groups.flatMap((group) =>
-                group.families.map((family) => `family:${family.id}`),
-              ),
-              ...breakdown.remaining_types.extensions.map((row) => row.extension),
-            ]
-          : [],
-      );
       try {
         totalsEnvelope = breakdown ? normalizeRollupEnvelope(env) : null;
       } catch (error) {
@@ -560,8 +555,7 @@ export function registerTreemap(mb, palettePool, rollupControls) {
       unsubscribeActive();
       unsubscribeControls();
       unsubscribeTotals();
-      unmountMetricControls();
-      unmountScopeControls();
+      unmountControls();
       if (parentControl) {
         parentControl.removeEventListener("click", openParent);
       }
@@ -570,7 +564,6 @@ export function registerTreemap(mb, palettePool, rollupControls) {
         resizeObserver.disconnect();
       }
       mb.tooltip.hide();
-      palette.release();
     };
     return Object.freeze({ dispose });
   }

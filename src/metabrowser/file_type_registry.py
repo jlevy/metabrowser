@@ -14,14 +14,15 @@ from importlib.resources import files
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
-FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v1"
-FILE_TYPE_REGISTRY_SCHEMA_VERSION = 1
+FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v2"
+FILE_TYPE_REGISTRY_SCHEMA_VERSION = 2
 FILE_TYPE_REGISTRY_RESOURCE = "data/file-rollup-format/recommended-file-types.toml"
 FILE_TYPE_FAMILY_KEY_PREFIX = "family:"
 FILE_TYPE_NO_EXTENSION_KEY = "(none)"
 FILE_TYPE_REMAINING_KEY = ""
 
 _VALID_ID = re.compile(r"^[a-z][a-z0-9-]*$")
+_VALID_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _VALID_EXTENSION_COMPONENT = re.compile(r"^[a-z0-9]{1,12}$")
 
 type DetectionSource = Literal["basename", "extension", "suffix", "unknown"]
@@ -85,6 +86,19 @@ class FileTypeFamily:
     group_id: str
     order: int
     extensions: tuple[str, ...]
+    hue: float
+    """The family's colour, in oklch hue degrees.
+
+    A hue and not a colour: lightness and chroma belong to whichever theme is
+    painting, so a family is the same hue everywhere and no theme has to
+    re-derive an identity. See :mod:`metabrowser.color_oklch`."""
+    linguist: str | None
+    """The language in GitHub's linguist this hue came from, or ``None`` where
+    GitHub names no colour for the family and the hue came from a free gap."""
+    linguist_color: str | None
+    """That language's upstream sRGB hex, recorded beside the name so the hue's
+    provenance is auditable in one diff and checkable without a clone of
+    linguist. Present exactly when ``linguist`` is."""
 
     @property
     def distribution_key(self) -> str:
@@ -139,6 +153,9 @@ class _FamilyDeclaration:
     label: str
     group_id: str
     order: int
+    hue: float
+    linguist: str | None
+    linguist_color: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,6 +290,8 @@ class FileTypeRegistry:
                     "group_id": family.group_id,
                     "order": family.order,
                     "extensions": family.extensions,
+                    "hue": family.hue,
+                    "linguist": family.linguist,
                 }
                 for family in self.families
             ),
@@ -424,6 +443,54 @@ def _required_integer(raw: Mapping[str, Any], field_name: str, table_id: str) ->
     return value
 
 
+def _parse_linguist(raw: Mapping[str, Any], table_id: str) -> tuple[str | None, str | None]:
+    """The upstream language name and its hex, which are present together or not at all.
+
+    Together, because a name without its colour cannot be checked and a colour
+    without its name cannot be traced.
+    """
+
+    name, color = raw.get("linguist"), raw.get("linguist_color")
+    if name is None and color is None:
+        return None, None
+    if not isinstance(name, str) or not name.strip():
+        raise FileTypeRegistryError(
+            "invalid-linguist",
+            "family linguist name must be a non-empty string",
+            table_id=table_id,
+            field_name="linguist",
+            value=name,
+        )
+    if not isinstance(color, str) or not _VALID_HEX.fullmatch(color):
+        raise FileTypeRegistryError(
+            "invalid-linguist",
+            "family linguist_color must be a six-digit hex color",
+            table_id=table_id,
+            field_name="linguist_color",
+            value=color,
+        )
+    return name.strip(), color.lower()
+
+
+def _required_hue(raw: Mapping[str, Any], table_id: str) -> float:
+    """A hue in degrees, half-open on 360 so one hue has one spelling."""
+
+    value = raw.get("hue")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise FileTypeRegistryError(
+            "invalid-field", "expected a number", table_id=table_id, field_name="hue", value=value
+        )
+    if not 0.0 <= float(value) < 360.0:
+        raise FileTypeRegistryError(
+            "invalid-hue",
+            "family hue must be in [0, 360) degrees",
+            table_id=table_id,
+            field_name="hue",
+            value=value,
+        )
+    return float(value)
+
+
 def _string_tuple(raw: Mapping[str, Any], field_name: str, table_id: str) -> tuple[str, ...]:
     value = raw.get(field_name)
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
@@ -500,9 +567,21 @@ def _parse_families(
             raise FileTypeRegistryError(
                 "duplicate-order", "duplicate family order", table_id=family_id, value=order
             )
+        hue = _required_hue(raw, family_id)
+        linguist, linguist_color = _parse_linguist(raw, family_id)
         ids.add(family_id)
         orders.add(order_key)
-        declarations.append(_FamilyDeclaration(family_id, label, group_id, order))
+        declarations.append(
+            _FamilyDeclaration(
+                family_id,
+                label,
+                group_id,
+                order,
+                hue,
+                linguist,
+                linguist_color,
+            )
+        )
     group_order = {group.id: group.order for group in groups}
     return tuple(
         sorted(
@@ -682,6 +761,9 @@ def _materialize_families(
                 declaration.group_id,
                 declaration.order,
                 extensions,
+                declaration.hue,
+                declaration.linguist,
+                declaration.linguist_color,
             )
         )
     return tuple(families)
@@ -710,6 +792,7 @@ def _registry_fingerprint(
                 "label": family.label,
                 "group": family.group_id,
                 "order": family.order,
+                "hue": family.hue,
             }
             for family in families
         ],

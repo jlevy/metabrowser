@@ -935,27 +935,60 @@ It is distinct from the broad `ft-*` identity system: several exact extensions m
 intentionally share one file icon, while semantic families such as JavaScript and YAML
 need stable distribution identities of their own.
 
-The component uses a bounded light/dark categorical palette, a neutral **Other** token,
-a track token, and a named track-height token.
-Consumers select palette classes; they do not copy color literals or set theme colors
-inline. Inline percentage widths are allowed because they encode data rather than theme.
+The component uses a declared categorical palette, a neutral **Other** token, a track
+token, and a named track-height token.
+Consumers apply the palette through `category_palette.js`; they do not copy color
+literals or compose colors themselves.
+Inline percentage widths are allowed because they encode data rather than theme.
 
-The token family is `--mb-distribution-category-1` through
-`--mb-distribution-category-12`, plus `--mb-distribution-other`,
-`--mb-distribution-track`, `--mb-distribution-track-height`, and
-`--mb-distribution-segment-gap`. The segment-gap token remains available to consumers
-that place categorical segments beside one another.
-Shared `.mb-distribution-slot-*` and `.mb-distribution-other` utility classes map those
-tokens to a component color variable.
-Core owns these tokens and utilities; the folder plugin owns File types and Treemap
-layout selectors.
+#### The categorical palette
 
-When a selected metric changes, the table keeps the same category set and color map.
+A file-type family owns one number: its hue, declared in the type registry (see
+[Family Fields](project/architecture/file-rollup-format/file-rollup-format.md#family-fields)).
+Where GitHub’s linguist names a color for the language, the hue is that color’s,
+unchanged; families GitHub names no color for take a hue clear of every other.
+That is what makes the palette recognizable — Ruby is red because Ruby is red
+everywhere.
+
+Lightness and chroma are not the family’s. Each theme states one pair for the whole set,
+in `color_oklch.py`, so two segments of a stacked bar differ in hue and in nothing else
+and no segment looks heavier than its size.
+Chroma is a target rather than a constant: it is set high enough to stay vivid, above
+what sRGB holds at every hue, so the cyan-blue band comes in under it.
+That pullback happens in Python, not in CSS, because a browser handed an out-of-gamut
+`oklch()` clips it — moving lightness and hue by as much as nine degrees, more than the
+separation the palette is built on.
+
+The server therefore ships finished colors.
+`METABROWSER_SETTINGS.DISTRIBUTION_COLORS` carries each family’s distribution key with
+its color on both themes, and `category_palette.js` writes both onto the element as
+`--mb-distribution-color-light` and `--mb-distribution-color-dark`.
+`.mb-distribution-mark` selects between them by theme and `.mb-distribution-other` takes
+the neutral, so a theme change is a selector switch rather than a repaint.
+The remaining tokens are `--mb-distribution-other`, `--mb-distribution-track`,
+`--mb-distribution-track-height`, and `--mb-distribution-segment-gap`. Core owns these
+tokens and utilities; the folder plugin owns File types and Treemap layout selectors.
+
+Segments that sit beside one another are separated by a hairline of the page ground —
+`--mb-distribution-segment-gap` wide, in `--viz-surface` — so two families of similar
+hue read as two rather than as one wide band.
+It is drawn as an inset shadow rather than a gap or a border, because the widths are
+percentages that sum to 100 and anything occupying layout would push the last segment
+past the end of the track.
+A segment narrower than the hairline therefore becomes ground rather than stealing width
+from its neighbor, which is the right trade: a sub-pixel share is unreadable as a color
+either way.
+
+`make lint` runs `devtools/check_file_type_colors.py`, which holds the upstream
+correspondence, the separation floor, and the tone.
+Adding a family GitHub has no color for starts with `--suggest`, which prints the widest
+free hue.
+
+When a selected metric changes, the table keeps the same category set and colors.
 The active measure controls values, percentage widths, emphasis classes, and row order
-as one update. Categories keep their assigned slot for the mounted folder even when live
-updates change rank, and Other stays last and neutral.
-A related visualization, such as the extension-colored Treemap for that folder, reuses
-the same mounted mapping when both views exist.
+as one update, and Other stays last and neutral.
+A family’s color does not depend on which folder is open or which views are mounted, so
+a related visualization such as the Treemap agrees with the table without coordinating.
 
 The semantic table is the visual summary and the source of exact values.
 Every row names its category and reports absolute values and percentages; the colored
@@ -1048,7 +1081,7 @@ be some other share of both bars above it.
 With Total present, one of the three tracks always matches the distribution: Total while
 Show ignored is on, Files while it is off.
 Its full-width track is segmented by the top-level semantic file types in the type
-distribution below and reuses their mounted palette assignments.
+distribution below and carries their declared colors.
 The segments follow registry group order and then descend by the selected Files or Bytes
 measure within each group.
 Sorting uses the combined population, which is the one basis all three rows share and
@@ -1060,9 +1093,18 @@ for that row’s disjoint population.
 Tooltip-bearing categorical marks use `--viz-data-mark-hover-filter`, the same subtle
 whole-mark brightness change used by Treemap cells.
 The filter preserves the mark’s hue and the contrast between its fill, border, and
-nested content; hover never changes geometry, stacking, or opacity.
-It transitions with the shared visualization hover timing, while reduced-motion mode
-applies the state immediately.
+nested content; hover never changes geometry or stacking.
+
+On a tally track the filter alone is not enough, because the track is eight pixels tall
+and a brightness change on one segment has almost no area to register in.
+The rest of the track recedes as well, to `--mb-distribution-segment-recede`, so the
+hovered segment holds its color while its neighbors drop toward the track behind them.
+That reads at any hue and at any segment width, and it answers the question the tooltip
+raises: which segment is this.
+A Treemap cell is large enough to carry the filter on its own and does not recede its
+siblings.
+It transitions with the shared visualization hover timing, while reduced-motion
+mode applies the state immediately.
 These supplemental hover tooltips do not create tab stops; the type distribution remains
 the accessible source for the same values.
 The Ignored row dims its label, tally, track, and colors through
@@ -1137,9 +1179,10 @@ intact.
 
 There is no separate color selector.
 Every file maps its exact extension through the taxonomy’s distribution key, every
-folder maps its dominant extension through the same helper, and remainder cells use the
-neutral Other slot. The File types panel and Treemap acquire the same per-folder palette
-session, so a semantic family keeps the same color across both views.
+folder maps its dominant extension through the same helper, and remainder cells take the
+neutral Other color.
+The File types panel and Treemap read the same declared palette, so a semantic family
+keeps the same color across both views and across folders.
 Modification age remains available in the tooltip; it does not compete with file type as
 a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base
@@ -1314,13 +1357,37 @@ difference between a tooltip, menu, and dialog.
 
 | Pattern | Purpose and semantics | Focus and dismissal |
 | --- | --- | --- |
-| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls | Opens for pointer hover and keyboard focus; closes on pointer leave, blur, or Escape |
+| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls; anchored to the element it describes and fixed once shown | Opens for pointer hover and keyboard focus; closes on pointer leave, blur, or Escape |
 | Anchored popup | A menu, listbox, or other pattern anchored to a trigger or pointer; the content role defines its semantics | Uses that pattern’s focus model; closes on Escape and outside interaction |
 | Modal dialog | A labelled task or information surface with `role="dialog"` and `aria-modal="true"` | Moves focus inside, contains Tab, makes background content inert, and closes through Escape, an explicit control, or the scrim |
 
 A compact surface can still be a modal dialog.
 Help is a dialog because it contains a link and controls and temporarily owns focus; it
 is not a tooltip or menu.
+
+### A Tooltip Holds Still
+
+**A tooltip is placed relative to the thing it annotates, not to the pointer, and it
+does not move while it is up.**
+
+Position is read from the anchor element once, when the tooltip appears.
+Pointer movement never repositions a visible tooltip.
+Moving onto a different annotated element dismisses the old tooltip and opens a new one
+for the new anchor; moving *within* one element changes nothing at all, including when a
+delegated listener fires again for a descendant the pointer crossed.
+
+Two reasons, and the second is the important one.
+A tooltip that tracks the cursor jitters, because it re-renders on every mousemove while
+the reader is trying to read it.
+And a tooltip placed where the pointer happened to be says nothing about *which* thing
+it describes — in a stacked bar or a treemap, where the annotated elements are adjacent
+and small, that is the only question the tooltip exists to answer.
+
+`mb.tooltip.show(html, anchor)` takes the element, and there is deliberately no
+`move()`. The controller centers the tooltip under its anchor, flips above when there is
+no room below, and clamps to the viewport.
+Calling `show` again with the same anchor is how a surface says “still here”: it cancels
+a pending hide and leaves the tooltip exactly where it is.
 
 ### Shared Overlay Lifecycle
 

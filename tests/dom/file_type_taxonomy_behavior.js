@@ -4,8 +4,8 @@ const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const fallbackRegistry = {
-  schema: "file-type-registry-v1",
-  schema_version: 1,
+  schema: "file-type-registry-v2",
+  schema_version: 2,
   revision: 1,
   fingerprint: "fixture-registry",
   max_extension_components: 2,
@@ -22,9 +22,27 @@ const fallbackRegistry = {
       group_id: "code",
       order: 10,
       extensions: [".js", ".mjs", ".cjs", ".jsx"],
+      hue: 102.08,
+      linguist: "JavaScript",
     },
-    { id: "typescript", label: "TypeScript", group_id: "code", order: 20, extensions: [".ts"] },
-    { id: "yaml", label: "YAML", group_id: "data", order: 10, extensions: [".yaml", ".yml"] },
+    {
+      id: "typescript",
+      label: "TypeScript",
+      group_id: "code",
+      order: 20,
+      extensions: [".ts"],
+      hue: 253.3,
+      linguist: "TypeScript",
+    },
+    {
+      id: "yaml",
+      label: "YAML",
+      group_id: "data",
+      order: 10,
+      extensions: [".yaml", ".yml"],
+      hue: 27.0,
+      linguist: null,
+    },
   ],
   kinds: [
     {

@@ -2,7 +2,7 @@
 name = "binary"
 display_name = "Binary"
 version = "0.0.1"
-sdk_version = "0.2"
+sdk_version = "0.3"
 
 # `binary` is assigned by metabrowser.server when a non-image, non-text
 # file falls past the classifier. No [[kind]] match here for the same

@@ -62,7 +62,7 @@ async function importSource(relative) {
     },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 1, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 2, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(157, 11000000, 150, 10000000),
       groups: [
         {
@@ -141,7 +141,7 @@ async function importSource(relative) {
     node: { total_files: 6, total_size: 50, unignored_files: 6, unignored_size: 50 },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 1, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 2, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(6, 50),
       groups: [
         {
@@ -271,7 +271,7 @@ async function importSource(relative) {
     node: { total_files: 78, total_size: 78, unignored_files: 78, unignored_size: 78 },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 1, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 2, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(78, 78),
       groups: [
         {
@@ -383,39 +383,71 @@ async function importSource(relative) {
   check("ignored-only model", ignoredModel.state === "ignored-only");
   check("ignored-only count", ignoredModel.allFilesText === "2 files", ignoredModel.allFilesText);
 
-  const pool = paletteModule.createCategoryPalettePool(12);
-  const first = pool.acquire("src");
-  first.sync([".py", ".md", ".json"]);
-  const slots = [first.slotFor(".py"), first.slotFor(".md"), first.slotFor(".json")];
-  check("palette slots distinct", new Set(slots).size === slots.length, slots.join(","));
-  const pySlot = first.slotFor(".py");
-  first.sync([".md"]);
-  check("palette reservation stable", first.slotFor(".py") === pySlot);
-  const churn = paletteModule.createCategoryPalettePool(2).acquire("churn");
-  churn.sync(["a", "b"]);
-  const releasedSlot = churn.slotFor("a");
-  churn.sync(["b"]);
-  churn.sync(["b", "c"]);
-  check("palette reclaims slots for removed keys", churn.slotFor("c") === releasedSlot);
-  churn.release();
-  const sharedPool = paletteModule.createCategoryPalettePool(3);
-  const overviewPalette = sharedPool.acquire("shared");
-  const treemapPalette = sharedPool.acquire("shared");
-  overviewPalette.sync([".py", ".md"]);
-  const sharedPySlot = overviewPalette.slotFor(".py");
-  treemapPalette.sync([".py", ".json"]);
-  overviewPalette.sync([".md"]);
+  // The palette is a lookup now, so the properties worth holding are the ones
+  // the old allocator could not give: the same key is the same color anywhere,
+  // and a key the registry does not know still gets one.
+  const declared = [
+    { key: "family:python", light: "oklch(62% 0.1 246.5)", dark: "oklch(75% 0.12 246.5)" },
+    { key: "family:markdown", light: "oklch(62% 0.15 27)", dark: "oklch(75% 0.13 27)" },
+    { key: "family:yaml", light: "oklch(62% 0.11 130)", dark: "oklch(75% 0.12 130)" },
+  ];
+  const palette = paletteModule.createCategoryPalette(declared);
   check(
-    "palette retains keys used by another view",
-    treemapPalette.slotFor(".py") === sharedPySlot,
+    "declared family takes its declared color",
+    palette.colorFor("family:python").light === declared[0].light,
   );
-  overviewPalette.release();
-  treemapPalette.release();
-  check("other neutral", first.classFor("") === "mb-distribution-other");
-  const second = pool.acquire("src");
-  check("cross-view palette", second.slotFor(".py") === pySlot);
-  first.release();
-  second.release();
+  check(
+    "same key is the same color in a second palette",
+    paletteModule.createCategoryPalette(declared).colorFor("family:python").light ===
+      palette.colorFor("family:python").light,
+  );
+  check(
+    "both themes are written together",
+    palette.styleFor("family:markdown") ===
+      `--mb-distribution-color-light:${declared[1].light};` +
+        `--mb-distribution-color-dark:${declared[1].dark};`,
+  );
+  check(
+    "mark class selects the theme",
+    palette.classFor("family:python") === "mb-distribution-mark",
+  );
+  check("other neutral", palette.classFor("") === "mb-distribution-other");
+  check("other has no color", palette.colorFor("") === null);
+  check("other has no style", palette.styleFor("") === "");
+  const unknown = palette.colorFor(".xyz");
+  check("an unfamilied extension still gets a color", unknown !== null && Boolean(unknown.light));
+  check("and the same one every time", palette.colorFor(".xyz").light === unknown.light);
+  check(
+    "unfamilied extensions spread rather than pile up",
+    new Set([".xyz", ".abc", ".qqq"].map((key) => palette.colorFor(key).light)).size >= 2,
+  );
+  const painted = { className: "", classes: new Set(), properties: new Map() };
+  painted.classList = {
+    toggle: (name, on) => (on ? painted.classes.add(name) : painted.classes.delete(name)),
+  };
+  painted.style = {
+    setProperty: (name, value) => painted.properties.set(name, value),
+    removeProperty: (name) => painted.properties.delete(name),
+  };
+  palette.paint(painted, "family:python");
+  check(
+    "paint sets the class and both properties",
+    painted.classes.has("mb-distribution-mark") &&
+      painted.properties.get("--mb-distribution-color-light") === declared[0].light &&
+      painted.properties.get("--mb-distribution-color-dark") === declared[0].dark,
+  );
+  palette.paint(painted, "");
+  check(
+    "repainting to the neutral clears what it replaced",
+    painted.classes.has("mb-distribution-other") &&
+      !painted.classes.has("mb-distribution-mark") &&
+      painted.properties.size === 0,
+  );
+  const emptyPalette = paletteModule.createCategoryPalette([]);
+  check(
+    "an empty registry falls back to the neutral",
+    emptyPalette.classFor(".py") === "mb-distribution-other",
+  );
 
   check("treemap parent path", treemapModel.parentPath("a/b") === "a");
   check(

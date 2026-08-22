@@ -143,6 +143,7 @@
   background: var(--mb-distribution-color);
   transition:
     width 140ms ease,
+    opacity var(--viz-hover-duration) var(--viz-hover-ease),
     filter var(--viz-hover-duration) var(--viz-hover-ease);
 }
 
@@ -152,6 +153,31 @@
 
 .folder-totals .file-type-summary-fill {
   flex: 0 0 auto;
+}
+
+/* A hairline of the page ground between segments, so two families of similar
+   hue read as two rather than as one wide band.
+
+   Inset, rather than a flex gap or a border: the segment widths are
+   percentages that sum to 100, so anything occupying layout would push the
+   last segment past the end of the track. An inset shadow is clipped to the
+   segment's own box, which also means a segment narrower than the hairline
+   becomes ground rather than stealing width from its neighbor. */
+.folder-totals .file-type-summary-fill:not(:last-child) {
+  box-shadow: inset calc(-1 * var(--mb-distribution-segment-gap)) 0 0 var(--viz-surface);
+}
+
+/* While the track is hovered, every segment but the hovered one recedes toward
+   the track behind it. See --mb-distribution-segment-recede for why the hovered
+   segment cannot carry the whole affordance on its own.
+
+   :not(:hover) rather than restoring opacity on the hovered segment below: this
+   rule is the more specific of the two, so a plain descendant selector here
+   would win against it and dim the segment the reader is pointing at along with
+   the rest — which reads as the whole bar fading and nothing being picked out. */
+.folder-totals .file-type-summary-track:hover
+  .file-type-summary-fill[data-segment-key]:not(:hover) {
+  opacity: var(--mb-distribution-segment-recede);
 }
 
 .folder-totals .file-type-summary-fill[data-segment-key]:hover {

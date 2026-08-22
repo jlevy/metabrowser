@@ -1027,7 +1027,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!headerPath) {
     return;
   }
-  headerPath.addEventListener("mouseenter", (e) => {
+  headerPath.addEventListener("mouseenter", () => {
     var d = headerPath.dataset;
     if (!d.tipName) {
       return;
@@ -1039,10 +1039,9 @@ document.addEventListener("DOMContentLoaded", () => {
         parseTipNumber(d.tipSize),
         parseTipNumber(d.tipMtime),
       ),
-      e,
+      headerPath,
     );
   });
-  headerPath.addEventListener("mousemove", positionTooltip);
   headerPath.addEventListener("mouseleave", hideTooltip);
 });
 
@@ -1769,6 +1768,15 @@ function scheduleSubtreePrefetch() {
 
 var tooltipEl = null;
 var tooltipTimer = null;
+// The element the visible tooltip belongs to. It is what makes a tooltip hold
+// still: position is read from this once, when the tooltip appears, and never
+// again while it is up.
+var tooltipAnchor = null;
+
+var TOOLTIP_ANCHOR_GAP = 6;
+var TOOLTIP_VIEWPORT_MARGIN = 8;
+var TOOLTIP_APPEAR_DELAY = 300;
+var TOOLTIP_FADE_OUT = 150;
 
 function initTooltip() {
   tooltipEl = document.createElement("div");
@@ -1776,49 +1784,76 @@ function initTooltip() {
   document.body.appendChild(tooltipEl);
 }
 
-function showTooltip(html, e) {
+/**
+ * Show `html` anchored to `anchor`, the element the tooltip describes.
+ *
+ * Calling again with the same anchor is how a surface says "still here" — it
+ * cancels a pending hide and leaves the tooltip exactly where it is. That is
+ * what lets a delegated listener fire on every descendant the pointer crosses
+ * without the tooltip flickering or drifting.
+ */
+function showTooltip(html, anchor) {
+  var element = anchor && anchor.nodeType === 1 ? anchor : null;
+  if (element && element === tooltipAnchor && tooltipEl.style.display === "block") {
+    clearTimeout(tooltipTimer);
+    tooltipEl.classList.add("visible");
+    return;
+  }
+  tooltipAnchor = element;
   clearTimeout(tooltipTimer);
   // Small delay before appearing so tooltips don't flash when moving across items
   tooltipTimer = setTimeout(() => {
     tooltipEl.innerHTML = html;
     tooltipEl.style.display = "block";
-    positionTooltip(e);
+    positionTooltip(element);
     // Trigger fade-in on next frame
     requestAnimationFrame(() => {
       tooltipEl.classList.add("visible");
     });
-  }, 300);
+  }, TOOLTIP_APPEAR_DELAY);
 }
 
-function positionTooltip(e) {
-  var x = e.clientX + 12;
-  var y = e.clientY + 16;
+/**
+ * Place the tooltip under its anchor, centered on it, flipping above when
+ * there is no room below and clamping to the viewport either way.
+ *
+ * Anchored to the element rather than the pointer, and read once rather than
+ * on every mousemove: a tooltip that tracks the cursor jitters, and one placed
+ * where the pointer happened to enter tells the reader nothing about which
+ * thing it describes.
+ */
+function positionTooltip(anchor) {
+  if (!anchor || !anchor.getBoundingClientRect) {
+    return;
+  }
+  var target = anchor.getBoundingClientRect();
   var rect = tooltipEl.getBoundingClientRect();
-  if (x + rect.width > window.innerWidth - 8) {
-    x = e.clientX - rect.width - 8;
+  var maxX = window.innerWidth - rect.width - TOOLTIP_VIEWPORT_MARGIN;
+  var x = target.left + (target.width - rect.width) / 2;
+  var y = target.bottom + TOOLTIP_ANCHOR_GAP;
+  if (y + rect.height > window.innerHeight - TOOLTIP_VIEWPORT_MARGIN) {
+    y = target.top - rect.height - TOOLTIP_ANCHOR_GAP;
   }
-  if (y + rect.height > window.innerHeight - 8) {
-    y = e.clientY - rect.height - 8;
-  }
-  tooltipEl.style.left = `${x}px`;
-  tooltipEl.style.top = `${y}px`;
+  tooltipEl.style.left = `${Math.max(TOOLTIP_VIEWPORT_MARGIN, Math.min(x, Math.max(TOOLTIP_VIEWPORT_MARGIN, maxX)))}px`;
+  tooltipEl.style.top = `${Math.max(TOOLTIP_VIEWPORT_MARGIN, y)}px`;
 }
 
 function hideTooltip() {
   clearTimeout(tooltipTimer);
   tooltipEl.classList.remove("visible");
-  // Let the fade-out transition finish before hiding
+  // The anchor survives the fade on purpose: a surface that re-announces the
+  // same element mid-fade gets its tooltip back rather than a fresh delay.
   tooltipTimer = setTimeout(() => {
     tooltipEl.style.display = "none";
-  }, 150);
+    tooltipAnchor = null;
+  }, TOOLTIP_FADE_OUT);
 }
 
 if (typeof window !== "undefined") {
   window.MetabrowserTooltip = {
-    show: (html, e) => {
-      showTooltip(html, e);
+    show: (html, anchor) => {
+      showTooltip(html, anchor);
     },
-    move: positionTooltip,
     hide: hideTooltip,
   };
 }
@@ -1970,7 +2005,7 @@ treePane.addEventListener(
         includeName,
       );
     }
-    showTooltip(html, e);
+    showTooltip(html, item);
   },
   true,
 );

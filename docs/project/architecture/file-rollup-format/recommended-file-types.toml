@@ -6,9 +6,19 @@
 # selective rather than exhaustive. Maintainers edit this packaged source, increment
 # registry_revision for definition changes, and regenerate the checked artifacts with
 # devtools/file_type_contract.py --write. Do not edit the generated documentation copy.
+# devtools/check_file_type_colors.py checks the colour rules below.
 
-schema_version = 1
-registry_revision = 2
+# A family declares one colour number: `hue`, in degrees. Lightness and chroma are
+# the same for every family and belong to the consuming theme, not to this file.
+#
+# Where `linguist` names a language, `linguist_color` is that language's colour in
+# GitHub's linguist and the hue is that colour converted to oklch — unchanged,
+# including where two of GitHub's own colours are close together. Families without a
+# `linguist` name take a hue that clears every other declared hue. Nothing else moves
+# a hue, and devtools/check_file_type_colors.py holds both rules.
+
+schema_version = 2
+registry_revision = 3
 max_extension_components = 2
 
 [[group]]
@@ -46,336 +56,462 @@ id = "python"
 label = "Python"
 group = "code"
 order = 100
+linguist = "Python"
+linguist_color = "#3572a5"
+hue = 246.50
 
 [[family]]
 id = "javascript"
 label = "JavaScript"
 group = "code"
 order = 110
+linguist = "JavaScript"
+linguist_color = "#f1e05a"
+hue = 102.08
 
 [[family]]
 id = "typescript"
 label = "TypeScript"
 group = "code"
 order = 120
+linguist = "TypeScript"
+linguist_color = "#3178c6"
+hue = 253.30
 
 [[family]]
 id = "css"
 label = "CSS"
 group = "code"
 order = 130
+linguist = "CSS"
+linguist_color = "#663399"
+hue = 303.37
 
 [[family]]
 id = "html"
 label = "HTML"
 group = "code"
 order = 140
+linguist = "HTML"
+linguist_color = "#e34c26"
+hue = 34.85
 
 [[family]]
 id = "rust"
 label = "Rust"
 group = "code"
 order = 150
+linguist = "Rust"
+linguist_color = "#dea584"
+hue = 51.20
 
 [[family]]
 id = "go"
 label = "Go"
 group = "code"
 order = 160
+linguist = "Go"
+linguist_color = "#00add8"
+hue = 223.85
 
 [[family]]
 id = "java"
 label = "Java"
 group = "code"
 order = 170
+linguist = "Java"
+linguist_color = "#b07219"
+hue = 69.41
 
 [[family]]
 id = "kotlin"
 label = "Kotlin"
 group = "code"
 order = 180
+linguist = "Kotlin"
+linguist_color = "#a97bff"
+hue = 297.24
 
 [[family]]
 id = "swift"
 label = "Swift"
 group = "code"
 order = 190
+linguist = "Swift"
+linguist_color = "#f05138"
+hue = 31.62
 
 [[family]]
 id = "c-cpp"
 label = "C/C++"
 group = "code"
 order = 200
+linguist = "C++"
+linguist_color = "#f34b7d"
+hue = 6.90
 
 [[family]]
 id = "csharp"
 label = "C#"
 group = "code"
 order = 210
+linguist = "C#"
+linguist_color = "#7355dd"
+hue = 288.37
 
 [[family]]
 id = "ruby"
 label = "Ruby"
 group = "code"
 order = 220
+linguist = "Ruby"
+linguist_color = "#701516"
+hue = 25.77
 
 [[family]]
 id = "php"
 label = "PHP"
 group = "code"
 order = 230
+linguist = "PHP"
+linguist_color = "#4f5d95"
+hue = 272.03
 
 [[family]]
 id = "scala"
 label = "Scala"
 group = "code"
 order = 240
+linguist = "Scala"
+linguist_color = "#c22d40"
+hue = 19.52
 
 [[family]]
 id = "clojure"
 label = "Clojure"
 group = "code"
 order = 250
+linguist = "Clojure"
+linguist_color = "#db5855"
+hue = 24.35
 
 [[family]]
 id = "elixir"
 label = "Elixir"
 group = "code"
 order = 260
+linguist = "Elixir"
+linguist_color = "#6e4a7e"
+hue = 314.93
 
 [[family]]
 id = "erlang"
 label = "Erlang"
 group = "code"
 order = 270
+linguist = "Erlang"
+linguist_color = "#b83998"
+hue = 339.55
 
 [[family]]
 id = "haskell"
 label = "Haskell"
 group = "code"
 order = 280
+linguist = "Haskell"
+linguist_color = "#5e5086"
+hue = 294.76
 
 [[family]]
 id = "lua"
 label = "Lua"
 group = "code"
 order = 290
+linguist = "Lua"
+linguist_color = "#000080"
+hue = 264.05
 
 [[family]]
 id = "julia"
 label = "Julia"
 group = "code"
 order = 300
+linguist = "Julia"
+linguist_color = "#a270ba"
+hue = 314.22
 
 [[family]]
 id = "dart"
 label = "Dart"
 group = "code"
 order = 310
+linguist = "Dart"
+linguist_color = "#00b4ab"
+hue = 188.48
 
 [[family]]
 id = "vue"
 label = "Vue"
 group = "code"
 order = 320
+linguist = "Vue"
+linguist_color = "#41b883"
+hue = 160.49
 
 [[family]]
 id = "svelte"
 label = "Svelte"
 group = "code"
 order = 330
+linguist = "Svelte"
+linguist_color = "#ff3e00"
+hue = 34.20
 
 [[family]]
 id = "shell"
 label = "Shell"
 group = "code"
 order = 340
+linguist = "Shell"
+linguist_color = "#89e051"
+hue = 135.27
 
 [[family]]
 id = "powershell"
 label = "PowerShell"
 group = "code"
 order = 350
+linguist = "PowerShell"
+linguist_color = "#012456"
+hue = 258.14
 
 [[family]]
 id = "sql"
 label = "SQL"
 group = "code"
 order = 360
+linguist = "SQL"
+linguist_color = "#e38c00"
+hue = 67.02
 
 [[family]]
 id = "markdown"
 label = "Markdown"
 group = "docs"
 order = 100
+linguist = "Markdown"
+linguist_color = "#083fa1"
+hue = 261.42
 
 [[family]]
 id = "plain-text"
 label = "Plain text"
 group = "docs"
 order = 110
+hue = 206.20
 
 [[family]]
 id = "restructured-text"
 label = "reStructuredText"
 group = "docs"
 order = 120
+hue = 118.70
 
 [[family]]
 id = "asciidoc"
 label = "AsciiDoc"
 group = "docs"
 order = 130
+linguist = "AsciiDoc"
+linguist_color = "#73a0c5"
+hue = 243.94
 
 [[family]]
 id = "org"
 label = "Org"
 group = "docs"
 order = 140
+linguist = "Org"
+linguist_color = "#77aa99"
+hue = 171.76
 
 [[family]]
 id = "pdf"
 label = "PDF"
 group = "docs"
 order = 150
+hue = 85.70
 
 [[family]]
 id = "word"
 label = "Word"
 group = "docs"
 order = 160
+hue = 327.20
 
 [[family]]
 id = "rich-text"
 label = "Rich Text"
 group = "docs"
 order = 170
+hue = 233.90
 
 [[family]]
 id = "open-document"
 label = "OpenDocument"
 group = "docs"
 order = 180
+hue = 144.90
 
 [[family]]
 id = "epub"
 label = "EPUB"
 group = "docs"
 order = 190
+hue = 357.90
 
 [[family]]
 id = "json"
 label = "JSON"
 group = "data"
 order = 100
+hue = 197.30
 
 [[family]]
 id = "yaml"
 label = "YAML"
 group = "data"
 order = 110
+linguist = "YAML"
+linguist_color = "#cb171e"
+hue = 26.90
 
 [[family]]
 id = "toml"
 label = "TOML"
 group = "data"
 order = 120
+linguist = "TOML"
+linguist_color = "#9c4221"
+hue = 39.62
 
 [[family]]
 id = "ini"
 label = "INI"
 group = "data"
 order = 130
+hue = 215.00
 
 [[family]]
 id = "delimited-text"
 label = "Delimited text"
 group = "data"
 order = 140
+linguist = "CSV"
+linguist_color = "#237346"
+hue = 154.61
 
 [[family]]
 id = "xml"
 label = "XML"
 group = "data"
 order = 150
+linguist = "XML"
+linguist_color = "#0060ac"
+hue = 251.44
 
 [[family]]
 id = "parquet"
 label = "Parquet"
 group = "data"
 order = 160
+hue = 180.10
 
 [[family]]
 id = "arrow"
 label = "Arrow"
 group = "data"
 order = 170
+hue = 110.40
 
 [[family]]
 id = "avro"
 label = "Avro"
 group = "data"
 order = 180
+hue = 127.00
 
 [[family]]
 id = "orc"
 label = "ORC"
 group = "data"
 order = 190
+hue = 93.90
 
 [[family]]
 id = "protocol-buffers"
 label = "Protocol Buffers"
 group = "data"
 order = 200
+hue = 280.20
 
 [[family]]
 id = "graphql"
 label = "GraphQL"
 group = "data"
 order = 210
+linguist = "GraphQL"
+linguist_color = "#e10098"
+hue = 348.88
 
 [[family]]
 id = "sqlite"
 label = "SQLite"
 group = "data"
 order = 220
+hue = 77.60
 
 [[family]]
 id = "log-files"
 label = "Log files"
 group = "other"
 order = 100
+hue = 166.10
 
 [[family]]
 id = "archives"
 label = "Archives"
 group = "archives"
 order = 100
+hue = 59.10
 
 [[family]]
 id = "images"
 label = "Images"
 group = "media"
 order = 100
+hue = 13.20
 
 [[family]]
 id = "videos"
 label = "Videos"
 group = "media"
 order = 110
+hue = 333.40
 
 [[family]]
 id = "audio"
 label = "Audio"
 group = "media"
 order = 120
+hue = 321.10
 
 [[family]]
 id = "fonts"
 label = "Fonts"
 group = "media"
 order = 130
+hue = 45.40
 
 [[kind]]
 id = "python"

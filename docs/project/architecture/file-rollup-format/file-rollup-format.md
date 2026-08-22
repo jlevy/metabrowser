@@ -38,7 +38,7 @@ The current JSON components retain these established schema identifiers:
 
 | Component | Schema identifier | Clear artifact name |
 | --- | --- | --- |
-| Type-definition projection | `file-type-registry-v1` | `recommended-file-types.json` |
+| Type-definition projection | `file-type-registry-v2` | `recommended-file-types.json` |
 | Directory rollup | `file-type-breakdown-v1` | `file-rollup.schema.json` |
 | Conformance cases | `file-type-conformance-v1` | `file-rollup-conformance.json` |
 
@@ -117,7 +117,7 @@ The recommended source uses standard TOML with top-level scalars and ordered arr
 tables:
 
 ```toml
-schema_version = 1
+schema_version = 2
 registry_revision = 1
 max_extension_components = 2
 
@@ -131,6 +131,9 @@ id = "javascript"
 label = "JavaScript"
 group = "code"
 order = 100
+linguist = "JavaScript"
+linguist_color = "#f1e05a"
+hue = 102.08
 
 [[kind]]
 id = "javascript"
@@ -164,13 +167,16 @@ priority = 100
 
 | Field | Type | Requirement |
 | --- | --- | --- |
-| `schema_version` | positive integer | Definition-file structure; `1` for the recommended listing |
+| `schema_version` | positive integer | Definition-file structure; `2` for the recommended listing |
 | `registry_revision` | positive integer | Monotone data revision included in projections and cache identity |
 | `max_extension_components` | positive integer | `2` for this format profile |
 
 Changing the definition-file structure or a field’s meaning requires a new registry
 schema version. Adding, removing, relabeling, or reassigning declarations increments the
-registry revision. Neither change automatically changes File Rollup Format v0.1.
+registry revision.
+Neither change automatically changes File Rollup Format v0.1: a rollup
+records the registry schema version it was produced under, and the rollup schema accepts
+any of them.
 
 ### Group Fields
 
@@ -194,13 +200,37 @@ decision.
 | `label` | string | Nonempty human label |
 | `group` | group ID | Existing display group |
 | `order` | integer | Deterministic order within the group |
+| `hue` | number | Family color as an oklch hue, in `[0, 360)` degrees |
+| `linguist` | string or absent | Language in GitHub’s linguist the hue was taken from |
+| `linguist_color` | hex string or absent | That language’s upstream color; present exactly when `linguist` is |
 
 Several kinds can map to one display family.
 A nonempty family remains independently addressable even if only one extension
 contributes to a particular rollup.
 
 A family ID can also define a shared presentation key such as `family:javascript`.
-Colors, icons, byte formatting, and disclosure state remain outside the type registry.
+Icons, byte formatting, and disclosure state remain outside the type registry.
+
+#### Why a hue and not a color
+
+A hue is tool-neutral and a color is not.
+Lightness and chroma are properties of the surface a consumer paints on — a light
+background wants one pair, a dark background another, and a printed page a third — so a
+registry that named finished colors would be naming one consumer’s theme.
+A hue is the part that identifies the family, and it is the same everywhere.
+
+Two rules govern it, and `devtools/check_file_type_colors.py` holds both:
+
+- A family that names a `linguist` language takes that language’s color converted to
+  oklch, hue unchanged, including where two of GitHub’s own colors are close together.
+  Moving a familiar hue to win a distance metric costs more than the collision does.
+- A family GitHub names no color for takes a hue at least five degrees clear of every
+  other declared hue. `--suggest` prints the widest gap for a new one.
+
+Consumers are expected to pair the hue with one lightness and one chroma of their own,
+so that segments of a stacked bar differ in hue and in nothing else.
+Where the sRGB gamut cannot hold the chosen chroma at some hue, reduce chroma rather
+than accepting a browser’s own gamut mapping, which moves lightness and hue.
 
 ### Kind Fields
 
@@ -371,8 +401,8 @@ Validated definitions project into JSON-compatible runtime data:
 
 ```json
 {
-  "schema": "file-type-registry-v1",
-  "schema_version": 1,
+  "schema": "file-type-registry-v2",
+  "schema_version": 2,
   "revision": 1,
   "fingerprint": "normalized-registry-identity",
   "max_extension_components": 2,
@@ -385,7 +415,9 @@ Validated definitions project into JSON-compatible runtime data:
       "label": "JavaScript",
       "group_id": "code",
       "order": 100,
-      "extensions": [".js", ".jsx", ".mjs", ".cjs"]
+      "extensions": [".js", ".jsx", ".mjs", ".cjs"],
+      "hue": 102.08,
+      "linguist": "JavaScript"
     }
   ],
   "kinds": [
@@ -445,7 +477,7 @@ The current component schema serializes a complete directory rollup as
 {
   "schema": "file-type-breakdown-v1",
   "registry": {
-    "schema_version": 1,
+    "schema_version": 2,
     "revision": 1,
     "fingerprint": "normalized-registry-identity"
   },
@@ -604,7 +636,7 @@ a standalone report:
 {
   "schema": "example-report-v1",
   "file_rollup": {
-    "type_definitions": {"schema": "file-type-registry-v1"},
+    "type_definitions": {"schema": "file-type-registry-v2"},
     "rollup": {"schema": "file-type-breakdown-v1"}
   }
 }

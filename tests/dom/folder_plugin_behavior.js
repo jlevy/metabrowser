@@ -51,11 +51,8 @@ function makeElement() {
       if (selector === ".tm-totals") {
         return el.totals;
       }
-      if (selector === ".tm-metric-controls") {
-        return el.metricControls;
-      }
-      if (selector === ".tm-scope-controls") {
-        return el.scopeControls;
+      if (selector === ".tm-rollup-controls") {
+        return el.rollupControls;
       }
       if (selector === ".tm-parent-nav") {
         return el.parentNav;
@@ -310,16 +307,17 @@ sandbox.MetabrowserFileTypes = {
 };
 vm.runInContext(
   `registerTreemap(metabrowser, {
-    acquire() {
-      return {
-        sync() {}, release() {},
-        classFor(key) {
-          if (key === "family:python") return "mb-distribution-slot-7";
-          if (key === "family:markdown") return "mb-distribution-slot-3";
-          return key ? "mb-distribution-slot-1" : "mb-distribution-other";
-        }
-      };
-    }
+    classFor(key) {
+      return key ? "mb-distribution-mark" : "mb-distribution-other";
+    },
+    styleFor(key) {
+      if (key === "family:python") return "--mb-distribution-color-light:python;";
+      if (key === "family:markdown") return "--mb-distribution-color-light:markdown;";
+      return key ? "--mb-distribution-color-light:other-type;" : "";
+    },
+    paint(element, key) {
+      element.classList.add(key ? "mb-distribution-mark" : "mb-distribution-other");
+    },
   }, createFolderRollupControls(metabrowser));`,
   sandbox,
 );
@@ -358,8 +356,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
   container.viewport = makeElement();
   container.status = makeElement();
   container.totals = makeElement();
-  container.metricControls = makeElement();
-  container.scopeControls = makeElement();
+  container.rollupControls = makeElement();
   const metricChips = ["files", "size"].map((value) => {
     const attributes = {
       "aria-checked": value === "files" ? "true" : "false",
@@ -375,7 +372,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
       },
     };
   });
-  container.metricControls.querySelectorAll = (selector) =>
+  container.rollupControls.querySelectorAll = (selector) =>
     selector === '[data-chip-group="folder-rollup-metric"] [data-chip-value]' ? metricChips : [];
   container.viewport.textContent = "";
   Object.defineProperty(container.viewport, "textContent", {
@@ -438,16 +435,16 @@ sandbox.MetabrowserNavigationRoute.attachController({
   );
   check(
     "metric chooser present",
-    container.metricControls.innerHTML.includes('data-chip-key="folder-rollup-metric"'),
+    container.rollupControls.innerHTML.includes('data-chip-key="folder-rollup-metric"'),
   );
   check(
     "metric chooser is Files then Bytes with Files selected",
-    container.metricControls.innerHTML.indexOf('data-chip-value="files"') <
-      container.metricControls.innerHTML.indexOf('data-chip-value="size"') &&
-      container.metricControls.innerHTML.includes(
+    container.rollupControls.innerHTML.indexOf('data-chip-value="files"') <
+      container.rollupControls.innerHTML.indexOf('data-chip-value="size"') &&
+      container.rollupControls.innerHTML.includes(
         'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
       ),
-    container.metricControls.innerHTML,
+    container.rollupControls.innerHTML,
   );
   check(
     "obsolete grouping and color choices absent",
@@ -459,14 +456,20 @@ sandbox.MetabrowserNavigationRoute.attachController({
     container.innerHTML,
   );
   check(
+    "the measure and the gitignore switch share one control row, as in Overview",
+    container.rollupControls.innerHTML.includes('data-chip-key="folder-rollup-metric"') &&
+      container.rollupControls.innerHTML.includes('data-chip-check="folder-rollup-ignored"'),
+    container.rollupControls.innerHTML,
+  );
+  check(
     "ignored scope defaults to a checked checkbox",
-    container.scopeControls.innerHTML.includes('type="checkbox"') &&
-      container.scopeControls.innerHTML.includes('data-chip-check="folder-rollup-ignored"') &&
-      container.scopeControls.innerHTML.includes(
+    container.rollupControls.innerHTML.includes('type="checkbox"') &&
+      container.rollupControls.innerHTML.includes('data-chip-check="folder-rollup-ignored"') &&
+      container.rollupControls.innerHTML.includes(
         'data-chip-check="folder-rollup-ignored" checked',
       ) &&
-      container.scopeControls.innerHTML.includes("Show ignored"),
-    container.scopeControls.innerHTML,
+      container.rollupControls.innerHTML.includes("Show ignored"),
+    container.rollupControls.innerHTML,
   );
 
   // Initial watchRollup fetch resolves through several microtasks; a
@@ -521,8 +524,8 @@ sandbox.MetabrowserNavigationRoute.attachController({
   check(
     "type fill always uses the shared palette",
     container.viewport.innerHTML.includes("tm-type-fill") &&
-      container.viewport.innerHTML.includes("mb-distribution-slot-7") &&
-      container.viewport.innerHTML.includes("mb-distribution-slot-3"),
+      container.viewport.innerHTML.includes("--mb-distribution-color-light:python;") &&
+      container.viewport.innerHTML.includes("--mb-distribution-color-light:markdown;"),
     container.viewport.innerHTML,
   );
   check(
@@ -677,7 +680,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
   // Metric and ignored-scope changes relayout without refetching.
   const before = fetchCalls.length;
   const filesMetricHtml = container.viewport.innerHTML;
-  const toolbarClick = container.metricControls.listeners.click?.[0];
+  const toolbarClick = container.rollupControls.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
   const clickMetric = (value) => {
     const group = {
@@ -730,15 +733,15 @@ sandbox.MetabrowserNavigationRoute.attachController({
     );
     check(
       "metric chooser reflects the active metric",
-      container.metricControls.innerHTML.includes(
+      container.rollupControls.innerHTML.includes(
         'data-chip-value="size" role="radio" aria-checked="true" tabindex="0"',
       ),
-      container.metricControls.innerHTML,
+      container.rollupControls.innerHTML,
     );
     clickMetric("files");
     check(
       "Files metric keeps useful formatted bytes on file leaves",
-      container.metricControls.innerHTML.includes(
+      container.rollupControls.innerHTML.includes(
         'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
       ) &&
         container.viewport.innerHTML.includes("600 B") &&
@@ -747,7 +750,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
     );
   }
 
-  const toolbarChange = container.scopeControls.listeners.change?.[0];
+  const toolbarChange = container.rollupControls.listeners.change?.[0];
   check("ignored checkbox handler bound", typeof toolbarChange === "function");
   if (toolbarChange) {
     const totalsBeforeIgnored = JSON.stringify(container.totals.value);
@@ -802,8 +805,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
   nestedContainer.viewport = makeElement();
   nestedContainer.status = makeElement();
   nestedContainer.totals = makeElement();
-  nestedContainer.metricControls = makeElement();
-  nestedContainer.scopeControls = makeElement();
+  nestedContainer.rollupControls = makeElement();
   nestedContainer.parentNav = makeElement();
   sandbox.MetabrowserViewState.setActive(nestedContainer, true);
   const nestedMounted = view.render(nestedContainer, {

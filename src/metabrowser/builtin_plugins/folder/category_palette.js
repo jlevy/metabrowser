@@ -1,107 +1,110 @@
+// The color a distribution segment is painted, from the key it carries.
+//
+// This used to be a scarcity problem. Twelve hand-tuned slots were handed out
+// by hashing a key to a starting slot and probing forward for a free one, per
+// folder, with a reservation table reconciled whenever a panel mounted or
+// unmounted. A family's color therefore depended on which other families
+// happened to be visible beside it, so the same folder could repaint on an
+// expand and the same language could be two colors in two folders.
+//
+// The registry now declares a hue per family, the server resolves each one
+// against both themes, and this module is the lookup between them. No session,
+// no reservation, no allocation, and the same key is the same color anywhere.
+//
+// Why the colors arrive finished rather than as hues composed in CSS: sRGB
+// cannot hold the palette's target chroma at every hue, and a browser handed an
+// out-of-gamut oklch() clips it — which moves hue, measured at up to nine
+// degrees, more than the separation the palette is built on. The pullback
+// happens once, in color_oklch.py. See file_type_filters.serialize_distribution_colors.
+
 export const OTHER_KEY = "";
 
-/** @param {string} key */
-export function hashKey(key) {
+/** The class a segment carries when it has no color of its own. */
+export const OTHER_CLASS = "mb-distribution-other";
+
+/** The class that selects between the two theme colors below. */
+export const MARK_CLASS = "mb-distribution-mark";
+
+/** Where a segment's color on each theme is written. */
+export const LIGHT_PROPERTY = "--mb-distribution-color-light";
+export const DARK_PROPERTY = "--mb-distribution-color-dark";
+
+/**
+ * @param {string} key
+ * @param {number} count
+ */
+function hashIndex(key, count) {
   let hash = 2166136261;
   for (let index = 0; index < key.length; index += 1) {
     hash ^= key.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return hash >>> 0;
+  // Golden-ratio steps rather than a plain modulus, so consecutive hashes land
+  // far apart in the list and the handful of extensions in one folder rarely
+  // draw the same color.
+  return Math.floor((((hash >>> 0) * 0.6180339887) % 1) * count);
 }
 
-/** @param {{assignments: Map<string, number>, reserved: Set<number>}} session @param {string} key @param {number} slotCount */
-export function assignSlot(session, key, slotCount) {
-  const existing = session.assignments.get(key);
-  if (existing !== undefined) {
-    return existing;
-  }
-  const start = hashKey(key) % slotCount;
-  for (let offset = 0; offset < slotCount; offset += 1) {
-    const slot = ((start + offset) % slotCount) + 1;
-    if (!session.reserved.has(slot)) {
-      session.reserved.add(slot);
-      session.assignments.set(key, slot);
-      return slot;
-    }
-  }
-  const fallback = start + 1;
-  session.assignments.set(key, fallback);
-  return fallback;
-}
+/**
+ * @param {ReadonlyArray<{key: string, light: string, dark: string}>} colors
+ */
+export function createCategoryPalette(colors) {
+  const byKey = new Map(colors.map((entry) => [entry.key, entry]));
 
-/** @param {{assignments: Map<string, number>, reserved: Set<number>, consumers: Map<number, Set<string>>}} session @param {number} slotCount */
-function reconcileSession(session, slotCount) {
-  const liveKeys = new Set();
-  for (const consumerKeys of session.consumers.values()) {
-    for (const key of consumerKeys) {
-      liveKeys.add(key);
+  /** @param {string} key */
+  function colorFor(key) {
+    if (key === OTHER_KEY || colors.length === 0) {
+      return null;
     }
-  }
-  for (const key of session.assignments.keys()) {
-    if (!liveKeys.has(key)) {
-      session.assignments.delete(key);
+    const declared = byKey.get(key);
+    if (declared) {
+      return declared;
     }
+    // A key the registry does not know: an extension inside Other types, which
+    // is unfamilied by definition. Distinguishing these from each other is the
+    // whole job — they sit together under one parent — so borrowing a declared
+    // color is enough, and no allocator has to exist for them.
+    return colors[hashIndex(key, colors.length)];
   }
-  session.reserved.clear();
-  for (const slot of session.assignments.values()) {
-    session.reserved.add(slot);
-  }
-  for (const key of liveKeys) {
-    assignSlot(session, key, slotCount);
-  }
-}
 
-/** @param {number} slotCount */
-export function createCategoryPalettePool(slotCount) {
-  if (!Number.isInteger(slotCount) || slotCount < 1) {
-    throw new TypeError("palette slot count must be a positive integer");
-  }
-  /** @type {Map<string, {assignments: Map<string, number>, reserved: Set<number>, consumers: Map<number, Set<string>>, refs: number}>} */
-  const sessions = new Map();
-  let consumerSequence = 0;
   return Object.freeze({
-    /** @param {string} path */
-    acquire(path) {
-      let session = sessions.get(path);
-      if (!session) {
-        session = { assignments: new Map(), reserved: new Set(), consumers: new Map(), refs: 0 };
-        sessions.set(path, session);
+    colorFor,
+    /**
+     * The classes for a segment: one that selects the theme, or the neutral
+     * for a segment with no color behind it.
+     * @param {string} key
+     */
+    classFor(key) {
+      return colorFor(key) === null ? OTHER_CLASS : MARK_CLASS;
+    },
+    /**
+     * The same answer as an inline style fragment, for callers that build
+     * markup as a string rather than as elements.
+     * @param {string} key
+     */
+    styleFor(key) {
+      const color = colorFor(key);
+      return color === null
+        ? ""
+        : `${LIGHT_PROPERTY}:${color.light};${DARK_PROPERTY}:${color.dark};`;
+    },
+    /**
+     * Paint an element. One call rather than a class and two properties, so a
+     * caller cannot set some of them and forget the rest.
+     * @param {HTMLElement} element
+     * @param {string} key
+     */
+    paint(element, key) {
+      const color = colorFor(key);
+      element.classList?.toggle(OTHER_CLASS, color === null);
+      element.classList?.toggle(MARK_CLASS, color !== null);
+      if (color === null) {
+        element.style?.removeProperty(LIGHT_PROPERTY);
+        element.style?.removeProperty(DARK_PROPERTY);
+      } else {
+        element.style?.setProperty(LIGHT_PROPERTY, color.light);
+        element.style?.setProperty(DARK_PROPERTY, color.dark);
       }
-      session.refs += 1;
-      const consumerId = ++consumerSequence;
-      session.consumers.set(consumerId, new Set());
-      let released = false;
-      return Object.freeze({
-        /** @param {Array<string>} keys */
-        sync(keys) {
-          session.consumers.set(consumerId, new Set(keys.filter((key) => key !== OTHER_KEY)));
-          reconcileSession(session, slotCount);
-        },
-        /** @param {string} key */
-        slotFor(key) {
-          return key === OTHER_KEY ? 0 : assignSlot(session, key, slotCount);
-        },
-        /** @param {string} key */
-        classFor(key) {
-          return key === OTHER_KEY
-            ? "mb-distribution-other"
-            : `mb-distribution-slot-${assignSlot(session, key, slotCount)}`;
-        },
-        release() {
-          if (released) {
-            return;
-          }
-          released = true;
-          session.refs -= 1;
-          session.consumers.delete(consumerId);
-          if (session.refs === 0) {
-            sessions.delete(path);
-          } else {
-            reconcileSession(session, slotCount);
-          }
-        },
-      });
     },
   });
 }

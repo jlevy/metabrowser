@@ -6,8 +6,10 @@
         ".pyi"
       ],
       "group_id": "code",
+      "hue": 246.5,
       "id": "python",
       "label": "Python",
+      "linguist": "Python",
       "order": 100
     },
     {
@@ -18,8 +20,10 @@
         ".jsx"
       ],
       "group_id": "code",
+      "hue": 102.08,
       "id": "javascript",
       "label": "JavaScript",
+      "linguist": "JavaScript",
       "order": 110
     },
     {
@@ -30,8 +34,10 @@
         ".tsx"
       ],
       "group_id": "code",
+      "hue": 253.3,
       "id": "typescript",
       "label": "TypeScript",
+      "linguist": "TypeScript",
       "order": 120
     },
     {
@@ -41,8 +47,10 @@
         ".less"
       ],
       "group_id": "code",
+      "hue": 303.37,
       "id": "css",
       "label": "CSS",
+      "linguist": "CSS",
       "order": 130
     },
     {
@@ -51,8 +59,10 @@
         ".htm"
       ],
       "group_id": "code",
+      "hue": 34.85,
       "id": "html",
       "label": "HTML",
+      "linguist": "HTML",
       "order": 140
     },
     {
@@ -60,8 +70,10 @@
         ".rs"
       ],
       "group_id": "code",
+      "hue": 51.2,
       "id": "rust",
       "label": "Rust",
+      "linguist": "Rust",
       "order": 150
     },
     {
@@ -69,8 +81,10 @@
         ".go"
       ],
       "group_id": "code",
+      "hue": 223.85,
       "id": "go",
       "label": "Go",
+      "linguist": "Go",
       "order": 160
     },
     {
@@ -78,8 +92,10 @@
         ".java"
       ],
       "group_id": "code",
+      "hue": 69.41,
       "id": "java",
       "label": "Java",
+      "linguist": "Java",
       "order": 170
     },
     {
@@ -88,8 +104,10 @@
         ".kts"
       ],
       "group_id": "code",
+      "hue": 297.24,
       "id": "kotlin",
       "label": "Kotlin",
+      "linguist": "Kotlin",
       "order": 180
     },
     {
@@ -97,8 +115,10 @@
         ".swift"
       ],
       "group_id": "code",
+      "hue": 31.62,
       "id": "swift",
       "label": "Swift",
+      "linguist": "Swift",
       "order": 190
     },
     {
@@ -110,8 +130,10 @@
         ".hpp"
       ],
       "group_id": "code",
+      "hue": 6.9,
       "id": "c-cpp",
       "label": "C/C++",
+      "linguist": "C++",
       "order": 200
     },
     {
@@ -119,8 +141,10 @@
         ".cs"
       ],
       "group_id": "code",
+      "hue": 288.37,
       "id": "csharp",
       "label": "C#",
+      "linguist": "C#",
       "order": 210
     },
     {
@@ -128,8 +152,10 @@
         ".rb"
       ],
       "group_id": "code",
+      "hue": 25.77,
       "id": "ruby",
       "label": "Ruby",
+      "linguist": "Ruby",
       "order": 220
     },
     {
@@ -137,8 +163,10 @@
         ".php"
       ],
       "group_id": "code",
+      "hue": 272.03,
       "id": "php",
       "label": "PHP",
+      "linguist": "PHP",
       "order": 230
     },
     {
@@ -146,8 +174,10 @@
         ".scala"
       ],
       "group_id": "code",
+      "hue": 19.52,
       "id": "scala",
       "label": "Scala",
+      "linguist": "Scala",
       "order": 240
     },
     {
@@ -155,8 +185,10 @@
         ".clj"
       ],
       "group_id": "code",
+      "hue": 24.35,
       "id": "clojure",
       "label": "Clojure",
+      "linguist": "Clojure",
       "order": 250
     },
     {
@@ -165,8 +197,10 @@
         ".exs"
       ],
       "group_id": "code",
+      "hue": 314.93,
       "id": "elixir",
       "label": "Elixir",
+      "linguist": "Elixir",
       "order": 260
     },
     {
@@ -174,8 +208,10 @@
         ".erl"
       ],
       "group_id": "code",
+      "hue": 339.55,
       "id": "erlang",
       "label": "Erlang",
+      "linguist": "Erlang",
       "order": 270
     },
     {
@@ -183,8 +219,10 @@
         ".hs"
       ],
       "group_id": "code",
+      "hue": 294.76,
       "id": "haskell",
       "label": "Haskell",
+      "linguist": "Haskell",
       "order": 280
     },
     {
@@ -192,8 +230,10 @@
         ".lua"
       ],
       "group_id": "code",
+      "hue": 264.05,
       "id": "lua",
       "label": "Lua",
+      "linguist": "Lua",
       "order": 290
     },
     {
@@ -201,8 +241,10 @@
         ".jl"
       ],
       "group_id": "code",
+      "hue": 314.22,
       "id": "julia",
       "label": "Julia",
+      "linguist": "Julia",
       "order": 300
     },
     {
@@ -210,8 +252,10 @@
         ".dart"
       ],
       "group_id": "code",
+      "hue": 188.48,
       "id": "dart",
       "label": "Dart",
+      "linguist": "Dart",
       "order": 310
     },
     {
@@ -219,8 +263,10 @@
         ".vue"
       ],
       "group_id": "code",
+      "hue": 160.49,
       "id": "vue",
       "label": "Vue",
+      "linguist": "Vue",
       "order": 320
     },
     {
@@ -228,8 +274,10 @@
         ".svelte"
       ],
       "group_id": "code",
+      "hue": 34.2,
       "id": "svelte",
       "label": "Svelte",
+      "linguist": "Svelte",
       "order": 330
     },
     {
@@ -240,8 +288,10 @@
         ".fish"
       ],
       "group_id": "code",
+      "hue": 135.27,
       "id": "shell",
       "label": "Shell",
+      "linguist": "Shell",
       "order": 340
     },
     {
@@ -249,8 +299,10 @@
         ".ps1"
       ],
       "group_id": "code",
+      "hue": 258.14,
       "id": "powershell",
       "label": "PowerShell",
+      "linguist": "PowerShell",
       "order": 350
     },
     {
@@ -258,8 +310,10 @@
         ".sql"
       ],
       "group_id": "code",
+      "hue": 67.02,
       "id": "sql",
       "label": "SQL",
+      "linguist": "SQL",
       "order": 360
     },
     {
@@ -267,8 +321,10 @@
         ".md"
       ],
       "group_id": "docs",
+      "hue": 261.42,
       "id": "markdown",
       "label": "Markdown",
+      "linguist": "Markdown",
       "order": 100
     },
     {
@@ -276,8 +332,10 @@
         ".txt"
       ],
       "group_id": "docs",
+      "hue": 206.2,
       "id": "plain-text",
       "label": "Plain text",
+      "linguist": null,
       "order": 110
     },
     {
@@ -285,8 +343,10 @@
         ".rst"
       ],
       "group_id": "docs",
+      "hue": 118.7,
       "id": "restructured-text",
       "label": "reStructuredText",
+      "linguist": null,
       "order": 120
     },
     {
@@ -294,8 +354,10 @@
         ".adoc"
       ],
       "group_id": "docs",
+      "hue": 243.94,
       "id": "asciidoc",
       "label": "AsciiDoc",
+      "linguist": "AsciiDoc",
       "order": 130
     },
     {
@@ -303,8 +365,10 @@
         ".org"
       ],
       "group_id": "docs",
+      "hue": 171.76,
       "id": "org",
       "label": "Org",
+      "linguist": "Org",
       "order": 140
     },
     {
@@ -312,8 +376,10 @@
         ".pdf"
       ],
       "group_id": "docs",
+      "hue": 85.7,
       "id": "pdf",
       "label": "PDF",
+      "linguist": null,
       "order": 150
     },
     {
@@ -322,8 +388,10 @@
         ".docx"
       ],
       "group_id": "docs",
+      "hue": 327.2,
       "id": "word",
       "label": "Word",
+      "linguist": null,
       "order": 160
     },
     {
@@ -331,8 +399,10 @@
         ".rtf"
       ],
       "group_id": "docs",
+      "hue": 233.9,
       "id": "rich-text",
       "label": "Rich Text",
+      "linguist": null,
       "order": 170
     },
     {
@@ -340,8 +410,10 @@
         ".odt"
       ],
       "group_id": "docs",
+      "hue": 144.9,
       "id": "open-document",
       "label": "OpenDocument",
+      "linguist": null,
       "order": 180
     },
     {
@@ -349,8 +421,10 @@
         ".epub"
       ],
       "group_id": "docs",
+      "hue": 357.9,
       "id": "epub",
       "label": "EPUB",
+      "linguist": null,
       "order": 190
     },
     {
@@ -358,8 +432,10 @@
         ".json"
       ],
       "group_id": "data",
+      "hue": 197.3,
       "id": "json",
       "label": "JSON",
+      "linguist": null,
       "order": 100
     },
     {
@@ -368,8 +444,10 @@
         ".yml"
       ],
       "group_id": "data",
+      "hue": 26.9,
       "id": "yaml",
       "label": "YAML",
+      "linguist": "YAML",
       "order": 110
     },
     {
@@ -377,8 +455,10 @@
         ".toml"
       ],
       "group_id": "data",
+      "hue": 39.62,
       "id": "toml",
       "label": "TOML",
+      "linguist": "TOML",
       "order": 120
     },
     {
@@ -386,8 +466,10 @@
         ".ini"
       ],
       "group_id": "data",
+      "hue": 215.0,
       "id": "ini",
       "label": "INI",
+      "linguist": null,
       "order": 130
     },
     {
@@ -397,8 +479,10 @@
         ".psv"
       ],
       "group_id": "data",
+      "hue": 154.61,
       "id": "delimited-text",
       "label": "Delimited text",
+      "linguist": "CSV",
       "order": 140
     },
     {
@@ -406,8 +490,10 @@
         ".xml"
       ],
       "group_id": "data",
+      "hue": 251.44,
       "id": "xml",
       "label": "XML",
+      "linguist": "XML",
       "order": 150
     },
     {
@@ -415,8 +501,10 @@
         ".parquet"
       ],
       "group_id": "data",
+      "hue": 180.1,
       "id": "parquet",
       "label": "Parquet",
+      "linguist": null,
       "order": 160
     },
     {
@@ -425,8 +513,10 @@
         ".feather"
       ],
       "group_id": "data",
+      "hue": 110.4,
       "id": "arrow",
       "label": "Arrow",
+      "linguist": null,
       "order": 170
     },
     {
@@ -434,8 +524,10 @@
         ".avro"
       ],
       "group_id": "data",
+      "hue": 127.0,
       "id": "avro",
       "label": "Avro",
+      "linguist": null,
       "order": 180
     },
     {
@@ -443,8 +535,10 @@
         ".orc"
       ],
       "group_id": "data",
+      "hue": 93.9,
       "id": "orc",
       "label": "ORC",
+      "linguist": null,
       "order": 190
     },
     {
@@ -452,8 +546,10 @@
         ".proto"
       ],
       "group_id": "data",
+      "hue": 280.2,
       "id": "protocol-buffers",
       "label": "Protocol Buffers",
+      "linguist": null,
       "order": 200
     },
     {
@@ -461,8 +557,10 @@
         ".graphql"
       ],
       "group_id": "data",
+      "hue": 348.88,
       "id": "graphql",
       "label": "GraphQL",
+      "linguist": "GraphQL",
       "order": 210
     },
     {
@@ -470,8 +568,10 @@
         ".sqlite"
       ],
       "group_id": "data",
+      "hue": 77.6,
       "id": "sqlite",
       "label": "SQLite",
+      "linguist": null,
       "order": 220
     },
     {
@@ -491,8 +591,10 @@
         ".rar"
       ],
       "group_id": "archives",
+      "hue": 59.1,
       "id": "archives",
       "label": "Archives",
+      "linguist": null,
       "order": 100
     },
     {
@@ -511,8 +613,10 @@
         ".svg"
       ],
       "group_id": "media",
+      "hue": 13.2,
       "id": "images",
       "label": "Images",
+      "linguist": null,
       "order": 100
     },
     {
@@ -525,8 +629,10 @@
         ".avi"
       ],
       "group_id": "media",
+      "hue": 333.4,
       "id": "videos",
       "label": "Videos",
+      "linguist": null,
       "order": 110
     },
     {
@@ -540,8 +646,10 @@
         ".opus"
       ],
       "group_id": "media",
+      "hue": 321.1,
       "id": "audio",
       "label": "Audio",
+      "linguist": null,
       "order": 120
     },
     {
@@ -552,8 +660,10 @@
         ".woff2"
       ],
       "group_id": "media",
+      "hue": 45.4,
       "id": "fonts",
       "label": "Fonts",
+      "linguist": null,
       "order": 130
     },
     {
@@ -563,12 +673,14 @@
         ".ndjson"
       ],
       "group_id": "other",
+      "hue": 166.1,
       "id": "log-files",
       "label": "Log files",
+      "linguist": null,
       "order": 100
     }
   ],
-  "fingerprint": "a648f3f563eeaa7150a0b0b2fda310735b3a0662bd03cea84ab9424ad330900a",
+  "fingerprint": "c4abb7a8add194171ad3dadc1eea81a4814a1a34b8e7f9e3696f4e6e4ab86aa2",
   "groups": [
     {
       "id": "code",
@@ -1476,7 +1588,7 @@
     }
   ],
   "max_extension_components": 2,
-  "revision": 2,
-  "schema": "file-type-registry-v1",
-  "schema_version": 1
+  "revision": 3,
+  "schema": "file-type-registry-v2",
+  "schema_version": 2
 }

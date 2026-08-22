@@ -66,7 +66,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
-sdk_version = "0.2"
+sdk_version = "0.3"
 
 [[kind]]
 id = "hello-document"

@@ -482,13 +482,13 @@
   const fileTypes =
     global.MetabrowserFileTypeTaxonomy ||
     Object.freeze({
-      schema: "file-type-registry-v1",
-      schemaVersion: 1,
+      schema: "file-type-registry-v2",
+      schemaVersion: 2,
       revision: 0,
       fingerprint: "unavailable",
       maxExtensionComponents: 2,
       registryIdentity: Object.freeze({
-        schemaVersion: 1,
+        schemaVersion: 2,
         revision: 0,
         fingerprint: "unavailable",
       }),
@@ -520,6 +520,9 @@
       },
       distributionKeyForExtension(extension) {
         return typeof extension === "string" ? extension.toLowerCase() : "";
+      },
+      hueForDistributionKey() {
+        return null;
       },
     });
 
@@ -675,14 +678,15 @@
   // never touch app.js globals directly, and get safe no-ops when the
   // shell has not installed them (tests, partial harnesses).
   const tooltip = {
-    show(html, event) {
+    /**
+     * Show `html` for `anchor`, the element the tooltip describes. Position is
+     * taken from the anchor, once — there is deliberately no move(): a tooltip
+     * that follows the pointer jitters and stops naming what it annotates.
+     * Re-announcing the same anchor keeps the tooltip where it is.
+     */
+    show(html, anchor) {
       if (global.MetabrowserTooltip) {
-        global.MetabrowserTooltip.show(html, event);
-      }
-    },
-    move(event) {
-      if (global.MetabrowserTooltip) {
-        global.MetabrowserTooltip.move(event);
+        global.MetabrowserTooltip.show(html, anchor);
       }
     },
     hide() {

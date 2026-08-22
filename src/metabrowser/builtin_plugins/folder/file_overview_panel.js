@@ -27,7 +27,7 @@ import { mountFileTypeSummary } from "./file_type_summary.js";
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} context
  * @param {MetabrowserPublicSdk} mb
- * @param {any} palettePool
+ * @param {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} palette
  * @param {any} projectionPool
  * @param {FolderRollupControls} rollupControls
  * @param {{signal?: AbortSignal}} options
@@ -36,7 +36,7 @@ export function mountFileOverviewPanel(
   container,
   context,
   mb,
-  palettePool,
+  palette,
   projectionPool,
   rollupControls,
   options,
@@ -56,7 +56,7 @@ export function mountFileOverviewPanel(
     totalsContainer,
     context,
     mb,
-    palettePool,
+    palette,
     projectionPool,
     rollupControls,
     options,
@@ -65,7 +65,7 @@ export function mountFileOverviewPanel(
     breakdownContainer,
     context,
     mb,
-    palettePool,
+    palette,
     projectionPool,
     rollupControls,
     options,
@@ -87,11 +87,11 @@ export function mountFileOverviewPanel(
 
 /**
  * @param {MetabrowserPublicSdk} mb
- * @param {any} palettePool
+ * @param {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} palette
  * @param {any} projectionPool
  * @param {FolderRollupControls} rollupControls
  */
-export function createFileOverviewPanel(mb, palettePool, projectionPool, rollupControls) {
+export function createFileOverviewPanel(mb, palette, projectionPool, rollupControls) {
   return Object.freeze({
     label: "File Overview",
     placement: /** @type {const} */ ("summary"),
@@ -108,7 +108,7 @@ export function createFileOverviewPanel(mb, palettePool, projectionPool, rollupC
         container,
         context,
         mb,
-        palettePool,
+        palette,
         projectionPool,
         rollupControls,
         options,

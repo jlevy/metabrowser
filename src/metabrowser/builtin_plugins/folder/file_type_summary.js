@@ -1,14 +1,13 @@
 import { mountDistributionView, updateDistributionView } from "./distribution_view.js";
 import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file_type_summary_model.js";
 
-/** @typedef {{sync: (keys: Array<string>) => void, release: () => void, classFor: (key: string) => string}} SummaryPalette */
-/** @typedef {{acquire: (path: string) => SummaryPalette}} SummaryPalettePool */
+/** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} SummaryPalette */
 
 /**
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} context
  * @param {MetabrowserPublicSdk} mb
- * @param {SummaryPalettePool} palettePool
+ * @param {SummaryPalette} palette
  * @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool
  * @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
  * @param {{signal?: AbortSignal}} options
@@ -17,13 +16,12 @@ export function mountFileTypeSummary(
   container,
   context,
   mb,
-  palettePool,
+  palette,
   projectionPool,
   rollupControls,
   options,
 ) {
   const path = context.path || "";
-  const palette = palettePool.acquire(path);
   const projection = projectionPool.acquire(path);
   let disposed = false;
   let controlsState = rollupControls.get();
@@ -72,12 +70,6 @@ export function mountFileTypeSummary(
       mb.fileTypes,
       controlsState.metric,
     );
-    palette.sync([
-      ...nextEnvelope.groups.flatMap((group) =>
-        group.families.map((family) => `family:${family.id}`),
-      ),
-      ...(nextEnvelope.specialTypes?.remainingTypes.extensions ?? []).map((row) => row.key),
-    ]);
     updateDistributionView(view, nextModel);
     envelope = nextEnvelope;
     model = nextModel;
@@ -156,7 +148,6 @@ export function mountFileTypeSummary(
     unsubscribeControls();
     unsubscribeActive();
     projection.release();
-    palette.release();
   }
   return Object.freeze({
     dispose,

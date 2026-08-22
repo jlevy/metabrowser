@@ -170,9 +170,7 @@ global.window = { METABROWSER_SETTINGS: {} };
       return { dispose() {}, refresh: async () => {}, stale: () => false };
     },
   };
-  const summaryPalette = {
-    acquire: () => ({ classFor: () => "", release() {}, sync() {} }),
-  };
+  const summaryPalette = { classFor: () => "", styleFor: () => "", paint() {} };
   let projectedRollup;
   const projectionListeners = [];
   const projectionPool = {

@@ -2,7 +2,7 @@
 name = "agent-log"
 display_name = "Agent log (Claude / Gemini / Pi)"
 version = "0.0.1"
-sdk_version = "0.2"
+sdk_version = "0.3"
 
 # Coding-agent JSONL session logs from Claude Code, Gemini, or Pi CLI.
 # Each adapter gets its own [[kind]] entry that resolves to the same kind id.

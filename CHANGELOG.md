@@ -4,6 +4,36 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+File-type colors:
+
+- Every file-type family now has its own color, taken from GitHub where GitHub names
+  one. There were twelve colors for fifty-six families, handed out by hashing a family
+  name to a starting slot and probing forward for a free one, per folder — so CSS and
+  Markdown came out nearly the same color, a family’s color depended on which other
+  families happened to be visible beside it, and the same language could be two colors
+  in two folders.
+
+- The type registry declares a `hue` per family, with the `linguist` language and its
+  upstream color recorded beside it.
+  Thirty-five families carry GitHub’s hue exactly, including where two of GitHub’s own
+  colors are close together; the twenty-one GitHub names no color for take a hue at
+  least five degrees clear of every other.
+  `devtools/check_file_type_colors.py` holds both rules and runs in `make lint`.
+
+- Lightness and chroma are the theme’s, one pair for the whole palette, so segments of a
+  stacked bar differ in hue and in nothing else and none looks heavier than its size.
+  The server ships finished colors for both themes rather than hues composed in CSS,
+  because a browser handed an out-of-gamut `oklch()` clips it — moving hue by as much as
+  nine degrees, more than the separation the palette is built on.
+
+- The registry schema version is now `2` and its projection is `file-type-registry-v2`,
+  carrying `hue` and `linguist` on each family.
+  `--mb-distribution-category-1` through `-12`, the `.mb-distribution-slot-*` classes,
+  and `DISTRIBUTION_PALETTE_SLOTS` are gone; `.mb-distribution-mark` and
+  `METABROWSER_SETTINGS.DISTRIBUTION_COLORS` replace them.
+  The File Rollup Format rollup and conformance schemas no longer pin the registry
+  schema version, which the format has always said versions independently.
+
 Folder Overview:
 
 - A README reads at the same measure in Overview as it does opened on its own, at every
@@ -13,6 +43,33 @@ Folder Overview:
   column was the reading measure rather than KPress’s content track, so the prose kept
   insets sized for a track it was no longer in and read at 43rem against 48rem; and the
   narrow inset did not match the article padding it replaced.
+
+- Segments of a tally bar are separated by a hairline of the page ground, so two
+  families of similar hue read as two rather than as one wide band.
+  It is drawn inside the segment rather than as a gap, because the widths are
+  percentages that sum to 100 and anything occupying layout would push the last segment
+  past the end of the track.
+
+- **`PLUGIN_SDK_VERSION` is `0.3`.** An external plugin must set `sdk_version = "0.3"`
+  and update its tooltip call sites: `mb.tooltip.show` takes the anchor element rather
+  than a `MouseEvent`, and `mb.tooltip.move` is gone.
+
+- Tooltips are placed relative to the element they annotate and hold still once shown.
+  They used to follow the pointer, which jitters while you are trying to read one and —
+  worse, in a stacked bar or a treemap where the annotated things are adjacent and small
+  — says nothing about which one the tooltip is about.
+  Moving onto a different element dismisses the old tooltip and opens a new one; moving
+  within one changes nothing.
+  `mb.tooltip.show` now takes the anchor element and `mb.tooltip.move` is gone.
+
+- Hovering a segment of a tally bar now recedes the rest of the track, so the segment
+  the tooltip describes is findable.
+  The shared brightness filter was doing the whole job on a track eight pixels tall,
+  where it read as nothing happening.
+
+- Treemap puts Files/Bytes and Show ignored in one row above the bars, the way Overview
+  does. They used to sit apart — the measure above the tally bars, the gitignore switch
+  below them — so two choices about the same numbers were in two places.
 
 - Files and File Breakdown are one **File Overview** section.
   They answer the same question at two resolutions, and splitting them meant collapsing
