@@ -4,14 +4,14 @@
 // see the thing this loop is about: when the reader gets a usable tree. That
 // is a browser fact, so it is read here, from the page, after a cold load.
 //
-// Evaluate in the page and hand the printed JSON to `explorations/run.py
-// record`. Nothing here depends on a headless driver; see explorations/README.md
+// Evaluate in the page and hand the printed JSON to `explorations/performance-loop/run.py
+// record`. Nothing here depends on a headless driver; see explorations/performance-loop/README.md
 // for why the browser half is driven by hand.
 //
-//   1. explorations/run.py serve --files 100000   -> prints a URL on a fresh port
+//   1. explorations/performance-loop/run.py serve --files 100000   -> prints a URL on a fresh port
 //   2. load that URL in a browser, wait for the tree
 //   3. evaluate this file, copy the JSON
-//   4. explorations/run.py record --label <name> --json '<paste>'
+//   4. explorations/performance-loop/run.py record --label <name> --json '<paste>'
 (async () => {
   const origin = performance.timeOrigin;
   // Long tasks are buffered by the browser and delivered to an observer on a

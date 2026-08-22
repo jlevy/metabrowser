@@ -24,7 +24,7 @@ experiment:
     interleaved: false
     control: the tree paints when the first /api/tree fetch returns
     candidate: the index handler inlines the root's depth-1 rows, the client paints them at DOMContentLoaded, and the fetch reconciles
-    record: explorations/results/runs.jsonl
+    record: explorations/performance-loop/results/runs.jsonl
   results:
     - metric: first_row_ms
       control_median: 1604

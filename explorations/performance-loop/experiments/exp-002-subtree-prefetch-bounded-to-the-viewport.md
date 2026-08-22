@@ -25,7 +25,7 @@ experiment:
     interleaved: false
     control: candidates taken in DOM order, the first 32 lazy stubs in the tree pane
     candidate: candidates bounded to stubs whose folder row is on screen plus one screen of lookahead, with the sweep re-armed on scroll and on folder expansion
-    record: explorations/results/runs.jsonl
+    record: explorations/performance-loop/results/runs.jsonl
   results:
     - metric: subtree_requests
       control_median: 32

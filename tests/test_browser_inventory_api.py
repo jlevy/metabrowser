@@ -173,7 +173,7 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
     The tallies are requested at ``depth=0``, which is the channel that is
     allowed to pay for them: they cost one visit per entry in the index and the
     rows do not, so a request carrying rows never waits for that pass. See
-    explorations/experiments/exp-007.
+    explorations/performance-loop/experiments/exp-007.
     """
 
     _build_fixture(tmp_path)

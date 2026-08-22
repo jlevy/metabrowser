@@ -282,7 +282,7 @@ class Server:
 # and 981 patterns. ``build_corpus`` above has 309 files per directory and no
 # ``.gitignore`` at all, which is why a whole class of cost -- everything paid
 # per directory, and everything paid per ignore pattern -- was invisible to it.
-# See explorations/experiments/exp-005.
+# See explorations/performance-loop/experiments/exp-005.
 REALISTIC_MEDIAN_FILES_PER_DIR = 2
 REALISTIC_MAX_DEPTH = 18
 # One nested .gitignore per this many directories, each with this many patterns.

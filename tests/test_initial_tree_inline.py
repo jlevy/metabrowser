@@ -3,7 +3,7 @@
 Time to first row was DOMContentLoaded plus the whole ``/api/tree`` request, and
 during a walk that request is the slow one. Measured on a 300,000-file tree,
 median of three cold loads: 1,604 ms to 242 ms. See
-explorations/experiments/exp-004.
+explorations/performance-loop/experiments/exp-004.
 """
 
 from __future__ import annotations

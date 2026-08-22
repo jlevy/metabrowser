@@ -24,7 +24,7 @@ experiment:
     interleaved: false
     control: the chain started by the DOMContentLoaded handler
     candidate: the chain scheduled on DOMContentLoaded and started by requestIdleCallback with a 2000 ms timeout
-    record: explorations/results/runs.jsonl
+    record: explorations/performance-loop/results/runs.jsonl
   results:
     - metric: load_ms
       control_median: 3883

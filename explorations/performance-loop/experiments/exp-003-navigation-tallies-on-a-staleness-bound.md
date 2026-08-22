@@ -25,7 +25,7 @@ experiment:
     interleaved: false
     control: tallies memoized on rollup_revision, with the index snapshot taken on the event loop
     candidate: tallies served at a staleness bound of max(0.5 s, last pass cost), with the snapshot moved into the worker thread
-    record: explorations/results/runs.jsonl
+    record: explorations/performance-loop/results/runs.jsonl
   results:
     - metric: srv_scanning_ms
       control_median: 650

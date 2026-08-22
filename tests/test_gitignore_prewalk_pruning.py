@@ -5,7 +5,7 @@ for nested ``.gitignore`` files. Unpruned that second traversal was the larger
 of the two: 21.4 s against a 21 s index walk on a real 241,000-file tree. Both
 prunes are semantics rather than shortcuts, and the tests below are about the
 semantics -- that pruning changes no verdict. See
-explorations/experiments/exp-006.
+explorations/performance-loop/experiments/exp-006.
 """
 
 from __future__ import annotations

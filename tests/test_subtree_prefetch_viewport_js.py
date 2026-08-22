@@ -4,7 +4,7 @@ Measured on a 300,000-file tree in Chromium at 1280x900, median of three cold
 loads each: taking stubs in DOM order issued 32 `/api/tree?path=` requests and
 transferred 1,566 KB; bounding them to the nav viewport issues 0 and transfers
 517 KB, because every stub the root render mounts sits inside a collapsed
-branch. See explorations/experiments/exp-002.
+branch. See explorations/performance-loop/experiments/exp-002.
 """
 
 from __future__ import annotations

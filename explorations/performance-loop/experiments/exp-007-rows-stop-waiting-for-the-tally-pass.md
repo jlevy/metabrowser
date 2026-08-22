@@ -25,7 +25,7 @@ experiment:
     interleaved: true
     control: one response carries both the rows and the navigation tallies
     candidate: a row request serves tallies only from a fresh memo; depth=0 is the channel that computes them, fetched by the client after the render
-    record: explorations/results/runs.jsonl
+    record: explorations/performance-loop/results/runs.jsonl
   results:
     - metric: srv_scanning_ms
       control_median: 311

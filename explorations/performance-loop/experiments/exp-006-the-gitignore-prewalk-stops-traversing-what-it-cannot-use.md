@@ -24,7 +24,7 @@ experiment:
     interleaved: true
     control: load_gitignore walks the whole tree looking for nested .gitignore files
     candidate: the same walk, pruning ignored subtrees and hidden directories as patterns accumulate
-    record: explorations/results/runs.jsonl
+    record: explorations/performance-loop/results/runs.jsonl
   results:
     - metric: gitignore_build_ms
       control_median: 13360

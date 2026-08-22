@@ -1796,7 +1796,7 @@ async function loadSubtree(path, childrenEl, options) {
 // neither is next. Taking stubs in DOM order instead sent 32 requests
 // for folders nobody could see on a 100,000-file tree, where the root
 // render mounts 121 stubs with no folder expanded — measured in
-// explorations/experiments/exp-002. Candidates are the stubs whose
+// explorations/performance-loop/experiments/exp-002. Candidates are the stubs whose
 // folder row is on screen, plus one screen of lookahead, and the sweep
 // re-arms on scroll so the next screen warms as it arrives.
 const SUBTREE_PREFETCH_MAX_CONCURRENT = 3;

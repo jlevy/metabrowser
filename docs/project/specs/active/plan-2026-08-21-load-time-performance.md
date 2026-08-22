@@ -70,9 +70,9 @@ They exist so a later change has something to fail against.
 ## Background
 
 > **Superseded — read the [hypothesis registry](#hypotheses) and
-> [the ledger](../../../../explorations/report.md) first.** Every number in this section
-> was taken by hand against a corpus that was not `build_corpus` and no longer exists,
-> before the exploration loop existed.
+> [the ledger](../../../../explorations/performance-loop/report.md) first.** Every
+> number in this section was taken by hand against a corpus that was not `build_corpus`
+> and no longer exists, before the exploration loop existed.
 > Two of them did not survive re-measurement: the headline 4,525 ms first row (H6, not
 > reproduced — the same measure is 854 ms on `build_corpus` at the same file count) and
 > the 4.5 MB `/api/catalog` (H4, 62 bytes here, because the catalog fills from
@@ -336,7 +336,7 @@ reader spends their attention elsewhere rather than re-deriving them:
   completion; the first `/api/tree` already answers in under 10 ms at every corpus size
 - [x] Inline the root’s depth-1 rows into the shell so the first paint does not wait for
   a fetch: 1,604 ms to 242 ms at 300,000 files —
-  [exp-004](../../../../explorations/experiments/exp-004-the-shell-carries-the-first-rows.md)
+  [exp-004](../../../../explorations/performance-loop/experiments/exp-004-the-shell-carries-the-first-rows.md)
 - [ ] Show scan progress in place rather than as an empty tree, so an incomplete tree
   reads as incomplete — [degrade visibly](../../../large-content-rendering.md)
 - [ ] Window the rendered rows so the count follows the viewport, keeping find-in-page
@@ -347,7 +347,7 @@ reader spends their attention elsewhere rather than re-deriving them:
   of lookahead, and the sweep re-arms on scroll and on folder expansion.
   Measured at 300,000 files, 1280x900, median of three cold loads: 32 subtree requests
   and 1,566 KB to 0 and 517 KB. Time to first row did not measurably change —
-  [exp-002](../../../../explorations/experiments/exp-002-subtree-prefetch-bounded-to-the-viewport.md)
+  [exp-002](../../../../explorations/performance-loop/experiments/exp-002-subtree-prefetch-bounded-to-the-viewport.md)
 - [ ] Re-measure at all three corpus sizes and record the comparison
 
 ### Phase 3: The Server and the CLI
@@ -365,15 +365,16 @@ reader spends their attention elsewhere rather than re-deriving them:
 ## Hypotheses
 
 The loop that resolves these lives in
-[explorations/](../../../../explorations/README.md): its README is the runbook,
-`explorations/run.py report` regenerates
-[the ledger](../../../../explorations/report.md), and every resolved row below links the
-artifact that resolved it.
+[explorations/performance-loop/](../../../../explorations/performance-loop/README.md):
+its README is the runbook, `explorations/performance-loop/run.py report` regenerates
+[the ledger](../../../../explorations/performance-loop/report.md), and every resolved
+row below links the artifact that resolved it.
 
-Each round of [the exploration loop](../../../../explorations/README.md) tests one of
+Each round of
+[the exploration loop](../../../../explorations/performance-loop/README.md) tests one of
 these, and each is stated so it can be wrong, with the metric that would show it.
 Status is updated as experiments resolve them; the write-ups are in
-[explorations/experiments/](../../../../explorations/experiments/).
+[explorations/performance-loop/experiments/](../../../../explorations/performance-loop/experiments/).
 
 Numbering is shared across this plan; a new hypothesis takes the next free number so no
 id ever means two things.

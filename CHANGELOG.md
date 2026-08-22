@@ -371,23 +371,35 @@ Large directories:
 
 Page load:
 
-- Chart.js no longer loads on every document.
-  It and its two plugins are 297,531 bytes read by one view — the agent-log charts — and
-  parse and evaluate were paid on every page whether or not that view was ever opened.
-  They now load the first time a chart is asked for.
-  Measured on this repository in Chromium 141, median of five cold loads of
-  `/view/README.md`, the load event fell from 853 ms to 411 ms and transferred bytes
-  from 823,391 to 732,836. First contentful paint did not move, at 76 ms either way: the
-  chain never blocked paint, it competed with the tree render behind it.
+- **Opening a large folder is far faster to become usable.** On a 241,000-file working
+  tree, the wait before any row could appear was about twenty seconds and the full scan
+  took over four minutes with a browser watching; those are now about two seconds and
+  fifty seconds. Four things were in the way, and each is worth naming because each was
+  costing something different.
 
-- highlight.js, its TOML grammar, and Mustache now load on the first idle callback
-  rather than the moment the document parses.
-  They were fetched and evaluated in the same window as the first tree fetch, and the
-  `load` event stayed open until the whole chain finished.
-  Measured on a 100,000-file tree, median of three cold loads: `load` fell from 3,883 ms
-  to 750 ms. Time to first tree row did not measurably change.
-  A source view still highlights: the libraries arrive during idle and re-enhance what
-  is already on screen, so nothing waits for them.
+- Loading the ignore rules walked the whole tree a second time before the real scan
+  started, descending into vendored, built, and hidden directories to look for
+  `.gitignore` files that cannot change any answer.
+  It now skips those, and does not rebuild its pattern set on every file it finds.
+  On that tree: 21.4 s to 2.2 s, with no change to which files count as ignored —
+  checked against the old behavior for all 341,872 visible paths.
+
+- The navigation counts no longer travel in the same response as the folder rows.
+  They cost a pass over every file in the index and the rows do not, so a reader was
+  waiting for the expensive half to see the cheap one: asking for rows during a scan
+  cost about three quarters of a second, now six milliseconds.
+  Those requests had also been taking processor time from the scan itself, so the scan
+  finishes sooner as well.
+  The counts now arrive a moment after the rows rather than holding them up, and while a
+  scan runs they may lag it by one pass — the same beat the progress row already tells
+  you they are provisional for.
+
+- The file tree appears as soon as the page does, instead of after a round trip.
+  The server already knows the top level when it renders the page, so it sends those
+  rows with the page. Measured on a 300,000-file synthetic tree, median of three cold
+  loads: the first row went from 1,604 ms to 242 ms, the same moment the rest of the
+  page appears. The full tree still arrives a moment later and replaces what was shown;
+  the difference is that there is something to look at in the meantime.
 
 - Opening a large folder no longer downloads a megabyte of folders you cannot see.
   The browser warms collapsed folders in the background so expanding one is instant, but
@@ -404,36 +416,13 @@ Page load:
   Speculative warming — on first load, and while scrolling — still waits for idle, which
   is what idle is for.
 
-- While a large folder is still being scanned, the navigation counts are no longer
-  recomputed from scratch for every request that arrives.
-  They cost one pass over every file in the index, and the cache they used to rely on
-  was keyed on a number that changes on every write during a scan — about ninety times a
-  second — so during the very window the server is busiest, no request could ever reuse
-  another’s work. Measured on a 300,000-file tree: the median root request fell from 650
-  ms to 394 ms while scanning, and from 12 ms to 6 ms once settled.
-  The counts can now lag the scan by at most one pass, which is the same beat the
-  progress row already tells you they are provisional for.
-
-- The file tree now appears as soon as the page does, instead of after a round trip.
-  The server already knows the top level of the tree when it renders the page, so it
-  sends those rows with the page rather than making the browser ask for them — and on a
-  large folder that request is the slow one, because the scan is still running behind
-  it. Measured on a 300,000-file tree, median of three cold loads: the first row went
-  from 1,604 ms to 242 ms, which is the same moment the rest of the page appears.
-  The full tree still arrives a moment later and replaces what was shown; the difference
-  is that there is something to look at in the meantime.
-
-- Opening a large folder is dramatically faster to become usable, and the improvement
-  compounds across three changes.
-  Loading the ignore rules used to walk the whole tree a second time before the real
-  scan started, so on a 241,000-file working tree nothing could appear for the first
-  twenty seconds; that walk now skips what it cannot use and takes about two.
-  And the navigation counts — which cost a pass over every file — no longer travel in
-  the same response as the folder rows, so asking for rows during a scan went from about
-  three quarters of a second to six milliseconds.
-  Those requests had been taking processor time from the scan itself, so the scan also
-  finishes sooner: on that tree, with a browser watching, 258 seconds to 50. The filter
-  counts now arrive a moment after the rows rather than holding them up.
+- Chart.js no longer loads on every document, and highlight.js, its TOML grammar, and
+  Mustache now load on the first idle callback rather than the moment the document
+  parses. Measured on this repository, median of five cold loads of `/view/README.md`:
+  the load event fell from 853 ms to 411 ms for the first change, then from 3,883 ms to
+  750 ms on a large tree for the second.
+  A source view still highlights: those libraries arrive during idle and re-enhance what
+  is already on screen.
 
 Plugin SDK:
 

@@ -297,7 +297,7 @@ async def _run_navigation_scenario(
         # Rows and tallies travel separately now: a request carrying rows never
         # waits for the pass over every index entry that produces the summary.
         # The check wants both, so it asks both channels -- which is also what
-        # the browser does. See explorations/experiments/exp-007.
+        # the browser does. See explorations/performance-loop/experiments/exp-007.
         final_tallies = await client.get("/api/tree", params={"depth": "0"})
         # After the index is complete, so the projection is answering from the
         # whole tree rather than from whatever the walk had reached.

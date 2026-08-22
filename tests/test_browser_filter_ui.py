@@ -926,7 +926,7 @@ def test_index_wide_tallies_stay_off_the_event_loop() -> None:
 
     The snapshot the pass needs is O(index) too, so on the unfiltered path it
     is taken inside the same thread rather than in the handler -- see
-    explorations/experiments/exp-003, where taking it on the loop cost every
+    explorations/performance-loop/experiments/exp-003, where taking it on the loop cost every
     root request a copy of all 300,000 entries before it discovered its
     tallies were memoized."""
 

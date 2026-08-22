@@ -5,7 +5,7 @@ keys on ``rollup_revision()``, which advances on every index write -- roughly
 ninety times a second at the walker's emit batch size. So while a walk ran, no
 request could ever hit the memo and every root ``/api/tree`` repeated the pass:
 measured at a median of 638 ms per request on a 300,000-file tree against 12 ms
-once settled. See explorations/experiments/exp-003.
+once settled. See explorations/performance-loop/experiments/exp-003.
 """
 
 from __future__ import annotations

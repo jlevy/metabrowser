@@ -24,7 +24,7 @@ experiment:
     interleaved: false
     control: the same walk with nothing attached
     candidate: the same walk with one client polling /api/tree?depth=1 every 2 s
-    record: explorations/results/runs.jsonl
+    record: explorations/performance-loop/results/runs.jsonl
   results:
     - metric: walk_elapsed_ms
       control_median: 21020
