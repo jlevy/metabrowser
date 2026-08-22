@@ -275,6 +275,154 @@ class Server:
 # ── Phases ───────────────────────────────────────────────────
 
 
+# Shape parameters taken from two real working trees rather than invented.
+# Measured: median 2 files per directory in both, mean depth 9.5 and 12.8 with
+# maxima of 18 and 22, and 527 and 88 nested ``.gitignore`` files carrying 5,500
+# and 981 patterns. ``build_corpus`` above has 309 files per directory and no
+# ``.gitignore`` at all, which is why a whole class of cost -- everything paid
+# per directory, and everything paid per ignore pattern -- was invisible to it.
+# See explorations/experiments/exp-005.
+REALISTIC_MEDIAN_FILES_PER_DIR = 2
+REALISTIC_MAX_DEPTH = 18
+# One nested .gitignore per this many directories, each with this many patterns.
+# The real trees run about one per 420 directories at ten patterns apiece.
+REALISTIC_DIRS_PER_GITIGNORE = 400
+REALISTIC_PATTERNS_PER_GITIGNORE = 10
+# Fraction of files placed under a gitignored directory. Real trees are mostly
+# build output, virtualenvs, and caches; the tracked tree is the minority.
+REALISTIC_IGNORED_FRACTION = 0.55
+IGNORED_DIR_NAMES = ("node_modules", ".venv", "target", "dist", "__pycache__", "build")
+# How many ignored subtrees, and how deep each fans. Few and enormous, not many
+# and small -- that distinction turned out to decide whether pruning the
+# gitignore pre-walk is a win or a loss, and only the real trees showed it.
+# Measured there: one tree keeps 232,190 files under two `target` directories,
+# another 191,072 under seventeen `.venv` directories. A corpus that scatters
+# the same file count across hundreds of small ignored directories prunes
+# almost nothing and makes the pruning look like pure overhead.
+REALISTIC_IGNORED_SUBTREES = 8
+# Bodies are deliberately tiny. The walker stats files and never reads them, so
+# file size buys no fidelity for anything this plan measures -- and a corpus
+# with realistic bodies is tens of gigabytes, which is a real constraint on a
+# machine that also has to hold the tree being compared against.
+REALISTIC_BODY_BYTES = 64
+
+
+def build_realistic_corpus(root: Path, target_files: int) -> dict[str, Any]:
+    """A synthetic tree shaped like a real working tree, built the same way twice.
+
+    ``build_corpus`` is wide and shallow with no ignore rules, which makes it a
+    poor stand-in for the thing this project is for. Every per-directory cost is
+    amortized across 309 files there and across 2 in practice, and the cost of
+    loading nested ``.gitignore`` files does not exist there at all.
+
+    Deterministic: same *target_files* in, same tree out, so two runs on it are
+    comparable. A marker records the size and the shape version, and a shape
+    change bumps the version so a stale tree is rebuilt rather than silently
+    compared against a differently shaped one.
+    """
+    shape_version = 1
+    marker = root / ".bench-corpus.json"
+    if marker.is_file():
+        try:
+            existing: dict[str, Any] = json.loads(marker.read_text())
+        except (OSError, ValueError):
+            existing = {}
+        if existing.get("files") == target_files and existing.get("shape") == shape_version:
+            return existing
+
+    if root.exists():
+        shutil.rmtree(root)
+    rng = random.Random(20260822)
+
+    made = 0
+    dirs_made = 0
+    gitignores = 0
+    ignored_files = 0
+    ignored_budget = int(target_files * REALISTIC_IGNORED_FRACTION)
+
+    def populate(directory: Path, depth: int, under_ignored: bool) -> None:
+        nonlocal made, dirs_made, gitignores, ignored_files
+        if made >= target_files:
+            return
+        directory.mkdir(parents=True, exist_ok=True)
+        dirs_made += 1
+
+        # A nested .gitignore every so often, naming the directories this level
+        # actually contains, so the patterns match something.
+        if dirs_made % REALISTIC_DIRS_PER_GITIGNORE == 0:
+            lines = [
+                f"*.{rng.choice(('tmp', 'log', 'cache', 'bak'))}"
+                for _ in range(REALISTIC_PATTERNS_PER_GITIGNORE - 2)
+            ]
+            lines += ["build/", "*.pyc"]
+            (directory / ".gitignore").write_text("\n".join(lines) + "\n")
+            gitignores += 1
+
+        # Median two, mean near three, p90 near seven -- the distribution both
+        # real trees showed. The tail matters (some directories are full) but a
+        # long one pulls the mean away from what a real tree does.
+        count = 2 if rng.random() < 0.45 else rng.choice((0, 1, 1, 3, 4, 6, 9, 16))
+        for index in range(count):
+            if made >= target_files:
+                return
+            path = directory / f"file{index:03d}{rng.choice(CORPUS_EXTS)}"
+            path.write_bytes(b"x" * REALISTIC_BODY_BYTES)
+            made += 1
+            if under_ignored:
+                ignored_files += 1
+
+        # Stop stochastically as well as at the cap: a real tree's depth has a
+        # mean around 10 with a max near 20, which a hard cap alone cannot
+        # produce -- every branch would bottom out at the same level.
+        # Stop stochastically as well as at the cap, with the chance rising as
+        # it gets deeper: a real tree's depth has a mean around ten under a max
+        # near twenty, which a hard cap alone cannot produce -- every branch
+        # would bottom out at the same level.
+        if depth >= REALISTIC_MAX_DEPTH or (depth >= 3 and rng.random() < 0.06 * depth):
+            return
+        # Branch narrowly, which is what produces depth 10-20 at a realistic
+        # file count instead of a wide shallow fan.
+        # Wider near the top, narrow further down. That is what puts most
+        # directories at a middling depth rather than in one long spine.
+        fanout = rng.choice((2, 3, 4)) if depth <= 3 else rng.choice((1, 2, 2, 3))
+        for child in range(fanout):
+            if made >= target_files:
+                return
+            populate(directory / f"pkg{child:02d}", depth + 1, under_ignored)
+
+    root.mkdir(parents=True, exist_ok=True)
+    (root / ".gitignore").write_text(
+        "\n".join(f"{name}/" for name in IGNORED_DIR_NAMES) + "\n*.pyc\n.DS_Store\n"
+    )
+    # A git root, so the gitignore machinery engages the way it does in practice.
+    (root / ".git").mkdir(exist_ok=True)
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    # The ignored bulk first: a handful of subtrees holding most of the files,
+    # which is what a vendored or built directory looks like and what makes
+    # pruning worth anything.
+    per_subtree = ignored_budget // REALISTIC_IGNORED_SUBTREES
+    for index in range(REALISTIC_IGNORED_SUBTREES):
+        name = IGNORED_DIR_NAMES[index % len(IGNORED_DIR_NAMES)]
+        holder = root / f"component{index:02d}"
+        holder.mkdir(parents=True, exist_ok=True)
+        target_here = made + per_subtree
+        while made < target_here and made < target_files:
+            populate(holder / name, 1, True)
+    while made < target_files:
+        populate(root / f"top{dirs_made:04d}", 1, False)
+
+    info: dict[str, Any] = {
+        "files": target_files,
+        "shape": shape_version,
+        "dirs": dirs_made,
+        "gitignores": gitignores,
+        "ignored_files": ignored_files,
+        "path": str(root),
+    }
+    marker.write_text(json.dumps(info))
+    return info
+
+
 def phase_cold_scan(root: Path, log_dir: Path) -> dict[str, Any]:
     """Walker throughput with nothing attached.
 

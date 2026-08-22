@@ -16,6 +16,8 @@ from typing import Protocol
 
 from pathspec.gitignore import GitIgnoreSpec
 
+from metabrowser.fs_paths import is_visible
+
 log = logging.getLogger(__name__)
 
 
@@ -101,11 +103,41 @@ def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFi
                     return ignore_none
                 all_lines.append(line)
 
-    # Walk for nested .gitignore files (skip .git itself).
+    # Walk for nested .gitignore files, pruning as we go.
+    #
+    # This is a second full traversal of the tree, before the one that actually
+    # indexes it, and unpruned it was the larger of the two: on a real
+    # 241,000-file working tree it cost 19-23 s against a 21 s index walk,
+    # because it descended into every vendored, built, and hidden directory
+    # looking for files that cannot matter. Two prunes remove that, and both
+    # are semantics rather than shortcuts.
+    #
+    # A directory an accumulated pattern already ignores is pruned because git
+    # does not read ``.gitignore`` files inside an ignored directory either --
+    # its contents are excluded wholesale, so a nested pattern there could not
+    # change any answer. Patterns are hierarchical and ``os.walk`` is top-down,
+    # so everything governing a directory has been collected before it is
+    # reached.
+    #
+    # A directory this shell will never show is pruned because a pattern found
+    # inside it could only govern paths that are themselves never shown. See
+    # ``fs_paths.is_visible``: the indexing walk skips these, so collecting
+    # ignore rules for them is work spent on rows nobody can see.
+    accumulated: GitIgnoreSpec | None = GitIgnoreSpec.from_lines(all_lines) if all_lines else None
     for dirpath, dirnames, filenames in os.walk(root):
         if cancel_event is not None and cancel_event.is_set():
             return ignore_none
-        dirnames[:] = [d for d in dirnames if d != ".git"]
+        here = Path(dirpath)
+        kept: list[str] = []
+        for name in dirnames:
+            if name == ".git" or not is_visible(name):
+                continue
+            if accumulated is not None:
+                rel = os.path.relpath(str(here / name), str(root))
+                if accumulated.match_file(f"{rel}/"):
+                    continue
+            kept.append(name)
+        dirnames[:] = kept
         if dirpath == str(root):
             continue  # already handled above
         if ".gitignore" in filenames:
@@ -122,6 +154,9 @@ def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFi
                     else:
                         # Prefix pattern with relative directory for correct matching.
                         all_lines.append(f"{rel_dir}/{stripped}\n")
+            # Rebuild only here, which is once per ``.gitignore`` found --
+            # hundreds of times on a large tree, not once per directory.
+            accumulated = GitIgnoreSpec.from_lines(all_lines)
 
     if not all_lines:
         return ignore_none

@@ -230,11 +230,61 @@ When the walk’s own duration is the subject, time it with nothing attached; wh
 route is the subject, `probe-server` is right and the walk figure it records should be
 read as “under load.”
 
+## Re-running an old round against today’s corpus
+
+The corpus and the harness are versioned separately from the code they measure, so a
+result can be reproduced, and so a change to the fixture cannot quietly invalidate the
+ledger. Every run records `commit`, `corpus_shape`, and `harness_version`; two runs are
+comparable when the last two match.
+
+To re-measure an old commit on the current corpus — which is how you check whether a
+past result still holds after the fixture changed:
+
+```shell
+git worktree add /tmp/mb-at-<sha> <sha>            # the code as it was
+cd /tmp/mb-at-<sha> && uv sync --all-extras --locked
+# Run today's harness against that checkout's server:
+$UV explorations/run.py serve --tree /tmp/mb-at-<sha> ...   # or point metab at the old tree
+```
+
+The harness lives in the repository it measures, so checking out an old commit reverts
+the harness too.
+Run the harness from the current worktree and point it at the old build;
+never check out an old harness to compare against a new number.
+
+**When the corpus shape changes, bump `shape` in the generator.**
+`build_realistic_corpus` carries a `shape` version in its marker file, and a mismatch
+rebuilds the tree rather than reusing a differently-shaped one.
+exp-006 is why: its corpus was rebuilt mid-round with the same file count and a
+different arrangement of ignored subtrees, and that flipped the verdict from a 42%
+regression to a win.
+Runs from before a shape bump are still in the ledger and are still true — of a
+different tree.
+
 ## The corpus
 
-`devtools/bench_serving.py`’s `build_corpus` builds it, and `run.py serve` builds it on
-first use: 100,000 files across 972 directories, wide at the top and deep in one branch,
-under `.bench/corpus-<files>/` (gitignored, about 625 MB at 100,000 files).
+Two generators live in `devtools/bench_serving.py`, and the difference between them is
+the subject of [exp-005](experiments/exp-005-a-real-tree-changes-the-priorities.md).
+
+`build_realistic_corpus` is **the one to use**. Its shape is taken from two real working
+trees rather than invented: median two files per directory, mean depth around nine, a
+nested `.gitignore` roughly every four hundred directories, and most of the file count
+inside a few enormous ignored subtrees.
+That last detail is not decoration — it decided the verdict in
+[exp-006](experiments/exp-006-the-gitignore-prewalk-stops-traversing-what-it-cannot-use.md).
+
+`build_corpus` is the original: 309 files per directory, shallow, and no `.gitignore` at
+all. It is kept because exp-001 through exp-004 were measured on it and their numbers
+mean nothing against a different tree.
+Do not start a new round on it.
+
+**Sanity-check on a real tree.** The reproducible corpus is what a result is recorded
+against; a real working tree is what tells you the result is real.
+exp-006 is the worked example — the corpus called the change a regression and two real
+trees called it an 88% win, and the corpus was the one that was wrong.
+Use `serve --tree` for those checks and record them as sanity checks rather than as a
+baseline, because a working directory changes under you and nothing later can be diffed
+against it.
 
 Absolute numbers move with hardware and page cache and do not carry between machines.
 The relation is what carries, so every experiment records its own before alongside its

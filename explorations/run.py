@@ -64,6 +64,10 @@ EXPERIMENTS = HERE / "experiments"
 # against the wrong experiment, port, or corpus -- the three things that are
 # invisible in the payload and expensive to get wrong.
 PENDING = HERE / "results" / "pending.json"
+# Bumped when a change to run.py or probe.js makes a number incomparable with
+# earlier ones -- a new metric definition, a changed sampling rule. Recorded on
+# every run so a later reader can tell "measured differently" from "changed".
+HARNESS_VERSION = 2
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -105,6 +109,26 @@ METRICS = (
 
 def _corpus_dir(files: int) -> Path:
     return REPO / ".bench" / f"corpus-{files}"
+
+
+def _corpus_shape(root: Path) -> int | None:
+    """The generator version that produced this corpus, if it was generated.
+
+    A corpus is a fixture and fixtures change. exp-006 changed the shape of the
+    realistic one mid-round -- the same file count, a different arrangement --
+    and a number taken before that change is not comparable with one taken
+    after. The version is recorded per run so the ledger can say so instead of
+    quietly averaging two different trees together.
+    """
+    marker = root / ".bench-corpus.json"
+    if not marker.is_file():
+        return None
+    try:
+        loaded: Any = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    shape = cast("dict[str, Any]", loaded).get("shape")
+    return shape if isinstance(shape, int) else None
 
 
 def _tree_label(root: Path) -> str:
@@ -307,6 +331,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "port": port,
                 "files": files,
                 "corpus": corpus_label,
+                "corpus_shape": _corpus_shape(root),
                 "commit": _git_commit(),
                 "dirty": _git_dirty(),
                 "note": args.note,
@@ -367,6 +392,8 @@ def cmd_record(args: argparse.Namespace) -> int:
         "commit": pending.get("commit"),
         "dirty": pending.get("dirty"),
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "harness_version": HARNESS_VERSION,
+        "corpus_shape": pending.get("corpus_shape"),
         "note": args.note or pending.get("note", ""),
         **_walk_facts(port),
         **payload,
@@ -742,23 +769,20 @@ def cmd_report(_args: argparse.Namespace) -> int:
 
     add("## Provenance")
     add("")
-    add("| experiment | label | recorded | commit | files | walk | viewport |")
-    add("| --- | --- | --- | --- | ---: | --- | --- |")
+    add("| experiment | label | recorded | commit | corpus | shape | harness | walk |")
+    add("| --- | --- | --- | --- | --- | ---: | ---: | --- |")
     for run in runs:
         walk = run.get("walk_elapsed_ms")
         walk_text = f"{walk:,} ms" if isinstance(walk, int) else str(run.get("walk_status", "-"))
         commit = str(run.get("commit") or "-")
         if run.get("dirty"):
             commit += "+dirty"
-        viewport = (
-            f"{run.get('viewport_w')}x{run.get('viewport_h')}"
-            if run.get("viewport_w")
-            else "unrecorded"
-        )
         add(
             f"| {run.get('experiment') or '-'} | {run.get('label')} "
             f"| {str(run.get('recorded_at') or '-')[:16]} | {commit} "
-            f"| {run.get('files') or '-'} | {walk_text} | {viewport} |"
+            f"| {run.get('corpus') or run.get('files') or '-'} "
+            f"| {run.get('corpus_shape') if run.get('corpus_shape') is not None else '-'} "
+            f"| {run.get('harness_version') or '-'} | {walk_text} |"
         )
     add("")
     add("<!-- Generated file. Regenerate with `explorations/run.py report`. -->")
