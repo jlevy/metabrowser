@@ -40,6 +40,12 @@ links to the document that covers each in depth.
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
 
+## Reviews
+
+- [Load-time performance and the distance still to cover](reviews/review-2026-08-22-load-time-performance.md)
+  — review of the six-round load-time branch, plus principles and candidate hypotheses
+  for the work after it
+
 ## Done Plans
 
 - [Bounded binary byte preview](specs/done/plan-2026-08-11-binary-byte-preview.md)
