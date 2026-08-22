@@ -1742,18 +1742,50 @@ async function loadSubtree(path, childrenEl, options) {
 // already in hand before the click (see "Everything is effortlessly
 // fast" in docs/design-system.md). The rendered tree names its own
 // candidates: every unexpanded folder past the server's depth cap
-// carries a lazy stub, and those are exactly the folders a reader can
-// open next. The sweep runs when the browser is idle, a few at a time,
-// so warming the tree never competes with the request a reader is
-// actually waiting on.
+// carries a lazy stub. The sweep runs when the browser is idle, a few
+// at a time, so warming the tree never competes with the request a
+// reader is actually waiting on.
+//
+// "The folders a reader can open next" is a claim about the screen, not
+// about the DOM. A stub inside a collapsed branch belongs to a folder
+// that is two clicks away, and one below the fold is behind a scroll, so
+// neither is next. Taking stubs in DOM order instead sent 32 requests
+// for folders nobody could see on a 100,000-file tree, where the root
+// render mounts 121 stubs with no folder expanded — measured in
+// explorations/experiments/exp-002. Candidates are the stubs whose
+// folder row is on screen, plus one screen of lookahead, and the sweep
+// re-arms on scroll so the next screen warms as it arrives.
 const SUBTREE_PREFETCH_MAX_CONCURRENT = 3;
 const SUBTREE_PREFETCH_MAX_PER_SWEEP = 32;
 const SUBTREE_PREFETCH_IDLE_TIMEOUT_MS = 2000;
+// A reader who just opened a folder has said where they are, so warming its
+// children is not speculation about which folder — only about the next click.
+// That earns a timer instead of an idle callback: long enough for the
+// expansion's own render to finish, short enough to beat the click after it.
+// An idle callback is the wrong instrument here twice over, because a browser
+// is free to defer one indefinitely when it decides the page is not busy in a
+// way it cares about.
+const SUBTREE_PREFETCH_AFTER_EXPAND_MS = 50;
+// Screens of lookahead past the visible nav area. One is a scroll gesture's
+// worth: far enough that a reader scrolling steadily stays ahead of the
+// fetches, near enough that it is still a folder they are heading toward.
+const SUBTREE_PREFETCH_LOOKAHEAD_SCREENS = 1;
 let subtreePrefetchScheduled = false;
 
 function pendingSubtreePaths() {
   const paths = [];
   const stubs = treePane.querySelectorAll("[data-tree-lazy-stub]");
+  // One layout read for the scroller, then one per stub owner, all inside the
+  // idle callback that already owns this work. Without a scroller — a shell
+  // that has not mounted the tree yet — every mounted stub is a candidate,
+  // which is the old behavior and the safe direction to fail in.
+  const scroller = document.getElementById("tree-content");
+  const measured = scroller ? scroller.getBoundingClientRect() : null;
+  // A zero-height scroller is a shell that has not laid out, not a viewport
+  // with nothing in it. Bounding against it would reject every candidate and
+  // silently disable the prefetch, so it falls back to the unbounded sweep.
+  const view = measured && measured.height > 0 ? measured : null;
+  const lookahead = view ? view.height * SUBTREE_PREFETCH_LOOKAHEAD_SCREENS : 0;
   for (let index = 0; index < stubs.length; index += 1) {
     if (paths.length >= SUBTREE_PREFETCH_MAX_PER_SWEEP) {
       break;
@@ -1764,11 +1796,40 @@ function pendingSubtreePaths() {
     );
     const path = folder?.dataset?.path;
     const key = path ? subtreeCacheKey(path) : "";
-    if (path && !subtreeCache.has(key) && !subtreeRequests.has(key)) {
-      paths.push(path);
+    if (!path || subtreeCache.has(key) || subtreeRequests.has(key)) {
+      continue;
     }
+    if (view && !isNearNavViewport(folder, view, lookahead)) {
+      continue;
+    }
+    paths.push(path);
   }
   return paths;
+}
+
+/**
+ * Is this row on screen in the nav, or within `lookahead` pixels of it?
+ *
+ * Two ways to be off screen, and only one of them is scrolling. A collapsed
+ * branch clips its children with `overflow: hidden` rather than removing them,
+ * so those rows keep full-height boxes stacked at the branch's own position —
+ * a rect test alone reads them as visible and on screen. The branch is checked
+ * first for that reason.
+ *
+ * @param {HTMLElement | null} row
+ * @param {DOMRect} view
+ * @param {number} lookahead
+ * @returns {boolean}
+ */
+function isNearNavViewport(row, view, lookahead) {
+  if (!row || row.closest(".tree-children-collapsed")) {
+    return false;
+  }
+  const rect = row.getBoundingClientRect();
+  if (rect.height === 0) {
+    return false;
+  }
+  return rect.bottom >= view.top - lookahead && rect.top <= view.bottom + lookahead;
 }
 
 async function prefetchPendingSubtrees() {
@@ -1790,7 +1851,14 @@ async function prefetchPendingSubtrees() {
   await Promise.all(Array.from({ length: lanes }, worker));
 }
 
-function scheduleSubtreePrefetch() {
+/**
+ * Arm one sweep, if one is not already armed.
+ *
+ * @param {{ afterExpand?: boolean }} [options] `afterExpand` marks a sweep a
+ *   reader asked for by opening a folder, which runs on a short timer rather
+ *   than waiting for idle.
+ */
+function scheduleSubtreePrefetch(options) {
   if (subtreePrefetchScheduled) {
     return;
   }
@@ -1799,12 +1867,29 @@ function scheduleSubtreePrefetch() {
     subtreePrefetchScheduled = false;
     void prefetchPendingSubtrees();
   };
+  if (options?.afterExpand) {
+    setTimeout(run, SUBTREE_PREFETCH_AFTER_EXPAND_MS);
+    return;
+  }
   if (typeof requestIdleCallback === "function") {
     requestIdleCallback(run, { timeout: SUBTREE_PREFETCH_IDLE_TIMEOUT_MS });
   } else {
     setTimeout(run, 200);
   }
 }
+
+// Scrolling is what makes a folder next, so it is what re-arms the sweep. The
+// scheduled flag and the idle callback already collapse a burst of scroll
+// events into one pass, so this needs no debounce of its own.
+document.getElementById("tree-content")?.addEventListener(
+  "scroll",
+  () => {
+    // Wrapped rather than passed directly: a listener receives the event, and
+    // an Event is not this function's options object.
+    scheduleSubtreePrefetch();
+  },
+  { passive: true },
+);
 
 // ── Custom tooltip ──────────────────────────────────────────────
 //
@@ -2260,6 +2345,13 @@ function setFolderExpanded(row, expanded, options) {
   row.setAttribute("aria-expanded", String(expanded));
   if (options.synchronize !== false) {
     synchronizeTreeNow();
+  }
+  if (expanded) {
+    // Opening a folder is what puts its children on screen, so it is the other
+    // thing that makes a stub a candidate. Without this the viewport bound
+    // would warm nothing after the first screen: the newly revealed rows are
+    // visible, but nothing had re-armed the sweep to notice.
+    scheduleSubtreePrefetch({ afterExpand: true });
   }
   if (expanded && children.querySelector(":scope > .tree-lazy-placeholder")) {
     return loadSubtree(row.dataset.path, children).then(() => {

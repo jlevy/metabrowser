@@ -41,6 +41,22 @@ every static asset an empty HTTP cache without touching cache headers, and a fre
 process gives a scan that is still running.
 Both are what a reader opening a large tree actually meets.
 
+**Give the browser a real viewport first.** The tree pages its rows against the height
+of the nav scroller, and the sweep that warms folders reads the same box, so a pane that
+never got a size measures every layout-dependent number against nothing — while still
+producing timings that look entirely reasonable.
+This was learned by taking six runs in a 0x0 pane and only noticing when a rect came
+back 8 px tall. 1280x900 is the size these numbers were taken at; `record` refuses
+anything under 900x600 rather than letting it into the ledger.
+
+**Check `document.visibilityState` too.** A hidden pane does not run idle callbacks on
+any schedule — measured here at over 30 seconds for a single
+`requestIdleCallback(fn, { timeout: 2000 })`, which is to say never.
+Anything the shell defers to idle is unmeasurable in that state, and two runs of the
+same code will disagree depending on how long each waited.
+Request counts and transferred bytes do not care; scheduling does.
+Record which one a finding depends on.
+
 Load the URL, let the tree settle, evaluate [probe.js](probe.js) in the page, and record
 what it prints:
 

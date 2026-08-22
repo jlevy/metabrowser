@@ -35,6 +35,9 @@ properties:
       host_cpu: {type: string}
       host_system: {type: string}
       browser: {type: string}
+      viewport:
+        type: string
+        description: Browser viewport the run was measured at, e.g. 1280x900. The tree pages rows against it.
       cold: 
         type: boolean
         description: Fresh port (empty HTTP cache) and fresh server (scan running).

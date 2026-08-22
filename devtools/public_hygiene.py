@@ -145,19 +145,40 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
 
 
 def _text_files() -> list[Path]:
+    """Every candidate file in the work tree, ignored trees never descended into.
+
+    Pruning rather than filtering is the point. Walking first and discarding
+    afterwards means reading a gitignored tree in full before deciding it was
+    out of scope, and ``devtools/bench_serving.py`` puts a benchmark corpus of
+    up to a million files at ``.bench/`` by default -- an ordinary developer's
+    checkout, on which the scan stopped finishing.
+    """
+    self_path = Path(__file__).resolve()
     files: list[Path] = []
-    for path in ROOT.rglob("*"):
-        if path == Path(__file__).resolve():
-            continue
-        if any(path.is_relative_to(skip_root) for skip_root in SKIP_ROOTS):
-            continue
-        if not path.is_file() or any(part in SKIP_PARTS for part in path.parts):
-            continue
-        try:
-            path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        files.append(path)
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        here = Path(dirpath)
+        # A skip root's own ancestors stay walkable: only the root itself and
+        # what is under it drop out, which is how `.tbd/docs` is skipped
+        # without skipping `.tbd`.
+        candidates = [
+            here / name
+            for name in dirnames
+            if name not in SKIP_PARTS
+            and not any((here / name).is_relative_to(skip_root) for skip_root in SKIP_ROOTS)
+        ]
+        ignored_dirs = _git_ignored(candidates)
+        dirnames[:] = [directory.name for directory in candidates if directory not in ignored_dirs]
+        for name in filenames:
+            path = here / name
+            if path == self_path or name in SKIP_PARTS:
+                continue
+            if any(path.is_relative_to(skip_root) for skip_root in SKIP_ROOTS):
+                continue
+            try:
+                path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            files.append(path)
     ignored = _git_ignored(files)
     return [path for path in files if path not in ignored]
 

@@ -34,6 +34,13 @@
   const firstRow = firstOf("renderTreeNodes:root");
 
   return JSON.stringify({
+    // Recorded, not assumed. A pane that never got a size still runs the app
+    // and still produces plausible timings, while every layout-dependent
+    // number — rendered rows, how many rows a page mounts, what counts as on
+    // screen — is measured against nothing. A run whose viewport is 0 is not a
+    // run; `record` refuses it.
+    viewport_w: window.innerWidth,
+    viewport_h: window.innerHeight,
     dcl_ms: Math.round(nav.domContentLoadedEventEnd || 0),
     load_ms: Math.round(nav.loadEventEnd || 0),
     first_row_ms: at(firstRow),

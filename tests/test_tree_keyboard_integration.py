@@ -217,7 +217,9 @@ def test_lazy_load_inside_a_batched_expand_stays_batched() -> None:
     """The deferred subtree repair honors the same opt-out as its caller."""
 
     source = _app()
-    expanded = _function(source, "setFolderExpanded", 900)
+    # The default window: setFolderExpanded also re-arms the subtree sweep now,
+    # and a hand-tuned 900 characters stopped reaching the lazy-load branch.
+    expanded = _function(source, "setFolderExpanded")
     lazy = expanded[expanded.index("tree-lazy-placeholder") :]
     assert "options.synchronize !== false" in lazy
 

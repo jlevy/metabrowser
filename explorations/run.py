@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -32,13 +33,21 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from statistics import median
-from typing import Any
+from typing import Any, cast
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 RESULTS = HERE / "results" / "runs.jsonl"
+# Every port `serve` has handed out, recorded the moment it does. A port whose
+# run was never recorded has still been loaded in a browser, so reusing it would
+# hand the next run a warm cache and quietly break the one property that makes
+# these numbers cold.
+PORTS_USED = HERE / "results" / "ports-used.txt"
 PROBE = HERE / "probe.js"
 # Ports climb so a rerun never reuses one and never inherits its cache.
+# A run below this is refused: the tree pages its rows against the viewport, so
+# numbers taken in a collapsed pane describe a layout no reader has.
+MIN_VIEWPORT = (900, 600)
 FIRST_PORT = 8600
 LAST_PORT = 8699
 # The metrics compare prints, in the order they matter to a reader.
@@ -54,6 +63,8 @@ METRICS = (
     "dom_nodes",
     "transferred_kb",
     "vendor_first_start_ms",
+    "viewport_w",
+    "viewport_h",
 )
 
 
@@ -61,9 +72,18 @@ def _corpus_dir(files: int) -> Path:
     return REPO / ".bench" / f"corpus-{files}"
 
 
+def _used_ports() -> set[int]:
+    ports = {run.get("port") for run in _load_runs() if isinstance(run.get("port"), int)}
+    if PORTS_USED.is_file():
+        for line in PORTS_USED.read_text(encoding="utf-8").split():
+            if line.isdigit():
+                ports.add(int(line))
+    return {port for port in ports if isinstance(port, int)}
+
+
 def _next_port() -> int:
-    """The lowest port in the range nothing has recorded and nothing answers."""
-    used = {run.get("port") for run in _load_runs()}
+    """The lowest port in the range nothing has used and nothing answers."""
+    used = _used_ports()
     for port in range(FIRST_PORT, LAST_PORT + 1):
         if port in used:
             continue
@@ -106,6 +126,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         time.sleep(0.05)
 
     port = _next_port()
+    PORTS_USED.parent.mkdir(parents=True, exist_ok=True)
+    with PORTS_USED.open("a", encoding="utf-8") as handle:
+        handle.write(f"{port}\n")
     log = HERE / "results" / f"server-{port}.log"
     with log.open("w", encoding="utf-8") as handle:
         subprocess.Popen(
@@ -117,13 +140,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
         )
 
     url = f"http://127.0.0.1:{port}/view/"
+    # Wait for the socket, not for a rendered page. The scan is the regime this
+    # loop is about, and asking for `/` during one can take most of the scan to
+    # answer -- a readiness check that waits for it hands back a server that has
+    # already finished walking. metab binds before it walks and serves partial
+    # state on purpose, so an accepted connection is the right signal.
     deadline = time.monotonic() + 300
     while time.monotonic() < deadline:
-        try:
-            urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1).close()
-            break
-        except OSError:
-            continue
+        with socket.socket() as probe:
+            probe.settimeout(0.25)
+            if probe.connect_ex(("127.0.0.1", port)) == 0:
+                break
     else:
         raise SystemExit(f"server did not come up on {port}; see {log}")
 
@@ -138,9 +165,24 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_record(args: argparse.Namespace) -> int:
-    payload = json.loads(args.json)
+    payload: Any = json.loads(args.json)
     if not isinstance(payload, dict):
         raise SystemExit("probe payload must be a JSON object")
+    # A browser pane that never got a size runs the app and reports plausible
+    # timings while every layout-dependent number is measured against nothing.
+    # That failure is silent from the numbers alone, so it is refused here
+    # rather than discovered three experiments later.
+    probe = cast("dict[str, Any]", payload)
+    width = probe.get("viewport_w")
+    height = probe.get("viewport_h")
+    if not isinstance(width, int) or not isinstance(height, int):
+        raise SystemExit("probe payload has no viewport; re-run with the current probe.js")
+    if width < MIN_VIEWPORT[0] or height < MIN_VIEWPORT[1]:
+        raise SystemExit(
+            f"viewport was {width}x{height}, below the {MIN_VIEWPORT[0]}x{MIN_VIEWPORT[1]} "
+            "floor. Size the browser pane and load the page again; the tree pages its "
+            "rows against the viewport, so a run measured at this size is not a run."
+        )
     run: dict[str, Any] = {
         "label": args.label,
         "port": args.port,

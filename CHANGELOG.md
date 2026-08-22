@@ -389,6 +389,21 @@ Page load:
   A source view still highlights: the libraries arrive during idle and re-enhance what
   is already on screen, so nothing waits for them.
 
+- Opening a large folder no longer downloads a megabyte of folders you cannot see.
+  The browser warms collapsed folders in the background so expanding one is instant, but
+  it was picking them in document order rather than by what is on screen — and on a
+  large tree every folder it picked was inside a collapsed branch, at least two clicks
+  away. Measured on a 300,000-file tree: 32 background requests and 1,566 KB on every
+  cold load, now 0 and 517 KB. Expanding a folder still warms exactly the children it
+  reveals, so the next click is still instant — measured at no request and 75 ms — and
+  scrolling now warms what scrolls into view.
+
+- Warming a folder you just opened no longer waits for the browser to declare itself
+  idle. A browser may defer that indefinitely, and when it does, the folder you just
+  opened is exactly the one that stays slow.
+  Speculative warming — on first load, and while scrolling — still waits for idle, which
+  is what idle is for.
+
 Plugin SDK:
 
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the
