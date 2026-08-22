@@ -1635,15 +1635,12 @@ html.theme-anim .menu {
   border-bottom: 1px solid var(--border);
 }
 
-/* Path-rendering convention — pathHtml() in app.js wraps a path in
-   .path with .path-dir (everything up to and including the final
-   slash) and .path-base (the last segment). Only the dir prefix
-   restyles; the basename inherits whatever its container declares so
-   each call site (header, file header, etc.) keeps its own emphasis. */
-.path-dir {
-  color: var(--muted);
-  font-weight: var(--weight-normal);
-}
+/* Path-rendering convention — pathBaseHtml() in app.js wraps the last
+   component of a path in .path with .path-base. Neither carries style of
+   its own: the basename inherits whatever its container declares, so each
+   call site keeps its own emphasis. A whole path is not rendered this way
+   anywhere — the file header renders one as an address of controls, which
+   .folder-breadcrumb styles. */
 
 /* ── Keyboard keys — shared inline primitive ─────────────────────
    The one way to render a keyboard key. Tokens live with the type

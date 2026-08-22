@@ -219,28 +219,13 @@ function countHtml(n, extraClass) {
   return `<span class="${cls}">${formatCount(n)}</span>`;
 }
 
-// Path-styling convention — split at the final slash and render the
-// directory portion muted, the basename in the inherited (typically
-// bold) style. Use anywhere a path is shown in a context where the
-// last segment is the focus (app header, file header, drawer titles).
-function _pathHtml(path, extraClass) {
-  var raw = String(path == null ? "" : path);
-  var trimmed = raw.replace(/\/+$/, "");
-  var cls = `path ${extraClass || ""}`.trim();
-  var i = trimmed.lastIndexOf("/");
-  if (i < 0) {
-    return `<span class="${cls}"><span class="path-base">${esc(trimmed || raw)}</span></span>`;
-  }
-  var dir = trimmed.slice(0, i + 1);
-  var base = trimmed.slice(i + 1);
-  return `<span class="${cls}"><span class="path-dir">${esc(dir)}</span><span class="path-base">${esc(base)}</span></span>`;
-}
-
 /**
- * Just the last component of `path`, wrapped the same way pathHtml wraps a
- * whole one so it inherits the same emphasis. This is what the navigation
- * heading shows: the directories above the served root never change, and
- * the column they would spend width on is the narrowest in the app.
+ * Just the last component of `path`, wrapped in `.path`/`.path-base` so it
+ * inherits whatever emphasis its container declares. This is what the
+ * navigation heading shows: the directories above the served root never
+ * change, and the column they would spend width on is the narrowest in the
+ * app. Where a whole path is wanted the file header renders it as an
+ * address of controls instead — see headerAddressHtml.
  */
 function pathBaseHtml(path) {
   var trimmed = String(path == null ? "" : path).replace(/\/+$/, "");
