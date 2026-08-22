@@ -322,6 +322,26 @@ and there is no measurement of that cost yet.
   Silent truncation is not an option either way.
 - [ ] Re-measure and record the comparison
 
+## Hypotheses
+
+Each round of [the exploration loop](../../../../explorations/README.md) tests one of
+these, and each is stated so it can be wrong, with the metric that would show it.
+Status is updated as experiments resolve them; the write-ups are in
+[explorations/experiments/](../../../../explorations/experiments/).
+
+Numbering is shared across this plan; a new hypothesis takes the next free number so no
+id ever means two things.
+
+| # | Hypothesis | Metric that would show it | Status |
+| --- | --- | --- | --- |
+| H1 | The prefetched libraries start on `DOMContentLoaded`, which is the same window as the first `/api/tree` fetch and the tree render, so they compete with the tree and hold the `load` event open behind them. Starting them on the first idle callback removes both. | `load_ms` down; `first_row_ms` down | **Half confirmed** (exp-001). `load_ms` 3,883 ms to 750 ms on ranges that do not overlap. `first_row_ms` did not move: 854 ms against 999 ms on ranges that overlap almost completely. Accepted on the tier policy and `load`, not on the row |
+| H2 | The idle sweep that warms collapsed folders is not viewport-bounded and re-arms on every index refresh, so on a wide tree it requests folders the reader cannot see, for as long as the scan runs. Bounding it to the viewport ends the tail. | `last_resource_ms` and `subtree_requests` down sharply; `first_row_ms` unchanged or down | **Open** (`mb-hv8x`). Observed at 121 stubs with zero folders expanded, still requesting at t+28.7 s |
+| H3 | That sweep issues one request per ~800 ms, which does not follow from `SUBTREE_PREFETCH_MAX_CONCURRENT = 3` over a 32-path sweep. Something serializes it, and the policy should not be changed before that is known. | A counted sweep: paths per sweep and sweeps per second | **Partly answered.** Against a *settled* index the sweep behaves as written: 32 paths in one go, done at 2.2 s. The one-per-800-ms trickle happens only while the walk is running, so whatever serializes it is scan state, not the sweep’s own concurrency. What remains is which part of scan state does it |
+| H4 | `/api/catalog` is 4.5 MB at 100,000 files and nothing reads it until the finder opens, so it competes for connections and main thread during the first seconds. Moving it to the on-demand tier frees that window. | `first_row_ms` down; `transferred_kb` down | **Open** (`mb-296z`). Not the quick win it first looked: `pendingChanges` in `catalog_feed.js` is unbounded, so a deferred first fetch needs a buffering policy |
+| H5 | The root `/api/tree` answers in single-digit milliseconds when idle but took 620-721 ms while the walk was running, and it is the largest single component of time to first row. The cost is contention with the walker, not response size. | `load_tree_ms` down with server-side attribution | **Open**. Phase 3, and blocked behind H2 for the reason the ordering table gives |
+| H6 | Nav rows are gated on scan completion, so the first row waits seconds for data the browser already has. | `first_row_ms` down several-fold | **Not reproduced** as stated. On `build_corpus` at 100,000 files the first row lands at a median of 854 ms, not the 4,525 ms this plan’s Background reports from a different corpus. `renderFilesFromTree` runs as soon as `/api/tree` resolves, so the gate is that request rather than scan completion. `mb-op70` should be re-scoped to H5 unless a corpus reproduces the original number |
+| H7 | The tree renders every row it knows about, so DOM node count follows the corpus rather than the viewport. | `dom_nodes` bounded as corpus grows | **Open** (`mb-z7zb`). 3,735 nodes at 100,000 files on `build_corpus`, well under the ceiling — the shape that produced 276,789 nodes needs a wider corpus to reproduce |
+
 ## Reproducing the Measurements
 
 Every number in this document was taken by hand, outside the repository, because the

@@ -59,9 +59,9 @@ lint:
 
 format:
 	$(MAKE) format-markdown
-	$(UV_RUN) ruff format src tests devtools
+	$(UV_RUN) ruff format src tests devtools explorations
 	npx --no-install biome format --write \
-		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom \
+		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom explorations \
 		biome.json package.json tsconfig.json tsconfig.legacy.json
 
 format-markdown:
