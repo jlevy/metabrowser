@@ -95,6 +95,27 @@ phase of `bench_serving.py` belongs.
 Waiting for `load` reports a page that painted its shell, and waiting for network idle
 reports a scan that finished; neither is when the reader can use the tree.
 
+Dimensions added for the registered hypotheses, so each can be accepted or rejected by
+this loop rather than argued:
+
+| Metric | Hypotheses it decides | Notes |
+| --- | --- | --- |
+| `tree_reprobe_ms`, `tree_reprobe_srv_ms`, `index_status_at_probe` | H8 | The root tree route asked again at probe time, with the server’s own `Server-Timing` share and the scan state it was measured in. H8 is a claim about the scanning regime, so the regime is recorded with the number |
+| `fcp_ms` | H10 | Null where the browser reports no paint entries — a pane created hidden never does — and never a fabricated 0 |
+| `long_tasks`, `long_task_ms_total` | H9, H11 | Main-thread stalls over 50 ms, from a buffered PerformanceObserver. Chromium only; null elsewhere |
+| `render_spans`, `render_ms_total` | H7, H11 | Every `renderTreeNodes:*` span the app recorded: what patching-not-replacing and row windowing would move |
+| `dom_nodes`, `tree_items`, `lazy_stubs` | H7 | Rendered size |
+| `subtree_requests`, `last_resource_ms` | H2 | The warming sweep’s footprint |
+| `load_ms`, `vendor_first_start_ms`, `transferred_kb` | H1, H9 | The asset tiers |
+
+Not everything runs in the page.
+H13/H18 (walker) read `inventory walker complete: elapsed=` from the server log `serve`
+writes; H14/H17 (CLI and imports) use
+`python -X importtime -c "import metabrowser.server"` and `devtools/bench_serving.py`’s
+start-to-serving phase; H15 is a correctness claim.
+Each hypothesis names its instrument in the plan table, and a hypothesis whose
+instrument does not exist yet is marked blocked rather than measured badly.
+
 ## The accept rule
 
 A candidate is accepted when all of these hold:

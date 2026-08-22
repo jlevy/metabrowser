@@ -63,6 +63,13 @@ METRICS = (
     "dom_nodes",
     "transferred_kb",
     "vendor_first_start_ms",
+    "fcp_ms",
+    "long_tasks",
+    "long_task_ms_total",
+    "render_spans",
+    "render_ms_total",
+    "tree_reprobe_ms",
+    "tree_reprobe_srv_ms",
     "viewport_w",
     "viewport_h",
 )
