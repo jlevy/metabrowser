@@ -5,12 +5,12 @@ title: Declared deviation for swift/svelte, the one pair the derivation cannot s
 kind: task
 status: open
 priority: 3
-version: 4
+version: 5
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T19:03:47.925Z
-updated_at: 2026-08-22T21:14:56.850Z
+updated_at: 2026-08-22T22:52:17.715Z
 ---
 Reported in QA: Python and TypeScript look like the same blue.
 
@@ -32,14 +32,6 @@ Decide after mb-0ov6 lands and the new palette has been looked at in a browser: 
 
 ## Notes
 
-DECIDED AFTER mb-0ov6 LANDED AND WAS LOOKED AT.
+MECHANISM NOW EXISTS. Built for Markdown (hue 261.42 -> 276.0, plus a rank below the band) and it is general: a family declares `deviation` prose plus an optional `lightness_rank`, keeps linguist/linguist_color for provenance, and is held to MINIMUM_HOUSE_DELTA_E in both themes like a colour chosen from a free gap. A lightness_rank without a deviation is refused. Carried in the projection and the fingerprint; documented under 'Declared deviations' in the file-rollup-format doc.
 
-TypeScript needs no deviation. The pair that started this bead now renders python #0385d6 against typescript #2586e9 in light and #5daef3 against #6db0ff in dark, at delta-E 0.0316 and 0.0240. Side by side in a browser they are two blues. The prediction recorded in the update above held: the derivation alone was enough, and moving TypeScript to a house hue would have cost a familiar colour to fix something that is no longer broken.
-
-So the purple move is dropped. What remains is the mechanism, and it is still wanted -- for one pair rather than for TypeScript.
-
-swift/svelte in the DARK theme is the one real collision left: #ff907b against #ff9279, delta-E 0.0073. On screen they are the same colour. Light is fine at 0.0191 (#ec4c33 against #f34519). #f05138 and #ff3e00 are near-identical upstream in hue, lightness and chroma together, so no derivation from GitHub's colour separates them -- which is exactly the case a declared deviation exists for.
-
-Scope this bead now covers: add the declared-deviation concept (keep linguist and linguist_color for provenance, add a reason field recording why we left GitHub) and apply it to ONE of swift or svelte, in the dark theme's terms. check_file_type_colors.py already measures in delta-E and already holds house-placed families to a floor in both themes, so a deviated family should simply be held to that same floor rather than to the hue rules -- most of the mechanism this bead asked for is now in place.
-
-Note the arcs recorded above (308.37-309.22 and the two near 228 and 238) were computed at the flat tone and against hue distance. --suggest still returns 308.80, but the constraint should be recomputed in delta-E before anything is placed, because the circle is no longer the only dimension in play.
+So what is left here is only the decision and one TOML edit: pick swift or svelte and give it a hue and a reason. Measure with devtools/check_file_type_colors.py, which now lists deviations and still reports svelte/swift at dE 0.0073 in dark as the tightest surviving pair. Note the pair is fine in light (0.0191), so a deviation here is bought for the dark theme alone -- worth deciding whether that justifies moving a colour in both.
