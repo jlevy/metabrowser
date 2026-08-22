@@ -73,6 +73,11 @@ this repository’s structural facts and standing answers.
 - Run Biome and TypeScript check-JS through the Make targets for browser changes.
 - Keep new browser modules under the fully strict `tsconfig.json` gate.
   Do not expand the explicit legacy allowlist without a documented reason.
+- Give every browser asset a loading tier — eager, prefetched, or on demand — and pick
+  it from measured cost, not from convenience.
+  A script in the shell’s eager path is fetched, parsed, and evaluated whether or not
+  anything uses it, so a large or narrowly used library does not belong there.
+  See [asset loading tiers](docs/development.md#asset-loading-tiers).
 
 ## Documentation and Public Hygiene
 

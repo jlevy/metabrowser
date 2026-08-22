@@ -94,6 +94,63 @@ rendering, and the in-process navigation API check.
 The installed wheel must also pass `metab --doctor`, so the release gate validates the
 user-facing plugin diagnostics rather than only importing plugin internals.
 
+## Asset Loading Tiers
+
+Every browser asset has a loading tier, and the tier is chosen from what the asset costs
+rather than from what is convenient to write.
+The rule exists because parse and evaluate are paid on load whether or not anything uses
+the code: a library in the shell’s eager path costs every reader on every document, and
+that cost is invisible in a request count.
+
+**Eager.** A blocking `<script>` in the shell, for code without which the first render
+is wrong. This is the core module list in `server.py` and it stays small.
+
+**Prefetched.** Fetched after first paint, during idle, before anything asks.
+For code small relative to how likely it is to be wanted, where arriving late would be
+visible. A consumer awaits it rather than discovering it missing.
+
+**On demand.** Fetched the first time something needs it, and never otherwise.
+For code that is large, narrowly used, or both.
+
+The tier applies to data as well as code.
+A bulk payload that only one surface reads follows the same rule as a library that only
+one view calls.
+
+### The Lazy Loading Mechanism
+
+The mechanism follows the library’s module format.
+Both shapes keep a loaded set and an in-flight promise map, so concurrent callers share
+one load and a repeat costs nothing.
+
+**A library that installs a global** loads through `static/asset_loader.js`. The server
+publishes named bundles as `window.METABROWSER_ASSET_BUNDLES`, and `ensureAsset(name)`
+appends that bundle’s scripts with `async = false` so they run in order — a Chart.js
+plugin is inert without `Chart`. `plugin_sdk.js` republishes it as
+`metabrowser.ensureAsset`, so a plugin reaches the loader through the documented SDK
+rather than a private global.
+
+**An ES module tree** loads through dynamic `import()`, as `loadKpressAssets` in
+`plugin_sdk.js` shows: import the module, capture its named export, and hold it.
+Two properties keep a vendored ESM tree loadable without a build step.
+Its specifiers must be relative, so no import map is needed; and where its filenames
+already carry content hashes, only the entry point needs the `?v=` cache-buster that
+`_static_asset_url` adds.
+
+A library moved off the eager path needs an absence contract at every consumer: a guard
+that today reads “if the global is missing, skip” becomes “await the loader.”
+Late arrival must also re-enhance what is already on screen, which is what the
+`metabrowser:optional-asset-loaded` event exists for.
+
+### Justifying a Tier
+
+State the measurement, not the intuition.
+Take it in a real browser against a real corpus, the way
+[rendering large content](large-content-rendering.md) requires for size limits, and
+record it with the change.
+`devtools/bench_serving.py` covers the serving side; the page-load side is measured the
+same way and against the same corpus, so a tier change and a serving change are
+comparable.
+
 ## Benchmarking Scan and Serve
 
 `devtools/bench_serving.py` measures how fast a tree becomes usable and stays usable.

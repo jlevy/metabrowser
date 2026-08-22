@@ -735,6 +735,7 @@ type MetabrowserSdk = {
   getRegisteredView(kind: string, view: string): MetabrowserViewSpec | undefined;
   icons: Record<string, string>;
   isLargeTextPreview(data: Record<string, unknown>): boolean;
+  ensureAsset(name: string): Promise<void>;
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
@@ -1487,6 +1488,11 @@ declare global {
   interface Window {
     __structuredPreview?: StructuredPreviewGlobal;
     __structuredTree?: StructuredTreeGlobal;
+    METABROWSER_ASSET_BUNDLES?: Record<string, Array<{ src: string; requires?: string }>>;
+    MetabrowserAssets?: {
+      ensureAsset(name: string): Promise<void>;
+      assetLoaded(name: string): boolean;
+    };
     MetabrowserCharts?: MetabrowserChartRuntime;
     MetabrowserDebug?: {
       clearFileCache(path?: string): void;
