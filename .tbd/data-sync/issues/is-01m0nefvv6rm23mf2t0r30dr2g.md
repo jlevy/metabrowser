@@ -3,14 +3,16 @@ type: is
 id: is-01m0nefvv6rm23mf2t0r30dr2g
 title: Replace the prose Scanning… message under File Overview with the standard progress affordance
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T19:17:18.309Z
-updated_at: 2026-08-22T19:17:18.309Z
+updated_at: 2026-08-22T19:28:06.172Z
+closed_at: 2026-08-22T19:28:06.172Z
+close_reason: Prose replaced by the nav panel's spinner+count component, and the scan-completion transition now announces on the inventory-change channel so it clears.
 ---
 Two problems, reported in QA.
 
