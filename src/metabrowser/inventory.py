@@ -592,7 +592,7 @@ class InventoryIndex:
         min_stale_s: float,
         now_ns: int | None = None,
     ) -> NavigationTallies | None:
-        """The memoized tallies if they are younger than *max_stale_s*, else None.
+        """The memoized tallies if they are still current, else None.
 
         Cheap enough for the event loop: a tuple compare and a clock read, no
         index pass and no snapshot. That is the point of having it separate --
@@ -624,14 +624,25 @@ class InventoryIndex:
             if memo is None:
                 return None
             memo_key, base = memo
-            # The key is (revision, limit, presets); everything after the
-            # revision is what this caller's shape has to match. The revision
-            # itself is deliberately ignored -- that is the whole point.
+            # Everything after the revision is what this caller's shape has to
+            # match; a different limit or preset set is a different question.
             if memo_key[1:] != (limit, key_presets):
                 return None
-            bound = max(min_stale_s, self._navigation_tally_cost_s)
-            if time.monotonic() - self._navigation_tally_at > bound:
-                return None
+            # An unchanged revision *proves* the memo current, so age has
+            # nothing to add and must not gate it. Letting it do so killed this
+            # fast path exactly where it should always hit: the timestamp is
+            # written only when the pass runs, so once a walk finishes and the
+            # revision stops moving, the memo aged past the bound and every
+            # later poll missed forever -- each one then paying a full index
+            # copy before discovering the revision had not moved after all.
+            #
+            # The bound is a concession to a revision that is *moving*, which
+            # is the scan. It has no business deciding anything once the tree
+            # has settled.
+            if memo_key[0] != self._rollup_generation:
+                bound = max(min_stale_s, self._navigation_tally_cost_s)
+                if time.monotonic() - self._navigation_tally_at > bound:
+                    return None
         current_ns = time.time_ns() if now_ns is None else now_ns
         return _with_recency(base, recency_windows, current_ns)
 
@@ -649,13 +660,29 @@ class InventoryIndex:
         Pairing the two here lets the route hand the whole cost to a thread.
         """
 
-        snapshot = self.entries(scope="all-known")
+        # One lock covering both reads, for two reasons that happen to share a fix.
+        #
+        # This is the first call site that reads the index from a worker thread
+        # rather than from the event loop, so the writers' lock was no longer
+        # doing anything for this reader. Benign under the GIL today -- a
+        # ``list(dict.values())`` does not tear -- and not benign on a
+        # free-threaded build, which CI already exercises on 3.14.
+        #
+        # And the revision has to be read with the snapshot, not after it. The
+        # walker can write in between, which keys the memo to a revision newer
+        # than the contents it summarizes; if that lands on the walk's final
+        # writes, the settled tree serves under-counted tallies from that memo
+        # forever, because the revision never advances again to evict it. A
+        # narrow window with a permanent consequence.
+        with self._rollup_cache_lock:
+            snapshot = list(self._entries.values())
+            revision = self._rollup_generation
         return self.navigation_tallies(
             presets,
             recency_windows,
             limit,
             entries=snapshot,
-            revision=self.rollup_revision(),
+            revision=revision,
         )
 
     def _compute_navigation_tallies(

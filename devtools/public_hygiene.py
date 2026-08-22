@@ -6,6 +6,7 @@ import hashlib
 import os
 import re
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,6 +96,30 @@ def _is_implementation_source(source: str) -> bool:
     )
 
 
+@lru_cache(maxsize=1)
+def _git_local_env_names() -> frozenset[str]:
+    """Environment variables git considers repository-local.
+
+    Invariant for the life of the process, and this is now asked once per
+    walked directory rather than once per run, so it is answered from a cache:
+    the walk below prunes to the tracked tree, which is hundreds of directories
+    on a real checkout and was hundreds of redundant `git` spawns.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_CHECK_IGNORE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return GIT_LOCAL_ENV_FALLBACK
+    if result.returncode != 0:
+        return GIT_LOCAL_ENV_FALLBACK
+    return frozenset(result.stdout.splitlines())
+
+
 def _git_ignored(paths: list[Path]) -> set[Path]:
     """Return the subset of ``paths`` that git ignores.
 
@@ -112,18 +137,7 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
     stdin = "".join(f"{path.relative_to(ROOT)}\0" for path in paths)
     try:
         env = os.environ.copy()
-        local_env_result = subprocess.run(
-            ["git", "rev-parse", "--local-env-vars"],
-            capture_output=True,
-            text=True,
-            timeout=GIT_CHECK_IGNORE_TIMEOUT_SECONDS,
-            check=False,
-        )
-        local_env_names = (
-            local_env_result.stdout.splitlines()
-            if local_env_result.returncode == 0
-            else GIT_LOCAL_ENV_FALLBACK
-        )
+        local_env_names = _git_local_env_names()
         for name in local_env_names:
             env.pop(name, None)
         result = subprocess.run(

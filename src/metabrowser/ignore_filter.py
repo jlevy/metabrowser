@@ -161,6 +161,7 @@ def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFi
         if ".gitignore" in filenames:
             rel_dir = os.path.relpath(dirpath, root)
             nested_path = Path(dirpath) / ".gitignore"
+            added = 0
             with open(nested_path) as f:
                 for line in f:
                     if cancel_event is not None and cancel_event.is_set():
@@ -169,12 +170,27 @@ def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFi
                     # Skip blank lines and comments.
                     if not stripped or stripped.startswith("#"):
                         all_lines.append(line)
+                        added += 1
                     else:
                         # Prefix pattern with relative directory for correct matching.
                         all_lines.append(f"{rel_dir}/{stripped}\n")
+                        added += 1
             # Rebuild only here, which is once per ``.gitignore`` found --
             # hundreds of times on a large tree, not once per directory.
-            if len(all_lines) >= patterns_at_last_rebuild * PRUNE_SPEC_REBUILD_GROWTH:
+            # A negation would break the lag's whole safety argument: it makes
+            # a larger pattern set match *fewer* paths, so a stale spec could
+            # prune a directory the current one would have kept -- and that
+            # loses a subtree's rules rather than one file's verdict.
+            #
+            # None can reach here today, because a nested pattern is prefixed
+            # as f"{rel_dir}/{stripped}" and that turns "!keep.log" into the
+            # literal "pkg/!keep.log". That prefixing is wrong and predates
+            # this code; when it is fixed, this branch is what keeps the prune
+            # sound instead of silently becoming unsafe. It costs nothing until
+            # then, which is the point of writing it now.
+            negated = any(line.lstrip().startswith("!") for line in all_lines[-added:])
+            grown = len(all_lines) >= patterns_at_last_rebuild * PRUNE_SPEC_REBUILD_GROWTH
+            if negated or grown:
                 accumulated = GitIgnoreSpec.from_lines(all_lines)
                 patterns_at_last_rebuild = len(all_lines)
 

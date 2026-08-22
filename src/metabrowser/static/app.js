@@ -829,21 +829,41 @@ function renderInitialTreeRows() {
 async function loadTree() {
   return _perf.measureAsync("loadTree", async () => {
     _perf.measure("renderTreeNodes:inline", () => renderInitialTreeRows());
-    const resp = await fetch(treeUrl(""));
-    if (!resp.ok) {
-      console.warn(`loadTree: HTTP ${resp.status}`);
+
+    /** Replace whatever is on screen with a failure the reader can act on. */
+    function failTree(reason) {
+      console.warn(`loadTree: ${reason}`);
       const treeEl = document.getElementById("tree-content");
       if (treeEl) {
         treeEl.innerHTML =
           '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
       }
+    }
+
+    let resp;
+    let data;
+    try {
+      resp = await fetch(treeUrl(""));
+      if (!resp.ok) {
+        failTree(`HTTP ${resp.status}`);
+        return;
+      }
+      data = await _perf.measureAsync(
+        "apiTree:json",
+        () => resp.json(),
+        responsePerfMeta(resp, ""),
+      );
+    } catch (error) {
+      // A throw has to land here for the same reason a non-ok status does, and
+      // more urgently since the inline rows are already painted: a dropped
+      // connection or a malformed body would otherwise leave the reader
+      // looking at two hundred rows with no chrome, no counts, and no error --
+      // a tree that appears complete and is not. Before those rows were
+      // inlined the same failure left an empty pane, which at least read as
+      // broken.
+      failTree(String(error));
       return;
     }
-    const data = await _perf.measureAsync(
-      "apiTree:json",
-      () => resp.json(),
-      responsePerfMeta(resp, ""),
-    );
     knownFileCatalog?.observeInitialTree(data.tree);
     var pathEl = queryHtml(".header-path");
     if (pathEl) {

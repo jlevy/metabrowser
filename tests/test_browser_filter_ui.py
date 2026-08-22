@@ -955,7 +955,7 @@ def test_one_index_snapshot_serves_every_pass_a_request_makes() -> None:
     # And the tally path reuses it rather than taking a second one: the
     # unfiltered path snapshots lazily inside its thread, but when a filter has
     # already forced a snapshot, both passes read that one.
-    assert "if navigation_tallies is None and index_entries is not None:" in block
+    assert "if navigation_tallies is None and wants_tallies and index_entries is not None:" in block
     # No await between the snapshot and the two reads that must describe it.
     snapshot = block.index('index_entries = inventory.entries(scope="all-known")')
     settled = block.index("tally_cache_status = inventory_status()", snapshot)

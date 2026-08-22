@@ -1001,14 +1001,13 @@ async def index(_request: Request) -> HTMLResponse:
                 parent_rel="",
                 max_depth=1,
                 root_abs=_resolved_root_dir(),
+                max_entries=_INLINE_INITIAL_TREE_ROWS,
             )
         except Exception:
             LOG.debug("initial tree inline failed", exc_info=True)
             initial_tree = []
         if initial_tree:
-            initial_tree_json = _json.dumps(
-                {"tree": initial_tree[:_INLINE_INITIAL_TREE_ROWS]}
-            ).replace("<", "\\u003c")
+            initial_tree_json = _json.dumps({"tree": initial_tree}).replace("<", "\\u003c")
             initial_tree_block = (
                 f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
             )
@@ -1560,9 +1559,7 @@ async def api_tree(request: Request) -> JSONResponse:
         # nullable and guarded field-by-field on the client, so a row request
         # that arrives without them is a shape the browser already handles.
         wants_tallies = remaining_depth == 0
-        if navigation_tallies is None and not wants_tallies:
-            pass
-        elif navigation_tallies is None and index_entries is not None:
+        if navigation_tallies is None and wants_tallies and index_entries is not None:
             # A filter is active, so the snapshot already exists and both
             # passes must describe the same index. Reuse it rather than
             # copying the index a second time.
@@ -1577,7 +1574,7 @@ async def api_tree(request: Request) -> JSONResponse:
                     revision=tally_revision,
                 )
             )
-        elif navigation_tallies is None:
+        elif navigation_tallies is None and wants_tallies:
             navigation_tallies = await asyncio.to_thread(
                 inventory.navigation_tallies_snapshotting,
                 tally_presets,
