@@ -791,8 +791,44 @@ function treeUrl(path, extraParams) {
   );
 }
 
+// The rows the shell inlined, painted before the first fetch is even sent.
+// Consumed once: after that the fetched payload is authoritative, and a second
+// paint from a snapshot the server took at page-render time would be a
+// regression, not a shortcut.
+let _inlineTreeRows = window.METABROWSER_INITIAL_TREE?.tree ?? null;
+
+/**
+ * Paint the inlined rows, if the shell carried any and nothing has painted yet.
+ *
+ * Only for the unfiltered default view. A filter is client state the server did
+ * not have when it rendered the page, so these rows do not describe it.
+ *
+ * @returns {boolean} whether rows were painted
+ */
+function renderInitialTreeRows() {
+  const rows = _inlineTreeRows;
+  _inlineTreeRows = null;
+  if (!Array.isArray(rows) || rows.length === 0 || _lastTreeRender) {
+    return false;
+  }
+  // treeFilterKey() is the same key the request carries, and it is empty when
+  // nothing is filtered — so this asks exactly the question the server was
+  // answering when it rendered these rows.
+  if (treeFilterKey() || filesPanelUsesRecentSource()) {
+    return false;
+  }
+  // No chrome: the tally row needs numbers this payload does not carry, and an
+  // empty one would flash and be replaced. Rows first, chrome with the fetch.
+  _lastTreeRender = { tree: rows, chromeHtml: "", tallyCacheStatus: "scanning" };
+  const painted = renderFilesFromTree();
+  // Not authoritative — the fetch that follows replaces this wholesale.
+  _lastTreeRender = null;
+  return painted;
+}
+
 async function loadTree() {
   return _perf.measureAsync("loadTree", async () => {
+    _perf.measure("renderTreeNodes:inline", () => renderInitialTreeRows());
     const resp = await fetch(treeUrl(""));
     if (!resp.ok) {
       console.warn(`loadTree: HTTP ${resp.status}`);

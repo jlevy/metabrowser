@@ -16,6 +16,7 @@ cannot hold. How a round is run, and the rule that decides whether a change is k
 | exp-001 | [The prefetched libraries wait for idle](experiments/exp-001-prefetched-libraries-wait-for-idle.md) | H1 | `first_row_ms` | accepted |
 | exp-002 | [The subtree sweep warms what is on screen](experiments/exp-002-subtree-prefetch-bounded-to-the-viewport.md) | H2, H3 | `subtree_requests` | accepted |
 | exp-003 | [The navigation tallies stop being recomputed per request](experiments/exp-003-navigation-tallies-on-a-staleness-bound.md) | H8, H23 | `srv_scanning_ms` | accepted |
+| exp-004 | [The shell carries the tree’s first rows](experiments/exp-004-the-shell-carries-the-first-rows.md) | H20 | `first_row_ms` | accepted |
 
 ## Absolute numbers, per condition
 
@@ -42,32 +43,32 @@ Conditions are grouped by corpus, because none of these numbers compare across o
 
 ### 300,000 files
 
-| metric | viewport-bounded-sweep (n=3) | dom-order-sweep (n=3) | revision-keyed-tallies (n=5) | bounded-stale-tallies (n=3) | cost-derived-tallies (n=7) | warmed-tallies (n=3) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `first_row_ms` | 1,044 (1,017-1,449) | 1,200 (1,043-1,660) | 6,183 | - | 1,829 | - |
-| `load_tree_ms` | 876 (870-1,281) | 1,037 (837-1,490) | 1,816 | - | 1,562 | - |
-| `dcl_ms` | 178 (165-183) | 179 (173-215) | 4,384 | - | 284 | - |
-| `load_ms` | 179 (165-184) | 180 (174-215) | 4,385 | - | 285 | - |
-| `last_resource_ms` | 9,195 (8,795-9,361) | 9,398 (6,834-9,975) | 62,012 | - | 20,189 | - |
-| `subtree_requests` | 0 (0-0) | 32 (32-32) | 0 | - | 0 | - |
-| `tree_items` | 334 (334-334) | 334 (334-334) | 334 | - | 334 | - |
-| `lazy_stubs` | 121 (121-121) | 121 (121-121) | 121 | - | 121 | - |
-| `dom_nodes` | 4,637 (4,637-4,637) | 4,637 (4,637-4,637) | 4,907 | - | 4,907 | - |
-| `transferred_kb` | 517 (516-517) | 1,566 (1,562-1,568) | 512 | - | 519 | - |
-| `vendor_first_start_ms` | - | - | 4,391 | - | 286 | - |
-| `fcp_ms` | - | - | 8,676 | - | - | - |
-| `long_tasks` | - | - | 2 | - | 2 | - |
-| `long_task_ms_total` | - | - | 170 | - | 176 | - |
-| `render_spans` | - | - | 1 | - | 1 | - |
-| `render_ms_total` | - | - | 78 | - | 92 | - |
-| `tree_reprobe_ms` | - | - | 15 | - | 17 | - |
-| `tree_reprobe_srv_ms` | - | - | 11 | - | 13 | - |
-| `srv_scanning_ms` | - | - | 650 (621-690) | 518 (452-558) | 394 (342-561) | 380 (368-409) |
-| `srv_settled_ms` | - | - | 12 (11-13) | 13 (11-14) | 6 (6-6) | 9 (9-9) |
-| `wall_scanning_ms` | - | - | 650 (622-692) | 519 (453-558) | 394 (343-562) | 381 (369-410) |
-| `wall_settled_ms` | - | - | 13 (12-14) | 14 (12-16) | 7 (7-7) | 10 (10-10) |
-| `viewport_w` | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) | 1,280 | - | 1,280 | - |
-| `viewport_h` | 900 (900-900) | 900 (900-900) | 900 | - | 900 | - |
+| metric | viewport-bounded-sweep (n=3) | dom-order-sweep (n=3) | revision-keyed-tallies (n=5) | bounded-stale-tallies (n=3) | cost-derived-tallies (n=7) | warmed-tallies (n=3) | inline-first-rows (n=3) | fetch-first-rows (n=3) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `first_row_ms` | 1,044 (1,017-1,449) | 1,200 (1,043-1,660) | 6,183 | - | 1,829 | - | 242 (232-326) | 1,604 (1,447-2,200) |
+| `load_tree_ms` | 876 (870-1,281) | 1,037 (837-1,490) | 1,816 | - | 1,562 | - | 1,052 (924-1,403) | 1,411 (1,248-1,828) |
+| `dcl_ms` | 178 (165-183) | 179 (173-215) | 4,384 | - | 284 | - | 243 (233-329) | 222 (221-383) |
+| `load_ms` | 179 (165-184) | 180 (174-215) | 4,385 | - | 285 | - | 244 (235-330) | 222 (222-384) |
+| `last_resource_ms` | 9,195 (8,795-9,361) | 9,398 (6,834-9,975) | 62,012 | - | 20,189 | - | 21,428 (21,316-40,178) | 21,613 (19,289-21,952) |
+| `subtree_requests` | 0 (0-0) | 32 (32-32) | 0 | - | 0 | - | 13 (13-13) | 0 (0-0) |
+| `tree_items` | 334 (334-334) | 334 (334-334) | 334 | - | 334 | - | 334 (334-334) | 334 (334-334) |
+| `lazy_stubs` | 121 (121-121) | 121 (121-121) | 121 | - | 121 | - | 121 (121-121) | 121 (121-121) |
+| `dom_nodes` | 4,637 (4,637-4,637) | 4,637 (4,637-4,637) | 4,907 | - | 4,907 | - | 4,908 (4,908-4,908) | 4,907 (4,907-4,907) |
+| `transferred_kb` | 517 (516-517) | 1,566 (1,562-1,568) | 512 | - | 519 | - | 552 (550-553) | 518 (517-521) |
+| `vendor_first_start_ms` | - | - | 4,391 | - | 286 | - | 262 (258-351) | 228 (227-395) |
+| `fcp_ms` | - | - | 8,676 | - | - | - | - | - |
+| `long_tasks` | - | - | 2 | - | 2 | - | 1 (1-1) | 3 (2-5) |
+| `long_task_ms_total` | - | - | 170 | - | 176 | - | 65 (63-82) | 268 (191-372) |
+| `render_spans` | - | - | 1 | - | 1 | - | 3 (3-3) | 1 (1-1) |
+| `render_ms_total` | - | - | 78 | - | 92 | - | 51 (15-72) | 63 (55-89) |
+| `tree_reprobe_ms` | - | - | 15 | - | 17 | - | 17 (16-20) | 17 (16-40) |
+| `tree_reprobe_srv_ms` | - | - | 11 | - | 13 | - | 13 (11-15) | 12 (12-16) |
+| `srv_scanning_ms` | - | - | 650 (621-690) | 518 (452-558) | 394 (342-561) | 380 (368-409) | - | - |
+| `srv_settled_ms` | - | - | 12 (11-13) | 13 (11-14) | 6 (6-6) | 9 (9-9) | - | - |
+| `wall_scanning_ms` | - | - | 650 (622-692) | 519 (453-558) | 394 (343-562) | 381 (369-410) | - | - |
+| `wall_settled_ms` | - | - | 13 (12-14) | 14 (12-16) | 7 (7-7) | 10 (10-10) | - | - |
+| `viewport_w` | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) | 1,280 | - | 1,280 | - | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) |
+| `viewport_h` | 900 (900-900) | 900 (900-900) | 900 | - | 900 | - | 900 (900-900) | 900 (900-900) |
 
 Walk elapsed across these runs: 12,613-23,591 ms.
 A run loaded during a walk and a run loaded after one are different regimes.
@@ -107,6 +108,12 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-003 | cost-derived-tallies | 2026-08-22T18:18 | 5a9897a+dirty | 300000 | 21,676 ms | unrecorded |
 | exp-003 | cost-derived-tallies | 2026-08-22T18:18 | 5a9897a+dirty | 300000 | 21,676 ms | unrecorded |
 | exp-003 | revision-keyed-tallies | 2026-08-22T18:18 | 5a9897a+dirty | 300000 | 21,676 ms | unrecorded |
+| exp-004 | inline-first-rows | 2026-08-22T18:26 | 6115a41+dirty | 300000 | 15,263 ms | 1280x900 |
+| exp-004 | inline-first-rows | 2026-08-22T18:27 | 6115a41+dirty | 300000 | 16,953 ms | 1280x900 |
+| exp-004 | inline-first-rows | 2026-08-22T18:28 | 6115a41+dirty | 300000 | 15,828 ms | 1280x900 |
+| exp-004 | fetch-first-rows | 2026-08-22T18:28 | 6115a41+dirty | 300000 | 14,147 ms | 1280x900 |
+| exp-004 | fetch-first-rows | 2026-08-22T18:29 | 6115a41+dirty | 300000 | 16,880 ms | 1280x900 |
+| exp-004 | fetch-first-rows | 2026-08-22T18:30 | 6115a41+dirty | 300000 | 15,728 ms | 1280x900 |
 
 <!-- Generated file.
 Regenerate with `explorations/run.py report`. -->

@@ -215,6 +215,15 @@ NAVIGATION_TALLY_MIN_STALE_S = 0.5
 # asks for is the memo key the route gets.
 NAVIGATION_TALLY_LIMIT = 200
 
+# How many of the root's immediate children the shell inlines so the tree can
+# paint before its first fetch returns. A cap rather than the whole level
+# because this rides in the HTML: every byte is on the critical path for every
+# reader, including the ones whose root has ten thousand entries. Two hundred
+# rows is past any viewport at any sane row height, so the reader sees a full
+# screen either way and the rest arrives with the fetch a moment later.
+# Set to 0 to disable the inline entirely.
+_INLINE_INITIAL_TREE_ROWS = 200
+
 # Encoded rollup bodies keyed by their ETag. The validator alone only helps a
 # client that already holds the answer; a second tab opening the same folder,
 # or a reconnect, arrives without one and would otherwise re-aggregate and
@@ -973,6 +982,36 @@ async def index(_request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    # The tree's first rows, inlined. Without this the reader waits for a round
+    # trip the server did not have to make them take: time to first row is
+    # DOMContentLoaded plus the whole /api/tree request, and during a walk that
+    # request is the slow one (exp-003 made it faster for everyone except the
+    # first caller, whose cache is cold by construction). Depth 1 off the warm
+    # index is the root's immediate children and nothing else, so it is bounded
+    # by how wide the root is rather than by the tree.
+    #
+    # Only the unfiltered default view is inlined. A filter is client state the
+    # server has not been told about at this point, so inlining a filtered view
+    # would risk painting rows the reader's filter excludes; the fetch that
+    # follows owns every case but this one.
+    initial_tree_block = ""
+    if _INLINE_INITIAL_TREE_ROWS and inventory_has_data():
+        try:
+            initial_tree = _build_inventory_tree(
+                parent_rel="",
+                max_depth=1,
+                root_abs=_resolved_root_dir(),
+            )
+        except Exception:
+            LOG.debug("initial tree inline failed", exc_info=True)
+            initial_tree = []
+        if initial_tree:
+            initial_tree_json = _json.dumps(
+                {"tree": initial_tree[:_INLINE_INITIAL_TREE_ROWS]}
+            ).replace("<", "\\u003c")
+            initial_tree_block = (
+                f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
+            )
     repository_context_block = (
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
@@ -1242,6 +1281,7 @@ async def index(_request: Request) -> HTMLResponse:
   {perf_block}
   {settings_block}
   {repository_context_block}
+  {initial_tree_block}
   {asset_bundles_block}
   <script src="{asset_loader_url}"></script>
   <script src="{theme_state_url}"></script>

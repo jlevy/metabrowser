@@ -1490,6 +1490,13 @@ declare global {
     __structuredPreview?: StructuredPreviewGlobal;
     __structuredTree?: StructuredTreeGlobal;
     METABROWSER_ASSET_BUNDLES?: Record<string, Array<{ src: string; requires?: string }>>;
+    /**
+     * The root's immediate children, inlined by the shell so the tree can paint
+     * before its first fetch returns. A snapshot from page-render time, painted
+     * once and then replaced by the fetch; absent when the index was not warm
+     * enough to answer at render time.
+     */
+    METABROWSER_INITIAL_TREE?: { tree: TreeNode[] };
     MetabrowserAssets?: {
       ensureAsset(name: string): Promise<void>;
       assetLoaded(name: string): boolean;

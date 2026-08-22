@@ -414,6 +414,15 @@ Page load:
   The counts can now lag the scan by at most one pass, which is the same beat the
   progress row already tells you they are provisional for.
 
+- The file tree now appears as soon as the page does, instead of after a round trip.
+  The server already knows the top level of the tree when it renders the page, so it
+  sends those rows with the page rather than making the browser ask for them — and on a
+  large folder that request is the slow one, because the scan is still running behind
+  it. Measured on a 300,000-file tree, median of three cold loads: the first row went
+  from 1,604 ms to 242 ms, which is the same moment the rest of the page appears.
+  The full tree still arrives a moment later and replaces what was shown; the difference
+  is that there is something to look at in the meantime.
+
 Plugin SDK:
 
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the
