@@ -859,6 +859,17 @@ _FONT_SETS: tuple[dict[str, str], ...] = (
 )
 _DEFAULT_FONT_SET = _FONT_SETS[0]["value"]
 
+# Prefetched-tier scheduling. The chain waits for the first idle callback so it
+# does not compete with the tree render, and the timeout is the floor: on a
+# large tree the main thread is busy for seconds, and a source view that never
+# highlights is worse than one that highlights late. Two seconds is the same
+# bound the tree's own idle prefetch already uses
+# (SUBTREE_PREFETCH_IDLE_TIMEOUT_MS in static/app.js).
+PREFETCH_IDLE_TIMEOUT_MS = 2000
+# requestIdleCallback is unavailable in Safari before 18.2, so the fallback is
+# a plain timer past first paint rather than no deferral at all.
+PREFETCH_FALLBACK_DELAY_MS = 200
+
 
 async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
@@ -961,9 +972,10 @@ async def index(_request: Request) -> HTMLResponse:
     # package.json + package-lock.json, then run `make vendor-assets`.
     # Prefetched tier: small relative to how likely they are to be wanted, and
     # visibly late if they arrive after the view that uses them. The chain
-    # below starts them on DOMContentLoaded; moving it to an idle callback,
-    # which is what docs/development.md asks of this tier, is tracked
-    # separately.
+    # below starts them on the first idle callback after DOMContentLoaded, so
+    # they do not compete with the tree render, and no later than
+    # PREFETCH_IDLE_TIMEOUT_MS so a busy main thread cannot defer them
+    # indefinitely. See docs/development.md "Asset Loading Tiers".
     optional_script_assets = [
         {"src": _static_asset_url("vendor/mustache.min.js")},
         {"src": _static_asset_url("vendor/highlight.min.js")},
@@ -1023,11 +1035,24 @@ async def index(_request: Request) -> HTMLResponse:
       }};
       document.head.appendChild(script);
     }}
+    // Prefetched, not eager: start when the main thread is free rather than
+    // the moment the document parses, so fetching and evaluating these never
+    // competes with the tree render that DOMContentLoaded also starts. The
+    // timeout is the floor — a busy thread must not defer them forever,
+    // because a source view that never highlights is worse than one that
+    // highlights late.
     function start() {{ loadNext(0); }}
+    function schedule() {{
+      if (typeof window.requestIdleCallback === "function") {{
+        window.requestIdleCallback(start, {{ timeout: {PREFETCH_IDLE_TIMEOUT_MS} }});
+      }} else {{
+        setTimeout(start, {PREFETCH_FALLBACK_DELAY_MS});
+      }}
+    }}
     if (document.readyState === "loading") {{
-      document.addEventListener("DOMContentLoaded", start, {{ once: true }});
+      document.addEventListener("DOMContentLoaded", schedule, {{ once: true }});
     }} else {{
-      start();
+      schedule();
     }}
   }})();
   </script>"""

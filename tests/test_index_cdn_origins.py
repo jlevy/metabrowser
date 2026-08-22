@@ -112,6 +112,29 @@ def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
     assert "/static/asset_loader.js" in html
 
 
+def test_prefetched_assets_wait_for_idle_rather_than_dom_content_loaded() -> None:
+    """The prefetched tier must not run inside the DOMContentLoaded window.
+
+    Starting the chain there puts it in the same window as the tree fetch and
+    keeps the ``load`` event open until it finishes: measured on the 100,000-file
+    bench corpus, median of three cold loads, ``load`` was 3,883 ms with the
+    chain on DOMContentLoaded and 750 ms with it on the first idle callback.
+    The timeout is the floor, so a busy main thread cannot defer highlighting
+    forever. See docs/development.md "Asset Loading Tiers".
+    """
+    html = _index_html()
+    chain_start = html.index("var assets = ")
+    chain = html[chain_start : html.index("</script>", chain_start)]
+
+    assert "requestIdleCallback" in chain, "the prefetched chain no longer waits for idle"
+    assert f"timeout: {server.PREFETCH_IDLE_TIMEOUT_MS}" in chain
+    assert f"setTimeout(start, {server.PREFETCH_FALLBACK_DELAY_MS})" in chain
+    # DOMContentLoaded may still be the earliest point the chain is *scheduled*
+    # from, but it must schedule rather than start.
+    assert 'addEventListener("DOMContentLoaded", schedule' in chain
+    assert 'addEventListener("DOMContentLoaded", start' not in chain
+
+
 def test_local_core_scripts_load_before_optional_assets() -> None:
     """The shell must not wait on optional libraries before registering its app."""
     html = _index_html()
