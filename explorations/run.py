@@ -72,6 +72,10 @@ LAST_PORT = 8699
 METRICS = (
     "first_row_ms",
     "load_tree_ms",
+    "tree_fetch_srv_ms",
+    "tree_fetch_wait_ms",
+    "tree_fetch_total_ms",
+    "tree_fetch_kb",
     "dcl_ms",
     "load_ms",
     "last_resource_ms",

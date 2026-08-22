@@ -188,6 +188,13 @@ A candidate is accepted when all of these hold:
 The first three are arithmetic.
 The fourth is a judgment and gets written as one.
 
+**Size n to the effect you are hunting.** Three runs per condition resolves a 5x effect;
+it does not resolve a 40% one — exp-003’s candidate band read as 342-413 at n=3 and
+widened to 342-561 at n=6. For an expected effect under 2x, interleave conditions (stash
+and restore the change between runs, the way exp-003’s drift check did) and take at
+least five runs per side, or use `probe-server`, which gets a dozen samples per run for
+free.
+
 Two rules about honesty, both learned the expensive way:
 
 **A median without its range is not a result.** These corpora are noisy — a cold run’s

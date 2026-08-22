@@ -67,6 +67,15 @@
   // moment the rows entered the DOM, so it is read rather than re-derived.
   const firstRow = firstOf("renderTreeNodes:root");
 
+  // The first /api/tree fetch, attributed: how much was the server's own work
+  // (Server-Timing, same-origin so it is exposed), how much was wire and
+  // queueing, and how big it was. load_tree_ms alone conflates all three, and
+  // H27 is specifically about which one dominates during a scan.
+  const treeEntry = resources.find(
+    (r) => /\/api\/tree(\?|$)/.test(r.name) && !r.name.includes("path="),
+  );
+  const treeSrv = treeEntry?.serverTiming?.find((t) => t.name === "srv");
+
   // Render cost, from the app's own spans: what H11 (patch instead of
   // replace) and H7 (row windowing) would move.
   const renderSpans = spans.filter((s) => String(s.label).startsWith("renderTreeNodes"));
@@ -90,6 +99,12 @@
     first_row_ms: at(firstRow),
     first_row_render_ms: took(firstRow),
     load_tree_ms: took(firstOf("loadTree")),
+    tree_fetch_srv_ms: treeSrv ? Math.round(treeSrv.duration) : null,
+    tree_fetch_wait_ms: treeEntry
+      ? Math.round(treeEntry.responseStart - treeEntry.requestStart)
+      : null,
+    tree_fetch_total_ms: treeEntry ? Math.round(treeEntry.duration) : null,
+    tree_fetch_kb: treeEntry ? Math.round((treeEntry.transferSize || 0) / 1024) : null,
     // null, not 0, where the browser did not report paint entries — this
     // pane returns [] for them, which is what keeps H10 blocked.
     fcp_ms: paints["first-contentful-paint"] ?? null,
