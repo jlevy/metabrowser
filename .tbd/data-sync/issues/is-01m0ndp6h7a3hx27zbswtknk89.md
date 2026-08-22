@@ -5,7 +5,7 @@ title: Release QA cleanups found while reviewing 0.6.0
 kind: epic
 status: open
 priority: 1
-version: 16
+version: 17
 labels: []
 dependencies: []
 child_order_hints:
@@ -24,7 +24,8 @@ child_order_hints:
   - is-01m0nsv8y2d2m4c9jkwebjct17
   - is-01m0nsv99stqcjdvf7f13k8kyt
   - is-01m0nt1f1h5spxhdr1qv5e9bj9
+  - is-01m0nvja2tjy1gyw0397p0wf1b
 created_at: 2026-08-22T19:03:17.286Z
-updated_at: 2026-08-22T22:39:09.360Z
+updated_at: 2026-08-22T23:05:49.913Z
 ---
 Umbrella for items found during the pre-0.6.0 QA pass. Sub-beads are filed as each item is raised, so nothing from the review is lost.
