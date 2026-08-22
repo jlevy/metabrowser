@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import re
 import shutil
@@ -305,6 +306,121 @@ REALISTIC_IGNORED_SUBTREES = 8
 # with realistic bodies is tens of gigabytes, which is a real constraint on a
 # machine that also has to hold the tree being compared against.
 REALISTIC_BODY_BYTES = 64
+
+
+# How many copies of the sample project the corpus holds. Each contributes the
+# repository's own locked installs plus several copies of its own source, so a
+# count here is roughly 22,000 files.
+PROJECT_CORPUS_DEFAULT_PROJECTS = 10
+# Copies of the real source tree per project, so the tracked half is a few
+# thousand files rather than a few hundred -- the proportion a real repository
+# has once its dependencies are installed.
+PROJECT_CORPUS_SOURCE_COPIES = 4
+PROJECT_CORPUS_IGNORED = ("node_modules", ".venv", "dist", "target", "__pycache__", "build")
+
+
+def build_project_corpus(
+    root: Path, projects: int = PROJECT_CORPUS_DEFAULT_PROJECTS
+) -> dict[str, Any]:
+    """A corpus assembled from this repository's own locked installs.
+
+    The synthetic generators above approximate a real tree's shape from summary
+    statistics, and exp-006 is the record of that going wrong: a corpus can
+    match files-per-directory and depth and still be wrong about the structure
+    under test. This one does not approximate. It copies the actual
+    ``node_modules`` that ``package-lock.json`` produces, the actual ``.venv``
+    that ``uv.lock`` produces, and the repository's own Python, JavaScript, and
+    Markdown as the tracked half -- so the directory shapes, name lengths,
+    nesting, and file-size distribution are a real dependency tree's rather
+    than a guess at one.
+
+    Deterministic in the way that matters: the inputs are two committed
+    lockfiles and a git checkout, so the same commit and the same locks produce
+    the same tree. It needs no network, because ``make install`` has already
+    materialized both installs.
+
+    Copies use APFS clones where available, which makes ten copies of a
+    dependency tree cost almost no additional disk.
+    """
+    marker = root / ".bench-corpus.json"
+    shape_version = 1
+    if marker.is_file():
+        try:
+            existing: dict[str, Any] = json.loads(marker.read_text())
+        except (OSError, ValueError):
+            existing = {}
+        if existing.get("projects") == projects and existing.get("shape") == shape_version:
+            return existing
+
+    sources = {name: REPO / name for name in ("src", "tests", "docs")}
+    installs = {name: REPO / name for name in ("node_modules", ".venv")}
+    missing = [str(path) for path in (*sources.values(), *installs.values()) if not path.is_dir()]
+    if missing:
+        raise SystemExit(
+            "build_project_corpus needs the repository's own installs: run `make install` "
+            f"first (missing: {', '.join(missing)})"
+        )
+
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+
+    def copy_tree(src: Path, dst: Path) -> None:
+        # -c asks for an APFS clone: the copies share blocks, so the corpus
+        # costs about one dependency tree on disk rather than `projects` of
+        # them, while every file still stats and reads normally.
+        result = subprocess.run(
+            ["cp", "-c", "-R", str(src), str(dst)], check=False, capture_output=True
+        )
+        if result.returncode != 0:
+            shutil.copytree(src, dst, symlinks=True)
+
+    (root / ".gitignore").write_text(
+        "\n".join(f"{name}/" for name in PROJECT_CORPUS_IGNORED) + "\n*.pyc\n.DS_Store\n"
+    )
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    for index in range(projects):
+        project = root / f"project{index:02d}"
+        project.mkdir()
+        # Tracked: real code, several copies, so the tracked half has the
+        # thousands of files a working repository has.
+        for copy_index in range(PROJECT_CORPUS_SOURCE_COPIES):
+            for name, path in sources.items():
+                copy_tree(path, project / f"{name}{copy_index}")
+        # Nested .gitignore files, the way a real repository carries them. The
+        # locked installs bring few of their own, and how many exist decides
+        # how much a change to the pattern-loading path can matter -- the real
+        # trees carry 88 and 527. Placed deterministically by walking the
+        # tracked copies in sorted order so the same commit yields the same
+        # tree.
+        (project / ".gitignore").write_text("*.log\nbuild/\n.cache/\n")
+        tracked_dirs = sorted(
+            d for d in project.glob("src*/**/") if d.is_dir() and "__pycache__" not in d.parts
+        )
+        for position, directory in enumerate(tracked_dirs):
+            if position % 4 == 0:
+                (directory / ".gitignore").write_text(
+                    "*.tmp\n*.bak\n*.orig\nbuild/\ndist/\n*.log\n.cache/\n*.pyc\ncoverage/\n*.swp\n"
+                )
+        # Ignored: the actual locked installs.
+        for name, path in installs.items():
+            copy_tree(path, project / name)
+
+    files = dirs = 0
+    for _, dirnames, filenames in os.walk(root):
+        dirs += len(dirnames)
+        files += len(filenames)
+    info: dict[str, Any] = {
+        "projects": projects,
+        "shape": shape_version,
+        "files": files,
+        "dirs": dirs,
+        "path": str(root),
+    }
+    marker.write_text(json.dumps(info))
+    return info
 
 
 def build_realistic_corpus(root: Path, target_files: int) -> dict[str, Any]:

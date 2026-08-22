@@ -12,9 +12,9 @@ experiment:
   hypotheses:
     - H30
   subject:
-    corpus: build_realistic_corpus at 150,000 files (36,552 directories, 104 nested .gitignore files), with two real working trees as sanity checks
-    corpus_files: 150000
-    corpus_dirs: 36552
+    corpus: build_project_corpus at 10 projects (246,282 files, 31,161 directories, 251 nested .gitignore files) assembled from the repository's own locked installs, with two real working trees as sanity checks
+    corpus_files: 246282
+    corpus_dirs: 31161
     host_system: Darwin 25.5.0
     browser: n/a
     viewport: "n/a"
@@ -27,18 +27,18 @@ experiment:
     record: explorations/results/runs.jsonl
   results:
     - metric: gitignore_build_ms
-      control_median: 1650
-      candidate_median: 1250
-      control_range: [1620, 3020]
-      candidate_range: [1190, 1900]
-      change_pct: -24.2
-      overlapping: true
+      control_median: 13360
+      candidate_median: 810
+      control_range: [12410, 15530]
+      candidate_range: [810, 860]
+      change_pct: -93.9
+      overlapping: false
     - metric: gitignore_build_ms_real_tree_a
       control_median: 21370
-      candidate_median: 2540
+      candidate_median: 2180
       control_range: [19740, 21590]
-      candidate_range: [2530, 5750]
-      change_pct: -88.1
+      candidate_range: [2170, 5140]
+      change_pct: -89.8
       overlapping: false
     - metric: gitignore_build_ms_real_tree_b
       control_median: 750
@@ -55,7 +55,7 @@ experiment:
       change_pct: -96.9
       overlapping: false
   complexity:
-    lines_changed: 48
+    lines_changed: 62
     new_dependencies: []
     new_failure_modes:
       - "A nested .gitignore inside an ignored or hidden directory is no longer read. That is what git does -- an ignored directory is excluded wholesale -- and the verdict for every visible path was compared against the unpruned filter on all three trees to confirm it."
@@ -63,7 +63,7 @@ experiment:
   verdict:
     decision: accepted
     primary_metric: gitignore_build_ms_real_tree_a
-    reason: "21.4 s to 2.5 s on the real tree that motivated the hypothesis, and 0.75 s to effectively zero on the second, both on non-overlapping ranges. The reproducible corpus agrees in direction at 1.65 s to 1.25 s, with overlapping ranges because it is a fifth the size. Verified to change no answer: every visible path -- 341,872 of them on the largest tree -- gets the same verdict as the unpruned filter."
+    reason: "13.4 s to 0.8 s on the reproducible corpus, 21.4 s to 2.2 s on the real tree that motivated the hypothesis, and 0.75 s to zero on the second, all on non-overlapping ranges. Two changes, and the measurement said which mattered: pruning alone cut directories visited by 94% and time by only 2%, because the cost had moved into rebuilding the pruning spec once per .gitignore found. Amortizing that rebuild is what turned 13.05 s into 0.81 s. Verified to change no answer against an unpruned reference on all four trees, 341,872 paths on the largest."
 ---
 # The gitignore pre-walk stops traversing what it cannot use
 
@@ -104,14 +104,12 @@ Interleaved, three repeats each, with the cache cleared between.
 
 | tree | control | candidate |
 | --- | ---: | ---: |
-| **real tree A** (241,063 files, 222,819 dirs walked, 527 nested `.gitignore`) | 21.37 s (19.74–21.59) | **2.54 s (2.53–5.75)** |
+| **real tree A** (241,063 files, 222,819 dirs walked, 527 nested `.gitignore`) | 21.37 s (19.74–21.59) | **2.18 s (2.17–5.14)** |
 | **real tree B** (320,064 files, 16,944 dirs, 88 nested `.gitignore`) | 0.75 s (0.74–2.32) | **0.00 s (0.00–0.01)** |
-| reproducible corpus (150,000 files, 36,552 dirs, 104 nested `.gitignore`) | 1.65 s (1.62–3.02) | 1.25 s (1.19–1.90) |
+| **reproducible corpus** (246,282 files, 31,161 dirs, 251 nested `.gitignore`) | 13.36 s (12.41–15.53) | **0.81 s (0.81–0.86)** |
 
-The corpus agrees in direction and its ranges overlap, which is what a fifth the
-directory count buys.
-The real trees are where the effect is unambiguous, and tree A is the one the hypothesis
-came from: **twenty seconds of dead time before the first row, gone.**
+All three agree, and tree A is the one the hypothesis came from: **twenty seconds of
+dead time before the first row, gone.**
 
 Patterns compiled fall with it, because the specs inside pruned subtrees are never read:
 10,668 → 327 on tree A, 2,022 → 36 on tree B. That is a second-order win — every

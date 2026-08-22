@@ -18,6 +18,13 @@ from pathspec.gitignore import GitIgnoreSpec
 
 from metabrowser.fs_paths import is_visible
 
+# Rebuild the pruning spec once the pattern set has grown by this factor. A
+# rebuild costs O(patterns); doing one per `.gitignore` found makes the total
+# quadratic in a tree that has many -- which is exactly the tree where pruning
+# is worth most.
+PRUNE_SPEC_REBUILD_GROWTH = 1.25
+
+
 log = logging.getLogger(__name__)
 
 
@@ -123,7 +130,18 @@ def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFi
     # inside it could only govern paths that are themselves never shown. See
     # ``fs_paths.is_visible``: the indexing walk skips these, so collecting
     # ignore rules for them is work spent on rows nobody can see.
+    # The spec used for pruning is allowed to lag the patterns collected so far,
+    # and that is what keeps it cheap. Rebuilding it on every ``.gitignore``
+    # found costs O(patterns) each time -- on a tree with a few hundred of them
+    # that dominated the traversal it was meant to save.
+    #
+    # Lagging is safe in one direction only, which is the direction it lags: a
+    # spec with fewer patterns matches fewer paths, so a stale one prunes less
+    # than it could and never prunes something a current one would have kept.
+    # Pruning less costs a little traversal; pruning wrongly would drop a
+    # pattern and change an answer.
     accumulated: GitIgnoreSpec | None = GitIgnoreSpec.from_lines(all_lines) if all_lines else None
+    patterns_at_last_rebuild = max(len(all_lines), 1)
     for dirpath, dirnames, filenames in os.walk(root):
         if cancel_event is not None and cancel_event.is_set():
             return ignore_none
@@ -156,7 +174,9 @@ def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFi
                         all_lines.append(f"{rel_dir}/{stripped}\n")
             # Rebuild only here, which is once per ``.gitignore`` found --
             # hundreds of times on a large tree, not once per directory.
-            accumulated = GitIgnoreSpec.from_lines(all_lines)
+            if len(all_lines) >= patterns_at_last_rebuild * PRUNE_SPEC_REBUILD_GROWTH:
+                accumulated = GitIgnoreSpec.from_lines(all_lines)
+                patterns_at_last_rebuild = len(all_lines)
 
     if not all_lines:
         return ignore_none
