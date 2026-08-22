@@ -204,20 +204,27 @@ Six rounds removed costs from an architecture held fixed.
 It is worth stating what the floor would be if the architecture were not fixed, because
 the gap is large enough to change what is worth working on.
 
-Three reference points, none of them speculative:
+Start with the physics for a 241,000-file tree:
+
+- A cold `stat` sweep is roughly one to two seconds single-threaded, and substantially
+  less in parallel on a warm page cache.
+- Knowing the answer from last time and checking it costs about ten milliseconds of
+  directory `stat` calls, because only directories whose mtime moved need rescanning.
+
+Three existence proofs that the rest is not physics:
 
 - **ripgrep’s `ignore` crate** walks a tree in parallel with full gitignore semantics,
-  compiling patterns into a single matcher rather than looping them per path.
-  It is the same job `load_gitignore` and the walker do together.
+  compiling patterns into one matcher rather than looping them per path.
+  That is the same job `load_gitignore` and the walker do together.
 - **`git status` with fsmonitor and the untracked cache** answers “what is here and what
-  changed” on a large working tree in tens of milliseconds, because it consults a change
+  changed” on a large working tree in tens of milliseconds, by consulting a change
   journal instead of walking.
-- **A cold `stat` sweep of 241,000 files** is roughly one to two seconds single-threaded
-  and substantially less in parallel on a warm page cache.
-  That is the syscall floor, and it is the only part that is physics.
+- **Everything (voidtools)** indexes millions of files effectively instantly by reading
+  the NTFS master file table and following the USN change journal, never walking at all.
 
-Against those, 2.2 s of dead time and a 50 s attached scan are not near a limit.
-They are the price of three choices:
+Against those, 2.2 s of dead time and a 50 s attached scan are one to two orders of
+magnitude off, not near a limit.
+They are the price of three choices, none of which was in scope for any round:
 
 1. **The index is amnesiac.** It is rebuilt from scratch on every open and discarded on
    exit, so the second open of a tree is priced exactly like the first.
@@ -226,8 +233,8 @@ They are the price of three choices:
    `asyncio.to_thread`, with pathspec matching that loops patterns in Python for every
    path on the unignored frontier.
 3. **Reads are passes over the whole index.** The tally memo, the derived staleness
-   bound, the rows-and-tallies split, and the `entries()` snapshot exist to manage the
-   cost of a pass that a different representation would make close to free.
+   bound, the rows-and-tallies split, and the `entries()` snapshot all exist to manage
+   the cost of a pass that a different representation would make close to free.
 
 The pattern worth noticing across the six rounds is that the wins came from *removing*
 work rather than from making work faster, and each round stopped at the boundary of the
@@ -246,23 +253,26 @@ than recomputed by a pass, the DOM should not re-render proportional to the tree
 the wire should not recarry what the client already holds.
 When a round reaches for a bound, a memo, or a deferral to survive an O(N) cost, the
 prior question is whether that cost should exist.
-F1 and the whole staleness apparatus are a worked example: they are careful management
-of a pass that need not happen.
+F1 and the whole staleness apparatus are the worked example: careful management of a
+pass that need not happen.
 
 **Never repeat work across sessions.** This follows from the first but deserves its own
-line because nothing in the current design does it at all, and it is the single largest
-available change.
+line, because nothing in the current design does it at all and it is the single
+highest-leverage change available.
 
 **Complete every gesture against local state; let the network reconcile.** Interfaces
-that feel effortless are usually not talking to a faster server, they are not talking to
-a server on the interaction path.
-The hard part is already built: `fs.snapshot` on connect and `fs.change` ops over SSE.
-Promoting that from decoration-patching to the primary data path turns fetches into
+that feel effortless are usually not talking to a faster server; they are not talking to
+a server on the interaction path at all.
+Linear, Figma, and Superhuman are the familiar examples, and none of them is fast
+because of server latency.
+The hard part is already built here: `fs.snapshot` on connect and `fs.change` ops over
+SSE. Promoting that from decoration-patching to the primary data path turns fetches into
 backfill.
 
 **Count round trips before milliseconds on a remote link.** At 100 ms of latency a 6 ms
 response is a 106 ms response, and 32 prefetches are 32 chances to pay it.
-In that regime batching and push dominate server-time work.
+In that regime batching, push, and client caching dominate server-time work, and the
+ordering of every optimization changes.
 
 **Let attention set priority.** exp-002 established this for prefetch by bounding it to
 the viewport. The generalization is that the walker should index what the reader is
@@ -272,22 +282,35 @@ full scan.
 ## Where the Loop Cannot See
 
 The accept rule is unusually disciplined.
-Four blind spots came out of this review.
-Three are now recorded under “Known gaps in this loop” in
-`explorations/performance-loop/README.md`, with beads: the accept rule grows stricter as
-evidence accumulates, because min-max widens with n while the rule demands
+Its blind spots are about coverage rather than rigor.
+
+Three were raised in this review and are now recorded under “Known gaps in this loop” in
+`explorations/performance-loop/README.md`, each with a bead: the accept rule grows
+stricter as evidence accumulates, because min-max widens with n while the rule demands
 non-overlapping ranges; there is no A/A control establishing the harness’s own
 resolution; and nothing guards the wins against regression.
 
-The fourth is not yet tracked anywhere.
+Two more are not tracked anywhere yet.
 
 **Every measurement is on localhost.** The remote case is a stated deployment target,
 and a request there costs a fraction of a millisecond in the harness.
 No experiment can currently distinguish a design that is fast locally from one that is
-fast over a tunnel, and the two orderings differ: at 100 ms of latency a 6 ms response
-is a 106 ms response, and round-trip count starts dominating server time.
-Recording every experiment at both 0 ms and a realistic RTT would change which
-candidates below are worth doing first.
+fast over a tunnel, and the two orderings differ.
+
+**Only one regime is on the record.** The loop measures cold load and scan time.
+A claim to be the fastest tool of its kind is a claim about five regimes, and four have
+never been measured:
+
+- **Steady-state interaction latency.** Expand, filter, and scroll, measured the way INP
+  measures them, on a tree that has finished scanning.
+  This is what a reader spends almost all of their time in, and no number describes it.
+- **Burst churn.** A `git checkout` that touches 50,000 files, a branch switch, a build
+  that rewrites `node_modules`. Whether the watcher and the tally invalidation keep the
+  interface responsive through that is unknown.
+- **Memory ceilings.** Resident size at 300,000 and 1,000,000 entries, and what happens
+  at the top of that range.
+- **Cold versus warm process.** The distinction the persistence work depends on does not
+  exist in the harness today, so its central claim could not currently be scored.
 
 ## Candidate Hypotheses
 
@@ -295,8 +318,9 @@ Numbering continues from the registry in
 [the load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md), whose
 highest registered hypothesis is H38. None of these duplicate that document’s
 “Considered and Deliberately Not Registered” section, and the one that became registered
-H35 during this review, replacing the pre-walk with `git ls-files` on a git tree, is not
-repeated here. Expected magnitudes are predictions to be falsified, not results.
+H35 during this review, replacing the pre-walk with `git ls-files` on a git tree, is
+carried forward only where it composes with something else.
+Expected magnitudes are predictions to be falsified, not results.
 
 | ID | Hypothesis | Named metric |
 | --- | --- | --- |
@@ -311,8 +335,11 @@ repeated here. Expected magnitudes are predictions to be falsified, not results.
 | H47 | Under realistic latency, batching prefetch beats every server-side win so far | `first_row_ms` and total prefetch time at 0 ms and 120 ms RTT |
 | H48 | Serialization is a measurable share of large tree and rollup responses | Server time on `/api/tree` and `/api/rollup` at 300k entries |
 | H49 | Bulk-attribute syscalls cut the verification sweep H39 depends on | Verify-sweep duration on an unchanged 241k tree |
+| H50 | A 64-worker executor sized for I/O waiters hurts the CPU-bound work now routed through it | Tally and encode latency, and walk time, against pool size |
+| H51 | A free-threaded build makes the existing thread offloads actually parallel | Attached `walk_elapsed_ms` and tally latency on 3.14t against 3.14 |
+| H52 | The four unmeasured regimes hide regressions the cold-load metric cannot see | Interaction latency, churn recovery, resident size, warm reopen |
 
-Three of these sit next to something already registered and are deliberately distinct.
+Three sit next to something already registered and are deliberately distinct.
 H42 is a representation change where registered H34 is an incremental-maintenance
 change; either alone helps and together they compound.
 H43 pushes tallies where registered H36 serves the last memo unconditionally during a
@@ -320,58 +347,214 @@ scan; H36 is the cheap version of the same observation.
 H46 orders the walk by what is on screen where registered H33 orders it by ignore
 status; both are priority walking, from different priorities.
 
-### The Ones Worth Explaining
+### H39: A Persisted Index
 
-**H39, a persisted index, is the largest single change available.** Serialize the index
-periodically and on shutdown.
+The largest single change available, and the only one that changes the common case
+rather than the first-open case.
+
+Serialize the index periodically and on shutdown, to a columnar file or SQLite.
 On start, load it, serve it immediately marked provisional, then verify in the
-background: a directory’s mtime changes when its direct children change, so stat only
+background: a directory’s mtime changes when its direct children change, so `stat` only
 directories and rescan only subtrees whose mtime moved.
-This is the mechanism behind git’s untracked cache.
+That is the mechanism behind git’s untracked cache.
 A revisit becomes load, serve, verify, then push deltas over the SSE channel that
 already exists.
-It composes with almost everything else here, and it is the only proposal
-that changes the common case rather than the first-open case.
 
-**H40 should run before H41, because it is one run and it decides the order.** The
-walker already avoids re-matching inside an ignored subtree, which collapses the cost to
-the unignored frontier, but each frontier path still costs a Python-level loop over the
-compiled pattern set.
-Measuring the walk with and without `gitignore_check` prices that directly.
-If matching dominates, H41’s compiled matcher is the fix; if traversal dominates,
-parallelism is. It also prices registered H35, since replacing the pre-walk only pays if
-matching is what costs.
+Falsifiable predictions: loading 300,000 entries costs around 100 ms; a warm reopen
+reaches first row within twice the shell’s own paint time; and the verify sweep finds
+fewer than 1% of directories changed on a typical revisit.
+If the last of those is false, the whole approach is worth less and the measurement says
+so immediately.
 
-**H41 is the way to leave interpreted traversal for trees git cannot answer for.** A
-Rust extension over ripgrep’s `ignore` crate brings parallelism, single-automaton
-matching, and correct negation semantics, which would retire F3’s whole class of bug
-rather than guarding against it.
-It is not exclusive with registered H35: git for the fast path on a working tree, native
-walker for everything else.
+### H40: Price the Matcher Before Replacing the Walker
 
-**H42 is the one that deletes code rather than adding it.** Three hundred thousand
-`FsEntry` dataclasses are 300,000 heap objects with poor locality, which is why a pass
-costs about a second.
+One run, and it decides the order of everything after it.
+
+The walker already avoids re-matching inside an ignored subtree, which collapses the
+cost to the unignored frontier, but every frontier path still costs a Python-level loop
+over the compiled pattern set.
+On the tree that motivated exp-006 that is on the order of 327 patterns against several
+hundred thousand paths, which is plausibly most of what remains of the scan.
+Measuring the walk with and without `gitignore_check` prices it directly.
+
+If matching dominates, H41’s compiled matcher is the fix and registered H35 pays off.
+If traversal dominates, parallelism is the fix and the matcher work is a distraction.
+
+### H41: Leave Interpreted Traversal
+
+A Rust extension over ripgrep’s `ignore` crate brings parallelism, single-automaton glob
+matching rather than a pattern loop, and correct negation semantics, which would retire
+F3’s whole class of bug rather than guarding against it.
+Expected: the cold scan from 50 s to a few seconds.
+
+It is not exclusive with registered H35. Git answers fastest for a working tree; the
+native walker covers everything git cannot answer for, which is the non-git roots this
+tool also serves.
+
+If native code is unwelcome, two intermediate steps are available and cheap: run
+`scandir` across a small thread pool, since the syscall releases the GIL, and compile
+the accumulated pattern set into one alternation instead of a per-pattern loop.
+
+### H42: A Columnar Index
+
+The one that deletes code rather than adding it.
+
+Three hundred thousand `FsEntry` dataclasses are 300,000 heap objects with poor cache
+locality, which is why a pass costs about a second.
 Interned path identifiers with parallel arrays for size, mtime, and flags make a tally a
-few vectorized operations, with the GIL released inside them.
-If it lands, the memo, the derived bound, the rows-and-tallies split, and the machinery
-F1 was found inside all become unnecessary.
+few vectorized operations, with the GIL released inside them, and cut resident size
+several-fold.
+
+If it lands, the memo, the derived staleness bound, the rows-and-tallies split, and the
+machinery F1 was found inside all become unnecessary.
 When a workaround is expensive to reason about, making the underlying operation cheap is
 sometimes less total complexity than managing it.
 
-**H44 supersedes exp-004 rather than extending it.** A client replica holds the whole
-last-known tree instead of 200 server-rendered rows, paints before the server answers at
-all, and reconciles by revision.
-It also removes registered H32’s open question, since a replica does not care whether
-the server’s index is warm at page-render time.
+### H43: Push Instead of Poll
+
+The nav polls `depth=0` about once a second per tab, and the entire staleness design
+exists to survive that poll.
+Invert it: the server knows when the revision moved, so it can push tally updates on the
+SSE stream, throttled to a couple per second during a scan, alongside the `fs.change`
+ops it already sends.
+The poll disappears, and with it the per-tab request rate and the GIL contention exp-005
+identified. A client fetch becomes subscribe, then backfill since revision R.
+
+### H44: A Client-Side Replica
+
+Supersedes exp-004 rather than extending it.
+
+A replica in IndexedDB holds the whole last-known tree instead of 200 server-rendered
+rows, paints before the server answers at all, and reconciles by revision when the
+connection arrives. It also removes registered H32’s open question, since a replica does
+not care whether the server’s index is warm at page-render time.
 With a service worker for the shell, a revisit renders from local storage with nothing
 on the network critical path.
 
-**H47 is a measurement change before it is an engineering one.** Add a latency knob to
-the harness and record every experiment at 0 ms and roughly 120 ms.
-The prediction is that at realistic latency, collapsing 32 prefetch requests into one
-batched request outweighs the combined server-side wins of the six rounds.
-If that holds, it reorders everything above it.
+### H45: Virtualize the Tree
+
+`TREE_PAGE_SIZE` caps the initial mount at 200 rows, but a reader who expands and pages
+accumulates unbounded DOM, and style and layout cost track total mounted nodes rather
+than visible ones. A windowed renderer over a flattened visible-rows array caps the DOM
+at about three screens permanently, which makes tree size irrelevant to scroll, expand,
+and filter latency.
+
+`content-visibility: auto` on subtree containers is the cheap intermediate and can be
+tried in an afternoon.
+Pairing either with a Web Worker that owns JSON parsing and the tree merge, so the main
+thread only ever receives patches, is what moves the remaining main-thread blocking off
+the interaction path.
+
+### H46: Priority-Driven Walking
+
+Make the walker consume a priority queue rather than run a fixed order: expanded
+prefixes and the viewport first, since the interface already knows both, then
+breadth-first root levels, then bulk.
+Combined with H39 this means the visible part of even a cold million-file tree is
+correct within the first few hundred milliseconds, and the rest fills in behind the
+reader’s attention.
+
+### H47: The Remote Regime
+
+A measurement change before it is an engineering one.
+Add a latency knob to the harness, through `tc`/`netem` or a delaying proxy, and record
+every experiment at 0 ms and at roughly 120 ms.
+
+Three engineering changes follow if the prediction holds:
+
+- **Batch the subtree prefetch.** One `/api/trees?paths=...` request in place of up to
+  32, turning 32 round trips into one.
+- **Offer `zstd`.** Current Chrome and Firefox send it in `Accept-Encoding`, and it
+  compresses better than gzip at level 6 for less CPU. `GZipMiddleware` stays for
+  everyone else.
+- **Pre-compress cached bodies per revision.** The ETag-keyed encoded-body cache already
+  exists for rollups; extending it to the root tree and tallies means a settled index
+  serves bytes it compressed once.
+
+The prediction: at 120 ms RTT, batching alone outweighs the combined server-side wins of
+all six rounds.
+
+### H48: Serialization
+
+Large tree and rollup payloads go through stdlib `json`, which is slow and holds the GIL
+while it runs. `orjson` is close to a drop-in replacement and is commonly five to ten
+times faster on payloads this shape.
+This composes with the per-revision encoded-body cache in H47: encode once with the fast
+encoder, then serve bytes.
+
+### H49: Bulk-Attribute Syscalls
+
+The verification sweep H39 depends on is syscall-bound, and every platform offers a way
+to do it in far fewer syscalls: `getattrlistbulk` on macOS returns attributes for many
+directory entries at once, `io_uring` batches `statx` on Linux, and on Windows the USN
+journal replaces the sweep with a change feed.
+Each is roughly an order of magnitude on that phase.
+
+### H50: The Executor Is Sized for the Wrong Work
+
+`build_lifespan` sets the asyncio default executor to 64 workers, and the docstring
+gives the reason: cache-served handlers should not queue behind slow stat-poll threads.
+That is correct sizing for threads that block on I/O.
+
+The work now routed through `asyncio.to_thread` is not that.
+The tally pass and the catalog encode are CPU-bound Python, so 64 workers cannot run
+them in parallel and can only add GIL contention and scheduling churn on top of the
+walker, which is also CPU-bound Python.
+Two populations with opposite sizing needs share one pool.
+
+The test is cheap: hold everything else fixed and vary the pool size, or split CPU-bound
+offloads onto a small dedicated pool and leave the 64 for I/O waiters.
+
+### H51: A Free-Threaded Build
+
+The repository already tests on 3.14, so a free-threaded build is a configuration change
+rather than a port.
+Under it the existing `to_thread` offloads become genuinely parallel,
+and a thread-pool `scandir` becomes real parallelism without any native code, which is
+much of H41’s benefit for a fraction of the work.
+
+F2’s fix is the prerequisite rather than an aside: the index snapshot now happens under
+the writers’ lock, which is exactly the discipline a free-threaded build requires and
+the GIL was quietly providing.
+Auditing the remaining shared structures the same way is the actual work of this
+hypothesis, and it is worth doing whether or not the build ever ships.
+
+### H52: Measure the Other Four Regimes
+
+Add the regimes listed in [Where the Loop Cannot See](#where-the-loop-cannot-see) to the
+harness: interaction latency on a settled tree, recovery from a 50,000-file churn event,
+resident size at 300,000 and 1,000,000 entries, and warm reopen against cold start.
+
+This is scaffolding rather than a win, and it is listed as a hypothesis because it has
+the same falsifiable shape as the others: the claim is that these regimes hide
+regressions the cold-load metric cannot see.
+If a round of measurement finds all four healthy, the claim is refuted cheaply and the
+scaffolding is still there for H39, which cannot be scored without the warm-reopen
+distinction.
+
+## Sequencing
+
+The candidates are not independent, and three groupings matter more than the individual
+ordering.
+
+**H40 first, because it is one run and it redirects the two after it.** H39, H41, and
+registered H35 all attack the same 50 s from different sides.
+Knowing whether matching or traversal dominates decides which of them is the bigger
+first bite, and it costs a single measurement to find out.
+
+**H42 and registered H34 together delete the tally apparatus.** Incremental maintenance
+removes the need for a pass; a columnar representation makes any remaining pass cheap.
+Either alone is worthwhile; together they retire the memo, the derived bound, and the
+rows-and-tallies split, which is a net reduction in code and in things a reader has to
+hold in their head.
+
+**H44, H45, and H47 are the frontend’s path to effortless, and are independent of all
+the backend work.** They can proceed in parallel with the walker questions and be
+measured separately, which makes them a good candidate for whoever is not holding the
+index.
+
+H52 is a prerequisite for scoring H39 honestly and should land before it rather than
+after.
 
 ## Related Documents
 
