@@ -3,13 +3,15 @@ type: is
 id: is-01m0m1f27h883na8v6zqhyzevb
 title: "H8: root /api/tree pays a full nav-tally pass on every request during a scan"
 kind: task
-status: open
+status: closed
 priority: 0
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-08-22T06:10:26.160Z
-updated_at: 2026-08-22T07:27:45.986Z
+updated_at: 2026-08-22T18:23:10.319Z
+closed_at: 2026-08-22T18:23:10.318Z
+close_reason: "H23 landed as a staleness bound of max(0.5s, last pass cost) plus moving the index snapshot off the event loop. Measured on 300k, probe-server: root /api/tree 650ms -> 394ms scanning, 12ms -> 6ms settled, non-overlapping at n=5/n=6. Does NOT move first paint: load_tree_ms is the first request of a load and its memo is cold by construction — that is mb-nrp5 (H20). Rejected variant: request-triggered background warming, no detectable effect. exp-003."
 ---
 Root /api/tree costs 15 ms settled but 837-1,567 ms while the walk runs, identical bytes either way.
 
