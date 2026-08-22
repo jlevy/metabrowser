@@ -5,6 +5,7 @@ from __future__ import annotations
 from importlib.resources import files
 from textwrap import dedent
 
+from metabrowser.color_oklch import band_positions
 from metabrowser.file_type_registry import (
     FILE_TYPE_REGISTRY_SCHEMA_VERSION,
     ContentFamily,
@@ -202,8 +203,62 @@ def test_registry_rejects_each_structural_validation_class() -> None:
         (base.replace("hue = 246.50", "hue = 361.0"), "invalid-hue"),
         (base.replace("hue = 246.50", 'hue = "246.50"'), "invalid-field"),
         (base.replace('linguist_color = "#3572a5"\n', ""), "invalid-linguist"),
+        (
+            base.replace("hue = 246.50", "hue = 246.50\nlightness_rank = -0.5"),
+            "undeclared-deviation",
+        ),
+        (
+            base.replace("hue = 246.50", 'hue = 246.50\ndeviation = "   "'),
+            "invalid-field",
+        ),
         (base.replace('extensions = ["py"]', "extensions = []"), "missing-evidence"),
     )
     assert [_error_code(text) for text, _expected in cases] == [
         expected for _text, expected in cases
     ]
+
+
+def test_a_declared_deviation_overrides_the_rank_upstream_would_give() -> None:
+    """The one way out of the band, and it only opens for a family that says
+    why in prose.
+
+    A deviation replaces the lightness rank and nothing else: the chroma the
+    upstream colour earned stays, because leaving the band is about where a
+    family sits, not about giving up its provenance.
+    """
+
+    text = _minimal_registry().replace(
+        "hue = 246.50",
+        'hue = 300.0\nlightness_rank = -0.5\ndeviation = "Collided with a better-known family."',
+    )
+    registry = load_file_type_registry_from_text(text)
+    family = registry.family("python")
+    assert family is not None
+    assert family.deviation == "Collided with a better-known family."
+    assert family.lightness_rank == -0.5
+
+    derived = band_positions([family.linguist_color])[0]
+    position = registry.tone_position("python")
+    assert position.lightness_rank == -0.5
+    assert position.chroma_ratio == derived.chroma_ratio
+
+    # Provenance survives the deviation, so the hue's origin stays auditable.
+    assert family.linguist == "Python"
+    assert family.linguist_color == "#3572a5"
+
+    families = registry.projection()["families"]
+    assert isinstance(families, tuple)
+    projected = next(
+        entry for entry in families if isinstance(entry, dict) and entry.get("id") == "python"
+    )
+    assert projected["deviation"] == "Collided with a better-known family."
+    assert projected["lightness_rank"] == -0.5
+
+
+def test_a_family_that_does_not_deviate_carries_no_reason() -> None:
+    registry = load_file_type_registry_from_text(_minimal_registry())
+    family = registry.family("python")
+    assert family is not None
+    assert family.deviation is None
+    assert family.lightness_rank is None
+    assert 0.0 <= registry.tone_position("python").lightness_rank <= 1.0

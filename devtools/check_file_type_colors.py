@@ -102,6 +102,21 @@ def _upstream_problems(family: FileTypeFamily) -> list[Problem]:
     if family.linguist is None or family.linguist_color is None:
         return []
     upstream = hex_to_oklch(family.linguist_color)
+    if family.deviation is not None:
+        # A deviated family keeps its provenance and gives up the hue rule; it
+        # is held to the separation floor instead, like a colour we chose.
+        # What it may not do is claim a deviation it does not make, which is
+        # how a reason goes stale without anyone noticing.
+        moved_hue = hue_distance(family.hue, upstream.hue) > HUE_TOLERANCE
+        if not moved_hue and family.lightness_rank is None:
+            return [
+                Problem(
+                    family.id,
+                    f"declares a deviation but paints where {family.linguist} "
+                    f"{family.linguist_color} puts it; drop the deviation or make it",
+                )
+            ]
+        return []
     if upstream.chroma < ACHROMATIC_CHROMA:
         return [
             Problem(
@@ -131,7 +146,7 @@ def _separation_problems(registry: FileTypeRegistry) -> list[Problem]:
     for name, band in _themes():
         painted = _painted(registry, band)
         for family in families:
-            if family.linguist is not None:
+            if family.linguist is not None and family.deviation is None:
                 continue  # Upstream colors are taken as they are, collisions included.
             gap, nearest = min(
                 (
@@ -185,17 +200,34 @@ def _tone_problems(registry: FileTypeRegistry) -> list[Problem]:
 
 
 def _position_problems(registry: FileTypeRegistry) -> list[Problem]:
-    """A position is a place in the band, so it has to be one."""
+    """A position is a place in the band, so it has to be one — unless a family
+    says in writing that it is leaving.
+
+    Leaving the band is the one thing checked here whose cost is paid by
+    something other than the palette: the band is what bounds how much a
+    stacked-bar segment can read heavier than its size, so a family outside it
+    is a segment that can. That is allowed, deliberately and in prose, and
+    never by accident.
+    """
 
     problems: list[Problem] = []
     for family in registry.families:
         position = registry.tone_position(family.id)
-        for axis, value in (
-            ("lightness_rank", position.lightness_rank),
-            ("chroma_ratio", position.chroma_ratio),
-        ):
-            if not 0.0 <= value <= 1.0:
-                problems.append(Problem(family.id, f"{axis} is {value:.4f}, outside the band"))
+        if not 0.0 <= position.chroma_ratio <= 1.0:
+            problems.append(
+                Problem(
+                    family.id,
+                    f"chroma_ratio is {position.chroma_ratio:.4f}, outside the band",
+                )
+            )
+        if not 0.0 <= position.lightness_rank <= 1.0 and family.deviation is None:
+            problems.append(
+                Problem(
+                    family.id,
+                    f"lightness_rank is {position.lightness_rank:.4f}, outside the "
+                    f"band, with no deviation saying why",
+                )
+            )
     return problems
 
 
@@ -212,12 +244,21 @@ def _report(registry: FileTypeRegistry) -> None:
     """Print what the rules permit but a maintainer still wants to see."""
 
     families = registry.families
-    upstream = [family for family in families if family.linguist is not None]
+    upstream = [
+        family for family in families if family.linguist is not None and family.deviation is None
+    ]
     house = [family for family in families if family.linguist is None]
+    deviated = [family for family in families if family.deviation is not None]
     print(
         f"{len(families)} families: {len(upstream)} carry GitHub's hue, "
-        f"{len(house)} were placed in free gaps"
+        f"{len(house)} were placed in free gaps, {len(deviated)} deviate"
     )
+
+    for family in deviated:
+        reason = " ".join((family.deviation or "").split())
+        head, _, _ = reason.partition(". ")
+        outside = "" if family.lightness_rank is None else ", outside the band"
+        print(f"  {family.id}: hue {family.hue:.2f}{outside} — {head or reason}.")
 
     from_github = {family.id for family in upstream}
     tightest: dict[tuple[str, str], float] = {}

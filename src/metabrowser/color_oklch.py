@@ -38,6 +38,12 @@ narrow to keep that small, and the measured alternative was worse: at one tone
 the closest pair in the light theme sits at an Oklab delta-E of 0.0020, which
 is not a difference anyone can see.
 
+A family may leave the band, and only by saying so. Where the derivation cannot
+separate a family that matters — or where GitHub's own placement puts it on top
+of a better-known neighbour — the registry lets it declare a lightness rank of
+its own alongside the reason. That is the whole escape hatch: prose, checked,
+and visible in the palette report rather than buried in a diff.
+
 No third-party color library: these are the standard Oklab matrices, and a
 dependency for forty lines of arithmetic would not survive
 SUPPLY-CHAIN-SECURITY.md's cost test.
@@ -73,11 +79,17 @@ class Oklch:
 
 @dataclass(frozen=True, slots=True)
 class TonePosition:
-    """Where one family sits inside a theme's band, on each axis, in [0, 1].
+    """Where one family sits inside a theme's band, on each axis, normally in [0, 1].
 
     Both are relative places among the families, not upstream measurements:
     :func:`band_positions` derives them once for the whole set. A family with
     no upstream color of its own sits at :data:`BAND_CENTER`.
+
+    ``lightness_rank`` may fall outside [0, 1], which places the family outside
+    the band. That is the one way out, it is never derived, and the registry
+    only accepts it from a family that records in prose why it is leaving —
+    because the band is the bound on how much a stacked-bar segment can read
+    heavier than its size, and a family outside it is a segment that can.
     """
 
     lightness_rank: float

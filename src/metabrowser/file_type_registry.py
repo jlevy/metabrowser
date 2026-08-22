@@ -101,6 +101,23 @@ class FileTypeFamily:
     """That language's upstream sRGB hex, recorded beside the name so the hue's
     provenance is auditable in one diff and checkable without a clone of
     linguist. Present exactly when ``linguist`` is."""
+    deviation: str | None
+    """Why this family does not paint where its upstream colour says it should.
+
+    Present exactly when the family leaves GitHub's placement deliberately —
+    a ``hue`` that is not ``linguist_color``'s, a ``lightness_rank`` of its
+    own, or both. It is prose because the reason is the point: a deviation is
+    a judgement someone made, and the next reader needs it to tell a decision
+    from a mistake. ``linguist`` and ``linguist_color`` stay either way, so
+    provenance survives the deviation."""
+    lightness_rank: float | None
+    """Where in the band the family sits, overriding its upstream rank.
+
+    Normally ``None`` and derived across the whole registry. A declared value
+    may fall outside ``[0, 1]``, which places the family outside the band — the
+    one way to leave it, and only with a ``deviation`` saying why, because the
+    band is what bounds how much a stacked-bar segment can read heavier than
+    its size."""
 
     @property
     def distribution_key(self) -> str:
@@ -158,6 +175,8 @@ class _FamilyDeclaration:
     hue: float
     linguist: str | None
     linguist_color: str | None
+    deviation: str | None
+    lightness_rank: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,20 +234,21 @@ class FileTypeRegistry:
         )
         # Derived here, once, because a position is relative to the whole set:
         # a family's rank among upstream lightnesses is not a property of that
-        # family alone, so it cannot be declared beside one.
-        object.__setattr__(
-            self,
-            "_tone_positions",
-            MappingProxyType(
-                dict(
-                    zip(
-                        (family.id for family in self.families),
-                        band_positions([family.linguist_color for family in self.families]),
-                        strict=True,
-                    )
+        # family alone, so it cannot be declared beside one. A family that
+        # declares its own rank overrides only that axis, and keeps the chroma
+        # its upstream colour earned.
+        derived = band_positions([family.linguist_color for family in self.families])
+        positions: dict[str, TonePosition] = {}
+        for family, position in zip(self.families, derived, strict=True):
+            positions[family.id] = (
+                position
+                if family.lightness_rank is None
+                else TonePosition(
+                    lightness_rank=family.lightness_rank,
+                    chroma_ratio=position.chroma_ratio,
                 )
-            ),
-        )
+            )
+        object.__setattr__(self, "_tone_positions", MappingProxyType(positions))
 
     def group(self, group_id: str) -> FileTypeGroup | None:
         """Look up a group by stable ID."""
@@ -322,6 +342,8 @@ class FileTypeRegistry:
                     "hue": family.hue,
                     "linguist": family.linguist,
                     "linguist_color": family.linguist_color,
+                    "deviation": family.deviation,
+                    "lightness_rank": family.lightness_rank,
                 }
                 for family in self.families
             ),
@@ -502,6 +524,48 @@ def _parse_linguist(raw: Mapping[str, Any], table_id: str) -> tuple[str | None, 
     return name.strip(), color.lower()
 
 
+def _parse_deviation(raw: Mapping[str, Any], table_id: str) -> tuple[str | None, float | None]:
+    """Read the deliberate departure from where upstream would put a family.
+
+    ``lightness_rank`` requires a ``deviation``, and not the other way round: a
+    hue can leave GitHub's on its own, but leaving the band is never something
+    that should be readable as a typo.
+    """
+
+    deviation = raw.get("deviation")
+    rank = raw.get("lightness_rank")
+    if deviation is not None and (not isinstance(deviation, str) or not deviation.strip()):
+        raise FileTypeRegistryError(
+            "invalid-field",
+            "family deviation must be a nonempty string saying why",
+            table_id=table_id,
+            field_name="deviation",
+            value=deviation,
+        )
+    if rank is not None:
+        if isinstance(rank, bool) or not isinstance(rank, int | float):
+            raise FileTypeRegistryError(
+                "invalid-field",
+                "expected a number",
+                table_id=table_id,
+                field_name="lightness_rank",
+                value=rank,
+            )
+        if deviation is None:
+            raise FileTypeRegistryError(
+                "undeclared-deviation",
+                "family lightness_rank needs a deviation recording why it leaves "
+                "the rank its upstream colour gives it",
+                table_id=table_id,
+                field_name="lightness_rank",
+                value=rank,
+            )
+    return (
+        deviation.strip() if isinstance(deviation, str) else None,
+        float(rank) if rank is not None else None,
+    )
+
+
 def _required_hue(raw: Mapping[str, Any], table_id: str) -> float:
     """A hue in degrees, half-open on 360 so one hue has one spelling."""
 
@@ -599,6 +663,7 @@ def _parse_families(
             )
         hue = _required_hue(raw, family_id)
         linguist, linguist_color = _parse_linguist(raw, family_id)
+        deviation, lightness_rank = _parse_deviation(raw, family_id)
         ids.add(family_id)
         orders.add(order_key)
         declarations.append(
@@ -610,6 +675,8 @@ def _parse_families(
                 hue,
                 linguist,
                 linguist_color,
+                deviation,
+                lightness_rank,
             )
         )
     group_order = {group.id: group.order for group in groups}
@@ -794,6 +861,8 @@ def _materialize_families(
                 declaration.hue,
                 declaration.linguist,
                 declaration.linguist_color,
+                declaration.deviation,
+                declaration.lightness_rank,
             )
         )
     return tuple(families)
@@ -823,6 +892,15 @@ def _registry_fingerprint(
                 "group": family.group_id,
                 "order": family.order,
                 "hue": family.hue,
+                # Everything the painted colour depends on has to be in here.
+                # A hue no longer determines a family's colour on its own, so a
+                # fingerprint over hues alone could report two different
+                # palettes as the same registry — and comparing this identity
+                # before combining a rollup with colours is exactly what
+                # consumers are told to do.
+                "linguist_color": family.linguist_color,
+                "deviation": family.deviation,
+                "lightness_rank": family.lightness_rank,
             }
             for family in families
         ],

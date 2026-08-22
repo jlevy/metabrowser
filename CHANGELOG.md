@@ -38,6 +38,22 @@ File-type colors:
   nine degrees, more than the separation the palette is built on, and because a family’s
   rank is only knowable where the whole registry is in hand.
 
+- Markdown does not take GitHub’s placement.
+  GitHub puts it at hue 261.42, inside a run of seven families between Python’s 246.50
+  and PHP’s 272.03, where it read as Python’s blue — and Markdown is the family this app
+  shows most. It moves to 276.0 and below the lightness band, painting `#4c50ca` against
+  Python’s `#0385d6` rather than `#3370e3`. That takes the pair from an Oklab delta-E of
+  0.0606 to 0.1348, and Markdown’s distance to its nearest neighbour of any kind from
+  0.0149 to 0.0725.
+
+- A family may now declare a deviation: prose recording why it does not paint where its
+  upstream colour puts it, and optionally a `lightness_rank` of its own that may sit
+  outside the band. `linguist` and `linguist_color` stay, so provenance survives, and a
+  deviating family is held to the same perceptual floor a colour chosen from a free gap
+  is. A `lightness_rank` without a `deviation` is refused — leaving the band is the one
+  change that must never read as a typo.
+  `devtools/check_file_type_colors.py` lists the deviations in its report.
+
 - The registry schema version is now `3` and its projection is `file-type-registry-v3`,
   carrying `hue`, `linguist`, and `linguist_color` on each family.
   `linguist_color` is in the projection because it is no longer provenance alone: it is

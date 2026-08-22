@@ -133,8 +133,19 @@ def test_distribution_colors_cover_every_family_on_both_themes() -> None:
         assert entry["dark"].endswith(f"{family.hue:.2f})")
 
     # Lightness now varies, and the bound on how much is what a stacked bar is
-    # owed: no segment reads heavier than its size by more than the band.
+    # owed: no segment reads heavier than its size by more than the band. The
+    # one way past that bound is a family that declares a deviation saying so,
+    # which is why this asserts the rule rather than a pair of numbers.
+    deviated = {family.id for family in families if family.deviation is not None}
     for band, key in ((LIGHT_THEME, "light"), (DARK_THEME, "dark")):
-        painted = [float(entry[key].split("(")[1].split("%")[0]) / 100 for entry in colors]
-        assert min(painted) >= band.lightness - band.spread - 1e-9
-        assert max(painted) <= band.lightness + band.spread + 1e-9
+        low = band.lightness - band.spread - 1e-9
+        high = band.lightness + band.spread + 1e-9
+        outside = set()
+        for family, entry in zip(families, colors, strict=True):
+            painted = float(entry[key].split("(")[1].split("%")[0]) / 100
+            if not low <= painted <= high:
+                outside.add(family.id)
+        assert outside <= deviated, (
+            f"{key}: {sorted(outside - deviated)} paint outside the band without "
+            f"declaring a deviation"
+        )

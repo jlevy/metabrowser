@@ -28,7 +28,7 @@
           "others": null
         },
         "registry": {
-          "fingerprint": "ca18094f1886fbcae0e57b9809efa0698c80a8d5052eb6cc05efddf44adef8c1",
+          "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
           "revision": 3,
           "schema_version": 3
         },
@@ -465,7 +465,7 @@
           }
         },
         "registry": {
-          "fingerprint": "ca18094f1886fbcae0e57b9809efa0698c80a8d5052eb6cc05efddf44adef8c1",
+          "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
           "revision": 3,
           "schema_version": 3
         },
@@ -1033,6 +1033,11 @@
       "error_code": "invalid-field",
       "id": "invalid-field",
       "toml": "schema_version = 3\nregistry_revision = 0\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "undeclared-deviation",
+      "id": "undeclared-deviation",
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\nlightness_rank = -0.5\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "invalid-id",
@@ -3250,7 +3255,7 @@
     }
   ],
   "registry": {
-    "fingerprint": "ca18094f1886fbcae0e57b9809efa0698c80a8d5052eb6cc05efddf44adef8c1",
+    "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
     "revision": 3,
     "schema_version": 3
   },

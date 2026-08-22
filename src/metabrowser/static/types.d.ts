@@ -1557,6 +1557,8 @@ declare global {
           hue: number;
           linguist: string | null;
           linguist_color: string | null;
+          deviation: string | null;
+          lightness_rank: number | null;
         }>;
         kinds: Array<{
           id: string;

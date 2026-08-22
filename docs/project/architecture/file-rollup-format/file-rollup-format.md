@@ -203,6 +203,8 @@ decision.
 | `hue` | number | Family color as an oklch hue, in `[0, 360)` degrees |
 | `linguist` | string or absent | Language in GitHub’s linguist the hue was taken from |
 | `linguist_color` | hex string or absent | That language’s upstream color; present exactly when `linguist` is. Provenance for the hue, and the source of the family’s tone rank |
+| `deviation` | string or absent | Why this family does not paint where its upstream color puts it. Present exactly when it departs deliberately |
+| `lightness_rank` | number or absent | Where the family sits in the consumer’s lightness band, overriding its upstream rank. Outside `[0, 1]` places it outside the band and requires a `deviation` |
 
 Several kinds can map to one display family.
 A nonempty family remains independently addressable even if only one extension
@@ -251,6 +253,28 @@ segment can read slightly heavier than a same-size neighbour, which a constant t
 prevented, so a band should be narrow enough to keep that small.
 Where the sRGB gamut cannot hold the chosen chroma at some hue, reduce chroma rather
 than accepting a browser’s own gamut mapping, which moves lightness and hue.
+
+#### Declared deviations
+
+Deriving from GitHub’s colour separates most of what a fixed tone collapsed, and not all
+of it.
+Two languages can be near-identical upstream in all three dimensions, and GitHub’s
+own placement can put a family the reader looks at constantly on top of a better-known
+neighbour.
+For those, a family may depart from where its upstream colour puts it, and the
+departure is a declaration rather than a silent edit.
+
+A deviating family keeps `linguist` and `linguist_color`, so its provenance stays
+auditable, and adds `deviation`: prose saying why it left.
+It may also set `lightness_rank`, which replaces the rank its upstream colour would earn
+and may fall outside `[0, 1]` to leave the band altogether.
+`lightness_rank` without `deviation` is refused, because leaving the band is exactly the
+change that should never read as a typo.
+
+The rule a deviating family trades into is the one a house hue already has: its painted
+colour must clear every other family by the consumer’s perceptual floor, in every theme.
+It does not get to be closer to something else than a colour chosen from a free gap
+would be.
 
 ### Kind Fields
 
