@@ -17,7 +17,7 @@ Checked items below are supported today; unchecked items are planned work.
 | File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Draft |
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
-| Git surfaces | [Web diff viewer research](docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md) | Research only; no plan yet |
+| Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md) | Graph panel, read-only Git API, and diff rendering shipped; `/compare/` remains |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
@@ -90,14 +90,20 @@ Two known gaps sit outside that plan and are not regressions:
 
 ## Git Surfaces
 
-- [ ] Design a Changes surface and comparison API from the
+- [x] Design a Changes surface and comparison API from the
   [web diff viewer research](docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md),
   then stage its delivery behind a written plan
-- [ ] Add a Git graph navigation panel over a read-only Git collection API
+- [x] Add a Git graph navigation panel over a read-only Git collection API
+- [ ] Build the `/compare/<base>..<head>` route, which
+  [the URL grammar](docs/architecture.md) specifies and nothing serves yet
 
-Both remain research and open exploration rather than committed plans.
-Neither should enter core until its read-only boundary and bounded-cost model are
-written down.
+Both entered core behind written plans, with the read-only boundary and bounded-cost
+model those plans required: the Git routes only read, every `git` subprocess is bounded
+by `GIT_SUBPROCESS_TIMEOUT_S` and `GIT_SUBPROCESS_MAX_BYTES`, and the history and commit
+routes carry their own named limits in `settings.py`.
+[File Diff Format v1](docs/project/architecture/file-diff-format/file-diff-format.md)
+adds a conformance corpus and an apply oracle that checks a produced document against
+git’s own trees.
 
 ## Plugin Platform
 

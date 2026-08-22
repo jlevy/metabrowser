@@ -2,7 +2,7 @@
 
 All notable changes to Metabrowser are documented here.
 
-## Unreleased
+## 0.6.0
 
 File-type colors:
 
@@ -150,6 +150,28 @@ Design system:
 
 - The commit graph is denser: lanes at a 9px pitch with smaller dots, so multi-branch
   history spends its width on subjects, not spacing.
+
+Git history:
+
+- **Metabrowser browses Git history.** Serving a repository root adds a Git panel beside
+  the file tree: the commit graph with one lane per line of development, subjects,
+  authors, ages, and branch and tag chips on the commits they point at.
+  Selecting a commit opens it, and history pages as you reach the end of the loaded
+  rows.
+
+- A read-only Git API backs it — `/api/git/repo`, `/api/git/refs`, `/api/git/log`, and
+  `/api/git/commit/<revision>`. Nothing in it writes, and every cost is bounded: each
+  `git` subprocess has a timeout and an output cap (`GIT_SUBPROCESS_TIMEOUT_S`,
+  `GIT_SUBPROCESS_MAX_BYTES`), history is cursor-paged with a bound on how far back a
+  cursor may seek (`GIT_LOG_MAX_SKIP`), the panel retains a bounded number of rows
+  (`GIT_HISTORY_MAX_ROWS`), and a commit touching more than `GIT_COMMIT_MAX_FILES` files
+  reports itself truncated rather than being silently shortened.
+
+- The panel appears only when the served folder is itself a repository root, and every
+  other case is a stated answer rather than a broken tab: `git` missing from `PATH`, a
+  folder that is not a repository, a repository Git refuses to read, and a discovery
+  call that times out are distinct, and an unborn or detached `HEAD` is carried as its
+  own state rather than as an error.
 
 Diff rendering:
 

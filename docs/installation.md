@@ -29,7 +29,7 @@ uvx metabrowser@latest ./path/to/directory
 Pin the release for a reproducible local, CI, or agent run:
 
 ```shell
-uvx metabrowser@0.5.1 ./path/to/directory
+uvx metabrowser@0.6.0 ./path/to/directory
 ```
 
 For a persistent global tool installation:
@@ -46,10 +46,10 @@ The `metabrowser` compatibility command matches the package name and enables the
 Upgrade deliberately to a reviewed release by naming its exact version:
 
 ```shell
-uv tool install --upgrade metabrowser==0.5.1
+uv tool install --upgrade metabrowser==0.6.0
 ```
 
-Metabrowser installs `kpress==0.3.2` as a required dependency.
+Metabrowser installs `kpress==0.3.3` as a required dependency.
 Do not install a second KPress checkout beside the package or override it with a
 workspace source.
 
