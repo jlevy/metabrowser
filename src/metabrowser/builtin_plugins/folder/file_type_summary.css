@@ -28,6 +28,19 @@
   font-size: var(--ui-small-font-size);
 }
 
+/* The scanning row is the nav panel's index-progress component, reused so
+   the two cannot drift into two progress languages. Only the layout is
+   restated: the nav's copy is a bar at the foot of a panel and brings a
+   top border and the sidebar ground with it, and neither belongs inside a
+   section body. */
+.file-type-summary-status-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  line-height: 1.2;
+}
+
 .file-type-summary-table {
   --file-type-summary-metric-gap: 6px;
   --file-type-summary-metric-padding: 18px;

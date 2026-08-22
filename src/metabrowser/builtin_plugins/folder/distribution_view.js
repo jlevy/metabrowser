@@ -134,19 +134,46 @@ export function updateDistributionView(handle, model) {
     return;
   }
   handle.status.hidden = false;
-  handle.status.textContent = "";
+  handle.status.replaceChildren();
+  handle.status.classList?.remove("file-type-summary-status-progress");
   if (model.state === "truncated") {
     handle.status.textContent = `Summary is partial: ${(model.indexedFiles ?? 0).toLocaleString()} files indexed at the ${(model.maxFiles ?? 0).toLocaleString()}-file cap.`;
   } else if (model.indexFailed) {
     handle.status.textContent =
       "Indexing failed; percentages cover files indexed before the failure.";
   } else if (model.scanning) {
-    handle.status.textContent = "Scanning… percentages cover files indexed so far.";
+    renderScanningProgress(handle.status, model.indexedFiles);
   } else if (model.state === "zero-bytes") {
     handle.status.textContent = "All included files are zero bytes.";
   } else {
     handle.status.hidden = true;
   }
+}
+
+/**
+ * Show the crawl the way the nav panel already shows it, rather than as a
+ * sentence about what the percentages mean. Progress is a spinner and a
+ * count; a reader watching a bar fill does not need to be told the number
+ * beside it is provisional.
+ *
+ * The classes are the nav's own `#index-progress` internals, so this is
+ * that component and cannot drift from it. The count rule is the nav's
+ * too: a literal "~0 files scanned" reads as a stuck scan, so a count
+ * that has not arrived yet falls back to the bare label.
+ *
+ * @param {HTMLElement} status
+ * @param {number | undefined} indexedFiles
+ */
+function renderScanningProgress(status, indexedFiles) {
+  status.classList?.add("file-type-summary-status-progress");
+  const spinner = document.createElement("span");
+  spinner.className = "index-progress-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.className = "index-progress-text";
+  const files = typeof indexedFiles === "number" && indexedFiles > 0 ? indexedFiles : null;
+  text.textContent = files === null ? "Scanning…" : `~${files.toLocaleString()} files scanned`;
+  status.append(spinner, text);
 }
 
 /** @param {DistributionHandle} handle @param {string} mode */

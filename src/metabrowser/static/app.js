@@ -2735,6 +2735,22 @@ function stopIndexProgressPolling() {
   indexProgressTimer = null;
 }
 
+// Finishing a crawl changes no entry, so it produces no file-store op and
+// therefore no inventory-change event. Every rollup watch refreshes on that
+// event alone, so without this announcement the last rollup a folder fetched
+// keeps reporting index_status "scanning" for the rest of the session: the
+// counts were right and the label above them was not, and nothing short of a
+// reload cleared it. Announce the transition on the channel an entry change
+// already uses, with null paths — "anything may have changed" — so each watch
+// re-fetches once and reads the terminal status.
+function announceScanCompletion() {
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", {
+      detail: { kind: "index-complete", paths: null },
+    }),
+  );
+}
+
 async function refreshTreeIfPendingTallies() {
   if (indexProgressCompletionRefreshInFlight) {
     return;
@@ -2784,6 +2800,10 @@ async function refreshIndexProgress(force) {
       return;
     }
     var meta = await resp.json();
+    // Read before rendering: renderIndexProgress overwrites the record of
+    // what the last poll saw, and the transition out of scanning is only
+    // visible by comparing against it.
+    var wasScanning = indexProgressLastRendered?.status === "scanning";
     if (shouldRenderIndexProgress(meta, force)) {
       renderIndexProgress(meta);
     }
@@ -2792,6 +2812,9 @@ async function refreshIndexProgress(force) {
         ensureTreeTruncationNote(meta.max_files);
       }
       renderIndexProgress(meta);
+      if (wasScanning) {
+        announceScanCompletion();
+      }
       await refreshTreeIfPendingTallies();
       stopIndexProgressPolling();
     }

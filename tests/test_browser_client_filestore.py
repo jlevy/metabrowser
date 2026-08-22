@@ -609,6 +609,35 @@ def test_index_progress_updates_by_file_count_bucket() -> None:
     assert "indexProgressBucket(meta.indexed_files)" in fn_block
 
 
+def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:
+    """Finishing a crawl must reach the rollup watches.
+
+    Nothing changes at the end of a scan — no entry is added or removed —
+    so the file store emits no op and no inventory-change event. Rollup
+    watches refresh on that event alone, so without an explicit
+    announcement a folder keeps rendering the last rollup it fetched,
+    which still reports ``index_status: "scanning"``. The counts were
+    right; the label above them never cleared.
+    """
+
+    js = _read_app_js()
+    fn_start = js.index("async function refreshIndexProgress(force)")
+    fn_block = js[fn_start : fn_start + 1600]
+    # Read before rendering: renderIndexProgress overwrites the record the
+    # transition is detected against.
+    assert fn_block.index('indexProgressLastRendered?.status === "scanning"') < fn_block.index(
+        "renderIndexProgress(meta)"
+    )
+    assert "announceScanCompletion()" in fn_block
+
+    announce_start = js.index("function announceScanCompletion()")
+    announce_block = js[announce_start : announce_start + 400]
+    assert 'new CustomEvent("metabrowser:inventory-change"' in announce_block
+    # Null paths mean "anything may have changed", which is what makes every
+    # watch re-fetch rather than only those matching some path list.
+    assert "paths: null" in announce_block
+
+
 def test_styles_css_defines_index_progress_footer() -> None:
     css = _read_styles_css()
     assert ".index-progress {" in css

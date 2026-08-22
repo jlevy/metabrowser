@@ -485,6 +485,44 @@ function familyRow() {
   );
 
   view.updateDistributionView(handle, {
+    ...updated,
+    indexFailed: false,
+    scanning: true,
+    indexedFiles: 1234,
+  });
+  check(
+    "a running scan shows the nav panel's spinner and count, not a sentence",
+    handle.status.children.length === 2 &&
+      handle.status.children[0].className === "index-progress-spinner" &&
+      handle.status.children[1].className === "index-progress-text" &&
+      handle.status.children[1].textContent === "~1,234 files scanned",
+    handle.status.children.map((child) => `${child.className}=${child.textContent}`).join(" | "),
+  );
+
+  view.updateDistributionView(handle, {
+    ...updated,
+    indexFailed: false,
+    scanning: true,
+    indexedFiles: 0,
+  });
+  check(
+    "a scan that has counted nothing yet holds the bare label",
+    handle.status.children[1]?.textContent === "Scanning…",
+    handle.status.children[1]?.textContent,
+  );
+
+  view.updateDistributionView(handle, {
+    ...updated,
+    indexFailed: false,
+    scanning: false,
+  });
+  check(
+    "the scan row clears once the index settles",
+    handle.status.hidden === true && handle.status.children.length === 0,
+    `hidden=${handle.status.hidden} children=${handle.status.children.length}`,
+  );
+
+  view.updateDistributionView(handle, {
     state: "failed",
     rows: [],
   });

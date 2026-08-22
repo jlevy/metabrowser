@@ -1574,24 +1574,21 @@ html.theme-anim .menu {
    reads as evenly spaced bands rather than one band and one gap.
    .tree-content contributes no top padding, so this is the whole
    distance between the bar's border and the tally text. */
+/* Sized at --nav-font-size, not --ui-small-font-size: this row states the
+   totals for the rows directly beneath it, and the two sat one step apart
+   on the ramp, which read as the header being an afterthought rather than
+   as a heading. The spans inside it inherit; they carry colour only. */
 .tree-summary {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-}
-.tree-summary-count,
-.tree-summary-size {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 .tree-summary-split {
   flex-wrap: wrap;
   gap: 4px 5px;
-}
-.tree-summary-tracked,
-.tree-summary-bytes {
-  font-size: var(--ui-small-font-size);
 }
 .tree-summary-tracked {
   color: var(--text);
@@ -1607,7 +1604,6 @@ html.theme-anim .menu {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--ui-small-font-size);
 }
 
 /* Walker-truncation banner: shown only when /api/tree returns
