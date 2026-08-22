@@ -5,10 +5,18 @@ title: "H8: root /api/tree pays a full nav-tally pass on every request during a 
 kind: task
 status: open
 priority: 0
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-22T06:10:26.160Z
-updated_at: 2026-08-22T06:10:26.160Z
+updated_at: 2026-08-22T07:27:45.986Z
 ---
-Measured at 300k build_corpus files: /api/tree costs 1,567 ms while the walk runs and 15 ms settled, for the same 7,537-byte gz answer; ?depth=1 (987 bytes) costs the same 1,563 ms; a subtree read stays ~10 ms throughout. Mechanism: navigation_tallies memoizes on the index revision (inventory.py), the walker moves that revision with every write, so during a scan the memo never hits and every root request redoes the O(index) pass (~486 ms/100k per its own comment) plus an entries() snapshot copy. load_tree_ms is 837-1,490 ms of a 1,017-1,660 ms first row, so this is ~85% of time-to-first-row in the scanning regime. Candidate fix: serve slightly stale tallies during a scan (recompute at most every N ms or per M files indexed). Metric: tree_reprobe_ms with index_status_at_probe=scanning, floor 15 ms; explorations/probe.js records all three. Plan: docs/project/specs/active/plan-2026-08-21-load-time-performance.md Backlog H8.
+Root /api/tree costs 15 ms settled but 837-1,567 ms while the walk runs, identical bytes either way.
+
+The mechanism, found by reading inventory.py: navigation_tallies memoizes on rollup_revision(), and that revision advances on every index write — at 256-entry emit batches and ~23k entries/s, ~90 times a second. So during a scan no request can ever hit the memo, and each root /api/tree re-runs the full O(N) tally pass in a to_thread; the docstring itself prices that pass at ~2 s at 400k entries. Settled, the memo hits and the route costs 15 ms.
+
+Fix shape (H23): during scanning, serve the last computed tallies when younger than a staleness bound (500-1000 ms), recompute at most once per window, single-flight so concurrent pollers share one pass. The payload already carries tally_cache_status=scanning, so the client already treats these numbers as provisional — bounded staleness is inside the existing UX contract.
+
+What remains of H8 after that lands is the GIL share taken by per-entry walker stores on the serving loop — that is mb-tip8 (H22). Batch mb-43v7 (H25, encoded-body cache) into the same change: same handler.
+
+Add tallies-path timing to Server-Timing so the before/after is attributable in the probe.
