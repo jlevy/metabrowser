@@ -223,7 +223,7 @@ function countHtml(n, extraClass) {
 // directory portion muted, the basename in the inherited (typically
 // bold) style. Use anywhere a path is shown in a context where the
 // last segment is the focus (app header, file header, drawer titles).
-function pathHtml(path, extraClass) {
+function _pathHtml(path, extraClass) {
   var raw = String(path == null ? "" : path);
   var trimmed = raw.replace(/\/+$/, "");
   var cls = `path ${extraClass || ""}`.trim();
@@ -274,6 +274,10 @@ function servedRoot() {
  * changes nothing, but a run of links with one dead segment in the middle
  * reads as a bug rather than as a rule.
  *
+ * Each crumb carries the path it navigates to as its title, because a narrow
+ * pane ellipsizes the crumbs themselves and the hover is then the only place
+ * the whole component is legible.
+ *
  * @param {string} path served-root-relative path; "" is the root itself
  * @param {boolean} isFile whether the last component names a file
  */
@@ -291,7 +295,7 @@ function headerAddressHtml(path, isFile) {
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}">${esc(segments[i])}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" title="${esc(walked)}">${esc(segments[i])}</button>`,
     );
   }
   return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
@@ -1885,7 +1889,7 @@ function showTooltip(html, anchor) {
  * thing it describes.
  */
 function positionTooltip(anchor) {
-  if (!anchor || !anchor.getBoundingClientRect) {
+  if (!anchor?.getBoundingClientRect) {
     return;
   }
   var target = anchor.getBoundingClientRect();

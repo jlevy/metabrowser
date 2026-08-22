@@ -635,6 +635,49 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     click_start = js.index('origin.closest("[data-nav-file]")')
     assert "navigateToPath(fileBtn.dataset.navFile" in js[click_start : click_start + 300]
 
+    # A narrow pane ellipsizes the crumbs, so each one names its whole
+    # component on hover rather than only the head of it.
+    assert 'title="${esc(walked)}"' in fn_block
+
+
+def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
+    """A squeezed address loses width at the start, and shows that it did.
+
+    The dimmed root prefix is the first to narrow, then the directories,
+    then the component you are standing on — the name you are reading is
+    the part worth keeping. Every part that can narrow ellipsizes, so the
+    header's clip never cuts a crumb mid-word, and nothing after the run
+    is pushed outside the clipped box where it cannot be reached.
+
+    Pinned as the ordering between the shrink weights rather than as their
+    values, which are free to move as long as the order survives.
+    """
+
+    css = _read_styles_css()
+
+    def shrink(selector: str) -> float:
+        start = css.index(f"{selector} {{")
+        block = css[start : css.index("}", start)]
+        match = re.search(r"flex(?:-shrink)?:\s*(?:[\d.]+\s+)?([\d.]+)", block)
+        assert match is not None, f"{selector} declares no shrink weight"
+        return float(match.group(1))
+
+    root = shrink(".file-header-root")
+    directory = shrink(".folder-breadcrumb .folder-crumb")
+    current = shrink(".folder-breadcrumb .folder-crumb-current")
+    structure = shrink(
+        ".folder-breadcrumb .folder-crumb-root,\n.folder-breadcrumb .folder-crumb-sep"
+    )
+
+    assert root > directory > current > structure == 0
+
+    # Whatever narrows says so, instead of being cut against the clip.
+    crumb_start = css.index(".folder-breadcrumb .folder-crumb {")
+    crumb_block = css[crumb_start : css.index("}", crumb_start)]
+    assert "text-overflow: ellipsis" in crumb_block
+    assert "min-width: 0" in crumb_block
+    assert "overflow: hidden" in crumb_block
+
 
 def test_navigation_heading_shows_only_the_root_name() -> None:
     """The heading renders the basename; the absolute root rides alongside."""

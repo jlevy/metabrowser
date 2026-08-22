@@ -2802,8 +2802,36 @@ html[data-prose-font="sans"] {
 .folder-breadcrumb {
   gap: 2px;
 }
-/* Crumbs keep their size; only the dimmed root prefix above gives way. */
-.folder-breadcrumb .folder-crumb,
+/* The address gives way in the order the reader can afford to lose it: the
+   dimmed root prefix first, then the directories, and the segment you are
+   standing on last, because the name you are looking at is the part worth
+   keeping. Each shrinking part carries its own ellipsis, so a squeezed
+   address ends in a visible "…" instead of being cut mid-word against the
+   header's clip. The separators and the leading slash hold their size —
+   they are five to eight pixels of structure, not content.
+
+   The weights matter more than their absolute values: the root outshrinks a
+   directory by enough that it is effectively gone before one narrows, and a
+   directory outshrinks the current segment the same way.
+
+   Measured on a 296px header, which is a 620px window at the default nav
+   width, showing /Users/.../worktrees/<name> / src / metabrowser /
+   color_oklch.py. Below a 375px header the root has nothing left to give.
+   Without the rules below, the next 55px came out of the end of the run
+   rather than the start: at 320px the filename was cut 19px short with no
+   ellipsis, and the copy control sat 45px outside the clipped box, where it
+   could be neither seen nor clicked. */
+.folder-breadcrumb .folder-crumb {
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-breadcrumb .folder-crumb-current {
+  flex-shrink: 1;
+}
+.folder-breadcrumb .folder-crumb-root,
 .folder-breadcrumb .folder-crumb-sep {
   flex: 0 0 auto;
 }
@@ -2834,7 +2862,8 @@ html[data-prose-font="sans"] {
 /* The served root, absolute, ahead of the first slash. Dimmed because it
    is identical on every page of the app: context for the live part of the
    address rather than part of it. It gives up its width first, so a long
-   root elides before a filename does. */
+   root elides before a filename does — the shrink weight is what puts it
+   first, against the 4 and the 1 the crumbs above carry. */
 .file-header-root {
   color: var(--muted);
   font-weight: var(--weight-normal);
@@ -2842,7 +2871,7 @@ html[data-prose-font="sans"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 0 1 auto;
+  flex: 0 100 auto;
 }
 .folder-crumb-sep {
   color: var(--muted);
