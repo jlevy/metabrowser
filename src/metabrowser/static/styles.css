@@ -2812,8 +2812,8 @@ html[data-prose-font="sans"] {
    directory outshrinks the current segment the same way.
 
    Measured on a 296px header, which is a 620px window at the default nav
-   width, showing /Users/.../worktrees/<name> / src / metabrowser /
-   color_oklch.py. Below a 375px header the root has nothing left to give.
+   width, showing a served root 494px wide followed by three components.
+   Below a 375px header the root has nothing left to give.
    Without the rules below, the next 55px came out of the end of the run
    rather than the start: at 320px the filename was cut 19px short with no
    ellipsis, and the copy control sat 45px outside the clipped box, where it
