@@ -5,12 +5,12 @@ title: TypeScript should deviate from GitHub's hue toward purple, away from Pyth
 kind: task
 status: open
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T19:03:47.925Z
-updated_at: 2026-08-22T19:03:47.925Z
+updated_at: 2026-08-22T19:14:00.703Z
 ---
 Reported in QA: Python and TypeScript look like the same blue.
 
@@ -23,3 +23,9 @@ Decision from the review: move TypeScript purple-ward and stop taking GitHub's h
 The constraint to settle first. Only three arcs on the whole circle clear 5 degrees on both sides: 308.37-309.22, 228.85-228.90, and 238.90-238.94. Only the first is purple. Putting TypeScript at 308.80 clears python by 62 degrees but lands 5.43 from css and 5.42 from julia, rendering #601fad against #5721b9 and #6a1da1 -- which trades one near-collision for two. A gentler move (268 or 276) reads as purple but sits about 4 degrees from lua or php, under the floor.
 
 So this bead is blocked on the parent problem in its sibling: at one fixed lightness and chroma the circle has no room left. Worth deciding that first.
+
+UPDATE after the palette measurement (mb-0ov6). Python/TypeScript was never the worst pair perceptually: at fixed tone they are dE 0.0275, already above the 0.02 mark, while html/svelte sat at 0.0020. Deriving from GitHub's full colour takes the pair to 0.0316 on its own.
+
+So the deviation mechanism is probably NOT needed for TypeScript. Where it is still needed is swift/svelte, which stays at dE 0.0073 in the dark theme because #f05138 and #ff3e00 are near-identical upstream in all three dimensions.
+
+Decide after mb-0ov6 lands and the new palette has been looked at in a browser: if TypeScript still reads as Python's blue, deviate it then, with the mechanism this bead describes.
