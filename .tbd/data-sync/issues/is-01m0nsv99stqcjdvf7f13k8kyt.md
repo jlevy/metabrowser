@@ -3,14 +3,16 @@ type: is
 id: is-01m0nsv99stqcjdvf7f13k8kyt
 title: "Nav panel and view share one top structure: path row, hairline, tabs row, hairline"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T22:35:46.872Z
-updated_at: 2026-08-22T22:36:18.815Z
+updated_at: 2026-08-22T23:42:30.412Z
+closed_at: 2026-08-22T23:42:30.412Z
+close_reason: "Both path rows take height and hairline from --pane-header-row-height; measured in a browser: path rows 41px both ending at 41, tabs rows 30.5px both ending at 71.5. Test asserts both read the shared token rather than measuring."
 ---
 The nav panel and the main view should have exactly the same structure at the top, so the two sides of the divider read as one band rather than as two panels that happen to be adjacent.
 

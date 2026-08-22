@@ -3,14 +3,16 @@ type: is
 id: is-01m0nst511acysx9e7wgyxfy7c
 title: "File header: tilde-expand a served root under the home directory"
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T22:35:09.728Z
-updated_at: 2026-08-22T22:35:09.728Z
+updated_at: 2026-08-22T23:42:30.111Z
+closed_at: 2026-08-22T23:42:30.110Z
+close_reason: Server-side _display_root_str renders a home-directory root as ~, falling through to the absolute path for a root outside home or a platform with no home. The API's root field stays absolute. The browser now reads the served root once from the shell rather than re-deriving it per tree response, which is what would have made the tooltip and the header prefix disagree.
 ---
 Requested: render a served root under the user's home directory as `~/...` rather than the absolute path, to spend less of the header's width on a prefix that is the same on every page.
 
