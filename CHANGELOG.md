@@ -44,6 +44,21 @@ Folder Overview:
   insets sized for a track it was no longer in and read at 43rem against 48rem; and the
   narrow inset did not match the article padding it replaced.
 
+- Segments of a tally bar are separated by a hairline of the page ground, so two
+  families of similar hue read as two rather than as one wide band.
+  It is drawn inside the segment rather than as a gap, because the widths are
+  percentages that sum to 100 and anything occupying layout would push the last segment
+  past the end of the track.
+
+- Hovering a segment of a tally bar now recedes the rest of the track, so the segment
+  the tooltip describes is findable.
+  The shared brightness filter was doing the whole job on a track eight pixels tall,
+  where it read as nothing happening.
+
+- Treemap puts Files/Bytes and Show ignored in one row above the bars, the way Overview
+  does. They used to sit apart — the measure above the tally bars, the gitignore switch
+  below them — so two choices about the same numbers were in two places.
+
 - Files and File Breakdown are one **File Overview** section.
   They answer the same question at two resolutions, and splitting them meant collapsing
   or scrolling past the first to reach the second — and, worse, splitting one set of

@@ -230,6 +230,29 @@ global.document = { createElement: (tag) => new Element(tag) };
       sharedStyles.lastIndexOf("--viz-data-mark-hover-filter:") > darkStart,
     styles,
   );
+  // A tally track is eight pixels tall, so the filter alone reads as nothing
+  // happening. The siblings have to recede for the hovered segment to be
+  // findable, which means the rule must key off the track rather than the
+  // segment, and the hovered segment must win its opacity back.
+  check(
+    "hovering a segment recedes the rest of the track",
+    styles.includes(
+      ".folder-totals .file-type-summary-track:hover .file-type-summary-fill[data-segment-key]",
+    ) &&
+      styles.includes("opacity: var(--mb-distribution-segment-recede);") &&
+      styles.includes("opacity: 1;") &&
+      sharedStyles.includes("--mb-distribution-segment-recede:"),
+    styles,
+  );
+  // Segment widths are percentages that sum to 100, so the hairline between
+  // them cannot occupy layout or the last segment leaves the track.
+  check(
+    "segments are separated by an inset hairline of the page ground",
+    styles.includes("box-shadow: inset calc(-1 * var(--mb-distribution-segment-gap)) 0 0") &&
+      styles.includes(":not(:last-child)") &&
+      sharedStyles.includes("--mb-distribution-segment-gap:"),
+    styles,
+  );
   view.dispose();
   check(
     "disposing Files clears the shared tooltip",

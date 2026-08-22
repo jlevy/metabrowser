@@ -331,7 +331,13 @@
   --mb-distribution-other: var(--muted);
   --mb-distribution-track: var(--viz-surface-sunken);
   --mb-distribution-track-height: 8px;
-  --mb-distribution-segment-gap: 2px;
+  --mb-distribution-segment-gap: 1px;
+  /* How far a segment recedes while a sibling is hovered. A tally track is
+     eight pixels tall, so a brightness shift on the hovered segment alone has
+     almost no area to register in and reads as nothing happening. Dimming
+     everything else is legible at any hue and at any segment width, and it
+     answers the question the tooltip raises: which one is this. */
+  --mb-distribution-segment-recede: 0.32;
 
   /* Icons — one glyph size for every icon in the chrome, whether it is a
      button (gear, printer, copy), a file-type mark in a row, or a menu

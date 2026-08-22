@@ -966,10 +966,18 @@ its color on both themes, and `category_palette.js` writes both onto the element
 `.mb-distribution-mark` selects between them by theme and `.mb-distribution-other` takes
 the neutral, so a theme change is a selector switch rather than a repaint.
 The remaining tokens are `--mb-distribution-other`, `--mb-distribution-track`,
-`--mb-distribution-track-height`, and `--mb-distribution-segment-gap`; the segment-gap
-token remains available to consumers that place categorical segments beside one another.
-Core owns these tokens and utilities; the folder plugin owns File types and Treemap
-layout selectors.
+`--mb-distribution-track-height`, and `--mb-distribution-segment-gap`. Core owns these
+tokens and utilities; the folder plugin owns File types and Treemap layout selectors.
+
+Segments that sit beside one another are separated by a hairline of the page ground —
+`--mb-distribution-segment-gap` wide, in `--viz-surface` — so two families of similar
+hue read as two rather than as one wide band.
+It is drawn as an inset shadow rather than a gap or a border, because the widths are
+percentages that sum to 100 and anything occupying layout would push the last segment
+past the end of the track.
+A segment narrower than the hairline therefore becomes ground rather than stealing width
+from its neighbor, which is the right trade: a sub-pixel share is unreadable as a color
+either way.
 
 `make lint` runs `devtools/check_file_type_colors.py`, which holds the upstream
 correspondence, the separation floor, and the tone.
@@ -1085,9 +1093,18 @@ for that row’s disjoint population.
 Tooltip-bearing categorical marks use `--viz-data-mark-hover-filter`, the same subtle
 whole-mark brightness change used by Treemap cells.
 The filter preserves the mark’s hue and the contrast between its fill, border, and
-nested content; hover never changes geometry, stacking, or opacity.
-It transitions with the shared visualization hover timing, while reduced-motion mode
-applies the state immediately.
+nested content; hover never changes geometry or stacking.
+
+On a tally track the filter alone is not enough, because the track is eight pixels tall
+and a brightness change on one segment has almost no area to register in.
+The rest of the track recedes as well, to `--mb-distribution-segment-recede`, so the
+hovered segment holds its color while its neighbors drop toward the track behind them.
+That reads at any hue and at any segment width, and it answers the question the tooltip
+raises: which segment is this.
+A Treemap cell is large enough to carry the filter on its own and does not recede its
+siblings.
+It transitions with the shared visualization hover timing, while reduced-motion
+mode applies the state immediately.
 These supplemental hover tooltips do not create tab stops; the type distribution remains
 the accessible source for the same values.
 The Ignored row dims its label, tally, track, and colors through

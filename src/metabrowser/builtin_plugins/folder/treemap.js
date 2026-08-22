@@ -242,18 +242,19 @@ export function registerTreemap(mb, palette, rollupControls) {
 
     container.innerHTML =
       '<h2 class="tm-totals-heading">Files</h2>' +
-      '<div class="tm-metric-controls folder-rollup-controls"></div>' +
+      // One row for both halves, above the bars they govern — the same
+      // arrangement as the Overview's File Overview. They used to sit apart,
+      // the measure above the tally bars and the gitignore switch below them,
+      // so the two choices about the same numbers were in two places and each
+      // silently moved the other's.
+      '<div class="tm-rollup-controls folder-rollup-controls"></div>' +
       '<div class="tm-totals"></div>' +
-      '<div class="tm-scope-controls folder-rollup-controls"></div>' +
       parentControlHtml +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
       '<div class="tm-status" role="status"></div>';
     const totalsContainer = /** @type {HTMLElement} */ (container.querySelector(".tm-totals"));
-    const metricControls = /** @type {HTMLElement} */ (
-      container.querySelector(".tm-metric-controls")
-    );
-    const scopeControls = /** @type {HTMLElement} */ (
-      container.querySelector(".tm-scope-controls")
+    const rollupControlsHost = /** @type {HTMLElement} */ (
+      container.querySelector(".tm-rollup-controls")
     );
     const parentControl = parent
       ? /** @type {HTMLButtonElement} */ (container.querySelector(".tm-parent-nav"))
@@ -298,14 +299,8 @@ export function registerTreemap(mb, palette, rollupControls) {
         console.warn("Could not compose treemap population bars.", error);
       }
     }
-    const unmountMetricControls = rollupControls.mount(metricControls, {
-      metric: true,
-      ignored: false,
-    });
-    const unmountScopeControls = rollupControls.mount(scopeControls, {
-      metric: false,
-      ignored: true,
-    });
+    // No parts argument: this row is both halves.
+    const unmountControls = rollupControls.mount(rollupControlsHost);
 
     function openParent() {
       if (parent) {
@@ -552,8 +547,7 @@ export function registerTreemap(mb, palette, rollupControls) {
       unsubscribeActive();
       unsubscribeControls();
       unsubscribeTotals();
-      unmountMetricControls();
-      unmountScopeControls();
+      unmountControls();
       if (parentControl) {
         parentControl.removeEventListener("click", openParent);
       }
