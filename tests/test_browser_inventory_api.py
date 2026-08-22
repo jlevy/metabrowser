@@ -195,7 +195,7 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
         "media",
     ]
     assert body["file_type_registry"] == {
-        "schema_version": 2,
+        "schema_version": 3,
         "revision": load_file_type_registry().revision,
         "fingerprint": load_file_type_registry().fingerprint,
     }

@@ -25,9 +25,9 @@
     "others": null
   },
   "registry": {
-    "fingerprint": "c4abb7a8add194171ad3dadc1eea81a4814a1a34b8e7f9e3696f4e6e4ab86aa2",
+    "fingerprint": "ca18094f1886fbcae0e57b9809efa0698c80a8d5052eb6cc05efddf44adef8c1",
     "revision": 3,
-    "schema_version": 2
+    "schema_version": 3
   },
   "remaining_types": {
     "extensions": [],

@@ -8,16 +8,22 @@
 # devtools/file_type_contract.py --write. Do not edit the generated documentation copy.
 # devtools/check_file_type_colors.py checks the colour rules below.
 
-# A family declares one colour number: `hue`, in degrees. Lightness and chroma are
-# the same for every family and belong to the consuming theme, not to this file.
+# A family declares one colour number: `hue`, in degrees. A consuming theme owns the
+# lightness and chroma, which it states as a band rather than as one value.
 #
 # Where `linguist` names a language, `linguist_color` is that language's colour in
 # GitHub's linguist and the hue is that colour converted to oklch — unchanged,
 # including where two of GitHub's own colours are close together. Families without a
 # `linguist` name take a hue that clears every other declared hue. Nothing else moves
-# a hue, and devtools/check_file_type_colors.py holds both rules.
+# a hue.
+#
+# `linguist_color` is not provenance alone: a theme also reads a family's lightness
+# and chroma *rank* among the other upstream colours off it, and paints the family at
+# that place in its band. Hue at one fixed tone cannot separate 56 families — GitHub's
+# own colours are told apart mostly by the two dimensions a fixed tone discards.
+# devtools/check_file_type_colors.py holds these rules and reports the measurements.
 
-schema_version = 2
+schema_version = 3
 registry_revision = 3
 max_extension_components = 2
 

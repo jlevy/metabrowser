@@ -16,18 +16,33 @@ File-type colors:
 - The type registry declares a `hue` per family, with the `linguist` language and its
   upstream color recorded beside it.
   Thirty-five families carry GitHub’s hue exactly, including where two of GitHub’s own
-  colors are close together; the twenty-one GitHub names no color for take a hue at
-  least five degrees clear of every other.
-  `devtools/check_file_type_colors.py` holds both rules and runs in `make lint`.
+  colors are close together; the twenty-one GitHub names no color for take a hue whose
+  painted color clears every other family by a perceptual distance, in both themes.
+  `devtools/check_file_type_colors.py` holds both rules and runs in `make lint`, and
+  reports the collisions it keeps because they are GitHub’s own.
 
-- Lightness and chroma are the theme’s, one pair for the whole palette, so segments of a
-  stacked bar differ in hue and in nothing else and none looks heavier than its size.
+- Lightness and chroma are the theme’s, stated as a narrow band rather than as one pair,
+  and a family’s place inside it is its rank among the upstream colors GitHub gave the
+  other families. Hue alone could not carry fifty-six families: they average 6.4 degrees
+  of spacing, at or under what the eye resolves at a fixed tone, and GitHub’s own colors
+  are separated mostly by the two dimensions a fixed tone throws away.
+  Html and svelte came out `#dd5230` against `#dd5232`, and ruby and yaml one step apart
+  in blue. Taking all three attributes moves the closest pair in the palette from an
+  Oklab delta-E of 0.0020 to 0.0156, and pairs too close to tell apart from 41 to 9. The
+  band is +-0.06 of lightness, which is the cost side of the trade: a stacked-bar
+  segment can now read slightly heavier than a same-size neighbour, where one flat tone
+  guaranteed it could not.
+  Widening it buys almost nothing, so it stays narrow.
   The server ships finished colors for both themes rather than hues composed in CSS,
   because a browser handed an out-of-gamut `oklch()` clips it — moving hue by as much as
-  nine degrees, more than the separation the palette is built on.
+  nine degrees, more than the separation the palette is built on, and because a family’s
+  rank is only knowable where the whole registry is in hand.
 
-- The registry schema version is now `2` and its projection is `file-type-registry-v2`,
-  carrying `hue` and `linguist` on each family.
+- The registry schema version is now `3` and its projection is `file-type-registry-v3`,
+  carrying `hue`, `linguist`, and `linguist_color` on each family.
+  `linguist_color` is in the projection because it is no longer provenance alone: it is
+  what a consumer reads a family’s tone rank off, so a consumer that only had `hue`
+  could not reproduce the palette.
   `--mb-distribution-category-1` through `-12`, the `.mb-distribution-slot-*` classes,
   and `DISTRIBUTION_PALETTE_SLOTS` are gone; `.mb-distribution-mark` and
   `METABROWSER_SETTINGS.DISTRIBUTION_COLORS` replace them.
@@ -50,9 +65,11 @@ Folder Overview:
   percentages that sum to 100 and anything occupying layout would push the last segment
   past the end of the track.
 
-- **`PLUGIN_SDK_VERSION` is `0.3`.** An external plugin must set `sdk_version = "0.3"`
+- **`PLUGIN_SDK_VERSION` is `0.4`.** An external plugin must set `sdk_version = "0.4"`
   and update its tooltip call sites: `mb.tooltip.show` takes the anchor element rather
   than a `MouseEvent`, and `mb.tooltip.move` is gone.
+  `mb.fileTypes.schemaVersion` and `registryIdentity.schemaVersion` are `3`, and a
+  plugin comparing a rollup’s registry identity against them needs no other change.
 
 - Tooltips are placed relative to the element they annotate and hold still once shown.
   They used to follow the pointer, which jitters while you are trying to read one and —

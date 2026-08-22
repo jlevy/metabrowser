@@ -2,7 +2,7 @@
 name = "markdown"
 display_name = "Markdown"
 version = "0.0.1"
-sdk_version = "0.3"
+sdk_version = "0.4"
 extra_styles = ["markdown.css"]
 
 # Generic Markdown handling. Higher-priority plugin classifiers may claim

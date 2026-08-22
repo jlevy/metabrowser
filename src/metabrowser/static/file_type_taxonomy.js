@@ -80,7 +80,7 @@
   /** @param {unknown} rawRegistry */
   function createRuntime(rawRegistry) {
     const raw = objectValue(rawRegistry, "FILE_TYPE_REGISTRY");
-    if (raw.schema !== "file-type-registry-v2" || raw.schema_version !== 2) {
+    if (raw.schema !== "file-type-registry-v3" || raw.schema_version !== 3) {
       throw new TypeError("unsupported file-type registry schema");
     }
     const revision = integerValue(raw.revision, "file-type registry revision");
@@ -344,12 +344,12 @@
     const frozenGroups = Object.freeze(groups);
     const frozenFamilies = Object.freeze(families);
     return Object.freeze({
-      schema: "file-type-registry-v2",
-      schemaVersion: 2,
+      schema: "file-type-registry-v3",
+      schemaVersion: 3,
       revision,
       fingerprint,
       maxExtensionComponents,
-      registryIdentity: Object.freeze({ schemaVersion: 2, revision, fingerprint }),
+      registryIdentity: Object.freeze({ schemaVersion: 3, revision, fingerprint }),
       groups: frozenGroups,
       families: frozenFamilies,
       kinds: Object.freeze(kinds),

@@ -115,7 +115,7 @@ def test_namespace_rule_is_enforced(tmp_path: Path) -> None:
     bad = tmp_path / "bad_plugin"
     bad.mkdir()
     (bad / "manifest.toml").write_text(
-        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.3"\n'
+        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.4"\n'
         '[[kind]]\nid = "bad"\n'
         'match = { ext = ".bad" }\n[[view]]\nkind = "bad"\nid = "v"\nlabel = "V"\n'
     )

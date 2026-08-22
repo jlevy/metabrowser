@@ -10,6 +10,7 @@
       "id": "python",
       "label": "Python",
       "linguist": "Python",
+      "linguist_color": "#3572a5",
       "order": 100
     },
     {
@@ -24,6 +25,7 @@
       "id": "javascript",
       "label": "JavaScript",
       "linguist": "JavaScript",
+      "linguist_color": "#f1e05a",
       "order": 110
     },
     {
@@ -38,6 +40,7 @@
       "id": "typescript",
       "label": "TypeScript",
       "linguist": "TypeScript",
+      "linguist_color": "#3178c6",
       "order": 120
     },
     {
@@ -51,6 +54,7 @@
       "id": "css",
       "label": "CSS",
       "linguist": "CSS",
+      "linguist_color": "#663399",
       "order": 130
     },
     {
@@ -63,6 +67,7 @@
       "id": "html",
       "label": "HTML",
       "linguist": "HTML",
+      "linguist_color": "#e34c26",
       "order": 140
     },
     {
@@ -74,6 +79,7 @@
       "id": "rust",
       "label": "Rust",
       "linguist": "Rust",
+      "linguist_color": "#dea584",
       "order": 150
     },
     {
@@ -85,6 +91,7 @@
       "id": "go",
       "label": "Go",
       "linguist": "Go",
+      "linguist_color": "#00add8",
       "order": 160
     },
     {
@@ -96,6 +103,7 @@
       "id": "java",
       "label": "Java",
       "linguist": "Java",
+      "linguist_color": "#b07219",
       "order": 170
     },
     {
@@ -108,6 +116,7 @@
       "id": "kotlin",
       "label": "Kotlin",
       "linguist": "Kotlin",
+      "linguist_color": "#a97bff",
       "order": 180
     },
     {
@@ -119,6 +128,7 @@
       "id": "swift",
       "label": "Swift",
       "linguist": "Swift",
+      "linguist_color": "#f05138",
       "order": 190
     },
     {
@@ -134,6 +144,7 @@
       "id": "c-cpp",
       "label": "C/C++",
       "linguist": "C++",
+      "linguist_color": "#f34b7d",
       "order": 200
     },
     {
@@ -145,6 +156,7 @@
       "id": "csharp",
       "label": "C#",
       "linguist": "C#",
+      "linguist_color": "#7355dd",
       "order": 210
     },
     {
@@ -156,6 +168,7 @@
       "id": "ruby",
       "label": "Ruby",
       "linguist": "Ruby",
+      "linguist_color": "#701516",
       "order": 220
     },
     {
@@ -167,6 +180,7 @@
       "id": "php",
       "label": "PHP",
       "linguist": "PHP",
+      "linguist_color": "#4f5d95",
       "order": 230
     },
     {
@@ -178,6 +192,7 @@
       "id": "scala",
       "label": "Scala",
       "linguist": "Scala",
+      "linguist_color": "#c22d40",
       "order": 240
     },
     {
@@ -189,6 +204,7 @@
       "id": "clojure",
       "label": "Clojure",
       "linguist": "Clojure",
+      "linguist_color": "#db5855",
       "order": 250
     },
     {
@@ -201,6 +217,7 @@
       "id": "elixir",
       "label": "Elixir",
       "linguist": "Elixir",
+      "linguist_color": "#6e4a7e",
       "order": 260
     },
     {
@@ -212,6 +229,7 @@
       "id": "erlang",
       "label": "Erlang",
       "linguist": "Erlang",
+      "linguist_color": "#b83998",
       "order": 270
     },
     {
@@ -223,6 +241,7 @@
       "id": "haskell",
       "label": "Haskell",
       "linguist": "Haskell",
+      "linguist_color": "#5e5086",
       "order": 280
     },
     {
@@ -234,6 +253,7 @@
       "id": "lua",
       "label": "Lua",
       "linguist": "Lua",
+      "linguist_color": "#000080",
       "order": 290
     },
     {
@@ -245,6 +265,7 @@
       "id": "julia",
       "label": "Julia",
       "linguist": "Julia",
+      "linguist_color": "#a270ba",
       "order": 300
     },
     {
@@ -256,6 +277,7 @@
       "id": "dart",
       "label": "Dart",
       "linguist": "Dart",
+      "linguist_color": "#00b4ab",
       "order": 310
     },
     {
@@ -267,6 +289,7 @@
       "id": "vue",
       "label": "Vue",
       "linguist": "Vue",
+      "linguist_color": "#41b883",
       "order": 320
     },
     {
@@ -278,6 +301,7 @@
       "id": "svelte",
       "label": "Svelte",
       "linguist": "Svelte",
+      "linguist_color": "#ff3e00",
       "order": 330
     },
     {
@@ -292,6 +316,7 @@
       "id": "shell",
       "label": "Shell",
       "linguist": "Shell",
+      "linguist_color": "#89e051",
       "order": 340
     },
     {
@@ -303,6 +328,7 @@
       "id": "powershell",
       "label": "PowerShell",
       "linguist": "PowerShell",
+      "linguist_color": "#012456",
       "order": 350
     },
     {
@@ -314,6 +340,7 @@
       "id": "sql",
       "label": "SQL",
       "linguist": "SQL",
+      "linguist_color": "#e38c00",
       "order": 360
     },
     {
@@ -325,6 +352,7 @@
       "id": "markdown",
       "label": "Markdown",
       "linguist": "Markdown",
+      "linguist_color": "#083fa1",
       "order": 100
     },
     {
@@ -336,6 +364,7 @@
       "id": "plain-text",
       "label": "Plain text",
       "linguist": null,
+      "linguist_color": null,
       "order": 110
     },
     {
@@ -347,6 +376,7 @@
       "id": "restructured-text",
       "label": "reStructuredText",
       "linguist": null,
+      "linguist_color": null,
       "order": 120
     },
     {
@@ -358,6 +388,7 @@
       "id": "asciidoc",
       "label": "AsciiDoc",
       "linguist": "AsciiDoc",
+      "linguist_color": "#73a0c5",
       "order": 130
     },
     {
@@ -369,6 +400,7 @@
       "id": "org",
       "label": "Org",
       "linguist": "Org",
+      "linguist_color": "#77aa99",
       "order": 140
     },
     {
@@ -380,6 +412,7 @@
       "id": "pdf",
       "label": "PDF",
       "linguist": null,
+      "linguist_color": null,
       "order": 150
     },
     {
@@ -392,6 +425,7 @@
       "id": "word",
       "label": "Word",
       "linguist": null,
+      "linguist_color": null,
       "order": 160
     },
     {
@@ -403,6 +437,7 @@
       "id": "rich-text",
       "label": "Rich Text",
       "linguist": null,
+      "linguist_color": null,
       "order": 170
     },
     {
@@ -414,6 +449,7 @@
       "id": "open-document",
       "label": "OpenDocument",
       "linguist": null,
+      "linguist_color": null,
       "order": 180
     },
     {
@@ -425,6 +461,7 @@
       "id": "epub",
       "label": "EPUB",
       "linguist": null,
+      "linguist_color": null,
       "order": 190
     },
     {
@@ -436,6 +473,7 @@
       "id": "json",
       "label": "JSON",
       "linguist": null,
+      "linguist_color": null,
       "order": 100
     },
     {
@@ -448,6 +486,7 @@
       "id": "yaml",
       "label": "YAML",
       "linguist": "YAML",
+      "linguist_color": "#cb171e",
       "order": 110
     },
     {
@@ -459,6 +498,7 @@
       "id": "toml",
       "label": "TOML",
       "linguist": "TOML",
+      "linguist_color": "#9c4221",
       "order": 120
     },
     {
@@ -470,6 +510,7 @@
       "id": "ini",
       "label": "INI",
       "linguist": null,
+      "linguist_color": null,
       "order": 130
     },
     {
@@ -483,6 +524,7 @@
       "id": "delimited-text",
       "label": "Delimited text",
       "linguist": "CSV",
+      "linguist_color": "#237346",
       "order": 140
     },
     {
@@ -494,6 +536,7 @@
       "id": "xml",
       "label": "XML",
       "linguist": "XML",
+      "linguist_color": "#0060ac",
       "order": 150
     },
     {
@@ -505,6 +548,7 @@
       "id": "parquet",
       "label": "Parquet",
       "linguist": null,
+      "linguist_color": null,
       "order": 160
     },
     {
@@ -517,6 +561,7 @@
       "id": "arrow",
       "label": "Arrow",
       "linguist": null,
+      "linguist_color": null,
       "order": 170
     },
     {
@@ -528,6 +573,7 @@
       "id": "avro",
       "label": "Avro",
       "linguist": null,
+      "linguist_color": null,
       "order": 180
     },
     {
@@ -539,6 +585,7 @@
       "id": "orc",
       "label": "ORC",
       "linguist": null,
+      "linguist_color": null,
       "order": 190
     },
     {
@@ -550,6 +597,7 @@
       "id": "protocol-buffers",
       "label": "Protocol Buffers",
       "linguist": null,
+      "linguist_color": null,
       "order": 200
     },
     {
@@ -561,6 +609,7 @@
       "id": "graphql",
       "label": "GraphQL",
       "linguist": "GraphQL",
+      "linguist_color": "#e10098",
       "order": 210
     },
     {
@@ -572,6 +621,7 @@
       "id": "sqlite",
       "label": "SQLite",
       "linguist": null,
+      "linguist_color": null,
       "order": 220
     },
     {
@@ -595,6 +645,7 @@
       "id": "archives",
       "label": "Archives",
       "linguist": null,
+      "linguist_color": null,
       "order": 100
     },
     {
@@ -617,6 +668,7 @@
       "id": "images",
       "label": "Images",
       "linguist": null,
+      "linguist_color": null,
       "order": 100
     },
     {
@@ -633,6 +685,7 @@
       "id": "videos",
       "label": "Videos",
       "linguist": null,
+      "linguist_color": null,
       "order": 110
     },
     {
@@ -650,6 +703,7 @@
       "id": "audio",
       "label": "Audio",
       "linguist": null,
+      "linguist_color": null,
       "order": 120
     },
     {
@@ -664,6 +718,7 @@
       "id": "fonts",
       "label": "Fonts",
       "linguist": null,
+      "linguist_color": null,
       "order": 130
     },
     {
@@ -677,10 +732,11 @@
       "id": "log-files",
       "label": "Log files",
       "linguist": null,
+      "linguist_color": null,
       "order": 100
     }
   ],
-  "fingerprint": "c4abb7a8add194171ad3dadc1eea81a4814a1a34b8e7f9e3696f4e6e4ab86aa2",
+  "fingerprint": "ca18094f1886fbcae0e57b9809efa0698c80a8d5052eb6cc05efddf44adef8c1",
   "groups": [
     {
       "id": "code",
@@ -1589,6 +1645,6 @@
   ],
   "max_extension_components": 2,
   "revision": 3,
-  "schema": "file-type-registry-v2",
-  "schema_version": 2
+  "schema": "file-type-registry-v3",
+  "schema_version": 3
 }

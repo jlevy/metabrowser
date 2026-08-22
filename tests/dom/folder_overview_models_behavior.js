@@ -62,7 +62,7 @@ async function importSource(relative) {
     },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 2, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 3, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(157, 11000000, 150, 10000000),
       groups: [
         {
@@ -141,7 +141,7 @@ async function importSource(relative) {
     node: { total_files: 6, total_size: 50, unignored_files: 6, unignored_size: 50 },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 2, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 3, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(6, 50),
       groups: [
         {
@@ -271,7 +271,7 @@ async function importSource(relative) {
     node: { total_files: 78, total_size: 78, unignored_files: 78, unignored_size: 78 },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 2, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 3, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(78, 78),
       groups: [
         {

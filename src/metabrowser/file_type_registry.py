@@ -14,8 +14,10 @@ from importlib.resources import files
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
-FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v2"
-FILE_TYPE_REGISTRY_SCHEMA_VERSION = 2
+from metabrowser.color_oklch import BAND_CENTER, TonePosition, band_positions
+
+FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v3"
+FILE_TYPE_REGISTRY_SCHEMA_VERSION = 3
 FILE_TYPE_REGISTRY_RESOURCE = "data/file-rollup-format/recommended-file-types.toml"
 FILE_TYPE_FAMILY_KEY_PREFIX = "family:"
 FILE_TYPE_NO_EXTENSION_KEY = "(none)"
@@ -174,6 +176,7 @@ class FileTypeRegistry:
     _exact_extensions: Mapping[str, FileTypeKind] = field(init=False, repr=False, compare=False)
     _suffixes: tuple[tuple[str, FileTypeKind], ...] = field(init=False, repr=False, compare=False)
     _filenames: Mapping[str, FileTypeKind] = field(init=False, repr=False, compare=False)
+    _tone_positions: Mapping[str, TonePosition] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         exact_extensions = {
@@ -210,6 +213,22 @@ class FileTypeRegistry:
                 {filename.lower(): kind for kind in self.kinds for filename in kind.filenames}
             ),
         )
+        # Derived here, once, because a position is relative to the whole set:
+        # a family's rank among upstream lightnesses is not a property of that
+        # family alone, so it cannot be declared beside one.
+        object.__setattr__(
+            self,
+            "_tone_positions",
+            MappingProxyType(
+                dict(
+                    zip(
+                        (family.id for family in self.families),
+                        band_positions([family.linguist_color for family in self.families]),
+                        strict=True,
+                    )
+                )
+            ),
+        )
 
     def group(self, group_id: str) -> FileTypeGroup | None:
         """Look up a group by stable ID."""
@@ -220,6 +239,16 @@ class FileTypeRegistry:
         """Look up a family by stable ID."""
 
         return self._families_by_id.get(family_id)
+
+    def tone_position(self, family_id: str) -> TonePosition:
+        """Where this family sits inside either theme's band.
+
+        Read with a theme's :class:`~metabrowser.color_oklch.ToneBand` to get a
+        finished color. An unknown ID sits at the band centre, which is also
+        where a family GitHub names no color for sits.
+        """
+
+        return self._tone_positions.get(family_id, BAND_CENTER)
 
     def match(self, name: str, logical_extension: str) -> FileTypeMatch | None:
         """Select basename, exact-extension, then longest-suffix evidence."""
@@ -292,6 +321,7 @@ class FileTypeRegistry:
                     "extensions": family.extensions,
                     "hue": family.hue,
                     "linguist": family.linguist,
+                    "linguist_color": family.linguist_color,
                 }
                 for family in self.families
             ),

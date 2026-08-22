@@ -6,6 +6,7 @@ from importlib.resources import files
 from textwrap import dedent
 
 from metabrowser.file_type_registry import (
+    FILE_TYPE_REGISTRY_SCHEMA_VERSION,
     ContentFamily,
     FileTypeRegistryError,
     load_file_type_registry,
@@ -16,8 +17,8 @@ from metabrowser.fs_paths import derive_ext
 
 def _minimal_registry() -> str:
     return dedent(
-        """
-        schema_version = 2
+        f"""
+        schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}
         registry_revision = 1
         max_extension_components = 2
 
@@ -78,7 +79,7 @@ def test_packaged_registry_is_cached_ordered_and_self_describing() -> None:
         .is_file()
     )
     projection = registry.projection()
-    assert projection["schema"] == "file-type-registry-v2"
+    assert projection["schema"] == "file-type-registry-v3"
     assert projection["fingerprint"] == registry.fingerprint
 
 
@@ -157,7 +158,13 @@ def test_registry_rejects_each_structural_validation_class() -> None:
     )
     cases = (
         ("not = [valid", "invalid-toml"),
-        (base.replace("schema_version = 2", "schema_version = 3"), "unsupported-schema-version"),
+        (
+            base.replace(
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}",
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION + 1}",
+            ),
+            "unsupported-schema-version",
+        ),
         (
             base.replace("max_extension_components = 2", "max_extension_components = 3"),
             "unsupported-extension-components",

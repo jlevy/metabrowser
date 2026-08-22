@@ -144,8 +144,8 @@ def _aggregate_cases() -> list[dict[str, object]]:
 
 def _minimal_registry() -> str:
     return dedent(
-        """
-        schema_version = 2
+        f"""
+        schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}
         registry_revision = 1
         max_extension_components = 2
 
@@ -210,7 +210,10 @@ def _invalid_registry_cases() -> list[dict[str, str]]:
         ("invalid-toml", "not = [valid", "invalid-toml"),
         (
             "unsupported-schema",
-            base.replace("schema_version = 2", "schema_version = 3"),
+            base.replace(
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}",
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION + 1}",
+            ),
             "unsupported-schema-version",
         ),
         (

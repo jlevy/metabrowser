@@ -38,7 +38,7 @@ The current JSON components retain these established schema identifiers:
 
 | Component | Schema identifier | Clear artifact name |
 | --- | --- | --- |
-| Type-definition projection | `file-type-registry-v2` | `recommended-file-types.json` |
+| Type-definition projection | `file-type-registry-v3` | `recommended-file-types.json` |
 | Directory rollup | `file-type-breakdown-v1` | `file-rollup.schema.json` |
 | Conformance cases | `file-type-conformance-v1` | `file-rollup-conformance.json` |
 
@@ -117,7 +117,7 @@ The recommended source uses standard TOML with top-level scalars and ordered arr
 tables:
 
 ```toml
-schema_version = 2
+schema_version = 3
 registry_revision = 1
 max_extension_components = 2
 
@@ -167,7 +167,7 @@ priority = 100
 
 | Field | Type | Requirement |
 | --- | --- | --- |
-| `schema_version` | positive integer | Definition-file structure; `2` for the recommended listing |
+| `schema_version` | positive integer | Definition-file structure; `3` for the recommended listing |
 | `registry_revision` | positive integer | Monotone data revision included in projections and cache identity |
 | `max_extension_components` | positive integer | `2` for this format profile |
 
@@ -202,7 +202,7 @@ decision.
 | `order` | integer | Deterministic order within the group |
 | `hue` | number | Family color as an oklch hue, in `[0, 360)` degrees |
 | `linguist` | string or absent | Language in GitHub’s linguist the hue was taken from |
-| `linguist_color` | hex string or absent | That language’s upstream color; present exactly when `linguist` is |
+| `linguist_color` | hex string or absent | That language’s upstream color; present exactly when `linguist` is. Provenance for the hue, and the source of the family’s tone rank |
 
 Several kinds can map to one display family.
 A nonempty family remains independently addressable even if only one extension
@@ -215,20 +215,40 @@ Icons, byte formatting, and disclosure state remain outside the type registry.
 
 A hue is tool-neutral and a color is not.
 Lightness and chroma are properties of the surface a consumer paints on — a light
-background wants one pair, a dark background another, and a printed page a third — so a
+background wants one range, a dark background another, and a printed page a third — so a
 registry that named finished colors would be naming one consumer’s theme.
 A hue is the part that identifies the family, and it is the same everywhere.
 
-Two rules govern it, and `devtools/check_file_type_colors.py` holds both:
+Two rules govern the hue, and `devtools/check_file_type_colors.py` holds both:
 
 - A family that names a `linguist` language takes that language’s color converted to
   oklch, hue unchanged, including where two of GitHub’s own colors are close together.
   Moving a familiar hue to win a distance metric costs more than the collision does.
-- A family GitHub names no color for takes a hue at least five degrees clear of every
-  other declared hue. `--suggest` prints the widest gap for a new one.
+- A family GitHub names no color for takes a hue whose painted color is clear of every
+  other family’s by a stated perceptual distance.
+  `--suggest` prints the widest gap for a new one.
 
-Consumers are expected to pair the hue with one lightness and one chroma of their own,
-so that segments of a stacked bar differ in hue and in nothing else.
+#### Why `linguist_color` is not only provenance
+
+A hue on its own cannot carry a palette this size.
+Fifty-six families average 6.4 degrees of spacing, at or under the just-noticeable
+difference when lightness and chroma are held constant, and GitHub’s own colors are
+separated mostly by the two dimensions a constant tone discards: html and svelte differ
+by 0.65 degrees of hue but by 0.032 of lightness and 0.040 of chroma.
+Painted at one tone they come out as the same color.
+
+So a consumer is expected to state a lightness *band* and a chroma *band* rather than
+one value of each, and to place each family inside them using `linguist_color`: the
+family’s **rank** among the upstream lightnesses, and its normalized position among the
+upstream chromas. Rank rather than a linear map, because upstream lightness piles up in
+the middle of its range and a linear map would re-crowd the palette where it is already
+tightest. Ranking keeps the order GitHub chose without importing its extremes.
+A family with no `linguist_color` sits at the centre of both bands; its hue was chosen
+to be clear, so it needs no help from the other axes.
+
+Bands are the consumer’s to choose, and the trade they make is explicit: a stacked-bar
+segment can read slightly heavier than a same-size neighbour, which a constant tone
+prevented, so a band should be narrow enough to keep that small.
 Where the sRGB gamut cannot hold the chosen chroma at some hue, reduce chroma rather
 than accepting a browser’s own gamut mapping, which moves lightness and hue.
 
@@ -401,8 +421,8 @@ Validated definitions project into JSON-compatible runtime data:
 
 ```json
 {
-  "schema": "file-type-registry-v2",
-  "schema_version": 2,
+  "schema": "file-type-registry-v3",
+  "schema_version": 3,
   "revision": 1,
   "fingerprint": "normalized-registry-identity",
   "max_extension_components": 2,
@@ -417,7 +437,8 @@ Validated definitions project into JSON-compatible runtime data:
       "order": 100,
       "extensions": [".js", ".jsx", ".mjs", ".cjs"],
       "hue": 102.08,
-      "linguist": "JavaScript"
+      "linguist": "JavaScript",
+      "linguist_color": "#f1e05a"
     }
   ],
   "kinds": [
@@ -477,7 +498,7 @@ The current component schema serializes a complete directory rollup as
 {
   "schema": "file-type-breakdown-v1",
   "registry": {
-    "schema_version": 2,
+    "schema_version": 3,
     "revision": 1,
     "fingerprint": "normalized-registry-identity"
   },
@@ -636,7 +657,7 @@ a standalone report:
 {
   "schema": "example-report-v1",
   "file_rollup": {
-    "type_definitions": {"schema": "file-type-registry-v2"},
+    "type_definitions": {"schema": "file-type-registry-v3"},
     "rollup": {"schema": "file-type-breakdown-v1"}
   }
 }
