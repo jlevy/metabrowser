@@ -69,6 +69,18 @@ They exist so a later change has something to fail against.
 
 ## Background
 
+> **Superseded — read the [hypothesis registry](#hypotheses) and
+> [the ledger](../../../../explorations/report.md) first.** Every number in this section
+> was taken by hand against a corpus that was not `build_corpus` and no longer exists,
+> before the exploration loop existed.
+> Two of them did not survive re-measurement: the headline 4,525 ms first row (H6, not
+> reproduced — the same measure is 854 ms on `build_corpus` at the same file count) and
+> the 4.5 MB `/api/catalog` (H4, 62 bytes here, because the catalog fills from
+> recognized file kinds and this corpus has none).
+> The section is kept because its *shape* — that the browser has data long before it
+> shows rows — is what motivated the work, and because a superseded measurement deleted
+> is a measurement someone takes again.
+
 All numbers below were taken on this machine against synthetic corpora of a realistic
 shape (nested package directories, mixed extensions, small file bodies), Chromium 141
 via Playwright build 1194, medians of repeated cold runs.
@@ -241,31 +253,44 @@ observable, so it lands in `CHANGELOG.md` and in
 
 ## Implementation Plan
 
-### Ordering: Cost, Effort, and What Blocks What
+### Ordering: What to Work Next
 
-The phases below are grouped by layer because that is how the code is organized.
-The order to *work* them is by measured cost over effort, and the two are not the same.
-Read this table first.
+This order is derived from what the loop has measured, and it changes as rounds land.
+The [hypothesis registry](#hypotheses) is the live source for status; this is the
+reading of it, refreshed after exp-004.
 
-| Item | Wins | Effort | Order |
-| --- | --- | --- | --- |
-| Chart.js to on demand | 297,531 B and ~374 ms of `load`, every document | Small: one consumer, an existing `typeof Chart` guard, no protocol | **done** |
-| Rows from partial index state | 4.2 s at 100k, 22 s at 1M | Medium: the data already arrives at 319 ms; the gate is in the client | **2** |
-| `/api/catalog` to on demand | 4,580,060 B off the critical path at 100k | Medium, not small: `pendingChanges` in `catalog_feed.js` is unbounded, so a deferred first fetch needs a buffering policy, not a moved call | **3** |
-| Row windowing | 276,789 DOM nodes at 1M | Medium: a rendering change with a find-in-page trade to measure | 4 |
-| highlight.js and Mustache to prefetch | ~135,000 B off the eager chain | Small, but the win is small too | 5 |
-| Whole-tree `/api/tree` cost | 4,990 ms and 3.68 MB at 1M | Large: a response-shape question | 6 |
-| Startup that scales with the tree | 1.8 s at 1M | Unknown until attributed | 7 |
-| `INVENTORY_MAX_FILES` | Correctness, not speed | Large: needs the walk work first | 8 |
-
-The page-load harness is not on that list because it is not a win.
-It is what makes every row of it checkable, so it comes before all of them.
+| # | Next | Why here |
+| --- | --- | --- |
+| 1 | **H16** — a realistic corpus (`mb-6t3n`) | Not a win; a validity multiplier. Every browser number so far comes from a root with thirteen children whose every file is gitignored by the repository above it, which flatters exp-004’s inline, empties the catalog H4 is about, and hides the row counts H7 is about. Cheap, and it protects every round after it |
+| 2 | **H27** — rows respond without the tally pass (`mb-74ad`) | The last second on the scan-time critical path, and nearly a payload-shape change: `updateFilterTallies` already guards every field, so a tally-less response is tolerated today |
+| 3 | **H28** — build the tree from the SSE stream (`mb-ap6p`) | The streamed-delivery centerpiece. Absorbs H11 and H24 rather than competing with them. After H27, which proves the decoupling on the simpler payload |
+| 4 | **H21** — persist the index across runs (`mb-omhf`) | The largest absolute win at a million files, and the common case for a browsing tool is reopening the same tree |
+| 5 | **H18 → H22** — profile the walk, then batch it (`mb-nbc6`, `mb-tip8`) | Attribution first: a structural change to the walker without a profile is a guess. This is what remains of H8 after H23 |
+| 6 | **H26 + H29** — one remote round (`mb-f591`, `mb-pk2l`) | Both are about costs localhost hides. Measure the stake once, then decide whether either fix is worth its complexity |
 
 Two orderings are load-bearing and should not be rearranged for convenience.
-Rows-from-partial-state comes before any server work, because a client that waits for
-the scan makes every server cost look like scan cost.
-And the walk attribution comes before the file cap, because a cap is a claim about cost
-and there is no measurement of that cost yet.
+Attribution comes before the walker change (5), because a structural rewrite without a
+profile is a guess; and the walk attribution comes before the file cap (H15), because a
+cap is a claim about cost and there is no measurement of that cost yet.
+
+### Considered and Deliberately Not Registered
+
+A registry that only ever grows is a backlog, not a map.
+These were examined during the exp-004 review and left out on purpose, so the next
+reader spends their attention elsewhere rather than re-deriving them:
+
+- **Streaming file and document previews.** The text path is already a bounded envelope
+  with an explicit continuation (`fetchCompleteText`, `renderTextLoadMoreFooter`,
+  `source_append.js`). The waiting-for-complete problem this plan is about does not
+  appear there.
+- **Chunked-encoding the `/api/tree` body as NDJSON.** It attacks the same wait H27
+  removes, for a protocol change, a streaming JSON parser on the client, and an
+  interaction with the gzip middleware.
+  If H27 lands and a wait remains, revisit; reaching for it first would be solving the
+  harder half of the same problem.
+- **HTTP/2 or connection-count work for the eager asset chain.** H26 has to price the
+  stake first. On localhost the ~110 requests cost little, and a fix chosen before the
+  measurement is a fix chosen for a number nobody has.
 
 ### Phase 1: The Harness and the Front-End Payload
 
