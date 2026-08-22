@@ -21,23 +21,23 @@ experiment:
     viewport: "1280x900"
     cold: true
   method:
-    runs_per_condition: 3
+    runs_per_condition: 6
     interleaved: false
     control: tallies memoized on rollup_revision, with the index snapshot taken on the event loop
     candidate: tallies served at a staleness bound of max(0.5 s, last pass cost), with the snapshot moved into the worker thread
     record: explorations/results/runs.jsonl
   results:
     - metric: srv_scanning_ms
-      control_median: 638
-      candidate_median: 375
+      control_median: 650
+      candidate_median: 394
       control_range: [621, 690]
-      candidate_range: [342, 413]
-      change_pct: -41.2
+      candidate_range: [342, 561]
+      change_pct: -39.4
       overlapping: false
     - metric: srv_settled_ms
       control_median: 12
       candidate_median: 6
-      control_range: [11, 12]
+      control_range: [11, 13]
       candidate_range: [6, 6]
       change_pct: -50.0
       overlapping: false
@@ -57,7 +57,7 @@ experiment:
   verdict:
     decision: accepted
     primary_metric: srv_scanning_ms
-    reason: "638 ms to 375 ms per root request during a walk and 12 ms to 6 ms settled, both on ranges that do not overlap, at n=3. Accepted for what it does -- every request after the first -- and explicitly not for first paint: load_tree_ms is the first request of a page load, its memo is cold by construction, and it did not move. The reader-facing fix for that is H20, not this."
+    reason: "650 ms to 394 ms per root request during a walk and 12 ms to 6 ms settled, both on ranges that do not overlap, at n=5 control and n=6 candidate. Accepted for what it does -- every request after the first -- and explicitly not for first paint: load_tree_ms is the first request of a page load, its memo is cold by construction, and it did not move. The reader-facing fix for that is H20, not this."
 ---
 # The navigation tallies stop being recomputed per request
 
@@ -102,13 +102,13 @@ tally pass.
 The first two are recorded because the loop is supposed to record what did not work, and
 the second is only legible next to the first.
 
-**A fixed half-second bound: 638 ms → 518 ms.** Real by the accept rule — the ranges do
+**A fixed half-second bound: 650 ms → 518 ms.** Real by the accept rule — the ranges do
 not overlap — and far short of the prediction.
 The reason is arithmetic: the nav polls index progress once a second, so a bound shorter
 than the poll period can never be hit by a poller.
 The constant was chosen from the client’s cadence and then set below it.
 
-**A bound derived from the pass itself: 638 ms → 375 ms.** `max(0.5 s, last pass cost)`.
+**A bound derived from the pass itself: 650 ms → 394 ms.** `max(0.5 s, last pass cost)`.
 The server never spends much over half its time recomputing a number the client is
 already told is provisional, and the policy scales with the tree instead of being tuned
 for one size — the thing a constant cannot do, since the pass visits every entry.
@@ -116,7 +116,7 @@ for one size — the thing a constant cannot do, since the pass visits every ent
 **Request-triggered background refresh: rejected.** The idea was to fix the one case the
 bound cannot: a page arriving mid-walk finds the memo absent or expired and pays the
 full pass before its first row.
-Measured at 368/380/409 ms against the bound’s 375/342/413 — ranges overlapping almost
+Measured at 368/380/409 ms against the bound’s own 342-561 — ranges overlapping
 entirely, so no detectable effect.
 It could not have worked, and the measurement is what made that obvious: warming is
 triggered *by a request*, so the first request still misses, and every request after the
@@ -135,11 +135,11 @@ whichever the luck picked.
 until the walk ends, then again once settled — thirteen scanning samples per run instead
 of one draw.
 
-| metric | control | candidate |
+| metric | control (n=5) | candidate (n=6) |
 | --- | --- | --- |
-| `srv_scanning_ms` | 638 (621–690) | **375 (342–413)** |
-| `srv_settled_ms` | 12 (11–12) | **6 (6–6)** |
-| `load_tree_ms` (browser) | 1,816 | 1,562 |
+| `srv_scanning_ms` | 650 (621–690) | **394 (342–561)** |
+| `srv_settled_ms` | 12 (11–13) | **6 (6–6)** |
+| `load_tree_ms` (browser, n=1) | 1,816 | 1,562 |
 
 Settled halving is the snapshot removal on its own: with the memo hitting either way,
 what is left is the list copy that no longer happens on the loop.
@@ -162,9 +162,23 @@ The reader waiting on their first row was never going to be helped by making a c
 cheaper. Inlining the root’s first rows into the shell (H20) is the change that touches
 them, and this experiment is the reason to run it next.
 
+### The variance is wider than the first three runs suggested
+
+The first three candidate runs came in at 375/342/413 ms, which read as a tight band.
+Three more, taken after a structural fix elsewhere in the same handler, came in at
+561/496/364. The band is 342-561, not 342-413, and this says so rather than quoting the
+flattering half.
+
+An interleaved control taken in the same session landed at 661 ms — inside the control’s
+own 621-690 band — which rules out machine drift and leaves the candidate simply being
+noisier than the control.
+It is noisier for a reason worth stating: the control pays the pass on every request, so
+its cost is nearly constant, while the candidate pays it on some and not others, and
+where the samples fall against that pattern varies per run.
+
 ## Limitations
 
-One corpus, one machine, n=3 per condition.
+One corpus, one machine, n=5 control and n=6 candidate.
 Every sample is `srv;dur` from the server’s own middleware, which measures entry to
 response start and so excludes the client’s queueing — deliberately, since the question
 was whether the handler is slow, but it means these are not end-to-end numbers.
@@ -173,7 +187,7 @@ page load is a regime none of the three variants was sampled in.
 
 ## Verdict
 
-**ACCEPTED on `srv_scanning_ms`**, 638 ms → 375 ms, with settled 12 ms → 6 ms, both on
+**ACCEPTED on `srv_scanning_ms`**, 650 ms → 394 ms, with settled 12 ms → 6 ms, both on
 non-overlapping ranges.
 Accepted for what it does — every request after the first, which on a page with a 1 s
 progress poll and several tabs is most of them — and explicitly not for first paint,

@@ -534,6 +534,19 @@ def _experiment_records() -> list[dict[str, Any]]:
     return records
 
 
+def _headline_for(artifact: str, metric: str) -> tuple[str | None, str | None]:
+    """The control and candidate medians an artifact recorded for *metric*."""
+    text = (EXPERIMENTS / artifact).read_text(encoding="utf-8")
+    block = re.search(rf"- metric: {re.escape(metric)}\n(?:      \w+:.*\n)+", text)
+    if block is None:
+        return None, None
+    control = re.search(r"control_median: ([0-9.]+)", block.group(0))
+    candidate = re.search(r"candidate_median: ([0-9.]+)", block.group(0))
+    if control is None or candidate is None:
+        return None, None
+    return f"{float(control.group(1)):,.0f}", f"{float(candidate.group(1)):,.0f}"
+
+
 _DECISION_MARK = {
     "accepted": "accepted",
     "rejected": "rejected",
@@ -567,6 +580,35 @@ def cmd_report(_args: argparse.Namespace) -> int:
     add("change is kept: [the loop's README](README.md).")
     add("")
 
+    accepted = [r for r in experiments if r.get("decision") == "accepted"]
+    if accepted:
+        add("## Where it stands")
+        add("")
+        add("The measure each accepted round moved, as an absolute number rather than a")
+        add("percentage: a percentage cannot be checked against a later run, and cannot say")
+        add("whether the thing is fast -- only that it moved.")
+        add("")
+        add("| measure | before | after | round |")
+        add("| --- | ---: | ---: | --- |")
+        for record in accepted:
+            metric = str(record.get("primary_metric", ""))
+            before, after = _headline_for(str(record["path"]), metric)
+            if before is None or after is None:
+                continue
+            # A round accepted on other grounds still shows the metric it named,
+            # with the direction marked. Quietly swapping in whichever metric
+            # passed is the exact dishonesty the accept rule forbids.
+            note = ""
+            if float(after.replace(",", "")) >= float(before.replace(",", "")):
+                note = " (accepted on other grounds; see the round)"
+            add(f"| `{metric}` | {before} | **{after}**{note} | {record.get('id')} |")
+        add("")
+        add("Each row is one round's own control and candidate on the same corpus and")
+        add("machine, not a running total: they measure different things and do not")
+        add("compose. A round whose named metric did not improve says so here rather")
+        add("than being restated against one that did.")
+        add("")
+
     add("## Experiments")
     add("")
     if experiments:
@@ -599,32 +641,46 @@ def cmd_report(_args: argparse.Namespace) -> int:
 
     for files in sorted(by_corpus, key=lambda value: (value is None, value)):
         corpus_runs = by_corpus[files]
-        labels: list[str] = []
-        for run in corpus_runs:
-            label = str(run.get("label"))
-            if label not in labels:
-                labels.append(label)
         add(f"### {files:,} files" if isinstance(files, int) else "### corpus unrecorded")
         add("")
-        header = (
-            "| metric | "
-            + " | ".join(
-                f"{label} (n={sum(1 for r in corpus_runs if r.get('label') == label)})"
-                for label in labels
-            )
-            + " |"
-        )
-        add(header)
-        add("| --- | " + " | ".join("---:" for _ in labels) + " |")
-        for metric in METRICS:
-            cells = [
-                _summarize([r for r in corpus_runs if r.get("label") == label], metric)
-                for label in labels
-            ]
-            if all(cell == "-" for cell in cells):
+        # Browser runs and route samples answer different questions and share no
+        # metrics, so one grid holding both is mostly empty cells. Split them.
+        for title, kind, is_server in (
+            ("What a reader gets", "browser probe", False),
+            ("What a route costs", "server probe", True),
+        ):
+            group = [r for r in corpus_runs if ("route" in r) == is_server]
+            if not group:
                 continue
-            add(f"| `{metric}` | " + " | ".join(cells) + " |")
-        add("")
+            labels: list[str] = []
+            for run in group:
+                label = str(run.get("label"))
+                if label not in labels:
+                    labels.append(label)
+            rows: list[tuple[str, list[str]]] = []
+            for metric in METRICS:
+                cells = [
+                    _summarize([r for r in group if r.get("label") == label], metric)
+                    for label in labels
+                ]
+                if not all(cell == "-" for cell in cells):
+                    rows.append((metric, cells))
+            if not rows:
+                continue
+            add(f"**{title}** — {kind}")
+            add("")
+            add(
+                "| metric | "
+                + " | ".join(
+                    f"{label} (n={sum(1 for r in group if r.get('label') == label)})"
+                    for label in labels
+                )
+                + " |"
+            )
+            add("| --- | " + " | ".join("---:" for _ in labels) + " |")
+            for metric, cells in rows:
+                add(f"| `{metric}` | " + " | ".join(cells) + " |")
+            add("")
         walks = sorted(
             value
             for value in (r.get("walk_elapsed_ms") for r in corpus_runs)
