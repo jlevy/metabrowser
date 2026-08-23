@@ -3,14 +3,14 @@ type: is
 id: is-01m0ndq4en94cfqm99tg6m0fyt
 title: Declared deviation for swift/svelte, the one pair the derivation cannot separate
 kind: task
-status: open
+status: closed
 priority: 3
-version: 5
+version: 6
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T19:03:47.925Z
-updated_at: 2026-08-22T22:52:17.715Z
+updated_at: 2026-08-23T07:11:40.051Z
 ---
 Reported in QA: Python and TypeScript look like the same blue.
 
@@ -32,6 +32,18 @@ Decide after mb-0ov6 lands and the new palette has been looked at in a browser: 
 
 ## Notes
 
-MECHANISM NOW EXISTS. Built for Markdown (hue 261.42 -> 276.0, plus a rank below the band) and it is general: a family declares `deviation` prose plus an optional `lightness_rank`, keeps linguist/linguist_color for provenance, and is held to MINIMUM_HOUSE_DELTA_E in both themes like a colour chosen from a free gap. A lightness_rank without a deviation is refused. Carried in the projection and the fingerprint; documented under 'Declared deviations' in the file-rollup-format doc.
+DECIDED and DONE in #73: swift moves to hue 52.3 with a declared deviation. Svelte keeps its brand orange.
 
-So what is left here is only the decision and one TOML edit: pick swift or svelte and give it a hue and a reason. Measure with devtools/check_file_type_colors.py, which now lists deviations and still reports svelte/swift at dE 0.0073 in dark as the tightest surviving pair. Note the pair is fine in light (0.0191), so a deviation here is bought for the dark theme alone -- worth deciding whether that justifies moving a colour in both.
+THE ARGUMENT THAT SETTLED IT was not which language is better known -- the reasoning used for Markdown -- but which family is the hub. Swift was the nearest neighbour in three of the four pairs still under the perceptual floor: svelte 0.0073 in dark, html 0.0156 in light, clojure 0.0181 in dark. Four upstream brands independently chose the same orange-red (swift 31.62, svelte 34.20, html 34.85, clojure 24.35, ruby 25.77 within eleven degrees). Moving swift resolves three collisions; moving svelte would resolve one.
+
+MEASURED. At 52.3 swift clears every other family by 0.0257 in both themes, against 0.0073 before. Palette-wide:
+
+    closest pair, light   0.0156 html/swift   ->  0.0164 json/plain-text
+    closest pair, dark    0.0073 svelte/swift ->  0.0160 audio/word
+    pairs under 0.02      4                   ->  1 (html/svelte at 0.0179)
+
+Every pair now clears MINIMUM_HOUSE_DELTA_E. The one remaining sub-0.02 pair is GitHub's own and is kept for that reason.
+
+WHY NOT THE BLUE END. The widest gap on the whole circle is near 265.8, clearing 0.0380 -- half again as much room. Refused: swift renders #aa2400 light and #ff4c12 dark at 52.3, still recognisably the orange readers associate with it, and the entire point of taking GitHub's colour is that they already know it. Trading recognition for 0.012 of perceptual distance is the wrong side of the trade.
+
+The deviation prose in the TOML records all of the above, so the next reader can tell when the reason stops applying.
