@@ -54,12 +54,17 @@ experiment:
       candidate_range: [4, 4]
       change_pct: 0.0
       overlapping: true
+      note: >-
+        Measured under harness 2, where this counted every renderTreeNodes span
+        rather than the ones that replace the region. Left as recorded. The
+        verdict it supports -- this round did not move the repaint count -- is
+        unaffected, since both conditions were counted the same way.
   complexity:
     lines_changed: 34
     new_dependencies: []
     new_failure_modes:
       - "Both reservations are floors, and the tally row now exceeds its floor: main's split row wraps to a second line in a 300 px pane, so 23 px of the original 67 remain. A one-line reservation cannot cover a row whose settled height depends on its own content."
-    notes: One design token, two min-height declarations, one changed argument in the inline render, and a guard so a no-op does not record a repaint.
+    notes: Three design tokens, one scoped min-height declaration, one changed argument in the inline render, and the inline render's span moved to wrap the paint rather than the decision, so a call that declines to paint records nothing.
   verdict:
     decision: accepted
     primary_metric: reserved_region_shift_px
@@ -85,12 +90,20 @@ Read off the wire rather than off the live DOM:
 | region | in the HTML |
 | --- | --- |
 | `#nav-filter-bar` | **empty** — `<div id="nav-filter-bar"></div>` |
-| `#tab-files` | `"Loading files…"` |
-| `#preview-pane` | `"Select a file to preview."` |
-| `#index-progress` | `"Scanning…"` |
+| `#tab-files` | `<div class="loading mb-delayed-loading"><div class="spinner"></div><span class="sr-only">Loading files…</span></div>` |
+| `#preview-pane` | `<div class="preview-empty">Select a file to preview.</div>` |
+| `#index-progress` | `"Scanning…"`, `hidden` until the scan reports |
 
-Not a skeleton: three text placeholders and one empty element, each replaced wholesale
-later.
+Not a skeleton: three placeholders and one empty element, each replaced wholesale later.
+
+The markup matters and not just the words in it, which the first version of this table
+got wrong by listing the text alone.
+`#tab-files` reads *“Loading files…”* to a screen reader and shows a spinner to everyone
+else: the label is `.sr-only`, clipped to a pixel, and the visible content is a 20 px
+spinner inside 32 px of padding, so the region stands 80 px tall and not the 21 px a
+line of that sentence would occupy.
+Every figure derived from the paraphrase was wrong by the difference, `frame_missing_px`
+among them.
 
 ## What was measured, and what could not be
 
@@ -102,6 +115,16 @@ Cumulative layout shift is recorded, but it needs real layout to mean anything, 
 pane silently resets to 0×0 on every navigation.
 An early reading of `cls: 0` was taken in a collapsed pane and was worth nothing:
 nothing can shift when nothing has height.
+
+That diagnosis was half of it.
+The zero went on being recorded after the pane had a size, in every row this round and
+exp-010 filed, because the field was gated on whether the pane had a *layout* rather
+than on whether it was *visible* — and this pane always has the first and never the
+second. A layout-shift observer in a page that has never been visible reports nothing
+because it cannot see anything, which is indistinguishable in the data from a page that
+held perfectly still.
+Harness 3 gates it on visibility and the field reads null, as this section always
+claimed it did.
 
 So the shift was measured directly instead, which needs neither visibility nor a
 particular viewport: clone a region stripped of its content, read its height, and
@@ -116,8 +139,14 @@ That is the jump a reader gets, in pixels, and it is reproducible here.
 | `tree_region_repaints` | 4 | 4 |
 
 Both conditions are the same server, the same corpus, and the same pane: the control is
-this build with the two `min-height` declarations deleted, which the probe confirms by
-reading back `min-height: auto` off the served stylesheet before it measures anything.
+this build with the two `min-height` declarations deleted, checked by hand against the
+served stylesheet before measuring.
+An earlier version of this paragraph said the probe reads the declarations back and
+confirms the control itself.
+It does not, and never did — the harness has no such check.
+Asserting a control that nothing enforces is the same failure as asserting a metric that
+cannot come out false, so it is written down rather than quietly deleted; automating it
+belongs with whatever next needs a stylesheet-level control.
 
 The measurement now lives in `probe.js` and the four figures are in the standing metric
 list, so `compare` prints them for every future round.
@@ -188,10 +217,14 @@ It is the same in both conditions, which is all this round asks of it.
 why it is being registered rather than smothered.
 
 One measurement artifact was also fixed rather than measured around: the inline render
-recorded a `renderTreeNodes:inline` span even on the visit where it declined to paint,
-so the repaint count read 5 where three paints had happened.
-Now the span is recorded only when it paints.
-That mattered because repaint count is a metric as of this round.
+recorded a `renderTreeNodes:inline` span even on the visit where it declined to paint.
+Now the span wraps the paint itself rather than the decision to attempt one, so it
+exists only when a paint does — the first version guarded the call site on
+`_inlineTreeRows`, which caught the second visit and none of the three other ways the
+function returns without painting.
+That mattered because repaint count is a metric as of this round, and it was still not
+enough: the metric counted every render span, so it double-charged the inlined paint and
+was a second name for `render_spans`. Both are fixed under harness 3; see exp-010.
 
 ## Limitations
 
@@ -220,7 +253,7 @@ Filling is not shifting.
 
 It is still the larger fact about this page.
 Reserving two heights stopped the frame *moving*; it did not make the frame *exist* — at
-first paint the files panel is a 21 px line of text where 612 px of structure belongs.
+first paint the files panel is an 80 px spinner where 612 px of structure belongs.
 That is H52, and this round does not touch it.
 Both figures are also content- and pane-width dependent, because wrapping is.
 Measured directly, the row costs nothing until it holds two long counts at once:

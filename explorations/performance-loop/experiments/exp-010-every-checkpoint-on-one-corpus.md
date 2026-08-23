@@ -69,6 +69,13 @@ experiment:
       candidate_range: [3, 3]
       change_pct: 200.0
       overlapping: false
+      note: >-
+        Measured under harness 2, where this counted every renderTreeNodes span
+        and so double-charged the inlined paint -- :inline wraps a call that
+        emits its own :root. Left as recorded. Harness 3 counts :root alone and
+        measures 2 on the candidate across three runs; the control's single span
+        predates the inline path and can only be the :root one, so the direction
+        and the regression stand and the magnitude is one paint, not two.
   complexity:
     lines_changed: 0
     new_dependencies: []
@@ -80,7 +87,7 @@ experiment:
   verdict:
     decision: baseline
     primary_metric: first_row_ms
-    reason: "The campaign is worth what it claimed on the metrics it aimed at and cost something on two it did not. Time to first row 1,473 ms to 276, the server's own share of the first tree fetch 1,099 ms to 6, the request tail 28.9 s to 12.3. Against that: the tree region is painted three times where it was painted once, and the page's downward shift went 42 px to 67 before this branch took it to 23, so main today moves the reader further than the code did before any of this work started. Both regressions were introduced by accepted rounds and neither was visible until every checkpoint sat on one corpus."
+    reason: "The campaign is worth what it claimed on the metrics it aimed at and cost something on two it did not. Time to first row 1,473 ms to 276, the server's own share of the first tree fetch 1,099 ms to 6, the request tail 28.9 s to 12.3. Against that: the tree region is painted twice where it was painted once, and the page's downward shift went 42 px to 67 before this branch took it to 23, so main today moves the reader further than the code did before any of this work started. Both regressions were introduced by accepted rounds and neither was visible until every checkpoint sat on one corpus."
 ---
 # Every checkpoint on one corpus
 
@@ -141,11 +148,21 @@ more than halved.
 Two metrics moved the wrong way, and neither was visible from inside the rounds that
 caused them.
 
-**The tree region is painted three times where it was painted once.** `p0` and `p1`
-render it exactly once; `p2` and `p3` render it three times — inlined rows, fetched
-rows, refresh.
-exp-004 bought its first-row win by painting from the inlined payload, and
-the payment is a page assembled in front of the reader.
+**The tree region is painted twice where it was painted once.** `p0` and `p1` render it
+exactly once; `p2` and `p3` render it twice — inlined rows, then fetched rows.
+exp-004 bought its first-row win by painting from the inlined payload, and the payment
+is a page assembled in front of the reader.
+
+This section read *three* until the metric was corrected under harness 3.
+`tree_region_repaints` had counted every `renderTreeNodes:*` span, which made it a
+second name for `render_spans` — the two are identical in every row recorded under
+harness 2 — and among those spans `:inline` is an outer wrapper around a call that emits
+its own `:root`, so the inlined paint was charged twice.
+Harness 3 counts `:root` alone, the label on the only span that replaces the panel, and
+measures **2** on this branch across three runs.
+The harness-2 repaint figures are not comparable and are left as recorded; for `p0` and
+`p1` the correction is inferred rather than measured, since their single render span
+predates the inline path and can only be the `:root` one.
 That is
 [H53](../../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#hypotheses),
 with
@@ -190,6 +207,15 @@ dependent** — the tally row wraps at 300 px and would not at 600. `lcp_ms` and
 null throughout for the reason exp-009 records: this pane is never visible, so Chromium
 never computes them.
 That is H51.
+
+`cls` was not null when this was first written; it read a confident `0` in all ten rows
+recorded under harness 2, because the field was gated on whether the pane had a *layout*
+rather than on whether it was *visible* — and a pane with a layout it never shows still
+satisfies the first test.
+A layout-shift observer in a page that has never been visible reports no entries because
+it cannot see any, which is the reading these fields exist to prevent.
+Harness 3 gates both `cls` and `cls_shifts` on visibility; the harness-2 zeros are left
+as recorded, and are not evidence of anything.
 
 **These are cold loads of a settling tree.** Nothing here describes using the thing —
 interaction latency, churn recovery, resident size, warm reopen — which is H49, still

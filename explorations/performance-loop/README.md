@@ -210,12 +210,11 @@ moves afterwards.
 | --- | --- | --- |
 | `reserved_region_shift_px` | Downward movement of the two regions that reserve a height, populated minus empty | The jump a reader gets. Two named regions, *not* the page — the name says so on purpose |
 | `filter_bar_shift_px`, `summary_shift_px` | The two halves of it | They have different causes and different fixes |
-| `tree_region_repaints` | `renderTreeNodes:*` spans per load | A region can hold perfectly still and still be assembled in front of the reader. Today’s proxy for H56’s `visual_states` |
+| `tree_region_repaints` | `renderTreeNodes:root` spans per load — the label on the only span that replaces the panel wholesale | A region can hold perfectly still and still be assembled in front of the reader. Today’s proxy for H56’s `visual_states`. Counts one paint once: `:inline` wraps a call that emits its own `:root`, and `:subtree*` patch a tree already standing |
 | `lcp_ms`, `cls` | What a browser would report | **Null in this pane, always**, and recorded as null rather than 0 so an absent number never reads as a good one. H51 is the row that fixes it |
 | `page_visible`, `page_laid_out` | Whether the pane could answer at all | The reason the two above are null, recorded beside them so nobody re-derives it |
-| `frame_missing_px` | Settled height minus shipped height, summed over the regions the shell places | H52: how much of the frame does not exist at first paint. 615 px today, all of it the files panel |
-| `region_heights` | Settled and shipped height per region | Reads `frame_missing_px` back to the region that owns it |
-| `regions_non_empty` | Every region present, sized, non-empty | A floor check, named as one. A hole in the page fails it; a placeholder does not |
+| `frame_missing_px` | Settled height minus shipped height, summed over the regions the shell places | H52: how much of the frame does not exist at first paint. 532 px today, all of it the files panel |
+| `region_heights` | Settled and shipped height per region | Reads `frame_missing_px` back to the region that owns it. A region sized by its container rather than by its content reports settled and shipped alike, and contributes nothing — that is the right answer for `#preview-pane`, which fills its frame from first paint |
 
 The shift figures are read by cloning a region stripped to the markup its pending render
 emits, inserting it beside the real one, and subtracting — which needs neither
@@ -260,8 +259,12 @@ later round is judged and deserves its own change:
 - **A metric that cannot come out false is not a metric.** `skeleton_complete` asked
   whether each region was present, sized and non-empty *at probe time* — which is after
   settle — and returned true on all ten runs ever recorded, including every one carrying
-  a 615 px hole where the files panel belongs.
+  a 532 px hole where the files panel belongs.
   It was replaced by `frame_missing_px`, which is a distance rather than a predicate.
+  Its first replacement, `regions_non_empty`, was retired the same day for the same
+  reason: it read `textContent`, which counts screen-reader-only text, and the files
+  panel ships exactly that — a spinner and an `.sr-only` label — so the hole passed the
+  floor check written to catch it.
   Worth checking a new metric against its own recorded history before trusting it: one
   that never varies is either measuring nothing or measuring after the fact.
 - **Nothing guards the wins** (`mb-c7ck`). Every number here was measured once.
