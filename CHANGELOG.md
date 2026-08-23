@@ -2,6 +2,53 @@
 
 All notable changes to Metabrowser are documented here.
 
+## Unreleased
+
+Performance, validated against 0.6.0 side by side:
+
+- A full index of a 247,000-file project tree completes in 12.2 s where 0.6.0 takes 28.2
+  s, medians of five interleaved runs.
+  Two other tree shapes agree: 2.7 s against 6.0 s deep and narrow, 11.1 s against 28.6
+  s wide and shallow. Peak memory is unchanged to slightly lower.
+  Both builds report identical rows, file counts and byte totals on every shape.
+
+- The gain is largest exactly when a client is watching, because that is what the change
+  addresses: a row request no longer computes navigation tallies, so polling the tree
+  during a scan no longer competes with the walk that is filling it.
+  Under a client polling without backoff, 0.6.0 does not finish indexing that tree
+  within four minutes; this build finishes in 29 s.
+
+API, observable to plugin authors:
+
+- `/api/tree` answers rows and tallies as two separate requests, and only `depth=0`
+  computes tallies. A request with `depth` absent or `>= 1` returns rows with the tally
+  fields null unless a fresh memo happens to exist.
+  Every tally field was already nullable and guarded field by field on the client, so
+  the browser is unaffected — it asks twice, which is what any client wanting both
+  should do. See
+  [the route documentation](docs/project/architecture/arch-state-and-delivery.md) for
+  the table.
+
+Development:
+
+- A build that is not exactly a released one now says so: `metab --version` annotates
+  the version with how far past the tag it is, which commit, and whether the tree is
+  dirty. An installed release is unchanged.
+  This exists because two builds under comparison both reported `0.6.0` while thirty
+  commits apart, and nothing on screen contradicted it.
+
+- `make lint` refuses a `git` subprocess that does not name its environment.
+  `GIT_DIR` and its siblings override `-C` and git exports them to every hook, so an
+  inherited environment points a command at whatever repository started the process.
+  That had already happened twice — once re-initializing the served repository as bare,
+  once writing a stray tag onto a real branch.
+  `metabrowser.git.env` now owns the variable list that four call sites had each
+  answered separately.
+
+- `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
+  three corpus shapes had no command-line route, including the one the scan-ordering
+  figures were measured on, so reproducing them meant importing the module by hand.
+
 ## 0.6.0
 
 File-type colors:

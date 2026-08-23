@@ -9,20 +9,19 @@ which is what lets the tryscript goldens assert real output.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
 from metabrowser.diff.apply import TreeEntry, TreeSnapshot
 from metabrowser.diff.format import EntryType
-from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from metabrowser.git.env import scrubbed_environ
 
 _EPOCH_ONE = "2026-01-01T00:00:00 +0000"
 _EPOCH_TWO = "2026-01-02T00:00:00 +0000"
 
 
 def _env(root: Path, date: str) -> dict[str, str]:
-    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
+    env = scrubbed_environ()
     env.update(
         {
             "GIT_AUTHOR_NAME": "Fixture Author",

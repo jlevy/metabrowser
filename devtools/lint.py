@@ -6,6 +6,8 @@ from funlog import log_calls
 from rich import get_console, reconfigure
 from rich import print as rprint
 
+from metabrowser.git.env import scrubbed_environ
+
 # Update as needed. explorations/performance-loop/ holds the load-time loop's runner: not shipped,
 # but it is Python this project maintains, so it is held to the same standard.
 SRC_PATHS = ["src", "tests", "devtools", "explorations"]
@@ -37,6 +39,11 @@ def _repository_markdown() -> list[str]:
     an ignored tree is never walked at all. Outside a work tree (an unpacked
     sdist, say) this falls back to a filesystem walk that has to name the
     ignored directories itself.
+
+    The scrubbed environment matters here specifically: lint runs from a
+    pre-commit hook, and a hook has ``GIT_DIR`` exported. Inherited, this would
+    list another repository's Markdown and lint that instead — silently, since
+    a wrong file list still produces a clean-looking run.
     """
     try:
         result = subprocess.run(
@@ -44,6 +51,7 @@ def _repository_markdown() -> list[str]:
             capture_output=True,
             text=True,
             check=True,
+            env=scrubbed_environ(),
         )
     except (OSError, subprocess.CalledProcessError):
         paths = sorted(Path(".").rglob("*.md"))

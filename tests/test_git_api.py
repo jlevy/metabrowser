@@ -27,6 +27,7 @@ import pytest
 from metabrowser import paths_safe
 from metabrowser.git import repo as git_repo
 from metabrowser.git.detail import read_commit_detail, translate_repo_path
+from metabrowser.git.env import scrubbed_environ
 from metabrowser.git.log import (
     decode_cursor,
     encode_cursor,
@@ -35,7 +36,6 @@ from metabrowser.git.log import (
     read_refs,
 )
 from metabrowser.git.process import (
-    _REPO_PINNING_GIT_VARS,
     GitCommandError,
     GitOutputTooLargeError,
     run_git,
@@ -72,7 +72,7 @@ def _git(root: Path, *args: str) -> None:
     inherited, the fixture's ``git init`` re-initializes the served
     repository as bare instead of creating the fixture repo.
     """
-    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
+    env = scrubbed_environ()
     env.update(
         {
             "GIT_AUTHOR_NAME": "Fixture Author",

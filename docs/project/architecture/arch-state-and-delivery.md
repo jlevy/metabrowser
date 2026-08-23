@@ -347,6 +347,33 @@ a shared transaction because ops are idempotent by path.
 | `/api/kpress/render`, `/api/kpress/export`, `/kpress-static/{path}` | Document rendering |
 | `/raw` | Bounded byte passthrough for embedded resources |
 
+#### `/api/tree` serves two different questions
+
+The same route answers a request for *rows* and a request for *tallies*, and which one
+it answers is decided by `depth` alone.
+A client that does not know this will ask the wrong one and read the absence of a field
+as a defect.
+
+| Request | `depth` | Returns | Issued by |
+| --- | --- | --- | --- |
+| Rows | absent, or `>= 1` | `tree` populated; tally fields null unless a fresh memo exists | the nav tree, via `treeUrl` |
+| Tallies | `0` | `tree` empty, always; `summary`, `extensions`, `canonical_extensions`, `file_type_registry`, `type_families`, `type_presets`, `recency_tallies` | `scheduleRootSummaryRefresh`, behind the render |
+
+An absent `depth` is not unbounded: it resolves to `DEFAULT_TREE_DEPTH`, which is 2. So
+the browser’s ordinary row request is a depth-2 request, and `depth=0` is a channel that
+never carries rows at all -- time to first row cannot be measured on it.
+
+**Only `depth=0` computes tallies.** The pass costs 0.37 s at 60,000 files indexed and
+1.30 s at 220,000, and it competes with the walker for the GIL, so paying it on a row
+request delays the rows and slows the scan that is producing them.
+Every tally field is nullable and the client guards each one, which is what makes the
+split safe. See
+`explorations/performance-loop/experiments/exp-007-rows-stop-waiting-for-the-tally-pass.md`.
+
+A client that wants both asks twice.
+That is what the browser does, and it is why the split is invisible in the app and
+visible at the API.
+
 A URL fragment identifies a location *inside* the selected document and never the file
 itself; query keys beginning with `_mb_` are reserved for presentation parameters and
 every other key belongs to the document.

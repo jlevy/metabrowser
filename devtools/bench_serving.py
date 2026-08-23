@@ -774,12 +774,44 @@ def render_report(result: dict[str, Any], baseline: dict[str, Any] | None) -> st
     return "\n".join(lines)
 
 
+# Every corpus shape, by the name the CLI takes. Two of these existed with no
+# way to select them: the figures for scan ordering were measured on `project`,
+# and reproducing them meant importing this module and calling the generator by
+# hand. A measurement whose corpus has no flag does not get re-run.
+#
+# Each builder takes (root, size) so the CLI can treat them alike; `project`
+# reads its size as a project count rather than a file count, which is why the
+# caller picks which argument to pass.
+CORPUS_BUILDERS = {
+    "synthetic": build_corpus,
+    "realistic": build_realistic_corpus,
+    "project": build_project_corpus,
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Benchmark Metabrowser scan and serve latency end to end.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--files", type=int, default=100_000, help="corpus size (default 100000)")
+    parser.add_argument(
+        "--corpus",
+        choices=sorted(CORPUS_BUILDERS),
+        default="synthetic",
+        help=(
+            "which tree shape to measure on (default synthetic). "
+            "`realistic` is deep and narrow with nested .gitignore files; "
+            "`project` is assembled from this repository's own locked installs "
+            "and is the shape the scan-ordering figures were measured on"
+        ),
+    )
+    parser.add_argument(
+        "--projects",
+        type=int,
+        default=PROJECT_CORPUS_DEFAULT_PROJECTS,
+        help="copies of the sample project for --corpus project (about 22000 files each)",
+    )
     parser.add_argument("--label", default="run", help="name for this run, shown in the report")
     parser.add_argument("--corpus-dir", type=Path, default=None, help="where to build the tree")
     parser.add_argument("--clients", type=int, default=8, help="concurrent clients (default 8)")
@@ -803,13 +835,19 @@ def main(argv: list[str] | None = None) -> int:
         print(PROBE_PATH.read_text())
         return 0
 
-    corpus_dir = args.corpus_dir or (REPO / ".bench" / f"corpus-{args.files}")
+    # The corpus name is part of the corpus directory and part of the saved
+    # result: a timing is only comparable against another measured on the same
+    # shape, and a saved run that does not say which shape it used cannot be
+    # compared to anything later.
+    size = args.projects if args.corpus == "project" else args.files
+    corpus_dir = args.corpus_dir or (REPO / ".bench" / f"corpus-{args.corpus}-{size}")
     log_dir = REPO / ".bench" / "logs"
     corpus_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"building corpus ({args.files} files) at {corpus_dir} ...", flush=True)
-    corpus = build_corpus(corpus_dir, args.files)
+    print(f"building {args.corpus} corpus (size {size}) at {corpus_dir} ...", flush=True)
+    corpus = CORPUS_BUILDERS[args.corpus](corpus_dir, size)
+    corpus = {"shape": args.corpus, **corpus}
 
     result: dict[str, Any] = {"label": args.label, "corpus": corpus}
     if not args.skip_cold_scan:

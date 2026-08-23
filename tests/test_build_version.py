@@ -9,13 +9,13 @@ contradicted it.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from metabrowser import build_version
+from metabrowser.git.env import scrubbed_environ
 
 
 def _git(repository: Path, *arguments: str) -> None:
@@ -33,7 +33,7 @@ def _git(repository: Path, *arguments: str) -> None:
         check=True,
         capture_output=True,
         text=True,
-        env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+        env=scrubbed_environ(),
     )
 
 
