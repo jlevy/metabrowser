@@ -240,13 +240,13 @@ new filename.
   ignored, symlinked, and failing trees.
 - [ ] Record a back-to-back Python baseline in the existing engine, server, and browser
   performance harness before moving code.
-- [ ] Define the sealed factory, protocols, immutable semantic records, and a contract
+- [x] Define the sealed factory, protocols, immutable semantic records, and a contract
   test harness. Use a small deterministic test provider only where it proves coordinator
   behavior; do not add a runtime fdu placeholder.
 
 #### Extract Ownership Without a Compatibility Facade
 
-- [ ] Move current retained entries, child indexes, reducers, walker, refresh mutation
+- [x] Move current retained entries, child indexes, reducers, walker, refresh mutation
   path, and watcher lifecycle into `PythonInventoryHandle` while preserving its
   algorithms and observation semantics.
 - [ ] Give every Python read atomic payload/version/cursor capture.

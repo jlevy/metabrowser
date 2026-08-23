@@ -1,4 +1,4 @@
-"""Unit tests for ``metabrowser.inventory``.
+"""Unit tests for the Python inventory provider.
 
 Covers the walker correctness invariants and the public InventoryIndex
 surface:
@@ -39,7 +39,7 @@ from typing import Any
 
 import pytest
 
-import metabrowser.inventory as inventory_module
+import metabrowser.inventory_engine.providers.python as inventory_module
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.events import (
     FsChange,
@@ -52,8 +52,11 @@ from metabrowser.events import (
 )
 from metabrowser.fs_paths import derive_ext as _ext_of
 from metabrowser.fs_paths import is_visible, is_visible_segment
-from metabrowser.inventory import (
-    InventoryIndex,
+from metabrowser.inventory_engine.contract import InventoryEntry
+from metabrowser.inventory_engine.providers.python import (
+    PythonInventoryHandle as InventoryIndex,
+)
+from metabrowser.inventory_engine.providers.python import (
     walk_tree,
 )
 from metabrowser.walker import depth_of as _depth_of
@@ -99,7 +102,7 @@ async def _collect(
     *,
     max_depth: int = 20,
     max_files: int = 20_000,
-) -> list[FsEntry]:
+) -> list[InventoryEntry]:
     return [
         e
         async for e in walk_tree(
@@ -164,7 +167,7 @@ def test_walk_tree_aggregates_match_reference(tmp_path: Path) -> None:
     reference walk over the same tree."""
     _build_tree(tmp_path)
     yielded = asyncio.run(_collect(tmp_path))
-    final_dirs: dict[str, FsEntry] = {}
+    final_dirs: dict[str, InventoryEntry] = {}
     for e in yielded:
         if e.type == "dir" and e.total_files is not None:
             final_dirs[e.path] = e
@@ -748,7 +751,7 @@ def test_inventory_stale_walker_write_is_debug_diagnostic() -> None:
         def emit(self, record: logging.LogRecord) -> None:
             self.records.append(record)
 
-    logger = logging.getLogger("metabrowser.inventory")
+    logger = logging.getLogger("metabrowser.inventory_engine.providers.python")
     original_level = logger.level
     handler = _RecordHandler()
     logger.addHandler(handler)
@@ -1109,7 +1112,7 @@ def test_inventory_overflow_warning_is_rate_limited(
         def emit(self, record: logging.LogRecord) -> None:
             self.records.append(record)
 
-    logger = logging.getLogger("metabrowser.inventory")
+    logger = logging.getLogger("metabrowser.inventory_engine.providers.python")
     original_level = logger.level
     handler = _RecordHandler()
     logger.addHandler(handler)

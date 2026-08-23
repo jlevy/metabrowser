@@ -25,20 +25,20 @@ import json
 import os
 import time
 from collections.abc import AsyncIterator
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from metabrowser.cancellable_thread import run_cancellable_thread
-from metabrowser.events import FsEntry
 from metabrowser.inventory import (
     DEFAULT_MAX_DEPTH,
     DEFAULT_MAX_FILES,
     get_instance,
     walk_tree,
 )
+from metabrowser.inventory_engine.contract import InventoryEntry
 from metabrowser.tree import (
     _build_inventory_tree,
     build_filtered_inventory_tree,
@@ -113,7 +113,7 @@ async def walk_collect(
     )
     # ``walk_tree`` yields dirs twice (placeholder then finalized); keep
     # the last write per path so dir rows carry real aggregates.
-    latest: dict[str, FsEntry] = {}
+    latest: dict[str, InventoryEntry] = {}
     truncated = False
     async for entry in walk_tree(
         root,
@@ -316,7 +316,7 @@ def filtered_walk_report(
 #     paint the tree. Built by driving the real ``InventoryIndex`` and
 #     calling the same ``_build_inventory_tree`` the route uses, so a
 #     CLI dump and a live request return byte-identical structure.
-#   * streaming — the sequence of ``FsEntry`` records the walker yields
+#   * streaming — the sequence of semantic inventory records the walker yields
 #     (and the server pushes as ``fs.change`` upserts over SSE). One
 #     record per line, in walk order.
 #
@@ -324,13 +324,31 @@ def filtered_walk_report(
 # pipeline is testable from the CLI and pinnable in golden tests.
 
 
-def _entry_to_dict(entry: FsEntry) -> dict[str, Any]:
-    """An ``FsEntry`` as a plain dict — the streaming wire record."""
-    record = asdict(entry)
-    # Subtree emptiness is inventory-derived live metadata. The raw walker
-    # stream cannot know it and keeps its established record schema.
-    record.pop("empty", None)
-    return record
+def _entry_to_dict(entry: InventoryEntry) -> dict[str, Any]:
+    """Project one semantic observation into the established CLI record."""
+
+    entry_type = entry.type.value
+    return {
+        "path": entry.path,
+        "parent": entry.parent,
+        "name": entry.name,
+        "type": entry_type,
+        "ext": entry.ext,
+        "kind": entry_type if entry_type != "file" else "file",
+        "size": entry.size,
+        "mtime_ns": entry.mtime_ns,
+        "mtime_hash": "",
+        "active": False,
+        "views": (),
+        "labels": (),
+        "total_files": entry.total_files,
+        "total_size": entry.total_size,
+        "unignored_files": entry.unignored_files,
+        "unignored_size": entry.unignored_size,
+        "newest_mtime_ns": entry.newest_mtime_ns,
+        "gitignored": entry.gitignored,
+        "write_token": None,
+    }
 
 
 def _to_yaml(data: Any) -> str:
@@ -439,7 +457,7 @@ async def stream_entries(
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
-) -> AsyncIterator[FsEntry]:
+) -> AsyncIterator[InventoryEntry]:
     """Yield each walker record in walk order — the streaming surface
     (mirrors the server's ``fs.change`` upserts)."""
 

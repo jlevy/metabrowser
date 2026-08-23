@@ -16,8 +16,8 @@ import sys
 import threading
 import time
 
+from metabrowser.events import FsEntry
 from metabrowser.inventory import InventoryIndex
-from metabrowser.walker import FsEntry
 
 PRESETS: list[tuple[str, list[str]]] = [("code", ["py", "js"])]
 WINDOWS: list[tuple[str, float]] = [("24h", 86_400.0)]

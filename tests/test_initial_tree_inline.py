@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from metabrowser import server
-from metabrowser.walker import FsEntry
+from metabrowser.events import FsEntry
 
 STATIC_ROOT = Path(server.__file__).resolve().parent / "static"
 

@@ -386,7 +386,7 @@ def test_rewalk_subtree_refuses_escaping_and_ancestor_symlinks(tmp_path: Path) -
 
     root = _build_symlink_fixture(tmp_path)
     handler = _ListHandler()
-    inv_logger = logging.getLogger("metabrowser.inventory")
+    inv_logger = logging.getLogger("metabrowser.inventory_engine.providers.python")
 
     async def _run() -> int:
         inv = await _booted_inventory(root)

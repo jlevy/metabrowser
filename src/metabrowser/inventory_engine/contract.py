@@ -248,7 +248,7 @@ class InventoryEntry:
     parent: str
     name: str
     type: EntryType
-    logical_extension: str
+    ext: str
     size: int
     mtime_ns: int
     gitignored: bool = False
@@ -261,7 +261,76 @@ class InventoryEntry:
 
     def __post_init__(self) -> None:
         _require_nonnegative(self.size, "size")
-        _require_nonnegative(self.mtime_ns, "mtime_ns")
+
+    @property
+    def logical_extension(self) -> str:
+        return self.ext
+
+    @classmethod
+    def for_observed_file(
+        cls,
+        *,
+        path: str,
+        parent: str,
+        name: str,
+        size: int,
+        mtime_ns: int,
+        gitignored: bool = False,
+    ) -> InventoryEntry:
+        from metabrowser.fs_paths import derive_ext
+
+        return cls(
+            path=path,
+            parent=parent,
+            name=name,
+            type=EntryType.FILE,
+            ext=derive_ext(name),
+            size=size,
+            mtime_ns=mtime_ns,
+            gitignored=gitignored,
+        )
+
+    @classmethod
+    def for_observed_dir(
+        cls,
+        *,
+        path: str,
+        parent: str,
+        name: str,
+        gitignored: bool = False,
+    ) -> InventoryEntry:
+        return cls(
+            path=path,
+            parent=parent,
+            name=name,
+            type=EntryType.DIRECTORY,
+            ext="",
+            size=0,
+            mtime_ns=0,
+            gitignored=gitignored,
+        )
+
+    @classmethod
+    def for_observed_symlink(
+        cls,
+        *,
+        path: str,
+        parent: str,
+        name: str,
+        size: int,
+        mtime_ns: int,
+        gitignored: bool = False,
+    ) -> InventoryEntry:
+        return cls(
+            path=path,
+            parent=parent,
+            name=name,
+            type=EntryType.SYMLINK,
+            ext="",
+            size=size,
+            mtime_ns=mtime_ns,
+            gitignored=gitignored,
+        )
 
 
 class QueryKind(StrEnum):
@@ -328,6 +397,7 @@ class FilteredTreeQuery:
     path: str = ""
     max_depth: int = 2
     max_rows: int = 10_000
+    after: str | None = None
     filter: InventoryFilter = field(default_factory=InventoryFilter)
     kind: Literal[QueryKind.FILTERED_TREE] = field(init=False, default=QueryKind.FILTERED_TREE)
 
@@ -347,7 +417,7 @@ class RollupQuery:
     extension_top: int = 100
     remaining_top: int = 20
     filename_top: int = 20
-    rank: Literal["bytes", "files"] = "bytes"
+    rank: Literal["bytes", "dual"] = "bytes"
     kind: Literal[QueryKind.ROLLUP] = field(init=False, default=QueryKind.ROLLUP)
 
     def __post_init__(self) -> None:
@@ -531,7 +601,7 @@ class FilteredTreeProjection:
 @dataclass(frozen=True, slots=True)
 class RollupProjection:
     query_id: str
-    payload: Mapping[str, object]
+    payload: Mapping[str, object] | None
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
@@ -555,6 +625,7 @@ class RecentProjection:
     entries: tuple[InventoryEntry, ...]
     total_matches: int
     truncated: bool
+    gitignored_directories: tuple[str, ...] = ()
     valid_until_ns: int | None = None
 
     def __post_init__(self) -> None:
