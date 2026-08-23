@@ -95,6 +95,20 @@ METRICS = (
     "transferred_kb",
     "vendor_first_start_ms",
     "fcp_ms",
+    "lcp_ms",
+    "cls",
+    "cls_shifts",
+    "skeleton_complete",
+    # What the reader gets, as distinct from when the data arrived. The three
+    # shift figures are read directly rather than from a layout-shift score,
+    # because that score needs a visible window and this pane is never one --
+    # see the block that computes them in probe.js. Repaint count is beside
+    # them because a region can hold perfectly still and still be assembled in
+    # front of the reader, and only one of those two is a shift.
+    "filter_bar_shift_px",
+    "summary_shift_px",
+    "total_downward_shift_px",
+    "tree_region_repaints",
     "long_tasks",
     "long_task_ms_total",
     "render_spans",
