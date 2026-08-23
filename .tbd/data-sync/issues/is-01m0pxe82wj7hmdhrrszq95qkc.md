@@ -3,13 +3,14 @@ type: is
 id: is-01m0pxe82wj7hmdhrrszq95qkc
 title: Main thread blocked 55% of the crawl, in blocks to 13 s, on a 241k-file tree
 kind: bug
-status: open
+status: in_progress
 priority: 0
-version: 5
+version: 6
 labels: []
 dependencies: []
+parent_id: is-01m0r191gatek6ffx1e50wmgr8
 created_at: 2026-08-23T08:57:48.378Z
-updated_at: 2026-08-23T18:44:58.297Z
+updated_at: 2026-08-23T19:26:41.162Z
 ---
 CONFIRMED in a visible browser on a 241,063-file tree. The page is blocked for more than half the crawl, in blocks up to thirteen seconds. It stays that way until the crawl finishes.
 
@@ -47,3 +48,7 @@ ALSO PRESENT: failed requests. Several /api/file calls return status 0 with size
 STILL MISSING, and it is now the only thing between here and a fix: which span owns the thirteen seconds. perf.js now warns on any block over 500 ms and lists the measured spans overlapping it, so the next session on a large tree produces that attribution without anyone watching for it. The prime suspect is fileStoreApplySnapshot, which loops every entry the server sends in one synchronous pass -- measured at 17-48 ms on small trees, unmeasured on 241,063 files.
 
 METHOD NOTE. `ever_hidden` was true for this capture because the tab was backgrounded while copying the output, so the totals are not admissible as a clean baseline even though visibility_state read "visible" at the end. The interaction figures are still evidence: they were produced by real clicks the reporter made while watching. A clean baseline needs one uninterrupted visible run.
+
+## Notes
+
+Fresh current-head run on the 241,063-file corpus, document visible: folder expansion took 3,237 ms; browser recorded long tasks of 1,733, 1,033, and 1,151 ms. Add Long Animation Frames attribution before sizing a fix.

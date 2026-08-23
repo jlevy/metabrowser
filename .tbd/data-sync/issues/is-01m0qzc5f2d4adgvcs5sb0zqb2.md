@@ -3,13 +3,16 @@ type: is
 id: is-01m0qzc5f2d4adgvcs5sb0zqb2
 title: "Responsiveness regressed against v0.6.0: earlier paint bought with a blocked thread"
 kind: bug
-status: open
+status: in_progress
 priority: 0
-version: 1
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m0r191gatek6ffx1e50wmgr8
+child_order_hints:
+  - is-01m0r4pm8rxaq5jnefyxnkymtj
 created_at: 2026-08-23T18:50:51.745Z
-updated_at: 2026-08-23T18:50:51.745Z
+updated_at: 2026-08-23T20:23:57.463Z
 ---
 The perf campaign traded responsiveness for earlier first paint, and nobody measured the side it gave up.
 
@@ -37,3 +40,7 @@ WHAT THIS MEANS FOR exp-011. That round concluded "no regressions against v0.6.0
 WHAT NOT TO CONCLUDE. The server work is real and stands: index 30.0 s to 11.9 s, identical rows, files and bytes, lower memory. This is not an argument for reverting it. It is an argument that the front end has to stop doing unbounded synchronous work while the walk runs -- H58 -- and that a round is not done until interaction latency has been read alongside first paint.
 
 NEXT, in order. One clean visible-tab baseline of both builds on the same tree with metabrowserPerf.responsiveness(), so the comparison is measured rather than reported. Then the attribution the new freeze warning produces, naming the span that owns the thirteen seconds. Only then a fix.
+
+## Notes
+
+PR #73 review R1 (Blocker): exp-011 labels the 55.3%/13.4s capture visible while the active plan and source bead say the same capture was ever hidden and void. Re-run both builds visibly on one corpus and correct every summary.
