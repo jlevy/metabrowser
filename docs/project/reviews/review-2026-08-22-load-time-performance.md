@@ -573,6 +573,37 @@ after.
 - [High-performance file roll-up engine](../research/research-2026-08-06-file-rollup-engine.md)
   — prior art on aggregate representation, relevant to H42
 
+## Status Addendum — 2026-08-22
+
+Added after the fact; the findings above are unedited.
+
+**Findings.** All eight fixed in `0747a20`, none rebutted or deferred, and the
+Resolution column above states each one.
+The disposition map was also posted to the pull request.
+F1’s fix was checked against the measurement that found it: on a 200,000-entry index
+with the revision frozen, four polls now cost 0.00–0.03 ms and take zero snapshots,
+against 5.2–5.8 ms and one wasted snapshot apiece.
+
+**Candidate hypotheses.** H39 through H49 are now rows in
+[the plan’s registry](../specs/active/plan-2026-08-21-load-time-performance.md#hypotheses)
+alongside their beads, so the registry stays the single live source the loop’s README
+says it is. The registry is 49 rows.
+
+**One clarification the review did not raise, and a reader did.** The exp-006 title —
+“the gitignore pre-walk stops traversing what it cannot use” — reads as though the
+indexing walk stopped visiting ignored directories.
+It does not, and never did: `walk_tree` enqueues an ignored subdirectory
+unconditionally. What that round removed is a separate traversal, `load_gitignore`’s own
+`os.walk`, whose only output is a pattern list.
+The work is eliminated rather than deferred, and re-confirmed interleaved against the
+pre-change code at 18.9–20.2 s against 2.7–3.3 s.
+
+Sizing the thing it did *not* do turned out to be the more useful number, and it is now
+attached to H33: on the real tree, 48% of files and 59% of directory yields are ignored,
+and **the last tracked file is seen at 29.94 s of a 30.06 s walk**. Level order
+interleaves the two completely, so the tracked tree is never ready early.
+H33 is promoted to P0 on that measurement.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
