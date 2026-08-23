@@ -32,6 +32,7 @@ not worth an error, and this is code that runs before anything useful happens.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from functools import cache
 from pathlib import Path
@@ -44,6 +45,11 @@ command felt slow. A version string is not worth waiting on."""
 def _git(repository: Path, *arguments: str) -> str | None:
     """Run one git command in *repository*, or return None for any reason at all."""
 
+    # GIT_DIR and its siblings OVERRIDE -C, and git exports them to every hook
+    # it runs — so a metab invoked from inside a hook would report that hook's
+    # repository instead of this one. Strip them and ask only about
+    # `repository`.
+    environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         # Fixed argv, no shell, and git is resolved from PATH.
         completed = subprocess.run(
@@ -52,6 +58,7 @@ def _git(repository: Path, *arguments: str) -> str | None:
             text=True,
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
+            env=environment,
         )
     except (OSError, subprocess.SubprocessError):
         return None

@@ -9,6 +9,7 @@ contradicted it.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -18,11 +19,21 @@ from metabrowser import build_version
 
 
 def _git(repository: Path, *arguments: str) -> None:
+    """Run git against *repository* and nothing else.
+
+    GIT_DIR and its siblings override -C, and git exports them to every hook it
+    runs. Without stripping them these tests commit and tag in whatever
+    repository invoked them — which, run from a pre-push hook, is this one.
+    That happened: a fixture's "first" commit and its `v1.0.0` tag landed on a
+    real branch.
+    """
+
     subprocess.run(
         ["git", "-C", str(repository), *arguments],
         check=True,
         capture_output=True,
         text=True,
+        env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
     )
 
 
