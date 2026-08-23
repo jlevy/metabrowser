@@ -5,11 +5,12 @@ title: "Side-by-side validation of the perf work: v0.6.0 against main, speed and
 kind: task
 status: open
 priority: 1
-version: 3
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m0pn7vkfkd7tfzt7r331jkp8
 created_at: 2026-08-23T02:49:37.597Z
-updated_at: 2026-08-23T06:23:58.412Z
+updated_at: 2026-08-23T06:36:06.491Z
 ---
 Validate the performance work in #66 end to end, by comparing the shipped v0.6.0 against a build of main with the performance changes merged. Both stability and speed: a faster build that is less reliable is not an improvement, and the changes here are concurrency-shaped, which is exactly where that risk lives.
 

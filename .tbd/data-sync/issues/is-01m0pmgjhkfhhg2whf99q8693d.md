@@ -5,12 +5,12 @@ title: Depth-capped /api/tree no longer computes navigation tallies
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m0ndp6h7a3hx27zbswtknk89
+parent_id: is-01m0pn7vkfkd7tfzt7r331jkp8
 created_at: 2026-08-23T06:21:47.429Z
-updated_at: 2026-08-23T06:21:47.429Z
+updated_at: 2026-08-23T06:36:07.036Z
 ---
 Recorded from the side-by-side validation of #66 (mb-j7xx), as the one behaviour difference found between v0.6.0 and main. It is DELIBERATE and documented -- exp-007 states it in as many words -- and it is written down here because it is a change an API client can observe and the release notes do not mention it.
 
