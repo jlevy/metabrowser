@@ -828,7 +828,12 @@ function renderInitialTreeRows() {
     chromeHtml: treeSummaryHtml(null, null, null),
     tallyCacheStatus: "scanning",
   };
-  const painted = renderFilesFromTree();
+  // Measured here rather than around the call, so the span exists only when
+  // this path actually paints. Every return above declined to — no inlined
+  // rows, something already on screen, a filter the server did not know about
+  // — and a span recorded for one of those reports work on a region nothing
+  // touched, which is what the repaint and render-span counts read.
+  const painted = _perf.measure("renderTreeNodes:inline", () => renderFilesFromTree());
   // Not authoritative — the fetch that follows replaces this wholesale.
   _lastTreeRender = null;
   return painted;
@@ -836,12 +841,7 @@ function renderInitialTreeRows() {
 
 async function loadTree() {
   return _perf.measureAsync("loadTree", async () => {
-    // Measured only when it paints. Wrapping the call recorded a span for the
-    // second visit too, which reports as a repaint of a region that was not
-    // touched -- and repaint count is exactly what this loop now watches.
-    if (_inlineTreeRows) {
-      _perf.measure("renderTreeNodes:inline", () => renderInitialTreeRows());
-    }
+    renderInitialTreeRows();
 
     /** Replace whatever is on screen with a failure the reader can act on. */
     function failTree(reason) {
