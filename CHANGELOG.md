@@ -371,11 +371,28 @@ Large directories:
 
 Page load:
 
+- Chart.js no longer loads on every document.
+  It and its two plugins are 297,531 bytes read by one view — the agent-log charts — and
+  parse and evaluate were paid on every page whether or not that view was ever opened.
+  They now load the first time a chart is asked for.
+  Measured on this repository in Chromium 141, median of five cold loads of
+  `/view/README.md`, the load event fell from 853 ms to 411 ms and transferred bytes
+  from 823,391 to 732,836. First contentful paint did not move, at 76 ms either way: the
+  chain never blocked paint, it competed with the tree render behind it.
+
+- highlight.js, its TOML grammar, and Mustache now load on the first idle callback
+  rather than the moment the document parses.
+  They were fetched and evaluated in the same window as the first tree fetch, and the
+  `load` event stayed open until the whole chain finished.
+  Measured on a 100,000-file tree, median of three cold loads: `load` fell from 3,883 ms
+  to 750 ms. Time to first tree row did not measurably change.
+  A source view still highlights: the libraries arrive during idle and re-enhance what
+  is already on screen, so nothing waits for them.
+
 - **Opening a large folder is far faster to become usable.** On a 241,000-file working
   tree, the wait before any row could appear was about twenty seconds and the full scan
   took over four minutes with a browser watching; those are now about two seconds and
-  fifty seconds. Four things were in the way, and each is worth naming because each was
-  costing something different.
+  fifty seconds. Three changes compound to get there.
 
 - Loading the ignore rules walked the whole tree a second time before the real scan
   started, descending into vendored, built, and hidden directories to look for
@@ -415,14 +432,6 @@ Page load:
   opened is exactly the one that stays slow.
   Speculative warming — on first load, and while scrolling — still waits for idle, which
   is what idle is for.
-
-- Chart.js no longer loads on every document, and highlight.js, its TOML grammar, and
-  Mustache now load on the first idle callback rather than the moment the document
-  parses. Measured on this repository, median of five cold loads of `/view/README.md`:
-  the load event fell from 853 ms to 411 ms for the first change, then from 3,883 ms to
-  750 ms on a large tree for the second.
-  A source view still highlights: those libraries arrive during idle and re-enhance what
-  is already on screen.
 
 Plugin SDK:
 
