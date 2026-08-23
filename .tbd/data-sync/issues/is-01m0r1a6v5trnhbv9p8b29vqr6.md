@@ -3,13 +3,15 @@ type: is
 id: is-01m0r1a6v5trnhbv9p8b29vqr6
 title: "PR #73 review R2: remove refuted interaction-latency detector"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m0r191gatek6ffx1e50wmgr8
 created_at: 2026-08-23T19:24:44.773Z
-updated_at: 2026-08-23T19:25:09.248Z
+updated_at: 2026-08-23T21:34:05.746Z
+closed_at: 2026-08-23T21:34:05.745Z
+close_reason: Deleted the refuted connection-starvation detector. The replacement gate measures browser responsiveness and rejects invalid evidence instead of asserting an unproven mechanism.
 ---
 PR #73. devtools/check_interaction_latency.py:1 contradicts the PR body by asserting connection starvation after that mechanism was refuted. Delete it; add a guard only after root-cause attribution. Review: https://github.com/jlevy/metabrowser/pull/73#pullrequestreview-5003175212

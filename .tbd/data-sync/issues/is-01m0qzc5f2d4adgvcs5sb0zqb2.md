@@ -3,16 +3,18 @@ type: is
 id: is-01m0qzc5f2d4adgvcs5sb0zqb2
 title: "Responsiveness regressed against v0.6.0: earlier paint bought with a blocked thread"
 kind: bug
-status: in_progress
+status: closed
 priority: 0
-version: 4
+version: 5
 labels: []
 dependencies: []
 parent_id: is-01m0r191gatek6ffx1e50wmgr8
 child_order_hints:
   - is-01m0r4pm8rxaq5jnefyxnkymtj
 created_at: 2026-08-23T18:50:51.745Z
-updated_at: 2026-08-23T20:23:57.463Z
+updated_at: 2026-08-23T21:34:08.407Z
+closed_at: 2026-08-23T21:34:08.406Z
+close_reason: Retracted the hidden 55.3% capture, documented the valid visible evidence, fixed exact-removal semantics, and made visible responsiveness a hard performance-loop gate. The final visible 241,063-file candidate run completed with no profiler warning at the default 500 ms threshold, and the diagnostic 200 ms run had no Long Task or LoAF at or above 200 ms.
 ---
 The perf campaign traded responsiveness for earlier first paint, and nobody measured the side it gave up.
 

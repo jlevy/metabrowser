@@ -3,14 +3,16 @@ type: is
 id: is-01m0pxe82wj7hmdhrrszq95qkc
 title: Main thread blocked 55% of the crawl, in blocks to 13 s, on a 241k-file tree
 kind: bug
-status: in_progress
+status: closed
 priority: 0
-version: 6
+version: 7
 labels: []
 dependencies: []
 parent_id: is-01m0r191gatek6ffx1e50wmgr8
 created_at: 2026-08-23T08:57:48.378Z
-updated_at: 2026-08-23T19:26:41.162Z
+updated_at: 2026-08-23T21:34:08.106Z
+closed_at: 2026-08-23T21:34:08.104Z
+close_reason: Attributed the freeze to exact ignored-file removals being encoded as subtree removals, causing an O(catalog) prefix scan for every ignored leaf. Split the wire contract into exact remove_files and subtree removes; a visible 241,063-file cold scan then produced no Long Task or LoAF at or above 200 ms.
 ---
 CONFIRMED in a visible browser on a 241,063-file tree. The page is blocked for more than half the crawl, in blocks up to thirteen seconds. It stays that way until the crawl finishes.
 
