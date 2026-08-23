@@ -23,6 +23,7 @@ fast -- only that it moved.
 | `first_row_ms` | 1,604 | **242** | exp-004 |
 | `gitignore_build_ms_real_tree_a` | 21,370 | **2,180** | exp-006 |
 | `srv_scanning_ms` | 311 | **2** | exp-007 |
+| `reserved_region_shift_px` | 67 | **23** | exp-009 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -40,6 +41,8 @@ against one that did.
 | exp-005 | [A real tree changes the priorities](experiments/exp-005-a-real-tree-changes-the-priorities.md) | H16 | `walk_elapsed_ms` | baseline |
 | exp-006 | [The gitignore pre-walk stops traversing what it cannot use](experiments/exp-006-the-gitignore-prewalk-stops-traversing-what-it-cannot-use.md) | H30 | `gitignore_build_ms_real_tree_a` | accepted |
 | exp-007 | [Rows stop waiting for the tally pass](experiments/exp-007-rows-stop-waiting-for-the-tally-pass.md) | H27, H31 | `srv_scanning_ms` | accepted |
+| exp-009 | [The skeleton stops growing under the reader](experiments/exp-009-the-skeleton-stops-growing-under-the-reader.md) | H50 | `reserved_region_shift_px` | accepted |
+| exp-010 | [Every checkpoint on one corpus](experiments/exp-010-every-checkpoint-on-one-corpus.md) | H55, H53 | `first_row_ms` | baseline |
 
 ## Absolute numbers, per condition
 
@@ -133,6 +136,46 @@ A run loaded during a walk and a run loaded after one are different regimes.
 Walk elapsed across these runs: 208,885-208,885 ms.
 A run loaded during a walk and a run loaded after one are different regimes.
 
+### 246,282 files
+
+**What a reader gets** — browser probe
+
+| metric | reserved-skeleton (n=1) | shifting-skeleton (n=1) | p0-before-perf (n=1) | p1-rows-partial-index (n=1) | p2-main (n=3) | p3-skeleton-paint (n=3) | reserved-skeleton-h3 (n=3) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `first_row_ms` | 74 | 82 | 1,473 | 1,031 | 294 (207-311) | 276 (213-533) | 391 (305-405) |
+| `load_tree_ms` | 29 | 33 | 1,187 | 775 | 21 (19-31) | 34 (19-35) | 21 (20-46) |
+| `tree_fetch_srv_ms` | 7 | 7 | 1,099 | 735 | 5 (4-5) | 6 (3-8) | 3 (2-4) |
+| `tree_fetch_wait_ms` | 14 | 15 | 1,106 | 754 | 10 (8-12) | 16 (8-16) | 9 (8-15) |
+| `tree_fetch_total_ms` | 15 | 16 | 1,120 | 755 | 11 (8-13) | 17 (9-17) | 10 (9-16) |
+| `tree_fetch_kb` | 2 | 2 | 2 | 2 | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `dcl_ms` | 75 | 83 | 293 | 260 | 296 (209-313) | 278 (215-535) | 393 (307-407) |
+| `load_ms` | 76 | 84 | 1,481 | 260 | 297 (210-315) | 279 (217-536) | 395 (308-408) |
+| `last_resource_ms` | 12,372 | 14,409 | 28,865 | 25,012 | 10,272 (9,866-11,013) | 12,276 (11,074-16,751) | 53,622 (50,697-54,003) |
+| `subtree_requests` | 23 | 13 | 32 | 32 | 23 (13-23) | 23 (23-23) | 13 (13-23) |
+| `tree_items` | 141 | 141 | 141 | 141 | 141 (141-141) | 141 (141-141) | 140 (140-140) |
+| `lazy_stubs` | 130 | 130 | 130 | 130 | 130 (130-130) | 130 (130-130) | 130 (130-130) |
+| `dom_nodes` | 2,475 | 2,475 | 2,469 | 2,469 | 2,462 (2,462-2,462) | 2,462 (2,462-2,462) | 2,450 (2,450-2,450) |
+| `transferred_kb` | 334 | 153 | 743 | 738 | 715 (625-733) | 742 (703-743) | 607 (605-688) |
+| `vendor_first_start_ms` | 83 | 549 | 293 | 270 | 342 (238-3,530) | 331 (231-575) | 2,159 (405-2,213) |
+| `cls` | 0 | 0 | 0 | 0 | 0 (0-0) | 0 (0-0) | - |
+| `cls_shifts` | 0 | 0 | 0 | 0 | 0 (0-0) | 0 (0-0) | - |
+| `frame_missing_px` | - | - | - | - | - | - | 532 (532-532) |
+| `filter_bar_shift_px` | 0 | 24 | 24 | 24 | 24 (24-24) | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 23 | 43 | 18 | 18 | 43 (43-43) | 23 (23-23) | 23 (23-23) |
+| `reserved_region_shift_px` | 23 | 67 | 42 | 42 | 67 (67-67) | 23 (23-23) | 23 (23-23) |
+| `tree_region_repaints` | 4 | 4 | 1 | 1 | 3 (3-3) | 3 (3-3) | 2 (2-2) |
+| `long_tasks` | 1 | 1 | 1 | 4 | 4 (3-9) | 3 (1-9) | 24 (22-25) |
+| `long_task_ms_total` | 74 | 76 | 66 | 1,153 | 1,295 (1,240-2,350) | 996 (288-2,473) | 3,015 (2,972-3,749) |
+| `render_spans` | 4 | 4 | 1 | 1 | 3 (3-3) | 3 (3-3) | 3 (3-3) |
+| `render_ms_total` | 24 | 25 | 55 | 8 | 7 (7-8) | 8 (7-14) | 7 (7-23) |
+| `tree_reprobe_ms` | 7 | 6 | 15 | 21 | 6 (6-6) | 8 (6-15) | 8 (7-8) |
+| `tree_reprobe_srv_ms` | 3 | 3 | 4 | 14 | 3 (3-3) | 3 (3-3) | 3 (3-4) |
+| `viewport_w` | 1,280 | 1,280 | 1,280 | 1,280 | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) |
+| `viewport_h` | 900 | 900 | 900 | 900 | 900 (900-900) | 900 (900-900) | 900 (900-900) |
+
+Walk elapsed across these runs: 12,161-14,894 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
 ### 300,000 files
 
 **What a reader gets** — browser probe
@@ -222,6 +265,19 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-007 | rows-without-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
 | exp-008 | before-main | 2026-08-23T00:39 | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
 | exp-008 | after-branch | 2026-08-23T00:39 | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
+| exp-009 | reserved-skeleton | 2026-08-23T04:51 | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
+| exp-009 | shifting-skeleton | 2026-08-23T04:52 | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
+| exp-010 | p0-before-perf | 2026-08-23T06:14 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,609 ms |
+| exp-010 | p1-rows-partial-index | 2026-08-23T06:15 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 14,546 ms |
+| exp-010 | p2-main | 2026-08-23T06:17 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,806 ms |
+| exp-010 | p3-skeleton-paint | 2026-08-23T06:18 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,397 ms |
+| exp-010 | p3-skeleton-paint | 2026-08-23T06:19 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,139 ms |
+| exp-010 | p3-skeleton-paint | 2026-08-23T06:20 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,161 ms |
+| exp-010 | p2-main | 2026-08-23T06:21 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,920 ms |
+| exp-010 | p2-main | 2026-08-23T06:22 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,781 ms |
+| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:51 | 5501200+dirty | tree-e167d99b | 1 | 3 | 14,894 ms |
+| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:53 | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,493 ms |
+| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:54 | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,593 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->

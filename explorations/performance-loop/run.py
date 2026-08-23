@@ -70,7 +70,16 @@ PENDING = HERE / "results" / "pending.json"
 # Bumped when a change to run.py or probe.js makes a number incomparable with
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
-HARNESS_VERSION = 2
+#
+# 3: four metric definitions changed at once. `frame_missing_px` measures the
+# shipped state against the markup `server.py` really ships rather than a
+# paraphrase of it; `tree_region_repaints` counts only the spans that replace
+# the region, where it had counted every render span and so duplicated
+# `render_spans`; `cls` and `cls_shifts` are gated on visibility rather than on
+# layout, which is what made them report a confident 0 in a pane that cannot
+# see a shift; and `regions_non_empty` is gone, having counted screen-reader
+# text and so passed on the hole it existed to catch.
+HARNESS_VERSION = 3
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -95,6 +104,20 @@ METRICS = (
     "transferred_kb",
     "vendor_first_start_ms",
     "fcp_ms",
+    "lcp_ms",
+    "cls",
+    "cls_shifts",
+    "frame_missing_px",
+    # What the reader gets, as distinct from when the data arrived. The three
+    # shift figures are read directly rather than from a layout-shift score,
+    # because that score needs a visible window and this pane is never one --
+    # see the block that computes them in probe.js. Repaint count is beside
+    # them because a region can hold perfectly still and still be assembled in
+    # front of the reader, and only one of those two is a shift.
+    "filter_bar_shift_px",
+    "summary_shift_px",
+    "reserved_region_shift_px",
+    "tree_region_repaints",
     "long_tasks",
     "long_task_ms_total",
     "render_spans",

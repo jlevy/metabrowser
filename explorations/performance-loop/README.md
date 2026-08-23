@@ -49,6 +49,45 @@ make the smallest change that tests it, measure again, apply the accept rule, an
 the artifact either way.
 Then `run.py report` and commit.
 
+### Picking up a round as a fresh agent
+
+Work the
+[ordering table](../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#ordering-what-to-work-next),
+top down, not `tbd ready` — the ready queue is priority-sorted across the whole
+repository and will hand you nine P0s with no ranking between them.
+The ordering table is the ranking, and it carries the reason each row sits where it
+does.
+
+Rounds can run in parallel.
+Each takes one hypothesis, one branch, and one artifact, and the things that would
+collide are few and named:
+
+- `results/runs.jsonl` is append-only and merges cleanly, but two agents recording under
+  the same `--label` will pool into one condition in `compare`. Label with the
+  hypothesis, not with `before`/`after`.
+- `report.md` is generated.
+  Never hand-edit it; regenerate with `run.py report` after merging and let that be the
+  conflict resolution.
+- The corpus at `.bench/project-10` must not change.
+  It is what makes runs from different agents and different weeks comparable, and
+  [re-running an old round](#re-running-an-old-round-against-todays-corpus) depends on
+  it. If a round needs a different tree, serve it with `--tree` and leave the corpus
+  alone.
+- Take the next free `exp-NNN` and the next free `H` number by reading the plan, and say
+  in the pull request which you took.
+
+**Before claiming a round is done**, check it against the objective and not only against
+the metric it named:
+
+1. The metric the hypothesis predicted moved, with non-overlapping ranges at n≥3.
+2. `reserved_region_shift_px` did not grow, and `tree_region_repaints` did not grow.
+   Both are in `compare` for exactly this reason — the campaign regressed both without
+   noticing, over nine rounds, because nothing looked.
+3. The artifact says what did *not* move, in the same voice as what did.
+
+A round that improves its own metric and quietly costs a paint or twenty pixels is not
+an improvement, and exp-010 is the worked example of finding that out six rounds late.
+
 ## Running a round
 
 ```shell
@@ -155,6 +194,34 @@ phase of `bench_serving.py` belongs.
 Waiting for `load` reports a page that painted its shell, and waiting for network idle
 reports a scan that finished; neither is when the reader can use the tree.
 
+### What the reader sees, as opposed to when the data arrived
+
+Every metric above answers the second and none of them answers the first, which is how
+the loop spent nine rounds driving `first_row_ms` from 1,473 ms to 276 while the tree
+region went from one paint per load to three.
+Painting *something* early scores well on `first_row_ms` and is exactly the
+placeholder-then-replace that a reader experiences as flicker.
+The objective these decide is in
+[the plan](../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#what-we-are-optimizing-for):
+what the reader can see reaches its final state in a single paint, and nothing above it
+moves afterwards.
+
+| Metric | What it is | Why |
+| --- | --- | --- |
+| `reserved_region_shift_px` | Downward movement of the two regions that reserve a height, populated minus empty | The jump a reader gets. Two named regions, *not* the page — the name says so on purpose |
+| `filter_bar_shift_px`, `summary_shift_px` | The two halves of it | They have different causes and different fixes |
+| `tree_region_repaints` | `renderTreeNodes:root` spans per load — the label on the only span that replaces the panel wholesale | A region can hold perfectly still and still be assembled in front of the reader. Today’s proxy for H56’s `visual_states`. Counts one paint once: `:inline` wraps a call that emits its own `:root`, and `:subtree*` patch a tree already standing |
+| `lcp_ms`, `cls` | What a browser would report | **Null in this pane, always**, and recorded as null rather than 0 so an absent number never reads as a good one. H51 is the row that fixes it |
+| `page_visible`, `page_laid_out` | Whether the pane could answer at all | The reason the two above are null, recorded beside them so nobody re-derives it |
+| `frame_missing_px` | Settled height minus shipped height, summed over the regions the shell places | H52: how much of the frame does not exist at first paint. 532 px today, all of it the files panel |
+| `region_heights` | Settled and shipped height per region | Reads `frame_missing_px` back to the region that owns it. A region sized by its container rather than by its content reports settled and shipped alike, and contributes nothing — that is the right answer for `#preview-pane`, which fills its frame from first paint |
+
+The shift figures are read by cloning a region stripped to the markup its pending render
+emits, inserting it beside the real one, and subtracting — which needs neither
+visibility nor a particular viewport, and is why they work here when `cls` does not.
+They are layout facts, so they have no run-to-run variance: three runs of exp-010 gave
+identical values where `first_row_ms` swung 213–533 ms.
+
 Dimensions added for the registered hypotheses, so each can be accepted or rejected by
 this loop rather than argued:
 
@@ -189,6 +256,17 @@ later round is judged and deserves its own change:
 - **There is no measured noise floor** (`mb-ot8o`). An A/A control — the same build
   under two labels — would measure the harness’s own resolution, so “the ranges do not
   overlap” is judged against a known floor instead of an assumed one.
+- **A metric that cannot come out false is not a metric.** `skeleton_complete` asked
+  whether each region was present, sized and non-empty *at probe time* — which is after
+  settle — and returned true on all ten runs ever recorded, including every one carrying
+  a 532 px hole where the files panel belongs.
+  It was replaced by `frame_missing_px`, which is a distance rather than a predicate.
+  Its first replacement, `regions_non_empty`, was retired the same day for the same
+  reason: it read `textContent`, which counts screen-reader-only text, and the files
+  panel ships exactly that — a spinner and an `.sr-only` label — so the hole passed the
+  floor check written to catch it.
+  Worth checking a new metric against its own recorded history before trusting it: one
+  that never varies is either measuring nothing or measuring after the fact.
 - **Nothing guards the wins** (`mb-c7ck`). Every number here was measured once.
   A small committed corpus and a deliberately generous CI threshold would catch an
   order-of-magnitude regression without making CI flaky.
