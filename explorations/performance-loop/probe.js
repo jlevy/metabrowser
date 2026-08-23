@@ -80,6 +80,14 @@
   // replace) and H7 (row windowing) would move.
   const renderSpans = spans.filter((s) => String(s.label).startsWith("renderTreeNodes"));
   const renderTotal = Math.round(renderSpans.reduce((t, s) => t + s.duration_ms, 0));
+  // Of those, the ones that actually replace the region. `renderTreeNodes:root`
+  // is the label on the only span that writes `#tab-files` wholesale, so one
+  // such span is one repaint. The other three labels are not repaints:
+  // `:subtree` and `:subtreeCache` patch rows into a tree already standing, and
+  // `:inline` is an *outer* span around a call that emits its own `:root`, so
+  // counting it would charge one paint twice. Counting all four is what made
+  // this a second name for `render_spans` rather than a measurement.
+  const regionRepaints = renderSpans.filter((s) => String(s.label) === "renderTreeNodes:root");
 
   const paints = {};
   for (const entry of performance.getEntriesByType("paint")) {
@@ -115,31 +123,52 @@
   const unshifted = shiftEntries.filter((entry) => !entry.hadRecentInput);
   const cls = unshifted.reduce((total, entry) => total + entry.value, 0);
 
+  // The stand-in goes in flow, beside the real element, so the same container
+  // lays it out: it inherits the width, it wraps the same way, and a region
+  // whose height comes from its container rather than from its content is
+  // stretched exactly as the real one is. `#preview-pane` is `flex: 1`, so its
+  // shipped height equals its settled height and it contributes nothing to
+  // `frame_missing_px`. That is the right answer rather than a blind spot --
+  // the pane fills its frame from first paint and only its contents are a
+  // placeholder -- so do not "fix" this by measuring out of flow, which would
+  // report the whole pane as missing.
+  function heightOfStandIn(reference, standIn) {
+    reference.parentNode.insertBefore(standIn, reference);
+    const height = Math.round(standIn.getBoundingClientRect().height);
+    standIn.remove();
+    return height;
+  }
   function emptyHeight(element, pendingHtml) {
     const stand_in = element.cloneNode(false);
     stand_in.removeAttribute("id");
     stand_in.innerHTML = pendingHtml;
-    element.parentNode.insertBefore(stand_in, element);
-    const height = Math.round(stand_in.getBoundingClientRect().height);
-    stand_in.remove();
-    return height;
+    return heightOfStandIn(element, stand_in);
   }
-  // Every region a reader expects to see, with the markup the server actually
-  // ships for it. Two numbers per region: the height it settles at, and the
-  // height it stands at while holding only what the shell shipped.
+  // Every region a reader expects to see, against the markup the server ships
+  // for it -- copied from `server.py`, not paraphrased. A paraphrase measures
+  // the wrong thing here and always in the same direction: `#tab-files` ships
+  // a spinner inside 32px of padding, and its label is `.sr-only`, which is
+  // clipped to a pixel. Measured as the bare sentence it reads as one line of
+  // body text, which understates the shipped height by most of its value and
+  // overstates the gap by the same amount.
   //
-  // The gap between them is how much of the frame does not exist at first
-  // paint, which is the H52 question. It is recorded per run rather than
-  // derived by hand, because the metric that used to sit here --
-  // `skeleton_complete` -- asked whether each region was present, sized and
-  // non-empty *at probe time*, which is after settle. It answered true on
-  // every run ever recorded, including the ones where the files panel was a
-  // 21px line of text where 612px of rows belonged. A metric that cannot come
-  // out false is not measuring anything.
+  // Two numbers per region: the height it settles at, and the height it stands
+  // at holding only what the shell shipped. The gap between them is how much
+  // of the frame does not exist at first paint, which is the H52 question. It
+  // is recorded per run rather than derived by hand, because the metric that
+  // used to sit here -- `skeleton_complete` -- asked whether each region was
+  // present, sized and non-empty *at probe time*, which is after settle. It
+  // answered true on every run ever recorded, including every one carrying the
+  // hole this now measures. A metric that cannot come out false is not
+  // measuring anything.
   const SKELETON_REGIONS = [
     ["#nav-filter-bar", ""],
-    ["#tab-files", "Loading files…"],
-    ["#preview-pane", "Select a file to preview."],
+    [
+      "#tab-files",
+      '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+        '<span class="sr-only">Loading files…</span></div>',
+    ],
+    ["#preview-pane", '<div class="preview-empty">Select a file to preview.</div>'],
   ];
   const regions = {};
   for (const [selector, shippedHtml] of SKELETON_REGIONS) {
@@ -151,14 +180,8 @@
     regions[selector] = {
       h: Math.round(element.getBoundingClientRect().height),
       shipped_h: emptyHeight(element, shippedHtml),
-      chars: (element.textContent || "").trim().length,
     };
   }
-  // Present, sized and holding something -- a floor check, and named as one.
-  // A hole in the page fails it; a placeholder does not.
-  const regionsNonEmpty = SKELETON_REGIONS.every(
-    ([selector]) => regions[selector] && regions[selector].h > 0 && regions[selector].chars > 0,
-  );
   // How many pixels of the frame the shell does not ship. Sums the regions
   // above, so it is a page-level number in a way the shift metric is not.
   const frameMissingPx = Object.values(regions).reduce(
@@ -175,10 +198,11 @@
   //
   // Both heights are read in the same build, so the number is what a reader of
   // *this* build gets rather than a difference between two builds. The empty
-  // state is reconstructed rather than caught mid-load: a clone carrying the
-  // same classes -- so a reserved height still applies to it -- holding the
-  // markup the pending render actually emits, inserted beside the real element
-  // so it inherits the same width and wraps the same way.
+  // state is reconstructed rather than caught mid-load, and how it is
+  // reconstructed depends on whether the pending state is the same element:
+  // where it is, a clone carrying the same classes -- so a reserved height
+  // still applies to it -- holds the markup the shell ships; where it is not,
+  // the app builds its own pending element (see the tally row below).
   function shiftOf(element, pendingHtml) {
     if (!element) {
       return null;
@@ -186,14 +210,31 @@
     return Math.round(element.getBoundingClientRect().height) - emptyHeight(element, pendingHtml);
   }
 
-  // The pending tally row is not the settled one: `treeSummaryHtml(null, ...)`
-  // emits a plain `.tree-summary` holding two empty cells, while a row that has
-  // its counts is `.tree-summary-split` and can wrap to a second line.
+  // The filter bar's pending state is the shipped element itself, empty, so a
+  // clone of it is exactly right.
   const filterBarShift = shiftOf(document.getElementById("nav-filter-bar"), "");
-  const summaryShift = shiftOf(
-    document.querySelector(".tree-summary"),
-    '<span class="tree-summary-count"></span><span class="tree-summary-size"></span>',
-  );
+
+  // The tally row's is not: the pending row is a whole different element from
+  // the settled one -- `treeSummaryHtml(null, null, null)` emits a plain
+  // `.tree-summary` holding two `.tally-pending` cells, while a row that has
+  // its counts is `.tree-summary-split` and can wrap to a second line. Cloning
+  // the settled row would carry `tree-summary-split` into the stand-in, and
+  // restating its markup here would be a copy of `app.js` that drifts the next
+  // time that function changes. Ask the app for its own pending row instead.
+  function pendingSummaryRow() {
+    if (typeof treeSummaryHtml !== "function") {
+      return null;
+    }
+    const holder = document.createElement("div");
+    holder.innerHTML = treeSummaryHtml(null, null, null);
+    return holder.firstElementChild;
+  }
+  const settledSummary = document.querySelector(".tree-summary");
+  const pendingSummary = settledSummary ? pendingSummaryRow() : null;
+  const summaryShift = pendingSummary
+    ? Math.round(settledSummary.getBoundingClientRect().height) -
+      heightOfStandIn(settledSummary, pendingSummary)
+    : null;
   const totalShift =
     filterBarShift === null || summaryShift === null ? null : filterBarShift + summaryShift;
 
@@ -223,16 +264,21 @@
     lcp_ms: lcpEntries.length ? Math.round(lcpEntries[lcpEntries.length - 1].startTime) : null,
     lcp_element: lcpEntries.length
       ? `${lcpEntries[lcpEntries.length - 1].element?.tagName ?? "?"}.${
-          (lcpEntries[lcpEntries.length - 1].element?.className ?? "").split(" ")[0]
+          String(lcpEntries[lcpEntries.length - 1].element?.className ?? "").split(" ")[0]
         }`
       : null,
-    cls: laidOut && unshifted.length >= 0 ? Number(cls.toFixed(4)) : null,
-    cls_shifts: unshifted.length,
+    // Gated on visibility, not on layout. A layout-shift observer in a page
+    // that has never been visible reports no entries because it cannot see
+    // any, not because none happened, so `laidOut` here returned a confident
+    // 0 for every run in this pane -- the exact "measured, and fine" reading
+    // these fields exist to prevent. The shift figures below are what this
+    // environment can actually answer.
+    cls: visible ? Number(cls.toFixed(4)) : null,
+    cls_shifts: visible ? unshifted.length : null,
     // Records why a visual number is missing, so an absent LCP reads as an
     // environment limit rather than as a good result.
     page_visible: visible,
     page_laid_out: laidOut,
-    regions_non_empty: regionsNonEmpty,
     frame_missing_px: frameMissingPx,
     // Settled beside shipped, per region, so `frame_missing_px` can be read
     // back to the region that owns it rather than taken on faith.
@@ -248,7 +294,7 @@
     filter_bar_shift_px: filterBarShift,
     summary_shift_px: summaryShift,
     reserved_region_shift_px: totalShift,
-    tree_region_repaints: renderSpans.length,
+    tree_region_repaints: regionRepaints.length,
     long_tasks: longTasks ? longTasks.length : null,
     long_task_ms_total: longTasks
       ? Math.round(longTasks.reduce((t, e) => t + e.duration, 0))
