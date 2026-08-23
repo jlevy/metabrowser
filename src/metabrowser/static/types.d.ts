@@ -269,8 +269,35 @@ type MetabrowserPerf = {
   ): Promise<T>;
   report?(): unknown;
   reset?(): void;
+  /**
+   * How responsive the page has been since load: the worst main-thread block,
+   * the same for the first five seconds alone, the blocked share with the
+   * window it is a share of, and interaction-to-next-paint percentiles.
+   *
+   * `measurement_valid` is false when the tab was ever hidden, which throttles
+   * it into manufacturing long tasks; those numbers are void rather than noisy.
+   */
+  responsiveness?(): MetabrowserResponsiveness;
   setSlowThreshold?(milliseconds: number): number;
   snapshot?(): unknown;
+};
+
+type MetabrowserResponsiveness = {
+  ever_hidden: boolean;
+  interaction_max_ms: number | null;
+  interaction_p50_ms: number | null;
+  interaction_p95_ms: number | null;
+  interactions: number;
+  long_task_max_ms: number;
+  long_task_max_ms_first_5s: number;
+  long_task_ms_total: number;
+  long_tasks: number;
+  long_tasks_over_200ms: number;
+  main_thread_blocked_pct: number | null;
+  measurement_valid: boolean;
+  unsupported: string[] | null;
+  visibility_state: string | null;
+  window_ms: number;
 };
 
 type MetabrowserChartRuntime = {

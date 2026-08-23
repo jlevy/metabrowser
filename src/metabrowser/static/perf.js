@@ -385,8 +385,9 @@
       raw_measure: measureSamples.slice(),
       // Whole-session totals per label, immune to ring-buffer eviction. Sorted
       // by the worst single span, because that is what a reader feels.
+      responsiveness: responsiveness(),
       label_totals: Object.keys(labelTotals)
-        .map(function (k) {
+        .map((k) => {
           var r = labelTotals[k];
           return {
             label: r.label,
@@ -396,9 +397,7 @@
             over_200ms: r.over_200ms,
           };
         })
-        .sort(function (a, b) {
-          return b.max_ms - a.max_ms;
-        }),
+        .sort((a, b) => b.max_ms - a.max_ms),
     };
   }
 
@@ -410,6 +409,39 @@
         console.table(snap.fetch_summary);
       } else {
         console.log(snap.fetch_summary);
+      }
+      // Responsiveness first: it is the one a reader feels, and the one that
+      // says whether the rest of this report is even admissible.
+      var r = snap.responsiveness;
+      console.log("%cMetabrowser perf — responsiveness", "font-weight:bold");
+      if (!r.measurement_valid) {
+        console.warn(
+          "These numbers are VOID: the tab was hidden during measurement, and a " +
+            "hidden tab is throttled into manufacturing long tasks. Re-run in a " +
+            "visible, foregrounded window.",
+        );
+      }
+      if (console.table) {
+        console.table([
+          { metric: "longest block (ms)", value: r.long_task_max_ms },
+          { metric: "longest block, first 5s (ms)", value: r.long_task_max_ms_first_5s },
+          { metric: "blocks over 200 ms", value: r.long_tasks_over_200ms },
+          { metric: "blocked share (%)", value: r.main_thread_blocked_pct },
+          { metric: "over window (ms)", value: r.window_ms },
+          {
+            metric: "interaction p50 / max (ms)",
+            value: `${r.interaction_p50_ms} / ${r.interaction_max_ms}`,
+          },
+          { metric: "measured visible", value: r.measurement_valid },
+        ]);
+      } else {
+        console.log(r);
+      }
+      console.log("%cMetabrowser perf — what blocked (worst span first)", "font-weight:bold");
+      if (console.table) {
+        console.table(snap.label_totals);
+      } else {
+        console.log(snap.label_totals);
       }
       console.log("%cMetabrowser perf — render spans", "font-weight:bold");
       if (console.table) {
@@ -463,9 +495,118 @@
     }, 100);
   }
 
+  // ── Responsiveness ────────────────────────────────────────────────
+  //
+  // Attached when this module loads, which is the only time that works: the
+  // worst blocking is in the first seconds, when the event rate is highest and
+  // the reader is deciding whether the app is alive. Anything attached later
+  // has already missed it and reads a bounded browser buffer that a bad load
+  // has already overrun.
+  //
+  // Cheap by construction. Two observers, and the callbacks only push small
+  // records; the browser was already computing these entries.
+  var longTasks = [];
+  var interactions = [];
+  var observerNotes = [];
+  // Whether the page was EVER hidden. Chromium throttles a hidden tab --
+  // clamping timers and batching deferred work -- which manufactures
+  // multi-second tasks no reader would meet. A number from a run that was
+  // backgrounded even briefly is void, not merely noisy, so this is recorded
+  // rather than left to whoever reads the output to remember.
+  var everHidden = typeof document !== "undefined" && document.visibilityState !== "visible";
+
+  try {
+    var taskObserver = new PerformanceObserver((list) => {
+      var entries = list.getEntries();
+      for (var i = 0; i < entries.length; i++) {
+        longTasks.push({
+          start: Math.round(entries[i].startTime),
+          dur: Math.round(entries[i].duration),
+        });
+      }
+    });
+    taskObserver.observe({ type: "longtask", buffered: true });
+  } catch (_noLongTask) {
+    observerNotes.push("longtask");
+  }
+
+  try {
+    var eventObserver = new PerformanceObserver((list) => {
+      var entries = list.getEntries();
+      for (var i = 0; i < entries.length; i++) {
+        interactions.push({ name: entries[i].name, dur: Math.round(entries[i].duration) });
+      }
+    });
+    // One frame. Below it an interaction cannot have missed a paint.
+    // `durationThreshold` is Event Timing, which the bundled DOM lib predates;
+    // the cast is about the type definition's age, not about the option.
+    eventObserver.observe(
+      /** @type {PerformanceObserverInit} */ ({
+        type: "event",
+        durationThreshold: 16,
+        buffered: true,
+      }),
+    );
+  } catch (_noEventTiming) {
+    observerNotes.push("event");
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") {
+        everHidden = true;
+      }
+    });
+  }
+
+  function _percentile(values, q) {
+    if (values.length === 0) {
+      return null;
+    }
+    var sorted = values.slice().sort((a, b) => a - b);
+    return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+  }
+
+  /**
+   * How responsive the page has been since it loaded.
+   *
+   * `long_task_max_ms` is the field to read: a total cannot tell sixty 100 ms
+   * hitches from one six-second freeze, and only one of those is a broken
+   * product. Read `main_thread_blocked_pct` against its window -- the same work
+   * in half the time doubles the share while improving every absolute.
+   */
+  function responsiveness() {
+    var durations = longTasks.map((t) => t.dur);
+    var blocked = durations.reduce((total, d) => total + d, 0);
+    var latencies = interactions.map((i) => i.dur);
+    var windowMs = Math.round(_now());
+    return {
+      measurement_valid: !everHidden,
+      visibility_state: typeof document !== "undefined" ? document.visibilityState : null,
+      ever_hidden: everHidden,
+      unsupported: observerNotes.length > 0 ? observerNotes.slice() : null,
+      window_ms: windowMs,
+      long_tasks: longTasks.length,
+      long_task_ms_total: blocked,
+      long_task_max_ms: durations.reduce((worst, d) => Math.max(worst, d), 0),
+      long_task_max_ms_first_5s: longTasks
+        .filter((t) => t.start < 5000)
+        .reduce((worst, t) => Math.max(worst, t.dur), 0),
+      long_tasks_over_200ms: durations.filter((d) => d > 200).length,
+      main_thread_blocked_pct: windowMs > 0 ? Math.round((1000 * blocked) / windowMs) / 10 : null,
+      interactions: interactions.length,
+      interaction_p50_ms: _percentile(latencies, 0.5),
+      interaction_p95_ms: _percentile(latencies, 0.95),
+      interaction_max_ms: latencies.reduce((worst, d) => Math.max(worst, d), 0),
+    };
+  }
+
   function reset() {
     fetchSamples.length = 0;
     measureSamples.length = 0;
+    longTasks.length = 0;
+    interactions.length = 0;
+    labelTotals = {};
   }
 
   function setSlowThreshold(ms) {
@@ -480,6 +621,7 @@
   window.metabrowserPerf = {
     measure: measure,
     measureAsync: measureAsync,
+    responsiveness: responsiveness,
     setSlowThreshold: setSlowThreshold,
     snapshot: snapshot,
     report: report,
