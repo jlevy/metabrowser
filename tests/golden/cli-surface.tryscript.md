@@ -7,7 +7,9 @@ env:
   METABROWSER_PLUGINS_DIRS: ""
 patterns:
   ROOT_ARG: '\[ROOT\]'
-  VERSION: '\d+[^\s]*'
+  # A checkout appends how far past the tag it is and whether it is dirty,
+  # which changes on every commit; the elision covers both forms.
+  VERSION: '\d+[^\s]*( \([^)]*\))?'
 ---
 # Golden tests: top-level CLI surface
 

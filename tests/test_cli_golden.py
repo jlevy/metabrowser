@@ -62,10 +62,19 @@ def _stable_console(  # pyright: ignore[reportUnusedFunction]
     yield
 
 
+_BUILD_STATE = re.compile(r"  \[dev build: [^\]]*\]")
+
+
 def _normalize(text: str, root: Path) -> str:
     out = unstyle(text)
     out = out.replace(str(root), "<ROOT>")
     out = _LOG_LINE.sub("", out)
+    # A checkout annotates its build with how far past the tag it is and
+    # whether the tree is dirty, which changes on every commit and every edit.
+    # That is the point of the marker and the opposite of what a golden can
+    # record, so the shape is kept and the contents are not — the same reason
+    # <ROOT> is substituted above. See metabrowser.build_version.
+    out = _BUILD_STATE.sub("  [dev build: <STATE>]", out)
     # Rich pads rendered lines to the console width; the padding is not part
     # of the CLI contract and trips `git diff --check` on the goldens.
     return re.sub(r"[ \t]+$", "", out, flags=re.MULTILINE)
