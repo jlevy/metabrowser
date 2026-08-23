@@ -80,6 +80,20 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `transferred_kb` | 1,185 | 709 |
 | `vendor_first_start_ms` | 368 (152-1,176) | 594 (156-800) |
 
+### 241,063 files
+
+**What a route costs** — server probe
+
+| metric | before-main (n=1) | after-branch (n=1) |
+| --- | ---: | ---: |
+| `srv_scanning_ms` | 830 | 6 |
+| `srv_settled_ms` | 21 | 10 |
+| `wall_scanning_ms` | 833 | 7 |
+| `wall_settled_ms` | 27 | 11 |
+
+Walk elapsed across these runs: 44,503-44,503 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
 ### 241,084 files
 
 **What a reader gets** — browser probe
@@ -206,6 +220,8 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-007 | rows-with-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
 | exp-007 | rows-without-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
 | exp-007 | rows-without-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-008 | before-main | 2026-08-23T00:39 | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
+| exp-008 | after-branch | 2026-08-23T00:39 | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->
