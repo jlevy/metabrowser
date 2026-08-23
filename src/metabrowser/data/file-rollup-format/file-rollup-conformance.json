@@ -28,9 +28,9 @@
           "others": null
         },
         "registry": {
-          "fingerprint": "c4abb7a8add194171ad3dadc1eea81a4814a1a34b8e7f9e3696f4e6e4ab86aa2",
+          "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
           "revision": 3,
-          "schema_version": 2
+          "schema_version": 3
         },
         "remaining_types": {
           "extensions": [],
@@ -465,9 +465,9 @@
           }
         },
         "registry": {
-          "fingerprint": "c4abb7a8add194171ad3dadc1eea81a4814a1a34b8e7f9e3696f4e6e4ab86aa2",
+          "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
           "revision": 3,
-          "schema_version": 2
+          "schema_version": 3
         },
         "remaining_types": {
           "extensions": [
@@ -1022,87 +1022,92 @@
     {
       "error_code": "unsupported-schema-version",
       "id": "unsupported-schema",
-      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 4\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "unsupported-extension-components",
       "id": "unsupported-components",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 3\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 3\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "invalid-field",
       "id": "invalid-field",
-      "toml": "schema_version = 2\nregistry_revision = 0\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 0\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+    },
+    {
+      "error_code": "undeclared-deviation",
+      "id": "undeclared-deviation",
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\nlightness_rank = -0.5\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "invalid-id",
       "id": "invalid-id",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code_name\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code_name\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "missing-fallback",
       "id": "missing-fallback",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"fallback\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"fallback\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "duplicate-order",
       "id": "duplicate-order",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 10\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 10\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "unknown-group",
       "id": "unknown-group",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"missing\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"missing\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "unknown-family",
       "id": "unknown-family",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"missing\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"missing\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "invalid-content-family",
       "id": "invalid-content-family",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"mystery\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"mystery\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "invalid-extension",
       "id": "invalid-extension",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\".py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\".py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "duplicate-evidence",
       "id": "duplicate-evidence",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100\n\n[[kind]]\nid = \"python-copy\"\ngroup = \"code\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 1\n"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100\n\n[[kind]]\nid = \"python-copy\"\ngroup = \"code\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 1\n"
     },
     {
       "error_code": "invalid-hue",
       "id": "invalid-hue",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 361.0\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 361.0\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "invalid-linguist",
       "id": "linguist-without-color",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "invalid-field",
       "id": "familyless-kind-without-group",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100\n\n[[kind]]\nid = \"standalone\"\ncontent_family = \"code\"\nextensions = [\"standalone\"]\nfilenames = []\nshebangs = []\npriority = 1\n"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100\n\n[[kind]]\nid = \"standalone\"\ncontent_family = \"code\"\nextensions = [\"standalone\"]\nfilenames = []\nshebangs = []\npriority = 1\n"
     },
     {
       "error_code": "group-mismatch",
       "id": "family-group-mismatch",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ngroup = \"other\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ngroup = \"other\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100"
     },
     {
       "error_code": "empty-family",
       "id": "empty-family",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100\n\n[[family]]\nid = \"empty\"\nlabel = \"Empty\"\ngroup = \"code\"\norder = 30\nhue = 12.5\n"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = [\"py\"]\nfilenames = []\nshebangs = []\npriority = 100\n\n[[family]]\nid = \"empty\"\nlabel = \"Empty\"\ngroup = \"code\"\norder = 30\nhue = 12.5\n"
     },
     {
       "error_code": "missing-evidence",
       "id": "missing-evidence",
-      "toml": "schema_version = 2\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = []\nfilenames = []\nshebangs = []\npriority = 100"
+      "toml": "schema_version = 3\nregistry_revision = 1\nmax_extension_components = 2\n\n[[group]]\nid = \"code\"\nlabel = \"Code\"\norder = 10\n\n[[group]]\nid = \"other\"\nlabel = \"Other\"\norder = 20\n\n[[family]]\nid = \"python\"\nlabel = \"Python\"\ngroup = \"code\"\norder = 10\nlinguist = \"Python\"\nlinguist_color = \"#3572a5\"\nhue = 246.50\n\n[[kind]]\nid = \"python\"\nfamily = \"python\"\ncontent_family = \"code\"\nextensions = []\nfilenames = []\nshebangs = []\npriority = 100"
     }
   ],
   "metadata_cases": [
@@ -3250,9 +3255,9 @@
     }
   ],
   "registry": {
-    "fingerprint": "c4abb7a8add194171ad3dadc1eea81a4814a1a34b8e7f9e3696f4e6e4ab86aa2",
+    "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
     "revision": 3,
-    "schema_version": 2
+    "schema_version": 3
   },
   "schema": "file-type-conformance-v1"
 }

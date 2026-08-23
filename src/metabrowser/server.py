@@ -822,19 +822,50 @@ class _SlowRequestLogMiddleware:
 
 
 def _initial_path_html() -> str:
-    """Server-render the served-root path so it shows on first paint."""
-    root_str = str(_paths_safe.ROOT_DIR.resolve())
+    """Server-render the served root's *name* so it shows on first paint.
+
+    The name and not the path: the directories above the served root are
+    the same on every row of every view, and the navigation column is the
+    scarcest width in the app. The whole path is one hover away on the
+    anchor's title, and the file header across the divider spells it out.
+    """
     base = _paths_safe.ROOT_DIR.resolve().name
-    if base:
-        dir_part = html_escape(root_str[: -len(base)])
-        base_part = html_escape(base)
-        return (
-            f'<span class="path">'
-            f'<span class="path-dir">{dir_part}</span>'
-            f'<span class="path-base">{base_part}</span>'
-            f"</span>"
-        )
-    return f'<span class="path"><span class="path-base">{html_escape(root_str)}</span></span>'
+    label = base or str(_paths_safe.ROOT_DIR.resolve())
+    return f'<span class="path"><span class="path-base">{html_escape(label)}</span></span>'
+
+
+def _served_root_str() -> str:
+    """The served root, absolute. What the API reports and paths resolve against."""
+    return str(_paths_safe.ROOT_DIR.resolve())
+
+
+def _display_root_str() -> str:
+    """The served root as a header shows it, with the home directory as ``~``.
+
+    Display only, and only a shortening: the prefix is the same on every page
+    of the app, so every character it spends is width taken from the part of
+    the address that changes. A root under the home directory is the common
+    case and ``~`` is the shortest true name for it.
+
+    Falls through to the absolute path whenever the substitution would be a
+    guess rather than a fact — a root outside the home directory, or a
+    platform that does not report one.
+    """
+
+    resolved = _paths_safe.ROOT_DIR.resolve()
+    try:
+        home = Path.home().resolve()
+    except (OSError, RuntimeError):
+        return str(resolved)
+    if resolved == home:
+        return "~"
+    try:
+        relative = resolved.relative_to(home)
+    except ValueError:
+        return str(resolved)
+    # Through Path rather than a slash join, so the separator is the
+    # platform's rather than this file's assumption about it.
+    return str(Path("~") / relative)
 
 
 def _static_asset_url(rel_path: str) -> str:
@@ -875,6 +906,7 @@ async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
+    initial_root = html_escape(_display_root_str(), quote=True)
     repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset_loader.js")
@@ -1105,27 +1137,45 @@ async def index(_request: Request) -> HTMLResponse:
   <main class="container">
     <div class="tree-pane" id="tree-pane">
       <header class="app-header">
-        <span class="header-brand">Metabrowser</span>
-        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" title="Jump to root">{initial_path}</a>
-        <!-- Settings menu. A gear button opens a menu with two icon-segment
-             choosers (theme + reading font) and a small font-set dropdown
+        <!-- data-served-root is the one place the absolute root is written:
+             the file header reads it back to render its dimmed prefix, so
+             the two headers cannot disagree about what the root is. It is also
+             what this heading's tooltip is built from.
+
+             No data-tip-text here, deliberately. This element has a tooltip of
+             its own in app.js — the folder's counts and age, not just its
+             path — and an element carrying both would announce through two
+             mechanisms at once, which is the bug the one-tooltip rule exists
+             to prevent. See "One Tooltip, and It Is Ours" in
+             docs/design-system.md. -->
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path"
+           data-served-root="{initial_root}">{initial_path}</a>
+        <!-- The Metabrowser menu. The gear names the product rather than
+             standing as an unlabelled settings control: the wordmark that
+             used to sit on its own line above the path is this menu's title,
+             which returns that line of the navigation column — the app's
+             scarcest width — to the path. Inside: two icon-segment choosers
+             (theme + reading font) and a small font-set dropdown
              (#app-font-select, options from _FONT_SETS). Choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
-             menu's visibility via CSS. -->
+             menu's visibility via CSS. The title is aria-hidden because the
+             menu already carries the same name. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
-                  aria-haspopup="true" title="Settings" aria-label="Settings"></button>
-          <div class="settings-menu menu" role="menu" aria-label="Settings">
+                  aria-haspopup="true" data-tip-text="Metabrowser" aria-label="Metabrowser menu"></button>
+          <div class="settings-menu menu" role="menu" aria-label="Metabrowser">
+            <div class="menu-title" aria-hidden="true">Metabrowser</div>
+            <div class="menu-separator"></div>
             <div class="menu-chooser" role="group" aria-label="Theme">
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="system" title="System theme" aria-label="System theme"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="light" title="Light theme" aria-label="Light theme"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="dark" title="Dark theme" aria-label="Dark theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="system" data-tip-text="System theme" aria-label="System theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="light" data-tip-text="Light theme" aria-label="Light theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="dark" data-tip-text="Dark theme" aria-label="Dark theme"></button>
             </div>
             <div class="menu-separator"></div>
             <div class="menu-chooser" role="group" aria-label="Reading font">
-              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="serif" title="Serif reading font" aria-label="Serif reading font"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" title="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="serif" data-tip-text="Serif reading font" aria-label="Serif reading font"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" data-tip-text="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
             </div>
             <div class="menu-separator"></div>
             <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>

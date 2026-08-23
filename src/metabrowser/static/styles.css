@@ -332,12 +332,6 @@
   --mb-distribution-track: var(--viz-surface-sunken);
   --mb-distribution-track-height: 8px;
   --mb-distribution-segment-gap: 1px;
-  /* How far a segment recedes while a sibling is hovered. A tally track is
-     eight pixels tall, so a brightness shift on the hovered segment alone has
-     almost no area to register in and reads as nothing happening. Dimming
-     everything else is legible at any hue and at any segment width, and it
-     answers the question the tooltip raises: which one is this. */
-  --mb-distribution-segment-recede: 0.32;
 
   /* Icons — one glyph size for every icon in the chrome, whether it is a
      button (gear, printer, copy), a file-type mark in a row, or a menu
@@ -409,16 +403,24 @@
   --preview-message-max-width: 42rem;
   --embedded-document-padding-top: 8px;
   /* The navigation column has one left inset, and everything in it
-     lines up on that edge: the brand, the served path, the Files tab,
-     the filter chips, the tally row, and every tree row. 12px is the
-     tree row's own content inset (10px padding + the 2px selection
-     bar), so the chrome above aligns to the content rather than the
-     content having to move. Controls with internal padding cancel it
-     — see .header-brand's negative margin and .nav-tab-bar below — so
+     lines up on that edge: the served path, the Files tab, the filter
+     chips, the tally row, and every tree row. 12px is the tree row's own
+     content inset (10px padding + the 2px selection bar), so the chrome
+     above aligns to the content rather than the content having to move.
+     Controls with internal padding cancel it — see .nav-tab-bar below — so
      their *text* lands on the inset; bordered controls like chips
      align their border instead, since that is their visual edge. */
   --pane-header-padding-x: 12px;
   --pane-header-padding-y: 8px;
+  /* The height of the path row on BOTH sides of the divider, border included,
+     so the two headers meet exactly and the hairline under them is one line
+     across the app rather than two that happen to be close.
+
+     Driven from here rather than from each side's content, which is how they
+     drifted: the navigation header came out 40.5px against the file header's
+     41px — invisible in review, and enough for the rules to miss each other by
+     half a pixel. Both rows are border-box, so this is the whole row. */
+  --pane-header-row-height: 41px;
   --file-header-padding-y: var(--pane-header-padding-y);
   --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
@@ -690,7 +692,48 @@
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
-  --viz-data-mark-hover-filter: brightness(0.88) saturate(1.18);
+  --viz-data-mark-hover-filter: brightness(0.78) saturate(1.3);
+  /* How a hovered data mark grows, and the curve it grows on.
+  
+     Motion rather than an outline, which is what this replaces twice over — a
+     translucent ring, then an opaque grey one. A ring is a mark drawn ON the
+     data: it covers the colour it is meant to point at, it competes with the
+     hairlines between segments, and on an eight-pixel track a two-pixel ring
+     is a quarter of the height. Growth is the mark answering instead. Nothing
+     is covered, and the eye is already good at spotting the one thing that
+     moved.
+
+     The curve is what makes it read as an answer. It overshoots past the
+     target and settles back, so the mark goes wider than it ends up and comes
+     back — which at this duration is a flick rather than a resize. A plain
+     ease over the same distance reads as the layout being sluggish.
+
+     The overshoot is worth more than the growth, and it has to be big enough
+     to see. The stock ease-out-back (y1 1.56) peaks only 0.5% past its target,
+     which on a 257px segment is 1.3px of bounce against 13px of growth — the
+     move lands but the spring does not. At y1 2.2 the peak is 2% past, so the
+     same segment overshoots by 5px and a mid-sized one by 2px. Measured, not
+     guessed: evaluate the bezier rather than adjusting it by eye, because the
+     part being tuned lasts about a tenth of a second.
+
+     Grow the axis that carries NO data. On a horizontal bar the width is the
+     value, so it is the one dimension that must not move — growing it states a
+     share the mark does not have. Thickness means nothing there, which is what
+     frees it. That also makes the answer uniform: a proportional width grew a
+     wide segment by fifteen pixels and a three-pixel segment by nothing, so
+     the marks hardest to point at answered least, where every segment shares
+     one height.
+
+     Applied as a transform rather than as a height, so the row's layout does
+     not reflow under the pointer, and centred so the mark grows either side of
+     the baseline the eye follows along the row.
+
+     The factor is large because the axis is small: an eight-pixel bar at 1.5
+     is twelve, and the overshoot carries it past thirteen before it settles. A
+     few percent would be a fraction of a pixel. */
+  --viz-hover-grow: 1.5;
+  --viz-hover-grow-duration: 170ms;
+  --viz-hover-grow-ease: cubic-bezier(0.34, 2.2, 0.64, 1);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -1004,7 +1047,7 @@
   --row-flash-bg: oklch(50.98% 0.0977 98.1);
   /* Lift rather than deepen: the dark categorical palette is already light
      against a near-black page (see the light-theme note beside this token). */
-  --viz-data-mark-hover-filter: brightness(1.2) saturate(1.08);
+  --viz-data-mark-hover-filter: brightness(1.22) saturate(1.2);
 
   --viz-text: var(--text);
   --viz-text-muted: oklch(74.1% 0.019 256.7);
@@ -1139,14 +1182,25 @@ body {
 
 /* ── Header ──────────────────────────────────────────────────── */
 
+/* One row — the path, then the Metabrowser menu — which is the shape
+   .file-header has on the other side of the divider, so the two headers
+   read as one bar across the top of the app rather than as two headers
+   that happen to be adjacent. */
+/* The navigation column's path row. Its twin across the divider is
+   .file-header: same height, same hairline, so the top of the app reads as one
+   band rather than as two panes that happen to be adjacent. Anything that
+   changes the height of one belongs in --pane-header-row-height, which changes
+   both. */
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  height: var(--pane-header-row-height);
+  border-bottom: 1px solid var(--border);
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
   letter-spacing: 0.1em;
@@ -1165,16 +1219,6 @@ body {
 .app-header a:hover {
   background: var(--hover-bg);
 }
-/* Product-name brand label at the very top of the nav header. Not a
-   link (the path immediately below already jumps to root) — just a
-   small uppercase muted line so the SPA name is present without
-   competing with the path for attention. */
-.header-brand {
-  font-size: var(--micro-font-size);
-  color: var(--muted);
-  padding: 0 4px;
-  margin-left: -4px;
-}
 /* Path is the primary piece of information in the header — bold,
    mixed-case, sans-serif at the tree-row size. Click jumps back to
    the served root. */
@@ -1187,6 +1231,13 @@ body {
   font-size: var(--nav-font-size);
   padding: 2px 0;
   border-radius: var(--radius-chrome);
+  /* Grows and truncates exactly as .file-header-path does, so both
+     headers shorten the same way when the panes are resized. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* ── Text buttons — shared labelled action primitive ─────────────
    A compact action with a persistent surface and border. Use-site
@@ -1356,16 +1407,18 @@ body {
 }
 
 /* ── Settings toggle (gear → theme + reading-font choosers) ───────
-   A gear button pinned to the header's top-right opens a .menu holding
-   two segmented choosers (theme, reading font). Click-to-open-then-pick,
-   never click-to-cycle. The button itself is the .icon-btn primitive
-   above; only the trigger's placement and the menu's anchored
-   positioning live here, the menu surface comes from the .menu
-   primitive, and the segments from the .menu-chooser primitive below. */
+   The gear at the end of the nav header opens a .menu holding the product
+   name and two segmented choosers (theme, reading font). Click-to-open-
+   then-pick, never click-to-cycle. It sits in the header's flex row rather
+   than pinned over it, so it shares the row's vertical centring with the
+   path the way .file-header's controls share theirs. `relative` is what
+   the menu below anchors against. The button itself is the .icon-btn
+   primitive above; only the trigger's placement and the menu's anchored
+   positioning live here, the menu surface comes from the .menu primitive,
+   and the segments from the .menu-chooser primitive below. */
 .settings-toggle {
-  position: absolute;
-  top: 6px;
-  right: 8px;
+  position: relative;
+  flex: 0 0 auto;
 }
 /* Anchored placement under the trigger; the .menu primitive supplies the
    surface styling. Scoped under .settings-toggle so this `display: none`
@@ -1471,6 +1524,20 @@ body {
   margin: 4px 0;
   background: var(--border);
 }
+/* The menu's own name, at its top. Metabrowser's wordmark lives here now:
+   the gear is the product's menu, and a menu that names itself does not
+   need a line of the navigation column to do it. Same small-caps register
+   as .menu-section-label, without that rule's icon-column inset — a title
+   is not a row. */
+.menu-title {
+  padding: 2px 8px 3px;
+  color: var(--label-color);
+  font-family: var(--font-sans);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
+}
 .menu-section-label {
   padding: 3px 8px 2px 32px;
   color: var(--label-color);
@@ -1574,24 +1641,21 @@ html.theme-anim .menu {
    reads as evenly spaced bands rather than one band and one gap.
    .tree-content contributes no top padding, so this is the whole
    distance between the bar's border and the tally text. */
+/* Sized at --nav-font-size, not --ui-small-font-size: this row states the
+   totals for the rows directly beneath it, and the two sat one step apart
+   on the ramp, which read as the header being an afterthought rather than
+   as a heading. The spans inside it inherit; they carry colour only. */
 .tree-summary {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-}
-.tree-summary-count,
-.tree-summary-size {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 .tree-summary-split {
   flex-wrap: wrap;
   gap: 4px 5px;
-}
-.tree-summary-tracked,
-.tree-summary-bytes {
-  font-size: var(--ui-small-font-size);
 }
 .tree-summary-tracked {
   color: var(--text);
@@ -1607,7 +1671,6 @@ html.theme-anim .menu {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--ui-small-font-size);
 }
 
 /* Walker-truncation banner: shown only when /api/tree returns
@@ -1623,23 +1686,12 @@ html.theme-anim .menu {
   border-bottom: 1px solid var(--border);
 }
 
-/* Path-rendering convention — pathHtml() in app.js wraps a path in
-   .path with .path-dir (everything up to and including the final
-   slash) and .path-base (the last segment). Only the dir prefix
-   restyles; the basename inherits whatever its container declares so
-   each call site (header, file header, etc.) keeps its own emphasis. */
-.path-dir {
-  color: var(--muted);
-  font-weight: var(--weight-normal);
-}
-/* Header path is the document headline — both the dir-prefix
-   and the basename inherit the header's bold weight + dark
-   text color. Other call sites (file header, etc.) keep the
-   normal-weight muted dir prefix from the rule above. */
-.header-path .path-dir {
-  font-weight: inherit;
-  color: inherit;
-}
+/* Path-rendering convention — pathBaseHtml() in app.js wraps the last
+   component of a path in .path with .path-base. Neither carries style of
+   its own: the basename inherits whatever its container declares, so each
+   call site keeps its own emphasis. A whole path is not rendered this way
+   anywhere — the file header renders one as an address of controls, which
+   .folder-breadcrumb styles. */
 
 /* ── Keyboard keys — shared inline primitive ─────────────────────
    The one way to render a keyboard key. Tokens live with the type
@@ -2226,6 +2278,17 @@ html[data-prose-font="sans"] {
 .file-identity-icon.ft-csv {
   color: var(--ft-color);
 }
+/* A family's icon is painted in that family's own colour, so the glyph, the
+   bar beside it and the row all name the same family.
+
+   After the ft-* rules above deliberately: those colour a glyph from the old
+   sixteen-entry extension table, which does not know about registry families —
+   it is the second taxonomy mb-xrh8 is about. On a family row the registry is
+   the authority, so its colour wins. The fallback keeps a family the palette
+   has no colour for looking like every other muted glyph. */
+.file-identity-icon.file-identity-icon-family {
+  color: var(--mb-distribution-color, var(--muted));
+}
 /* `.icon-state` is a folder variant (logs/state dirs), not a file-type. */
 .tree-item-icon.icon-state {
   color: oklch(50.3% 0.189 294.7);
@@ -2291,8 +2354,8 @@ html[data-prose-font="sans"] {
    the shadow is the additive cue. */
 .tab-bar.nav-tab-bar {
   /* Cancel the tab's own horizontal padding so the *label* sits on the
-     column inset, the same trick .header-brand uses. Left-padding the
-     bar instead would inset the label twice. */
+     column inset. Left-padding the bar instead would inset the label
+     twice. */
   padding-left: calc(var(--pane-header-padding-x) - var(--file-tab-padding-x));
   position: relative;
   z-index: 1;
@@ -2766,8 +2829,11 @@ html[data-prose-font="sans"] {
 
 /* ── File header ─────────────────────────────────────────────── */
 
+/* The main view's path row, and the twin of .app-header across the divider.
+   See --pane-header-row-height. */
 .file-header {
   padding: var(--file-header-padding-y) var(--content-padding-x);
+  height: var(--pane-header-row-height);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   display: flex;
@@ -2798,6 +2864,39 @@ html[data-prose-font="sans"] {
 .folder-breadcrumb {
   gap: 2px;
 }
+/* The address gives way in the order the reader can afford to lose it: the
+   dimmed root prefix first, then the directories, and the segment you are
+   standing on last, because the name you are looking at is the part worth
+   keeping. Each shrinking part carries its own ellipsis, so a squeezed
+   address ends in a visible "…" instead of being cut mid-word against the
+   header's clip. The separators and the leading slash hold their size —
+   they are five to eight pixels of structure, not content.
+
+   The weights matter more than their absolute values: the root outshrinks a
+   directory by enough that it is effectively gone before one narrows, and a
+   directory outshrinks the current segment the same way.
+
+   Measured on a 296px header, which is a 620px window at the default nav
+   width, showing a served root 494px wide followed by three components.
+   Below a 375px header the root has nothing left to give.
+   Without the rules below, the next 55px came out of the end of the run
+   rather than the start: at 320px the filename was cut 19px short with no
+   ellipsis, and the copy control sat 45px outside the clipped box, where it
+   could be neither seen nor clicked. */
+.folder-breadcrumb .folder-crumb {
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-breadcrumb .folder-crumb-current {
+  flex-shrink: 1;
+}
+.folder-breadcrumb .folder-crumb-root,
+.folder-breadcrumb .folder-crumb-sep {
+  flex: 0 0 auto;
+}
 .folder-crumb {
   font: inherit;
   border: 0;
@@ -2814,10 +2913,62 @@ html[data-prose-font="sans"] {
   outline: 2px solid var(--link);
   outline-offset: -1px;
 }
+/* The component you are standing on: darker and bold so the address has a
+   focus, but still a control. It navigates to where you already are, which
+   changes nothing — the point is that the address has no dead segment in
+   the middle of a run of live ones. */
 .folder-crumb-current {
   color: var(--text);
-  cursor: default;
   font-weight: var(--weight-bold);
+}
+/* The served root, absolute, ahead of the first slash. Dimmed because it
+   is identical on every page of the app: context for the live part of the
+   address rather than part of it. It gives up its width first, so a long
+   root elides before a filename does — the shrink weight is what puts it
+   first, against the 4 and the 1 the crumbs above carry.
+
+   The weight is enormous on purpose, because flex-shrink is proportional
+   rather than sequential: every shrinkable item gives up something at every
+   step, so a crumb takes a sliver even while the root still has hundreds of
+   pixels to give. A sliver is not harmless once crumbs ellipsize — any overflow
+   at all, however small, paints the ellipsis and eats real characters, so a
+   fifth of a pixel turns "metabrowser" into "metabrow…".
+
+   Measured on a 900px window showing ~/wrk/.../<root> / src / metabrowser /
+   color_oklch.py, as the largest width any crumb gave up:
+
+     weight    1000   0.164px   ellipsis
+     weight    5000   0.031px   clean
+     weight   20000   0.008px   clean
+     weight  100000   0.000px   clean
+
+   5000 is where it stops; 20000 is that with room, and still finite so the
+   ordering below stays real. Once the root reaches zero flex freezes it and
+   redistributes the rest, so the 4-to-1 ordering between the directories and
+   the filename applies from there down. */
+.file-header-root {
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 20000 auto;
+  /* Truncates from the START, so the part of the root nearest what you are
+     looking at is the part that survives: "…/wrk/github/project /" rather
+     than a home directory spelled out in full and the project name cut off.
+     The end of a path carries the information; the beginning is the same on
+     every page of the app.
+
+     direction: rtl moves the overflow — and so the ellipsis — to the left
+     edge. The text itself must not be reordered by that, which is what the
+     <bdi> around it is for: it isolates the path as one left-to-right run, so
+     a leading "~" or "/" cannot be reordered to the far end the way a bare
+     neutral character would be. */
+  direction: rtl;
+  text-align: left;
+}
+.file-header-root > bdi {
+  direction: ltr;
 }
 .folder-crumb-sep {
   color: var(--muted);

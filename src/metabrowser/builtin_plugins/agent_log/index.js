@@ -145,7 +145,7 @@
       '<div class="log-event-header" onclick="toggleEvent(this)">' +
       mb.icons.chevron +
       kindHtml +
-      '<span class="log-event-summary" title="' +
+      '<span class="log-event-summary" data-tip-text="' +
       mb.escapeHtml(eventSummaryText(evt)) +
       '">' +
       renderSummary(evt) +

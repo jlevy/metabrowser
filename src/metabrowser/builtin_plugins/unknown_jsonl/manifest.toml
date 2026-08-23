@@ -2,7 +2,7 @@
 name = "unknown-jsonl"
 display_name = "Unknown JSONL"
 version = "0.0.1"
-sdk_version = "0.3"
+sdk_version = "0.4"
 
 # Catch-all for .jsonl files where adapter sniffing returns no known
 # adapter. The imperative detector returns "unknown-jsonl" for this case;

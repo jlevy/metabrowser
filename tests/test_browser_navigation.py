@@ -159,6 +159,36 @@ def test_header_root_link_uses_the_canonical_view_route(tmp_path: Path) -> None:
     assert '<a href="/" class="header-path"' not in response.text
 
 
+def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Path) -> None:
+    """The navigation column spends its width on the name, not the path.
+
+    The directories above the served root are the same on every row of
+    every view, and the column is the narrowest in the app. Nothing is
+    lost: ``data-served-root`` is both what the file header reads back to
+    draw its dimmed prefix — so the two headers cannot disagree about the
+    root — and what this heading's own tooltip is built from in app.js.
+
+    The heading carries no tooltip attribute of its own, deliberately. It
+    has a richer tooltip in app.js, and an element announcing through two
+    mechanisms is what the one-tooltip rule exists to prevent.
+    """
+
+    root = (tmp_path / "wrk" / "foo").resolve()
+    root.mkdir(parents=True)
+    server._set_root_dir(root)
+    try:
+        response = TestClient(server.app).get("/view/")
+    finally:
+        server._set_root_dir(Path())
+    assert '<span class="path-base">foo</span>' in response.text
+    assert '<span class="path-dir">' not in response.text
+    assert f'data-served-root="{root}"' in response.text
+    # One tooltip mechanism on this element, and it is app.js's own.
+    header_anchor = response.text[response.text.index('class="header-path"') :][:400]
+    assert "data-tip-text=" not in header_anchor
+    assert "title=" not in header_anchor
+
+
 def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None:
     target = tmp_path / "docs" / "雪 #1%.md"
     target.parent.mkdir()
@@ -211,3 +241,54 @@ def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(
     assert result.exit_code == 0, result.exception
     assert "at http://127.0.0.1:8411/view/\n" in result.output
     server_class.assert_called_once()
+
+
+def test_a_root_under_the_home_directory_is_shown_with_a_tilde(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The prefix is identical on every page, so every character it spends is
+    width taken from the part of the address that changes.
+
+    A shortening and not a rewrite: it happens only where it is a fact, and
+    falls through to the absolute path everywhere else.
+    """
+
+    home = (tmp_path / "home" / "someone").resolve()
+    (home / "wrk" / "project").mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+    server._set_root_dir(home / "wrk" / "project")
+    try:
+        assert server._display_root_str() == str(Path("~") / "wrk" / "project")
+        # The absolute root is still what the API reports and paths resolve on.
+        assert server._served_root_str() == str(home / "wrk" / "project")
+
+        server._set_root_dir(home)
+        assert server._display_root_str() == "~"
+
+        outside = (tmp_path / "elsewhere").resolve()
+        outside.mkdir()
+        server._set_root_dir(outside)
+        assert server._display_root_str() == str(outside)
+    finally:
+        server._set_root_dir(Path())
+
+
+def test_the_header_prefix_gives_way_from_its_start_and_reads_at_row_weight() -> None:
+    """Two properties of the dimmed prefix, both about what survives.
+
+    It truncates from the START, because the end of a path is the half that
+    says where you are and the beginning is the same on every page. And it is
+    bold like the crumbs after it: grey already carries "this is context",
+    so the weight does not need to say it a second time, and one address at
+    two weights reads as two things.
+    """
+
+    css = (Path(server.STATIC_DIR) / "styles.css").read_text()
+    start = css.index(".file-header-root {")
+    block = css[start : css.index("}", start)]
+    assert "direction: rtl" in block
+    assert "text-overflow: ellipsis" in block
+    assert "font-weight" not in block, (
+        "the prefix inherits the container's weight rather than setting its own"
+    )

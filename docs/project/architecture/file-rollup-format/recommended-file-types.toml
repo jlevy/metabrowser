@@ -8,16 +8,22 @@
 # devtools/file_type_contract.py --write. Do not edit the generated documentation copy.
 # devtools/check_file_type_colors.py checks the colour rules below.
 
-# A family declares one colour number: `hue`, in degrees. Lightness and chroma are
-# the same for every family and belong to the consuming theme, not to this file.
+# A family declares one colour number: `hue`, in degrees. A consuming theme owns the
+# lightness and chroma, which it states as a band rather than as one value.
 #
 # Where `linguist` names a language, `linguist_color` is that language's colour in
 # GitHub's linguist and the hue is that colour converted to oklch — unchanged,
 # including where two of GitHub's own colours are close together. Families without a
 # `linguist` name take a hue that clears every other declared hue. Nothing else moves
-# a hue, and devtools/check_file_type_colors.py holds both rules.
+# a hue.
+#
+# `linguist_color` is not provenance alone: a theme also reads a family's lightness
+# and chroma *rank* among the other upstream colours off it, and paints the family at
+# that place in its band. Hue at one fixed tone cannot separate 56 families — GitHub's
+# own colours are told apart mostly by the two dimensions a fixed tone discards.
+# devtools/check_file_type_colors.py holds these rules and reports the measurements.
 
-schema_version = 2
+schema_version = 3
 registry_revision = 3
 max_extension_components = 2
 
@@ -301,7 +307,17 @@ group = "docs"
 order = 100
 linguist = "Markdown"
 linguist_color = "#083fa1"
-hue = 261.42
+hue = 276.0
+lightness_rank = -0.5
+deviation = """GitHub puts Markdown at 261.42, inside a seven-family run -- python 246.50, xml \
+251.44, typescript 253.30, powershell 258.14, markdown, lua 264.05, php 272.03 -- and it \
+read as Python's blue. Markdown is the most-viewed family in the app and Python's colour \
+is the better known of the two, so Markdown is the one that moves. 276.0 clears every \
+other family by 0.0355 rather than 0.0149 and is still plainly a blue rather than a \
+violet. The rank puts it below the band, which is the deliberate part: at its upstream \
+rank it painted 0.571 against Python's 0.599, and no hue move makes a lighter blue read \
+as a darker one. #083fa1 is a dark navy, so this paints closer to the colour GitHub \
+chose than the band alone allowed."""
 
 [[family]]
 id = "plain-text"

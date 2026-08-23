@@ -68,7 +68,7 @@
   }
 
   /**
-   * @typedef {{value: string, label: string, title?: string, className?: string,
+   * @typedef {{value: string, label: string, tip?: string, className?: string,
    *            count?: number, icon?: string, iconClass?: string,
    *            ageClass?: string}} ChipOption
    * @typedef {{key: string, select?: string, layout?: string, label: string,
@@ -97,12 +97,12 @@
           select === "one"
             ? ` role="radio" aria-checked="${on}" tabindex="${on ? "0" : "-1"}"`
             : ` aria-pressed="${on}"`;
-        const title = opt.title ? ` title="${esc(opt.title)}"` : "";
+        const tip = opt.tip ? ` data-tip-text="${esc(opt.tip)}"` : "";
         const extra = opt.className ? ` ${esc(opt.className)}` : "";
         return (
           `<button type="button" class="chip${extra}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}"` +
-          `${state}${title}>${esc(opt.label)}</button>`
+          `${state}${tip}>${esc(opt.label)}</button>`
         );
       })
       .join("");
@@ -128,13 +128,13 @@
    * like.
    *
    * @param {{key: string, label?: string, pressed?: boolean, badge?: number,
-   *          title?: string, className?: string, controls?: string,
+   *          tip?: string, className?: string, controls?: string,
    *          icon?: string, ariaLabel?: string}} spec
    */
   function toggleHtml(spec) {
     const count = typeof spec.badge === "number" && spec.badge > 0 ? spec.badge : 0;
     const badge = count > 0 ? `<span class="chip-badge">${esc(count)}</span>` : "";
-    const title = spec.title ? ` title="${esc(spec.title)}"` : "";
+    const tip = spec.tip ? ` data-tip-text="${esc(spec.tip)}"` : "";
     const controls = spec.controls ? ` aria-controls="${esc(spec.controls)}"` : "";
     const ariaLabel = spec.ariaLabel ? ` aria-label="${esc(spec.ariaLabel)}"` : "";
     const cls = spec.className ? ` ${esc(spec.className)}` : "";
@@ -147,13 +147,13 @@
       return (
         `${badge}<button type="button" class="icon-btn${cls}"` +
         ` data-chip-key="${esc(spec.key)}" aria-pressed="${spec.pressed === true}"` +
-        `${controls}${ariaLabel}${title}>${spec.icon}</button>`
+        `${controls}${ariaLabel}${tip}>${spec.icon}</button>`
       );
     }
     return (
       `<button type="button" class="chip chip-toggle${cls}"` +
       ` data-chip-key="${esc(spec.key)}" aria-pressed="${spec.pressed === true}"` +
-      `${controls}${ariaLabel}${title}>${esc(spec.label || "")}${badge}</button>`
+      `${controls}${ariaLabel}${tip}>${esc(spec.label || "")}${badge}</button>`
     );
   }
 
@@ -231,7 +231,7 @@
       .map((opt) => {
         const on = selected.indexOf(opt.value) >= 0;
         const extra = opt.className ? ` ${esc(opt.className)}` : "";
-        const title = opt.title ? ` title="${esc(opt.title)}"` : "";
+        const tip = opt.tip ? ` data-tip-text="${esc(opt.tip)}"` : "";
         const count =
           typeof opt.count === "number"
             ? `<span class="chip-menu-count">${esc(opt.count.toLocaleString())}</span>`
@@ -250,7 +250,7 @@
         const age = opt.ageClass ? ` ${esc(opt.ageClass)}` : "";
         return (
           `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +
-          `${title}` +
+          `${tip}` +
           ` role="${rowRole}" aria-checked="${on}"` +
           ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
@@ -333,13 +333,13 @@
    * where it sits beside one.
    *
    * @param {{key: string, label: string, checked?: boolean,
-   *          title?: string, className?: string}} spec
+   *          tip?: string, className?: string}} spec
    */
   function checkHtml(spec) {
-    const title = spec.title ? ` title="${esc(spec.title)}"` : "";
+    const tip = spec.tip ? ` data-tip-text="${esc(spec.tip)}"` : "";
     const cls = spec.className ? ` ${esc(spec.className)}` : "";
     return (
-      `<label class="filter-check${cls}"${title}>` +
+      `<label class="filter-check${cls}"${tip}>` +
       `<input type="checkbox" data-chip-check="${esc(spec.key)}"` +
       `${spec.checked === true ? " checked" : ""}>` +
       `<span>${esc(spec.label)}</span></label>`

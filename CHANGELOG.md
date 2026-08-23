@@ -2,7 +2,7 @@
 
 All notable changes to Metabrowser are documented here.
 
-## Unreleased
+## 0.6.0
 
 File-type colors:
 
@@ -16,18 +16,49 @@ File-type colors:
 - The type registry declares a `hue` per family, with the `linguist` language and its
   upstream color recorded beside it.
   Thirty-five families carry GitHub’s hue exactly, including where two of GitHub’s own
-  colors are close together; the twenty-one GitHub names no color for take a hue at
-  least five degrees clear of every other.
-  `devtools/check_file_type_colors.py` holds both rules and runs in `make lint`.
+  colors are close together; the twenty-one GitHub names no color for take a hue whose
+  painted color clears every other family by a perceptual distance, in both themes.
+  `devtools/check_file_type_colors.py` holds both rules and runs in `make lint`, and
+  reports the collisions it keeps because they are GitHub’s own.
 
-- Lightness and chroma are the theme’s, one pair for the whole palette, so segments of a
-  stacked bar differ in hue and in nothing else and none looks heavier than its size.
+- Lightness and chroma are the theme’s, stated as a narrow band rather than as one pair,
+  and a family’s place inside it is its rank among the upstream colors GitHub gave the
+  other families. Hue alone could not carry fifty-six families: they average 6.4 degrees
+  of spacing, at or under what the eye resolves at a fixed tone, and GitHub’s own colors
+  are separated mostly by the two dimensions a fixed tone throws away.
+  Html and svelte came out `#dd5230` against `#dd5232`, and ruby and yaml one step apart
+  in blue. Taking all three attributes moves the closest pair in the palette from an
+  Oklab delta-E of 0.0020 to 0.0156, and pairs too close to tell apart from 41 to 9. The
+  band is +-0.06 of lightness, which is the cost side of the trade: a stacked-bar
+  segment can now read slightly heavier than a same-size neighbour, where one flat tone
+  guaranteed it could not.
+  Widening it buys almost nothing, so it stays narrow.
   The server ships finished colors for both themes rather than hues composed in CSS,
   because a browser handed an out-of-gamut `oklch()` clips it — moving hue by as much as
-  nine degrees, more than the separation the palette is built on.
+  nine degrees, more than the separation the palette is built on, and because a family’s
+  rank is only knowable where the whole registry is in hand.
 
-- The registry schema version is now `2` and its projection is `file-type-registry-v2`,
-  carrying `hue` and `linguist` on each family.
+- Markdown does not take GitHub’s placement.
+  GitHub puts it at hue 261.42, inside a run of seven families between Python’s 246.50
+  and PHP’s 272.03, where it read as Python’s blue — and Markdown is the family this app
+  shows most. It moves to 276.0 and below the lightness band, painting `#4c50ca` against
+  Python’s `#0385d6` rather than `#3370e3`. That takes the pair from an Oklab delta-E of
+  0.0606 to 0.1348, and Markdown’s distance to its nearest neighbour of any kind from
+  0.0149 to 0.0725.
+
+- A family may now declare a deviation: prose recording why it does not paint where its
+  upstream colour puts it, and optionally a `lightness_rank` of its own that may sit
+  outside the band. `linguist` and `linguist_color` stay, so provenance survives, and a
+  deviating family is held to the same perceptual floor a colour chosen from a free gap
+  is. A `lightness_rank` without a `deviation` is refused — leaving the band is the one
+  change that must never read as a typo.
+  `devtools/check_file_type_colors.py` lists the deviations in its report.
+
+- The registry schema version is now `3` and its projection is `file-type-registry-v3`,
+  carrying `hue`, `linguist`, and `linguist_color` on each family.
+  `linguist_color` is in the projection because it is no longer provenance alone: it is
+  what a consumer reads a family’s tone rank off, so a consumer that only had `hue`
+  could not reproduce the palette.
   `--mb-distribution-category-1` through `-12`, the `.mb-distribution-slot-*` classes,
   and `DISTRIBUTION_PALETTE_SLOTS` are gone; `.mb-distribution-mark` and
   `METABROWSER_SETTINGS.DISTRIBUTION_COLORS` replace them.
@@ -44,15 +75,24 @@ Folder Overview:
   insets sized for a track it was no longer in and read at 43rem against 48rem; and the
   narrow inset did not match the article padding it replaced.
 
+- The breakdown’s icon is on the **family** now, one per family and in that family’s
+  colour, with its extensions listed bare beneath it.
+  It used to be the other way round — an icon on every extension and none on the family
+  — and those icons disagreed with each other, because they resolved through a separate
+  extension table that knows nothing about families: `.js` matched an entry and `.mjs`,
+  `.cjs` and `.jsx` did not.
+
 - Segments of a tally bar are separated by a hairline of the page ground, so two
   families of similar hue read as two rather than as one wide band.
   It is drawn inside the segment rather than as a gap, because the widths are
   percentages that sum to 100 and anything occupying layout would push the last segment
   past the end of the track.
 
-- **`PLUGIN_SDK_VERSION` is `0.3`.** An external plugin must set `sdk_version = "0.3"`
+- **`PLUGIN_SDK_VERSION` is `0.4`.** An external plugin must set `sdk_version = "0.4"`
   and update its tooltip call sites: `mb.tooltip.show` takes the anchor element rather
   than a `MouseEvent`, and `mb.tooltip.move` is gone.
+  `mb.fileTypes.schemaVersion` and `registryIdentity.schemaVersion` are `3`, and a
+  plugin comparing a rollup’s registry identity against them needs no other change.
 
 - Tooltips are placed relative to the element they annotate and hold still once shown.
   They used to follow the pointer, which jitters while you are trying to read one and —
@@ -89,6 +129,32 @@ Folder Overview:
   track — including Ignored, whose contents the checkbox has nothing to do with.
   The order now comes from the combined population, and `buildFolderTotalsComposition`
   no longer accepts the flag at all, so the tally rows cannot respond to it.
+
+Navigation and the file header:
+
+- The Metabrowser wordmark moved out of the navigation column and became the title of
+  the gear menu, so the gear reads as the product’s menu and the column’s scarcest
+  resource — width — goes to the path instead of to a line that never changes.
+
+- The navigation heading shows the folder’s **name**; the main view shows the whole
+  address, as one control per component.
+  Every segment navigates, including the last: on a file it re-opens what is already
+  open, so a run of links has no dead segment in the middle of it.
+
+- A served root under your home directory renders as `~/wrk/project` rather than
+  spelling the home directory out in full on every page.
+  Display only — the API still reports the absolute root — and it falls through to the
+  absolute path where the substitution would be a guess rather than a fact.
+
+- The dimmed root prefix truncates from the **start**, so `…/wrk/github/project` keeps
+  the part nearest what you are looking at rather than the part that is identical on
+  every page. It reads at the same weight as the rest of the address; grey already says
+  “this is context”.
+
+- The two headers either side of the divider are one structure: path row, hairline, tabs
+  row, hairline, each row the same height as its opposite number.
+  The navigation header had no bottom rule at all, and the rows differed by half a
+  pixel, so the line stopped at the divider and picked up again on the other side.
 
 Navigation filters:
 
@@ -136,6 +202,22 @@ Design system:
   Loads that fail — or that overrun their expected time — always reach the console with
   full detail (what was requested, which hook, elapsed milliseconds, the error).
 
+- **One tooltip, and it is Metabrowser’s own.** The navigation heading used to show two
+  at once — the app’s, anchored and styled, and the browser’s, from a `title` attribute.
+  Every tooltip the app owns now goes through its own, on focus as well as hover, which
+  a native `title` never did.
+  `devtools/check_tooltips.py` fails the build on a `title` attribute anywhere the app
+  owns the markup, because a rule with no check is how this one was lost.
+  `aria-label` is untouched: it is the accessible name, not a tooltip.
+
+- **A hover is drawn on the thing under the pointer, and on nothing else.** Hovering one
+  segment of a bar used to dim every other segment, which picks one thing out by
+  restyling fifty — and a dimmed neighbour reads as excluded, which a hover is not
+  saying. The hovered segment now grows and lifts its own colour, and its neighbours do
+  not change. It grows on the axis that carries no data: on a horizontal bar the width is
+  the value, so the segment thickens instead, centred on the bar, on a curve that
+  overshoots and settles.
+
 - Every expand/collapse now travels with one standard, short motion: bodies animate
   height on the same 150ms the chevrons rotate with — tree folders, patch containers,
   diff file sections, fold expanders, and folder Overview panels alike — and collapsed
@@ -150,6 +232,28 @@ Design system:
 
 - The commit graph is denser: lanes at a 9px pitch with smaller dots, so multi-branch
   history spends its width on subjects, not spacing.
+
+Git history:
+
+- **Metabrowser browses Git history.** Serving a repository root adds a Git panel beside
+  the file tree: the commit graph with one lane per line of development, subjects,
+  authors, ages, and branch and tag chips on the commits they point at.
+  Selecting a commit opens it, and history pages as you reach the end of the loaded
+  rows.
+
+- A read-only Git API backs it — `/api/git/repo`, `/api/git/refs`, `/api/git/log`, and
+  `/api/git/commit/<revision>`. Nothing in it writes, and every cost is bounded: each
+  `git` subprocess has a timeout and an output cap (`GIT_SUBPROCESS_TIMEOUT_S`,
+  `GIT_SUBPROCESS_MAX_BYTES`), history is cursor-paged with a bound on how far back a
+  cursor may seek (`GIT_LOG_MAX_SKIP`), the panel retains a bounded number of rows
+  (`GIT_HISTORY_MAX_ROWS`), and a commit touching more than `GIT_COMMIT_MAX_FILES` files
+  reports itself truncated rather than being silently shortened.
+
+- The panel appears only when the served folder is itself a repository root, and every
+  other case is a stated answer rather than a broken tab: `git` missing from `PATH`, a
+  folder that is not a repository, a repository Git refuses to read, and a discovery
+  call that times out are distinct, and an unborn or detached `HEAD` is carried as its
+  own state rather than as an error.
 
 Diff rendering:
 
@@ -290,6 +394,11 @@ Plugin SDK:
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the
   every-page path, and resolves once its globals are present.
   A loaded bundle resolves immediately and simultaneous callers share one load.
+
+- A plugin announces a short hint with `data-tip-text="…"` on any element, which the
+  host turns into its own tooltip, and rich content through `mb.tooltip.show` as before.
+  A `title` attribute in plugin markup still works — the browser draws it — but it will
+  be a second tooltip beside the host’s, which is what the rule above exists to prevent.
 
 - `metabrowser.chart()` now requires the chart bundle:
   `await metabrowser.ensureAsset("chart")` before the first call, or it throws saying

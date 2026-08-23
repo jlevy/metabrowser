@@ -99,7 +99,7 @@ def test_client_settings_publish_one_authoritative_registry() -> None:
     assert "FILE_TYPE_TAXONOMY" not in settings
     registry = settings["FILE_TYPE_REGISTRY"]
     assert isinstance(registry, dict)
-    assert registry["schema"] == "file-type-registry-v2"
+    assert registry["schema"] == "file-type-registry-v3"
 
 
 def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:
@@ -111,21 +111,41 @@ def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:
 
 def test_distribution_colors_cover_every_family_on_both_themes() -> None:
     """The browser gets finished colors, not hues, because the chroma pullback
-    cannot happen in CSS without moving hue. This is the join between the
-    registry's hue and the theme's tone, and nothing else may add a family."""
+    cannot happen in CSS without moving hue, and because a family's place in
+    the band is its rank among all the others — which only the side holding the
+    whole registry can work out. This is that join, and nothing else may add a
+    family."""
 
     from metabrowser.color_oklch import DARK_THEME, LIGHT_THEME
     from metabrowser.file_type_filters import serialize_distribution_colors
     from metabrowser.file_type_registry import load_file_type_registry
 
-    families = load_file_type_registry().families
+    registry = load_file_type_registry()
+    families = registry.families
     colors = serialize_distribution_colors()
     assert [entry["key"] for entry in colors] == [family.distribution_key for family in families]
     for family, entry in zip(families, colors, strict=True):
-        assert entry["light"] == LIGHT_THEME.at(family.hue).css()
-        assert entry["dark"] == DARK_THEME.at(family.hue).css()
-        # Every color states the theme's lightness, whatever chroma sRGB allowed.
-        assert entry["light"].startswith(f"oklch({LIGHT_THEME.lightness * 100:.2f}%")
-        assert entry["dark"].startswith(f"oklch({DARK_THEME.lightness * 100:.2f}%")
+        position = registry.tone_position(family.id)
+        assert entry["light"] == LIGHT_THEME.at(family.hue, position).css()
+        assert entry["dark"] == DARK_THEME.at(family.hue, position).css()
+        # The hue is exactly the one declared, whatever chroma sRGB allowed.
         assert entry["light"].endswith(f"{family.hue:.2f})")
         assert entry["dark"].endswith(f"{family.hue:.2f})")
+
+    # Lightness now varies, and the bound on how much is what a stacked bar is
+    # owed: no segment reads heavier than its size by more than the band. The
+    # one way past that bound is a family that declares a deviation saying so,
+    # which is why this asserts the rule rather than a pair of numbers.
+    deviated = {family.id for family in families if family.deviation is not None}
+    for band, key in ((LIGHT_THEME, "light"), (DARK_THEME, "dark")):
+        low = band.lightness - band.spread - 1e-9
+        high = band.lightness + band.spread + 1e-9
+        outside = set()
+        for family, entry in zip(families, colors, strict=True):
+            painted = float(entry[key].split("(")[1].split("%")[0]) / 100
+            if not low <= painted <= high:
+                outside.add(family.id)
+        assert outside <= deviated, (
+            f"{key}: {sorted(outside - deviated)} paint outside the band without "
+            f"declaring a deviation"
+        )

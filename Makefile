@@ -56,6 +56,7 @@ lint:
 	$(UV_RUN) python -m devtools.lint
 	$(UV_RUN) python -m devtools.public_hygiene
 	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
+	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
 
 format:
@@ -79,6 +80,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.lint --check
 	$(UV_RUN) python -m devtools.public_hygiene
 	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
+	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
 	$(FLOWMARK) --auto --check .
 

@@ -219,21 +219,62 @@ function countHtml(n, extraClass) {
   return `<span class="${cls}">${formatCount(n)}</span>`;
 }
 
-// Path-styling convention — split at the final slash and render the
-// directory portion muted, the basename in the inherited (typically
-// bold) style. Use anywhere a path is shown in a context where the
-// last segment is the focus (app header, file header, drawer titles).
-function pathHtml(path, extraClass) {
-  var raw = String(path == null ? "" : path);
-  var trimmed = raw.replace(/\/+$/, "");
-  var cls = `path ${extraClass || ""}`.trim();
-  var i = trimmed.lastIndexOf("/");
-  if (i < 0) {
-    return `<span class="${cls}"><span class="path-base">${esc(trimmed || raw)}</span></span>`;
+/**
+ * Just the last component of `path`, wrapped in `.path`/`.path-base` so it
+ * inherits whatever emphasis its container declares. This is what the
+ * navigation heading shows: the directories above the served root never
+ * change, and the column they would spend width on is the narrowest in the
+ * app. Where a whole path is wanted the file header renders it as an
+ * address of controls instead — see headerAddressHtml.
+ */
+function pathBaseHtml(path) {
+  var trimmed = String(path == null ? "" : path).replace(/\/+$/, "");
+  var base = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+  return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
+}
+
+// The served root, absolute, from the one element that carries it.
+function servedRoot() {
+  return queryHtml(".header-path")?.dataset.servedRoot || "";
+}
+
+/**
+ * The main view's address: the served root dimmed, the root slash, then one
+ * control per component beneath it.
+ *
+ * The prefix is dim because it is identical on every page — context, not
+ * content — and everything from the slash rightward is live. The final
+ * component is a control too. On the page you are already looking at it
+ * changes nothing, but a run of links with one dead segment in the middle
+ * reads as a bug rather than as a rule.
+ *
+ * Each crumb carries the path it navigates to as its tooltip, because a narrow
+ * pane ellipsizes the crumbs themselves and the hover is then the only place
+ * the whole component is legible.
+ *
+ * @param {string} path served-root-relative path; "" is the root itself
+ * @param {boolean} isFile whether the last component names a file
+ */
+function headerAddressHtml(path, isFile) {
+  var root = servedRoot();
+  // <bdi> isolates the path from the start-truncation direction on the
+  // wrapper; see .file-header-root. It carries no style of its own.
+  var prefix = root ? `<span class="file-header-root"><bdi>${esc(root)}</bdi></span>` : "";
+  var rootCrumb =
+    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" data-tip-text="Served root">/</button>';
+  var segments = path ? path.split("/") : [];
+  var crumbs = [];
+  var walked = "";
+  for (var i = 0; i < segments.length; i++) {
+    walked = walked ? `${walked}/${segments[i]}` : segments[i];
+    var last = i === segments.length - 1;
+    var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
+    var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
+    crumbs.push(
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" data-tip-text="${esc(walked)}">${esc(segments[i])}</button>`,
+    );
   }
-  var dir = trimmed.slice(0, i + 1);
-  var base = trimmed.slice(i + 1);
-  return `<span class="${cls}"><span class="path-dir">${esc(dir)}</span><span class="path-base">${esc(base)}</span></span>`;
+  return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
 }
 
 function getExt(name) {
@@ -770,7 +811,7 @@ async function loadTree() {
     knownFileCatalog?.observeInitialTree(data.tree);
     var pathEl = queryHtml(".header-path");
     if (pathEl) {
-      pathEl.innerHTML = pathHtml(data.root);
+      pathEl.innerHTML = pathBaseHtml(data.root);
     }
     // Aggregate root size + file count + newest-mtime from top-level
     // children. Same shape as a folder tooltip — the served root reads
@@ -820,7 +861,10 @@ async function loadTree() {
     // Carry aggregates on the path link so the header tooltip handler
     // can pull them on hover without rebuilding from DOM.
     if (pathEl) {
-      pathEl.dataset.tipName = data.root;
+      // The display form, so the tooltip and the file header's prefix say the
+      // same thing about the root — one of them abbreviating the home
+      // directory and the other not would read as two different roots.
+      pathEl.dataset.tipName = pathEl.dataset.servedRoot || data.root;
       pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
       pathEl.dataset.tipSize = nullableDataValue(summarySize);
       pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
@@ -1029,18 +1073,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   headerPath.addEventListener("mouseenter", () => {
     var d = headerPath.dataset;
+    // The heading shows the folder name alone, so the whole served root lives
+    // here — as one tooltip. It used to be here and in a native `title` as
+    // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
+      showTooltip(
+        `${esc(d.servedRoot || "")}<div class="tip-detail">Jump to root</div>`,
+        headerPath,
+      );
       return;
     }
-    showTooltip(
-      folderTooltipHtml(
-        d.tipName,
-        parseTipNumber(d.tipFiles),
-        parseTipNumber(d.tipSize),
-        parseTipNumber(d.tipMtime),
-      ),
-      headerPath,
+    var folderTip = folderTooltipHtml(
+      d.tipName,
+      parseTipNumber(d.tipFiles),
+      parseTipNumber(d.tipSize),
+      parseTipNumber(d.tipMtime),
     );
+    showTooltip(`${folderTip}<div class="tip-detail">Jump to root</div>`, headerPath);
   });
   headerPath.addEventListener("mouseleave", hideTooltip);
 });
@@ -1336,7 +1385,7 @@ function renderTreeNodes(nodes, isRoot, options) {
       var compressionName = node.compression || "compressed";
       var compressionGlyph = compressionName === "gzip" ? "G" : "Z";
       var compressionBadge = compressed
-        ? `<span class="compression-badge" title="${esc(compressionName)} compressed">${compressionGlyph}</span>`
+        ? `<span class="compression-badge" data-tip-text="${esc(compressionName)} compressed">${compressionGlyph}</span>`
         : "";
       var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
       // The index's bounded compound-tail extension, which the type filter
@@ -1823,7 +1872,7 @@ function showTooltip(html, anchor) {
  * thing it describes.
  */
 function positionTooltip(anchor) {
-  if (!anchor || !anchor.getBoundingClientRect) {
+  if (!anchor?.getBoundingClientRect) {
     return;
   }
   var target = anchor.getBoundingClientRect();
@@ -1857,6 +1906,52 @@ if (typeof window !== "undefined") {
     hide: hideTooltip,
   };
 }
+
+/**
+ * The plain-text half of the one tooltip: anything carrying `data-tip-text`
+ * gets the app's tooltip, and nothing in the app uses the browser's own.
+ *
+ * A native `title` is a second tooltip system running beside this one. It
+ * cannot be styled or placed, it appears on the platform's timer rather than
+ * ours, and on a surface that already announces a tooltip it shows a second
+ * one alongside — which is the bug that produced this rule. `data-tip-text`
+ * exists so that having something to say is never a reason to reach for
+ * `title`: the common case is a short string, and it should be one attribute.
+ *
+ * `aria-label` is untouched and still required where it was. It is the
+ * accessible name, not a tooltip; a screen reader never reads this attribute,
+ * so a glyph-only control needs both.
+ *
+ * Delegated from the document, so it covers markup that does not exist yet,
+ * including a plugin's. Focus is included because a keyboard user gets no
+ * hover, and a native `title` never gave them one either.
+ */
+function tipTextAnchor(event) {
+  var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
+  return anchor instanceof HTMLElement ? anchor : null;
+}
+
+/** @param {Event} e */
+function showTipText(e) {
+  var anchor = tipTextAnchor(e);
+  if (anchor) {
+    showTooltip(esc(anchor.dataset.tipText || ""), anchor);
+  }
+}
+
+/** @param {Event} e */
+function hideTipText(e) {
+  if (tipTextAnchor(e)) {
+    hideTooltip();
+  }
+}
+
+// mouseenter/mouseleave do not bubble, so these listen in the capture phase;
+// focus does bubble as focusin/focusout, so those do not need it.
+document.addEventListener("mouseenter", showTipText, true);
+document.addEventListener("mouseleave", hideTipText, true);
+document.addEventListener("focusin", showTipText);
+document.addEventListener("focusout", hideTipText);
 
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
@@ -2735,6 +2830,22 @@ function stopIndexProgressPolling() {
   indexProgressTimer = null;
 }
 
+// Finishing a crawl changes no entry, so it produces no file-store op and
+// therefore no inventory-change event. Every rollup watch refreshes on that
+// event alone, so without this announcement the last rollup a folder fetched
+// keeps reporting index_status "scanning" for the rest of the session: the
+// counts were right and the label above them was not, and nothing short of a
+// reload cleared it. Announce the transition on the channel an entry change
+// already uses, with null paths — "anything may have changed" — so each watch
+// re-fetches once and reads the terminal status.
+function announceScanCompletion() {
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", {
+      detail: { kind: "index-complete", paths: null },
+    }),
+  );
+}
+
 async function refreshTreeIfPendingTallies() {
   if (indexProgressCompletionRefreshInFlight) {
     return;
@@ -2784,6 +2895,10 @@ async function refreshIndexProgress(force) {
       return;
     }
     var meta = await resp.json();
+    // Read before rendering: renderIndexProgress overwrites the record of
+    // what the last poll saw, and the transition out of scanning is only
+    // visible by comparing against it.
+    var wasScanning = indexProgressLastRendered?.status === "scanning";
     if (shouldRenderIndexProgress(meta, force)) {
       renderIndexProgress(meta);
     }
@@ -2792,6 +2907,9 @@ async function refreshIndexProgress(force) {
         ensureTreeTruncationNote(meta.max_files);
       }
       renderIndexProgress(meta);
+      if (wasScanning) {
+        announceScanCompletion();
+      }
       await refreshTreeIfPendingTallies();
       stopIndexProgressPolling();
     }
@@ -3664,7 +3782,7 @@ var FILTER_RECENCY_OPTIONS = [
   {
     value: "live",
     label: "Live",
-    title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
+    tip: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
     ageClass: "age-live",
   },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
@@ -3937,7 +4055,7 @@ function renderNavFilterBar() {
       ariaLabel:
         (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
         (count > 0 ? ` (${count} active)` : ""),
-      title: filterDrawerOpen ? "Fewer filters" : "More filters",
+      tip: filterDrawerOpen ? "Fewer filters" : "More filters",
       controls: "filter-drawer",
     }) +
     "</span></div>";
@@ -3968,7 +4086,7 @@ function renderNavFilterBar() {
       key: "showIgnored",
       label: "Show ignored",
       checked: st.showIgnored,
-      title: "Show gitignored entries, dimmed",
+      tip: "Show gitignored entries, dimmed",
     }) +
     "</div></div>";
   bar.innerHTML = main + drawer;
@@ -4719,33 +4837,20 @@ function navigateToFolder(path) {
 function renderFolderHeader(data) {
   var path = typeof data.path === "string" ? data.path : "";
   var segments = path ? path.split("/") : [];
-  var rootCrumb =
-    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" title="Served root">/</button>';
-  var crumbs = [];
-  var prefix = "";
-  for (var i = 0; i < segments.length; i++) {
-    prefix = prefix ? `${prefix}/${segments[i]}` : segments[i];
-    var isLast = i === segments.length - 1;
-    crumbs.push(
-      isLast
-        ? `<span class="folder-crumb folder-crumb-current">${esc(segments[i])}</span>`
-        : `<button type="button" class="folder-crumb" data-nav-dir="${esc(prefix)}">${esc(segments[i])}</button>`,
-    );
-  }
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
   var parentLabel =
     parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
   var upButton =
     parent === null
-      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
-      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" title="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
+      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
+      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
   var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
   return (
     '<div class="file-header folder-header">' +
     upButton +
-    `<span class="file-header-path folder-breadcrumb">${rootCrumb}${crumbs.join('<span class="folder-crumb-sep">/</span>')}</span>` +
+    `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
-    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
     (ICONS.print || "") +
     "</button>" +
     "</div>"
@@ -4814,7 +4919,7 @@ function renderBadges(data) {
       ? data.compression.charAt(0).toUpperCase() + data.compression.slice(1)
       : "Compressed";
     badges +=
-      '<span class="file-header-badge badge-compressed" title="On-disk file is ' +
+      '<span class="file-header-badge badge-compressed" data-tip-text="On-disk file is ' +
       esc(label.toLowerCase()) +
       '-compressed">' +
       esc(label) +
@@ -4859,7 +4964,7 @@ function renderBadges(data) {
   // ignored rather than silently using an unparsable value.
   if (data.frontmatter_error) {
     badges +=
-      '<span class="file-header-badge badge-frontmatter-error" title="' +
+      '<span class="file-header-badge badge-frontmatter-error" data-tip-text="' +
       esc(data.frontmatter_error) +
       '">Frontmatter error</span>';
   }
@@ -5060,16 +5165,16 @@ function renderFile(data, preferredViewId, claim) {
         var badges = renderBadges(data);
         html = '<div class="file-header">';
         html +=
-          '<span class="file-header-path">' +
-          esc(data.path) +
-          `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-copy-path="${esc(data.path)}" title="Copy path" aria-label="Copy path">` +
+          '<span class="file-header-path folder-breadcrumb">' +
+          headerAddressHtml(data.path, true) +
+          `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-copy-path="${esc(data.path)}" data-tip-text="Copy path" aria-label="Copy path">` +
           ICON_COPY +
           "</button>" +
           "</span>";
         html += badges;
         html += sizeHtml(data.size, "file-header-size");
         html +=
-          '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
+          '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
           (ICONS.print || "") +
           "</button>";
         html += "</div>";
@@ -5279,10 +5384,10 @@ function toggleEvent(header) {
 function copyPath(btn, path) {
   navigator.clipboard.writeText(path).then(() => {
     btn.classList.add("copied");
-    btn.title = "Copied!";
+    btn.dataset.tipText = "Copied!";
     setTimeout(() => {
       btn.classList.remove("copied");
-      btn.title = "Copy path";
+      btn.dataset.tipText = "Copy path";
     }, 1500);
   });
 }
@@ -5302,6 +5407,14 @@ document.addEventListener("click", (e) => {
     navigateToFolder(navBtn.dataset.navDir ?? "");
     return;
   }
+  // The address bar's last crumb names a file rather than a directory. It
+  // re-opens what is already open, which is the point: every segment of the
+  // address behaves alike.
+  var fileBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-file]"));
+  if (fileBtn && !fileBtn.hasAttribute("disabled")) {
+    void navigateToPath(fileBtn.dataset.navFile ?? "");
+    return;
+  }
   var copyBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-copy-path]"));
   if (copyBtn && typeof copyBtn.dataset.copyPath === "string") {
     copyPath(copyBtn, copyBtn.dataset.copyPath);
@@ -5315,10 +5428,10 @@ function copyContent(btn) {
   var text = code ? code.textContent : "";
   navigator.clipboard.writeText(text).then(() => {
     btn.classList.add("copied");
-    btn.title = "Copied!";
+    btn.dataset.tipText = "Copied!";
     setTimeout(() => {
       btn.classList.remove("copied");
-      btn.title = "Copy content";
+      btn.dataset.tipText = "Copy content";
     }, 1500);
   });
 }

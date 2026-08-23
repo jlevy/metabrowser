@@ -96,6 +96,14 @@ read Markdown docs.
   leaving the Treemap.
   Colors and file identities stay consistent with Overview and the navigation filters.
 
+- **Git history and diffs.** Browse a repository’s commit graph beside the file tree,
+  open any commit at its own `/commit/<rev>` URL, and read its changes through the same
+  renderer that opens `.patch` and `.diff` files: per-file sections with GitHub-style
+  change indicators, numbered hunks, and long rewrites folded behind an expander.
+  `metab ROOT --diff BASE..TARGET` answers the same question from a terminal, and
+  `--diff-check` replays a change set against the base tree to prove it reproduces the
+  target exactly.
+
 - **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every
   non-gitignored file under the root, then jump straight to it by name or path fragment.
 
@@ -299,6 +307,8 @@ Extending it:
 - [Design system](docs/design-system.md) — tokens, layout bands, and component rules
 - [File Rollup Format v0.1](docs/project/architecture/file-rollup-format/file-rollup-format.md)
   — the shared file-type and rollup contract
+- [File Diff Format v1](docs/project/architecture/file-diff-format/file-diff-format.md)
+  — the shared change-set model behind every diff view
 - [Rendering large content](docs/large-content-rendering.md) — the cost model and limit
   rules every content view shares
 

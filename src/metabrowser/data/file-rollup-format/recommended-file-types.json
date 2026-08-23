@@ -1,6 +1,7 @@
 {
   "families": [
     {
+      "deviation": null,
       "extensions": [
         ".py",
         ".pyi"
@@ -9,10 +10,13 @@
       "hue": 246.5,
       "id": "python",
       "label": "Python",
+      "lightness_rank": null,
       "linguist": "Python",
+      "linguist_color": "#3572a5",
       "order": 100
     },
     {
+      "deviation": null,
       "extensions": [
         ".js",
         ".mjs",
@@ -23,10 +27,13 @@
       "hue": 102.08,
       "id": "javascript",
       "label": "JavaScript",
+      "lightness_rank": null,
       "linguist": "JavaScript",
+      "linguist_color": "#f1e05a",
       "order": 110
     },
     {
+      "deviation": null,
       "extensions": [
         ".ts",
         ".mts",
@@ -37,10 +44,13 @@
       "hue": 253.3,
       "id": "typescript",
       "label": "TypeScript",
+      "lightness_rank": null,
       "linguist": "TypeScript",
+      "linguist_color": "#3178c6",
       "order": 120
     },
     {
+      "deviation": null,
       "extensions": [
         ".css",
         ".scss",
@@ -50,10 +60,13 @@
       "hue": 303.37,
       "id": "css",
       "label": "CSS",
+      "lightness_rank": null,
       "linguist": "CSS",
+      "linguist_color": "#663399",
       "order": 130
     },
     {
+      "deviation": null,
       "extensions": [
         ".html",
         ".htm"
@@ -62,10 +75,13 @@
       "hue": 34.85,
       "id": "html",
       "label": "HTML",
+      "lightness_rank": null,
       "linguist": "HTML",
+      "linguist_color": "#e34c26",
       "order": 140
     },
     {
+      "deviation": null,
       "extensions": [
         ".rs"
       ],
@@ -73,10 +89,13 @@
       "hue": 51.2,
       "id": "rust",
       "label": "Rust",
+      "lightness_rank": null,
       "linguist": "Rust",
+      "linguist_color": "#dea584",
       "order": 150
     },
     {
+      "deviation": null,
       "extensions": [
         ".go"
       ],
@@ -84,10 +103,13 @@
       "hue": 223.85,
       "id": "go",
       "label": "Go",
+      "lightness_rank": null,
       "linguist": "Go",
+      "linguist_color": "#00add8",
       "order": 160
     },
     {
+      "deviation": null,
       "extensions": [
         ".java"
       ],
@@ -95,10 +117,13 @@
       "hue": 69.41,
       "id": "java",
       "label": "Java",
+      "lightness_rank": null,
       "linguist": "Java",
+      "linguist_color": "#b07219",
       "order": 170
     },
     {
+      "deviation": null,
       "extensions": [
         ".kt",
         ".kts"
@@ -107,10 +132,13 @@
       "hue": 297.24,
       "id": "kotlin",
       "label": "Kotlin",
+      "lightness_rank": null,
       "linguist": "Kotlin",
+      "linguist_color": "#a97bff",
       "order": 180
     },
     {
+      "deviation": null,
       "extensions": [
         ".swift"
       ],
@@ -118,10 +146,13 @@
       "hue": 31.62,
       "id": "swift",
       "label": "Swift",
+      "lightness_rank": null,
       "linguist": "Swift",
+      "linguist_color": "#f05138",
       "order": 190
     },
     {
+      "deviation": null,
       "extensions": [
         ".c",
         ".h",
@@ -133,10 +164,13 @@
       "hue": 6.9,
       "id": "c-cpp",
       "label": "C/C++",
+      "lightness_rank": null,
       "linguist": "C++",
+      "linguist_color": "#f34b7d",
       "order": 200
     },
     {
+      "deviation": null,
       "extensions": [
         ".cs"
       ],
@@ -144,10 +178,13 @@
       "hue": 288.37,
       "id": "csharp",
       "label": "C#",
+      "lightness_rank": null,
       "linguist": "C#",
+      "linguist_color": "#7355dd",
       "order": 210
     },
     {
+      "deviation": null,
       "extensions": [
         ".rb"
       ],
@@ -155,10 +192,13 @@
       "hue": 25.77,
       "id": "ruby",
       "label": "Ruby",
+      "lightness_rank": null,
       "linguist": "Ruby",
+      "linguist_color": "#701516",
       "order": 220
     },
     {
+      "deviation": null,
       "extensions": [
         ".php"
       ],
@@ -166,10 +206,13 @@
       "hue": 272.03,
       "id": "php",
       "label": "PHP",
+      "lightness_rank": null,
       "linguist": "PHP",
+      "linguist_color": "#4f5d95",
       "order": 230
     },
     {
+      "deviation": null,
       "extensions": [
         ".scala"
       ],
@@ -177,10 +220,13 @@
       "hue": 19.52,
       "id": "scala",
       "label": "Scala",
+      "lightness_rank": null,
       "linguist": "Scala",
+      "linguist_color": "#c22d40",
       "order": 240
     },
     {
+      "deviation": null,
       "extensions": [
         ".clj"
       ],
@@ -188,10 +234,13 @@
       "hue": 24.35,
       "id": "clojure",
       "label": "Clojure",
+      "lightness_rank": null,
       "linguist": "Clojure",
+      "linguist_color": "#db5855",
       "order": 250
     },
     {
+      "deviation": null,
       "extensions": [
         ".ex",
         ".exs"
@@ -200,10 +249,13 @@
       "hue": 314.93,
       "id": "elixir",
       "label": "Elixir",
+      "lightness_rank": null,
       "linguist": "Elixir",
+      "linguist_color": "#6e4a7e",
       "order": 260
     },
     {
+      "deviation": null,
       "extensions": [
         ".erl"
       ],
@@ -211,10 +263,13 @@
       "hue": 339.55,
       "id": "erlang",
       "label": "Erlang",
+      "lightness_rank": null,
       "linguist": "Erlang",
+      "linguist_color": "#b83998",
       "order": 270
     },
     {
+      "deviation": null,
       "extensions": [
         ".hs"
       ],
@@ -222,10 +277,13 @@
       "hue": 294.76,
       "id": "haskell",
       "label": "Haskell",
+      "lightness_rank": null,
       "linguist": "Haskell",
+      "linguist_color": "#5e5086",
       "order": 280
     },
     {
+      "deviation": null,
       "extensions": [
         ".lua"
       ],
@@ -233,10 +291,13 @@
       "hue": 264.05,
       "id": "lua",
       "label": "Lua",
+      "lightness_rank": null,
       "linguist": "Lua",
+      "linguist_color": "#000080",
       "order": 290
     },
     {
+      "deviation": null,
       "extensions": [
         ".jl"
       ],
@@ -244,10 +305,13 @@
       "hue": 314.22,
       "id": "julia",
       "label": "Julia",
+      "lightness_rank": null,
       "linguist": "Julia",
+      "linguist_color": "#a270ba",
       "order": 300
     },
     {
+      "deviation": null,
       "extensions": [
         ".dart"
       ],
@@ -255,10 +319,13 @@
       "hue": 188.48,
       "id": "dart",
       "label": "Dart",
+      "lightness_rank": null,
       "linguist": "Dart",
+      "linguist_color": "#00b4ab",
       "order": 310
     },
     {
+      "deviation": null,
       "extensions": [
         ".vue"
       ],
@@ -266,10 +333,13 @@
       "hue": 160.49,
       "id": "vue",
       "label": "Vue",
+      "lightness_rank": null,
       "linguist": "Vue",
+      "linguist_color": "#41b883",
       "order": 320
     },
     {
+      "deviation": null,
       "extensions": [
         ".svelte"
       ],
@@ -277,10 +347,13 @@
       "hue": 34.2,
       "id": "svelte",
       "label": "Svelte",
+      "lightness_rank": null,
       "linguist": "Svelte",
+      "linguist_color": "#ff3e00",
       "order": 330
     },
     {
+      "deviation": null,
       "extensions": [
         ".sh",
         ".bash",
@@ -291,10 +364,13 @@
       "hue": 135.27,
       "id": "shell",
       "label": "Shell",
+      "lightness_rank": null,
       "linguist": "Shell",
+      "linguist_color": "#89e051",
       "order": 340
     },
     {
+      "deviation": null,
       "extensions": [
         ".ps1"
       ],
@@ -302,10 +378,13 @@
       "hue": 258.14,
       "id": "powershell",
       "label": "PowerShell",
+      "lightness_rank": null,
       "linguist": "PowerShell",
+      "linguist_color": "#012456",
       "order": 350
     },
     {
+      "deviation": null,
       "extensions": [
         ".sql"
       ],
@@ -313,21 +392,27 @@
       "hue": 67.02,
       "id": "sql",
       "label": "SQL",
+      "lightness_rank": null,
       "linguist": "SQL",
+      "linguist_color": "#e38c00",
       "order": 360
     },
     {
+      "deviation": "GitHub puts Markdown at 261.42, inside a seven-family run -- python 246.50, xml 251.44, typescript 253.30, powershell 258.14, markdown, lua 264.05, php 272.03 -- and it read as Python's blue. Markdown is the most-viewed family in the app and Python's colour is the better known of the two, so Markdown is the one that moves. 276.0 clears every other family by 0.0355 rather than 0.0149 and is still plainly a blue rather than a violet. The rank puts it below the band, which is the deliberate part: at its upstream rank it painted 0.571 against Python's 0.599, and no hue move makes a lighter blue read as a darker one. #083fa1 is a dark navy, so this paints closer to the colour GitHub chose than the band alone allowed.",
       "extensions": [
         ".md"
       ],
       "group_id": "docs",
-      "hue": 261.42,
+      "hue": 276.0,
       "id": "markdown",
       "label": "Markdown",
+      "lightness_rank": -0.5,
       "linguist": "Markdown",
+      "linguist_color": "#083fa1",
       "order": 100
     },
     {
+      "deviation": null,
       "extensions": [
         ".txt"
       ],
@@ -335,10 +420,13 @@
       "hue": 206.2,
       "id": "plain-text",
       "label": "Plain text",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 110
     },
     {
+      "deviation": null,
       "extensions": [
         ".rst"
       ],
@@ -346,10 +434,13 @@
       "hue": 118.7,
       "id": "restructured-text",
       "label": "reStructuredText",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 120
     },
     {
+      "deviation": null,
       "extensions": [
         ".adoc"
       ],
@@ -357,10 +448,13 @@
       "hue": 243.94,
       "id": "asciidoc",
       "label": "AsciiDoc",
+      "lightness_rank": null,
       "linguist": "AsciiDoc",
+      "linguist_color": "#73a0c5",
       "order": 130
     },
     {
+      "deviation": null,
       "extensions": [
         ".org"
       ],
@@ -368,10 +462,13 @@
       "hue": 171.76,
       "id": "org",
       "label": "Org",
+      "lightness_rank": null,
       "linguist": "Org",
+      "linguist_color": "#77aa99",
       "order": 140
     },
     {
+      "deviation": null,
       "extensions": [
         ".pdf"
       ],
@@ -379,10 +476,13 @@
       "hue": 85.7,
       "id": "pdf",
       "label": "PDF",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 150
     },
     {
+      "deviation": null,
       "extensions": [
         ".doc",
         ".docx"
@@ -391,10 +491,13 @@
       "hue": 327.2,
       "id": "word",
       "label": "Word",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 160
     },
     {
+      "deviation": null,
       "extensions": [
         ".rtf"
       ],
@@ -402,10 +505,13 @@
       "hue": 233.9,
       "id": "rich-text",
       "label": "Rich Text",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 170
     },
     {
+      "deviation": null,
       "extensions": [
         ".odt"
       ],
@@ -413,10 +519,13 @@
       "hue": 144.9,
       "id": "open-document",
       "label": "OpenDocument",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 180
     },
     {
+      "deviation": null,
       "extensions": [
         ".epub"
       ],
@@ -424,10 +533,13 @@
       "hue": 357.9,
       "id": "epub",
       "label": "EPUB",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 190
     },
     {
+      "deviation": null,
       "extensions": [
         ".json"
       ],
@@ -435,10 +547,13 @@
       "hue": 197.3,
       "id": "json",
       "label": "JSON",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 100
     },
     {
+      "deviation": null,
       "extensions": [
         ".yaml",
         ".yml"
@@ -447,10 +562,13 @@
       "hue": 26.9,
       "id": "yaml",
       "label": "YAML",
+      "lightness_rank": null,
       "linguist": "YAML",
+      "linguist_color": "#cb171e",
       "order": 110
     },
     {
+      "deviation": null,
       "extensions": [
         ".toml"
       ],
@@ -458,10 +576,13 @@
       "hue": 39.62,
       "id": "toml",
       "label": "TOML",
+      "lightness_rank": null,
       "linguist": "TOML",
+      "linguist_color": "#9c4221",
       "order": 120
     },
     {
+      "deviation": null,
       "extensions": [
         ".ini"
       ],
@@ -469,10 +590,13 @@
       "hue": 215.0,
       "id": "ini",
       "label": "INI",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 130
     },
     {
+      "deviation": null,
       "extensions": [
         ".csv",
         ".tsv",
@@ -482,10 +606,13 @@
       "hue": 154.61,
       "id": "delimited-text",
       "label": "Delimited text",
+      "lightness_rank": null,
       "linguist": "CSV",
+      "linguist_color": "#237346",
       "order": 140
     },
     {
+      "deviation": null,
       "extensions": [
         ".xml"
       ],
@@ -493,10 +620,13 @@
       "hue": 251.44,
       "id": "xml",
       "label": "XML",
+      "lightness_rank": null,
       "linguist": "XML",
+      "linguist_color": "#0060ac",
       "order": 150
     },
     {
+      "deviation": null,
       "extensions": [
         ".parquet"
       ],
@@ -504,10 +634,13 @@
       "hue": 180.1,
       "id": "parquet",
       "label": "Parquet",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 160
     },
     {
+      "deviation": null,
       "extensions": [
         ".arrow",
         ".feather"
@@ -516,10 +649,13 @@
       "hue": 110.4,
       "id": "arrow",
       "label": "Arrow",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 170
     },
     {
+      "deviation": null,
       "extensions": [
         ".avro"
       ],
@@ -527,10 +663,13 @@
       "hue": 127.0,
       "id": "avro",
       "label": "Avro",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 180
     },
     {
+      "deviation": null,
       "extensions": [
         ".orc"
       ],
@@ -538,10 +677,13 @@
       "hue": 93.9,
       "id": "orc",
       "label": "ORC",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 190
     },
     {
+      "deviation": null,
       "extensions": [
         ".proto"
       ],
@@ -549,10 +691,13 @@
       "hue": 280.2,
       "id": "protocol-buffers",
       "label": "Protocol Buffers",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 200
     },
     {
+      "deviation": null,
       "extensions": [
         ".graphql"
       ],
@@ -560,10 +705,13 @@
       "hue": 348.88,
       "id": "graphql",
       "label": "GraphQL",
+      "lightness_rank": null,
       "linguist": "GraphQL",
+      "linguist_color": "#e10098",
       "order": 210
     },
     {
+      "deviation": null,
       "extensions": [
         ".sqlite"
       ],
@@ -571,10 +719,13 @@
       "hue": 77.6,
       "id": "sqlite",
       "label": "SQLite",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 220
     },
     {
+      "deviation": null,
       "extensions": [
         ".zip",
         ".tar",
@@ -594,10 +745,13 @@
       "hue": 59.1,
       "id": "archives",
       "label": "Archives",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 100
     },
     {
+      "deviation": null,
       "extensions": [
         ".jpg",
         ".jpeg",
@@ -616,10 +770,13 @@
       "hue": 13.2,
       "id": "images",
       "label": "Images",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 100
     },
     {
+      "deviation": null,
       "extensions": [
         ".mp4",
         ".mov",
@@ -632,10 +789,13 @@
       "hue": 333.4,
       "id": "videos",
       "label": "Videos",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 110
     },
     {
+      "deviation": null,
       "extensions": [
         ".mp3",
         ".wav",
@@ -649,10 +809,13 @@
       "hue": 321.1,
       "id": "audio",
       "label": "Audio",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 120
     },
     {
+      "deviation": null,
       "extensions": [
         ".ttf",
         ".otf",
@@ -663,10 +826,13 @@
       "hue": 45.4,
       "id": "fonts",
       "label": "Fonts",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 130
     },
     {
+      "deviation": null,
       "extensions": [
         ".log",
         ".jsonl",
@@ -676,11 +842,13 @@
       "hue": 166.1,
       "id": "log-files",
       "label": "Log files",
+      "lightness_rank": null,
       "linguist": null,
+      "linguist_color": null,
       "order": 100
     }
   ],
-  "fingerprint": "c4abb7a8add194171ad3dadc1eea81a4814a1a34b8e7f9e3696f4e6e4ab86aa2",
+  "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
   "groups": [
     {
       "id": "code",
@@ -1589,6 +1757,6 @@
   ],
   "max_extension_components": 2,
   "revision": 3,
-  "schema": "file-type-registry-v2",
-  "schema_version": 2
+  "schema": "file-type-registry-v3",
+  "schema_version": 3
 }

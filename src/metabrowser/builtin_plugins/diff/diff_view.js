@@ -161,7 +161,7 @@ function renderHunk(hunk) {
     row.append(oldNumber, newNumber, marker, text);
     if (line.no_newline) {
       row.append(el("span", "diff-line-no-newline", "⏎ absent"));
-      row.title = "No newline at end of file";
+      row.dataset.tipText = "No newline at end of file";
     }
     const folds = FOLD_THRESHOLD > 0 && runLength[index] > FOLD_THRESHOLD;
     if (folds && runIndex[index] === FOLD_VISIBLE) {
@@ -258,7 +258,7 @@ function renderFileBar(change, toggleId, bodyId) {
   toggle.append(chevron);
   toggle.append(el("span", `diff-file-kind diff-file-kind-${String(change.kind)}`, letter));
   const pathSpan = el("span", "diff-file-path", label);
-  pathSpan.title = label;
+  pathSpan.dataset.tipText = label;
   toggle.append(pathSpan);
   if (change.additions !== null && change.additions !== undefined) {
     const stats = el("span", "diff-file-stats");

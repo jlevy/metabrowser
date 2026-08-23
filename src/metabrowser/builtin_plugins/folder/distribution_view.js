@@ -134,19 +134,46 @@ export function updateDistributionView(handle, model) {
     return;
   }
   handle.status.hidden = false;
-  handle.status.textContent = "";
+  handle.status.replaceChildren();
+  handle.status.classList?.remove("file-type-summary-status-progress");
   if (model.state === "truncated") {
     handle.status.textContent = `Summary is partial: ${(model.indexedFiles ?? 0).toLocaleString()} files indexed at the ${(model.maxFiles ?? 0).toLocaleString()}-file cap.`;
   } else if (model.indexFailed) {
     handle.status.textContent =
       "Indexing failed; percentages cover files indexed before the failure.";
   } else if (model.scanning) {
-    handle.status.textContent = "Scanning… percentages cover files indexed so far.";
+    renderScanningProgress(handle.status, model.indexedFiles);
   } else if (model.state === "zero-bytes") {
     handle.status.textContent = "All included files are zero bytes.";
   } else {
     handle.status.hidden = true;
   }
+}
+
+/**
+ * Show the crawl the way the nav panel already shows it, rather than as a
+ * sentence about what the percentages mean. Progress is a spinner and a
+ * count; a reader watching a bar fill does not need to be told the number
+ * beside it is provisional.
+ *
+ * The classes are the nav's own `#index-progress` internals, so this is
+ * that component and cannot drift from it. The count rule is the nav's
+ * too: a literal "~0 files scanned" reads as a stuck scan, so a count
+ * that has not arrived yet falls back to the bare label.
+ *
+ * @param {HTMLElement} status
+ * @param {number | undefined} indexedFiles
+ */
+function renderScanningProgress(status, indexedFiles) {
+  status.classList?.add("file-type-summary-status-progress");
+  const spinner = document.createElement("span");
+  spinner.className = "index-progress-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.className = "index-progress-text";
+  const files = typeof indexedFiles === "number" && indexedFiles > 0 ? indexedFiles : null;
+  text.textContent = files === null ? "Scanning…" : `~${files.toLocaleString()} files scanned`;
+  status.append(spinner, text);
 }
 
 /** @param {DistributionHandle} handle @param {string} mode */
@@ -329,13 +356,35 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
       rowHandle.tr.id = controlledRowId(handle, row.key);
       rowHandle.tr.classList?.toggle("file-type-summary-child-row", row.child === true);
       const paletteKey = row.paletteKey ?? row.key;
+      // Which rows carry an icon is the model's answer, given as a path.
+      // It used to be inferred here from "does this row name an extension",
+      // which put an icon on every extension and none on the family they
+      // belong to — the inverse of what the rows mean.
+      //
+      // A row inside a family never carries one, whatever it names: the family
+      // above it holds the single icon for all of its extensions. A top-level
+      // row that names an extension still falls back to that extension, since
+      // there is no family row above it to do the naming.
       const extension = row.extension || (row.key.startsWith(".") ? row.key : null);
-      const iconPath = row.iconPath || (extension ? `x${extension}` : "file");
-      const showIcon = Boolean(extension) || row.kind === "filename";
-      const fileIcon = showIcon ? handle.fileTypeIcon(iconPath) : { className: "", svg: "" };
+      const iconPath = row.iconPath ?? (row.child === true || !extension ? null : `x${extension}`);
+      const fileIcon = iconPath ? handle.fileTypeIcon(iconPath) : { className: "", svg: "" };
+      // A family's icon takes the family's own colour, so the glyph, the bar
+      // and the row all say the same thing about which family this is. The
+      // class rides in the assignment rather than through classList, which is
+      // the one write this element gets.
+      const familyIcon = row.kind === "family";
       rowHandle.icon.hidden = !fileIcon.svg;
-      rowHandle.icon.className = `file-identity-icon ${fileIcon.className}`.trim();
+      rowHandle.icon.className = [
+        "file-identity-icon",
+        fileIcon.className,
+        familyIcon ? "file-identity-icon-family" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
       rowHandle.icon.innerHTML = fileIcon.svg;
+      if (familyIcon) {
+        handle.palette.paint(rowHandle.icon, paletteKey);
+      }
       rowHandle.label.textContent = row.label;
       rowHandle.disclosureLabel.textContent = row.label;
       const disclosable = row.disclosable === true;

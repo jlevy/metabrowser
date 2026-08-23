@@ -231,26 +231,31 @@ def serialize_file_type_registry() -> dict[str, object]:
 def serialize_distribution_colors() -> list[dict[str, str]]:
     """Return each family's distribution key with its color on each theme.
 
-    The registry declares a hue and stops there, because a hue is tool-neutral
-    and a theme's lightness is not. This is where the two meet, and it is
-    deliberately here rather than in the browser: sRGB cannot hold the target
-    chroma at every hue, something has to pull it back, and a browser asked to
-    paint an out-of-gamut ``oklch()`` clips it — moving hue by as much as nine
-    degrees, which is more than the separation the palette is built on. Pulling
-    chroma back here keeps every hue exactly where it was declared.
+    The registry declares a hue and the color that hue came from, and stops
+    there, because both are tool-neutral and a theme's band is not. This is
+    where the two meet, and it is deliberately here rather than in the browser
+    for two reasons. sRGB cannot hold the target chroma at every hue, something
+    has to pull it back, and a browser asked to paint an out-of-gamut
+    ``oklch()`` clips it — moving hue by as much as nine degrees, which is more
+    than the separation the palette is built on. And a family's place in the
+    band is its rank among all the others, so it can only be worked out where
+    the whole registry is in hand.
 
     Ordered by the registry, so a consumer with a key the registry does not
     know can index into the list rather than inventing a color.
     """
 
-    return [
-        {
-            "key": family.distribution_key,
-            "light": LIGHT_THEME.at(family.hue).css(),
-            "dark": DARK_THEME.at(family.hue).css(),
-        }
-        for family in _REGISTRY.families
-    ]
+    colors: list[dict[str, str]] = []
+    for family in _REGISTRY.families:
+        position = _REGISTRY.tone_position(family.id)
+        colors.append(
+            {
+                "key": family.distribution_key,
+                "light": LIGHT_THEME.at(family.hue, position).css(),
+                "dark": DARK_THEME.at(family.hue, position).css(),
+            }
+        )
+    return colors
 
 
 __all__ = [

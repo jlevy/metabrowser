@@ -295,6 +295,107 @@ typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
 
+### One Tooltip, and It Is Ours
+
+The app has its own tooltip: anchored to the element it describes, styled, themed, and
+on the app’s timer. The browser’s native `title` is a second tooltip system, and a
+surface carrying both shows the reader two tooltips side by side on different timers.
+That happened on the navigation heading, so the rule is enforced rather than remembered.
+
+**No `title` attribute, and no `.title =` assignment, anywhere the app owns the markup**
+— browser sources, built-in plugins, and the HTML the server renders.
+`devtools/check_tooltips.py` fails the build on one, and runs in `make lint`.
+
+| Need | Use |
+| --- | --- |
+| A short string | `data-tip-text="…"` |
+| Rich content — counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
+
+`data-tip-text` is read by a delegated listener on the document, so it works on markup
+that does not exist yet, including a plugin’s, and on focus as well as hover.
+
+This is not a rule about accessible names.
+`aria-label` is unaffected and still required wherever it was: a screen reader does not
+read `data-tip-text`, so an icon-only control needs both.
+
+### Hover Styles the Thing Under the Pointer
+
+A hover is a statement about one element, so it is drawn **on that element** and nowhere
+else. Dimming, fading, or desaturating an item’s neighbours to pick it out is not
+available: it is a larger visual event than the interaction earns, it makes the reader’s
+eye track motion across the whole component rather than the one thing they pointed at,
+and a dimmed neighbour reads as *excluded* or *inactive*, which is a claim the hover is
+not making.
+
+For a segment of a bar, a treemap cell, a chart mark, or any other measure the reader
+can point at:
+
+| Do | Do not |
+| --- | --- |
+| Grow the hovered mark on the axis that carries **no** data, with `--viz-hover-grow` on `--viz-hover-grow-ease` | Grow the axis that encodes the value |
+| Lift its own color a step with `--viz-data-mark-hover-filter` | Dim, fade, or desaturate the other marks |
+| Leave every other mark exactly as it was | Outline, ring, or border the mark, or move the layout |
+
+**Grow, do not outline.** An outline is drawn *on* the data: it covers the color it is
+meant to point at, it competes with whatever separators the component already has
+between marks, and on a short mark it is a large fraction of the height — two pixels of
+ring is a quarter of an eight-pixel track.
+Growth says the same thing and covers nothing, and the eye is already good at finding
+the one thing that moved.
+This was tried as a translucent ring and then as an opaque grey one before landing here;
+neither is the instrument.
+
+**Grow the axis that carries no data.** This is the part that is easy to get backwards.
+On a horizontal bar the *width* is the value, so it is the one dimension that must not
+move: growing it states a share the mark does not have, and every mark after it appears
+to shift. Thickness means nothing there, which is exactly what frees it — so a bar
+segment grows *taller*, centered on the baseline the eye follows along the row.
+
+It also makes the answer uniform.
+A proportional width grew a wide segment by fifteen pixels and a three-pixel segment by
+nothing, so the marks hardest to point at were the ones that answered least.
+Every segment shares one height, so every segment now answers the same.
+
+Because the axis is small, the factor is large: an eight-pixel bar at 1.5 is twelve, and
+the overshoot carries it past thirteen before it settles.
+A few percent would be a fraction of a pixel.
+
+**Grow with a transform, never with layout**, so the row does not reflow under the
+pointer.
+
+**The curve is what makes it read as an answer.** `--viz-hover-grow-ease` overshoots its
+target and settles back, so the mark goes further than it ends up and returns.
+At around 190ms that is a flick; the same distance on a plain ease reads as the layout
+being sluggish.
+
+Growth is proportional, so a wide mark moves further than a narrow one.
+That is the right way round: a one-pixel segment has almost no color to lift either, and
+its tooltip is what identifies it.
+
+The lift darkens on light and brightens on dark, and it is relative to the mark’s own
+color rather than a fixed overlay — file-type families no longer share one lightness,
+they sit in a band and a deviating family sits outside it, so a fixed delta lands
+differently on a pale family than on a dark one.
+See [color and theming](#color-and-theming).
+
+Under `prefers-reduced-motion` the growth is dropped rather than made instant: an
+instant jump is worse than no growth, and the color lift still answers the hover.
+
+**Where growth does not apply.** Two conditions rule it out, and the treemap meets both
+— it takes the lift alone.
+
+- *The mark’s area is its value in two dimensions.* A bar segment’s width encodes its
+  share and the overshoot settles back to it, so nothing is misstated once the motion
+  ends. A treemap cell’s area is the whole encoding, and a cell held larger states a size
+  it does not have.
+- *The mark cannot be lifted above its neighbours.* Growth needs the mark on top, and a
+  treemap flattens a nested folder and its descendants into siblings, so raising a
+  hovered container paints it over every rectangle inside it.
+  `test_treemap_hover_never_promotes_a_container_over_nested_cells` holds that.
+
+A new chart mark that meets neither condition grows.
+One that meets either keeps the lift and states why here.
+
 ### Continuing Partial Content
 
 A view that shows part of a file offers the control that loads the rest **at both ends

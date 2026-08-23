@@ -1,82 +1,66 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jlevy/metabrowser/schemas/file-type-registry.schema.json",
-  "title": "Recommended File-Type Registry Projection",
-  "type": "object",
-  "required": [
-    "schema",
-    "schema_version",
-    "revision",
-    "fingerprint",
-    "max_extension_components",
-    "groups",
-    "families",
-    "kinds"
-  ],
-  "properties": {
-    "schema": {
-      "const": "file-type-registry-v2"
-    },
-    "schema_version": {
-      "const": 2
-    },
-    "revision": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "fingerprint": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
-    },
-    "max_extension_components": {
-      "const": 2
-    },
-    "groups": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/group"
-      }
-    },
-    "families": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/family"
-      }
-    },
-    "kinds": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/kind"
-      }
-    }
-  },
   "$defs": {
-    "id": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9-]*$"
-    },
-    "group": {
-      "type": "object",
-      "required": [
-        "id",
-        "label",
-        "order"
-      ],
+    "family": {
       "properties": {
+        "deviation": {
+          "description": "Why this family does not paint where its upstream color would put it, or null where it does. Present exactly when the family departs deliberately -- a hue that is not linguist_color's, a lightness_rank of its own, or both.",
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extensions": {
+          "items": {
+            "pattern": "^\\.[a-z0-9]+(?:\\.[a-z0-9]+)?$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "group_id": {
+          "$ref": "#/$defs/id"
+        },
+        "hue": {
+          "description": "Family color as an oklch hue in degrees; lightness and chroma belong to the consumer's theme, which states them as a band rather than as one value.",
+          "exclusiveMaximum": 360,
+          "minimum": 0,
+          "type": "number"
+        },
         "id": {
           "$ref": "#/$defs/id"
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "type": "string"
+        },
+        "lightness_rank": {
+          "description": "Where the family sits in the consumer's lightness band, overriding the rank its upstream color would give it, or null to take that rank. A value outside [0, 1] places the family outside the band and requires a deviation.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "linguist": {
+          "description": "GitHub linguist language this hue was taken from, or null when the hue came from the widest remaining gap.",
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linguist_color": {
+          "description": "That language's upstream sRGB hex, or null where the hue came from a free gap. Provenance for the hue, and the source of the family's lightness and chroma rank among the other upstream colors.",
+          "pattern": "^#[0-9a-f]{6}$",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "order": {
           "type": "integer"
         }
-      }
-    },
-    "family": {
-      "type": "object",
+      },
       "required": [
         "id",
         "label",
@@ -84,75 +68,39 @@
         "order",
         "extensions",
         "hue",
-        "linguist"
+        "linguist",
+        "linguist_color",
+        "deviation",
+        "lightness_rank"
       ],
+      "type": "object"
+    },
+    "group": {
       "properties": {
         "id": {
           "$ref": "#/$defs/id"
         },
         "label": {
-          "type": "string",
-          "minLength": 1
-        },
-        "group_id": {
-          "$ref": "#/$defs/id"
+          "minLength": 1,
+          "type": "string"
         },
         "order": {
           "type": "integer"
-        },
-        "extensions": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "pattern": "^\\.[a-z0-9]+(?:\\.[a-z0-9]+)?$"
-          }
-        },
-        "hue": {
-          "description": "Family color as an oklch hue in degrees; lightness and chroma belong to the consumer's theme.",
-          "type": "number",
-          "minimum": 0,
-          "exclusiveMaximum": 360
-        },
-        "linguist": {
-          "description": "GitHub linguist language this hue was taken from, or null when the hue came from the widest remaining gap.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "minLength": 1
         }
-      }
-    },
-    "kind": {
-      "type": "object",
+      },
       "required": [
         "id",
-        "family_id",
-        "group_id",
-        "content_family",
-        "extensions",
-        "filenames",
-        "shebangs",
-        "priority"
+        "label",
+        "order"
       ],
+      "type": "object"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "type": "string"
+    },
+    "kind": {
       "properties": {
-        "id": {
-          "$ref": "#/$defs/id"
-        },
-        "family_id": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/id"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "group_id": {
-          "$ref": "#/$defs/id"
-        },
         "content_family": {
           "enum": [
             "code",
@@ -164,30 +112,108 @@
           ]
         },
         "extensions": {
-          "type": "array",
           "items": {
-            "type": "string",
-            "pattern": "^\\.[a-z0-9]+(?:\\.[a-z0-9]+)?$"
-          }
+            "pattern": "^\\.[a-z0-9]+(?:\\.[a-z0-9]+)?$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "family_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "filenames": {
-          "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
-          }
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
         },
-        "shebangs": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+        "group_id": {
+          "$ref": "#/$defs/id"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
         },
         "priority": {
           "type": "integer"
+        },
+        "shebangs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
         }
-      }
+      },
+      "required": [
+        "id",
+        "family_id",
+        "group_id",
+        "content_family",
+        "extensions",
+        "filenames",
+        "shebangs",
+        "priority"
+      ],
+      "type": "object"
     }
-  }
+  },
+  "$id": "https://github.com/jlevy/metabrowser/schemas/file-type-registry.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "families": {
+      "items": {
+        "$ref": "#/$defs/family"
+      },
+      "type": "array"
+    },
+    "fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "groups": {
+      "items": {
+        "$ref": "#/$defs/group"
+      },
+      "type": "array"
+    },
+    "kinds": {
+      "items": {
+        "$ref": "#/$defs/kind"
+      },
+      "type": "array"
+    },
+    "max_extension_components": {
+      "const": 2
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "schema": {
+      "const": "file-type-registry-v3"
+    },
+    "schema_version": {
+      "const": 3
+    }
+  },
+  "required": [
+    "schema",
+    "schema_version",
+    "revision",
+    "fingerprint",
+    "max_extension_components",
+    "groups",
+    "families",
+    "kinds"
+  ],
+  "title": "Recommended File-Type Registry Projection",
+  "type": "object"
 }

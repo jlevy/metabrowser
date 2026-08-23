@@ -609,6 +609,131 @@ def test_index_progress_updates_by_file_count_bucket() -> None:
     assert "indexProgressBucket(meta.indexed_files)" in fn_block
 
 
+def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
+    """The file header carries the whole address; every segment is live.
+
+    The served root is a dimmed prefix because it is identical on every
+    page — context rather than content. Everything from the root slash
+    rightward navigates, including the last component: on the page you
+    are already looking at it changes nothing, but a run of links with
+    one dead segment in the middle reads as a bug rather than a rule.
+    """
+
+    js = _read_app_js()
+    fn_start = js.index("function headerAddressHtml(path, isFile)")
+    fn_block = js[fn_start : fn_start + 1400]
+    assert 'class="file-header-root"' in fn_block
+    assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in fn_block
+    # The final component navigates too — as a file when it names one.
+    assert 'last && isFile ? "data-nav-file" : "data-nav-dir"' in fn_block
+    assert "folder-crumb-current" in fn_block
+
+    # Both headers build their address from this one helper.
+    assert js.count("headerAddressHtml(") == 3
+
+    # A file crumb opens the file rather than a directory.
+    click_start = js.index('origin.closest("[data-nav-file]")')
+    assert "navigateToPath(fileBtn.dataset.navFile" in js[click_start : click_start + 300]
+
+    # A narrow pane ellipsizes the crumbs, so each one names its whole
+    # component on hover rather than only the head of it — through the app's
+    # own tooltip, because the browser's would be a second one on the same
+    # surface. See devtools/check_tooltips.py.
+    assert 'data-tip-text="${esc(walked)}"' in fn_block
+    assert "title=" not in fn_block
+
+
+def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
+    """A squeezed address loses width at the start, and shows that it did.
+
+    The dimmed root prefix is the first to narrow, then the directories,
+    then the component you are standing on — the name you are reading is
+    the part worth keeping. Every part that can narrow ellipsizes, so the
+    header's clip never cuts a crumb mid-word, and nothing after the run
+    is pushed outside the clipped box where it cannot be reached.
+
+    Pinned as the ordering between the shrink weights rather than as their
+    values, which are free to move as long as the order survives.
+    """
+
+    css = _read_styles_css()
+
+    def shrink(selector: str) -> float:
+        start = css.index(f"{selector} {{")
+        block = css[start : css.index("}", start)]
+        match = re.search(r"flex(?:-shrink)?:\s*(?:[\d.]+\s+)?([\d.]+)", block)
+        assert match is not None, f"{selector} declares no shrink weight"
+        return float(match.group(1))
+
+    root = shrink(".file-header-root")
+    directory = shrink(".folder-breadcrumb .folder-crumb")
+    current = shrink(".folder-breadcrumb .folder-crumb-current")
+    structure = shrink(
+        ".folder-breadcrumb .folder-crumb-root,\n.folder-breadcrumb .folder-crumb-sep"
+    )
+
+    assert root > directory > current > structure == 0
+
+    # Whatever narrows says so, instead of being cut against the clip.
+    crumb_start = css.index(".folder-breadcrumb .folder-crumb {")
+    crumb_block = css[crumb_start : css.index("}", crumb_start)]
+    assert "text-overflow: ellipsis" in crumb_block
+    assert "min-width: 0" in crumb_block
+    assert "overflow: hidden" in crumb_block
+
+
+def test_navigation_heading_shows_only_the_root_name() -> None:
+    """The heading renders the basename; the served root rides alongside.
+
+    The root itself is written once, by the shell, because it is a property
+    of the server process rather than of a tree response and cannot change
+    while the page lives. Re-deriving it per response is how the tooltip and
+    the file header's prefix came to disagree about whether the home
+    directory is spelled out or abbreviated.
+    """
+
+    js = _read_app_js()
+    fn_start = js.index("function pathBaseHtml(path)")
+    fn_block = js[fn_start : fn_start + 500]
+    assert 'class="path-base"' in fn_block
+    assert "path-dir" not in fn_block
+    # loadTree refreshes the label, and reads the root rather than rewriting it.
+    tree_start = js.index("pathEl.innerHTML = pathBaseHtml(data.root)")
+    assert "setServedRoot" not in js
+    assert (
+        "pathEl.dataset.tipName = pathEl.dataset.servedRoot" in js[tree_start : tree_start + 2600]
+    )
+
+
+def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:
+    """Finishing a crawl must reach the rollup watches.
+
+    Nothing changes at the end of a scan — no entry is added or removed —
+    so the file store emits no op and no inventory-change event. Rollup
+    watches refresh on that event alone, so without an explicit
+    announcement a folder keeps rendering the last rollup it fetched,
+    which still reports ``index_status: "scanning"``. The counts were
+    right; the label above them never cleared.
+    """
+
+    js = _read_app_js()
+    fn_start = js.index("async function refreshIndexProgress(force)")
+    fn_block = js[fn_start : fn_start + 1600]
+    # Read before rendering: renderIndexProgress overwrites the record the
+    # transition is detected against.
+    assert fn_block.index('indexProgressLastRendered?.status === "scanning"') < fn_block.index(
+        "renderIndexProgress(meta)"
+    )
+    assert "announceScanCompletion()" in fn_block
+
+    announce_start = js.index("function announceScanCompletion()")
+    announce_block = js[announce_start : announce_start + 400]
+    assert 'new CustomEvent("metabrowser:inventory-change"' in announce_block
+    # Null paths mean "anything may have changed", which is what makes every
+    # watch re-fetch rather than only those matching some path list.
+    assert "paths: null" in announce_block
+
+
 def test_styles_css_defines_index_progress_footer() -> None:
     css = _read_styles_css()
     assert ".index-progress {" in css
@@ -913,3 +1038,37 @@ def test_summary_refresh_is_not_gated_on_the_row_it_installs() -> None:
     assert "tree-summary(?: tree-summary-split)?" in block, (
         "the chrome-cache regex must match the fallback row as well"
     )
+
+
+def test_both_panes_build_their_top_rows_from_one_height() -> None:
+    """The two sides of the divider share a structure, not a resemblance.
+
+    Path row, hairline, tabs row, hairline — the same on both sides, with each
+    row the same height as its opposite number, so every rule meets its twin
+    across the divider and nothing steps up or down as the eye crosses it.
+
+    Asserted as "both read the same token" rather than as a measurement,
+    because a look-alike value on each side is exactly how they drifted: the
+    navigation header came out half a pixel taller than the file header, which
+    no review catches and which leaves the hairline broken at the divider.
+    """
+
+    css = _read_styles_css()
+
+    def block(selector: str) -> str:
+        start = css.index(f"{selector} {{")
+        return css[start : css.index("}", start)]
+
+    nav = block(".app-header")
+    view = block(".file-header")
+    for name, rule in (("nav", nav), ("view", view)):
+        assert "height: var(--pane-header-row-height)" in rule, (
+            f"the {name} path row must take its height from the shared token"
+        )
+        assert "border-bottom: 1px solid var(--border)" in rule, (
+            f"the {name} path row must carry the shared hairline"
+        )
+    # A floor is what let them differ, each side still growing to its own
+    # content. The token has to be the height, not a minimum.
+    assert "min-height: var(--pane-header-row-height)" not in css
+    assert "--pane-header-row-height:" in css

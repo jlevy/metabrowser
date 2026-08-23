@@ -241,21 +241,57 @@ global.document = { createElement: (tag) => new Element(tag) };
       sharedStyles.lastIndexOf("--viz-data-mark-hover-filter:") > darkStart,
     styles,
   );
-  // A tally track is eight pixels tall, so the filter alone reads as nothing
-  // happening. The siblings have to recede for the hovered segment to be
-  // findable, which means the rule keys off the track rather than the segment.
-  // :not(:hover) is what keeps it off the segment being pointed at: the recede
-  // rule is the more specific of the two, so without it the whole bar fades
-  // uniformly and nothing is picked out.
-  const recedeSelector = styles
-    .slice(0, styles.indexOf("opacity: var(--mb-distribution-segment-recede)"))
-    .replace(/\s+/g, " ");
+  // Hover is drawn on the hovered segment and nowhere else. Nothing may key off
+  // the track to reach a segment's siblings, and no rule may dim one: that was
+  // the old treatment, and it made pointing at one segment restyle fifty.
+  // A tally track is eight pixels tall, so the lift needs the outline beside it
+  // to register at all — which is why both are asserted rather than either.
+  const flattened = styles.replace(/\s+/g, " ");
   check(
-    "hovering a segment recedes the rest of the track, but not the segment itself",
-    recedeSelector.includes(".file-type-summary-track:hover") &&
-      recedeSelector.endsWith(".file-type-summary-fill[data-segment-key]:not(:hover) { ") &&
-      sharedStyles.includes("--mb-distribution-segment-recede:"),
-    recedeSelector.slice(-140),
+    "the hovered segment grows and lifts its colour, and takes no outline",
+    flattened.includes(
+      ".folder-totals .file-type-summary-fill[data-segment-key]:hover { " +
+        "filter: var(--viz-data-mark-hover-filter); " +
+        "transform: scaleY(var(--viz-hover-grow)); z-index: 1; }",
+    ) &&
+      !styles.includes("--viz-hover-outline") &&
+      // scaleX is the bug this replaced: on a horizontal bar the width is the
+      // value, so growing it states a share the family does not have. Matched
+      // as a declaration, since the stylesheet's own comment names it.
+      !flattened.includes("transform: scaleX("),
+    flattened.slice(0, 240),
+  );
+  // A transform, never width: the widths are percentages summing to 100, so
+  // growing one in layout pushes the last segment past the end of the track.
+  // The overshoot is the point, so assert the property rather than the spelling:
+  // a cubic-bezier overshoots exactly when a control point's y exceeds 1.
+  const easing = /--viz-hover-grow-ease:\s*cubic-bezier\(([^)]*)\)/.exec(sharedStyles);
+  const controlYs = easing
+    ? easing[1]
+        .split(",")
+        .map(Number)
+        .filter((_, i) => i % 2 === 1)
+    : [];
+  check(
+    "growth is a transform on a curve that overshoots",
+    flattened.includes("transform var(--viz-hover-grow-duration) var(--viz-hover-grow-ease)") &&
+      controlYs.length === 2 &&
+      Math.max(...controlYs) > 1,
+    `--viz-hover-grow-ease must overshoot; control y values were ${controlYs.join(", ")}`,
+  );
+  check(
+    "no rule dims a segment to pick out one of its siblings",
+    !styles.includes(":not(:hover)") && !sharedStyles.includes("--mb-distribution-segment-recede"),
+    styles.slice(0, 200),
+  );
+  // An instant jump is worse than no growth.
+  check(
+    "reduced motion drops the growth rather than making it instant",
+    flattened.includes("prefers-reduced-motion") &&
+      flattened.includes(
+        ".folder-totals .file-type-summary-fill[data-segment-key]:hover { transform: none; }",
+      ),
+    flattened.slice(flattened.indexOf("prefers-reduced-motion"), 400),
   );
   // Segment widths are percentages that sum to 100, so the hairline between
   // them cannot occupy layout or the last segment leaves the track.

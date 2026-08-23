@@ -483,7 +483,7 @@ def validate_file_type_breakdown(raw: object, node: Mapping[str, Any]) -> None:
     registry = raw["registry"]
     assert isinstance(registry, dict)
     assert set(registry) == {"schema_version", "revision", "fingerprint"}
-    assert registry["schema_version"] == 2
+    assert registry["schema_version"] == 3
     active_registry = load_file_type_registry()
     assert registry["revision"] == active_registry.revision
     assert registry["fingerprint"] == active_registry.fingerprint

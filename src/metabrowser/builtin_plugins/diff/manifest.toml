@@ -2,7 +2,7 @@
 name = "diff"
 display_name = "Diff"
 version = "0.0.1"
-sdk_version = "0.3"
+sdk_version = "0.4"
 extra_styles = ["styles.css"]
 
 # Patch files are the no-repository diff source: the server parses them

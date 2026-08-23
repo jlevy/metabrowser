@@ -90,6 +90,16 @@
   cursor: pointer;
 }
 
+/* The lift, and only the lift — the documented exception to the growth every
+   other data mark gets. See "Hover Styles the Thing Under the Pointer" in
+   docs/design-system.md.
+
+   Two reasons, and either is enough. A cell's area IS its value here, so
+   growing one states a size it does not have, where a bar segment's overshoot
+   settles back to the width it earned. And growth needs the mark to lift above
+   its neighbours, which this map cannot give it: a nested folder and its
+   descendants are flattened into siblings, so raising a hovered container
+   paints it over every rectangle inside it. */
 .tm-cell:hover {
   filter: var(--viz-data-mark-hover-filter);
 }

@@ -53,7 +53,7 @@ function normalizeBreakdown(raw) {
       ? /** @type {Record<string, unknown>} */ (value.registry)
       : null;
   if (
-    registry?.schema_version !== 2 ||
+    registry?.schema_version !== 3 ||
     !Number.isInteger(registry.revision) ||
     typeof registry.fingerprint !== "string"
   ) {
@@ -265,6 +265,24 @@ function sortRows(rows, metric) {
 }
 
 /**
+ * The icon path for a family: a stand-in filename carrying its canonical
+ * extension, which is the same shape the per-extension rows used to build.
+ *
+ * The registry declares no icon of its own yet, so the family's first
+ * extension is what stands for it. That is enough to make the Overview
+ * self-consistent — every member of a family shows the family's icon — but it
+ * does not yet make the tree agree with it, which needs an icon per family in
+ * the registry. See mb-xrh8.
+ *
+ * @param {{extensions?: ReadonlyArray<string>}} descriptor
+ * @returns {string | null}
+ */
+function familyIconPath(descriptor) {
+  const canonical = descriptor.extensions?.[0];
+  return typeof canonical === "string" && canonical ? `x${canonical}` : null;
+}
+
+/**
  * @param {ReadonlyArray<any>} rows
  * @param {"files" | "size"} metric
  * @param {{key: string, category: string, child: boolean}} identity
@@ -381,7 +399,11 @@ function buildRegistryRows(
             key: `${paletteKey}/${child.key}`,
             rawKey: child.key,
             extension: child.key,
-            iconPath: `x${child.key}`,
+            // No icon on an extension inside a family. The family row above
+            // says what these are, and one icon per extension claimed a
+            // distinction the registry does not make — .js and .mjs are one
+            // family and were resolving to two different glyphs.
+            iconPath: null,
             label: child.label,
             category: group.id,
             kind: "extension",
@@ -408,7 +430,10 @@ function buildRegistryRows(
             key: paletteKey,
             rawKey: null,
             extension: null,
-            iconPath: null,
+            // One icon for the whole family, taken from the extension the
+            // registry lists first — its canonical one. Every member of the
+            // family is this icon, because the family is what the row is.
+            iconPath: familyIconPath(descriptor),
             label: descriptor.label,
             category: group.id,
             kind: "family",
@@ -441,12 +466,10 @@ function buildRegistryRows(
           key: `${id}/${child.key}`,
           rawKey: child.key,
           extension: !others && childKind === "extension" ? child.key : null,
-          iconPath:
-            !others && childKind === "filename"
-              ? child.key
-              : !others && childKind === "extension"
-                ? `x${child.key}`
-                : "file",
+          // An aggregate "N more" row stands for a set, not a file, so it
+          // names no icon. The path is what decides now: a row with one gets
+          // an icon and a row without one does not.
+          iconPath: others ? null : childKind === "filename" ? child.key : `x${child.key}`,
           label: childLabel,
           category: "other",
           kind: others ? "others" : childKind,
