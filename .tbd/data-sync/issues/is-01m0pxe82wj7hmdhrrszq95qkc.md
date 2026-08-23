@@ -1,42 +1,44 @@
 ---
 type: is
 id: is-01m0pxe82wj7hmdhrrszq95qkc
-title: "Nav clicks read as dead during a large scan: a 12px chevron and a shared request queue"
+title: "Nav clicks feel dead during a large scan: requests queue behind the prefetch sweep"
 kind: bug
 status: open
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-23T08:57:48.378Z
-updated_at: 2026-08-23T08:57:48.378Z
+updated_at: 2026-08-23T17:06:07.133Z
 ---
-Reported from real use on a 241,063-file tree (~/wrk/aisw/trading, 124,750 visible + 116,313 ignored, 5.15 GB, walk 73.7s): during the initial scan, clicking nav rows appears to do nothing. Initial load itself was fast, which is the perf work behaving.
+Reported from real use on a 241,063-file tree (~/wrk/aisw/trading, 124,750 visible + 116,313 ignored, 5.15 GB, walk 73.7s): during the initial scan, clicking nav rows appears to do nothing. Once the scan finished, expanding and collapsing worked normally. The initial load itself was fast, which is the perf work behaving.
 
-WHAT IS NOT WRONG, established first because three separate probes said otherwise and all three were wrong. Expand and collapse WORK, during the scan and after it. A full pointer sequence on the chevron during scanning fetches `/api/tree?path=attic&depth=2` in 14ms and the children group goes from 1 child to 132, height 0px to auto. An element-level `.click()` does NOT trigger the handler -- it flips aria by another path and never opens the group -- so any measurement built on synthetic clicks reports a failure that is the probe's, not the app's. Calibrate the instrument against the settled case before trusting it on the scanning case.
+TWO THEORIES DISCARDED, both mine, both wrong.
 
-TWO THINGS THAT ARE REAL.
+Not a broken expand handler. Expand and collapse work during the scan: a full pointer sequence on the chevron while scanning fetches `/api/tree?path=attic&depth=2` in 14ms and the children group goes from 1 child to 132, height 0px to auto. Three earlier probes said otherwise and all three were instrument faults -- an element-level `.click()` does not trigger the handler at all, and `offsetParent !== null` reports a `visibility: hidden` group as visible. Calibrate against the settled case before trusting a probe on the scanning case.
 
-1. THE CHEVRON IS A 12x12 PX TARGET. Measured from its bounding rect. The row is 288x24. A click a few pixels off the chevron lands on the row, whose `data-action` is `select-dir`: the folder gets selected and the main pane navigates, but nothing expands. Visually that reads as "nothing happened", and it is exactly what one of my own real mouse clicks did -- landed at (12,128), selected `attic`, left it collapsed. On a tree where rows are 24px tall this is easy to hit wrong repeatedly.
+Not the chevron hit area. I measured it at 12x12 px and proposed that a near-miss lands on the row instead, selecting rather than expanding. The reporter uses it fine normally, so this explains one of my own mis-aimed clicks and nothing about the actual report. Discarded.
 
-2. CONCURRENT REQUESTS QUEUE DURING THE SCAN. Sequentially, a subtree request during scanning is fast:
+WHAT THE EVIDENCE STILL SUPPORTS: requests queue during the scan.
 
-    /api/tree?path=docs&depth=2       10.9ms      during scan
+Issued one at a time, a subtree request while scanning is fast:
+
+    /api/tree?path=docs&depth=2       10.9ms
     /api/tree?path=devops&depth=2     10.9ms
     /api/tree?path=scripts&depth=2    14.2ms
+    /api/file?path=attic              20-50ms
+    /api/rollup?path=attic&depth=1     8-40ms
 
-But when the client fires several at once -- which the prefetch sweep does -- one page-side capture showed four landing together at IDENTICAL times:
+But a page-side capture during an expand caught five landing at IDENTICAL times:
 
-    /api/tree?path=attic&depth=2        14ms   (the one the click triggered)
-    /api/tree?path=__pycache__&depth=2 837ms
+    /api/tree?path=attic&depth=2         14ms   (the click's own fetch, issued first)
+    /api/tree?path=__pycache__&depth=2  837ms
     /api/tree?path=brainstorming&depth=2 837ms
-    /api/tree?path=devops&depth=2      837ms
-    /api/index/progress                837ms
+    /api/tree?path=devops&depth=2       837ms
+    /api/index/progress                 837ms
 
-Four identical figures is the signature of a queue draining as a batch, not of four slow requests. ~830ms of queueing against an 11ms service time. A click whose fetch lands behind that batch takes most of a second to show anything.
+Five identical figures is a queue draining as a batch, not five slow requests: roughly 830ms of queueing against an ~11ms service time. Expansion is lazy -- the children group holds a `tree-lazy-placeholder` spinner until its fetch returns -- so every expand is a round trip, and a round trip behind that batch is most of a second of spinner.
 
-CAVEAT ON THAT SECOND POINT: one capture, four requests. The direction is clear and the magnitude is not established. Worth repeating under controlled concurrency before anyone sizes a fix to it.
+Also observed, and not yet explained: page-side click handlers took 1.2-5.4s to return during the scan. That is main-thread time, not network, and it is the more likely source of a dead-feeling UI than the queue is. It was measured with the synthetic-click probe that turned out not to reach the handler, so the number may be measuring something else entirely. Re-measure before trusting it.
 
-EXPANSION IS LAZY, which is what makes the queueing visible. The children group holds a `tree-lazy-placeholder` spinner until `/api/tree?path=...` returns, so an expand is always a round trip. When that round trip is 14ms nobody notices; when it is behind an 830ms queue, the spinner is the whole experience.
-
-WHAT TO INVESTIGATE. Whether the chevron's hit area can grow without stealing the row's select target -- padding on the toggle rather than a bigger glyph. And whether the prefetch sweep should yield to a user-initiated expand, since the sweep is speculative and the click is not; today they share one queue and the speculative work can be ahead of the real request.
+WHAT TO DO NEXT, in order. Reproduce the queueing under controlled concurrency -- N simultaneous subtree requests during a scan against the same N settled -- since one capture of five requests establishes a direction and not a magnitude. Then measure main-thread long tasks during the scan with the committed probe.js, which reports `long_task_ms_total`, rather than by timing a click handler. Only then decide whether the fix is on the server (the sweep and the click share one queue, and the sweep is speculative while the click is not) or in the client.
