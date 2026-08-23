@@ -5,36 +5,26 @@ title: Depth-capped /api/tree no longer computes navigation tallies
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m0pn7vkfkd7tfzt7r331jkp8
 created_at: 2026-08-23T06:21:47.429Z
-updated_at: 2026-08-23T06:36:07.036Z
+updated_at: 2026-08-23T06:42:40.559Z
 ---
-Recorded from the side-by-side validation of #66 (mb-j7xx), as the one behaviour difference found between v0.6.0 and main. It is DELIBERATE and documented -- exp-007 states it in as many words -- and it is written down here because it is a change an API client can observe and the release notes do not mention it.
+Recorded from the side-by-side validation of #66 (mb-j7xx): the one behaviour difference between v0.6.0 and main. It is DELIBERATE, documented in code at server.py:1565, and filed because an API client can observe it and the release notes do not mention it.
 
-WHAT CHANGED. Navigation tallies -- `summary`, `extensions`, `canonical_extensions`, `file_type_registry`, `type_families`, `type_presets`, `recency_tallies` -- are no longer computed for a depth-capped `/api/tree` request. `depth=0` is now the channel that computes them; a `depth>=1` request serves them only when a fresh memo happens to exist, and returns null otherwise.
+CORRECTED DESCRIPTION. An earlier version of this bead said the browser fetches depth=0 and so always uses the channel that computes tallies. That understates what changed. The browser makes two requests:
 
-MEASURED, on a frozen corpus (601 files, git-tracked only, made read-only so nothing moved between runs):
+- Rows: `/api/tree` with no depth, resolved by the server to `DEFAULT_TREE_DEPTH = 2`. This is the file tree own request, and it is the one that lost its tallies.
+- Tallies: `/api/tree?depth=0`, polled behind the render by `scheduleRootSummaryRefresh` (app.js:1032), returning `tree: []` plus the tally fields.
 
-    /api/tree?depth=0    0 differences between the two builds
-    /api/tree?depth=2    13 differences, every one of them a tally field:
-                         baseline populated, candidate null/empty
+So this is not a change to an unused channel. It is a change to the application most frequent request, made safe by the client fetching tallies separately and guarding each field. See sibling mb-hr8o for how that distinction was got wrong twice.
 
-And on a live tree, polling ONLY depth=2 until the scan settles:
+WHAT CHANGED. `summary`, `extensions`, `canonical_extensions`, `file_type_registry`, `type_families`, `type_presets` and `recency_tallies` are no longer computed for a depth-capped request. A depth>=1 request serves them only from a fresh memo and returns null otherwise.
 
-    baseline   7/7 tally fields populated
-    candidate  0/7 -- then 7/7 after any single depth=0 request
+MEASURED. On a frozen corpus, `/api/tree?depth=0` shows zero differences between the builds. On a live tree polling only depth=2: baseline 7/7 tally fields populated, candidate 0/7, then 7/7 after any single depth=0 request. On a 247,153-file project corpus both builds report identical rows, files and bytes.
 
-NOT USER-VISIBLE. app.js fetches `/api/tree?depth=0` (app.js:1032), so the browser always uses the channel that computes them. The UI is identical, which is what the depth=0 result above says.
+WHY IT WAS DONE, from the server own comment: the tally pass costs 0.37s at 60,000 files indexed and 1.30s at 220,000, and it competes with the walker -- exp-005 measured watching a scan slowing it twelvefold. exp-007 records srv_scanning_ms 311ms -> 2ms.
 
-WHO WOULD SEE IT. Any client that requests only a depth-capped tree and never depth=0. That is a narrow case and it is a real one, and it is the reason this is filed rather than waved through: the change is invisible in the app and visible at the API.
-
-WHY IT WAS DONE, from exp-007: "a row request serves tallies only from a fresh memo; depth=0 is the channel that computes them, fetched by the client after the render", worth `srv_scanning_ms` 311ms -> 2ms on a 246,282-file corpus.
-
-WHAT TO DECIDE. Whether this belongs in the API documentation for `/api/tree`, and in the notes for whichever release ships #66. Nothing needs to change in the code; the argument for the trade is sound and measured. This is about a reader of the API being able to find out.
-
-TWO NOTES FOR WHOEVER RUNS THIS COMPARISON NEXT, both of which cost time here:
-- Do not use a working checkout as the corpus. Running the comparison writes `__pycache__`, so the tree changes between the two builds' runs and the diff fills with .pyc counts that have nothing to do with either build. Freeze a copy.
-- Settle the poll on the same endpoint the claim is about, and be explicit about which. Polling depth=2 while the app uses depth=0 compares a computed answer against an uncomputed one, which reads as a regression and is not one.
+WHAT TO DECIDE. Whether the /api/tree documentation states which depths compute tallies, and whether the release notes for #66 mention it. Nothing in the code needs to change; the trade is measured and sound. This is about a reader of the API being able to find it out without reading server.py.
