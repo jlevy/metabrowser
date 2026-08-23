@@ -55,7 +55,7 @@ experiment:
       candidate_range: [23, 23]
       change_pct: -28.1
       overlapping: false
-    - metric: total_downward_shift_px
+    - metric: reserved_region_shift_px
       control_median: 42
       candidate_median: 23
       control_range: [42, 42]
@@ -159,7 +159,7 @@ started.**
 | --- | ---: | ---: | ---: | ---: |
 | `filter_bar_shift_px` | 24 | 24 | 24 | **0** |
 | `summary_shift_px` | 18 | 18 | 43 | **23** |
-| `total_downward_shift_px` | 42 | 42 | **67** | **23** |
+| `reserved_region_shift_px` | 42 | 42 | **67** | **23** |
 
 The filter bar has cost 24 px since before the campaign.
 The tally row cost 18 px until the split row — tracked and ignored counted separately —

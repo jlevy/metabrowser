@@ -23,7 +23,7 @@ fast -- only that it moved.
 | `first_row_ms` | 1,604 | **242** | exp-004 |
 | `gitignore_build_ms_real_tree_a` | 21,370 | **2,180** | exp-006 |
 | `srv_scanning_ms` | 311 | **2** | exp-007 |
-| `total_downward_shift_px` | 67 | **23** | exp-009 |
+| `reserved_region_shift_px` | 67 | **23** | exp-009 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -41,7 +41,7 @@ against one that did.
 | exp-005 | [A real tree changes the priorities](experiments/exp-005-a-real-tree-changes-the-priorities.md) | H16 | `walk_elapsed_ms` | baseline |
 | exp-006 | [The gitignore pre-walk stops traversing what it cannot use](experiments/exp-006-the-gitignore-prewalk-stops-traversing-what-it-cannot-use.md) | H30 | `gitignore_build_ms_real_tree_a` | accepted |
 | exp-007 | [Rows stop waiting for the tally pass](experiments/exp-007-rows-stop-waiting-for-the-tally-pass.md) | H27, H31 | `srv_scanning_ms` | accepted |
-| exp-009 | [The skeleton stops growing under the reader](experiments/exp-009-the-skeleton-stops-growing-under-the-reader.md) | H50 | `total_downward_shift_px` | accepted |
+| exp-009 | [The skeleton stops growing under the reader](experiments/exp-009-the-skeleton-stops-growing-under-the-reader.md) | H50 | `reserved_region_shift_px` | accepted |
 | exp-010 | [Every checkpoint on one corpus](experiments/exp-010-every-checkpoint-on-one-corpus.md) | H55, H53 | `first_row_ms` | baseline |
 
 ## Absolute numbers, per condition
@@ -162,7 +162,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `skeleton_complete` | 1 | 1 | 1 | 1 | 1 (1-1) | 1 (1-1) |
 | `filter_bar_shift_px` | 0 | 24 | 24 | 24 | 24 (24-24) | 0 (0-0) |
 | `summary_shift_px` | 23 | 43 | 18 | 18 | 43 (43-43) | 23 (23-23) |
-| `total_downward_shift_px` | 23 | 67 | 42 | 42 | 67 (67-67) | 23 (23-23) |
+| `reserved_region_shift_px` | 23 | 67 | 42 | 42 | 67 (67-67) | 23 (23-23) |
 | `tree_region_repaints` | 4 | 4 | 1 | 1 | 3 (3-3) | 3 (3-3) |
 | `long_tasks` | 1 | 1 | 1 | 4 | 4 (3-9) | 3 (1-9) |
 | `long_task_ms_total` | 74 | 76 | 66 | 1,153 | 1,295 (1,240-2,350) | 996 (288-2,473) |

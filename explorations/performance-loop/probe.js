@@ -216,7 +216,7 @@
     // still and still be assembled in front of the reader, so both are kept.
     filter_bar_shift_px: filterBarShift,
     summary_shift_px: summaryShift,
-    total_downward_shift_px: totalShift,
+    reserved_region_shift_px: totalShift,
     tree_region_repaints: renderSpans.length,
     long_tasks: longTasks ? longTasks.length : null,
     long_task_ms_total: longTasks

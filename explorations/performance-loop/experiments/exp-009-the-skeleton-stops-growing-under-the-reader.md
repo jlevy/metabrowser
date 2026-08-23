@@ -40,7 +40,7 @@ experiment:
       candidate_range: [23, 23]
       change_pct: -46.5
       overlapping: false
-    - metric: total_downward_shift_px
+    - metric: reserved_region_shift_px
       control_median: 67
       candidate_median: 23
       control_range: [67, 67]
@@ -62,7 +62,7 @@ experiment:
     notes: One design token, two min-height declarations, one changed argument in the inline render, and a guard so a no-op does not record a repaint.
   verdict:
     decision: accepted
-    primary_metric: total_downward_shift_px
+    primary_metric: reserved_region_shift_px
     reason: "67 px of downward movement on every load and every reload, now 23, measured directly at 1280x900. The filter bar is fixed outright: 13 px standing, 37 populated, now 37 throughout. The tally row is half fixed -- its reservation holds one line, and main's split row wraps to two in a 300 px pane, so it still grows 33 px to 56. Registered as H54 rather than papered over with a two-line reservation, which would leave dead space whenever the row does not wrap. Repaint count is unchanged, which is the honest reading: this round stopped most of the movement, it did not stop the page being assembled in front of the reader."
 ---
 # The skeleton stops growing under the reader
@@ -112,7 +112,7 @@ That is the jump a reader gets, in pixels, and it is reproducible here.
 | --- | ---: | ---: |
 | `filter_bar_shift_px` | 24 | **0** |
 | `summary_shift_px` | 43 | **23** |
-| `total_downward_shift_px` | 67 | **23** |
+| `reserved_region_shift_px` | 67 | **23** |
 | `tree_region_repaints` | 4 | 4 |
 
 Both conditions are the same server, the same corpus, and the same pane: the control is
@@ -201,16 +201,46 @@ named exactly the case that then happened: “a tally row carrying more than one
 still grows past them.”
 It does.
 
-The measurement is of two named regions, not of the page: a region that grows and was
-not measured would not appear here.
-Both figures are also pane-width dependent, because wrapping is — the 23 px is what a
-300 px navigation pane gives, and a wider one gives zero.
+**The measurement is of two named regions, not of the page**, which is what the metric
+is now called. Auditing every region the shell ships as a placeholder found a third that
+changes size by far more than either:
+
+| region | pending | settled | change |
+| --- | ---: | ---: | ---: |
+| `#nav-filter-bar` | 37 | 37 | 0 |
+| `.tree-summary` | 33 | 56 | 23 |
+| `#preview-pane` | 900 | 900 | 0 |
+| `#tab-files` | 21 | 612 | **591** |
+
+The files panel is `Loading files…` at first paint and 612 px of rows after.
+It is left out of the metric deliberately rather than by oversight: it is the last child
+of `#tree-content`, which is `overflow-y: auto`, and it has no siblings after it, so its
+growth extends the scroll range instead of displacing anything the reader is looking at.
+Filling is not shifting.
+
+It is still the larger fact about this page.
+Reserving two heights stopped the frame *moving*; it did not make the frame *exist* — at
+first paint the files panel is a 21 px line of text where 612 px of structure belongs.
+That is H52, and this round does not touch it.
+Both figures are also content- and pane-width dependent, because wrapping is.
+Measured directly, the row costs nothing until it holds two long counts at once:
+
+| tally row content | height |
+| --- | ---: |
+| `12 files (4.1 kB)` | 33 |
+| `246,282 files (1.7 GB)` | 33 |
+| `12 files (4.1 kB) +8 ignored (2.0 kB)` | 33 |
+| `20,640 files (248.7 MB) +90,030 ignored (1430.1 MB)` | **56** |
+
+So the reservation is exact for three of these four, and the 23 px is what a large tree
+with a large ignored share gives in a 300 px pane.
+A wider pane gives zero.
 And `lcp_ms` and `cls` are recorded but null, so the metric a browser would report is
 still unknown — that needs a visible window and is H51.
 
 ## Verdict
 
-**ACCEPTED on `total_downward_shift_px`,** 67 px → 23, for one token and two
+**ACCEPTED on `reserved_region_shift_px`,** 67 px → 23, for one token and two
 declarations. The filter bar is finished; the tally row is not, and the remainder is
 [H54](../../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#hypotheses).
 

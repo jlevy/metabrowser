@@ -107,7 +107,7 @@ METRICS = (
     # front of the reader, and only one of those two is a shift.
     "filter_bar_shift_px",
     "summary_shift_px",
-    "total_downward_shift_px",
+    "reserved_region_shift_px",
     "tree_region_repaints",
     "long_tasks",
     "long_task_ms_total",
