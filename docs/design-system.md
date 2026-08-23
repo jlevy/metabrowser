@@ -340,12 +340,25 @@ Both, not either. On an eight-pixel track a brightness shift has almost no area 
 register in, and on a very narrow segment the inset outline *is* the segment — which is
 the same case where the lift has least to work with.
 
-Both are relative to the mark’s own color rather than a fixed overlay:
-`--viz-hover-outline` is translucent black on light and translucent white on dark, and
-the lift darkens on light and brightens on dark.
-That matters because file-type families no longer share one lightness — they sit in a
-band, and a deviating family sits outside it — so a fixed delta lands differently on a
-pale family than on a dark one.
+`--viz-hover-outline` is a flat, opaque, **neutral** grey — dark on light, light on dark
+— and never a translucent overlay.
+A translucent line takes a tint from whatever it sits on, so one outline comes out a
+different color on every family and reads weakest on exactly the families that need it
+most.
+
+Neutrality is what makes it read, not lightness.
+In the light theme the ring is darker than every fill; the mirror of that in dark would
+have to be lighter than fills that are already light, which renders as a near-white bar
+with a sliver of color left inside it.
+At zero chroma the ring reads as a frame against a saturated fill whether it lands above
+or below that fill’s lightness, so the dark theme’s ring sits *between* the ends of the
+painted band rather than above it.
+Check a new value against both ends of that band, not against one family.
+
+The lift darkens on light and brightens on dark, and it is relative to the mark’s own
+color rather than a fixed overlay — file-type families no longer share one lightness,
+they sit in a band and a deviating family sits outside it, so a fixed delta lands
+differently on a pale family than on a dark one.
 See [color and theming](#color-and-theming).
 
 ### Continuing Partial Content

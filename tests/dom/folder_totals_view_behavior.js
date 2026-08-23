@@ -267,6 +267,26 @@ global.document = { createElement: (tag) => new Element(tag) };
     !styles.includes(":not(:hover)") && !sharedStyles.includes("--mb-distribution-segment-recede"),
     styles.slice(0, 200),
   );
+  // The ring has to read the same on both sides. Each segment draws a hairline
+  // inside its own right edge, so the hovered segment's ring covers the one on
+  // its right while the one on its left belongs to the previous segment and
+  // survives — which reads as a misaligned border rather than an outline.
+  check(
+    "the segment before the hovered one drops its hairline",
+    flattened.includes(
+      ".folder-totals .file-type-summary-fill:has(+ " +
+        ".file-type-summary-fill[data-segment-key]:hover) { box-shadow: none; }",
+    ),
+    flattened.slice(0, 240),
+  );
+  // Opaque and neutral: a translucent ring takes a tint from whatever it sits
+  // on, so one outline came out a different colour on every family.
+  check(
+    "the outline is an opaque neutral grey in both themes",
+    /--viz-hover-outline:\s*oklch\(\s*[\d.]+%\s+0\s+0\s*\)/.test(sharedStyles) &&
+      !/--viz-hover-outline:[^;]*\//.test(sharedStyles),
+    "--viz-hover-outline must be an opaque zero-chroma grey",
+  );
   // Segment widths are percentages that sum to 100, so the hairline between
   // them cannot occupy layout or the last segment leaves the track.
   check(

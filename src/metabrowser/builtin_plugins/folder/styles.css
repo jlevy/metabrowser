@@ -101,6 +101,7 @@
 .tm-cell:hover {
   filter: var(--viz-data-mark-hover-filter);
   border-color: var(--viz-hover-outline);
+  border-width: var(--viz-hover-outline-width);
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so

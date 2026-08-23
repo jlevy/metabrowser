@@ -203,12 +203,20 @@
   box-shadow: inset 0 0 0 var(--viz-hover-outline-width) var(--viz-hover-outline);
 }
 
-/* Keeping the between-segment hairline while hovered: the rule above replaces
-   the shadow that draws it, so a hovered segment has to restate both. */
-.folder-totals .file-type-summary-fill[data-segment-key]:not(:last-child):hover {
-  box-shadow:
-    inset 0 0 0 var(--viz-hover-outline-width) var(--viz-hover-outline),
-    inset calc(-1 * var(--mb-distribution-segment-gap)) 0 0 var(--viz-surface);
+/* The ring has to read the same on both sides, and the hairlines are what
+   stopped it.
+
+   Each segment draws a hairline of page ground inside its own right edge. The
+   hovered segment's ring covers the one on its right, but the hairline on its
+   left belongs to the PREVIOUS segment, which the ring cannot reach — so one
+   side came out ring-against-fill and the other ring-against-white. The
+   asymmetry read as a misaligned border rather than as an outline.
+
+   So the segment before the hovered one drops its hairline for the duration.
+   The ring is the separator while it is there, on both sides, and it is
+   thicker than the hairline it replaces. */
+.folder-totals .file-type-summary-fill:has(+ .file-type-summary-fill[data-segment-key]:hover) {
+  box-shadow: none;
 }
 
 .file-type-summary-percent {
