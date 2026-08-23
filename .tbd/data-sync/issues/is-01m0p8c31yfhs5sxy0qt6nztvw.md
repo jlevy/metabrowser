@@ -3,14 +3,14 @@ type: is
 id: is-01m0p8c31yfhs5sxy0qt6nztvw
 title: "Side-by-side validation of the perf work: v0.6.0 against main, speed and stability"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 4
+version: 5
 labels: []
 dependencies: []
 parent_id: is-01m0pn7vkfkd7tfzt7r331jkp8
 created_at: 2026-08-23T02:49:37.597Z
-updated_at: 2026-08-23T06:36:06.491Z
+updated_at: 2026-08-23T07:12:11.890Z
 ---
 Validate the performance work in #66 end to end, by comparing the shipped v0.6.0 against a build of main with the performance changes merged. Both stability and speed: a faster build that is less reliable is not an improvement, and the changes here are concurrency-shaped, which is exactly where that risk lives.
 
@@ -39,29 +39,31 @@ REPORT: the numbers, the spread, the trees, both versions, and an explicit state
 
 ## Notes
 
-RESULT: the performance work is genuine, and the two builds agree on what they report.
+COMPLETE. The perf work is genuine, it changes no answers, and the one behaviour difference is deliberate and now documented.
 
-BUILDS. baseline `metab 0.6.0` installed from PyPI, so the thing measured is the thing users get. candidate `metab 0.6.1.dev27+9084e6b (+30 commits, 8d78c29)` from a source checkout -- and the annotation in that second string is what kept the two apart, since the package version alone said 0.6.0 for both.
+METHOD, corrected from the first attempt. Both builds installed as console scripts -- the candidate built to a wheel and installed into its own venv -- so neither carries a launcher the other does not. Versions asserted different before measuring (0.6.0 against 0.6.1.dev30+8d78c29). Corpora fingerprinted before and after every run and unchanged. Rows polled from `/api/tree`, which is what the nav tree requests; tallies from `/api/tree?depth=0`.
 
-EQUIVALENCE, which was the first test and the one that decides whether the timings mean anything.
+SPEED. Medians, interleaved, five runs on the project corpus and three on the others:
 
-On a live 249,147-file tree (5.6 GB, 148 top-level rows), both builds report IDENTICAL rows, file counts and byte totals:
+    project      247,153 files, 31,202 dirs, 251 gitignores   28.2s -> 12.2s   2.32x
+    deep         120,000 files, 33,057 dirs, 72,701 ignored    6.0s ->  2.7s   2.27x
+    wide         120,000 files,    972 dirs, no ignores       28.6s -> 11.1s   2.58x
 
-    rows 148 | files 249,147 | size 5,591,051,998   -- both builds, depth=1 and depth=2
+Three shapes agree. Spread is tight and the candidate's is tighter.
 
-On a frozen corpus (601 files, git-tracked only, made read-only so nothing moved between runs), `/api/tree?depth=0` -- the endpoint the browser actually uses -- shows ZERO differences after normalising for order.
+MEMORY. Peak RSS 182.3MB -> 178.0MB on the project corpus, 172-176 -> 166-168 deep, 196-200 -> 190-193 wide. Slightly better everywhere; no leak.
 
-ONE DELIBERATE DIFFERENCE, filed separately as mb-amyt: a depth-capped request no longer computes navigation tallies; depth=0 is the channel that does. Not user-visible, since app.js fetches depth=0. Documented in exp-007 as the mechanism of the win.
+EQUIVALENCE. Identical rows, file counts and byte totals on every shape. On the tallies channel, zero differences. On the rows channel, seven differences, all of them the tally fields, which is the deliberate change filed as mb-amyt and now written into the route documentation.
 
-TIMINGS, 2 runs per build, interleaved, same tree and machine:
+STABILITY, the finding that was not expected. Under a probe polling without backoff, v0.6.0 did NOT finish indexing the project corpus within 240 seconds; the candidate finished in 28.9s. That is exp-005's interference effect at full strength -- a row request that computes tallies competes with the walker for the GIL -- and removing that computation from row requests is exactly what #66 does. The probe is not a realistic client, but the difference is a real robustness margin: the gain is largest precisely when someone is watching, which is always.
 
-    index_done   baseline median 32.5s  [30.1 - 32.5]
-                 candidate median 19.1s [19.07 - 19.15]     ~1.7x faster
+WHAT DID NOT REPRODUCE. exp-006 reports 13.36s -> 0.81s for the gitignore pre-walk on this exact corpus shape. Timed directly:
 
-The candidate's spread is also far tighter -- 0.08s against 2.4s -- which is the stability half of the question and points the right way.
+    candidate  0.879s   -- matches the reported 0.81s
+    baseline   2.53s    -- against 13.36s reported
 
-WHAT DID NOT REPRODUCE, and why that is a result rather than a problem. #66's headline is "dead time before any row can exist: 19.1s -> 3.4s". This corpus does not show that dead time on EITHER build: subtracting server start-up, first rows arrived in 4ms on the baseline and 2ms on the candidate. The claim was measured on `build_project_corpus` at 10 projects (246,282 files, 31,161 directories) -- a much deeper, more directory-heavy shape than a flat 148-row checkout of repositories. The dead time the fix removes is a function of that shape, so its absence here neither confirms nor contradicts the figure; reproducing it needs that corpus, which #66 ships the generator for.
+Most likely page-cache state: exp-006 cleared the cache between runs and this run could not (needs `sudo purge`). The baseline's cost is a metadata walk over ~222k directories, exactly what a warm cache erases; the candidate barely walks, which is why its figure is cache-independent and lands on the reported value. Direction confirmed, candidate's absolute figure confirmed, baseline's magnitude understated -- so the real win is AT LEAST 2.9x and the reported 16x is not contradicted.
 
-MEASUREMENT CAVEAT worth carrying forward: the candidate was launched through `uv run --frozen`, which adds roughly half a second before the server starts. That inflates `serving` and `first_row` for the candidate and is why those two are not comparable as raw numbers -- subtract `serving` first. `index_done` is affected by the same constant, which means the 1.7x is if anything understated.
+ONE WORDING PROBLEM, worth a follow-up and not a retraction. exp-006 calls its figure "dead time before the first row". Over HTTP that does not describe what a reader sees here: skeleton rows arrive at 1.3s on BOTH builds, and the pre-walk cost lands in total index time instead. The number is about a phase, not about first paint.
 
-STILL UNDONE, and named so it is not mistaken for covered: the deep-and-narrow and wide-and-shallow corpora, the many-ignored-files case, memory alongside time, and repeat counts high enough for a real variance estimate. Two runs establish a direction and a tight spread; they are not a distribution.
+STILL NOT COVERED, named so it is not mistaken for done: a cold page cache, which needs a machine where clearing it is allowed; more than five repeats for a real variance estimate; and a browser-side measurement of what the reader actually perceives, as opposed to what the API reports.
