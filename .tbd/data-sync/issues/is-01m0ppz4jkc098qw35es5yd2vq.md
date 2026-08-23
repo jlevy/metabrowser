@@ -5,11 +5,13 @@ title: "H57: the server is no longer the bottleneck; the shell's own boot is, an
 kind: task
 status: open
 priority: 1
-version: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
+parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-23T07:04:41.810Z
-updated_at: 2026-08-23T07:04:41.810Z
+updated_at: 2026-08-23T07:20:04.198Z
 ---
 On the fixed 246,282-file corpus this branch answers the first tree request in 6ms (tree_fetch_srv_ms, range 3-8) but does not paint a row until 276ms (first_row_ms, range 213-533). The ~270ms gap is the shell booting itself: 126 requests and 742KB transferred, of which 45KB is vendored library code.
 

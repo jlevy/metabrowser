@@ -5,11 +5,13 @@ title: "H11: patch the tree panel instead of replacing it, so a load is one pain
 kind: task
 status: open
 priority: 1
-version: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
+parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-23T07:04:40.832Z
-updated_at: 2026-08-23T07:04:40.832Z
+updated_at: 2026-08-23T07:20:03.682Z
 ---
 exp-010 measured this as a regression the campaign introduced, not a standing cost: the tree region was painted once before the performance work and is painted three times after (inlined rows, fetched rows, refresh). Each pass is filesPanel.innerHTML = ..., which destroys and rebuilds every row.
 
