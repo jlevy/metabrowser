@@ -1,24 +1,43 @@
 ---
 type: is
 id: is-01m0pnabncfm4ztxc24s6mnxk8
-title: GIT_DIR overrides -C, and git exports it to every hook
+title: "GIT_DIR-from-hooks: asserted, never measured, and false here"
 kind: bug
 status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m0pn7vkfkd7tfzt7r331jkp8
 created_at: 2026-08-23T06:35:52.363Z
-updated_at: 2026-08-23T07:11:39.423Z
+updated_at: 2026-08-23T07:52:15.911Z
 ---
-WHAT HAPPENED, and it is the most serious error in this set. Test fixtures created a throwaway repository with `git -C <tmpdir> init/commit/tag`. Run from a pre-push hook, git had already exported `GIT_DIR` into the environment -- and `GIT_DIR` overrides `-C`. The fixture's commits and its `v1.0.0` tag were written to THIS repository. The next build then read that tag and called itself version 1.0.0.
+REOPENED, then closed as NOT REPRODUCIBLE. The mechanism this bead asserted does not exist in this environment, and the fix built on it has been reverted in #73.
 
-CONTAINED. Nothing reached the remote. The tag was deleted and the branch reset. But the recovery had its own casualty: the `git reset --hard` discarded an uncommitted fix that had to be redone, which is the ordinary second failure of a hurried cleanup.
+MEASURED, which is what should have happened first. A probe hook that dumps its environment and then runs plain git from an unrelated directory:
 
-THE FIX THAT LANDED. Both `build_version._git` and the test helper strip every `GIT_*` variable before invoking git, and the reason is written at both call sites. Verified afterwards by running the suite with `GIT_DIR` deliberately set and confirming HEAD and the tag list were byte-identical before and after.
+    pre-commit    GIT_AUTHOR_DATE, GIT_AUTHOR_EMAIL, GIT_AUTHOR_NAME,
+    pre-push      GIT_EDITOR, GIT_EXEC_PATH, GIT_INDEX_FILE, GIT_PREFIX
+    post-commit   -- and NO GIT_DIR, NO GIT_WORK_TREE
+    lefthook cmd  identical set
 
-WHY IT STAYS OPEN AS A BEAD. The two known call sites are fixed; nothing prevents the third. Any new code that shells out to git in a test, a devtool or a hook inherits the same hazard, and the failure mode is writing to the developer's real repository. Worth a lint check -- `subprocess` invoking `git` without a scrubbed `env` -- since `make verify` can enforce what a paragraph of guidance cannot.
+    `git rev-parse --show-toplevel` from /private/tmp inside the hook:
+        "fatal: not a git repository"
+
+Nothing is pinned. A subprocess started from a hook resolves git from its own cwd, which is the behaviour the code wanted all along. pre-push -- where this repository runs its test suite -- carries only GIT_EDITOR, GIT_EXEC_PATH and GIT_PREFIX, none of which redirect anything.
+
+WHY THE BELIEF EXISTED. The comment in metabrowser.git.process asserts the same mechanism and predates this work. Older git versions DID export GIT_DIR to hooks; current git does not. So that comment is stale rationale attached to a harmless guard, not a wrong guard. It is left alone.
+
+MY ERROR was to inherit that rationale, treat it as established, and build a shared module plus a make lint gate on top of it without ever running a hook to check. A one-minute probe would have settled it before any code was written.
+
+WHAT REMAINS TRUE. A v1.0.0 tag and a stray commit really did appear on a real branch, and core.bare really was set. The CAUSE is not established and this bead should not pretend otherwise. Current state audited and clean:
+
+    tags        no v1.x local or remote; highest is v0.6.0 at 440a2fe
+    fsck        210 dangling objects, 0 errors
+    core.bare   false in the shared config and in all 12 worktrees
+    worktrees   all 12 resolve, HEAD sane, tree clean
+
+If it recurs, capture the environment and the cwd AT THE MOMENT of the stray write rather than reasoning backwards from the damage -- that is what would actually identify it.
 
 ## Notes
 
