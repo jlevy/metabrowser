@@ -266,6 +266,15 @@
   --body-font-size: 14px;
   --nav-font-size: 13px;
   --ui-small-font-size: 12px;
+  /* The app's tooltip reads at body size, not at small-chrome size.
+
+     Its own token rather than a reference to --ui-small-font-size, which is
+     the size of chips, counts and row metadata: pointing the tooltip at that
+     made its size a side effect of a decision about chrome, so the next
+     adjustment to small chrome text would have moved every tooltip with it. A
+     tooltip is prose the reader has stopped to read. */
+  --tooltip-font-size: var(--body-font-size);
+  --tooltip-detail-font-size: var(--ui-small-font-size);
   --micro-font-size: 10px;
   --document-body-font-size: 15px;
   --kpress-host-font-size-base: var(--document-body-font-size);
@@ -1537,6 +1546,46 @@ body {
   font-weight: var(--label-font-weight);
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
+}
+
+/* The wordmark is where the product names itself, so it is where someone looks
+   for the project. As a link it behaves like the menu rows under it — the same
+   hover ground — rather than like a heading that happens to be clickable. */
+.menu-title-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  border-radius: 3px;
+}
+.menu-title-link:hover,
+.menu-title-link:focus-visible {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.menu-title-link:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+}
+
+/* The arrow occupies its space whether or not it is showing, so revealing it
+   cannot move the wordmark. Hiding it with `display: none` or appending it on
+   hover would reflow the row under the pointer, which is the one thing a hover
+   must not do — see "Hover Styles the Thing Under the Pointer" in
+   docs/design-system.md. Only its opacity changes. */
+.menu-title-arrow {
+  opacity: 0;
+  transition: opacity var(--viz-hover-duration) var(--viz-hover-ease);
+}
+.menu-title-link:hover .menu-title-arrow,
+.menu-title-link:focus-visible .menu-title-arrow {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-title-arrow {
+    transition: none;
+  }
 }
 .menu-section-label {
   padding: 3px 8px 2px 32px;
@@ -3791,7 +3840,7 @@ pre.code-block code.hljs {
   padding: 6px 10px;
   border-radius: var(--radius-chrome);
   font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--tooltip-font-size);
   line-height: 1.4;
   max-width: 360px;
   pointer-events: none;
@@ -4074,10 +4123,15 @@ pre.code-block code.hljs {
   word-break: break-all;
   color: var(--viz-text);
 }
+/* One step below the tooltip's own size, so a tooltip has a hierarchy: the
+   name it is about, then the measurements under it. Relative rather than a
+   second absolute token — it is defined as "smaller than the tooltip", and
+   pinning it to a chrome token is what let base and detail drift to the same
+   size in the first place. */
 .tip-detail {
   color: var(--viz-text-muted);
   font-weight: var(--weight-normal);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--tooltip-detail-font-size);
 }
 .tip-loading {
   color: var(--muted);

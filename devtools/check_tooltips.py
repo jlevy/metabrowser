@@ -13,6 +13,13 @@ server renders. Use ``data-tip-text`` for a short string, which app.js turns
 into the app's tooltip from a delegated listener, or ``mb.tooltip.show`` for
 rich content.
 
+**And one tooltip size.** The app's tooltip reads at ``--tooltip-font-size``,
+which is body size, and its subordinate lines at ``--tooltip-detail-font-size``.
+Neither may be spelled as some other token or as a literal: pointing a tooltip
+at ``--ui-small-font-size`` is what made its size a side effect of a decision
+about chips and counts. KPress's own tooltip inside an embedded document is not
+ours and is left alone.
+
 **What this is not.** It is not a rule about accessible names. ``aria-label``
 is untouched and still required wherever it was: a screen reader does not read
 ``data-tip-text``, so a glyph-only control needs both. ``<title>`` inside an
@@ -54,6 +61,15 @@ ALLOWED: dict[str, str] = {
 _DOCUMENT_TITLE = re.compile(r"<title>|</title>|<title\s")
 
 
+# The rules that own a tooltip's type size, and the only values they may take.
+TOOLTIP_SIZE_RULES: dict[str, str] = {
+    ".custom-tooltip": "var(--tooltip-font-size)",
+    ".tip-detail": "var(--tooltip-detail-font-size)",
+}
+
+_STYLESHEET = ROOT / "src" / "metabrowser" / "static" / "styles.css"
+
+
 @dataclass(frozen=True, slots=True)
 class Finding:
     path: Path
@@ -90,10 +106,54 @@ def _candidates() -> list[Path]:
     return sorted(seen)
 
 
+def _size_findings() -> list[Finding]:
+    """Each tooltip rule sets its size from the tooltip's own token."""
+
+    findings: list[Finding] = []
+    css = _STYLESHEET.read_text(encoding="utf-8")
+    for selector, expected in TOOLTIP_SIZE_RULES.items():
+        marker = f"{selector} {{"
+        if marker not in css:
+            findings.append(
+                Finding(_STYLESHEET, 0, f"{selector} is gone; update TOOLTIP_SIZE_RULES")
+            )
+            continue
+        start = css.index(marker)
+        block = css[start : css.index("}", start)]
+        match = re.search(r"font-size:\s*([^;]+);", block)
+        if match is None:
+            findings.append(
+                Finding(_STYLESHEET, css.count("\n", 0, start) + 1, f"{selector} sets no font-size")
+            )
+        elif match.group(1).strip() != expected:
+            findings.append(
+                Finding(
+                    _STYLESHEET,
+                    css.count("\n", 0, start + match.start()) + 1,
+                    f"{selector} sets font-size: {match.group(1).strip()}, not {expected}",
+                )
+            )
+    return findings
+
+
 def main() -> int:
     findings: list[Finding] = []
     for path in _candidates():
         findings.extend(_scan(path))
+    size_findings = _size_findings()
+
+    if size_findings:
+        print("tooltips: the size comes from the tooltip's own token", file=sys.stderr)
+        for finding in size_findings:
+            print(
+                f"  {finding.path.relative_to(ROOT)}:{finding.line}: {finding.text}",
+                file=sys.stderr,
+            )
+        print(
+            "\nA tooltip reads at body size. Pointing it at a chrome token makes its\n"
+            "size a side effect of a decision about chips and counts.",
+            file=sys.stderr,
+        )
 
     if findings:
         print("tooltips: the app shows its own, so `title` is not the mechanism", file=sys.stderr)
@@ -107,7 +167,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    return 0
+    return 1 if size_findings else 0
 
 
 if __name__ == "__main__":

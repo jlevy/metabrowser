@@ -311,6 +311,18 @@ That happened on the navigation heading, so the rule is enforced rather than rem
 | A short string | `data-tip-text="…"` |
 | Rich content — counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
 
+**A tooltip reads at body size**, `--tooltip-font-size`, with subordinate lines one step
+down at `--tooltip-detail-font-size`. Neither may be spelled as another token or as a
+literal. Pointing a tooltip at `--ui-small-font-size` — the size of chips, counts, and
+row metadata — makes its size a side effect of a decision about chrome, so the next
+adjustment to small chrome text moves every tooltip with it.
+A tooltip is prose the reader has stopped to read.
+`devtools/check_tooltips.py` holds this alongside the rule above.
+
+KPress’s own tooltip inside an embedded document is not this tooltip and keeps its own
+ramp; see the note beside the radius bridge in `styles.css` for why the app flattens
+KPress’s radii but not its type scale.
+
 `data-tip-text` is read by a delegated listener on the document, so it works on markup
 that does not exist yet, including a plugin’s, and on focus as well as hover.
 

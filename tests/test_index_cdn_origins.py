@@ -34,12 +34,50 @@ def _index_html() -> str:
 
 
 def test_no_external_asset_origins_in_index() -> None:
-    """The page must be loadable fully offline: no external src/href."""
+    """The page must be loadable fully offline: no external asset is fetched.
+
+    An asset is something the page needs in order to render — a script, an
+    image, a stylesheet. A hyperlink is not: an ``<a href>`` to the project's
+    own page costs nothing until someone clicks it, and the page renders
+    identically with no network at all.
+
+    Stated as "assets" rather than as "any absolute URL" because the two are
+    not the same rule, and only the first one is about being loadable offline.
+    """
+
     html = _index_html()
-    external = re.findall(r'(?:src|href)="(https?://[^"]+)"', html)
-    assert external == [], f"external asset references remain: {external}"
+    fetched = re.findall(r'src="(https?://[^"]+)"', html)
+    fetched += [
+        match.group(1)
+        for tag in re.findall(r"<link\b[^>]*>", html, re.IGNORECASE)
+        for match in re.finditer(r'href="(https?://[^"]+)"', tag)
+    ]
+    assert fetched == [], f"external asset references remain: {fetched}"
     assert "cdn.jsdelivr.net" not in html
     assert "cdnjs.cloudflare.com" not in html
+
+
+def test_outbound_links_are_anchors_to_the_project() -> None:
+    """The page may link out, and only as a link the reader chooses to follow.
+
+    This is the other half of the rule above: absolute URLs are permitted, but
+    each one has to be an anchor, so a future asset cannot arrive by being
+    spelled as an href.
+    """
+
+    html = _index_html()
+    anchors = {
+        match.group(1)
+        for tag in re.findall(r"<a\b[^>]*>", html, re.IGNORECASE)
+        for match in re.finditer(r'href="(https?://[^"]+)"', tag)
+    }
+    every_absolute = set(re.findall(r'(?:src|href)="(https?://[^"]+)"', html))
+    assert every_absolute == anchors, (
+        f"absolute URLs that are not anchors: {sorted(every_absolute - anchors)}"
+    )
+    assert anchors <= {"https://github.com/jlevy/metabrowser"}, (
+        f"unexpected outbound link: {sorted(anchors)}"
+    )
 
 
 def test_vendored_assets_match_manifest() -> None:
