@@ -191,7 +191,13 @@
         if (filesByPath.get(entry.path)?.source === NAVIGATION_SOURCE) {
           return false;
         }
-        return removeWithoutRevision(entry.path);
+        // This wire entry is a file, not a directory-removal event. The
+        // catalog stores file leaves keyed by their exact path, so evicting a
+        // previously passive observation is one Map deletion. Routing this
+        // through removeWithoutRevision scanned the complete catalog for
+        // descendants that a file cannot have, once per ignored leaf in a
+        // prefetched subtree.
+        return filesByPath.delete(entry.path);
       }
       const logicalExtension =
         typeof entry.logical_ext === "string" && entry.logical_ext ? entry.logical_ext : null;
@@ -419,7 +425,8 @@
 
     /**
      * Apply one `catalog.change` event from the live stream.
-     * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[]}} payload
+     * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[],
+     *   remove_files?: string[]}} payload
      */
     function applyCatalogChange(payload) {
       let changed = false;
@@ -427,6 +434,16 @@
         if (typeof upsert?.p === "string") {
           changed = put(upsert.p, upsert.e || null, "catalog-event") || changed;
         }
+      }
+      // An ignored-file upsert means one exact catalog leaf stopped being
+      // eligible. It is not a directory deletion and cannot have descendants;
+      // preserving that distinction on the wire keeps this O(remove_files).
+      // Explicitly navigated ignored files remain the documented exception.
+      for (const path of payload?.remove_files || []) {
+        if (typeof path !== "string" || filesByPath.get(path)?.source === NAVIGATION_SOURCE) {
+          continue;
+        }
+        changed = filesByPath.delete(path) || changed;
       }
       // Upserts and removes arrive as separate arrays here, so the whole
       // remove list is one consecutive run and sweeps in a single pass.

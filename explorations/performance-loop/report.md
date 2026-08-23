@@ -25,6 +25,7 @@ fast -- only that it moved.
 | `srv_scanning_ms` | 311 | **2** | exp-007 |
 | `reserved_region_shift_px` | 67 | **23** | exp-009 |
 | `index_done_ms_project` | 29,989 | **11,928** | exp-011 |
+| `long_tasks_over_500ms` | 3 | **0** | exp-012 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -45,6 +46,7 @@ against one that did.
 | exp-009 | [The skeleton stops growing under the reader](experiments/exp-009-the-skeleton-stops-growing-under-the-reader.md) | H50 | `reserved_region_shift_px` | accepted |
 | exp-010 | [Every checkpoint on one corpus](experiments/exp-010-every-checkpoint-on-one-corpus.md) | H55, H53 | `first_row_ms` | baseline |
 | exp-011 | [The shipped work, measured against the release](experiments/exp-011-the-shipped-work-measured-against-the-release.md) | H27, H30, H31 | `index_done_ms_project` | accepted |
+| exp-012 | [Exact file removals stop scanning the catalog](experiments/exp-012-exact-file-removals-stop-scanning-the-catalog.md) | H58 | `long_tasks_over_500ms` | accepted |
 
 ## Absolute numbers, per condition
 
@@ -74,6 +76,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | metric | prefetch-on-dcl (n=3) | prefetch-on-idle (n=4) |
 | --- | ---: | ---: |
 | `first_row_ms` | 854 (678-1,591) | 915 (690-1,106) |
+| `first_row_render_ms` | - | 57 |
 | `load_tree_ms` | 434 (314-721) | 298 (253-701) |
 | `dcl_ms` | 368 (152-1,176) | 588 (146-797) |
 | `load_ms` | 3,883 (3,278-4,819) | 588 (147-798) |
@@ -84,6 +87,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `dom_nodes` | 3,735 | 3,478 |
 | `transferred_kb` | 1,185 | 709 |
 | `vendor_first_start_ms` | 368 (152-1,176) | 594 (156-800) |
+| `requests` | 127 | 129 |
 
 ### 241,063 files
 
@@ -106,6 +110,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | metric | real-tree-browser (n=1) |
 | --- | ---: |
 | `first_row_ms` | 527 |
+| `first_row_render_ms` | 8 |
 | `load_tree_ms` | 27 |
 | `tree_fetch_total_ms` | 11 |
 | `tree_fetch_kb` | 7 |
@@ -123,6 +128,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `render_ms_total` | 8 |
 | `tree_reprobe_ms` | 191 |
 | `tree_reprobe_srv_ms` | 188 |
+| `requests` | 144 |
 | `viewport_w` | 1,280 |
 | `viewport_h` | 900 |
 
@@ -145,6 +151,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | metric | reserved-skeleton (n=1) | shifting-skeleton (n=1) | p0-before-perf (n=1) | p1-rows-partial-index (n=1) | p2-main (n=3) | p3-skeleton-paint (n=3) | reserved-skeleton-h3 (n=3) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `first_row_ms` | 74 | 82 | 1,473 | 1,031 | 294 (207-311) | 276 (213-533) | 391 (305-405) |
+| `first_row_render_ms` | 1 | 1 | 55 | 8 | 1 (1-2) | 1 (1-2) | 1 (1-1) |
 | `load_tree_ms` | 29 | 33 | 1,187 | 775 | 21 (19-31) | 34 (19-35) | 21 (20-46) |
 | `tree_fetch_srv_ms` | 7 | 7 | 1,099 | 735 | 5 (4-5) | 6 (3-8) | 3 (2-4) |
 | `tree_fetch_wait_ms` | 14 | 15 | 1,106 | 754 | 10 (8-12) | 16 (8-16) | 9 (8-15) |
@@ -172,6 +179,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `render_ms_total` | 24 | 25 | 55 | 8 | 7 (7-8) | 8 (7-14) | 7 (7-23) |
 | `tree_reprobe_ms` | 7 | 6 | 15 | 21 | 6 (6-6) | 8 (6-15) | 8 (7-8) |
 | `tree_reprobe_srv_ms` | 3 | 3 | 4 | 14 | 3 (3-3) | 3 (3-3) | 3 (3-4) |
+| `requests` | 123 | 113 | 132 | 136 | 126 (120-127) | 126 (124-131) | 128 (127-140) |
 | `viewport_w` | 1,280 | 1,280 | 1,280 | 1,280 | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) |
 | `viewport_h` | 900 | 900 | 900 | 900 | 900 (900-900) | 900 (900-900) | 900 (900-900) |
 
@@ -185,6 +193,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | metric | viewport-bounded-sweep (n=3) | dom-order-sweep (n=3) | revision-keyed-tallies (n=1) | cost-derived-tallies (n=1) | inline-first-rows (n=3) | fetch-first-rows (n=3) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `first_row_ms` | 1,044 (1,017-1,449) | 1,200 (1,043-1,660) | 6,183 | 1,829 | 242 (232-326) | 1,604 (1,447-2,200) |
+| `first_row_render_ms` | - | - | 78 | 92 | 1 (1-2) | 63 (55-89) |
 | `load_tree_ms` | 876 (870-1,281) | 1,037 (837-1,490) | 1,816 | 1,562 | 1,052 (924-1,403) | 1,411 (1,248-1,828) |
 | `dcl_ms` | 178 (165-183) | 179 (173-215) | 4,384 | 284 | 243 (233-329) | 222 (221-383) |
 | `load_ms` | 179 (165-184) | 180 (174-215) | 4,385 | 285 | 244 (235-330) | 222 (222-384) |
@@ -202,6 +211,7 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `render_ms_total` | - | - | 78 | 92 | 51 (15-72) | 63 (55-89) |
 | `tree_reprobe_ms` | - | - | 15 | 17 | 17 (16-20) | 17 (16-40) |
 | `tree_reprobe_srv_ms` | - | - | 11 | 13 | 13 (11-15) | 12 (12-16) |
+| `requests` | 109 (108-109) | 140 (136-143) | 99 | 108 | 126 (121-129) | 107 (106-111) |
 | `viewport_w` | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) | 1,280 | 1,280 | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) |
 | `viewport_h` | 900 (900-900) | 900 (900-900) | 900 | 900 | 900 (900-900) | 900 (900-900) |
 

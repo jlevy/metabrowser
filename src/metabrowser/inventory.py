@@ -1956,15 +1956,18 @@ def _derive_catalog_change(change: FsChange) -> CatalogChange | None:
     """The minimal Quick File companion for one ``fs.change`` batch.
 
     Non-gitignored file upserts shrink to ``{p, e}``; a gitignored
-    file upsert becomes a catalog remove so ignore-state flips
+    file upsert becomes an exact-file removal so ignore-state flips
     converge; directory upserts are dropped (the catalog holds files
     only — the client removes a directory's descendants itself on a
-    remove op). Returns ``None`` when nothing catalog-relevant
-    remains so no empty event reaches the wire.
+    remove op). Keeping exact file removals separate prevents one
+    catalog-wide prefix scan per ignored file. Returns ``None`` when
+    nothing catalog-relevant remains so no empty event reaches the
+    wire.
     """
 
     upserts: list[CatalogUpsert] = []
     removes: list[str] = []
+    remove_files: list[str] = []
     for op in change.ops:
         if isinstance(op, FsRemove):
             removes.append(op.path)
@@ -1973,12 +1976,16 @@ def _derive_catalog_change(change: FsChange) -> CatalogChange | None:
         if entry.type != "file":
             continue
         if entry.gitignored:
-            removes.append(entry.path)
+            remove_files.append(entry.path)
         else:
             upserts.append(CatalogUpsert(p=entry.path, e=entry.ext))
-    if not upserts and not removes:
+    if not upserts and not removes and not remove_files:
         return None
-    return CatalogChange(upserts=tuple(upserts), removes=tuple(removes))
+    return CatalogChange(
+        upserts=tuple(upserts),
+        removes=tuple(removes),
+        remove_files=tuple(remove_files),
+    )
 
 
 # ── Process-wide singleton ──────────────────────────────────────

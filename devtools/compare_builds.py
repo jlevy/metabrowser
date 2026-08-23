@@ -2,8 +2,9 @@
 
 Equivalence first. A performance change earns its place by making the same answer
 arrive sooner, so a timing is only worth reading once the two builds are known to
-agree. What is allowed to differ is *when* rows appear, and the order inside a
-response that promises none -- so this sorts before comparing, and says so.
+agree. What is allowed to differ is *when* rows appear. Response-list order remains
+part of the comparison: the navigation tree is ordered for display, and a generic
+sort would hide a user-visible regression.
 
 Every guard below is a mistake that was made validating the 0.6.1 perf work, and
 each one produced a confident wrong answer that nothing in the output
@@ -85,6 +86,17 @@ ROW_ENDPOINT = "/api/tree"
 # that computes them; a row request carries them only from a fresh memo, and
 # the client guards every tally field individually.
 TALLY_ENDPOINT = "/api/tree?depth=0"
+
+# Since #66, the row endpoint deliberately omits navigation tallies unless a
+# fresh memo already exists. Compare the row contract that the tree consumes,
+# then compare the complete tally response on its dedicated endpoint. Keeping
+# this projection explicit prevents a generic recursive key filter from also
+# erasing nested contract fields such as `file_type_registry.schema_version`.
+ROW_COMPARISON_FIELDS = ("root", "tree")
+REQUIRED_FIELDS = {
+    "rows": ROW_COMPARISON_FIELDS,
+    "tallies": ("root", "summary", "tally_cache_status", "tree"),
+}
 
 
 def free_port() -> int:
@@ -200,27 +212,30 @@ def run_once(command: list[str], tree: str, poll: float, deadline_s: float) -> d
     return out
 
 
+def comparison_payload(channel: str, payload: Any) -> Any:
+    """Select the documented answer carried by one comparison channel."""
+    if channel != "rows" or not isinstance(payload, dict):
+        return payload
+    mapping = cast("dict[str, Any]", payload)
+    return {key: mapping[key] for key in ROW_COMPARISON_FIELDS if key in mapping}
+
+
+def missing_required_fields(channel: str, payload: Any) -> list[str]:
+    """Report a malformed final response instead of comparing two empty shapes."""
+    if not isinstance(payload, dict):
+        return ["<object>"]
+    mapping = cast("dict[str, Any]", payload)
+    return [field for field in REQUIRED_FIELDS[channel] if field not in mapping]
+
+
 def normalise(payload: Any) -> Any:
-    """Strip what may differ, and order what is not promised in an order."""
+    """Canonicalise object-key presentation without changing response meaning."""
     if isinstance(payload, dict):
-        skip = {
-            "elapsed_ms",
-            "duration_ms",
-            "generated_at",
-            "timestamp",
-            "took_ms",
-            "srv_scanning_ms",
-            "server_version",
-            "version",
-        }
         mapping = cast("dict[str, Any]", payload)
-        return {k: normalise(v) for k, v in sorted(mapping.items()) if k not in skip}
+        return {key: normalise(value) for key, value in sorted(mapping.items())}
     if isinstance(payload, list):
         items = cast("list[Any]", payload)
-        return sorted(
-            (normalise(v) for v in items),
-            key=lambda v: json.dumps(v, sort_keys=True, default=str),
-        )
+        return [normalise(value) for value in items]
     return payload
 
 
@@ -262,6 +277,31 @@ def stats(values: list[float]) -> dict[str, Any]:
         "max": ordered[-1],
         "n": len(ordered),
     }
+
+
+def comparison_failures(report: dict[str, Any]) -> list[str]:
+    """Return every condition that makes the printed timings inadmissible."""
+    failures = [f"run failed: {error}" for error in report.get("errors", [])]
+    if report.get("corpus_unchanged") is not True:
+        failures.append("corpus changed during comparison")
+    equivalence_raw = report.get("equivalence")
+    if not isinstance(equivalence_raw, dict):
+        return [*failures, "equivalence results are missing"]
+    equivalence = cast("dict[str, Any]", equivalence_raw)
+    for channel in REQUIRED_FIELDS:
+        result_raw = equivalence.get(channel)
+        if not isinstance(result_raw, dict):
+            failures.append(f"{channel} equivalence result is missing")
+            continue
+        result = cast("dict[str, Any]", result_raw)
+        missing = result.get("missing_fields")
+        if missing:
+            failures.append(f"{channel} response is missing required fields: {missing}")
+        if result.get("difference_count") != 0:
+            failures.append(
+                f"{channel} responses differ ({result.get('difference_count', 'unknown')} found)"
+            )
+    return failures
 
 
 def main() -> int:
@@ -373,18 +413,38 @@ def main() -> int:
 
     equivalence: dict[str, Any] = {}
     if "baseline" in finals and "candidate" in finals:
-        for depth in ("rows", "tallies"):
+        for channel in ("rows", "tallies"):
             diffs: list[str] = []
+            missing = {
+                name: fields
+                for name, fields in (
+                    (
+                        "baseline",
+                        missing_required_fields(channel, finals["baseline"][channel]),
+                    ),
+                    (
+                        "candidate",
+                        missing_required_fields(channel, finals["candidate"][channel]),
+                    ),
+                )
+                if fields
+            }
             differences(
-                normalise(finals["baseline"][depth]),
-                normalise(finals["candidate"][depth]),
-                depth,
+                normalise(comparison_payload(channel, finals["baseline"][channel])),
+                normalise(comparison_payload(channel, finals["candidate"][channel])),
+                channel,
                 diffs,
             )
-            equivalence[depth] = {"difference_count": len(diffs), "differences": diffs}
+            equivalence[channel] = {
+                "difference_count": len(diffs),
+                "differences": diffs,
+                "missing_fields": missing,
+            }
     report["equivalence"] = equivalence
+    report["validation_errors"] = comparison_failures(report)
+    report["valid"] = not report["validation_errors"]
     print(json.dumps(report, indent=1, default=str))
-    return 0
+    return 0 if report["valid"] else 1
 
 
 if __name__ == "__main__":

@@ -145,19 +145,7 @@ group = "code"
 order = 190
 linguist = "Swift"
 linguist_color = "#f05138"
-hue = 52.3
-deviation = """GitHub puts Swift at 31.62, in the middle of the palette's one remaining \
-crowd: svelte 34.20, html 34.85, clojure 24.35 and ruby 25.77 all sit within eleven \
-degrees of it, because four upstream brands independently chose the same orange-red. \
-Swift is the hub of that crowd rather than a member of it -- it was the nearest \
-neighbour in three of the four pairs still under the perceptual floor (svelte 0.0073 \
-in dark, html 0.0156 in light, clojure 0.0181 in dark) -- so moving this one family \
-resolves three collisions where moving any of the others resolves one. At 52.3 it \
-clears every other family by 0.0257 in both themes, against 0.0073 before, and it \
-stays orange: #aa2400 light and #ff4c12 dark. The blue end of the circle offers more \
-room still (0.0380 near 265.8) and is refused, because a blue Swift is no longer \
-recognisably Swift, and the point of taking GitHub's colour is that readers already \
-know it."""
+hue = 31.62
 
 [[family]]
 id = "c-cpp"

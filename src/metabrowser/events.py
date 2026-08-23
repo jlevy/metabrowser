@@ -305,14 +305,18 @@ class CatalogChange:
     """Minimal companion to ``fs.change`` for the client filename
     catalog. Derived at the inventory emit choke point from the same
     ops: non-gitignored file upserts shrink to ``{p, e}``; an upsert
-    whose entry is gitignored becomes a catalog *remove* so
-    ignore-state flips converge; directory ops are dropped. Rides
-    every stream scope unfiltered — the depth-scoped tree stream
-    still carries complete catalog deltas — and the whole batch is
-    a few percent of the ``FsChange`` wire weight."""
+    whose entry is gitignored becomes an exact-file removal so
+    ignore-state flips converge; directory upserts are dropped.
+    ``removes`` retains subtree semantics for filesystem removals,
+    while ``remove_files`` must never make the browser scan for
+    descendants a file cannot have. Rides every stream scope
+    unfiltered — the depth-scoped tree stream still carries complete
+    catalog deltas — and the whole batch is a few percent of the
+    ``FsChange`` wire weight."""
 
     upserts: tuple[CatalogUpsert, ...]
     removes: tuple[str, ...]
+    remove_files: tuple[str, ...]
     type: Literal["catalog.change"] = "catalog.change"
 
 

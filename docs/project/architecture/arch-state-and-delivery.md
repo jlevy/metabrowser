@@ -312,7 +312,7 @@ computation, N deliveries.
 | --- | --- |
 | `fs.snapshot` | Authoritative initial state at the connection’s scope |
 | `fs.change` | Ordered upsert and remove ops |
-| `catalog.change` | Quick File catalog deltas, emitted beside every `fs.change` |
+| `catalog.change` | Quick File catalog upserts, exact file evictions, and subtree removals, emitted beside every `fs.change` |
 | `fs.resync_required` | A gap marker: drop derived state and resubscribe |
 | `capability.update` | Index completeness, watcher backends |
 | `projection.invalidate` / `projection.update` | Plugin projection lifecycle |
@@ -330,6 +330,16 @@ encoding runs off the event loop instead of as a synchronous dump inside the str
 handler.
 Live catalog updates then arrive as `catalog.change`; the pair converges without
 a shared transaction because ops are idempotent by path.
+
+Removal semantics stay explicit on that event.
+`remove_files` names files made ineligible by a gitignored upsert, so the browser
+applies each with one exact `Map.delete`. `removes` names filesystem paths that
+disappeared and may therefore name directories, so the browser performs the prefix sweep
+needed to evict descendants.
+Combining the two is a correctness-preserving but unbounded-cost mistake: the client has
+to interpret every exact file as a possible directory and scan the complete catalog.
+`tests/dom/known_file_catalog_behavior.js` installs a `Map` that counts key enumeration
+and is the named check that exact removals never enter that path.
 
 ### Routes
 

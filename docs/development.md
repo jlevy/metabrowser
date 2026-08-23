@@ -157,11 +157,13 @@ Two harnesses, and they answer different questions.
 [`explorations/performance-loop/`](../explorations/performance-loop/README.md) is the
 measured-improvement loop: one hypothesis per round, measured against the unchanged
 build on the same corpus, with the verdict written down either way — including when the
-answer is no.
-Nothing there runs in CI. `devtools/bench_serving.py` below is the standing
-benchmark.
-An exploration answers a question once; a benchmark defends an answer forever,
-and only the second earns a place in the release gate.
+answer is no. Its browser half follows the reusable
+[Web Performance Framework](web-performance-framework.md): navigation-time observation,
+an application adapter, explicit TOML budgets, and invalid-evidence and responsiveness
+gates in `record` and `compare`. Nothing there runs in CI. `devtools/bench_serving.py`
+below is the standing benchmark.
+An exploration answers a question once; a benchmark defends an answer forever, and only
+the second earns a place in the release gate.
 
 `devtools/bench_serving.py` measures how fast a tree becomes usable and stays usable.
 Use it whenever a change touches the walker, the derived index state, or the delivery

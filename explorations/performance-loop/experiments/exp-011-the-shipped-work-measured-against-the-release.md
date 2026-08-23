@@ -82,7 +82,14 @@ experiment:
   verdict:
     decision: accepted
     primary_metric: index_done_ms_project
-    reason: "Accepted on the server half and CONTRADICTED on the browser half, and the second is why this verdict is qualified. A full index falls 30.0 s to 11.9 s on the corpus the earlier rounds used, with 33.8 s to 11.7 s deep and narrow and 6.1 s to 2.7 s wide and shallow, none of the ranges overlapping, both builds reporting identical rows, files and bytes, and peak memory lower everywhere. But a reader on a 241,063-file tree finds the candidate SERIOUSLY LESS RESPONSIVE than 0.6.0 for the whole crawl: 0.6.0 takes longer to paint its first rows and shows no counts for seconds, and is responsive once it does; the candidate paints sooner and then blocks the main thread 55% of the crawl, in blocks to 13.4 s, with interaction p95 at 3.1 s and a worst interaction of 13.5 s. This round could not see that because it measured the server, which is the limitation its own scope section states -- and that limitation turned out to be where the regression was. Tracked as mb-y2ft and H58."
+    reason: >-
+      Accepted on the server half. A full index falls 30.0 s to 11.9 s on the
+      corpus the earlier rounds used, with 33.8 s to 11.7 s deep and narrow and
+      6.1 s to 2.7 s wide and shallow, none of the ranges overlapping, both
+      builds reporting identical rows, files and bytes, and peak memory lower
+      everywhere. This round did not measure browser responsiveness. An earlier
+      draft treated a hidden-tab capture as visible evidence; that claim is
+      withdrawn and the valid browser comparison is exp-012.
 ---
 # The shipped work, measured against the release
 
@@ -184,29 +191,23 @@ the pre-walk cost lands in total index time instead.
 The number is about a phase, not about first paint.
 Tracked as mb-r29f.
 
-## What this round did not cover, which is where the regression was
-
-**Read this before the numbers above.** A reader using the candidate on a 241,063-file
-tree reports it as seriously less responsive than `0.6.0` for the entire crawl, and
-measurement in a visible browser agrees: the main thread is blocked 55.3% of a 107 s
-window, in blocks reaching 13.4 s, with interaction latency at 32 ms median, 3.1 s at
-p95, and 13.5 s at worst.
-
-`0.6.0` behaves the other way round.
-It is *slower* to paint the first rows and shows no file counts for several seconds —
-and once the navigation renders, it stays responsive while it finishes crawling.
-
-So the trade this campaign made is now visible: it bought earlier first paint and paid
-for it in whether the page answers a click while the walk runs.
-That is the failure `H56` predicted in the abstract — `first_row_ms` rewards painting
-*something* early and says nothing about the states that follow — and the regime `H49`
-named as unmeasured, interaction latency, is exactly the one that regressed.
-None of this round’s measurements could see it, because they are all server-side.
-Tracked as `mb-y2ft`; the invariant is `H58`.
-
-The rest of this section is the scope note as originally written.
+## What this round did not cover
 
 This is the server half only.
+An earlier draft appended a browser conclusion after the measurements were complete: it
+reported 55.3% blocked time and a 13.4-second task as a visible candidate run, then
+described `0.6.0` as responsive without a comparable capture.
+The candidate record itself said `ever_hidden: true`, so it fails the loop’s visibility
+precondition and those figures are void.
+
+Discarding that record did not mean the browser was healthy.
+The visible comparison in
+[exp-012](exp-012-exact-file-removals-stop-scanning-the-catalog.md) found multi-second
+freezes in this PR head and in `0.6.0`, attributed the current regression to repeated
+catalog-wide scans, and validates the fix separately.
+That work belongs in its own round because no browser metric was collected by the
+installed-build harness used here.
+
 `reserved_region_shift_px` and `tree_region_repaints` — the two guards the loop’s README
 names, because the campaign regressed both over nine rounds without noticing — are
 browser facts and are not measured here.
@@ -227,11 +228,9 @@ agreeing, two rounds against two commits agreeing, and no overlapping ranges —
 part that decides whether any of the timings mean anything, both builds reporting
 identical rows, files and bytes on all three.
 
-**And qualified.** The same candidate is markedly less responsive than `0.6.0` while it
-crawls, which no measurement in this round could see.
-A round that accepts on its own metric while a reader finds the build worse has not
-measured the thing that matters, and saying so here is worth more than the acceptance
-is.
+Browser responsiveness is outside this verdict.
+The invalid hidden-tab claim is withdrawn rather than replaced with an inference, and
+the visible diagnosis and fix are recorded in exp-012.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

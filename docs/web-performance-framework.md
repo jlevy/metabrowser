@@ -1,0 +1,188 @@
+# Web Performance Framework
+
+**Status:** Approved
+
+## Purpose
+
+A performance change is useful only when the application stays correct and responsive
+while the named metric improves.
+This framework turns that rule into a reusable browser record, an application adapter, a
+budget policy, and a comparison loop.
+It is designed for web applications that load progressively, maintain live state, or
+continue doing work after the first paint.
+
+Metabrowser is the reference integration.
+The browser-standard parts do not know its routes or DOM; the adapter adds the moments
+that make this application usable, such as its first tree row and final inventory state.
+
+## The Four Layers
+
+| Layer | Metabrowser implementation | Reusable responsibility |
+| --- | --- | --- |
+| Navigation-time recorder | `src/metabrowser/static/perf.js` | Attach before application work; retain bounded detail and exact aggregates for fetches, named spans, paint, layout stability, Long Tasks, Long Animation Frames, and Event Timing |
+| Application adapter | `explorations/performance-loop/probe.js` | Add app milestones, visual states, completion, DOM size, and route attribution to the standard profile |
+| Policy | `explorations/performance-loop/performance-budgets.toml` | Declare evidence requirements, hard gates, and improvement targets without embedding them in the collector |
+| Orchestrator | `explorations/performance-loop/run.py` and `devtools/web_performance.py` | Preserve build and corpus provenance, reject invalid records, compare repeated conditions, and make budget failure a nonzero result |
+
+The recorder exposes the same instance as `window.webPerformanceProfiler` and
+`window.metabrowserPerf`. The first name is the portable API; the second is the
+application integration.
+Application code contributes stable labels through `measure()` and `measureAsync()`.
+Labels describe operations, never paths or other unbounded values, so whole-window
+attribution stays bounded.
+
+## Measurement Contract
+
+Every browser run is one flat JSON envelope.
+The generic fields form `web-performance-profile/v1`; an adapter may add fields but may
+not redefine them.
+
+### Evidence before metrics
+
+The loop refuses a record unless it establishes all of these facts:
+
+- The navigation-time profiler produced the expected schema.
+- The tab stayed visible for the complete window.
+- Required `PerformanceObserver` signals were supported.
+- At least one trusted pointer or keyboard interaction occurred while measuring, and
+  Event Timing was available.
+  A fast interaction may produce no Event Timing entry because the browser reports only
+  entries above its duration threshold; trusted-input coverage distinguishes that good
+  zero from an untouched page.
+- The application-specific completion marker says the scenario settled.
+- The viewport clears the application’s declared floor.
+- Span-label retention did not overflow.
+- The Resource Timing buffer did not fill; truncated network totals are invalid, not
+  low.
+- The run carries corpus, build, dirty-tree, harness-version, and timestamp provenance.
+
+A late observer is diagnostic only.
+Its buffered Long Task, paint, and layout entries cannot make a run valid or overwrite
+the navigation-time totals.
+Missing or unsupported signals remain null or are named in `unsupported`; absence never
+becomes a good zero.
+
+### Metric coverage
+
+| Dimension | Standard fields | What they prevent |
+| --- | --- | --- |
+| Loading | `ttfb_ms`, `response_download_ms`, `dom_interactive_ms`, `dcl_ms`, `load_ms`, `fcp_ms`, `lcp_ms` | Treating a fast shell, server response, or load event as a usable application |
+| Responsiveness | Long Task count, total, maximum, first-five-second maximum, tasks over budget, Total Blocking Time, and blocked share | Hiding one multi-second freeze inside a total or a long measurement window |
+| Frame attribution | Long Animation Frame count, maximum, blocking time, forced style/layout maximum, worst scripts and nearby resources | Knowing that the page froze without knowing which callback or rendering cost owned it |
+| Interaction | Trusted-input count plus grouped Event Timing interaction count, retained count, percentile scope, p50, p95, and exact maximum | Calling an untouched page responsive, counting one gesture’s several DOM events as several interactions, confusing no slow entry with no input, or reporting a bounded percentile as whole-session evidence |
+| Visual stability | Navigation-time LCP and CLS’s maximum session window, plus adapter-defined movement and repaint counts | Improving first paint by assembling or moving the visible page afterwards, or reporting an all-session shift sum under the CLS name |
+| Rendering and memory | Named-span counts, totals, maxima, first completion, `dom_nodes`, and optional `js_heap_mb` | Moving work into an unmeasured callback, growing the DOM with the corpus, or losing early attribution to a ring buffer |
+| Network | Request count, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Losing failures from a bounded detail ring or conflating server work with queueing, payload, and client processing |
+| Backend and correctness | Scan completion, route samples, peak RSS, corpus fingerprint, and semantic API comparison | Buying browser speed with a different answer or moving cost behind the browser boundary |
+
+The detail rings are intentionally bounded.
+Whole-window counts, totals, maxima, milestones, and per-label aggregates are maintained
+separately, so bounded retention does not erase the beginning of a bad load.
+The record states how many samples were seen and retained, whether labels overflowed,
+and whether the Resource Timing buffer filled.
+
+### Standards and lab semantics
+
+The fields follow the browser APIs rather than borrowing their names loosely.
+[Event Timing](https://w3c.github.io/event-timing/) assigns the same non-zero
+`interactionId` to the events in one click, tap, or key gesture.
+The recorder groups on that identifier and keeps the slowest event duration for the
+gesture, the unit on which [Interaction to Next Paint](https://web.dev/articles/inp) is
+built. The hard gate uses the exact worst interaction in the lab run instead of INP’s
+high-volume outlier rule: a reproducible six-second freeze must fail even if a long
+scripted journey could statistically discard it.
+
+[Long Tasks](https://w3c.github.io/longtasks/) provide the portable blocking totals.
+[Long Animation Frames](https://w3c.github.io/long-animation-frames/) add Chromium’s
+script and rendering attribution when supported.
+The latter stays optional and null when absent; it never turns an unsupported observer
+into a successful zero.
+
+[Largest Contentful Paint](https://w3c.github.io/largest-contentful-paint/) and
+[Layout Instability](https://wicg.github.io/layout-instability/) are also observed from
+navigation. CLS is the largest shift session window, not the sum over a long-lived page.
+
+## Budgets and Targets
+
+The TOML policy distinguishes two kinds of limits.
+
+**Hard gates** are properties the application currently satisfies and must never trade
+away. Metabrowser’s candidate must have no task or animation frame over 200 ms, no
+interaction over 200 ms, and no more than 5% whole-window blocked share.
+Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx
+responses stay visible as targets until a scenario can declare them intentional.
+The comparison checks every candidate run, not its median: one six-second freeze is a
+failure even if two clean runs would hide it statistically.
+
+**Roadmap targets** are visible debts, such as one tree paint or zero reserved-region
+movement. They are reported on every comparison but do not block unrelated work until
+reached.
+Once a target is achieved and defended, change its policy to `gate`; do not move
+the number into prose where nothing enforces it.
+
+All conditions need at least three admissible browser runs before `compare` succeeds.
+The primary metric still needs a mechanism and non-overlapping ranges; the budget gate
+is an additional constraint, not a substitute for the experiment’s accept rule.
+
+## The Performance Loops
+
+No single page load covers every dimension.
+Use the same record and policy in focused scenarios, keeping one control variable per
+round.
+
+| Loop | Scenario | Primary measures | Invariants carried beside them |
+| --- | --- | --- | --- |
+| Cold load | Fresh process and origin; load through application settle | TTFB, FCP, LCP, first usable state, tail | Responsiveness, CLS, repaint count, transfer, correctness |
+| Warm reopen | Reuse the process, origin, persisted state, and browser cache; reopen the same subject | Time to usable and revalidated state, cache hits, transfer avoided | Stale-state labeling, background revalidation, responsiveness, final correctness |
+| Progressive load | Large or streaming data source; interact while updates arrive | Long Task and frame maxima, Event Timing, blocked share | Completion, final state, dropped/resync signals |
+| Churn and recovery | Burst updates, disconnect, reconnect, and force resynchronization | Convergence time, dropped events, resync count, update coalescing | Interaction latency during churn, final semantic equivalence, bounded caches |
+| Steady interaction | Settled application; repeat one scripted user journey | p50, p95, maximum interaction latency; named handler spans | Correct outcome, DOM and heap before/after |
+| Visual stability | Fixed viewport; capture shipped, intermediate, and final states | CLS, direct region movement, visual-state and repaint counts | First usable time and responsiveness do not regress |
+| Endurance | Long-lived session with repeated navigation and updates | Heap slope, DOM ceiling, retained sample counts, listener and cache sizes | Interaction latency stays flat and attribution does not overflow |
+| Backend delivery | Same corpus, with and without an attached client | Scan time, route wall/server time, RSS, payload | Browser hard gates and semantic response equivalence |
+
+For a new metric, first name the user-visible failure, then choose the loop that can
+make the field come out bad.
+A metric that can only report success is not a guard.
+
+## Integrating Another Application
+
+1. Load the recorder before application scripts and expose its portable global.
+   Size its Resource Timing capacity above the largest measured scenario and keep the
+   overflow check; do not assume the browser default or an arbitrary large buffer is
+   complete.
+2. Wrap stable operations with `measure(label, fn, metadata)` or
+   `measureAsync(label, fn, metadata)`. Keep labels finite; put bounded diagnostic
+   values in metadata.
+3. Write a small adapter that reads the standard snapshot and adds the application’s
+   first usable state, completion marker, visible-region changes, and correctness facts.
+4. Copy the TOML policy and replace the application targets.
+   Keep the core evidence requirements and responsiveness gates unless the product has a
+   stricter contract.
+5. Use the orchestrator’s serve, record, and compare sequence, or call
+   `devtools.web_performance` from another runner.
+   Invalid evidence is refused; a hard-gate miss is retained as evidence and exits
+   nonzero immediately.
+6. Keep raw run records append-only and generate summaries from them.
+
+The framework intentionally adds no browser-automation dependency.
+A signed-in or embedded browser can drive the scenario as long as it remains visibly
+foregrounded and produces the contract envelope.
+Automation may replace that driver later without changing the metrics, adapter, policy,
+or stored records.
+
+## Limits
+
+These are controlled lab measurements, not field Core Web Vitals.
+Optional Chromium signals such as Long Animation Frames and `performance.memory` remain
+explicit when a browser cannot provide them.
+Event Timing needs real input, so the record refuses an untouched page instead of
+inventing interaction performance.
+
+Absolute timings vary with hardware and concurrent load.
+Back-to-back controls, repeated runs, semantic equivalence, and absolute responsiveness
+gates carry the conclusion; a lone percentage does not.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

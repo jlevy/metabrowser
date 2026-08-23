@@ -274,8 +274,8 @@ type MetabrowserPerf = {
    * the same for the first five seconds alone, the blocked share with the
    * window it is a share of, and interaction-to-next-paint percentiles.
    *
-   * `measurement_valid` is false when the tab was ever hidden, which throttles
-   * it into manufacturing long tasks; those numbers are void rather than noisy.
+   * `measurement_valid` is false when the tab was ever hidden, because browser
+   * throttling makes that scheduling incomparable to a visible session.
    */
   responsiveness?(): MetabrowserResponsiveness;
   setSlowThreshold?(milliseconds: number): number;
@@ -283,10 +283,20 @@ type MetabrowserPerf = {
 };
 
 type MetabrowserResponsiveness = {
+  animation_frame_blocking_ms_max: number | null;
+  animation_frame_blocking_ms_total: number | null;
+  animation_frame_max_ms: number | null;
+  animation_frames: number | null;
+  animation_frames_over_200ms: number | null;
+  attribution_unsupported: string[] | null;
   ever_hidden: boolean;
+  forced_style_layout_ms_max: number | null;
   interaction_max_ms: number | null;
+  interaction_inputs: number;
   interaction_p50_ms: number | null;
   interaction_p95_ms: number | null;
+  interaction_percentile_scope: string;
+  interaction_samples_retained: number;
   interactions: number;
   long_task_max_ms: number;
   long_task_max_ms_first_5s: number;
@@ -295,6 +305,8 @@ type MetabrowserResponsiveness = {
   long_tasks_over_200ms: number;
   main_thread_blocked_pct: number | null;
   measurement_valid: boolean;
+  profile_started_at_ms: number;
+  total_blocking_time_ms: number;
   unsupported: string[] | null;
   visibility_state: string | null;
   window_ms: number;
@@ -897,6 +909,7 @@ type MetabrowserKnownFileCatalogSnapshot = Readonly<{
 }>;
 
 type MetabrowserCatalogChangePayload = {
+  remove_files?: string[];
   upserts?: Array<{ p: string; e: string }>;
   removes?: string[];
 };
@@ -1641,6 +1654,7 @@ declare global {
       mountLogEventRaw?: (rawEl: HTMLElement) => void;
     };
     metabrowserPerf?: MetabrowserPerf;
+    webPerformanceProfiler?: MetabrowserPerf;
     toggleKindFilter?: (kind: string) => void;
   }
 }

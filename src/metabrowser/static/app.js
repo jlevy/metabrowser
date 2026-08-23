@@ -1718,7 +1718,11 @@ function fetchSubtree(path) {
     if (!Array.isArray(data.tree)) {
       throw new Error("Malformed tree response");
     }
-    knownFileCatalog?.observeLazyTree(data.tree);
+    _perf.measure(
+      "knownFileCatalog:observeLazyTree",
+      () => knownFileCatalog?.observeLazyTree(data.tree),
+      { path: path, nodes: data.tree.length },
+    );
     // A folder whose scan has not reached it yet reports empty; caching that
     // would answer every later expansion with a folder that has contents.
     const scanning = data.tree.length === 0 && data.tally_cache_status === "scanning";

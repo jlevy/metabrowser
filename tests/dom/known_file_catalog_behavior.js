@@ -441,6 +441,79 @@ check(
   resilient.snapshot().files.some((file) => file.path === "safe.txt"),
 );
 
+// A passive ignored-file sighting can only evict that exact file leaf. It must
+// not enter the directory-removal path, whose prefix semantics require a full
+// catalog scan. Subtree prefetch can deliver several such sightings together,
+// so one accidental scan per ignored leaf turns a background warm-up into a
+// main-thread freeze on a complete catalog.
+let catalogKeySweeps = 0;
+class KeySweepCountingMap extends Map {
+  keys() {
+    catalogKeySweeps += 1;
+    return super.keys();
+  }
+}
+const sweepSandbox = { Map: KeySweepCountingMap };
+sweepSandbox.window = sweepSandbox;
+sweepSandbox.globalThis = sweepSandbox;
+vm.createContext(sweepSandbox);
+vm.runInContext(source, sweepSandbox, { filename: "known_file_catalog.js" });
+const exactEvictionCatalog = sweepSandbox.MetabrowserKnownFileCatalog.create();
+exactEvictionCatalog.applyBulkSnapshot(
+  [
+    { e: ".txt", p: "keep.txt" },
+    { e: ".pyc", p: "cache/stale.pyc" },
+  ],
+  true,
+);
+catalogKeySweeps = 0;
+exactEvictionCatalog.observeLazyTree([
+  { gitignored: true, logical_ext: ".pyc", path: "cache/stale.pyc", type: "file" },
+  { gitignored: true, logical_ext: ".pyc", path: "cache/absent.pyc", type: "file" },
+]);
+equal(
+  "passive ignored sightings evict only their exact file leaves",
+  exactEvictionCatalog.snapshot().files.map((file) => file.path),
+  ["keep.txt"],
+);
+check(
+  "passive ignored sightings do not scan catalog keys",
+  catalogKeySweeps === 0,
+  String(catalogKeySweeps),
+);
+
+exactEvictionCatalog.applyCatalogChange({
+  remove_files: [],
+  removes: [],
+  upserts: [{ e: ".pyc", p: "cache/live.pyc" }],
+});
+catalogKeySweeps = 0;
+exactEvictionCatalog.applyCatalogChange({
+  remove_files: ["cache/live.pyc", "cache/missing.pyc"],
+  removes: [],
+  upserts: [],
+});
+check(
+  "wire exact-file removals evict the named leaf",
+  !exactEvictionCatalog.snapshot().files.some((file) => file.path === "cache/live.pyc"),
+);
+check(
+  "wire exact-file removals do not scan catalog keys",
+  catalogKeySweeps === 0,
+  String(catalogKeySweeps),
+);
+
+exactEvictionCatalog.observeNavigation("cache/opened.pyc", ".pyc");
+exactEvictionCatalog.applyCatalogChange({
+  remove_files: ["cache/opened.pyc"],
+  removes: [],
+  upserts: [],
+});
+check(
+  "wire exact-file removals preserve explicit navigation",
+  exactEvictionCatalog.snapshot().files.some((file) => file.path === "cache/opened.pyc"),
+);
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

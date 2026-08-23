@@ -28,7 +28,7 @@
           "others": null
         },
         "registry": {
-          "fingerprint": "6cb24808f6c5ccf05c00f16003e882f034e4d681c521db4dd33443fab0d0d4f9",
+          "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
           "revision": 3,
           "schema_version": 3
         },
@@ -465,7 +465,7 @@
           }
         },
         "registry": {
-          "fingerprint": "6cb24808f6c5ccf05c00f16003e882f034e4d681c521db4dd33443fab0d0d4f9",
+          "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
           "revision": 3,
           "schema_version": 3
         },
@@ -3255,7 +3255,7 @@
     }
   ],
   "registry": {
-    "fingerprint": "6cb24808f6c5ccf05c00f16003e882f034e4d681c521db4dd33443fab0d0d4f9",
+    "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
     "revision": 3,
     "schema_version": 3
   },

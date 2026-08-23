@@ -12,12 +12,17 @@
 (() => {
   const RETRY_BASE_MS = 2_000;
   const RETRY_MAX_MS = 60_000;
+  const perf = window.metabrowserPerf || {
+    measure: (_label, fn) => fn(),
+    measureAsync: (_label, fn) => fn(),
+  };
 
   /**
    * @typedef {object} CatalogFeedTarget
    * @property {(files: Array<{p: string, e: string}>, complete: boolean,
    *   authoritative?: boolean) => void} applyBulkSnapshot
-   * @property {(payload: {upserts?: Array<{p: string, e: string}>, removes?: string[]}) => void} applyCatalogChange
+   * @property {(payload: {upserts?: Array<{p: string, e: string}>, removes?: string[],
+   *   remove_files?: string[]}) => void} applyCatalogChange
    * @property {() => void} markComplete
    * @property {() => void} markIncomplete
    */
@@ -38,7 +43,8 @@
       options.scheduleRetry || ((callback, delayMs) => window.setTimeout(callback, delayMs));
     const cancelRetry = options.cancelRetry || ((handle) => window.clearTimeout(handle));
 
-    /** @type {Array<{upserts?: Array<{p: string, e: string}>, removes?: string[]}>} */
+    /** @type {Array<{upserts?: Array<{p: string, e: string}>, removes?: string[],
+     *   remove_files?: string[]}>} */
     let pendingChanges = [];
     let fetchSerial = 0;
     let fetchedOnce = false;
@@ -81,7 +87,10 @@
           if (!response.ok) {
             throw new Error(`catalog fetch failed: ${response.status}`);
           }
-          const payload = await response.json();
+          const payload = await perf.measureAsync("apiCatalog:json", () => response.json(), {
+            content_length: Number(response.headers?.get?.("content-length")) || null,
+            content_encoding: response.headers?.get?.("content-encoding") || null,
+          });
           if (disposed || serial !== fetchSerial) {
             return;
           }
@@ -103,10 +112,15 @@
           // must merge instead.
           const authoritative = payload.complete === true;
           const completeCoverage = authoritative && payload.truncated !== true;
-          catalog.applyBulkSnapshot(
-            Array.isArray(payload.files) ? payload.files : [],
-            completeCoverage,
-            authoritative,
+          perf.measure(
+            "knownFileCatalog:applyBulkSnapshot",
+            () =>
+              catalog.applyBulkSnapshot(
+                Array.isArray(payload.files) ? payload.files : [],
+                completeCoverage,
+                authoritative,
+              ),
+            { files: Array.isArray(payload.files) ? payload.files.length : 0 },
           );
           lastBulkWasAuthoritative = authoritative;
           lastBulkHadCompleteCoverage = completeCoverage;
@@ -198,7 +212,8 @@
      * A `catalog.change` event arrived on the stream. Applied
      * directly once the bulk payload has landed; buffered before
      * that so replay order preserves convergence.
-     * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[]}} payload
+     * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[],
+     *   remove_files?: string[]}} payload
      */
     function onCatalogChange(payload) {
       if (disposed || !payload) {

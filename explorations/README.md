@@ -7,7 +7,7 @@ rule, and a ledger generated from the record.
 
 | Loop | Subject |
 | --- | --- |
-| [performance-loop](performance-loop/README.md) | How fast Metabrowser becomes usable — assets, time to first row, the scan, and the server underneath |
+| [performance-loop](performance-loop/README.md) | How fast Metabrowser becomes usable — loading, responsiveness, visual stability, assets, the scan, and the server underneath, using the reusable [Web Performance Framework](../docs/web-performance-framework.md) |
 
 Nothing here runs in CI. An exploration answers a question once; a benchmark defends an
 answer forever, and only the second earns a place in the release gate — which is what

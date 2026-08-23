@@ -8,9 +8,23 @@ Performance, validated against 0.6.0 side by side:
 
 - A full index of a 247,000-file project tree completes in 12.2 s where 0.6.0 takes 28.2
   s, medians of five interleaved runs.
-  Two other tree shapes agree: 2.7 s against 6.0 s deep and narrow, 11.1 s against 28.6
-  s wide and shallow. Peak memory is unchanged to slightly lower.
+  Two other tree shapes agree: 11.1 s against 28.6 s deep and narrow, and 2.7 s against
+  6.0 s wide and shallow.
+  Peak memory is unchanged to slightly lower.
   Both builds report identical rows, file counts and byte totals on every shape.
+
+- Gitignored-file updates now remove one exact Quick File entry in constant time,
+  whether they arrive in a prefetched subtree or on the live event stream.
+  They previously shared the directory-prefix removal path, scanning the complete
+  catalog once per ignored leaf and freezing the browser repeatedly on large trees.
+  Filesystem removals retain subtree semantics.
+
+- The browser performance loop now treats responsiveness as an acceptance gate.
+  Its reusable navigation-time profile covers loading, Long Tasks, Long Animation
+  Frames, Event Timing interactions grouped by gesture, rendering, visual stability,
+  exact fetch failures, network cost, and bounded retention; recorded comparisons reject
+  hidden, late, unsettled, interaction-free, truncated, or undersampled evidence, and
+  recording exits nonzero as soon as any run crosses a hard budget.
 
 - The gain is largest exactly when a client is watching, because that is what the change
   addresses: a row request no longer computes navigation tallies, so polling the tree

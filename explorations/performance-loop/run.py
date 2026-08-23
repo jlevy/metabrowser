@@ -24,10 +24,11 @@ here rather than left to whoever remembers.
 
 ``compare`` prints the median of each metric per label with the range beside
 it, because on a corpus this size a single run says very little and a median
-without its range says less. ``report`` regenerates the ledger in
-``report.md`` from the recorded runs and the experiment artifacts. The accept
-rule is in ``explorations/performance-loop/README.md``; it is a judgment, not something this
-file computes.
+without its range says less. It also enforces evidence validity and the hard
+budgets in ``performance-budgets.toml`` against every candidate run.
+``report`` regenerates the ledger in ``report.md`` from the recorded runs and
+the experiment artifacts. The primary metric's accept rule remains a judgment;
+invalid evidence and a responsiveness regression are not.
 """
 
 from __future__ import annotations
@@ -54,6 +55,16 @@ HERE = Path(__file__).resolve().parent
 # reaches for -- the corpus under .bench/, the git metadata it records, the paths
 # it prints -- is relative to the repository root rather than to explorations/.
 REPO = HERE.parents[1]
+sys.path.insert(0, str(REPO))
+
+from devtools.web_performance import (
+    blocking_issues,
+    budget_issues,
+    format_issues,
+    load_performance_config,
+    validity_issues,
+)
+
 RESULTS = HERE / "results" / "runs.jsonl"
 # Every port `serve` has handed out, recorded the moment it does. A port whose
 # run was never recorded has still been loaded in a browser, so reusing it would
@@ -63,6 +74,7 @@ PORTS_USED = HERE / "results" / "ports-used.txt"
 PROBE = HERE / "probe.js"
 REPORT = HERE / "report.md"
 EXPERIMENTS = HERE / "experiments"
+PERFORMANCE_BUDGETS = HERE / "performance-budgets.toml"
 # What `serve` last set up. `record` reads it so a paste cannot be filed
 # against the wrong experiment, port, or corpus -- the three things that are
 # invisible in the payload and expensive to get wrong.
@@ -70,6 +82,14 @@ PENDING = HERE / "results" / "pending.json"
 # Bumped when a change to run.py or probe.js makes a number incomparable with
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
+#
+# 4: responsiveness comes from the profiler attached with the document rather
+# than a late observer or optional console paste; exact whole-window totals no
+# longer get overwritten by the late-buffer floor. App-span milestones and
+# counts come from non-evicting label totals. Event Timing entries are grouped
+# into logical interactions; FCP, LCP, and CLS attach at navigation; and
+# loading, resource-buffer, memory, animation-frame, and retention fields join
+# the record.
 #
 # 3: four metric definitions changed at once. `frame_missing_px` measures the
 # shipped state against the markup `server.py` really ships rather than a
@@ -79,7 +99,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 3
+HARNESS_VERSION = 4
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -88,7 +108,11 @@ FIRST_PORT = 8600
 LAST_PORT = 8699
 # The metrics compare prints, in the order they matter to a reader.
 METRICS = (
+    "ttfb_ms",
+    "response_download_ms",
+    "dom_interactive_ms",
     "first_row_ms",
+    "first_row_render_ms",
     "load_tree_ms",
     "tree_fetch_srv_ms",
     "tree_fetch_wait_ms",
@@ -120,6 +144,23 @@ METRICS = (
     "tree_region_repaints",
     "long_tasks",
     "long_task_ms_total",
+    "total_blocking_time_ms",
+    "long_task_max_ms",
+    "long_task_max_ms_first_5s",
+    "long_tasks_over_200ms",
+    "main_thread_blocked_pct",
+    "animation_frames",
+    "animation_frame_max_ms",
+    "animation_frames_over_200ms",
+    "animation_frame_blocking_ms_total",
+    "animation_frame_blocking_ms_max",
+    "forced_style_layout_ms_max",
+    "interactions",
+    "interaction_inputs",
+    "interaction_samples_retained",
+    "interaction_p50_ms",
+    "interaction_p95_ms",
+    "interaction_max_ms",
     "render_spans",
     "render_ms_total",
     "tree_reprobe_ms",
@@ -128,6 +169,20 @@ METRICS = (
     "srv_settled_ms",
     "wall_scanning_ms",
     "wall_settled_ms",
+    "requests",
+    "fetch_network_errors",
+    "fetch_aborts",
+    "fetch_http_4xx",
+    "fetch_http_5xx",
+    "resource_timing_capacity",
+    "resource_timing_buffer_full",
+    "script_transfer_kb",
+    "style_transfer_kb",
+    "image_transfer_kb",
+    "api_transfer_kb",
+    "largest_resource_kb",
+    "resource_duration_max_ms",
+    "js_heap_mb",
     "viewport_w",
     "viewport_h",
 )
@@ -374,11 +429,10 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     print(f"corpus      {corpus_label}  ({files} files)")
     print(f"url         {url}")
     print()
-    print("1. size the browser pane to at least 1280x900 and load that URL cold")
-    print(
-        "2. evaluate explorations/performance-loop/probe.js in the page (`run.py probe` prints it)"
-    )
-    print("3. explorations/performance-loop/run.py record --json '<paste>'")
+    print("1. size the browser pane to at least 1280x900, keep it visible, and load that URL cold")
+    print("2. exercise at least one real interaction while the inventory is still loading")
+    print("3. after the inventory settles, evaluate probe.js (`run.py probe` prints it)")
+    print("4. explorations/performance-loop/run.py record --json '<paste>'")
     return 0
 
 
@@ -394,6 +448,7 @@ def cmd_record(args: argparse.Namespace) -> int:
     # A `probe-server` payload is a route sample, not a page load: it has no
     # viewport by construction and the floor below does not apply to it.
     is_server_sample = "route" in probe
+    config = None
     width = probe.get("viewport_w")
     height = probe.get("viewport_h")
     if is_server_sample:
@@ -411,7 +466,11 @@ def cmd_record(args: argparse.Namespace) -> int:
     label = args.label or pending.get("label")
     if not label:
         raise SystemExit("no label: pass --label, or set one on `serve`")
+    # The harness owns provenance. Put the browser payload first so pasted JSON
+    # cannot replace the commit, corpus, timestamp, or other run identity that
+    # `serve` established.
     run: dict[str, Any] = {
+        **payload,
         "experiment": pending.get("experiment"),
         "label": label,
         "port": port,
@@ -424,8 +483,20 @@ def cmd_record(args: argparse.Namespace) -> int:
         "corpus_shape": pending.get("corpus_shape"),
         "note": args.note or pending.get("note", ""),
         **_walk_facts(port),
-        **payload,
     }
+    if not is_server_sample:
+        config = load_performance_config(Path(args.budgets))
+        issues = [
+            *validity_issues(run, config),
+            *(issue for issue in budget_issues(run, config) if issue.kind == "invalid"),
+        ]
+        if issues:
+            raise SystemExit(
+                "browser performance record is inadmissible:\n"
+                f"{format_issues(issues)}\n"
+                "Keep the tab visible, interact while it loads, wait for settle, and use the "
+                "navigation-time profiler exposed by the current build."
+            )
     RESULTS.parent.mkdir(parents=True, exist_ok=True)
     with RESULTS.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(run, sort_keys=True) + "\n")
@@ -435,7 +506,19 @@ def cmd_record(args: argparse.Namespace) -> int:
         f"recorded {run['experiment'] or '-'}/{label} port {port} "
         f"({run.get('files')} files, {regime}) -> {RESULTS.relative_to(REPO)}"
     )
-    return 0
+    hard: list[Any] = []
+    if config is not None:
+        misses = [issue for issue in budget_issues(run, config) if issue.kind == "budget"]
+        hard = [issue for issue in misses if issue.policy == "gate"]
+        targets = [issue for issue in misses if issue.policy == "target"]
+        print(
+            f"performance budgets: {len(hard)} hard-gate miss(es), "
+            f"{len(targets)} roadmap-target miss(es)"
+        )
+        if hard:
+            print("run retained as evidence, but its hard performance gate failed:")
+            print(format_issues(hard))
+    return 1 if hard else 0
 
 
 def _summarize(runs: list[dict[str, Any]], metric: str) -> str:
@@ -469,7 +552,56 @@ def cmd_compare(args: argparse.Namespace) -> int:
     print()
     print("Median with the range beside it. A median whose ranges overlap is not a result;")
     print("see the accept rule in explorations/performance-loop/README.md before writing one down.")
-    return 0
+
+    config = load_performance_config(Path(args.budgets))
+    browser_by_label = {
+        label: [run for run in rows if "route" not in run] for label, rows in by_label.items()
+    }
+    if not any(browser_by_label.values()):
+        return 0
+
+    evidence_errors: list[str] = []
+    for label, rows in browser_by_label.items():
+        if len(rows) < config.requirements.minimum_runs_per_condition:
+            evidence_errors.append(
+                f"{label}: {len(rows)} browser run(s), need at least "
+                f"{config.requirements.minimum_runs_per_condition}"
+            )
+        for index, run in enumerate(rows, start=1):
+            invalid = [
+                *validity_issues(run, config),
+                *(issue for issue in budget_issues(run, config) if issue.kind == "invalid"),
+            ]
+            if invalid:
+                evidence_errors.append(f"{label} run {index}:\n{format_issues(invalid)}")
+
+    candidate_label = labels[-1]
+    candidate_issues = [
+        issue
+        for run in browser_by_label[candidate_label]
+        for issue in budget_issues(run, config)
+        if issue.kind == "budget"
+    ]
+    hard_failures = blocking_issues(candidate_issues)
+    target_misses = [issue for issue in candidate_issues if issue.policy == "target"]
+
+    print()
+    print(f"Performance gate ({candidate_label} is the candidate):")
+    if evidence_errors:
+        print("  INVALID")
+        for error in evidence_errors:
+            print(f"  {error}")
+    if hard_failures:
+        print("  FAIL")
+        print(format_issues(hard_failures))
+    if not evidence_errors and not hard_failures:
+        print("  PASS — evidence is admissible and every hard responsiveness budget passed")
+    if target_misses:
+        unique_targets = sorted({issue.message for issue in target_misses})
+        print("  Roadmap targets still open:")
+        for message in unique_targets:
+            print(f"  - {message}")
+    return 1 if evidence_errors or hard_failures else 0
 
 
 def _sample_route(port: int, path: str) -> tuple[float, float | None, int]:
@@ -857,10 +989,20 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("--json", required=True, help="the probe's printed JSON")
     record.add_argument("--label", default="", help="override the label `serve` set")
     record.add_argument("--note", default="")
+    record.add_argument(
+        "--budgets",
+        default=str(PERFORMANCE_BUDGETS),
+        help="performance requirements and budgets TOML",
+    )
     record.set_defaults(func=cmd_record)
 
     compare = sub.add_parser("compare", help="median and range per label")
     compare.add_argument("labels", nargs="+")
+    compare.add_argument(
+        "--budgets",
+        default=str(PERFORMANCE_BUDGETS),
+        help="performance requirements and budgets TOML",
+    )
     compare.set_defaults(func=cmd_compare)
 
     count = sub.add_parser("count", help="files and directories in a real tree")
