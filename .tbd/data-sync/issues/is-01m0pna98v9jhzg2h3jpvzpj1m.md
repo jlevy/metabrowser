@@ -3,14 +3,14 @@ type: is
 id: is-01m0pna98v9jhzg2h3jpvzpj1m
 title: Carried a correct poll key from one endpoint to another where it means nothing
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m0pn7vkfkd7tfzt7r331jkp8
 created_at: 2026-08-23T06:35:49.906Z
-updated_at: 2026-08-23T07:14:04.086Z
+updated_at: 2026-08-23T07:24:18.776Z
 ---
 CORRECTED after checking the repository rather than assuming. The first version of this bead said the poll key was misspelled and implied bench_serving.py had the same flaw. It does not, and the real mistake is more instructive.
 
@@ -23,3 +23,7 @@ WHY IT COST TWO ROUNDS. `dict.get` on an absent key returns None, the comparison
 Note bench_serving.py degrades better here by design: it reports `converged: false` and `timed_out_at_s`, so a poll that never matches is visible as a non-result rather than as a slow one.
 
 THE FIX, now in devtools/compare_builds.py: assert the poll key is present in the FIRST response and fail immediately naming the key and listing what the payload does contain. One request separates a wrong key from a slow scan; a deadline does not.
+
+## Notes
+
+FIXED in #73, devtools/compare_builds.py. The poll key is asserted against the FIRST response: if it is absent the harness fails immediately, naming the key and listing what the payload does contain, rather than waiting out its deadline. One request separates a wrong key from a slow scan.

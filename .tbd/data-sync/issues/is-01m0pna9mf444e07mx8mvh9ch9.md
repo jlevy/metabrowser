@@ -3,14 +3,14 @@ type: is
 id: is-01m0pna9mf444e07mx8mvh9ch9
 title: Conflated the browser two /api/tree requests, twice, in opposite directions
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m0pn7vkfkd7tfzt7r331jkp8
 created_at: 2026-08-23T06:35:50.286Z
-updated_at: 2026-08-23T06:42:40.266Z
+updated_at: 2026-08-23T07:24:19.084Z
 ---
 Two errors here, not one, and the second was made while correcting the first. That is why this bead is worth keeping.
 
@@ -28,3 +28,7 @@ WHY THE SECOND ERROR WAS EASY. Both come from assuming one endpoint is "the" cli
 THE FIX, now in the comparison harness: name both endpoints as separate constants, say in the comment what each is for and which client code issues it, poll ROW_ENDPOINT for anything about rows, and compare both in the final equivalence. A harness with a single CLIENT_ENDPOINT constant is one that will make this mistake again.
 
 MEASUREMENT CONSEQUENCE. Time-to-first-row cannot be measured on depth=0 at all, because depth=0 returns no rows ever. An early harness version reported first_row as null for every run, and the null was correct.
+
+## Notes
+
+FIXED in #73 on both sides. In the harness, ROW_ENDPOINT and TALLY_ENDPOINT are separate named constants, each with a comment saying what it is for and which client code issues it, and the final equivalence compares both. In the documentation, arch-state-and-delivery.md now carries the table stating which depth answers which question. The single CLIENT_ENDPOINT constant that made this error possible is gone.
