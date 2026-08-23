@@ -67,6 +67,25 @@ experiment:
 ---
 # The gitignore pre-walk stops traversing what it cannot use
 
+## What this does *not* change
+
+Worth stating first, because the title invites the opposite reading: **the indexing walk
+still visits every gitignored directory.** `walk_tree` enqueues an ignored subdirectory
+unconditionally — it sets `gitignored=True` on the entry and descends anyway — and
+nothing here touches that.
+
+What this removes is a *different traversal*. `load_gitignore` does its own full
+`os.walk` before the indexing walk begins, and its only output is a list of patterns.
+A `.gitignore` inside an ignored directory cannot change any verdict, so collecting one
+is work with no consumer.
+That work is **eliminated, not deferred**: the indexing walk that follows costs the same
+~30 s either way, and the total time to a complete index falls by what the pre-walk
+stopped doing.
+
+Deferring the *indexing* of ignored subtrees so a reader sees the tracked tree first is
+a separate and unimplemented idea — H33 — and the measurement that sizes it is in this
+round’s follow-up notes below.
+
 ## Hypothesis
 
 **H30**, from exp-005: `build_gitignore_check` costs 19.4–23.3 s on a real 241,000-file
@@ -157,6 +176,31 @@ later can be diffed against.
 
 `gitignore_build_ms` is measured directly rather than through the browser, because it
 happens before the server can answer anything.
+
+## What it leaves on the table
+
+Measured on the same real tree after this change landed, with the ignore check correctly
+wired in:
+
+|  |  |
+| --- | ---: |
+| files indexed | 241,084, of which **48% ignored** |
+| directory yields | 201,604, of which **59% ignored** |
+| last *tracked* file seen | **29.94 s of a 30.06 s walk** |
+
+That last row is the finding.
+The walk is level-order, so tracked and ignored work are completely interleaved: the
+tracked tree — the part a reader is looking at — is not finished until essentially the
+whole scan is. Roughly half the walk is spent below directories the reader has told us
+they do not care about.
+
+Deferring descent into ignored subtrees, while still yielding their placeholders at the
+level they appear, would let the tracked tree finish in about half the time without
+changing what the nav eventually shows.
+The placeholders already arrive early — the walker yields a directory placeholder before
+enqueueing it — so the nav’s *shape* is complete long before its contents.
+Only the descent needs reordering.
+That is H33.
 
 ## Verdict
 
