@@ -195,17 +195,28 @@ async function importSource(relative) {
   );
   const noExtensionRow = breakdownModel.rows.find((row) => row.key === "(none)");
   const remainingRow = breakdownModel.rows.find((row) => row.key === "");
+  // Every entry in a special rollup takes the same generic page: an icon names
+  // a family, and having none is what puts an entry here. Resolving one per
+  // entry reached into the old extension table, so whether an entry got a
+  // distinct glyph depended on whether it happened to be one of the sixteen
+  // that table knows.
   check(
     "No extension exposes filenames and a counted Others tail",
     noExtensionRow?.children[0].label === "README" &&
-      noExtensionRow.children[0].iconPath === "README" &&
+      noExtensionRow.children[0].iconPath === "file" &&
       noExtensionRow.children[1].label === "4 more",
   );
   check(
     "Other types exposes raw extensions and a counted Others tail",
     remainingRow?.children[0].extension === ".bin" &&
-      remainingRow.children[0].iconPath === "x.bin" &&
+      remainingRow.children[0].iconPath === "file" &&
       remainingRow.children[1].label === "2 more",
+  );
+  check(
+    "no entry in a special rollup resolves an icon of its own",
+    [noExtensionRow, remainingRow].every((row) =>
+      (row?.children ?? []).every((child) => child.iconPath === "file" || child.iconPath === null),
+    ),
   );
   let identityMismatch = false;
   try {
@@ -463,6 +474,84 @@ async function importSource(relative) {
   check(
     "treemap parent navigation is absent at the served root",
     treemapModel.parentNavigation("") === null,
+  );
+
+  // A row cap bounds how long a list gets and says nothing about whether the
+  // rows in it are worth reading. These two cases pin the other half: an entry
+  // at or below a 1% share is folded however much room is left, and whichever
+  // bound is tighter wins.
+  const tailFormatters = {
+    formatFileCount: (value) => `${value} files`,
+    formatInteger: String,
+    formatSize: (value) => `${value} B`,
+    formatPercent: (value) => `${value}%`,
+  };
+  const rollupOf = (extensions, totalFiles, totalBytes) => {
+    const envelope = modelModule.normalizeRollupEnvelope({
+      ...raw,
+      node: {
+        total_files: totalFiles,
+        total_size: totalBytes,
+        unignored_files: totalFiles,
+        unignored_size: totalBytes,
+      },
+      file_type_breakdown: {
+        schema: "file-type-breakdown-v1",
+        registry: { schema_version: 3, revision: 7, fingerprint: "registry-seven" },
+        metrics: metrics(totalFiles, totalBytes),
+        groups: [],
+        no_extension: { metrics: metrics(0, 0), filenames: [], others: null },
+        remaining_types: {
+          metrics: metrics(totalFiles, totalBytes),
+          extensions,
+          others: null,
+        },
+      },
+    });
+    return modelModule
+      .buildFileTypeSummaryModel(envelope, true, tailFormatters, {
+        revision: 7,
+        fingerprint: "registry-seven",
+        // The special rollups live in the "other" group, so it has to exist.
+        groups: [{ id: "other", label: "Other" }],
+        families: [],
+        groupForFile: () => "other",
+      })
+      .rows.find((row) => row.key === "");
+  };
+
+  // One fat entry and a long thin tail: the share floor bites well before the
+  // cap would, so only the entry above 1% keeps a row.
+  const thin = [{ extension: ".big", metrics: metrics(900, 900) }];
+  for (let i = 0; i < 25; i += 1) {
+    thin.push({ extension: `.t${i}`, metrics: metrics(4, 4) });
+  }
+  const thinRow = rollupOf(thin, 1000, 1000);
+  const thinVisible = (thinRow?.children ?? []).filter((child) => child.kind !== "tail");
+  const thinTail = (thinRow?.children ?? []).find((child) => child.kind === "tail");
+  check(
+    "a long thin tail folds on the share floor, not on the row cap",
+    thinVisible.length === 1 &&
+      thinVisible[0].rawKey === ".big" &&
+      thinTail?.label === "25 more" &&
+      thinVisible.every((child) => child.fileShare > 1),
+    JSON.stringify({
+      visible: thinVisible.map((c) => [c.rawKey, c.fileShare]),
+      tail: thinTail?.label,
+    }),
+  );
+
+  // Fifteen entries all comfortably above 1%: now the cap is the tighter bound.
+  const fat = [];
+  for (let i = 0; i < 15; i += 1) {
+    fat.push({ extension: `.f${i}`, metrics: metrics(100, 100) });
+  }
+  const fatRow = rollupOf(fat, 1500, 1500);
+  const fatVisible = (fatRow?.children ?? []).filter((child) => child.kind !== "tail");
+  check(
+    "a list of entries that all clear the floor still respects the row cap",
+    fatVisible.length === 10 && fatVisible.every((child) => child.fileShare > 1),
+    JSON.stringify({ visibleCount: fatVisible.length }),
   );
 
   if (failures.length) {

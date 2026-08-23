@@ -252,6 +252,22 @@ function dualScore(files, bytes, totalFiles, totalBytes) {
 
 const VISIBLE_ROWS_PER_SUBSECTION = 10;
 
+/**
+ * The share, in percent, below which an entry is not worth a row of its own.
+ *
+ * A row cap alone bounds how LONG a list gets and says nothing about whether
+ * the rows in it are worth reading. A directory with forty extensions at three
+ * files each spent ten rows on entries that cannot matter, and the reader had
+ * to scan them to find that out. This is the other half of the bound: an entry
+ * at or below this share is folded however much room is left.
+ *
+ * Of the metric on screen, not of the files. The rollup toggles between files
+ * and bytes, so an entry can be worth a row in one and not the other — which
+ * is right, because it is a claim about what is being measured rather than
+ * about the entry.
+ */
+const MINIMUM_VISIBLE_SHARE = 1;
+
 /** @param {ReadonlyArray<any>} rows @param {"files" | "size"} metric */
 function sortRows(rows, metric) {
   const primary = metric === "files" ? "files" : "bytes";
@@ -263,6 +279,9 @@ function sortRows(rows, metric) {
       left.key.localeCompare(right.key),
   );
 }
+
+/** What resolves to the neutral page: a name the extension table cannot match. */
+const GENERIC_FILE_ICON = "file";
 
 /**
  * The icon path for a family: a stand-in filename carrying its canonical
@@ -292,11 +311,29 @@ function familyIconPath(descriptor) {
  */
 function boundedRows(rows, metric, identity, population, formatters, percentFormatter) {
   const sorted = sortRows(rows, metric);
-  if (sorted.length <= VISIBLE_ROWS_PER_SUBSECTION || !population) {
+  if (!population) {
+    // No population, no shares to measure against; the cap is all there is.
+    return Object.freeze(sorted.slice(0, VISIBLE_ROWS_PER_SUBSECTION));
+  }
+  // Whichever bound is tighter. The rows are sorted by the metric, so shares
+  // descend with them and the first row at or below the floor is where the
+  // tail begins — no need to look past it.
+  //
+  // These are the same shares the rows print as their percentages, computed
+  // against the same population, so a row cannot say 0.4% and still be judged
+  // worth showing.
+  /** @param {{fileShare: number, byteShare: number}} row */
+  const share = (row) => (metric === "files" ? row.fileShare : row.byteShare);
+  let worthShowing = 0;
+  while (worthShowing < sorted.length && share(sorted[worthShowing]) > MINIMUM_VISIBLE_SHARE) {
+    worthShowing += 1;
+  }
+  const limit = Math.min(worthShowing, VISIBLE_ROWS_PER_SUBSECTION);
+  if (sorted.length <= limit) {
     return Object.freeze(sorted);
   }
-  const visible = sorted.slice(0, VISIBLE_ROWS_PER_SUBSECTION);
-  const remainder = sorted.slice(VISIBLE_ROWS_PER_SUBSECTION);
+  const visible = sorted.slice(0, limit);
+  const remainder = sorted.slice(limit);
   const files = remainder.reduce((total, row) => total + row.files, 0);
   const bytes = remainder.reduce((total, row) => total + row.bytes, 0);
   const tail = Object.freeze({
@@ -466,10 +503,21 @@ function buildRegistryRows(
           key: `${id}/${child.key}`,
           rawKey: child.key,
           extension: !others && childKind === "extension" ? child.key : null,
-          // An aggregate "N more" row stands for a set, not a file, so it
-          // names no icon. The path is what decides now: a row with one gets
-          // an icon and a row without one does not.
-          iconPath: others ? null : childKind === "filename" ? child.key : `x${child.key}`,
+          // Every entry in a special rollup shows the same generic page, and
+          // an aggregate "N more" shows none at all.
+          //
+          // Generic because an icon names a FAMILY (see the family rows
+          // above), and these rows have none by definition — having no family
+          // is what puts them here. There is nothing for a specific glyph to
+          // be specific about.
+          //
+          // And generic as a constant rather than per entry, because
+          // resolving each one reaches into the sixteen-entry extension table
+          // in app.js, which is not the registry: whether an entry got a
+          // distinct glyph then depended on whether that extension happened to
+          // be one of the sixteen, which is not a distinction the registry
+          // makes or a reader can predict. See mb-xrh8.
+          iconPath: others ? null : GENERIC_FILE_ICON,
           label: childLabel,
           category: "other",
           kind: others ? "others" : childKind,

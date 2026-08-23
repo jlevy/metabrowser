@@ -1159,13 +1159,22 @@ async def index(_request: Request) -> HTMLResponse:
              (#app-font-select, options from _FONT_SETS). Choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
-             menu's visibility via CSS. The title is aria-hidden because the
-             menu already carries the same name. -->
+             menu's visibility via CSS.
+
+             The title is a link to the project rather than a label: it is the
+             one place the product names itself, so it is where someone goes
+             looking for the project. It carries its own accessible name saying
+             where it goes — the bare wordmark would announce as the menu's
+             name repeated — and it is not aria-hidden, because a control that
+             cannot be reached is not a control. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
                   aria-haspopup="true" data-tip-text="Metabrowser" aria-label="Metabrowser menu"></button>
           <div class="settings-menu menu" role="menu" aria-label="Metabrowser">
-            <div class="menu-title" aria-hidden="true">Metabrowser</div>
+            <a class="menu-title menu-title-link" href="https://github.com/jlevy/metabrowser"
+               target="_blank" rel="noopener noreferrer"
+               aria-label="Metabrowser on GitHub">Metabrowser<span class="menu-title-arrow"
+               aria-hidden="true">→</span></a>
             <div class="menu-separator"></div>
             <div class="menu-chooser" role="group" aria-label="Theme">
               <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="system" data-tip-text="System theme" aria-label="System theme"></button>
