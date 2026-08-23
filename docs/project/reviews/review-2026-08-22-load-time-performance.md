@@ -8,8 +8,8 @@
 Reviewed `claude/perf-subtree-sweep` at `4e666ea` against `main` at `512e70b`; all eight
 findings were fixed in `0747a20` and the suggestions registered as hypotheses H33 to H38
 in `6a75914`. The findings below are kept as the record of what was found and what was
-done about it. The principles and remaining candidate hypotheses are proposals, not
-decisions.
+done about it. The principles, the four extensions to open registry rows, and the eleven
+new candidate hypotheses are proposals, not decisions.
 
 **Scope:** The full branch diff, 39 files, read as whole functions rather than as hunks,
 with the branch checked out and every number below reproduced locally.
@@ -314,59 +314,91 @@ never been measured:
 
 ## Candidate Hypotheses
 
-Numbering continues from the registry in
-[the load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md), whose
-highest registered hypothesis is H38. None of these duplicate that document’s
-“Considered and Deliberately Not Registered” section, and the one that became registered
-H35 during this review, replacing the pre-walk with `git ls-files` on a git tree, is
-carried forward only where it composes with something else.
-Expected magnitudes are predictions to be falsified, not results.
+Checked against all thirty-eight registered rows, not only the “Considered and
+Deliberately Not Registered” section.
+Four of the insights below are not new hypotheses at all: they sharpen open rows that
+already state the same claim, and belong there rather than as duplicate numbers.
+
+| Sharpens | Already says | What this adds |
+| --- | --- | --- |
+| H21 | Persist the index and serve stale-labeled data while revalidating | How the revalidation is bounded: `stat` only directories, rescan only subtrees whose mtime moved, plus falsifiable predictions |
+| H28 | Build the tree progressively from the SSE stream instead of poll-and-re-render | The tallies travel the same way, throttled during a scan, which retires the poll the staleness bound exists for |
+| H7 | DOM node count follows the corpus rather than the viewport | The fix and its cheap intermediate: a windowed renderer, `content-visibility: auto`, and a parse worker |
+| H25, H26 | Unchanged answers are re-serialized and re-gzipped per poller; request count is priced at localhost | `zstd`, and batching the subtree prefetch into one request |
+
+The rest are new, and continue the numbering from H38.
 
 | ID | Hypothesis | Named metric |
 | --- | --- | --- |
-| H39 | A persisted index makes a revisit cost load-and-verify rather than rescan | Time to first row on a second open of the same tree |
-| H40 | Pattern matching, not traversal, dominates what remains of the walk | `walk_elapsed_ms` with and without `gitignore_check` |
-| H41 | A native parallel walker collapses the scan by an order of magnitude | `walk_elapsed_ms` on the real tree |
-| H42 | A columnar index makes the tally pass cheap enough to delete its scaffolding | Tally pass duration at 300k and 1M entries |
-| H43 | Pushing tallies and deltas removes the poll the staleness bound exists for | Requests per second per tab during and after a scan |
-| H44 | A client-side tree replica paints a revisit with no network on the critical path | `first_row_ms` on a revisit, offline |
-| H45 | Virtualizing the tree makes interaction latency independent of tree size | Expand, filter, and scroll latency at 10k, 100k, 1M rendered rows |
-| H46 | Priority-driven walking makes the visible subtree correct long before the scan ends | Time until the on-screen subtree stops changing |
-| H47 | Under realistic latency, batching prefetch beats every server-side win so far | `first_row_ms` and total prefetch time at 0 ms and 120 ms RTT |
-| H48 | Serialization is a measurable share of large tree and rollup responses | Server time on `/api/tree` and `/api/rollup` at 300k entries |
-| H49 | Bulk-attribute syscalls cut the verification sweep H39 depends on | Verify-sweep duration on an unchanged 241k tree |
-| H50 | A 64-worker executor sized for I/O waiters hurts the CPU-bound work now routed through it | Tally and encode latency, and walk time, against pool size |
-| H51 | A free-threaded build makes the existing thread offloads actually parallel | Attached `walk_elapsed_ms` and tally latency on 3.14t against 3.14 |
-| H52 | The four unmeasured regimes hide regressions the cold-load metric cannot see | Interaction latency, churn recovery, resident size, warm reopen |
+| H39 | Pattern matching, not traversal, dominates what remains of the walk | `walk_elapsed_ms` with and without `gitignore_check` |
+| H40 | A native parallel walker collapses the scan by an order of magnitude | `walk_elapsed_ms` on the real tree |
+| H41 | A columnar index makes the tally pass cheap enough to delete its scaffolding | Tally pass duration at 300k and 1M entries |
+| H42 | A client-side tree replica paints a revisit with no network on the critical path | `first_row_ms` on a revisit, offline |
+| H43 | Walking the viewport first makes the visible subtree correct long before the scan ends | Time until the on-screen subtree stops changing |
+| H44 | Under realistic latency, batching prefetch beats every server-side win so far | `first_row_ms` and total prefetch time at 0 ms and 120 ms RTT |
+| H45 | Serialization is a measurable share of large tree and rollup responses | Server time on `/api/tree` and `/api/rollup` at 300k entries |
+| H46 | Bulk-attribute syscalls cut the verification sweep H21 depends on | Verify-sweep duration on an unchanged 241k tree |
+| H47 | A 64-worker executor sized for I/O waiters hurts the CPU-bound work now routed through it | Tally and encode latency, and walk time, against pool size |
+| H48 | A free-threaded build makes the existing thread offloads actually parallel | Attached `walk_elapsed_ms` and tally latency on 3.14t against 3.14 |
+| H49 | The four unmeasured regimes hide regressions the cold-load metric cannot see | Interaction latency, churn recovery, resident size, warm reopen |
 
 Three sit next to something already registered and are deliberately distinct.
-H42 is a representation change where registered H34 is an incremental-maintenance
+H41 is a representation change where registered H34 is an incremental-maintenance
 change; either alone helps and together they compound.
-H43 pushes tallies where registered H36 serves the last memo unconditionally during a
-scan; H36 is the cheap version of the same observation.
-H46 orders the walk by what is on screen where registered H33 orders it by ignore
+H39 isolates pathspec matching, where H13, H18, and H22 attribute the walk’s per-file
+cost to per-entry Python without separating out the matcher.
+H43 orders the walk by what is on screen where registered H33 orders it by ignore
 status; both are priority walking, from different priorities.
 
-### H39: A Persisted Index
+### Extending H21: Bound the Revalidation
 
-The largest single change available, and the only one that changes the common case
-rather than the first-open case.
+H21 already carries the case for persistence, and it is the largest single change
+available: the second open of a tree is the common case for a browsing tool, and it is
+currently priced like the first.
 
-Serialize the index periodically and on shutdown, to a columnar file or SQLite.
-On start, load it, serve it immediately marked provisional, then verify in the
-background: a directory’s mtime changes when its direct children change, so `stat` only
-directories and rescan only subtrees whose mtime moved.
-That is the mechanism behind git’s untracked cache.
-A revisit becomes load, serve, verify, then push deltas over the SSE channel that
-already exists.
+What the row does not yet say is how the revalidation is kept cheap.
+A directory’s mtime changes when its direct children change, so the sweep needs to
+`stat` only directories and rescan only the subtrees whose mtime moved.
+That is the mechanism behind git’s untracked cache, and it is what separates a
+revalidation from a second full walk.
 
-Falsifiable predictions: loading 300,000 entries costs around 100 ms; a warm reopen
-reaches first row within twice the shell’s own paint time; and the verify sweep finds
-fewer than 1% of directories changed on a typical revisit.
-If the last of those is false, the whole approach is worth less and the measurement says
-so immediately.
+Three falsifiable predictions worth writing into the row: loading 300,000 entries costs
+around 100 ms; a warm reopen reaches first row within twice the shell’s own paint time;
+and the sweep finds fewer than 1% of directories changed on a typical revisit.
+If the last is false the whole approach is worth much less, and one measurement says so.
 
-### H40: Price the Matcher Before Replacing the Walker
+### Extending H28: The Tallies Travel the Same Way
+
+H28 already proposes building the tree progressively from the `fs.change` ops the walker
+publishes, rather than re-fetching snapshots on a poll.
+
+The tallies belong on that same stream.
+The nav polls `depth=0` about once a second per tab, and the whole staleness apparatus
+exists to survive that poll.
+The server knows when the revision moved, so it can push tally updates directly,
+throttled to a couple per second during a scan.
+The poll disappears, and with it the per-tab request rate and the GIL contention exp-005
+identified. A client fetch becomes subscribe, then backfill since revision R. Registered
+H36, serving the last memo unconditionally during a scan, is the cheap version of the
+same observation and does not conflict with it.
+
+### Extending H7: How to Virtualize
+
+H7 states the problem exactly: DOM node count follows the corpus rather than the
+viewport.
+`TREE_PAGE_SIZE` caps the *initial* mount at 200 rows, but a reader who expands
+and pages accumulates unbounded DOM, and style and layout cost track total mounted nodes
+rather than visible ones.
+
+The fix is a windowed renderer over a flattened visible-rows array, which caps the DOM
+at about three screens permanently and makes tree size irrelevant to scroll, expand, and
+filter latency. `content-visibility: auto` on subtree containers is the cheap
+intermediate and can be tried in an afternoon.
+Pairing either with a Web Worker that owns JSON parsing and the tree merge, so the main
+thread only ever receives patches, is what moves the remaining main-thread blocking off
+the interaction path.
+
+### H39: Price the Matcher Before Replacing the Walker
 
 One run, and it decides the order of everything after it.
 
@@ -380,7 +412,7 @@ Measuring the walk with and without `gitignore_check` prices it directly.
 If matching dominates, H41’s compiled matcher is the fix and registered H35 pays off.
 If traversal dominates, parallelism is the fix and the matcher work is a distraction.
 
-### H41: Leave Interpreted Traversal
+### H40: Leave Interpreted Traversal
 
 A Rust extension over ripgrep’s `ignore` crate brings parallelism, single-automaton glob
 matching rather than a pattern loop, and correct negation semantics, which would retire
@@ -395,7 +427,7 @@ If native code is unwelcome, two intermediate steps are available and cheap: run
 `scandir` across a small thread pool, since the syscall releases the GIL, and compile
 the accumulated pattern set into one alternation instead of a per-pattern loop.
 
-### H42: A Columnar Index
+### H41: A Columnar Index
 
 The one that deletes code rather than adding it.
 
@@ -410,17 +442,7 @@ machinery F1 was found inside all become unnecessary.
 When a workaround is expensive to reason about, making the underlying operation cheap is
 sometimes less total complexity than managing it.
 
-### H43: Push Instead of Poll
-
-The nav polls `depth=0` about once a second per tab, and the entire staleness design
-exists to survive that poll.
-Invert it: the server knows when the revision moved, so it can push tally updates on the
-SSE stream, throttled to a couple per second during a scan, alongside the `fs.change`
-ops it already sends.
-The poll disappears, and with it the per-tab request rate and the GIL contention exp-005
-identified. A client fetch becomes subscribe, then backfill since revision R.
-
-### H44: A Client-Side Replica
+### H42: A Client-Side Replica
 
 Supersedes exp-004 rather than extending it.
 
@@ -431,30 +453,16 @@ not care whether the server’s index is warm at page-render time.
 With a service worker for the shell, a revisit renders from local storage with nothing
 on the network critical path.
 
-### H45: Virtualize the Tree
-
-`TREE_PAGE_SIZE` caps the initial mount at 200 rows, but a reader who expands and pages
-accumulates unbounded DOM, and style and layout cost track total mounted nodes rather
-than visible ones. A windowed renderer over a flattened visible-rows array caps the DOM
-at about three screens permanently, which makes tree size irrelevant to scroll, expand,
-and filter latency.
-
-`content-visibility: auto` on subtree containers is the cheap intermediate and can be
-tried in an afternoon.
-Pairing either with a Web Worker that owns JSON parsing and the tree merge, so the main
-thread only ever receives patches, is what moves the remaining main-thread blocking off
-the interaction path.
-
-### H46: Priority-Driven Walking
+### H43: Viewport-First Walking
 
 Make the walker consume a priority queue rather than run a fixed order: expanded
 prefixes and the viewport first, since the interface already knows both, then
 breadth-first root levels, then bulk.
-Combined with H39 this means the visible part of even a cold million-file tree is
-correct within the first few hundred milliseconds, and the rest fills in behind the
-reader’s attention.
+Combined with H21’s persistence this means the visible part of even a cold million-file
+tree is correct within the first few hundred milliseconds, and the rest fills in behind
+the reader’s attention.
 
-### H47: The Remote Regime
+### H44: The Remote Regime
 
 A measurement change before it is an engineering one.
 Add a latency knob to the harness, through `tc`/`netem` or a delaying proxy, and record
@@ -474,7 +482,7 @@ Three engineering changes follow if the prediction holds:
 The prediction: at 120 ms RTT, batching alone outweighs the combined server-side wins of
 all six rounds.
 
-### H48: Serialization
+### H45: Serialization
 
 Large tree and rollup payloads go through stdlib `json`, which is slow and holds the GIL
 while it runs. `orjson` is close to a drop-in replacement and is commonly five to ten
@@ -482,15 +490,15 @@ times faster on payloads this shape.
 This composes with the per-revision encoded-body cache in H47: encode once with the fast
 encoder, then serve bytes.
 
-### H49: Bulk-Attribute Syscalls
+### H46: Bulk-Attribute Syscalls
 
-The verification sweep H39 depends on is syscall-bound, and every platform offers a way
+The verification sweep H21 depends on is syscall-bound, and every platform offers a way
 to do it in far fewer syscalls: `getattrlistbulk` on macOS returns attributes for many
 directory entries at once, `io_uring` batches `statx` on Linux, and on Windows the USN
 journal replaces the sweep with a change feed.
 Each is roughly an order of magnitude on that phase.
 
-### H50: The Executor Is Sized for the Wrong Work
+### H47: The Executor Is Sized for the Wrong Work
 
 `build_lifespan` sets the asyncio default executor to 64 workers, and the docstring
 gives the reason: cache-served handlers should not queue behind slow stat-poll threads.
@@ -505,7 +513,7 @@ Two populations with opposite sizing needs share one pool.
 The test is cheap: hold everything else fixed and vary the pool size, or split CPU-bound
 offloads onto a small dedicated pool and leave the 64 for I/O waiters.
 
-### H51: A Free-Threaded Build
+### H48: A Free-Threaded Build
 
 The repository already tests on 3.14, so a free-threaded build is a configuration change
 rather than a port.
@@ -519,7 +527,7 @@ the GIL was quietly providing.
 Auditing the remaining shared structures the same way is the actual work of this
 hypothesis, and it is worth doing whether or not the build ever ships.
 
-### H52: Measure the Other Four Regimes
+### H49: Measure the Other Four Regimes
 
 Add the regimes listed in [Where the Loop Cannot See](#where-the-loop-cannot-see) to the
 harness: interaction latency on a settled tree, recovery from a 50,000-file churn event,
@@ -537,23 +545,23 @@ distinction.
 The candidates are not independent, and three groupings matter more than the individual
 ordering.
 
-**H40 first, because it is one run and it redirects the two after it.** H39, H41, and
+**H39 first, because it is one run and it redirects the two after it.** H21, H40, and
 registered H35 all attack the same 50 s from different sides.
 Knowing whether matching or traversal dominates decides which of them is the bigger
 first bite, and it costs a single measurement to find out.
 
-**H42 and registered H34 together delete the tally apparatus.** Incremental maintenance
+**H41 and registered H34 together delete the tally apparatus.** Incremental maintenance
 removes the need for a pass; a columnar representation makes any remaining pass cheap.
 Either alone is worthwhile; together they retire the memo, the derived bound, and the
 rows-and-tallies split, which is a net reduction in code and in things a reader has to
 hold in their head.
 
-**H44, H45, and H47 are the frontend’s path to effortless, and are independent of all
-the backend work.** They can proceed in parallel with the walker questions and be
-measured separately, which makes them a good candidate for whoever is not holding the
-index.
+**H42, the H7 extension, and H44 are the frontend’s path to effortless, and are
+independent of all the backend work.** They can proceed in parallel with the walker
+questions and be measured separately, which makes them a good candidate for whoever is
+not holding the index.
 
-H52 is a prerequisite for scoring H39 honestly and should land before it rather than
+H49 is a prerequisite for scoring H21 honestly and should land before it rather than
 after.
 
 ## Related Documents
