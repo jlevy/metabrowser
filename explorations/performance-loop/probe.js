@@ -115,21 +115,55 @@
   const unshifted = shiftEntries.filter((entry) => !entry.hadRecentInput);
   const cls = unshifted.reduce((total, entry) => total + entry.value, 0);
 
-  // The skeleton measure, which does not need visibility and so is the one
-  // that works here: every region a reader expects to see is present, sized,
-  // and holding something. A region that is present but zero-height is a hole
-  // in the page, and one holding a placeholder is not yet the page.
-  const SKELETON_REGIONS = ["#nav-filter-bar", "#tree-content", "#preview-pane"];
-  const regions = {};
-  for (const selector of SKELETON_REGIONS) {
-    const element = document.querySelector(selector);
-    const box = element ? element.getBoundingClientRect() : null;
-    regions[selector] = element
-      ? { h: Math.round(box.height), chars: (element.textContent || "").trim().length }
-      : null;
+  function emptyHeight(element, pendingHtml) {
+    const stand_in = element.cloneNode(false);
+    stand_in.removeAttribute("id");
+    stand_in.innerHTML = pendingHtml;
+    element.parentNode.insertBefore(stand_in, element);
+    const height = Math.round(stand_in.getBoundingClientRect().height);
+    stand_in.remove();
+    return height;
   }
-  const skeletonComplete = SKELETON_REGIONS.every(
-    (selector) => regions[selector] && regions[selector].h > 0 && regions[selector].chars > 0,
+  // Every region a reader expects to see, with the markup the server actually
+  // ships for it. Two numbers per region: the height it settles at, and the
+  // height it stands at while holding only what the shell shipped.
+  //
+  // The gap between them is how much of the frame does not exist at first
+  // paint, which is the H52 question. It is recorded per run rather than
+  // derived by hand, because the metric that used to sit here --
+  // `skeleton_complete` -- asked whether each region was present, sized and
+  // non-empty *at probe time*, which is after settle. It answered true on
+  // every run ever recorded, including the ones where the files panel was a
+  // 21px line of text where 612px of rows belonged. A metric that cannot come
+  // out false is not measuring anything.
+  const SKELETON_REGIONS = [
+    ["#nav-filter-bar", ""],
+    ["#tab-files", "Loading files…"],
+    ["#preview-pane", "Select a file to preview."],
+  ];
+  const regions = {};
+  for (const [selector, shippedHtml] of SKELETON_REGIONS) {
+    const element = document.querySelector(selector);
+    if (!element) {
+      regions[selector] = null;
+      continue;
+    }
+    regions[selector] = {
+      h: Math.round(element.getBoundingClientRect().height),
+      shipped_h: emptyHeight(element, shippedHtml),
+      chars: (element.textContent || "").trim().length,
+    };
+  }
+  // Present, sized and holding something -- a floor check, and named as one.
+  // A hole in the page fails it; a placeholder does not.
+  const regionsNonEmpty = SKELETON_REGIONS.every(
+    ([selector]) => regions[selector] && regions[selector].h > 0 && regions[selector].chars > 0,
+  );
+  // How many pixels of the frame the shell does not ship. Sums the regions
+  // above, so it is a page-level number in a way the shift metric is not.
+  const frameMissingPx = Object.values(regions).reduce(
+    (total, box) => (box ? total + Math.max(0, box.h - box.shipped_h) : total),
+    0,
   );
 
   // How far the page moves under the reader, measured directly, because the two
@@ -145,15 +179,6 @@
   // same classes -- so a reserved height still applies to it -- holding the
   // markup the pending render actually emits, inserted beside the real element
   // so it inherits the same width and wraps the same way.
-  function emptyHeight(element, pendingHtml) {
-    const stand_in = element.cloneNode(false);
-    stand_in.removeAttribute("id");
-    stand_in.innerHTML = pendingHtml;
-    element.parentNode.insertBefore(stand_in, element);
-    const height = Math.round(stand_in.getBoundingClientRect().height);
-    stand_in.remove();
-    return height;
-  }
   function shiftOf(element, pendingHtml) {
     if (!element) {
       return null;
@@ -207,9 +232,15 @@
     // environment limit rather than as a good result.
     page_visible: visible,
     page_laid_out: laidOut,
-    skeleton_complete: skeletonComplete,
+    regions_non_empty: regionsNonEmpty,
+    frame_missing_px: frameMissingPx,
+    // Settled beside shipped, per region, so `frame_missing_px` can be read
+    // back to the region that owns it rather than taken on faith.
     region_heights: Object.fromEntries(
-      Object.entries(regions).map(([selector, box]) => [selector, box ? box.h : null]),
+      Object.entries(regions).map(([selector, box]) => [
+        selector,
+        box ? { settled: box.h, shipped: box.shipped_h } : null,
+      ]),
     ),
     // The reader-facing skeleton numbers: how far the page moves, and how
     // many times the tree region is painted to get there. A region can hold

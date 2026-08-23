@@ -98,7 +98,8 @@ METRICS = (
     "lcp_ms",
     "cls",
     "cls_shifts",
-    "skeleton_complete",
+    "regions_non_empty",
+    "frame_missing_px",
     # What the reader gets, as distinct from when the data arrived. The three
     # shift figures are read directly rather than from a layout-shift score,
     # because that score needs a visible window and this pane is never one --

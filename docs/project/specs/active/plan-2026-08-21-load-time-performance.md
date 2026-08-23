@@ -41,6 +41,47 @@ an impression.
 - Every asset and bulk payload on an explicit loading tier, justified by measurement
 - One harness that measures all of it, records it as JSON, and diffs two runs, extending
   `devtools/bench_serving.py` rather than sitting beside it
+- One visual state, not a sequence: what the reader can see settles in a single paint,
+  and nothing above it ever moves afterwards
+
+### What We Are Optimizing For
+
+Added after exp-010, because the first nine rounds optimized something narrower than
+what this product is for, and the measurements say so.
+
+`first_row_ms` rewards painting *something* early and is indifferent to everything after
+it.
+Across the campaign it went **1,473 ms to 276** while `tree_region_repaints` went **1
+to 3**: time to first paint was bought, and paid for in visual states.
+That trade is the mechanism of flicker — paint a placeholder, replace it — and it is
+what a reader experiences as the page assembling itself.
+
+So the objective, stated so a round can fail against it:
+
+> **What the reader can see reaches its final state in a single paint.
+> Everything below the fold may arrive later, provided it moves nothing above it.**
+
+Off-screen filling is free; on-screen replacement is not.
+A 246,000-file tree obviously cannot be complete at first paint, and does not need to be
+— the viewport does.
+
+Four distinct failures hide behind the words *flicker* and *jank*, and conflating them
+is why exp-009 fixed one and read as finished:
+
+| What the reader sees | Cause | Where it stands |
+| --- | --- | --- |
+| Content jumps down | A box above it changed size | Mostly fixed (exp-009). 23 px left, H54 |
+| Content blinks and redraws | The DOM was destroyed and rebuilt | 3 paints per load, H11 and H53 |
+| Blank, then content | Nothing painted there yet | The frame is placeholders, H52 |
+| Right, then corrected | An optimistic paint was reconciled | Not yet a problem; H42 would create it |
+
+The comparison that matters is a desktop application, which wins on three structural
+properties rather than on speed: it is already resident, so opening a folder does not
+reload the program; it keeps state, so reopening shows the last known view and
+reconciles behind it; and it mutates in place, so a new file inserts a row rather than
+rebuilding the list.
+A page reloading gives up all three by default, and getting them back is deliberate
+work: H57, H42, and H11 respectively.
 
 ### Proposed Budgets
 
@@ -55,6 +96,17 @@ They exist so a later change has something to fail against.
 | DOM nodes at rest | ≤ 20,000 | 28,711 | 276,789 |
 | CLI start to serving | ≤ 300 ms | 944 ms | 2,748 ms |
 | Eager third-party JS | ≤ 150,000 B | 432,092 B | 432,092 B |
+| Visual states in the viewport | 1 | 3+ | 3+ |
+| Movement after first paint | 0 px | 23 px | not measured |
+| Shell boot, navigation to first row, minus server time | ≤ 50 ms | ~270 ms | not measured |
+
+The last three come from [What We Are Optimizing For](#what-we-are-optimizing-for) and
+are the ones this plan was missing.
+Their “today” column is the fixed 246,282-file corpus at 1280×900, not the 100k/1M
+synthetic runs the rows above it use, because that is where they were measured; see
+[exp-009](../../../../explorations/performance-loop/experiments/exp-009-the-skeleton-stops-growing-under-the-reader.md)
+and
+[exp-010](../../../../explorations/performance-loop/experiments/exp-010-every-checkpoint-on-one-corpus.md).
 
 ## Non-Goals
 
@@ -257,36 +309,47 @@ observable, so it lands in `CHANGELOG.md` and in
 
 This order is derived from what the loop has measured, and it changes as rounds land.
 The [hypothesis registry](#hypotheses) is the live source for status; this is the
-reading of it, **reordered after exp-005 measured a real tree and did not confirm the
-previous order**.
+reading of it, **reordered after exp-010 put every checkpoint on one corpus and priced
+the campaign as a whole**.
 
-On a 241,000-file working tree the reader waits about twenty seconds before any row can
-exist, then four minutes for a tree that takes twenty-one seconds to walk unattended.
-None of that is first paint, asset payload, or render cost — the three things the first
-four rounds worked on.
+Two findings moved this table.
+The server is no longer the bottleneck — it answers the first tree request in 6 ms while
+the reader waits 276 ms for a row — so the top of the list is now client-side.
+And the campaign bought its speed partly with visual states, taking the tree region from
+one paint per load to three, which is the flicker
+[the objective](#what-we-are-optimizing-for) is about.
+
+Rows 1–6 are the reader-facing block and are new to the top.
+Rows 7–19 are the scan and walker work, unchanged in content and in relative order.
 
 | # | Next | Why here |
 | --- | --- | --- |
-| ~~1~~ | ~~**H30** — the gitignore build~~ | **Done** (exp-006): 21.4 s to 2.5 s on the real tree, no verdict changed. What remains of the pre-walk is a second traversal that still visits every tracked directory; folding it into the indexing walk is a larger change nobody has needed yet |
-| ~~2~~ | ~~**H27** — rows respond without the tally pass~~ | **Done** (exp-007): 311 ms to 2 ms, and the attached walk fell 29% as a side effect |
-| 1 | **H31 remainder** — re-measure the loop (`mb-jalf`) | exp-007 took the attached walk from 70.2 s to 50.0 s. Unattached it is 21 s, so amplification is now roughly 2.4x rather than 12x. Measure with a real browser, which is heavier than the probe, before deciding whether serving needs an explicit CPU bound during a scan |
-| 2 | **H39** — price the gitignore matcher (`mb-8yqt`) | One run, and it redirects the three largest rows below it. H21, H40, and H35 all attack the same 50 s from different sides; knowing whether matching or traversal dominates says which is the bigger bite |
-| 3 | **H49** — measure the four unrecorded regimes (`mb-609b`) | Scaffolding, ordered here because H21 cannot be scored without the warm-reopen distinction, and because interaction latency is where a reader actually spends their time |
-| 4 | **H32** — inline without a warm index (`mb-vih2`) | Cheap, and it makes exp-004’s win unconditional. Ordered after H30, which may remove the empty-index window that causes it |
-| 5 | **H21** — persist the index (`mb-omhf`) | A 44 s cold open repeated every session is exactly the case persistence exists for. Larger than everything above it and worth doing once they are done |
-| 6 | **H28** — build the tree from the SSE stream (`mb-ap6p`) | The streamed-delivery centerpiece. Still right, but on a real tree the reader’s problem is that rows do not *exist* yet, not that they are delivered in snapshots |
-| 7 | **H18 → H22** — profile the walk, then batch it (`mb-nbc6`, `mb-tip8`) | Demoted by measurement: the clean walk is 21 s at 104 µs per directory. Worth attributing, but it is not what makes this tree slow |
-| 8 | **H26 + H29** — one remote round (`mb-f591`, `mb-pk2l`) | Unchanged: costs localhost hides. Measure the stake before choosing a fix |
-| 9 | **H47** — right-size the executor (`mb-squq`) | Cheap, and it is the other half of H31’s remaining question about serving under a scan |
-| 10 | **H41** — columnar index (`mb-od5n`) | With H34 this deletes the tally apparatus rather than tuning it. Ordered after the measurement rows so the pass cost is attributed before it is engineered away |
-| 11 | **H40** — native parallel walker (`mb-nbvk`) | Blocked on H39. The largest scan win available if matching is what costs, and it retires the negation bug rather than guarding it |
-| 12 | **H42** — client-side tree replica (`mb-6rdn`) | The frontend path to a revisit with nothing on the network critical path. Independent of every walker row, so it can run in parallel |
-| 13 | **H44** — the remote-link regime (`mb-ycf2`) | Measurement first. If batching wins at 120 ms RTT the way it should, it reorders much of this table |
+| 1 | **H51** — measure LCP and CLS in a visible window (`mb-qf2p`) | Blocker, not scaffolding. The property this plan now names first — nothing moves, nothing redraws — is the one property this environment cannot see: `lcp_ms` and `cls` are null on every recorded run because the pane is permanently hidden. Everything in rows 2–4 can be built but not *scored* until a headed run exists |
+| 2 | **H11** — patch the panel instead of replacing it (`mb-izxl`) | The largest remaining flicker source, and exp-010 reclassified it from a standing cost to a regression this campaign introduced: 1 paint before the performance work, 3 after. Not blocked on H51 — `tree_region_repaints` is measurable today — so it is the first row an agent can both do and score |
+| 3 | **H52** — ship a skeleton, not placeholders (`mb-rxst`) | At first paint the files panel is `Loading files…` at 21 px where 612 px of rows belong. exp-009 stopped the frame moving; this is what makes the frame exist. The obstacle is duplication: the chip and row markup lives only in JavaScript, so a server-side counterpart needs a shared source or it drifts |
+| 4 | **H57** — attribute the shell’s own boot (`mb-emhr`) | 6 ms of server against 276 ms to first row. That gap is the ceiling on “instant” and nobody has broken it down. Measurement only; H9, H10 and H17 are the candidate fixes and this says which one is worth doing |
+| 5 | **H54** — the tally row’s remaining 23 px (`mb-w3va`) | Small and nearly free. The exp-009 audit found the better fix: the row is already wrapped at 14,826 files mid-scan, so the server has a usable partial count long before the walk ends and could inline it with the rows it already inlines |
+| 6 | **H42** — client-side tree replica (`mb-6rdn`) | Promoted from 12. The only row that makes a *revisit* instant, which is half of what “like a desktop app” means, and it is independent of every walker row so it can run in parallel with them |
+| 7 | **H56** — replace the loop’s primary metric (`mb-unt6`) | Blocked on H51. Ordered here rather than first because the rows above it are worth doing on today’s proxies; this is what stops the loop steering itself wrong again |
+| 8 | **H31 remainder** — re-measure the loop (`mb-jalf`) | exp-007 took the attached walk from 70.2 s to 50.0 s. Unattached it is 21 s, so amplification is now roughly 2.4x rather than 12x. Measure with a real browser, which is heavier than the probe, before deciding whether serving needs an explicit CPU bound during a scan |
+| 9 | **H39** — price the gitignore matcher (`mb-8yqt`) | One run, and it redirects the three largest rows below it. H21, H40, and H35 all attack the same 50 s from different sides; knowing whether matching or traversal dominates says which is the bigger bite |
+| 10 | **H49** — measure the four unrecorded regimes (`mb-609b`) | Scaffolding, ordered here because H21 cannot be scored without the warm-reopen distinction, and because interaction latency is where a reader actually spends their time |
+| 11 | **H32** — inline without a warm index (`mb-vih2`) | Cheap, and it makes exp-004’s win unconditional. Ordered after H30, which may remove the empty-index window that causes it |
+| 12 | **H21** — persist the index (`mb-omhf`) | A 44 s cold open repeated every session is exactly the case persistence exists for. Larger than everything above it and worth doing once they are done |
+| 13 | **H28** — build the tree from the SSE stream (`mb-ap6p`) | The streamed-delivery centerpiece. Still right, but on a real tree the reader’s problem is that rows do not *exist* yet, not that they are delivered in snapshots |
+| 14 | **H18 → H22** — profile the walk, then batch it (`mb-nbc6`, `mb-tip8`) | Demoted by measurement: the clean walk is 21 s at 104 µs per directory. Worth attributing, but it is not what makes this tree slow |
+| 15 | **H26 + H29** — one remote round (`mb-f591`, `mb-pk2l`) | Unchanged: costs localhost hides. Measure the stake before choosing a fix |
+| 16 | **H47** — right-size the executor (`mb-squq`) | Cheap, and it is the other half of H31’s remaining question about serving under a scan |
+| 17 | **H41** — columnar index (`mb-od5n`) | With H34 this deletes the tally apparatus rather than tuning it. Ordered after the measurement rows so the pass cost is attributed before it is engineered away |
+| 18 | **H40** — native parallel walker (`mb-nbvk`) | Blocked on H39. The largest scan win available if matching is what costs, and it retires the negation bug rather than guarding it |
+| 19 | **H42** — client-side tree replica (`mb-6rdn`) | The frontend path to a revisit with nothing on the network critical path. Independent of every walker row, so it can run in parallel |
+| 20 | **H44** — the remote-link regime (`mb-ycf2`) | Measurement first. If batching wins at 120 ms RTT the way it should, it reorders much of this table |
 
-Two orderings are load-bearing.
-Attribution comes before the walker change (7), because a structural rewrite without a
-profile is a guess; and the walk attribution comes before the file cap (H15), because a
-cap is a claim about cost and there is no measurement of that cost yet.
+Three orderings are load-bearing.
+The measurement row comes first (1) because the objective it serves is currently
+invisible; attribution comes before the walker change (13), because a structural rewrite
+without a profile is a guess; and the walk attribution comes before the file cap (H15),
+because a cap is a claim about cost and there is no measurement of that cost yet.
 
 ### Considered and Deliberately Not Registered
 
@@ -399,6 +462,65 @@ as its cheapest consequence); nothing survives a restart, so every open of a lar
 pays the full walk again (H21); and the first paint waits for a fetch whose payload the
 server could have inlined (H20).
 
+### What Each Hypothesis Is For
+
+Fifty-seven rows is a list, not a map.
+Every registered hypothesis appears exactly once below, grouped by which part of
+[the objective](#what-we-are-optimizing-for) it serves, so an agent picking up this loop
+can find the rows that bear on the question they care about instead of reading all of
+them. **✓** is resolved, **✗** did not reproduce as stated, everything else is open.
+Status and evidence stay in the registry tables; this is only the grouping.
+
+**What the reader sees** — stability, and one paint instead of several.
+The objective’s first two failure modes.
+
+- H50 ✓ reserve the heights that grow · H54 the tally row’s remaining 23 px
+- H11 patch the panel instead of replacing it · H53 repaints as a standing metric
+- H52 ship a skeleton, not placeholders · H10 render-blocking stylesheets
+- H51 measure LCP and CLS in a visible window · H56 the primary metric is mis-aimed
+
+**How fast the first correct frame arrives** — everything on the critical path between
+navigation and a usable viewport.
+
+- H20 ✓ inline the first rows · H32 inline without a warm index · H1 ✓ prefetch on idle
+- H57 attribute the shell’s own boot · H9 the eager JavaScript count · H17 import cost
+- H19 `/api/events` on the critical path · H29 the first byte waits on a filesystem walk
+- H5 the root tree route under a scan · H8 ✓/H23 ✓ the tally pass per request
+- H25 re-serializing an unchanged answer · H45 serialization cost · H37 path
+  normalization
+- H12 `/api/recent` on the critical path · H24 two progress channels at once
+- H6 ✗ rows gated on scan completion · H4 ✗ the catalog payload
+
+**How big the page gets** — the tree grows; the DOM and the wire should not.
+
+- H7 window the rendered rows · H15 no silent truncation at 500,000
+- H26 the eager request count priced at localhost · H44 the remote-link regime
+- H41 a columnar index
+
+**Whether a revisit costs anything** — the desktop-app property this plan does not have.
+
+- H21 persist the index · H42 a client-side replica painted before the server answers
+- H46 bulk-attribute syscalls for the verification sweep
+
+**How fast the tree becomes complete** — the scan behind the viewport.
+
+- H30 ✓ prune the gitignore pre-walk · H27 ✓ rows without the tally pass · H2 ✓ bound
+  the warming sweep
+- H31 scan and serve contend · H33 tracked files before ignored ones · H43 the
+  viewport’s subtree first
+- H39 price the matcher · H40 a native parallel walker · H35 `git ls-files` on a git
+  tree
+- H34 incremental tallies · H36 the tally thread under the GIL · H47 executor size · H48
+  free-threaded
+- H18 profile the walk · H22 batch it · H13 walk attribution · H28 build from the SSE
+  stream
+
+**The loop’s own instruments** — rows that decide how every other row is judged.
+
+- H16 ✓ measure a real corpus · H55 ✓ one corpus for every checkpoint · H49 the four
+  unrecorded regimes
+- H38 what counts as acting a row into view · H3 ✗ the sweep’s request rate
+
 | # | Hypothesis | Metric that would show it | Status |
 | --- | --- | --- | --- |
 | H1 | The prefetched libraries start on `DOMContentLoaded`, which is the same window as the first `/api/tree` fetch and the tree render, so they compete with the tree and hold the `load` event open behind them. Starting them on the first idle callback removes both. | `load_ms` down; `first_row_ms` down | **Half confirmed** (exp-001). `load_ms` 3,883 ms to 750 ms on ranges that do not overlap. `first_row_ms` did not move: 854 ms against 999 ms on ranges that overlap almost completely. Accepted on the tier policy and `load`, not on the row |
@@ -460,10 +582,12 @@ Ordered by the evidence behind them, not by where they sit in the stack.
 | H49 | The four unmeasured regimes hide regressions the cold-load metric cannot see: interaction latency, churn recovery, resident size, and warm reopen. | Interaction latency, churn recovery, resident size, warm reopen | Open, **P0** (`mb-609b`). Every number in this plan describes one cold load of a settling tree; nothing describes using the thing |
 | H50 | Two regions are rendered before they have content and grow when it arrives: the filter bar, shipped empty for `filter_controls.js` to fill, and the tally row, which paints with the inlined rows and gets its numbers from a later request. The page moves under the reader on every load. | `reserved_region_shift_px`, measured directly as populated height minus empty height | **Confirmed** (exp-009). 67 px together, now 23. Both reserve a line box of the type they hold rather than a measured constant, because the shell offers a choice of font sets. The filter bar is settled at zero; the tally row keeps 23 px because its settled height depends on its own content, which is H54 |
 | H51 | The two metrics a browser would actually report — largest-contentful-paint and cumulative layout shift — are unmeasured, and unmeasurable here: Chromium does not compute LCP for a page that has never been visible, and this pane is permanently hidden and collapses to 0×0 on navigation. | `lcp_ms` and `cls`, non-null, from a visible window | Open, **P1** (`mb-qf2p`). The probe records both plus `page_visible` and `page_laid_out`, so an absent number reads as an environment limit rather than a good result. Needs a headed run |
-| H52 | The shell ships placeholders, not a skeleton: the filter bar is empty, the files panel is “Loading files…”, the preview pane is one line of text. First paint is chrome plus three placeholders, each later replaced wholesale. Server-rendering resting-state chips and placeholder rows would make the structure look complete at first paint. | `skeleton_complete` at first paint; region repaint count | Open, **P1** (`mb-rxst`). exp-009 stopped the page *moving*; this is what would stop it *assembling*. The obstacle is duplication — the chip markup lives only in `filter_controls.js`, so a server-side counterpart needs a shared source or it drifts |
+| H52 | The shell ships placeholders, not a skeleton: the filter bar is empty, the files panel is “Loading files…”, the preview pane is one line of text. First paint is chrome plus three placeholders, each later replaced wholesale. Server-rendering resting-state chips and placeholder rows would make the structure look complete at first paint. | `frame_missing_px`, target 0. Baseline 615 px on the fixed corpus at 1280×900, all of it the files panel: 636 px settled against the 21 px the shell ships | Open, **P1** (`mb-rxst`). exp-009 stopped the page *moving*; this is what would stop it *assembling*. The obstacle is duplication — the chip markup lives only in `filter_controls.js`, so a server-side counterpart needs a shared source or it drifts. The metric this row used to name, `skeleton_complete`, was retired for being unfalsifiable: it asked whether each region was non-empty *at probe time*, which is after settle, and returned true on all ten runs ever recorded, including every one carrying the 615 px gap |
 | H53 | The tree region is painted three times per load — inlined rows, fetched rows, refresh — each a wholesale replacement of the whole panel. | Repaints per region per load, target 1 | Open (`mb-t5x3`). exp-009 added the metric; exp-010 confirmed it is a regression rather than a standing cost, measuring 1 paint before the campaign against 3 after. H11 is the fix. Should extend past the tree region to the preview pane and the filter bar |
 | H54 | The tally row’s settled height depends on its own text: `.tree-summary-split` reports tracked and ignored files separately and wraps to a second line in a 300 px navigation pane, so no fixed reservation fits both states. A one-line floor leaves the wrap uncovered; a two-line floor leaves dead space whenever the row does not wrap. | `summary_shift_px` at 300 px and at a pane wide enough not to wrap, both zero, with no idle gap in either | Open, **P2** (`mb-w3va`). The remainder of exp-009: 23 px of the original 67. The fix is to make the pending row the same shape as the settled one — same classes, same cell count, placeholder glyphs sized like digits — so it wraps identically, rather than to raise the floor |
 | H55 | The campaign’s numbers span seven corpora and none of them compare, so nothing says what all of it bought. Each round measured its own control against its own candidate, which is sound per round and is why the verdicts stand, but it leaves the campaign itself unmeasured. | Every checkpoint’s standing metrics against one corpus with one harness, in one table | **Confirmed** (exp-010, `mb-3a3h`). Answered by holding the corpus and the harness fixed and moving only `src/metabrowser`: first row 1,473 ms to 276, server share of the first tree fetch 1,099 ms to 6, tail 28.9 s to 12.3. It also surfaced two regressions no round could see from inside itself — repaints 1 to 3, and shift 42 px to 67 on main before this branch took it to 23 |
+| H56 | `first_row_ms` rewards painting *something* early and says nothing about how many states follow it. The campaign drove it from 1,473 ms to 276 while repaints went 1 to 3, so the loop’s own primary metric is what steered it into placeholder-then-replace. The objective is one visual state in the viewport, and nothing measures that. | `visual_states`, the count of distinct painted viewport layouts between navigation and settle, target 1; `time_to_final_state` beside it | Open, **P1** (`mb-unt6`). Blocked on H51: a metric about painting cannot be validated in a pane that never paints visibly. `tree_region_repaints` is today’s partial proxy and covers one region |
+| H57 | The server is no longer the bottleneck and the shell’s own boot is, but nothing has attributed it. On the fixed corpus this branch answers the first tree request in 6 ms and paints no row until 276 ms; the ~270 ms in between is 126 requests and 742 KB of shell, unexamined. | Navigation to first row broken into connect, HTML, blocking CSS, JS parse, JS execute, and the inline render | Open, **P1** (`mb-emhr`). Roughly 5× the project’s own “never flash a spinner under ~50 ms” line. Deliverable is the attribution; H9, H10 and H17 are the candidate fixes and which one matters depends on it |
 
 ## Reproducing the Measurements
 

@@ -159,7 +159,6 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `vendor_first_start_ms` | 83 | 549 | 293 | 270 | 342 (238-3,530) | 331 (231-575) |
 | `cls` | 0 | 0 | 0 | 0 | 0 (0-0) | 0 (0-0) |
 | `cls_shifts` | 0 | 0 | 0 | 0 | 0 (0-0) | 0 (0-0) |
-| `skeleton_complete` | 1 | 1 | 1 | 1 | 1 (1-1) | 1 (1-1) |
 | `filter_bar_shift_px` | 0 | 24 | 24 | 24 | 24 (24-24) | 0 (0-0) |
 | `summary_shift_px` | 23 | 43 | 18 | 18 | 43 (43-43) | 23 (23-23) |
 | `reserved_region_shift_px` | 23 | 67 | 42 | 42 | 67 (67-67) | 23 (23-23) |
