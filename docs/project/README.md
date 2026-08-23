@@ -31,6 +31,7 @@ links to the document that covers each in depth.
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
+- [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
 
 ## Research
 
