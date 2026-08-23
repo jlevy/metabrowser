@@ -32,11 +32,10 @@ not worth an error, and this is code that runs before anything useful happens.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from functools import cache
 from pathlib import Path
-
-from metabrowser.git.env import scrubbed_environ
 
 _GIT_TIMEOUT_SECONDS = 2.0
 """Long enough for a local repository, short enough to never be the reason a
@@ -48,10 +47,9 @@ def _git(repository: Path, *arguments: str) -> str | None:
 
     # GIT_DIR and its siblings OVERRIDE -C, and git exports them to every hook
     # it runs — so a metab invoked from inside a hook would report that hook's
-    # repository instead of this one. metabrowser.git.env owns the list and the
-    # history behind it; this was once a local `GIT_*` prefix strip, which is
-    # the kind of second answer that let the problem recur in the first place.
-    environment = scrubbed_environ()
+    # repository instead of this one. Strip them and ask only about
+    # `repository`.
+    environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         # Fixed argv, no shell, and git is resolved from PATH.
         completed = subprocess.run(

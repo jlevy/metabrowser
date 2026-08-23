@@ -12,6 +12,7 @@ load a page of history, then request one commit's detail.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ from starlette.testclient import TestClient
 
 from metabrowser import paths_safe
 from metabrowser.git import repo as git_repo
-from metabrowser.git.env import scrubbed_environ
+from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.git.wire import (
     is_full_revision,
     validate_git_commit_detail,
@@ -42,7 +43,7 @@ def _git(root: Path, *args: str) -> None:
     # Repository-pinning variables are scrubbed for the same reason as in
     # test_git_api._git: under the pre-push gate, git's exported GIT_DIR
     # outranks -C and redirects the fixture's init at the real repository.
-    env = scrubbed_environ()
+    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
     env.update(
         {
             "GIT_AUTHOR_NAME": "Fixture Author",

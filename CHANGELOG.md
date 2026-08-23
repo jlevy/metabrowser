@@ -37,14 +37,6 @@ Development:
   This exists because two builds under comparison both reported `0.6.0` while thirty
   commits apart, and nothing on screen contradicted it.
 
-- `make lint` refuses a `git` subprocess that does not name its environment.
-  `GIT_DIR` and its siblings override `-C` and git exports them to every hook, so an
-  inherited environment points a command at whatever repository started the process.
-  That had already happened twice — once re-initializing the served repository as bare,
-  once writing a stray tag onto a real branch.
-  `metabrowser.git.env` now owns the variable list that four call sites had each
-  answered separately.
-
 - `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
   three corpus shapes had no command-line route, including the one the scan-ordering
   figures were measured on, so reproducing them meant importing the module by hand.
