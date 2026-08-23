@@ -3,13 +3,15 @@ type: is
 id: is-01m0peth679xvw9xwx2b1hd3kn
 title: "A dev build should say it is one: dirty and ahead-of-tag markers in --version"
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-23T04:42:22.263Z
-updated_at: 2026-08-23T04:42:22.263Z
+updated_at: 2026-08-23T06:12:16.899Z
+closed_at: 2026-08-23T06:12:16.888Z
+close_reason: "Merged as 8d78c29 (PR #71). --version and the serve banner annotate a checkout with distance past the tag, the sha, and a dirty marker; __version__ itself is untouched so the publish tag check still compares cleanly. Second commit fixes a GIT_* leak that let the tests commit and tag in the real repository when run from a hook."
 ---
 A build running from a source checkout reports a plain release version, with nothing saying it is not that release. `metab --version` said `0.6.0` while the code was 27 commits past the v0.6.0 tag, because `importlib.metadata.version()` returns what was recorded when the package was installed, and an editable install does not re-record it as commits land.
 

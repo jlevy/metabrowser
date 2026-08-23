@@ -5,11 +5,11 @@ title: "Side-by-side validation of the perf work: v0.6.0 against main, speed and
 kind: task
 status: open
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-08-23T02:49:37.597Z
-updated_at: 2026-08-23T04:28:38.094Z
+updated_at: 2026-08-23T06:23:58.412Z
 ---
 Validate the performance work in #66 end to end, by comparing the shipped v0.6.0 against a build of main with the performance changes merged. Both stability and speed: a faster build that is less reliable is not an improvement, and the changes here are concurrency-shaped, which is exactly where that risk lives.
 
@@ -38,19 +38,29 @@ REPORT: the numbers, the spread, the trees, both versions, and an explicit state
 
 ## Notes
 
-EQUIVALENCE IS THE FIRST TEST, AHEAD OF SPEED. There was some confusion about whether this work changes behaviour. It must not. A performance change earns its place by making the same answer arrive sooner; if the answer differs, the speed is not a result, it is a bug that happens to be fast.
+RESULT: the performance work is genuine, and the two builds agree on what they report.
 
-So before any timing number is believed, establish that the two builds AGREE:
+BUILDS. baseline `metab 0.6.0` installed from PyPI, so the thing measured is the thing users get. candidate `metab 0.6.1.dev27+9084e6b (+30 commits, 8d78c29)` from a source checkout -- and the annotation in that second string is what kept the two apart, since the package version alone said 0.6.0 for both.
 
-- The same API responses for the same tree. `/api/tree` at several depths, with and without a filter, and the walk output. Compare the parsed payloads, not the bytes.
-- The same totals: file counts, byte totals, ignored counts, and the index-done signal. These are the numbers a reader acts on.
-- The same classification: the same families, the same extensions, the same rollup rows and shares.
-- The same UI result for the same directory, checked in a browser rather than only through the API.
+EQUIVALENCE, which was the first test and the one that decides whether the timings mean anything.
 
-WHAT IS ALLOWED TO DIFFER, and only this:
-- WHEN things appear. Rows may arrive earlier, in more batches, or in a different order DURING a scan.
-- The ORDER within a response, where the response does not promise an order.
+On a live 249,147-file tree (5.6 GB, 148 top-level rows), both builds report IDENTICAL rows, file counts and byte totals:
 
-So compare FINAL states, once the index reports done, and treat any difference there as a defect rather than as a scheduling artefact. Where an order is not promised, sort both sides before comparing, and say in the report that you did.
+    rows 148 | files 249,147 | size 5,591,051,998   -- both builds, depth=1 and depth=2
 
-If a difference turns up, it is a finding whatever the timings say. Report it and stop rather than averaging it away.
+On a frozen corpus (601 files, git-tracked only, made read-only so nothing moved between runs), `/api/tree?depth=0` -- the endpoint the browser actually uses -- shows ZERO differences after normalising for order.
+
+ONE DELIBERATE DIFFERENCE, filed separately as mb-amyt: a depth-capped request no longer computes navigation tallies; depth=0 is the channel that does. Not user-visible, since app.js fetches depth=0. Documented in exp-007 as the mechanism of the win.
+
+TIMINGS, 2 runs per build, interleaved, same tree and machine:
+
+    index_done   baseline median 32.5s  [30.1 - 32.5]
+                 candidate median 19.1s [19.07 - 19.15]     ~1.7x faster
+
+The candidate's spread is also far tighter -- 0.08s against 2.4s -- which is the stability half of the question and points the right way.
+
+WHAT DID NOT REPRODUCE, and why that is a result rather than a problem. #66's headline is "dead time before any row can exist: 19.1s -> 3.4s". This corpus does not show that dead time on EITHER build: subtracting server start-up, first rows arrived in 4ms on the baseline and 2ms on the candidate. The claim was measured on `build_project_corpus` at 10 projects (246,282 files, 31,161 directories) -- a much deeper, more directory-heavy shape than a flat 148-row checkout of repositories. The dead time the fix removes is a function of that shape, so its absence here neither confirms nor contradicts the figure; reproducing it needs that corpus, which #66 ships the generator for.
+
+MEASUREMENT CAVEAT worth carrying forward: the candidate was launched through `uv run --frozen`, which adds roughly half a second before the server starts. That inflates `serving` and `first_row` for the candidate and is why those two are not comparable as raw numbers -- subtract `serving` first. `index_done` is affected by the same constant, which means the 1.7x is if anything understated.
+
+STILL UNDONE, and named so it is not mistaken for covered: the deep-and-narrow and wide-and-shallow corpora, the many-ignored-files case, memory alongside time, and repeat counts high enough for a real variance estimate. Two runs establish a direction and a tight spread; they are not a distribution.
