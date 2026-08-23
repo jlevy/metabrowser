@@ -252,8 +252,13 @@ global.document = { createElement: (tag) => new Element(tag) };
     flattened.includes(
       ".folder-totals .file-type-summary-fill[data-segment-key]:hover { " +
         "filter: var(--viz-data-mark-hover-filter); " +
-        "transform: scaleX(var(--viz-hover-grow)); z-index: 1; }",
-    ) && !styles.includes("--viz-hover-outline"),
+        "transform: scaleY(var(--viz-hover-grow)); z-index: 1; }",
+    ) &&
+      !styles.includes("--viz-hover-outline") &&
+      // scaleX is the bug this replaced: on a horizontal bar the width is the
+      // value, so growing it states a share the family does not have. Matched
+      // as a declaration, since the stylesheet's own comment names it.
+      !flattened.includes("transform: scaleX("),
     flattened.slice(0, 240),
   );
   // A transform, never width: the widths are percentages summing to 100, so

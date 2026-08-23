@@ -145,7 +145,11 @@
 
 .file-type-summary-track {
   height: var(--mb-distribution-track-height);
-  overflow: hidden;
+  /* Visible, so a hovered segment can thicken past the track's own height —
+     see the hover rule. Nothing needs clipping here: --radius-chrome is 0, so
+     the clip was rounding nothing, and the segments are percentages that sum
+     to 100, which the model asserts, so they cannot spill sideways. */
+  overflow: visible;
   background: var(--mb-distribution-track);
   border-radius: var(--radius-chrome);
 }
@@ -192,24 +196,26 @@
    Styles the Thing Under the Pointer" in docs/design-system.md; the rule is
    general, not local to this component.
 
-   It grows, and lifts its own colour. It used to take an outline as well, and
-   the outline was the wrong instrument twice running — translucent, then
-   opaque grey. A ring is drawn ON the data: it covers the colour it is meant
-   to point at, it competes with the hairline between segments, and two pixels
-   of it is a quarter of an eight-pixel track. Growth says the same thing and
-   covers nothing; the eye is already good at finding the one thing that moved.
+   The segment thickens, and lifts its own colour. It wore an outline before
+   that, twice — translucent, then opaque grey. A ring is drawn ON the data: it
+   covers the colour it is meant to point at, it competes with the hairline
+   between segments, and two pixels of it is a quarter of an eight-pixel track.
 
-   scaleX rather than width, because the widths are percentages summing to 100:
-   growing one in layout would push every segment after it, and the last past
-   the end of the track. A transform grows over its neighbours instead, which
-   is why the segment lifts above them for the duration.
+   scaleY, and never scaleX: this is a horizontal bar, so a segment's WIDTH is
+   its value. Growing that states a share the family does not have, and every
+   segment after it would appear to shift. Thickness carries no data at all,
+   which is exactly what makes it free to move.
 
-   The growth is proportional, so a wide segment moves further than a narrow
-   one. That is the right way round — a one-pixel segment has almost no colour
-   to lift either, and its tooltip is what identifies it. */
+   Centred, because the bar has a baseline the eye follows along the row: the
+   segment grows equally above and below it rather than pushing off one edge.
+
+   It also fixes what scaleX could not. A proportional width grew a wide
+   segment by fifteen pixels and a three-pixel segment by nothing, so the
+   segments hardest to point at were the ones that answered least. Every
+   segment is the same height, so every segment now answers the same. */
 .folder-totals .file-type-summary-fill[data-segment-key]:hover {
   filter: var(--viz-data-mark-hover-filter);
-  transform: scaleX(var(--viz-hover-grow));
+  transform: scaleY(var(--viz-hover-grow));
   z-index: 1;
 }
 

@@ -332,9 +332,9 @@ can point at:
 
 | Do | Do not |
 | --- | --- |
-| Grow the hovered mark with `--viz-hover-grow`, on `--viz-hover-grow-ease` | Dim, fade, or desaturate the other marks |
-| Lift its own color a step with `--viz-data-mark-hover-filter` | Outline, ring, or border the mark |
-| Leave every other mark exactly as it was | Move the layout |
+| Grow the hovered mark on the axis that carries **no** data, with `--viz-hover-grow` on `--viz-hover-grow-ease` | Grow the axis that encodes the value |
+| Lift its own color a step with `--viz-data-mark-hover-filter` | Dim, fade, or desaturate the other marks |
+| Leave every other mark exactly as it was | Outline, ring, or border the mark, or move the layout |
 
 **Grow, do not outline.** An outline is drawn *on* the data: it covers the color it is
 meant to point at, it competes with whatever separators the component already has
@@ -345,14 +345,23 @@ the one thing that moved.
 This was tried as a translucent ring and then as an opaque grey one before landing here;
 neither is the instrument.
 
-**Grow with a transform, never with layout.** Bar segments are percentages summing to
-100, so growing one in layout pushes every segment after it and the last past the end of
-the track.
-A transform grows the mark over its neighbours, so it also needs to lift above
-them for the duration.
-Scale one axis for a mark that has one — a distribution segment is a fixed height and as
-wide as its share — and both axes for a mark that is an area, like a treemap cell, where
-one axis would read as a stretch.
+**Grow the axis that carries no data.** This is the part that is easy to get backwards.
+On a horizontal bar the *width* is the value, so it is the one dimension that must not
+move: growing it states a share the mark does not have, and every mark after it appears
+to shift. Thickness means nothing there, which is exactly what frees it — so a bar
+segment grows *taller*, centered on the baseline the eye follows along the row.
+
+It also makes the answer uniform.
+A proportional width grew a wide segment by fifteen pixels and a three-pixel segment by
+nothing, so the marks hardest to point at were the ones that answered least.
+Every segment shares one height, so every segment now answers the same.
+
+Because the axis is small, the factor is large: an eight-pixel bar at 1.5 is twelve, and
+the overshoot carries it past thirteen before it settles.
+A few percent would be a fraction of a pixel.
+
+**Grow with a transform, never with layout**, so the row does not reflow under the
+pointer.
 
 **The curve is what makes it read as an answer.** `--viz-hover-grow-ease` overshoots its
 target and settles back, so the mark goes further than it ends up and returns.

@@ -716,10 +716,22 @@
      guessed: evaluate the bezier rather than adjusting it by eye, because the
      part being tuned lasts about a tenth of a second.
 
-     Applied as a transform, never as width: the segments are percentages
-     summing to 100, so growing one in layout would push every one after it and
-     the last past the end of the track. */
-  --viz-hover-grow: 1.06;
+     Grow the axis that carries NO data. On a horizontal bar the width is the
+     value, so it is the one dimension that must not move — growing it states a
+     share the mark does not have. Thickness means nothing there, which is what
+     frees it. That also makes the answer uniform: a proportional width grew a
+     wide segment by fifteen pixels and a three-pixel segment by nothing, so
+     the marks hardest to point at answered least, where every segment shares
+     one height.
+
+     Applied as a transform rather than as a height, so the row's layout does
+     not reflow under the pointer, and centred so the mark grows either side of
+     the baseline the eye follows along the row.
+
+     The factor is large because the axis is small: an eight-pixel bar at 1.5
+     is twelve, and the overshoot carries it past thirteen before it settles. A
+     few percent would be a fraction of a pixel. */
+  --viz-hover-grow: 1.5;
   --viz-hover-grow-duration: 170ms;
   --viz-hover-grow-ease: cubic-bezier(0.34, 2.2, 0.64, 1);
   --viz-hover-transition:
