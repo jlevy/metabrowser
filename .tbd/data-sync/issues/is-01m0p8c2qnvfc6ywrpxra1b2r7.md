@@ -3,13 +3,17 @@ type: is
 id: is-01m0p8c2qnvfc6ywrpxra1b2r7
 title: "Land #66 and #68, in that order, once v0.6.0 is confirmed on PyPI"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 1
+version: 3
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m0p8c31yfhs5sxy0qt6nztvw
 created_at: 2026-08-23T02:49:37.257Z
-updated_at: 2026-08-23T02:49:37.257Z
+updated_at: 2026-08-23T04:28:37.804Z
+closed_at: 2026-08-23T04:28:37.804Z
+close_reason: "#66 merged as fdd6c5f, #68 as 9084e6b, CI green on both merge commits. Note for the record: GitHub locked both as a stack — the normal merge and even a base retarget were refused, and the only path was PUT /repos/{owner}/{repo}/pulls/{n}/merge-async. #68 auto-retargeted to main once #66 landed and collapsed to the 1 commit / +14-7 it claimed, which is what this bead said to confirm rather than assume."
 ---
 Two pull requests are ready and authorized to merge, but only AFTER v0.6.0 is confirmed published end to end -- not merely tagged. The release is the baseline the next bead compares against, so anything landing on main before it is confirmed muddies that comparison.
 
