@@ -80,10 +80,14 @@ collide are few and named:
 the metric it named:
 
 1. The metric the hypothesis predicted moved, with non-overlapping ranges at n≥3.
-2. `reserved_region_shift_px` did not grow, and `tree_region_repaints` did not grow.
+2. `long_task_max_ms` did not grow, and the run says it was measured visible.
+   A round that improves its own metric by doing the same work in a shorter window
+   raises `main_thread_blocked_pct` while improving every absolute — read the share
+   against `long_task_window_ms` before calling either direction.
+3. `reserved_region_shift_px` did not grow, and `tree_region_repaints` did not grow.
    Both are in `compare` for exactly this reason — the campaign regressed both without
    noticing, over nine rounds, because nothing looked.
-3. The artifact says what did *not* move, in the same voice as what did.
+4. The artifact says what did *not* move, in the same voice as what did.
 
 A round that improves its own metric and quietly costs a paint or twenty pixels is not
 an improvement, and exp-010 is the worked example of finding that out six rounds late.
@@ -178,6 +182,60 @@ Automating it is worth doing when the loop’s answers start needing to be defen
 continuously rather than decided once — that is `mb-pwnw`, and it is where the page-load
 phase of `bench_serving.py` belongs.
 
+## Responsiveness, and the one precondition that invalidates it
+
+**The principle.** The UI thread is never blocked by backend work.
+Responsiveness is independent of server latency, of bandwidth, and of how much data the
+tree holds. The dominant case is a local server answering in single-digit milliseconds,
+and that is what to tune for — but the design must not *depend* on it, so that
+`--remote` over an SSH tunnel degrades by showing content later rather than by freezing.
+
+Network traffic cannot block a browser UI; the I/O is off-thread by construction.
+What blocks it is our own synchronous handling of what arrived.
+The invariant that follows is:
+
+> Main-thread work per task is bounded by a constant, never by the size of the data.
+
+The input is unbounded — a tree holds however many files it holds — so a design is
+correct only if arbitrarily much arriving data still yields bounded synchronous slices.
+Four mechanisms produce that, in the order they pay off here: coalesce events into one
+render of the latest state per frame; deadline-slice any loop over inventory-sized data
+and yield; move aggregation into a worker; and let speculative work yield to a real
+interaction rather than queue ahead of it.
+The server learned this in exp-005 and exp-007, where a watching client stole CPU from
+the walker. The client has not, which is `H58`.
+
+**The precondition, which is not optional.** Every responsiveness number must be
+measured in a **visible, foregrounded** tab.
+Chromium throttles hidden tabs — it clamps timers, suspends rendering, and batches
+deferred work into large chunks when it does run — so a background tab manufactures long
+tasks that no reader would ever experience.
+A measurement taken through a hidden pane reported a 14.4-second block and 81.8% blocked
+share on a tree whose instrumented spans summed to 137 ms; the throttling was the whole
+signal. So: check `document.visibilityState === "visible"` and record it beside the
+numbers, and discard any run that cannot say it was visible.
+This is the reason the browser half is driven by hand rather than through an automation
+surface that may not be showing the page.
+
+**How to run it.** Two pastes, because the interesting part is the start:
+
+```shell
+UV="uv --config-file uv.toml run --frozen python"
+$UV explorations/performance-loop/run.py serve --exp exp-0NN --label before --files 300000
+```
+
+1. Load the URL in a **visible** browser window.
+2. Paste `probe-boot.js` immediately — it attaches the observers at navigation.
+   `probe.js` alone cannot answer this: it is pasted after settle, by which point the
+   browser’s bounded `longtask` buffer has already dropped the tail on exactly the loads
+   worth measuring, and the first seconds are gone.
+3. Use the app while it loads — expand a folder, switch a tab.
+   `interaction_*` is empty otherwise, and an empty interaction record is not evidence
+   of a responsive page.
+4. Paste `probe.js` once the tree settles.
+   It reads what the boot probe collected and stamps `boot_probe: false` if it had to
+   fall back, so a floor never reads as a total.
+
 ## What is measured
 
 | Metric | What it is | Why |
@@ -189,6 +247,11 @@ phase of `bench_serving.py` belongs.
 | `subtree_requests` | `/api/tree?path=…` count | The folder-warming sweep, which is invisible in a page that looks idle |
 | `tree_items`, `lazy_stubs`, `dom_nodes` | Rendered size | What row windowing has to bound |
 | `transferred_kb`, `vendor_first_start_ms` | Payload and when the prefetched tier starts | The asset tiers |
+| `long_task_max_ms` | The longest single main-thread block | The one a reader feels. A total cannot tell sixty 100 ms hitches from one six-second freeze, and only one of those is a broken product |
+| `long_task_max_ms_first_5s` | The same, restricted to the first five seconds | Event rate peaks right after load, so the naive design is worst exactly when the reader is deciding whether the app is alive |
+| `main_thread_blocked_pct` | Blocked time over its window | Always read with `long_task_window_ms`. The same work in half the time doubles the share while improving every absolute |
+| `interaction_p50_ms`, `interaction_max_ms` | Interaction to next paint, from Event Timing | The only responsiveness measure that survives a change of transport |
+| `label_totals` | Per-span count, total and max, never evicted | Attribution. `longtask` says the thread was blocked; this says by what |
 
 `first_row_ms` is wall clock until a tree row exists.
 Waiting for `load` reports a page that painted its shell, and waiting for network idle

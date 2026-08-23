@@ -4456,6 +4456,10 @@ function _childContainerFor(row) {
 }
 
 function applyTreeFilters() {
+  return _perf.measure("applyTreeFilters", applyTreeFiltersInner);
+}
+
+function applyTreeFiltersInner() {
   var panel = document.getElementById("tab-files");
   if (!panel || !filterState) {
     scheduleTreeSynchronize();
@@ -5819,7 +5823,20 @@ var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
 
+// Instrumented at the batch, not per entry: wrapping applyCellPatch itself
+// would emit one span per file and charge the measurement more than the work.
+// The entry count rides along as meta so the span can be read against the size
+// of the batch that produced it -- which is the whole question in H58, since a
+// pass whose cost tracks the data is the thing that has to stop.
 function fileStoreApplySnapshot(scope, entries) {
+  return _perf.measure(
+    "fileStoreApplySnapshot",
+    () => fileStoreApplySnapshotInner(scope, entries),
+    { entries: entries.length },
+  );
+}
+
+function fileStoreApplySnapshotInner(scope, entries) {
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
@@ -5835,6 +5852,12 @@ function fileStoreApplySnapshot(scope, entries) {
 }
 
 function fileStoreApplyChange(ops) {
+  return _perf.measure("fileStoreApplyChange", () => fileStoreApplyChangeInner(ops), {
+    ops: ops.length,
+  });
+}
+
+function fileStoreApplyChangeInner(ops) {
   knownFileCatalog?.applyEventChange(ops);
   for (var i = 0; i < ops.length; i++) {
     var op = ops[i];

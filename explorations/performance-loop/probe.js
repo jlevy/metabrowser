@@ -17,6 +17,13 @@
   // Long tasks are buffered by the browser and delivered to an observer on a
   // later task, so collecting them needs an async beat. Chromium only; where
   // unsupported the fields are null rather than a misleading zero.
+  //
+  // The browser's longtask buffer holds a bounded number of entries, and a bad
+  // load overruns it. So treat every figure below as a FLOOR, not a total: a
+  // run whose `long_tasks` count looks suspiciously round has lost the tail,
+  // and the honest reading is "at least this much". Attaching an observer at
+  // navigation instead of here is the only way to be sure, which is what a
+  // round investigating H58 should do rather than trusting this paste.
   let longTasks = null;
   try {
     /** @type {PerformanceEntry[]} */
@@ -295,12 +302,43 @@
     summary_shift_px: summaryShift,
     reserved_region_shift_px: totalShift,
     tree_region_repaints: regionRepaints.length,
+    // Responsiveness comes from probe-boot.js when it was attached, because a
+    // paste after settle cannot see the start and overruns the browser's
+    // bounded longtask buffer on exactly the loads worth measuring. When it was
+    // not attached these fall back to what is still buffered, and
+    // `boot_probe: false` says so rather than letting a floor read as a total.
+    ...(window.__mbBoot
+      ? window.__mbBoot.summarize()
+      : {
+          boot_probe: false,
+          long_task_window_ms: Math.round(performance.now()),
+          long_task_max_ms: longTasks
+            ? Math.round(longTasks.reduce((worst, e) => Math.max(worst, e.duration), 0))
+            : null,
+          long_tasks_over_200ms: longTasks
+            ? longTasks.filter((e) => e.duration > 200).length
+            : null,
+          main_thread_blocked_pct: longTasks
+            ? Math.round(
+                (1000 * longTasks.reduce((t, e) => t + e.duration, 0)) / performance.now(),
+              ) / 10
+            : null,
+          interactions: null,
+          interaction_p50_ms: null,
+          interaction_p95_ms: null,
+          interaction_max_ms: null,
+        }),
     long_tasks: longTasks ? longTasks.length : null,
     long_task_ms_total: longTasks
       ? Math.round(longTasks.reduce((t, e) => t + e.duration, 0))
       : null,
     render_spans: renderSpans.length,
     render_ms_total: renderTotal,
+    // Attribution: which labelled span burned the time, whole-session and
+    // immune to the sample ring's eviction. `longtask` says the thread was
+    // blocked; this says by what. Sorted worst-single-span first, so the top
+    // row is the one to profile.
+    label_totals: perf.label_totals || null,
     // The H8 dimension: the root tree route, asked again right now, with the
     // server's own share and the scan state it was measured in.
     tree_reprobe_ms: reprobe.ms,

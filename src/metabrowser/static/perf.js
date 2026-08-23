@@ -28,6 +28,35 @@
   var measureSamples = [];
   var slowThresholdMs = DEFAULT_SLOW_THRESHOLD_MS;
 
+  // Per-label running totals that are NEVER evicted.
+  //
+  // The sample buffers above are ring buffers keeping the most recent
+  // MAX_SAMPLES, which is right for inspecting detail and wrong for attributing
+  // a load: the worst blocking is at the start, when the event rate is highest,
+  // and a busy load pushes exactly those spans out before anyone looks. These
+  // totals are bounded by the number of distinct labels — about twenty — rather
+  // than by time, so the first second survives however long the session runs.
+  //
+  // `max_ms` is the field to read. A total cannot tell sixty 100 ms hitches
+  // from one six-second freeze, and only one of those is a broken experience.
+  var labelTotals = {};
+
+  function _tally(label, durationMs) {
+    var row = labelTotals[label];
+    if (!row) {
+      row = { label: label, count: 0, total_ms: 0, max_ms: 0, over_200ms: 0, first_ts: Date.now() };
+      labelTotals[label] = row;
+    }
+    row.count += 1;
+    row.total_ms += durationMs;
+    if (durationMs > row.max_ms) {
+      row.max_ms = durationMs;
+    }
+    if (durationMs > 200) {
+      row.over_200ms += 1;
+    }
+  }
+
   function _now() {
     return typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
   }
@@ -190,6 +219,8 @@
       threw = true;
       throw e;
     } finally {
+      var elapsedMs = _now() - t0;
+      _tally(label, elapsedMs);
       _record(
         measureSamples,
         "span",
@@ -197,7 +228,7 @@
           {
             ts: Date.now(),
             label: label,
-            duration_ms: _now() - t0,
+            duration_ms: elapsedMs,
             threw: threw || undefined,
           },
           meta,
@@ -352,6 +383,22 @@
       slow_measure: slowRows(measureSamples),
       raw_fetch: fetchSamples.slice(),
       raw_measure: measureSamples.slice(),
+      // Whole-session totals per label, immune to ring-buffer eviction. Sorted
+      // by the worst single span, because that is what a reader feels.
+      label_totals: Object.keys(labelTotals)
+        .map(function (k) {
+          var r = labelTotals[k];
+          return {
+            label: r.label,
+            count: r.count,
+            total_ms: Math.round(r.total_ms),
+            max_ms: Math.round(r.max_ms),
+            over_200ms: r.over_200ms,
+          };
+        })
+        .sort(function (a, b) {
+          return b.max_ms - a.max_ms;
+        }),
     };
   }
 
