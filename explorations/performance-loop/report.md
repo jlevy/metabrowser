@@ -24,6 +24,7 @@ fast -- only that it moved.
 | `gitignore_build_ms_real_tree_a` | 21,370 | **2,180** | exp-006 |
 | `srv_scanning_ms` | 311 | **2** | exp-007 |
 | `reserved_region_shift_px` | 67 | **23** | exp-009 |
+| `index_done_ms_project` | 29,989 | **11,928** | exp-011 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -43,6 +44,7 @@ against one that did.
 | exp-007 | [Rows stop waiting for the tally pass](experiments/exp-007-rows-stop-waiting-for-the-tally-pass.md) | H27, H31 | `srv_scanning_ms` | accepted |
 | exp-009 | [The skeleton stops growing under the reader](experiments/exp-009-the-skeleton-stops-growing-under-the-reader.md) | H50 | `reserved_region_shift_px` | accepted |
 | exp-010 | [Every checkpoint on one corpus](experiments/exp-010-every-checkpoint-on-one-corpus.md) | H55, H53 | `first_row_ms` | baseline |
+| exp-011 | [The shipped work, measured against the release](experiments/exp-011-the-shipped-work-measured-against-the-release.md) | H27, H30, H31 | `index_done_ms_project` | accepted |
 
 ## Absolute numbers, per condition
 
