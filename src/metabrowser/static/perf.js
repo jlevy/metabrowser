@@ -515,14 +515,59 @@
   // rather than left to whoever reads the output to remember.
   var everHidden = typeof document !== "undefined" && document.visibilityState !== "visible";
 
+  // A block past this is not jank, it is a freeze: no paint, no animation, no
+  // response to a click. The project's own line is that nothing under ~50 ms
+  // should flash a spinner, so half a second of frozen UI is well past what any
+  // reader tolerates silently.
+  var FREEZE_WARN_MS = 500;
+
+  /**
+   * Which measured spans were running while the thread was blocked.
+   *
+   * A `longtask` entry says the main thread was busy and nothing about what it
+   * was busy with, which is the whole difficulty in diagnosing one. Spans record
+   * when they finished and how long they took, so a span whose own interval
+   * overlaps the task's is a candidate for having caused it. This is a
+   * correlation and is labelled as one -- but it is the difference between "the
+   * page froze for thirteen seconds" and a list of three function names.
+   */
+  function _spansDuring(taskStartMs, taskEndMs) {
+    var origin = typeof performance !== "undefined" ? performance.timeOrigin || 0 : 0;
+    var overlapping = [];
+    for (var i = 0; i < measureSamples.length; i++) {
+      var sample = measureSamples[i];
+      // `ts` is Date.now() at the moment the span finished.
+      var endedAt = sample.ts - origin;
+      var startedAt = endedAt - sample.duration_ms;
+      if (endedAt >= taskStartMs && startedAt <= taskEndMs) {
+        overlapping.push({ label: sample.label, duration_ms: Math.round(sample.duration_ms) });
+      }
+    }
+    return overlapping.sort((a, b) => b.duration_ms - a.duration_ms).slice(0, 5);
+  }
+
   try {
     var taskObserver = new PerformanceObserver((list) => {
       var entries = list.getEntries();
       for (var i = 0; i < entries.length; i++) {
-        longTasks.push({
-          start: Math.round(entries[i].startTime),
-          dur: Math.round(entries[i].duration),
-        });
+        var startMs = Math.round(entries[i].startTime);
+        var durMs = Math.round(entries[i].duration);
+        longTasks.push({ start: startMs, dur: durMs });
+        // Say it out loud. This is the signal that took a person driving a
+        // browser and pasting a console table to find; it should announce
+        // itself instead.
+        if (durMs >= FREEZE_WARN_MS && typeof console !== "undefined") {
+          console.warn(
+            `[metabrowser perf] main thread blocked ${durMs} ms — the page could not ` +
+              "paint or respond during this. Spans that overlap it:",
+            {
+              blocked_ms: durMs,
+              at_ms: startMs,
+              spans_during: _spansDuring(startMs, startMs + durMs),
+              hint: "metabrowserPerf.responsiveness() for the whole picture",
+            },
+          );
+        }
       }
     });
     taskObserver.observe({ type: "longtask", buffered: true });
