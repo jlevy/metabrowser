@@ -1,39 +1,43 @@
 ---
 type: is
 id: is-01m0pxe82wj7hmdhrrszq95qkc
-title: Main thread blocked a third to a half of load on a 241k-file tree, in both builds
+title: "Clicks queue behind the prefetch sweep: HTTP/1.1 has 6 slots and SSE holds 2"
 kind: bug
 status: open
-priority: 1
-version: 3
+priority: 0
+version: 4
 labels: []
 dependencies: []
 created_at: 2026-08-23T08:57:48.378Z
-updated_at: 2026-08-23T17:23:48.629Z
+updated_at: 2026-08-23T18:25:51.762Z
 ---
-Reported from real use on a 241,063-file tree (~/wrk/aisw/trading, 124,750 visible + 116,313 ignored, 5.15 GB): the page feels sluggish during the initial scan, and the chevron animation itself runs slow. That last detail is what identified the cause -- a CSS animation stutters when the MAIN THREAD is blocked, which rules out network latency and rules in long tasks.
+ROOT CAUSE FOUND, from a visible-browser run on a 241,063-file tree. It is not the main thread and it is not the server. It is HTTP/1.1 connection starvation: a user-initiated request queues behind speculative prefetches for seconds.
 
-MEASURED with a PerformanceObserver on longtask entries, observer installed ~6.5-7.4s into page life on both builds, run from page load until the index settled plus a grace period. Same tree, same machine, same browser.
+THE EVIDENCE, two rows from metabrowserPerf.report() that settle it:
 
-                                0.6.0        main 66330af
-    time to settle              ~442 s       ~117 s          3.8x faster
-    long tasks                  325          59
-    total main-thread blocked   153.3 s      71.3 s          2.2x less
-    longest single task         7,940 ms     5,967 ms
-    tasks over 1,000 ms         43           21
-    tasks over 200 ms           119          50
-    transferred                 618 KB       598 KB
-    requests                    207          181
-    blocked share of window     31.2%        53.9%           WORSE
+    /api/tree?path=scripts&depth=2     client 6,610.7 ms    server_ms 12.4
+    /api/tree?path=shortcuts&depth=2   client 6,606.3 ms    server_ms 10.6
 
-NOT A REGRESSION. main is better on every absolute count: it settles 3.8x sooner, blocks the main thread for less than half as long in total, has a fifth as many long tasks, a shorter worst task, and half as many tasks over a second. Anyone comparing the two builds end to end gets a strictly better experience from main.
+The server answered in about twelve milliseconds and the client saw six and a half seconds. That gap is queueing. Nothing in the server and nothing in script accounts for it.
 
-BUT THE DENSITY IS WORSE, and that is what the reporter is feeling. main does its remaining blocking work in a much shorter window, so while it lasts, the page is unresponsive a greater fraction of the time -- 53.9% against 31.2%. The ordeal is shorter and more intense. A user who does not run a stopwatch experiences the intensity, not the duration.
+WHAT IT DOES TO A CLICK:
 
-SO THE REAL FINDING IS A UX PROBLEM PRESENT IN BOTH BUILDS: on a tree this size the page spends between a third and a half of the loading period with the main thread blocked, in tasks that individually run to six and eight seconds. A six-second task is not jank, it is a freeze -- no animation, no click response, no paint. Twenty-one of them on main and forty-three on 0.6.0.
+    selectFile      n=22   max 8,896.0 ms   total 13,288.3 ms
+    apiFile:json    n=9    max 8,482.3 ms   total  8,564.4 ms   threw: true
 
-NOT EXPLAINED YET: what the long tasks are doing. It is not fetch volume -- 598 KB across 181 requests, and 0.6.0 moved slightly more in both. Candidates, in the order worth checking: rendering tree rows as `fs.change` events stream in from `/api/events` while the walker runs; recomputing the folder rollup or file-type breakdown per update; and the tally pass, since the worst tasks on main cluster at 84s, 91s, 95s, 106s and 110s, which is AFTER the walk completes. A profile with the Performance panel would name the function in one run; longtask entries only say that time was spent, not where.
+Selecting a file took 8.9 s, of which 8.5 s was its own fetch waiting for a connection, and the fetch then failed. That is precisely the reported symptom -- click a nav row, nothing happens.
 
-TWO EARLIER THEORIES DISCARDED, both mine. A broken expand handler -- expansion works, and three probes that said otherwise were instrument faults (an element-level `.click()` never reaches the handler; `offsetParent !== null` reports a `visibility: hidden` group as visible). And the chevron hit area at 12x12 px -- that explained one of my own mis-aimed clicks and nothing about the report.
+THE MECHANISM. The server negotiates HTTP/1.1, where browsers allow six concurrent connections per origin. The app holds TWO of them open permanently as EventSource streams (app.js:5730 and app.js:6789), which never close. Four slots remain for every fetch the page makes, and the folder-warming sweep issues many at once -- 51 apiTreeSubtree:json calls in the run above. A click arrives, finds no free slot, and waits for a speculative request it did not ask for.
 
-ONE MEASUREMENT WARNING for whoever picks this up. My first capture on main reported an 8,454 ms task and a 166% blocked share, which is nonsense: the observer was installed 53 s into page life with `buffered: true`, so it pulled in tasks from outside its own window. Install the observer immediately after navigation, record the install time, and report the window alongside the total -- a blocked percentage means nothing without the window it is a percentage of.
+This gets worse exactly where it was reported: a bigger tree has more folders to warm, and a scan in progress produces more of them. It would be worse again over `--remote`, where every occupied slot is held for a round trip rather than for twelve milliseconds.
+
+WHAT THIS REFUTES, and both were mine. The live-update path is not the blocker: instrumented at the batch it sums to tens of milliseconds (fileStoreApplySnapshot 17.3 ms for the whole snapshot, renderTreeNodes:root 11.5 ms max). And every long-task figure recorded before this run was taken through a hidden pane, where Chromium throttling manufactures multi-second tasks; those numbers are void. Note also that measureAsync spans wall time INCLUDING awaits, so selectFile at 8.9 s is 8.9 s of waiting, not of blocking -- a distinction worth keeping when reading these tables.
+
+FIXES, in the order they are worth trying:
+
+1. Bound speculative concurrency and keep a slot free. The sweep is speculative; the click is not. Today they share a budget of four with no priority between them.
+2. Preempt: abort in-flight speculative fetches when a user-initiated request needs a slot. AbortController makes this cheap and it directly restores the interaction.
+3. Serve HTTP/2, which multiplexes over one connection and removes the six-connection cap outright. This is the structural fix and the largest change; it also reclaims the two slots the event streams hold.
+4. Reconsider two permanent EventSource connections. A third of the HTTP/1.1 budget is spent before the page fetches anything.
+
+MEASUREMENT NOTE for the next round: server_ms comes from the Server-Timing header and is the field that separates these cases. A client duration far above server_ms is queueing; the two moving together is the server. That one comparison would have found this hours sooner than long-task counting did.
