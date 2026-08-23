@@ -311,6 +311,9 @@
       ? window.__mbBoot.summarize()
       : {
           boot_probe: false,
+          visibility_state: document.visibilityState,
+          ever_hidden: null,
+          measurement_valid: false,
           long_task_window_ms: Math.round(performance.now()),
           long_task_max_ms: longTasks
             ? Math.round(longTasks.reduce((worst, e) => Math.max(worst, e.duration), 0))

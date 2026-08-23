@@ -108,6 +108,11 @@
     return {
       boot_probe: true,
       boot_attached_at_ms: boot.attached_at_ms,
+      // The precondition. A responsiveness number from a run that was ever
+      // hidden is void, not merely noisy.
+      visibility_state: document.visibilityState,
+      ever_hidden: boot.ever_hidden,
+      measurement_valid: !boot.ever_hidden,
       boot_unsupported: boot.unsupported.length > 0 ? boot.unsupported : null,
       long_task_window_ms: window_ms,
       long_tasks: boot.longTasks.length,
@@ -128,6 +133,19 @@
       interaction_max_ms: latencies.reduce((worst, d) => Math.max(worst, d), 0),
     };
   };
+
+  // Whether the page was EVER hidden while measuring, which is stronger than
+  // asking at the end. Chromium throttles a hidden tab into manufacturing
+  // multi-second tasks, so a run that was backgrounded even briefly cannot be
+  // compared against one that was not, and a run that cannot say either way is
+  // not evidence. See the precondition in README.md.
+  boot.hidden_at_start = document.visibilityState !== "visible";
+  boot.ever_hidden = boot.hidden_at_start;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") {
+      boot.ever_hidden = true;
+    }
+  });
 
   window.__mbBoot = boot;
   return { attached: true, at_ms: boot.attached_at_ms, unsupported: boot.unsupported };
