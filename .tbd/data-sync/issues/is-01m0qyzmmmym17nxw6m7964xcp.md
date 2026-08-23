@@ -5,13 +5,16 @@ title: Make rollup payload and ETag revision atomic
 kind: bug
 status: open
 priority: 1
-version: 3
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels:
   - correctness
-dependencies: []
+  - inventory-provider
+dependencies:
+  - type: blocks
+    target: is-01m0rbqqw9a3dv398mhqhzw93h
 parent_id: is-01m0r8xj4bv4bbrr65vw28d31j
 created_at: 2026-08-23T18:44:01.298Z
-updated_at: 2026-08-23T21:37:57.746Z
+updated_at: 2026-08-23T22:27:31.296Z
 ---
-The /api/rollup route samples InventoryIndex.rollup_revision() before dispatching a worker build, while InventoryIndex._rollup_view() deliberately exposes live mappings that may observe later writes. The eviction epoch protects the aggregate memo but does not prove the returned body belongs to the ETag revision. Make the query return its atomically captured version (or use an immutable snapshot/version-check retry), then build the ETag from that result. Add a concurrent-write regression test.
+Files: src/metabrowser/inventory_engine/providers/python.py coherent rollup read path, src/metabrowser/server.py api_rollup validator/body cache integration, and tests/test_rollup_route.py concurrent-write regression. Functions: replace the current rollup_revision then off-thread rollup split with a RollupQuery result that captures payload, status, engine version and cursor atomically using version-check/retry or an immutable snapshot fallback; derive the host ETag only from that returned result and canonical request/root/build identity. Acceptance: a forced write between projection work and response construction cannot pair an old ETag with a newer body, aggregate memo reuse remains safe, and cached/304 behavior is preserved.
