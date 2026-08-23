@@ -1,43 +1,49 @@
 ---
 type: is
 id: is-01m0pxe82wj7hmdhrrszq95qkc
-title: "Clicks queue behind the prefetch sweep: HTTP/1.1 has 6 slots and SSE holds 2"
+title: Main thread blocked 55% of the crawl, in blocks to 13 s, on a 241k-file tree
 kind: bug
 status: open
 priority: 0
-version: 4
+version: 5
 labels: []
 dependencies: []
 created_at: 2026-08-23T08:57:48.378Z
-updated_at: 2026-08-23T18:25:51.762Z
+updated_at: 2026-08-23T18:44:58.297Z
 ---
-ROOT CAUSE FOUND, from a visible-browser run on a 241,063-file tree. It is not the main thread and it is not the server. It is HTTP/1.1 connection starvation: a user-initiated request queues behind speculative prefetches for seconds.
+CONFIRMED in a visible browser on a 241,063-file tree. The page is blocked for more than half the crawl, in blocks up to thirteen seconds. It stays that way until the crawl finishes.
 
-THE EVIDENCE, two rows from metabrowserPerf.report() that settle it:
+    long_task_max_ms          13,353        interaction_p50_ms         32
+    long_task_ms_total        59,367        interaction_p95_ms      3,144
+    window_ms                107,324        interaction_max_ms     13,480
+    main_thread_blocked_pct     55.3        interactions            2,086
+    long_tasks_over_200ms         21        long_task_max_ms_first_5s 1,776
 
-    /api/tree?path=scripts&depth=2     client 6,610.7 ms    server_ms 12.4
-    /api/tree?path=shortcuts&depth=2   client 6,606.3 ms    server_ms 10.6
+THE MEDIAN IS FINE AND THE TAIL IS NOT, which is the whole shape of the complaint. Half of interactions answer in 32 ms and the worst takes thirteen and a half seconds. Nobody experiences a median; they experience the click that hung.
 
-The server answered in about twelve milliseconds and the client saw six and a half seconds. That gap is queueing. Nothing in the server and nothing in script accounts for it.
+NOT THE NETWORK, and this refutes the connection-starvation reading this bead carried at P0. The client's own fetch instrumentation separates the server's share from the rest, and on loopback:
 
-WHAT IT DOES TO A CLICK:
+    /api/tree?path=earnings_predictions/tools&depth=2   server 14 ms   transit 13,456 ms
+    /api/tree?path=explorations/trends-revenue-beta     server  7 ms   transit  4,794 ms
+    /api/index/progress                                 server  0 ms   transit  2,849 ms
 
-    selectFile      n=22   max 8,896.0 ms   total 13,288.3 ms
-    apiFile:json    n=9    max 8,482.3 ms   total  8,564.4 ms   threw: true
+Transit cannot be thirteen seconds over loopback. The response had arrived and no callback could run, because the thread was blocked. Every inflated fetch duration in these logs is a SYMPTOM of the blocking, not a cause of it -- and an earlier version of this bead had that backwards.
 
-Selecting a file took 8.9 s, of which 8.5 s was its own fetch waiting for a connection, and the fetch then failed. That is precisely the reported symptom -- click a nav row, nothing happens.
+ONE GENUINE SERVER-SIDE OUTLIER, worth separating from the rest:
 
-THE MECHANISM. The server negotiates HTTP/1.1, where browsers allow six concurrent connections per origin. The app holds TWO of them open permanently as EventSource streams (app.js:5730 and app.js:6789), which never close. Four slots remain for every fetch the page makes, and the folder-warming sweep issues many at once -- 51 apiTreeSubtree:json calls in the run above. A click arrives, finds no free slot, and waits for a speculative request it did not ask for.
+    /api/tree?depth=0                                   server 2,240 ms  transit 186 ms
 
-This gets worse exactly where it was reported: a bigger tree has more folders to warm, and a scan in progress produces more of them. It would be worse again over `--remote`, where every occupied slot is held for a round trip rather than for twelve milliseconds.
+That is the tally channel, and it is expensive by design (exp-007).
 
-WHAT THIS REFUTES, and both were mine. The live-update path is not the blocker: instrumented at the batch it sums to tens of milliseconds (fileStoreApplySnapshot 17.3 ms for the whole snapshot, renderTreeNodes:root 11.5 ms max). And every long-task figure recorded before this run was taken through a hidden pane, where Chromium throttling manufactures multi-second tasks; those numbers are void. Note also that measureAsync spans wall time INCLUDING awaits, so selectFile at 8.9 s is 8.9 s of waiting, not of blocking -- a distinction worth keeping when reading these tables.
+A FEEDBACK PATH THAT MAKES THE TWO MEET, from the stack in the logs:
 
-FIXES, in the order they are worth trying:
+    fileStoreApplyChangeInner -> applyCellPatch -> updateRootAggregatePresentation
+      -> scheduleRootSummaryRefresh -> fetch /api/tree?depth=0
 
-1. Bound speculative concurrency and keep a slot free. The sweep is speculative; the click is not. Today they share a budget of four with no priority between them.
-2. Preempt: abort in-flight speculative fetches when a user-initiated request needs a slot. AbortController makes this cheap and it directly restores the interaction.
-3. Serve HTTP/2, which multiplexes over one connection and removes the six-connection cap outright. This is the structural fix and the largest change; it also reclaims the two slots the event streams hold.
-4. Reconsider two permanent EventSource connections. A third of the HTTP/1.1 budget is spent before the page fetches anything.
+applyCellPatch runs PER ENTRY inside a change batch, and it reaches a scheduler for the one request whose server cost is measured in seconds. Whether the schedule coalesces is the thing to read next; if it does not, a burst of file events queues repeated tally computations behind a walk that is already saturating a core.
 
-MEASUREMENT NOTE for the next round: server_ms comes from the Server-Timing header and is the field that separates these cases. A client duration far above server_ms is queueing; the two moving together is the server. That one comparison would have found this hours sooner than long-task counting did.
+ALSO PRESENT: failed requests. Several /api/file calls return status 0 with size -1 after 2.5-4.4 s, which is an abort or a transport error rather than a slow answer, and apiFile:json is recorded with threw: true. Worth understanding separately -- a failing click and a slow click look identical to a reader.
+
+STILL MISSING, and it is now the only thing between here and a fix: which span owns the thirteen seconds. perf.js now warns on any block over 500 ms and lists the measured spans overlapping it, so the next session on a large tree produces that attribution without anyone watching for it. The prime suspect is fileStoreApplySnapshot, which loops every entry the server sends in one synchronous pass -- measured at 17-48 ms on small trees, unmeasured on 241,063 files.
+
+METHOD NOTE. `ever_hidden` was true for this capture because the tab was backgrounded while copying the output, so the totals are not admissible as a clean baseline even though visibility_state read "visible" at the end. The interaction figures are still evidence: they were produced by real clicks the reporter made while watching. A clean baseline needs one uninterrupted visible run.
