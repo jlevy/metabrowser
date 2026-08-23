@@ -78,10 +78,21 @@ def test_cli_help_shows_modes_and_examples() -> None:
 
 
 def test_cli_version_uses_installed_package_metadata() -> None:
+    """The reported version always begins with the package version.
+
+    A checkout appends how far past the tag it is and whether it is dirty, so
+    this asserts the contract rather than the whole line: the annotation is
+    display-only and varies with the working tree, while the version itself is
+    what the publish workflow compares against the release tag.
+    """
+
     result = runner.invoke(_app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.output.strip() == f"metab {__version__}"
+    reported = result.output.strip()
+    assert reported.startswith(f"metab {__version__}")
+    extra = reported.removeprefix(f"metab {__version__}").strip()
+    assert extra == "" or (extra.startswith("(") and extra.endswith(")"))
 
 
 def test_cli_empty_command_shows_help_instead_of_serving_default_root() -> None:

@@ -21,6 +21,7 @@ from typing import override
 import typer
 import uvicorn
 
+from metabrowser.build_version import build_state
 from metabrowser.cli.common import apply_log_level, validate_contained_path
 from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
@@ -166,7 +167,11 @@ def run_serve(
             logical_path += "/"
     url = f"http://{display_host}:{actual_port}{format_view_href(logical_path)}"
 
-    typer.echo(f"Serving {resolved} at {url}")
+    # A checkout says so here too. This is the line someone reads while
+    # deciding which build they are looking at — during a side-by-side
+    # comparison it is the only line on screen that can say.
+    state = build_state()
+    typer.echo(f"Serving {resolved} at {url}" + (f"  [dev build: {state}]" if state else ""))
     if server._LOADED_PLUGINS:
         names = ", ".join(p.name for p in server._LOADED_PLUGINS)
         typer.echo(f"Plugins: {names}")

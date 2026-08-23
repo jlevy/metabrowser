@@ -28,7 +28,10 @@ FIXUPS: list[tuple[str, str]] = [
     # non-space run swallows the opening quote along with the path.
     (r'[^\s"]*/tryscript-[A-Za-z0-9]+', "[CWD]"),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),
-    (r"^metab \d+\S*$", "metab [VERSION]"),
+    # The trailing group is the build annotation a checkout adds; see
+    # metabrowser.build_version. It varies per commit, so it elides with the
+    # version rather than beside it.
+    (r"^metab \d+\S*( \([^)]*\))?$", "metab [VERSION]"),
 ]
 
 
