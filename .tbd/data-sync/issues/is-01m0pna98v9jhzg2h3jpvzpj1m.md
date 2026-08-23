@@ -1,21 +1,25 @@
 ---
 type: is
 id: is-01m0pna98v9jhzg2h3jpvzpj1m
-title: Bench harness polled a status field the server never publishes
+title: Carried a correct poll key from one endpoint to another where it means nothing
 kind: bug
 status: open
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0pn7vkfkd7tfzt7r331jkp8
 created_at: 2026-08-23T06:35:49.906Z
-updated_at: 2026-08-23T06:35:49.906Z
+updated_at: 2026-08-23T07:14:04.086Z
 ---
-WHAT HAPPENED. The comparison harness waited for the scan to settle by polling `/api/tree` for `index_status == "done"`. The server publishes no such field; it publishes `tally_cache_status`. The condition was therefore never true, every run ran to its 420-second deadline, and the harness reported no `index_done` timing at all.
+CORRECTED after checking the repository rather than assuming. The first version of this bead said the poll key was misspelled and implied bench_serving.py had the same flaw. It does not, and the real mistake is more instructive.
 
-WHY IT WAS EXPENSIVE. It did not look like a bug. A run that sits for seven minutes and returns nothing reads as a build that is slow to index -- which is precisely the thing under measurement, so the broken harness was indistinguishable from the result it was supposed to detect. It cost two full comparison rounds before the field name was checked against the server.
+WHAT ACTUALLY HAPPENED. `index_status` is a REAL field -- on `/api/rollup`, where devtools/bench_serving.py polls it correctly at line 579. It does not exist on `/api/tree`, which publishes `tally_cache_status`. The comparison harness carried a correct field name across from one endpoint to another, where it silently meant nothing.
 
-THE GENERAL SHAPE, which is what makes this worth filing rather than just fixing: a poll loop on a misspelled key cannot fail. `dict.get` returns None, the comparison is False, and the loop waits. Every wrong key degrades silently into a timeout.
+So this is not a typo. It is the same class of error as its sibling mb-hr8o: a fact that is true of one endpoint applied to a different one, in a route family whose payloads look alike. That is the pattern worth guarding, and it will not be caught by spelling care.
 
-THE FIX. A poll must assert that the key it waits on exists in the first response, and fail immediately if it does not. One request is enough to tell a typo from a slow scan, and the failure then names the key instead of consuming the deadline. The same applies to `summarise()` in the comparison script, which still reads `index_status` from the payload -- harmless there, since a missing key is simply omitted, but it is the same stale name and it should go.
+WHY IT COST TWO ROUNDS. `dict.get` on an absent key returns None, the comparison is False, and the poll waits. Every run consumed its full 420-second deadline and reported no timing. A run that sits for seven minutes and returns nothing reads as a build that is slow to index -- which is exactly the thing being measured, so the broken harness was indistinguishable from the result it existed to detect.
+
+Note bench_serving.py degrades better here by design: it reports `converged: false` and `timed_out_at_s`, so a poll that never matches is visible as a non-result rather than as a slow one.
+
+THE FIX, now in devtools/compare_builds.py: assert the poll key is present in the FIRST response and fail immediately naming the key and listing what the payload does contain. One request separates a wrong key from a slow scan; a deadline does not.
