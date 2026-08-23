@@ -82,7 +82,7 @@ experiment:
   verdict:
     decision: accepted
     primary_metric: index_done_ms_project
-    reason: "A full index falls 30.0 s to 11.9 s on the corpus the earlier rounds used, with 33.8 s to 11.7 s deep and narrow and 6.1 s to 2.7 s wide and shallow, none of the ranges overlapping. Two independent rounds a day apart, against two different commits of main, agree on all three shapes. Both builds report identical rows, file counts and byte totals everywhere, so the speed is not bought with a different answer, and peak memory is lower on every shape. The claim that did not reproduce is exp-006's control magnitude, which reads 1.3-2.5 s here against 13.36 s reported -- page-cache state, on the evidence that the control's figure falls as the cache warms and the candidate's does not."
+    reason: "Accepted on the server half and CONTRADICTED on the browser half, and the second is why this verdict is qualified. A full index falls 30.0 s to 11.9 s on the corpus the earlier rounds used, with 33.8 s to 11.7 s deep and narrow and 6.1 s to 2.7 s wide and shallow, none of the ranges overlapping, both builds reporting identical rows, files and bytes, and peak memory lower everywhere. But a reader on a 241,063-file tree finds the candidate SERIOUSLY LESS RESPONSIVE than 0.6.0 for the whole crawl: 0.6.0 takes longer to paint its first rows and shows no counts for seconds, and is responsive once it does; the candidate paints sooner and then blocks the main thread 55% of the crawl, in blocks to 13.4 s, with interaction p95 at 3.1 s and a worst interaction of 13.5 s. This round could not see that because it measured the server, which is the limitation its own scope section states -- and that limitation turned out to be where the regression was. Tracked as mb-y2ft and H58."
 ---
 # The shipped work, measured against the release
 
@@ -184,7 +184,27 @@ the pre-walk cost lands in total index time instead.
 The number is about a phase, not about first paint.
 Tracked as mb-r29f.
 
-## What this round does not cover
+## What this round did not cover, which is where the regression was
+
+**Read this before the numbers above.** A reader using the candidate on a 241,063-file
+tree reports it as seriously less responsive than `0.6.0` for the entire crawl, and
+measurement in a visible browser agrees: the main thread is blocked 55.3% of a 107 s
+window, in blocks reaching 13.4 s, with interaction latency at 32 ms median, 3.1 s at
+p95, and 13.5 s at worst.
+
+`0.6.0` behaves the other way round.
+It is *slower* to paint the first rows and shows no file counts for several seconds —
+and once the navigation renders, it stays responsive while it finishes crawling.
+
+So the trade this campaign made is now visible: it bought earlier first paint and paid
+for it in whether the page answers a click while the walk runs.
+That is the failure `H56` predicted in the abstract — `first_row_ms` rewards painting
+*something* early and says nothing about the states that follow — and the regime `H49`
+named as unmeasured, interaction latency, is exactly the one that regressed.
+None of this round’s measurements could see it, because they are all server-side.
+Tracked as `mb-y2ft`; the invariant is `H58`.
+
+The rest of this section is the scope note as originally written.
 
 This is the server half only.
 `reserved_region_shift_px` and `tree_region_repaints` — the two guards the loop’s README
@@ -206,6 +226,12 @@ result on its own.
 agreeing, two rounds against two commits agreeing, and no overlapping ranges — and, the
 part that decides whether any of the timings mean anything, both builds reporting
 identical rows, files and bytes on all three.
+
+**And qualified.** The same candidate is markedly less responsive than `0.6.0` while it
+crawls, which no measurement in this round could see.
+A round that accepts on its own metric while a reader finds the build worse has not
+measured the thing that matters, and saying so here is worth more than the acceptance
+is.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
