@@ -767,7 +767,7 @@ var QUICK_FILE_RESULT_LIMIT = 100;
 // this client has never been sent. Only the server can answer them, so
 // the filter travels with the request instead of being applied to the
 // rows that come back. See metabrowser/tree_filter.py for the projection
-// and static/tree_filter_model.js for how a selection becomes a request.
+// and static/tree-filter-model.js for how a selection becomes a request.
 var treeFilterModel = /** @type {any} */ (window).MetabrowserTreeFilterModel;
 
 function currentFilterSnapshot() {
@@ -3311,7 +3311,7 @@ function renderPreviewHtml(html, claim) {
 // Deliberately narrow, and deliberately not `window.metabrowser`: that
 // object is the documented plugin SDK with a compatibility contract,
 // whereas this is an internal boundary that core modules loaded by the
-// shell may use. Exposing it at all is what lets git_panel.js stay out
+// shell may use. Exposing it at all is what lets git-panel.js stay out
 // of app.js instead of adding a thousand lines to it.
 window.MetabrowserShell = Object.freeze({
   activateNavPanel,
@@ -3926,8 +3926,8 @@ function renderRecentList(data) {
 //
 // One always-visible row (recency) plus a drawer holding type, size,
 // and gitignored visibility. Controls come from the shared chip family
-// (static/filter_controls.js) and every click writes through to the
-// shared state (static/filter_state.js), so the bar holds no state of
+// (static/filter-controls.js) and every click writes through to the
+// shared state (static/filter-state.js), so the bar holds no state of
 // its own.
 //
 // The drawer carries no section headings: an extension menu, a size
@@ -4500,7 +4500,7 @@ function applyTreeFiltersInner() {
   var nowSec = Date.now() / 1000;
   // Describe the rows, let the model decide, write the verdicts back. The
   // decision — a cluster folder survives iff a child does, and a pruned
-  // folder takes its descendants with it — is in tree_filter_model.js, where
+  // folder takes its descendants with it — is in tree-filter-model.js, where
   // it can be tested without a document.
   var hidden = treeFilterModel.clusterHiddenIds(
     rows.map((row, index) => ({

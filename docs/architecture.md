@@ -19,7 +19,7 @@ The `metab` CLI starts a Starlette application with four main layers:
    classifiers, serves plugin assets, and mounts optional Python data hooks.
 4. **Browser shell.** `static/app.js` owns navigation, the tree, recent files, tabs,
    caching, and view mounting.
-   `static/plugin_sdk.js` exposes the supported renderer API under `window.metabrowser`.
+   `static/plugin-sdk.js` exposes the supported renderer API under `window.metabrowser`.
 
 The browser loads critical local assets first.
 Optional third-party assets enhance syntax highlighting, charts, or specialized
@@ -90,7 +90,7 @@ Revisions are validated against a full-SHA pattern before they can reach an argu
 vector. Git’s stderr is logged and dropped: it contains absolute local paths.
 
 Swimlane layout is a browser concern.
-The server returns commits, parents, and references; `static/git_graph.js` assigns lanes
+The server returns commits, parents, and references; `static/git-graph.js` assigns lanes
 and draws them, carrying lane state across pages.
 This is the same split `recent.py` makes, where clustering belongs to the renderer.
 
@@ -202,7 +202,7 @@ path. Inside either Markdown mount, Frontmatter and Diagnostics remain native `d
 disclosures, use the same trailing-chevron design, and begin closed.
 
 Treemap consumes the same bounded rollup as a peer view but has one fixed spatial model:
-`treemap_layout.js` packs directory children, recurses only into sufficiently large
+`treemap-layout.js` packs directory children, recurses only into sufficiently large
 folder cells, and conserves any culled or capped tail in a neutral remainder cell.
 The renderer flattens parent and descendant rectangles into positioned siblings;
 geometry expresses containment, while hover leaves their paint order unchanged.
@@ -251,7 +251,7 @@ an empty folder.
 classifier kinds, display families, display groups, analyzer content families, and
 metadata evidence. `file_type_registry.py` parses and validates it once into immutable
 Python values. The server injects the matching immutable JSON projection into browser
-settings; `static/file_type_taxonomy.js` supplies the same public classification helpers
+settings; `static/file-type-taxonomy.js` supplies the same public classification helpers
 to navigation, Overview, Treemap, and plugins.
 The generated conformance corpus runs against both implementations, so a file cannot
 quietly change family between the server and browser.
@@ -427,18 +427,18 @@ One authored target passes through these layers in order:
    document. A missing target keeps its exact URL and falls through to the ordinary
    not-found state — nothing guesses by basename.
    Embedded media routes through the bounded `/raw` endpoint.
-3. **Verified GitHub localization** (`github_localizer.js`). An absolute
+3. **Verified GitHub localization** (`github-localizer.js`). An absolute
    `github.com/<owner>/<name>/blob|tree/<ref>/<path>` URL opens locally only when
    repository identity proves it names the served working tree: origin remote, branch or
    exact revision, and served subdirectory must all match.
    Identity comes from `repository_context.py`, a bounded read of Git metadata at first
    paint that never invokes Git and exposes no local paths.
    Anything unproven stays an ordinary outbound link.
-4. **Published-route adapters** (`project_adapters.js`). When an MkDocs, Docusaurus, or
+4. **Published-route adapters** (`project-adapters.js`). When an MkDocs, Docusaurus, or
    Jekyll config sits at the served root, a root-relative published-site route such as
    `/guide/` falls back to the source document behind it — only after exact resolution
    fails, so a real file at that path always wins.
-5. **Wiki resolution** (`wiki_resolver.js`), for `[[...]]` targets: exact path, then the
+5. **Wiki resolution** (`wiki-resolver.js`), for `[[...]]` targets: exact path, then the
    source directory, then a *unique* catalog match.
    Ambiguous and missing notes render visibly and keyboard-reachable with their
    candidate paths; a name that is unique in a half-built catalog stays `pending` until

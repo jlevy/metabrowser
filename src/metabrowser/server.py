@@ -939,37 +939,37 @@ async def index(_request: Request) -> HTMLResponse:
     initial_root = html_escape(_display_root_str(), quote=True)
     repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
-    asset_loader_url = _static_asset_url("asset_loader.js")
-    theme_state_url = _static_asset_url("theme_state.js")
-    request_error_url = _static_asset_url("request_error.js")
+    asset_loader_url = _static_asset_url("asset-loader.js")
+    theme_state_url = _static_asset_url("theme-state.js")
+    request_error_url = _static_asset_url("request-error.js")
     formatters_url = _static_asset_url("formatters.js")
-    inventory_scope_url = _static_asset_url("inventory_scope.js")
-    directory_totals_store_url = _static_asset_url("directory_totals_store.js")
-    contribution_registry_url = _static_asset_url("contribution_registry.js")
-    resource_context_url = _static_asset_url("resource_context.js")
-    view_state_url = _static_asset_url("view_state.js")
+    inventory_scope_url = _static_asset_url("inventory-scope.js")
+    directory_totals_store_url = _static_asset_url("directory-totals-store.js")
+    contribution_registry_url = _static_asset_url("contribution-registry.js")
+    resource_context_url = _static_asset_url("resource-context.js")
+    view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
-    source_append_url = _static_asset_url("source_append.js")
-    file_type_taxonomy_url = _static_asset_url("file_type_taxonomy.js")
-    plugin_sdk_url = _static_asset_url("plugin_sdk.js")
-    filter_state_url = _static_asset_url("filter_state.js")
-    filter_controls_url = _static_asset_url("filter_controls.js")
+    source_append_url = _static_asset_url("source-append.js")
+    file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
+    plugin_sdk_url = _static_asset_url("plugin-sdk.js")
+    filter_state_url = _static_asset_url("filter-state.js")
+    filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
-    tree_expansion_url = _static_asset_url("tree_expansion.js")
-    tree_filter_model_url = _static_asset_url("tree_filter_model.js")
-    pending_tally_diagnostics_url = _static_asset_url("pending_tally_diagnostics.js")
-    known_file_catalog_url = _static_asset_url("known_file_catalog.js")
-    catalog_feed_url = _static_asset_url("catalog_feed.js")
-    file_fuzzy_match_url = _static_asset_url("file_fuzzy_match.js")
-    search_controller_url = _static_asset_url("search_controller.js")
-    keyboard_shortcuts_url = _static_asset_url("keyboard_shortcuts.js")
-    overlay_layer_url = _static_asset_url("overlay_layer.js")
-    keyboard_help_url = _static_asset_url("keyboard_help.js")
-    tree_keyboard_navigation_url = _static_asset_url("tree_keyboard_navigation.js")
-    search_palette_url = _static_asset_url("search_palette.js")
-    git_graph_url = _static_asset_url("git_graph.js")
-    git_panel_url = _static_asset_url("git_panel.js")
+    tree_expansion_url = _static_asset_url("tree-expansion.js")
+    tree_filter_model_url = _static_asset_url("tree-filter-model.js")
+    pending_tally_diagnostics_url = _static_asset_url("pending-tally-diagnostics.js")
+    known_file_catalog_url = _static_asset_url("known-file-catalog.js")
+    catalog_feed_url = _static_asset_url("catalog-feed.js")
+    file_fuzzy_match_url = _static_asset_url("file-fuzzy-match.js")
+    search_controller_url = _static_asset_url("search-controller.js")
+    keyboard_shortcuts_url = _static_asset_url("keyboard-shortcuts.js")
+    overlay_layer_url = _static_asset_url("overlay-layer.js")
+    keyboard_help_url = _static_asset_url("keyboard-help.js")
+    tree_keyboard_navigation_url = _static_asset_url("tree-keyboard-navigation.js")
+    search_palette_url = _static_asset_url("search-palette.js")
+    git_graph_url = _static_asset_url("git-graph.js")
+    git_panel_url = _static_asset_url("git-panel.js")
     app_url = _static_asset_url("app.js")
     perf_block = (
         f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
@@ -1072,7 +1072,7 @@ async def index(_request: Request) -> HTMLResponse:
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
     ]
-    # On-demand tier: fetched by asset_loader.js the first time a consumer asks.
+    # On-demand tier: fetched by asset-loader.js the first time a consumer asks.
     # Chart.js and its two plugins are 297,531 bytes read by one view, and
     # eager loading measured ~374 ms of every document's load event whether or
     # not that view was ever opened. See docs/development.md "Asset Loading
@@ -1412,7 +1412,7 @@ def _query_values(request: Request, key: str) -> list[str]:
 def tree_filter_from_request(request: Request) -> TreeFilter:
     """Read the nav filter off a request.
 
-    Shares its vocabulary with ``static/filter_state.js``: ``recency`` names a
+    Shares its vocabulary with ``static/filter-state.js``: ``recency`` names a
     window from :data:`RECENT_WINDOW_SECONDS`, ``types`` carries extension or
     filename tokens (repeated or comma-separated), ``min_size`` is a byte
     floor, and ``include_ignored=0`` drops gitignored entries. An absent or

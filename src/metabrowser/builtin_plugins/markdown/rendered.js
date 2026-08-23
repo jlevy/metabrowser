@@ -1,6 +1,6 @@
-import { enhanceRenderedLinks } from "./link_enhancer.js";
+import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { transclusionKey } from "./transclusion.js";
-import { preprocessObsidianWiki } from "./wiki_parser.js";
+import { preprocessObsidianWiki } from "./wiki-parser.js";
 
 let mountSequence = 0;
 

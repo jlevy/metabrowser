@@ -24,7 +24,7 @@ run (a branch, a commit, "before"), ``--json`` to write it somewhere, and
 
 The client half -- request coalescing and validator behavior as the browser
 actually experiences them -- is not visible from here. ``--browser-probe``
-prints the in-page probe; see ``devtools/bench_browser_probe.js``.
+prints the in-page probe; see ``devtools/bench-browser-probe.js``.
 
 Usage::
 
@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parent.parent
-PROBE_PATH = Path(__file__).resolve().parent / "bench_browser_probe.js"
+PROBE_PATH = Path(__file__).resolve().parent / "bench-browser-probe.js"
 
 # The bounds the folder Overview actually asks for. Measuring a shape the
 # browser never requests would report a cost no reader pays.

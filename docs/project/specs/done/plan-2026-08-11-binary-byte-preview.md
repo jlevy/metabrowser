@@ -405,7 +405,7 @@ Every new module sits under the fully strict `tsconfig.json` gate.
 `binary/index.js` is already absent from the legacy allowlist, and nothing is added to
 it.
 
-#### `src/metabrowser/static/plugin_sdk.js`
+#### `src/metabrowser/static/plugin-sdk.js`
 
 `fetchPluginData(plugin, route, params, options?)` gains two things every data hook
 needs and none had: `options.signal` is forwarded to `fetch` so a disposed view can
@@ -415,7 +415,7 @@ the parsed `payload` instead of a bare status string.
 data plane, and it is what makes a hook’s structured refusal readable by its caller.
 `static/types.d.ts` records the new parameter.
 
-#### `src/metabrowser/builtin_plugins/binary/byte_format.js` — new
+#### `src/metabrowser/builtin_plugins/binary/byte-format.js` — new
 
 Pure, DOM-free, and exported for Node tests.
 
@@ -434,7 +434,7 @@ Pure, DOM-free, and exported for Node tests.
   Returns `lines` as well as the joined `html` because the view groups lines into render
   blocks.
 
-#### `src/metabrowser/builtin_plugins/binary/bytes_view.js` — new
+#### `src/metabrowser/builtin_plugins/binary/bytes-view.js` — new
 
 - `decodeBase64(value) -> Uint8Array` — `atob` plus a byte-wise copy; no text decoder.
 - `measureSurface(surface) -> {charsPerLine, lineHeightPx}` — measures the mounted pane
@@ -508,7 +508,7 @@ visual-regression layer.
 - `tests/test_plugin_e2e_render.py` already fails when a declared `[[view]]` has no
   matching `registerView`; the new view is covered by that existing assertion.
 
-### Node — `tests/dom/binary_byte_format_behavior.js` + `tests/test_binary_byte_format_js.py` — new
+### Node — `tests/dom/binary-byte-format-behavior.js` + `tests/test_binary_byte_format_js.py` — new
 
 - All 256 byte values map to the documented display, asserted exhaustively.
 - The explicit UTF-8 example: `C3 A9` renders `‹C3›‹A9›` and never `é`.
@@ -525,7 +525,7 @@ visual-regression layer.
 - The accent budget spans the whole chunk rather than resetting per line, and once spent
   stays spent.
 
-### Node — `tests/dom/binary_bytes_view_behavior.js` + `tests/test_binary_bytes_view_js.py` — new
+### Node — `tests/dom/binary-bytes-view-behavior.js` + `tests/test_binary_bytes_view_js.py` — new
 
 - First mount requests offset 0 and paints the decoded chunk.
 - `Load more` requests `next_offset` and appends without re-rendering mounted bytes.

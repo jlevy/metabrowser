@@ -1,7 +1,7 @@
-"""Behavioral contracts for ``plugin_sdk.js`` exercised via Node ``vm``.
+"""Behavioral contracts for ``plugin-sdk.js`` exercised via Node ``vm``.
 
-The companion shim ``tests/dom/kpress_plugin_sdk_behavior.js`` runs
-``plugin_sdk.js`` in a small DOM/fetch sandbox and asserts three
+The companion shim ``tests/dom/kpress-plugin-sdk-behavior.js`` runs
+``plugin-sdk.js`` in a small DOM/fetch sandbox and asserts three
 contracts that source-string tests can't validate:
 
 1. ``_loadStylesheet`` resolves only after the link's ``onload`` fires
@@ -27,12 +27,12 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "kpress_plugin_sdk_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "kpress-plugin-sdk-behavior.js"
 
 
 def test_plugin_sdk_behavior_contracts() -> None:
     if shutil.which("node") is None:
-        pytest.skip("node not available; skipping plugin_sdk.js behavioral shim")
+        pytest.skip("node not available; skipping plugin-sdk.js behavioral shim")
 
     result = subprocess.run(
         ["node", "--experimental-vm-modules", str(SHIM), str(REPO_ROOT)],

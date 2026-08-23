@@ -101,19 +101,19 @@ def test_index_template_versions_core_static_assets() -> None:
     html = _render_index_html()
     assert 'href="/static/styles.css?v=' in html
     assets = (
-        "/static/plugin_sdk.js",
+        "/static/plugin-sdk.js",
         "/static/icons.js",
-        "/static/tree_expansion.js",
-        "/static/tree_filter_model.js",
-        "/static/known_file_catalog.js",
-        "/static/catalog_feed.js",
-        "/static/file_fuzzy_match.js",
-        "/static/search_controller.js",
-        "/static/keyboard_shortcuts.js",
-        "/static/overlay_layer.js",
-        "/static/keyboard_help.js",
-        "/static/tree_keyboard_navigation.js",
-        "/static/search_palette.js",
+        "/static/tree-expansion.js",
+        "/static/tree-filter-model.js",
+        "/static/known-file-catalog.js",
+        "/static/catalog-feed.js",
+        "/static/file-fuzzy-match.js",
+        "/static/search-controller.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/overlay-layer.js",
+        "/static/keyboard-help.js",
+        "/static/tree-keyboard-navigation.js",
+        "/static/search-palette.js",
         "/static/app.js",
     )
     positions = []

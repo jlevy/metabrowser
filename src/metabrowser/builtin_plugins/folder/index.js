@@ -1,12 +1,12 @@
 // Built-in folder view and Overview contribution registration.
 
-import { createCategoryPalette } from "./category_palette.js";
-import { createFileOverviewPanel } from "./file_overview_panel.js";
+import { createCategoryPalette } from "./category-palette.js";
+import { createFileOverviewPanel } from "./file-overview-panel.js";
 import { createOverviewView } from "./overview.js";
-import { createFolderOverviewRegistry } from "./overview_registry.js";
-import { createReadmePanel } from "./readme_panel.js";
-import { createFolderRollupControls } from "./rollup_controls.js";
-import { createFolderRollupProjectionPool } from "./rollup_projection.js";
+import { createFolderOverviewRegistry } from "./overview-registry.js";
+import { createReadmePanel } from "./readme-panel.js";
+import { createFolderRollupControls } from "./rollup-controls.js";
+import { createFolderRollupProjectionPool } from "./rollup-projection.js";
 import { registerTreemap } from "./treemap.js";
 
 const mb = window.metabrowser;

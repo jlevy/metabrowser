@@ -124,7 +124,7 @@ show whether the browser’s observed path catalog is incomplete.
 
 ### Search Runtime and Surfaces
 
-`static/search_controller.js` owns provider registration, query lifecycle, cancellation,
+`static/search-controller.js` owns provider registration, query lifecycle, cancellation,
 fallback policy, result deduplication, and batch metadata.
 It has no DOM dependency.
 The application shell injects inventory observations and navigation actions rather than
@@ -132,7 +132,7 @@ letting search modules reach into private `app.js` globals.
 
 UI surfaces consume the controller:
 
-- `static/search_palette.js` is the Phase 1 transient, keyboard-first Quick File dialog
+- `static/search-palette.js` is the Phase 1 transient, keyboard-first Quick File dialog
 - a future navigation-panel search box is a persistent surface that can show file
   groups, content excerpts, progress, scope controls, and more results
 - later plugins may add entry points only through the documented SDK and provider
@@ -220,7 +220,7 @@ elements.
 
 ### Known File Catalog
 
-`static/known_file_catalog.js` owns the minimal client-side search candidates.
+`static/known-file-catalog.js` owns the minimal client-side search candidates.
 It stores only the fields required for discovery and navigation: path, basename, logical
 extension when available, and the source that last observed the entry.
 It does not duplicate file contents, directory aggregates, plugin views, or every
@@ -253,7 +253,7 @@ A later provider may report complete server results without changing this local 
 
 ### Client Fuzzy Matching
 
-`static/file_fuzzy_match.js` is a pure strict module with deterministic tests and no new
+`static/file-fuzzy-match.js` is a pure strict module with deterministic tests and no new
 dependency. A candidate is eligible when every query character can be matched in order
 against its basename or served-root-relative path.
 Queries without `/` compare the basename first and may fall back to the full path;
@@ -497,13 +497,13 @@ results hierarchical.
   comparison vector, expected ordering, rationale, and a tuning-change checklist
 - [x] Add the DOM-independent search controller, request identity, cancellation, batch
   metadata, immediate and fallback provider activation, and flat file-result composition
-- [x] Add the strict `known_file_catalog.js` module and feed it from initial tree, lazy
+- [x] Add the strict `known-file-catalog.js` module and feed it from initial tree, lazy
   tree, Recent, event, and successful-navigation observations
 - [x] Add the pure fuzzy matcher with the documented comparison vector, path-aware
   scoring, match ranges, stable ties, and shared golden fixtures
 - [x] Add a local provider that searches all catalog candidates, retains a bounded top
   set, yields during large scans, and cancels obsolete queries
-- [x] Add `search_palette.js`, the `/` shortcut, accessible dialog and listbox behavior,
+- [x] Add `search-palette.js`, the `/` shortcut, accessible dialog and listbox behavior,
   focus restoration, pointer interaction, and a visible candidate-completeness status
 - [x] Keep palette rendering and selection state outside provider implementations; add a
   headless contract test proving the local provider can run without palette DOM

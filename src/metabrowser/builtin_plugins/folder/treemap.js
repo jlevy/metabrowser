@@ -9,19 +9,19 @@
 //       fluid cell typography, hover tooltip, click navigation,
 //       keyboard support, pending and truncated presentations.
 //
-// Geometry comes from treemap_layout.js. Toggle state comes from the shared
+// Geometry comes from treemap-layout.js. Toggle state comes from the shared
 // folder rollup controls, persists through mb.prefs (host-only cookies,
 // shared across per-root ports), and live refresh rides mb.watchRollup's
 // debounced /api/events signal.
 
-import { normalizeRollupEnvelope } from "./file_type_summary_model.js";
+import { normalizeRollupEnvelope } from "./file-type-summary-model.js";
 import {
   buildFolderTotalsComposition,
   mountFolderTotalsView,
   normalizeFolderTotals,
-} from "./folder_totals.js";
-import { layoutTree } from "./treemap_layout.js";
-import { parentNavigation } from "./treemap_model.js";
+} from "./folder-totals.js";
+import { layoutTree } from "./treemap-layout.js";
+import { parentNavigation } from "./treemap-model.js";
 
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */

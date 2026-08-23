@@ -462,7 +462,7 @@ diagnostics, aggregate source bytes, and an explicit completeness flag.
 It performs no live catalog subscription and does not provide visualization.
 Do not copy Markdown DOM or TOC behavior into a folder contribution.
 
-Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variables in
+Use only the SDK surface documented here and in `static/plugin-sdk.js`. Variables in
 `app.js` are implementation details and may change without a plugin compatibility
 guarantee.
 

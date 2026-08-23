@@ -11,20 +11,20 @@ import pytest
 from jsonschema import Draft202012Validator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEST_JS = Path(__file__).resolve().parent / "dom" / "markdown_mount_behavior.js"
-RESOLVER_JS = Path(__file__).resolve().parent / "dom" / "markdown_link_resolver_behavior.js"
-ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown_link_enhancer_behavior.js"
-WIKI_PARSER_JS = Path(__file__).resolve().parent / "dom" / "markdown_wiki_parser_behavior.js"
-WIKI_RESOLVER_JS = Path(__file__).resolve().parent / "dom" / "markdown_wiki_resolver_behavior.js"
-WIKI_ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown_wiki_enhancer_behavior.js"
+TEST_JS = Path(__file__).resolve().parent / "dom" / "markdown-mount-behavior.js"
+RESOLVER_JS = Path(__file__).resolve().parent / "dom" / "markdown-link-resolver-behavior.js"
+ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown-link-enhancer-behavior.js"
+WIKI_PARSER_JS = Path(__file__).resolve().parent / "dom" / "markdown-wiki-parser-behavior.js"
+WIKI_RESOLVER_JS = Path(__file__).resolve().parent / "dom" / "markdown-wiki-resolver-behavior.js"
+WIKI_ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown-wiki-enhancer-behavior.js"
 PROJECT_ADAPTER_JS = (
-    Path(__file__).resolve().parent / "dom" / "markdown_project_adapter_behavior.js"
+    Path(__file__).resolve().parent / "dom" / "markdown-project-adapter-behavior.js"
 )
 GITHUB_LOCALIZER_JS = (
-    Path(__file__).resolve().parent / "dom" / "markdown_github_localizer_behavior.js"
+    Path(__file__).resolve().parent / "dom" / "markdown-github-localizer-behavior.js"
 )
-GRAPH_ANALYSIS_JS = Path(__file__).resolve().parent / "dom" / "markdown_graph_analysis_behavior.js"
-TRANSCLUSION_JS = Path(__file__).resolve().parent / "dom" / "markdown_transclusion_behavior.js"
+GRAPH_ANALYSIS_JS = Path(__file__).resolve().parent / "dom" / "markdown-graph-analysis-behavior.js"
+TRANSCLUSION_JS = Path(__file__).resolve().parent / "dom" / "markdown-transclusion-behavior.js"
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 
 

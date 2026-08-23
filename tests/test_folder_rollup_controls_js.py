@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "folder_rollup_controls_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "folder-rollup-controls-behavior.js"
 
 
 def test_folder_rollup_controls_behavior() -> None:

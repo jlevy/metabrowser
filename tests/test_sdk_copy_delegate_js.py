@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-COPY_DELEGATE_TEST_JS = Path(__file__).resolve().parent / "dom" / "sdk_copy_delegate_behavior.js"
+COPY_DELEGATE_TEST_JS = Path(__file__).resolve().parent / "dom" / "sdk-copy-delegate-behavior.js"
 
 
 def test_sdk_copy_delegate_behavior() -> None:

@@ -1,6 +1,6 @@
 // Built-in Markdown view registration.
 
-import { analyzeMarkdownGraph } from "./graph_analysis.js";
+import { analyzeMarkdownGraph } from "./graph-analysis.js";
 import { mountRenderedMarkdown } from "./rendered.js";
 import { renderMarkdownSource } from "./source.js";
 

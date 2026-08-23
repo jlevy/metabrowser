@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-BEHAVIOR = REPO_ROOT / "tests" / "dom" / "folder_totals_view_behavior.js"
+BEHAVIOR = REPO_ROOT / "tests" / "dom" / "folder-totals-view-behavior.js"
 
 
 def test_folder_totals_view_behavior() -> None:

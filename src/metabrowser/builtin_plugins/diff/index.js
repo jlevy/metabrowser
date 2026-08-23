@@ -2,13 +2,13 @@
 //
 // Owns one view:
 //   ("diff", "diff") — the document from /api/plugin/diff/document,
-//                      validated by diff_model.js and rendered by
-//                      diff_view.js. Validation before rendering is the
+//                      validated by diff-model.js and rendered by
+//                      diff-view.js. Validation before rendering is the
 //                      point: the renderer only ever sees documents the
 //                      conformance corpus vouches for.
 
-import { validateDocument } from "./diff_model.js";
-import { mountDiffView, setChangeLoader } from "./diff_view.js";
+import { validateDocument } from "./diff-model.js";
+import { mountDiffView, setChangeLoader } from "./diff-view.js";
 
 // The view projects documents; fetching is the plugin's job. This wires
 // the deferred-file loader to the same hook the whole comparison came

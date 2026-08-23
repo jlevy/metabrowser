@@ -170,7 +170,7 @@ def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> N
     the code `awatch` feeds), must emit `fs.change` upserts that reach
     root scope AND be visible in the next rollup. The client half —
     `fs.change` on SSE → `metabrowser:inventory-change` → watchRollup
-    refetch — is covered by tests/dom/folder_plugin_behavior.js; this
+    refetch — is covered by tests/dom/folder-plugin-behavior.js; this
     test pins the server half those events promise.
     """
 

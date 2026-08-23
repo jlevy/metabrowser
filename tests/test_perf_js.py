@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-PERF_TEST_JS = Path(__file__).resolve().parent / "dom" / "perf_behavior.js"
+PERF_TEST_JS = Path(__file__).resolve().parent / "dom" / "perf-behavior.js"
 
 
 def test_perf_js_assertions_pass() -> None:

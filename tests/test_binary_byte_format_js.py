@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEST_JS = Path(__file__).resolve().parent / "dom" / "binary_byte_format_behavior.js"
+TEST_JS = Path(__file__).resolve().parent / "dom" / "binary-byte-format-behavior.js"
 
 
 def test_binary_byte_format_contract() -> None:

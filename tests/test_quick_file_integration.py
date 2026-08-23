@@ -38,15 +38,15 @@ def _render_index_html() -> str:
 def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
     html = _render_index_html()
     asset_paths = (
-        "/static/known_file_catalog.js",
-        "/static/catalog_feed.js",
-        "/static/file_fuzzy_match.js",
-        "/static/search_controller.js",
-        "/static/keyboard_shortcuts.js",
-        "/static/overlay_layer.js",
-        "/static/keyboard_help.js",
-        "/static/tree_keyboard_navigation.js",
-        "/static/search_palette.js",
+        "/static/known-file-catalog.js",
+        "/static/catalog-feed.js",
+        "/static/file-fuzzy-match.js",
+        "/static/search-controller.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/overlay-layer.js",
+        "/static/keyboard-help.js",
+        "/static/tree-keyboard-navigation.js",
+        "/static/search-palette.js",
         "/static/app.js",
     )
     positions = []
@@ -99,7 +99,7 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
 
 
 def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
-    palette = proc_browser.STATIC_DIR.joinpath("search_palette.js").read_text()
+    palette = proc_browser.STATIC_DIR.joinpath("search-palette.js").read_text()
     assert "function registerCommands()" in palette
     assert "function renderShortcutHints()" in palette
     assert "options.overlay.createModal" in palette
@@ -111,13 +111,13 @@ def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
 
 
 def test_registry_is_the_only_application_shortcut_dispatcher() -> None:
-    registry = proc_browser.STATIC_DIR.joinpath("keyboard_shortcuts.js").read_text()
+    registry = proc_browser.STATIC_DIR.joinpath("keyboard-shortcuts.js").read_text()
     assert registry.count('hostDocument.addEventListener("keydown"') == 1
     for filename in (
-        "keyboard_help.js",
-        "overlay_layer.js",
-        "search_palette.js",
-        "tree_keyboard_navigation.js",
+        "keyboard-help.js",
+        "overlay-layer.js",
+        "search-palette.js",
+        "tree-keyboard-navigation.js",
     ):
         source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
         assert 'hostDocument.addEventListener("keydown"' not in source
@@ -244,7 +244,7 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
 def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     """Folder visualizations can carry their view intent across navigation."""
     js = _read_app_js()
-    sdk = (proc_browser.STATIC_DIR / "plugin_sdk.js").read_text()
+    sdk = (proc_browser.STATIC_DIR / "plugin-sdk.js").read_text()
     types = (proc_browser.STATIC_DIR / "types.d.ts").read_text()
     treemap = (
         proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
@@ -272,10 +272,10 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
 
 def test_local_quick_file_modules_define_no_search_endpoint() -> None:
     for filename in (
-        "known_file_catalog.js",
-        "file_fuzzy_match.js",
-        "search_controller.js",
-        "search_palette.js",
+        "known-file-catalog.js",
+        "file-fuzzy-match.js",
+        "search-controller.js",
+        "search-palette.js",
     ):
         source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
         assert "/api/search" not in source

@@ -38,9 +38,9 @@ def _function(source: str, name: str, length: int = 3000) -> str:
 def test_tree_navigator_loads_after_registry_and_before_app() -> None:
     html = _index()
     assets = (
-        "/static/keyboard_shortcuts.js",
-        "/static/tree_keyboard_navigation.js",
-        "/static/search_palette.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/tree-keyboard-navigation.js",
+        "/static/search-palette.js",
         "/static/app.js",
     )
     positions = [html.index(asset) for asset in assets]

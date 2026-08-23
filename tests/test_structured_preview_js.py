@@ -1,6 +1,6 @@
 """Pure-function tests for structured/preview.js.
 
-Runs the JS-side assertions in tests/dom/test_preview.js via Node's
+Runs the JS-side assertions in tests/dom/test-preview.js via Node's
 vm sandbox (same approach as test_plugin_e2e_render.py). Keeps the
 ported preview logic honest without inventing a TS toolchain.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-PREVIEW_TEST_JS = Path(__file__).resolve().parent / "dom" / "test_preview.js"
+PREVIEW_TEST_JS = Path(__file__).resolve().parent / "dom" / "test-preview.js"
 
 
 def test_preview_js_assertions_pass() -> None:

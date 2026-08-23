@@ -15,7 +15,7 @@ from metabrowser import server
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "obsidian-vault"
-PREPROCESSOR = Path(__file__).resolve().parent / "dom" / "markdown_preprocess_fixture.js"
+PREPROCESSOR = Path(__file__).resolve().parent / "dom" / "markdown-preprocess-fixture.js"
 
 
 class _WikiMetadata(HTMLParser):

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 TREE_KEYBOARD_TEST_JS = (
-    Path(__file__).resolve().parent / "dom" / "tree_keyboard_navigation_behavior.js"
+    Path(__file__).resolve().parent / "dom" / "tree-keyboard-navigation-behavior.js"
 )
 
 

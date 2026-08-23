@@ -36,7 +36,7 @@ No swimlane, lane color, or row-geometry field appears here. Lane
 assignment is a pure function of the commit list and its ordering and is
 naturally incremental across pages, so it belongs to the rendering layer
 — the same call :mod:`metabrowser.recent` made when it left cluster
-construction to the browser. See ``static/git_graph.js``.
+construction to the browser. See ``static/git-graph.js``.
 """
 
 from __future__ import annotations

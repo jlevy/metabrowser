@@ -10,10 +10,10 @@ import pytest
 
 DOM_DIR = Path(__file__).resolve().parent / "dom"
 SUITES = (
-    "keyboard_shortcuts_behavior.js",
-    "overlay_layer_behavior.js",
-    "keyboard_help_behavior.js",
-    "tree_keyboard_navigation_behavior.js",
+    "keyboard-shortcuts-behavior.js",
+    "overlay-layer-behavior.js",
+    "keyboard-help-behavior.js",
+    "tree-keyboard-navigation-behavior.js",
 )
 
 

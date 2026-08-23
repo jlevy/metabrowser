@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "chart_theme_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "chart-theme-behavior.js"
 
 
 def test_charts_repaint_from_theme_tokens_until_disposed() -> None:

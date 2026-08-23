@@ -19,8 +19,8 @@ from pathlib import Path
 import pytest
 
 _DOM_DIR = Path(__file__).resolve().parent / "dom"
-GIT_GRAPH_TEST_JS = _DOM_DIR / "git_graph_behavior.js"
-GIT_PANEL_TEST_JS = _DOM_DIR / "git_panel_behavior.js"
+GIT_GRAPH_TEST_JS = _DOM_DIR / "git-graph-behavior.js"
+GIT_PANEL_TEST_JS = _DOM_DIR / "git-panel-behavior.js"
 
 
 def _run_node_suite(script: Path) -> None:
@@ -61,6 +61,6 @@ def test_every_vertex_is_a_solid_dot() -> None:
     assert ".git-graph-svg > circle" not in css, (
         "a rule filling graph markers reintroduces state-dependent node shapes"
     )
-    graph = (root / "src/metabrowser/static/git_graph.js").read_text()
+    graph = (root / "src/metabrowser/static/git-graph.js").read_text()
     assert "circle.style.fill = color;" in graph, "every vertex must be filled at the draw site"
     assert "if (color) {" not in graph, "an optional fill lets an unfilled vertex be drawn"

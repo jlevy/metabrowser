@@ -201,21 +201,21 @@ data hooks:
   (none)
 
 assets in static_root:
-  - github_localizer.js
-  - graph_analysis.js
+  - github-localizer.js
+  - graph-analysis.js
   - index.js
-  - link_enhancer.js
-  - link_scanner.js
+  - link-enhancer.js
+  - link-scanner.js
   - links.js
   - manifest.toml
   - markdown.css
-  - project_adapters.js
+  - project-adapters.js
   - rendered.js
   - source.js
   - transclusion.js
-  - wiki_enhancer.js
-  - wiki_parser.js
-  - wiki_resolver.js
+  - wiki-enhancer.js
+  - wiki-parser.js
+  - wiki-resolver.js
 ? 0
 ```
 
@@ -265,21 +265,21 @@ $ metab --plugin markdown --json
     "data_hooks": [],
     "disabled_data_hooks": [],
     "assets": [
-      "github_localizer.js",
-      "graph_analysis.js",
+      "github-localizer.js",
+      "graph-analysis.js",
       "index.js",
-      "link_enhancer.js",
-      "link_scanner.js",
+      "link-enhancer.js",
+      "link-scanner.js",
       "links.js",
       "manifest.toml",
       "markdown.css",
-      "project_adapters.js",
+      "project-adapters.js",
       "rendered.js",
       "source.js",
       "transclusion.js",
-      "wiki_enhancer.js",
-      "wiki_parser.js",
-      "wiki_resolver.js"
+      "wiki-enhancer.js",
+      "wiki-parser.js",
+      "wiki-resolver.js"
     ]
   },
   "errors": []

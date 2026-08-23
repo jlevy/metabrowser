@@ -7,7 +7,7 @@ Real flow exercised here: the SDK source loads, every built-in plugin's
 ``registerView`` call lands for it, the plugin's contract is broken
 and the shell would paint "Unknown view" for that file.
 
-We use Node's ``vm`` module via subprocess (see ``tests/dom/load_plugins.js``)
+We use Node's ``vm`` module via subprocess (see ``tests/dom/load-plugins.js``)
 instead of jsdom — the SDK only needs ``window`` + a tiny ``document``
 stub at registration time, so a real DOM would add 150 MB of test deps
 for negligible gain.
@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-LOADER_JS = Path(__file__).resolve().parent / "dom" / "load_plugins.js"
+LOADER_JS = Path(__file__).resolve().parent / "dom" / "load-plugins.js"
 
 
 def _has_node() -> bool:

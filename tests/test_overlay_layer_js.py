@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-OVERLAY_TEST_JS = Path(__file__).resolve().parent / "dom" / "overlay_layer_behavior.js"
+OVERLAY_TEST_JS = Path(__file__).resolve().parent / "dom" / "overlay-layer-behavior.js"
 
 
 def test_overlay_layer_js_assertions_pass() -> None:

@@ -45,6 +45,10 @@ API, observable to plugin authors:
 
 Development:
 
+- First-party JavaScript and TypeScript filenames now use lowercase kebab-case
+  consistently. `make lint-check` rejects nonconforming tracked or newly added files;
+  vendored assets retain their upstream names.
+
 - A build that is not exactly a released one now says so: `metab --version` annotates
   the version with how far past the tag it is, which commit, and whether the tree is
   dirty. An installed release is unchanged.

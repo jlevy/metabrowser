@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-SHIM = Path(__file__).resolve().parent / "dom" / "subtree_prefetch_viewport_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "subtree-prefetch-viewport-behavior.js"
 
 
 def test_subtree_prefetch_is_bounded_to_the_nav_viewport() -> None:

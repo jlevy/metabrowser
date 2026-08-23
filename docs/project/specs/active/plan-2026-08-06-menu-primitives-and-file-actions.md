@@ -131,7 +131,7 @@ focus-order subset.
 
 **The two behaviors we do have are trapped inside their features.** The custom tooltip
 (`app.js`) has the app’s only viewport-clamping logic, and it is private to
-`positionTooltip`. The Quick File palette (`static/search_palette.js`) has the app’s
+`positionTooltip`. The Quick File palette (`static/search-palette.js`) has the app’s
 only correct overlay lifecycle — body-portaled surface, scrim, `role="dialog"` with
 `aria-modal`, focus captured on open and restored on close, Escape and
 outside-pointerdown dismissal, a real `dispose()`, injected `document` for testing, and
@@ -181,14 +181,14 @@ surfaces onto them so there is one implementation of each behavior, then add the
 layer and the tree context menu, then add the server mutation plane and wire rename and
 trash as the first two actions.
 
-Every new browser module follows the shape `search_palette.js` established, because that
+Every new browser module follows the shape `search-palette.js` established, because that
 shape is already proven under the strict TypeScript gate and Node DOM tests: an IIFE
 exposing a frozen factory on `window.Metabrowser*`, an injectable `document`, and a
 `dispose()` that removes every listener and DOM node it created.
 
 ### Components
 
-#### Browser: `static/overlay_layer.js` → `window.MetabrowserOverlay`
+#### Browser: `static/overlay-layer.js` → `window.MetabrowserOverlay`
 
 The placement primitive.
 One factory that takes content and an anchor and returns a controller.
@@ -241,7 +241,7 @@ scrim at `--z-modal`, labelled `role="dialog"` with `aria-modal="true"`, visible
 control, bounded body, background inertness, focus capture and restore, and a minimal
 Tab wrap over the dialog’s focusable descendants that a consumer may override — the
 palette keeps its stricter input-pinned Tab behavior.
-`search_palette.js` is ported onto it in the same phase, so the app keeps exactly one
+`search-palette.js` is ported onto it in the same phase, so the app keeps exactly one
 modal implementation and the palette’s tested behavior becomes the shared behavior
 rather than a second copy.
 Modals do not dismiss on scroll, resize, or blur; only Escape, an explicit control, or
@@ -465,11 +465,11 @@ drive-by-write path.
 
 ### Phase 1: Overlay, Menu, and Command Primitives
 
-- [ ] Add `overlay_layer.js` with point and element anchoring, flip-and-clamp
+- [ ] Add `overlay-layer.js` with point and element anchoring, flip-and-clamp
   containment, the anchored dismissal contract, focus save and restore with the
   detached-element fallback, registry-scoped Escape integration, single-open
   arbitration, inert-background restoration for modals, and disposal
-- [ ] Add the modal variant and port `search_palette.js` onto it, deleting the palette’s
+- [ ] Add the modal variant and port `search-palette.js` onto it, deleting the palette’s
   private overlay, scrim, focus, and dismissal code (sequence this after the in-flight
   quick-file palette branch lands, so the port rebases once, not continuously)
 - [ ] Move `positionTooltip`’s clamping onto the shared placement helper
@@ -519,7 +519,7 @@ drive-by-write path.
 
 ## Testing Strategy
 
-Browser primitives are tested the way `search_palette_behavior.js` already is — Node
+Browser primitives are tested the way `search-palette-behavior.js` already is — Node
 scripts driving an injected document, run from a thin pytest wrapper:
 
 - placement: preferred position honored, flip on each edge, clamp in a corner,

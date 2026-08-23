@@ -30,10 +30,10 @@ def test_help_assets_and_navigation_hint_host_have_stable_shell_order() -> None:
     assert 'aria-live="' not in html[hints : html.index(">", hints)]
 
     assets = (
-        "/static/keyboard_shortcuts.js",
-        "/static/overlay_layer.js",
-        "/static/keyboard_help.js",
-        "/static/search_palette.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/overlay-layer.js",
+        "/static/keyboard-help.js",
+        "/static/search-palette.js",
         "/static/app.js",
     )
     positions = []

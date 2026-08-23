@@ -51,7 +51,7 @@ def test_activity_polling_retired_no_longer_referenced() -> None:
 def test_generated_html_handlers_keep_their_global_names() -> None:
     """Static analysis cannot see function names embedded in generated HTML."""
     app = _browser_app_js()
-    sdk = _browser_asset("static/plugin_sdk.js")
+    sdk = _browser_asset("static/plugin-sdk.js")
     agent_log = _browser_asset("builtin_plugins/agent_log/index.js")
 
     # The Load more control moved into the SDK's partial-content notice, so the

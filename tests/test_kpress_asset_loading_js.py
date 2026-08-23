@@ -1,6 +1,6 @@
 """JS-side integration tests for KPress render asset loading.
 
-Runs ``plugin_sdk.js`` in the same Node ``vm`` simulated DOM style used
+Runs ``plugin-sdk.js`` in the same Node ``vm`` simulated DOM style used
 by the plugin registration/render tests. The goal is to cover the async
 ``fetchKpressRender -> loadKpressAssets`` path that a source-string test
 cannot validate.
@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "kpress_asset_loading.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "kpress-asset-loading.js"
 
 
 def test_kpress_browser_assets_honor_manifest_loading_modes() -> None:

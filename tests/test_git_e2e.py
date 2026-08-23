@@ -192,8 +192,8 @@ def test_index_page_loads_the_git_modules(served_repo: Path) -> None:
     # an HTML comment above the settings menu.
     scripts = re.findall(r'<script src="([^"]+)"', html)
     names = [src.rsplit("/", 1)[-1].split("?", 1)[0] for src in scripts]
-    assert "git_graph.js" in names
-    assert "git_panel.js" in names
+    assert "git-graph.js" in names
+    assert "git-panel.js" in names
     # Order matters: app.js calls MetabrowserGitPanel.init() from its
     # DOMContentLoaded handler, so both modules must already be parsed.
-    assert names.index("git_graph.js") < names.index("git_panel.js") < names.index("app.js")
+    assert names.index("git-graph.js") < names.index("git-panel.js") < names.index("app.js")

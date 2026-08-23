@@ -1,6 +1,6 @@
 """Shared rendering helpers must stay on ``window.metabrowser``.
 
-Helpers moved from app.js into plugin_sdk.js so the built-in plugins
+Helpers moved from app.js into plugin-sdk.js so the built-in plugins
 (and any external plugin) can call them via ``mb.<helper>(...)``
 instead of duplicating the body. Unit-style assertions here check the
 SDK source for the public surface; runtime behaviour is covered by
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-SDK_JS = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "plugin_sdk.js"
+SDK_JS = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "plugin-sdk.js"
 
 
 def _sdk_source() -> str:

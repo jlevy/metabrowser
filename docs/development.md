@@ -122,15 +122,15 @@ The mechanism follows the library’s module format.
 Both shapes keep a loaded set and an in-flight promise map, so concurrent callers share
 one load and a repeat costs nothing.
 
-**A library that installs a global** loads through `static/asset_loader.js`. The server
+**A library that installs a global** loads through `static/asset-loader.js`. The server
 publishes named bundles as `window.METABROWSER_ASSET_BUNDLES`, and `ensureAsset(name)`
 appends that bundle’s scripts with `async = false` so they run in order — a Chart.js
-plugin is inert without `Chart`. `plugin_sdk.js` republishes it as
+plugin is inert without `Chart`. `plugin-sdk.js` republishes it as
 `metabrowser.ensureAsset`, so a plugin reaches the loader through the documented SDK
 rather than a private global.
 
 **An ES module tree** loads through dynamic `import()`, as `loadKpressAssets` in
-`plugin_sdk.js` shows: import the module, capture its named export, and hold it.
+`plugin-sdk.js` shows: import the module, capture its named export, and hold it.
 Two properties keep a vendored ESM tree loadable without a build step.
 Its specifiers must be relative, so no import map is needed; and where its filenames
 already carry content hashes, only the entry point needs the `?v=` cache-buster that
@@ -210,7 +210,7 @@ more than a larger response is doing work proportional to something other than i
 answer.
 
 The client half is not visible from the server.
-`--browser-probe` prints `devtools/bench_browser_probe.js`; load it in an open folder
+`--browser-probe` prints `devtools/bench-browser-probe.js`; load it in an open folder
 view and call `await metabrowserBench.run({clients: 8})`. It reads the `Server-Timing`
 header every route already emits, because request count cannot distinguish a shared
 computation from a repeated one — N requests are N requests either way, and what differs
@@ -470,6 +470,11 @@ not combine an unrelated rewrite with a release fix.
 - New renderer state must have an explicit disposal path.
 - Colors come from design tokens.
 - Large collections need lazy mounting, virtualization, or a bounded display.
+- First-party JavaScript and TypeScript filenames use lowercase kebab-case because the
+  same names appear in imports, manifests, URLs, documentation, and test shims.
+  Standard dotted roles such as `types.d.ts` remain valid, and vendored assets retain
+  their upstream names.
+  `make lint-check` enforces the rule for tracked and newly added files.
 - Run Biome and TypeScript check-JS through the Make targets.
 
 `tsconfig.json` applies full strict checking, including `noImplicitAny`, to new browser
@@ -486,6 +491,8 @@ Biome checks every shipped browser module, including the legacy application shel
 the recommended rule set.
 Its overrides are file-scoped and listed in `biome.json`. Shrink each override list as
 those files become clean.
+`make lint-check` treats Biome warnings as failures, so a recommended-rule regression
+cannot hide in otherwise green output.
 Globals invoked from generated HTML retain their public names through narrow inline
 suppressions because those call sites are not visible to static analysis.
 All Biome and TypeScript commands run from `package-lock.json` with `npx --no-install`,

@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "asset_loader_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "asset-loader-behavior.js"
 
 
 def _run_shim() -> dict[str, object]:

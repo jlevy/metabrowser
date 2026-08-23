@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PLUGIN_TEST_JS = Path(__file__).resolve().parent / "dom" / "folder_plugin_behavior.js"
+PLUGIN_TEST_JS = Path(__file__).resolve().parent / "dom" / "folder-plugin-behavior.js"
 
 
 def test_folder_plugin_behavior() -> None:

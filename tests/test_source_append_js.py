@@ -15,7 +15,7 @@ from metabrowser.settings import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "source_append_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "source-append-behavior.js"
 APP_JS = REPO_ROOT / "src" / "metabrowser" / "static" / "app.js"
 
 

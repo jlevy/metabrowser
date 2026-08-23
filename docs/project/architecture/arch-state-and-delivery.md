@@ -338,7 +338,7 @@ disappeared and may therefore name directories, so the browser performs the pref
 needed to evict descendants.
 Combining the two is a correctness-preserving but unbounded-cost mistake: the client has
 to interpret every exact file as a possible directory and scan the complete catalog.
-`tests/dom/known_file_catalog_behavior.js` installs a `Map` that counts key enumeration
+`tests/dom/known-file-catalog-behavior.js` installs a `Map` that counts key enumeration
 and is the named check that exact removals never enter that path.
 
 ### Routes
@@ -393,7 +393,7 @@ The full grammar is in [Browser URL Grammar](../../architecture.md#browser-url-g
 
 The shell is plain ES modules over a small number of stores.
 `static/app.js` owns navigation, the tree, tabs, and view mounting;
-`static/plugin_sdk.js` exposes `window.metabrowser`, the only surface plugins may use.
+`static/plugin-sdk.js` exposes `window.metabrowser`, the only surface plugins may use.
 The other modules are single-purpose seams the shell and the SDK share.
 
 Client state falls into three tiers that mirror the server’s.
@@ -407,8 +407,8 @@ refetched wholesale in normal operation.
 | Store | Module | Holds |
 | --- | --- | --- |
 | `fileStore` | `app.js` | path → `FsEntry`, the source of truth for tree decoration |
-| `metabrowserDirectoryTotalsStore` | `directory_totals_store.js` | Per-directory totals, the plugin-visible cache |
-| Known-file catalog | `known_file_catalog.js`, `catalog_feed.js` | The Quick File universe |
+| `metabrowserDirectoryTotalsStore` | `directory-totals-store.js` | Per-directory totals, the plugin-visible cache |
+| Known-file catalog | `known-file-catalog.js`, `catalog-feed.js` | The Quick File universe |
 
 Applying an op patches the store and the rendered row together, so a live update does
 not require a re-render of the tree.
@@ -418,9 +418,9 @@ not require a re-render of the tree.
 These are the client’s half of the pull layer: a response that is refetched when
 something relevant changes, rather than patched.
 
-- `resource_context.js` — a multiplexed live envelope store for path-scoped resources,
+- `resource-context.js` — a multiplexed live envelope store for path-scoped resources,
   so several views of one path share a single fetch.
-- `inventory_scope.js` — the shared primitive underneath both: *is this inventory event
+- `inventory-scope.js` — the shared primitive underneath both: *is this inventory event
   relevant to my scope*, plus the debounced refresh lifecycle.
   Its debounce is bounded by one window, because a crawl emits changes continuously and
   a debounce that restarted on every one would never fire until the stream paused.
@@ -431,11 +431,11 @@ something relevant changes, rather than patched.
 
 State that belongs to what is on screen rather than to the tree.
 
-`view_state.js` (active-view subscriptions, print metadata), `tree_expansion.js`
-(disclosure state and the initial expansion plan), `filter_state.js` (the one filter
-vocabulary behind the nav controls), `theme_state.js` (the resolved-theme boundary the
+`view-state.js` (active-view subscriptions, print metadata), `tree-expansion.js`
+(disclosure state and the initial expansion plan), `filter-state.js` (the one filter
+vocabulary behind the nav controls), `theme-state.js` (the resolved-theme boundary the
 shell and canvas renderers share), `navigation.js` (canonical route construction),
-`contribution_registry.js` (deterministic registration for views and commands).
+`contribution-registry.js` (deterministic registration for views and commands).
 
 Mounted plugin views are the disposable part of this tier.
 Replacing the preview pane runs every registered disposer; switching tabs does not, so a

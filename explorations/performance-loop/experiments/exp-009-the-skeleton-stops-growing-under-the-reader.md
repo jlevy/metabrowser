@@ -158,7 +158,7 @@ Re-checking is exactly what turned out to be needed.
 ## The two causes
 
 **The filter bar is shipped empty and filled by JavaScript.** With `padding: 6px` and a
-1 px border and nothing inside, it stands 13 px tall; once `filter_controls.js` puts a
+1 px border and nothing inside, it stands 13 px tall; once `filter-controls.js` puts a
 row of chips in it, 37 px.
 The entire tree below it moves down 24 px, every load.
 

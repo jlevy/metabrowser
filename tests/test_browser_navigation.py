@@ -16,7 +16,7 @@ from metabrowser.cli.main import _app
 from metabrowser.view_routes import format_view_href
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ROUTE_SHIM = Path(__file__).resolve().parent / "dom" / "navigation_route_behavior.js"
+ROUTE_SHIM = Path(__file__).resolve().parent / "dom" / "navigation-route-behavior.js"
 runner = CliRunner()
 
 
