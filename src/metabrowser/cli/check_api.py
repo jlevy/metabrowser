@@ -285,7 +285,7 @@ async def _run_navigation_scenario(
     app: ASGIApp,
     *,
     index_timeout_s: float = _INDEX_READY_TIMEOUT_S,
-) -> tuple[_Response, _Response, _Response, _IndexResult, _Response, _Response]:
+) -> tuple[_Response, _Response, _Response, _IndexResult, _Response, _Response, _Response]:
     """Exercise the navigation routes while the background index is active."""
 
     async with _InProcessClient(app) as client:
@@ -294,10 +294,15 @@ async def _run_navigation_scenario(
         cleared = await client.get("/api/tree", params={"depth": "2"})
         index_result = await _wait_for_index(client, timeout_s=index_timeout_s)
         final = await client.get("/api/tree", params={"depth": "2"})
+        # Rows and tallies travel separately now: a request carrying rows never
+        # waits for the pass over every index entry that produces the summary.
+        # The check wants both, so it asks both channels -- which is also what
+        # the browser does. See explorations/performance-loop/experiments/exp-007.
+        final_tallies = await client.get("/api/tree", params={"depth": "0"})
         # After the index is complete, so the projection is answering from the
         # whole tree rather than from whatever the walk had reached.
         filtered = await client.get("/api/tree", params={"depth": "2", "types": _FILTER_PROBE_TYPE})
-    return initial, live, cleared, index_result, final, filtered
+    return initial, live, cleared, index_result, final, final_tallies, filtered
 
 
 def run_api_check(
@@ -323,7 +328,7 @@ def run_api_check(
     from metabrowser import server
 
     server._set_root_dir(resolved)
-    initial, live, cleared, index_result, final, filtered = asyncio.run(
+    initial, live, cleared, index_result, final, final_tallies, filtered = asyncio.run(
         _run_navigation_scenario(server.app, index_timeout_s=index_timeout_s)
     )
 
@@ -332,7 +337,14 @@ def run_api_check(
         _recent_step(live.status_code, _read_json(live)),
         _tree_probe_step("cleared filter", cleared.status_code, _read_json(cleared)),
     )
-    final_step = _tree_step("final nav", final.status_code, _read_json(final))
+    final_payload = _read_json(final)
+    tallies_payload = _read_json(final_tallies)
+    if isinstance(final_payload, dict) and isinstance(tallies_payload, dict):
+        final_payload = {
+            **final_payload,
+            "summary": tallies_payload.get("summary"),
+        }
+    final_step = _tree_step("final nav", final.status_code, final_payload)
     filtered_step = _filtered_step("filtered nav", filtered.status_code, _read_json(filtered))
     typer.echo(f"api check: {root}")
     typer.echo("scenario: nav-live-clear-filter")

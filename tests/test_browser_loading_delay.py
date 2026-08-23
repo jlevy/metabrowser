@@ -129,26 +129,30 @@ def test_spinners_carry_no_visible_loading_label() -> None:
 def test_expandable_folders_are_prefetched_so_expansion_needs_no_load() -> None:
     """The fastest loading state is the one that never runs.
 
-    Every unexpanded folder past the server's depth cap carries a lazy stub,
-    which is exactly the set a reader can open next, so the sweep takes its
-    candidates from the rendered tree rather than guessing.
+    Every unexpanded folder past the server's depth cap carries a lazy stub, so
+    the sweep takes its candidates from the rendered tree rather than guessing.
+    Which of those stubs is a candidate is a question about the screen, and
+    ``tests/dom/subtree_prefetch_viewport_behavior.js`` owns that half.
     """
 
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
 
     assert "data-tree-lazy-stub" in app
     sweep = app[app.index("function pendingSubtreePaths()") :]
-    sweep = sweep[: sweep.index("function scheduleSubtreePrefetch()")]
+    sweep = sweep[: sweep.index("function isNearNavViewport(")]
     assert 'querySelectorAll("[data-tree-lazy-stub]")' in sweep
     # Already cached or already being fetched are both "no request needed".
-    assert "!subtreeCache.has(key)" in sweep
-    assert "!subtreeRequests.has(key)" in sweep
+    assert "subtreeCache.has(key)" in sweep
+    assert "subtreeRequests.has(key)" in sweep
 
     # Warming the tree must never compete with the request a reader is waiting
-    # on: bounded lanes, a bounded sweep, and only while the browser is idle.
+    # on: bounded lanes, a bounded sweep, and — for the speculative sweep —
+    # only while the browser is idle. The sweep a reader asks for by opening a
+    # folder is not speculative and runs on a timer instead; the DOM shim owns
+    # that distinction.
     assert "SUBTREE_PREFETCH_MAX_CONCURRENT" in app
     assert "SUBTREE_PREFETCH_MAX_PER_SWEEP" in app
-    schedule = app[app.index("function scheduleSubtreePrefetch()") :][:600]
+    schedule = app[app.index("function scheduleSubtreePrefetch(options)") :][:900]
     assert "requestIdleCallback" in schedule
 
 

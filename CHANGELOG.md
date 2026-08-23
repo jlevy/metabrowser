@@ -389,6 +389,50 @@ Page load:
   A source view still highlights: the libraries arrive during idle and re-enhance what
   is already on screen, so nothing waits for them.
 
+- **Opening a large folder is far faster to become usable.** On a 241,000-file working
+  tree, the wait before any row could appear was about twenty seconds and the full scan
+  took over four minutes with a browser watching; those are now about two seconds and
+  fifty seconds. Three changes compound to get there.
+
+- Loading the ignore rules walked the whole tree a second time before the real scan
+  started, descending into vendored, built, and hidden directories to look for
+  `.gitignore` files that cannot change any answer.
+  It now skips those, and does not rebuild its pattern set on every file it finds.
+  On that tree: 21.4 s to 2.2 s, with no change to which files count as ignored —
+  checked against the old behavior for all 341,872 visible paths.
+
+- The navigation counts no longer travel in the same response as the folder rows.
+  They cost a pass over every file in the index and the rows do not, so a reader was
+  waiting for the expensive half to see the cheap one: asking for rows during a scan
+  cost about three quarters of a second, now six milliseconds.
+  Those requests had also been taking processor time from the scan itself, so the scan
+  finishes sooner as well.
+  The counts now arrive a moment after the rows rather than holding them up, and while a
+  scan runs they may lag it by one pass — the same beat the progress row already tells
+  you they are provisional for.
+
+- The file tree appears as soon as the page does, instead of after a round trip.
+  The server already knows the top level when it renders the page, so it sends those
+  rows with the page. Measured on a 300,000-file synthetic tree, median of three cold
+  loads: the first row went from 1,604 ms to 242 ms, the same moment the rest of the
+  page appears. The full tree still arrives a moment later and replaces what was shown;
+  the difference is that there is something to look at in the meantime.
+
+- Opening a large folder no longer downloads a megabyte of folders you cannot see.
+  The browser warms collapsed folders in the background so expanding one is instant, but
+  it was picking them in document order rather than by what is on screen — and on a
+  large tree every folder it picked was inside a collapsed branch, at least two clicks
+  away. Measured on a 300,000-file tree: 32 background requests and 1,566 KB on every
+  cold load, now 0 and 517 KB. Expanding a folder still warms exactly the children it
+  reveals, so the next click is still instant — measured at no request and 75 ms — and
+  scrolling now warms what scrolls into view.
+
+- Warming a folder you just opened no longer waits for the browser to declare itself
+  idle. A browser may defer that indefinitely, and when it does, the folder you just
+  opened is exactly the one that stays slow.
+  Speculative warming — on first load, and while scrolling — still waits for idle, which
+  is what idle is for.
+
 Plugin SDK:
 
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the

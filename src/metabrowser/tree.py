@@ -579,6 +579,7 @@ def _build_inventory_tree(
     parent_rel: str,
     max_depth: int,
     root_abs: Path,
+    max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
     """Recursive in-memory build of the tree shape for a subtree
     rooted at *parent_rel*. Reads only from
@@ -593,6 +594,11 @@ def _build_inventory_tree(
     not yet finalized come through as JSON ``null``; the client
     renders them as skeleton cells and patches via
     ``fs.change`` ops on ``/api/events``.
+
+    *max_entries* bounds each level to its first *n* entries in display order.
+    The shell uses it to inline the root's first rows: that runs synchronously
+    on the event loop for every page load, and a root with tens of thousands of
+    immediate children should not pay for all of them to send two hundred.
     """
 
     if max_depth <= 0:
@@ -608,6 +614,7 @@ def _build_inventory_tree(
         max_depth=max_depth,
         parent_ignored=parent_is_gitignored(parent_rel),
         root_abs=root_abs,
+        max_entries=max_entries,
     )
 
 
@@ -725,6 +732,7 @@ def _build_inventory_subtree(
     tree_filter: TreeFilter | None = None,
     matches: Mapping[str, DirMatches] | None = None,
     now_sec: float = 0.0,
+    max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
     if max_depth <= 0:
         return []
@@ -734,6 +742,12 @@ def _build_inventory_subtree(
         (e for e in children_of(parent_rel) if e.path != parent_rel),
         key=lambda e: (e.type != "dir", e.name),
     )
+    if max_entries is not None:
+        # Sliced after the sort, so the cap keeps the first *n* a reader would
+        # see rather than an arbitrary *n*. The sort itself is still O(level) --
+        # what this bounds is the dict building and the recursion under it,
+        # which is where the cost actually is.
+        siblings = siblings[:max_entries]
     out: list[dict[str, Any]] = []
     for entry in siblings:
         # Under a filter a row earns its place: a leaf has to match, and a

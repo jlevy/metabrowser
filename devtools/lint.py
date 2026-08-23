@@ -6,7 +6,7 @@ from funlog import log_calls
 from rich import get_console, reconfigure
 from rich import print as rprint
 
-# Update as needed. explorations/ holds the load-time loop's runner: not shipped,
+# Update as needed. explorations/performance-loop/ holds the load-time loop's runner: not shipped,
 # but it is Python this project maintains, so it is held to the same standard.
 SRC_PATHS = ["src", "tests", "devtools", "explorations"]
 

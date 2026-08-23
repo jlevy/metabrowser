@@ -84,6 +84,18 @@ loop and yields only at explicit `await` points.
 That is what lets `InventoryIndex.remove` snapshot and mutate without a lock: no other
 producer can interleave inside a region that contains no `await`.
 
+**A worker thread is such a producer, so it takes the lock.** The argument above holds
+only for code on the loop.
+`navigation_tallies_snapshotting` reads the index from the executor, so it acquires
+`_rollup_cache_lock` — the same lock `_replace_index_entry` and `_pop_index_entry` hold
+— and reads the entries and the revision they belong to inside one acquisition.
+Reading them separately is the bug worth naming: the walker can write in between, which
+keys a memo to a revision newer than the contents it summarizes, and on a settled tree
+the revision never advances again to evict it.
+Any future read from off the loop belongs under the same lock, and not because the GIL
+makes the read unsafe today — it does not — but because that is the invariant a
+free-threaded build will hold us to.
+
 Read paths offload CPU work to a 64-worker executor (`events_route.py`,
 `loop.set_default_executor`). That buys queueing, not parallelism: under the GIL a
 rollup running in a worker competes with the walker on the loop rather than running

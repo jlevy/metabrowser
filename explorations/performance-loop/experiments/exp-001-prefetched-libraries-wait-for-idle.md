@@ -18,12 +18,13 @@ experiment:
     host_system: Darwin 25.5.0
     browser: Chromium
     cold: true
+    viewport: "0x0"
   method:
     runs_per_condition: 3
     interleaved: false
     control: the chain started by the DOMContentLoaded handler
     candidate: the chain scheduled on DOMContentLoaded and started by requestIdleCallback with a 2000 ms timeout
-    record: explorations/results/runs.jsonl
+    record: explorations/performance-loop/results/runs.jsonl
   results:
     - metric: load_ms
       control_median: 3883
@@ -113,7 +114,14 @@ Three runs is enough to see an 80% move and nowhere near enough to see a 15% one
 
 ## Limitations
 
-One corpus, one machine, one browser, three runs.
+**These six runs were taken in a 0x0 browser pane.** That was discovered during exp-002,
+and is why `probe.js` now records the viewport and `record` refuses a run without one.
+Both conditions met the same collapsed pane, so the comparison between them stands; the
+absolute numbers do not describe a layout any reader has.
+The tree pages its rows against the nav scroller’s height, so a real 1280x900 pane
+mounts 334 rows where these runs mounted 237.
+
+Beyond that: one corpus, one machine, one browser, three runs.
 The corpus is 972 directories wide and shallow apart from one branch, so it exercises
 breadth rather than depth.
 `load_ms` is also partly definitional here: moving work out of the load window

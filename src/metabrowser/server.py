@@ -194,6 +194,36 @@ LOG = logging.getLogger(__name__)
 # state instead of blocking on a filesystem walk.
 _TREE_COLD_START_WAIT_S = 0.10
 
+# How stale the navigation tallies may be before a root /api/tree recomputes
+# them. They cost one pass over every entry in the index, and during a walk the
+# revision they memoize on advances on every write, so without an age bound
+# every request during the scan repeats the pass: measured at 837-1,567 ms per
+# root request on a 300,000-file tree against 15 ms once settled.
+#
+# This is the floor, not the bound. The bound the index applies is the larger
+# of this and however long the last pass actually took, so the server never
+# spends much over half its time recomputing a number the client is already
+# told is provisional -- and so the policy scales with the tree instead of
+# being tuned for one size. A fixed half second was measured first and moved
+# the scanning cost only 638 ms to 518 ms, because the nav polls once a second
+# and a bound shorter than the poll period can never be hit by a poller.
+#
+# The floor matters on a small tree, where the pass is cheap enough that its
+# own duration would allow a recompute per request for no benefit.
+NAVIGATION_TALLY_MIN_STALE_S = 0.5
+# The tally pass's own row cap, passed explicitly so the memo key the route
+# asks for is the memo key the route gets.
+NAVIGATION_TALLY_LIMIT = 200
+
+# How many of the root's immediate children the shell inlines so the tree can
+# paint before its first fetch returns. A cap rather than the whole level
+# because this rides in the HTML: every byte is on the critical path for every
+# reader, including the ones whose root has ten thousand entries. Two hundred
+# rows is past any viewport at any sane row height, so the reader sees a full
+# screen either way and the rest arrives with the fetch a moment later.
+# Set to 0 to disable the inline entirely.
+_INLINE_INITIAL_TREE_ROWS = 200
+
 # Encoded rollup bodies keyed by their ETag. The validator alone only helps a
 # client that already holds the answer; a second tab opening the same folder,
 # or a reconnect, arrives without one and would otherwise re-aggregate and
@@ -952,6 +982,35 @@ async def index(_request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    # The tree's first rows, inlined. Without this the reader waits for a round
+    # trip the server did not have to make them take: time to first row is
+    # DOMContentLoaded plus the whole /api/tree request, and during a walk that
+    # request is the slow one (exp-003 made it faster for everyone except the
+    # first caller, whose cache is cold by construction). Depth 1 off the warm
+    # index is the root's immediate children and nothing else, so it is bounded
+    # by how wide the root is rather than by the tree.
+    #
+    # Only the unfiltered default view is inlined. A filter is client state the
+    # server has not been told about at this point, so inlining a filtered view
+    # would risk painting rows the reader's filter excludes; the fetch that
+    # follows owns every case but this one.
+    initial_tree_block = ""
+    if _INLINE_INITIAL_TREE_ROWS and inventory_has_data():
+        try:
+            initial_tree = _build_inventory_tree(
+                parent_rel="",
+                max_depth=1,
+                root_abs=_resolved_root_dir(),
+                max_entries=_INLINE_INITIAL_TREE_ROWS,
+            )
+        except Exception:
+            LOG.debug("initial tree inline failed", exc_info=True)
+            initial_tree = []
+        if initial_tree:
+            initial_tree_json = _json.dumps({"tree": initial_tree}).replace("<", "\\u003c")
+            initial_tree_block = (
+                f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
+            )
     repository_context_block = (
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
@@ -1230,6 +1289,7 @@ async def index(_request: Request) -> HTMLResponse:
   {perf_block}
   {settings_block}
   {repository_context_block}
+  {initial_tree_block}
   {asset_bundles_block}
   <script src="{asset_loader_url}"></script>
   <script src="{theme_state_url}"></script>
@@ -1403,9 +1463,17 @@ async def api_tree(request: Request) -> JSONResponse:
     index_entries: list[Any] | None = None
     index_revision = 0
     tally_cache_status = inventory_status()
-    if inv_can_serve and (tree_filter.active or not subpath):
+    if inv_can_serve and tree_filter.active:
+        # Only the filter path needs the entries here. The tally path used to
+        # share this snapshot, which meant every unfiltered root request paid a
+        # list copy of the whole index on the event loop -- 300,000 entries on
+        # the bench corpus -- before discovering its tallies were memoized.
+        # It now takes its own snapshot inside the thread, and only when it has
+        # to recompute.
         index_entries = inventory.entries(scope="all-known")
         index_revision = inventory.rollup_revision()
+        tally_cache_status = inventory_status()
+    elif inv_can_serve and not subpath:
         tally_cache_status = inventory_status()
 
     filtered = None
@@ -1468,21 +1536,60 @@ async def api_tree(request: Request) -> JSONResponse:
     # the event stream at the design-center index size for the same reason
     # api_catalog offloads its own pass.
     navigation_tallies = None
-    if inv_can_serve and not subpath and index_entries is not None:
-        tally_entries = index_entries
-        tally_revision = index_revision
-        navigation_tallies = await asyncio.to_thread(
-            lambda: inventory.navigation_tallies(
-                [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
-                [
-                    (window_key, seconds)
-                    for window_key, seconds in RECENT_WINDOW_SECONDS.items()
-                    if seconds is not None
-                ],
-                entries=tally_entries,
-                revision=tally_revision,
-            )
+    if inv_can_serve and not subpath:
+        tally_presets = [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
+        tally_windows = [
+            (window_key, seconds)
+            for window_key, seconds in RECENT_WINDOW_SECONDS.items()
+            if seconds is not None
+        ]
+        # Ask for a fresh-enough answer first. This is a tuple compare and a
+        # clock read, so it costs nothing when it misses -- and when it hits it
+        # skips both O(index) costs: the snapshot and the pass.
+        navigation_tallies = inventory.navigation_tallies_fresh_within(
+            tally_presets,
+            tally_windows,
+            NAVIGATION_TALLY_LIMIT,
+            min_stale_s=NAVIGATION_TALLY_MIN_STALE_S,
         )
+        # A request carrying rows never waits for the pass that produces these.
+        #
+        # The tallies cost one visit per entry in the index; the rows do not.
+        # Sharing one response made the reader wait for the expensive half to
+        # see the cheap one, and during a scan that was most of a second at
+        # 240,000 files -- 0.37 s at 60,000 indexed, 1.30 s at 220,000, growing
+        # as the walk proceeds. Worse, the wait is not just the reader's: that
+        # work competes with the walker, so watching a scan slowed it twelvefold
+        # (exp-005).
+        #
+        # ``depth=0`` is the client's tally channel and is allowed to pay. It
+        # carries no rows to delay, ``scheduleRootSummaryRefresh`` already
+        # fetches it behind the render, and every tally field in this payload is
+        # nullable and guarded field-by-field on the client, so a row request
+        # that arrives without them is a shape the browser already handles.
+        wants_tallies = remaining_depth == 0
+        if navigation_tallies is None and wants_tallies and index_entries is not None:
+            # A filter is active, so the snapshot already exists and both
+            # passes must describe the same index. Reuse it rather than
+            # copying the index a second time.
+            tally_entries = index_entries
+            tally_revision = index_revision
+            navigation_tallies = await asyncio.to_thread(
+                lambda: inventory.navigation_tallies(
+                    tally_presets,
+                    tally_windows,
+                    NAVIGATION_TALLY_LIMIT,
+                    entries=tally_entries,
+                    revision=tally_revision,
+                )
+            )
+        elif navigation_tallies is None and wants_tallies:
+            navigation_tallies = await asyncio.to_thread(
+                inventory.navigation_tallies_snapshotting,
+                tally_presets,
+                tally_windows,
+                NAVIGATION_TALLY_LIMIT,
+            )
     return JSONResponse(
         {
             "root": str(root_dir),

@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import re
 import shutil
@@ -273,6 +274,269 @@ class Server:
 
 
 # ── Phases ───────────────────────────────────────────────────
+
+
+# Shape parameters taken from two real working trees rather than invented.
+# Measured: median 2 files per directory in both, mean depth 9.5 and 12.8 with
+# maxima of 18 and 22, and 527 and 88 nested ``.gitignore`` files carrying 5,500
+# and 981 patterns. ``build_corpus`` above has 309 files per directory and no
+# ``.gitignore`` at all, which is why a whole class of cost -- everything paid
+# per directory, and everything paid per ignore pattern -- was invisible to it.
+# See explorations/performance-loop/experiments/exp-005.
+REALISTIC_MEDIAN_FILES_PER_DIR = 2
+REALISTIC_MAX_DEPTH = 18
+# One nested .gitignore per this many directories, each with this many patterns.
+# The real trees run about one per 420 directories at ten patterns apiece.
+REALISTIC_DIRS_PER_GITIGNORE = 400
+REALISTIC_PATTERNS_PER_GITIGNORE = 10
+# Fraction of files placed under a gitignored directory. Real trees are mostly
+# build output, virtualenvs, and caches; the tracked tree is the minority.
+REALISTIC_IGNORED_FRACTION = 0.55
+IGNORED_DIR_NAMES = ("node_modules", ".venv", "target", "dist", "__pycache__", "build")
+# How many ignored subtrees, and how deep each fans. Few and enormous, not many
+# and small -- that distinction turned out to decide whether pruning the
+# gitignore pre-walk is a win or a loss, and only the real trees showed it.
+# Measured there: one tree keeps 232,190 files under two `target` directories,
+# another 191,072 under seventeen `.venv` directories. A corpus that scatters
+# the same file count across hundreds of small ignored directories prunes
+# almost nothing and makes the pruning look like pure overhead.
+REALISTIC_IGNORED_SUBTREES = 8
+# Bodies are deliberately tiny. The walker stats files and never reads them, so
+# file size buys no fidelity for anything this plan measures -- and a corpus
+# with realistic bodies is tens of gigabytes, which is a real constraint on a
+# machine that also has to hold the tree being compared against.
+REALISTIC_BODY_BYTES = 64
+
+
+# How many copies of the sample project the corpus holds. Each contributes the
+# repository's own locked installs plus several copies of its own source, so a
+# count here is roughly 22,000 files.
+PROJECT_CORPUS_DEFAULT_PROJECTS = 10
+# Copies of the real source tree per project, so the tracked half is a few
+# thousand files rather than a few hundred -- the proportion a real repository
+# has once its dependencies are installed.
+PROJECT_CORPUS_SOURCE_COPIES = 4
+PROJECT_CORPUS_IGNORED = ("node_modules", ".venv", "dist", "target", "__pycache__", "build")
+
+
+def build_project_corpus(
+    root: Path, projects: int = PROJECT_CORPUS_DEFAULT_PROJECTS
+) -> dict[str, Any]:
+    """A corpus assembled from this repository's own locked installs.
+
+    The synthetic generators above approximate a real tree's shape from summary
+    statistics, and exp-006 is the record of that going wrong: a corpus can
+    match files-per-directory and depth and still be wrong about the structure
+    under test. This one does not approximate. It copies the actual
+    ``node_modules`` that ``package-lock.json`` produces, the actual ``.venv``
+    that ``uv.lock`` produces, and the repository's own Python, JavaScript, and
+    Markdown as the tracked half -- so the directory shapes, name lengths,
+    nesting, and file-size distribution are a real dependency tree's rather
+    than a guess at one.
+
+    Deterministic in the way that matters: the inputs are two committed
+    lockfiles and a git checkout, so the same commit and the same locks produce
+    the same tree. It needs no network, because ``make install`` has already
+    materialized both installs.
+
+    Copies use APFS clones where available, which makes ten copies of a
+    dependency tree cost almost no additional disk.
+    """
+    marker = root / ".bench-corpus.json"
+    shape_version = 1
+    if marker.is_file():
+        try:
+            existing: dict[str, Any] = json.loads(marker.read_text())
+        except (OSError, ValueError):
+            existing = {}
+        if existing.get("projects") == projects and existing.get("shape") == shape_version:
+            return existing
+
+    sources = {name: REPO / name for name in ("src", "tests", "docs")}
+    installs = {name: REPO / name for name in ("node_modules", ".venv")}
+    missing = [str(path) for path in (*sources.values(), *installs.values()) if not path.is_dir()]
+    if missing:
+        raise SystemExit(
+            "build_project_corpus needs the repository's own installs: run `make install` "
+            f"first (missing: {', '.join(missing)})"
+        )
+
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+
+    def copy_tree(src: Path, dst: Path) -> None:
+        # -c asks for an APFS clone: the copies share blocks, so the corpus
+        # costs about one dependency tree on disk rather than `projects` of
+        # them, while every file still stats and reads normally.
+        result = subprocess.run(
+            ["cp", "-c", "-R", str(src), str(dst)], check=False, capture_output=True
+        )
+        if result.returncode != 0:
+            shutil.copytree(src, dst, symlinks=True)
+
+    (root / ".gitignore").write_text(
+        "\n".join(f"{name}/" for name in PROJECT_CORPUS_IGNORED) + "\n*.pyc\n.DS_Store\n"
+    )
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    for index in range(projects):
+        project = root / f"project{index:02d}"
+        project.mkdir()
+        # Tracked: real code, several copies, so the tracked half has the
+        # thousands of files a working repository has.
+        for copy_index in range(PROJECT_CORPUS_SOURCE_COPIES):
+            for name, path in sources.items():
+                copy_tree(path, project / f"{name}{copy_index}")
+        # Nested .gitignore files, the way a real repository carries them. The
+        # locked installs bring few of their own, and how many exist decides
+        # how much a change to the pattern-loading path can matter -- the real
+        # trees carry 88 and 527. Placed deterministically by walking the
+        # tracked copies in sorted order so the same commit yields the same
+        # tree.
+        (project / ".gitignore").write_text("*.log\nbuild/\n.cache/\n")
+        tracked_dirs = sorted(
+            d for d in project.glob("src*/**/") if d.is_dir() and "__pycache__" not in d.parts
+        )
+        for position, directory in enumerate(tracked_dirs):
+            if position % 4 == 0:
+                (directory / ".gitignore").write_text(
+                    "*.tmp\n*.bak\n*.orig\nbuild/\ndist/\n*.log\n.cache/\n*.pyc\ncoverage/\n*.swp\n"
+                )
+        # Ignored: the actual locked installs.
+        for name, path in installs.items():
+            copy_tree(path, project / name)
+
+    files = dirs = 0
+    for _, dirnames, filenames in os.walk(root):
+        dirs += len(dirnames)
+        files += len(filenames)
+    info: dict[str, Any] = {
+        "projects": projects,
+        "shape": shape_version,
+        "files": files,
+        "dirs": dirs,
+        "path": str(root),
+    }
+    marker.write_text(json.dumps(info))
+    return info
+
+
+def build_realistic_corpus(root: Path, target_files: int) -> dict[str, Any]:
+    """A synthetic tree shaped like a real working tree, built the same way twice.
+
+    ``build_corpus`` is wide and shallow with no ignore rules, which makes it a
+    poor stand-in for the thing this project is for. Every per-directory cost is
+    amortized across 309 files there and across 2 in practice, and the cost of
+    loading nested ``.gitignore`` files does not exist there at all.
+
+    Deterministic: same *target_files* in, same tree out, so two runs on it are
+    comparable. A marker records the size and the shape version, and a shape
+    change bumps the version so a stale tree is rebuilt rather than silently
+    compared against a differently shaped one.
+    """
+    shape_version = 1
+    marker = root / ".bench-corpus.json"
+    if marker.is_file():
+        try:
+            existing: dict[str, Any] = json.loads(marker.read_text())
+        except (OSError, ValueError):
+            existing = {}
+        if existing.get("files") == target_files and existing.get("shape") == shape_version:
+            return existing
+
+    if root.exists():
+        shutil.rmtree(root)
+    rng = random.Random(20260822)
+
+    made = 0
+    dirs_made = 0
+    gitignores = 0
+    ignored_files = 0
+    ignored_budget = int(target_files * REALISTIC_IGNORED_FRACTION)
+
+    def populate(directory: Path, depth: int, under_ignored: bool) -> None:
+        nonlocal made, dirs_made, gitignores, ignored_files
+        if made >= target_files:
+            return
+        directory.mkdir(parents=True, exist_ok=True)
+        dirs_made += 1
+
+        # A nested .gitignore every so often, naming the directories this level
+        # actually contains, so the patterns match something.
+        if dirs_made % REALISTIC_DIRS_PER_GITIGNORE == 0:
+            lines = [
+                f"*.{rng.choice(('tmp', 'log', 'cache', 'bak'))}"
+                for _ in range(REALISTIC_PATTERNS_PER_GITIGNORE - 2)
+            ]
+            lines += ["build/", "*.pyc"]
+            (directory / ".gitignore").write_text("\n".join(lines) + "\n")
+            gitignores += 1
+
+        # Median two, mean near three, p90 near seven -- the distribution both
+        # real trees showed. The tail matters (some directories are full) but a
+        # long one pulls the mean away from what a real tree does.
+        count = 2 if rng.random() < 0.45 else rng.choice((0, 1, 1, 3, 4, 6, 9, 16))
+        for index in range(count):
+            if made >= target_files:
+                return
+            path = directory / f"file{index:03d}{rng.choice(CORPUS_EXTS)}"
+            path.write_bytes(b"x" * REALISTIC_BODY_BYTES)
+            made += 1
+            if under_ignored:
+                ignored_files += 1
+
+        # Stop stochastically as well as at the cap: a real tree's depth has a
+        # mean around 10 with a max near 20, which a hard cap alone cannot
+        # produce -- every branch would bottom out at the same level.
+        # Stop stochastically as well as at the cap, with the chance rising as
+        # it gets deeper: a real tree's depth has a mean around ten under a max
+        # near twenty, which a hard cap alone cannot produce -- every branch
+        # would bottom out at the same level.
+        if depth >= REALISTIC_MAX_DEPTH or (depth >= 3 and rng.random() < 0.06 * depth):
+            return
+        # Branch narrowly, which is what produces depth 10-20 at a realistic
+        # file count instead of a wide shallow fan.
+        # Wider near the top, narrow further down. That is what puts most
+        # directories at a middling depth rather than in one long spine.
+        fanout = rng.choice((2, 3, 4)) if depth <= 3 else rng.choice((1, 2, 2, 3))
+        for child in range(fanout):
+            if made >= target_files:
+                return
+            populate(directory / f"pkg{child:02d}", depth + 1, under_ignored)
+
+    root.mkdir(parents=True, exist_ok=True)
+    (root / ".gitignore").write_text(
+        "\n".join(f"{name}/" for name in IGNORED_DIR_NAMES) + "\n*.pyc\n.DS_Store\n"
+    )
+    # A git root, so the gitignore machinery engages the way it does in practice.
+    (root / ".git").mkdir(exist_ok=True)
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    # The ignored bulk first: a handful of subtrees holding most of the files,
+    # which is what a vendored or built directory looks like and what makes
+    # pruning worth anything.
+    per_subtree = ignored_budget // REALISTIC_IGNORED_SUBTREES
+    for index in range(REALISTIC_IGNORED_SUBTREES):
+        name = IGNORED_DIR_NAMES[index % len(IGNORED_DIR_NAMES)]
+        holder = root / f"component{index:02d}"
+        holder.mkdir(parents=True, exist_ok=True)
+        target_here = made + per_subtree
+        while made < target_here and made < target_files:
+            populate(holder / name, 1, True)
+    while made < target_files:
+        populate(root / f"top{dirs_made:04d}", 1, False)
+
+    info: dict[str, Any] = {
+        "files": target_files,
+        "shape": shape_version,
+        "dirs": dirs_made,
+        "gitignores": gitignores,
+        "ignored_files": ignored_files,
+        "path": str(root),
+    }
+    marker.write_text(json.dumps(info))
+    return info
 
 
 def phase_cold_scan(root: Path, log_dir: Path) -> dict[str, Any]:

@@ -949,7 +949,10 @@ def test_load_tree_renders_truncation_banner_when_status_truncated() -> None:
 
     js = _read_app_js()
     fn_start = js.index("async function loadTree()")
-    fn_block = js[fn_start : fn_start + 5000]
+    # To the end of the function rather than a fixed window: a hand-tuned
+    # character count silently stops covering the branch it was written for the
+    # first time anything above it grows.
+    fn_block = js[fn_start : js.index("\n}\n", fn_start)]
     assert 'data.tally_cache_status === "truncated"' in fn_block
     assert "treeTruncationNoteHtml(data.tally_cache_max_files)" in fn_block
     assert "tree-truncation-note" in js

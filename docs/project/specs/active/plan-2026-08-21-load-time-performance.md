@@ -69,6 +69,18 @@ They exist so a later change has something to fail against.
 
 ## Background
 
+> **Superseded — read the [hypothesis registry](#hypotheses) and
+> [the ledger](../../../../explorations/performance-loop/report.md) first.** Every
+> number in this section was taken by hand against a corpus that was not `build_corpus`
+> and no longer exists, before the exploration loop existed.
+> Two of them did not survive re-measurement: the headline 4,525 ms first row (H6, not
+> reproduced — the same measure is 854 ms on `build_corpus` at the same file count) and
+> the 4.5 MB `/api/catalog` (H4, 62 bytes here, because the catalog fills from
+> recognized file kinds and this corpus has none).
+> The section is kept because its *shape* — that the browser has data long before it
+> shows rows — is what motivated the work, and because a superseded measurement deleted
+> is a measurement someone takes again.
+
 All numbers below were taken on this machine against synthetic corpora of a realistic
 shape (nested package directories, mixed extensions, small file bodies), Chromium 141
 via Playwright build 1194, medians of repeated cold runs.
@@ -241,31 +253,52 @@ observable, so it lands in `CHANGELOG.md` and in
 
 ## Implementation Plan
 
-### Ordering: Cost, Effort, and What Blocks What
+### Ordering: What to Work Next
 
-The phases below are grouped by layer because that is how the code is organized.
-The order to *work* them is by measured cost over effort, and the two are not the same.
-Read this table first.
+This order is derived from what the loop has measured, and it changes as rounds land.
+The [hypothesis registry](#hypotheses) is the live source for status; this is the
+reading of it, **reordered after exp-005 measured a real tree and did not confirm the
+previous order**.
 
-| Item | Wins | Effort | Order |
-| --- | --- | --- | --- |
-| Chart.js to on demand | 297,531 B and ~374 ms of `load`, every document | Small: one consumer, an existing `typeof Chart` guard, no protocol | **done** |
-| Rows from partial index state | 4.2 s at 100k, 22 s at 1M | Medium: the data already arrives at 319 ms; the gate is in the client | **2** |
-| `/api/catalog` to on demand | 4,580,060 B off the critical path at 100k | Medium, not small: `pendingChanges` in `catalog_feed.js` is unbounded, so a deferred first fetch needs a buffering policy, not a moved call | **3** |
-| Row windowing | 276,789 DOM nodes at 1M | Medium: a rendering change with a find-in-page trade to measure | 4 |
-| highlight.js and Mustache to prefetch | ~135,000 B off the eager chain | Small, but the win is small too | 5 |
-| Whole-tree `/api/tree` cost | 4,990 ms and 3.68 MB at 1M | Large: a response-shape question | 6 |
-| Startup that scales with the tree | 1.8 s at 1M | Unknown until attributed | 7 |
-| `INVENTORY_MAX_FILES` | Correctness, not speed | Large: needs the walk work first | 8 |
+On a 241,000-file working tree the reader waits about twenty seconds before any row can
+exist, then four minutes for a tree that takes twenty-one seconds to walk unattended.
+None of that is first paint, asset payload, or render cost — the three things the first
+four rounds worked on.
 
-The page-load harness is not on that list because it is not a win.
-It is what makes every row of it checkable, so it comes before all of them.
+| # | Next | Why here |
+| --- | --- | --- |
+| ~~1~~ | ~~**H30** — the gitignore build~~ | **Done** (exp-006): 21.4 s to 2.5 s on the real tree, no verdict changed. What remains of the pre-walk is a second traversal that still visits every tracked directory; folding it into the indexing walk is a larger change nobody has needed yet |
+| ~~2~~ | ~~**H27** — rows respond without the tally pass~~ | **Done** (exp-007): 311 ms to 2 ms, and the attached walk fell 29% as a side effect |
+| 1 | **H31 remainder** — re-measure the loop (`mb-jalf`) | exp-007 took the attached walk from 70.2 s to 50.0 s. Unattached it is 21 s, so amplification is now roughly 2.4x rather than 12x. Measure with a real browser, which is heavier than the probe, before deciding whether serving needs an explicit CPU bound during a scan |
+| 4 | **H32** — inline without a warm index (`mb-vih2`) | Cheap, and it makes exp-004’s win unconditional. Ordered after H30, which may remove the empty-index window that causes it |
+| 5 | **H21** — persist the index (`mb-omhf`) | A 44 s cold open repeated every session is exactly the case persistence exists for. Larger than everything above it and worth doing once they are done |
+| 6 | **H28** — build the tree from the SSE stream (`mb-ap6p`) | The streamed-delivery centerpiece. Still right, but on a real tree the reader’s problem is that rows do not *exist* yet, not that they are delivered in snapshots |
+| 7 | **H18 → H22** — profile the walk, then batch it (`mb-nbc6`, `mb-tip8`) | Demoted by measurement: the clean walk is 21 s at 104 µs per directory. Worth attributing, but it is not what makes this tree slow |
+| 8 | **H26 + H29** — one remote round (`mb-f591`, `mb-pk2l`) | Unchanged: costs localhost hides. Measure the stake before choosing a fix |
 
-Two orderings are load-bearing and should not be rearranged for convenience.
-Rows-from-partial-state comes before any server work, because a client that waits for
-the scan makes every server cost look like scan cost.
-And the walk attribution comes before the file cap, because a cap is a claim about cost
-and there is no measurement of that cost yet.
+Two orderings are load-bearing.
+Attribution comes before the walker change (7), because a structural rewrite without a
+profile is a guess; and the walk attribution comes before the file cap (H15), because a
+cap is a claim about cost and there is no measurement of that cost yet.
+
+### Considered and Deliberately Not Registered
+
+A registry that only ever grows is a backlog, not a map.
+These were examined during the exp-004 review and left out on purpose, so the next
+reader spends their attention elsewhere rather than re-deriving them:
+
+- **Streaming file and document previews.** The text path is already a bounded envelope
+  with an explicit continuation (`fetchCompleteText`, `renderTextLoadMoreFooter`,
+  `source_append.js`). The waiting-for-complete problem this plan is about does not
+  appear there.
+- **Chunked-encoding the `/api/tree` body as NDJSON.** It attacks the same wait H27
+  removes, for a protocol change, a streaming JSON parser on the client, and an
+  interaction with the gzip middleware.
+  If H27 lands and a wait remains, revisit; reaching for it first would be solving the
+  harder half of the same problem.
+- **HTTP/2 or connection-count work for the eager asset chain.** H26 has to price the
+  stake first. On localhost the ~110 requests cost little, and a fix chosen before the
+  measurement is a fix chosen for a number nobody has.
 
 ### Phase 1: The Harness and the Front-End Payload
 
@@ -301,13 +334,20 @@ and there is no measurement of that cost yet.
 
 - [ ] Render nav rows from partial index state as it arrives, instead of gating on scan
   completion; the first `/api/tree` already answers in under 10 ms at every corpus size
+- [x] Inline the root’s depth-1 rows into the shell so the first paint does not wait for
+  a fetch: 1,604 ms to 242 ms at 300,000 files —
+  [exp-004](../../../../explorations/performance-loop/experiments/exp-004-the-shell-carries-the-first-rows.md)
 - [ ] Show scan progress in place rather than as an empty tree, so an incomplete tree
   reads as incomplete — [degrade visibly](../../../large-content-rendering.md)
 - [ ] Window the rendered rows so the count follows the viewport, keeping find-in-page
   and selection working or recording what is traded
 - [ ] Move `/api/catalog` to the on-demand tier, fetched when the finder first opens
-- [ ] Collapse the per-folder `/api/tree?path=…&depth=2` burst into what the viewport
-  needs
+- [x] Collapse the per-folder `/api/tree?path=…&depth=2` burst into what the viewport
+  needs. Candidates are now the lazy stubs whose folder row is on screen plus one screen
+  of lookahead, and the sweep re-arms on scroll and on folder expansion.
+  Measured at 300,000 files, 1280x900, median of three cold loads: 32 subtree requests
+  and 1,566 KB to 0 and 517 KB. Time to first row did not measurably change —
+  [exp-002](../../../../explorations/performance-loop/experiments/exp-002-subtree-prefetch-bounded-to-the-viewport.md)
 - [ ] Re-measure at all three corpus sizes and record the comparison
 
 ### Phase 3: The Server and the CLI
@@ -324,23 +364,93 @@ and there is no measurement of that cost yet.
 
 ## Hypotheses
 
-Each round of [the exploration loop](../../../../explorations/README.md) tests one of
+The loop that resolves these lives in
+[explorations/performance-loop/](../../../../explorations/performance-loop/README.md):
+its README is the runbook, `explorations/performance-loop/run.py report` regenerates
+[the ledger](../../../../explorations/performance-loop/report.md), and every resolved
+row below links the artifact that resolved it.
+
+Each round of
+[the exploration loop](../../../../explorations/performance-loop/README.md) tests one of
 these, and each is stated so it can be wrong, with the metric that would show it.
 Status is updated as experiments resolve them; the write-ups are in
-[explorations/experiments/](../../../../explorations/experiments/).
+[explorations/performance-loop/experiments/](../../../../explorations/performance-loop/experiments/).
 
 Numbering is shared across this plan; a new hypothesis takes the next free number so no
 id ever means two things.
 
+One theme runs through the highest-leverage open rows and deserves naming: **nothing
+should wait for “complete” when it can paint from “so far.”** exp-004 proved the shape —
+rows inlined at page-render time made first paint independent of the slowest request —
+and H27, H28, and H21 are the same move applied to the tally payload, the scan stream,
+and process restarts respectively.
+
+Three of these are standing design decisions rather than tuning targets, and they are
+the rows most likely to move whole columns of the measurement tables: the walker applies
+every entry, one at a time, on the same event loop that serves requests (H22, with H23
+as its cheapest consequence); nothing survives a restart, so every open of a large tree
+pays the full walk again (H21); and the first paint waits for a fetch whose payload the
+server could have inlined (H20).
+
 | # | Hypothesis | Metric that would show it | Status |
 | --- | --- | --- | --- |
 | H1 | The prefetched libraries start on `DOMContentLoaded`, which is the same window as the first `/api/tree` fetch and the tree render, so they compete with the tree and hold the `load` event open behind them. Starting them on the first idle callback removes both. | `load_ms` down; `first_row_ms` down | **Half confirmed** (exp-001). `load_ms` 3,883 ms to 750 ms on ranges that do not overlap. `first_row_ms` did not move: 854 ms against 999 ms on ranges that overlap almost completely. Accepted on the tier policy and `load`, not on the row |
-| H2 | The idle sweep that warms collapsed folders is not viewport-bounded and re-arms on every index refresh, so on a wide tree it requests folders the reader cannot see, for as long as the scan runs. Bounding it to the viewport ends the tail. | `last_resource_ms` and `subtree_requests` down sharply; `first_row_ms` unchanged or down | **Open** (`mb-hv8x`). Observed at 121 stubs with zero folders expanded, still requesting at t+28.7 s |
-| H3 | That sweep issues one request per ~800 ms, which does not follow from `SUBTREE_PREFETCH_MAX_CONCURRENT = 3` over a 32-path sweep. Something serializes it, and the policy should not be changed before that is known. | A counted sweep: paths per sweep and sweeps per second | **Partly answered.** Against a *settled* index the sweep behaves as written: 32 paths in one go, done at 2.2 s. The one-per-800-ms trickle happens only while the walk is running, so whatever serializes it is scan state, not the sweep’s own concurrency. What remains is which part of scan state does it |
-| H4 | `/api/catalog` is 4.5 MB at 100,000 files and nothing reads it until the finder opens, so it competes for connections and main thread during the first seconds. Moving it to the on-demand tier frees that window. | `first_row_ms` down; `transferred_kb` down | **Open** (`mb-296z`). Not the quick win it first looked: `pendingChanges` in `catalog_feed.js` is unbounded, so a deferred first fetch needs a buffering policy |
+| H2 | The idle sweep that warms collapsed folders is not viewport-bounded and re-arms on every index refresh, so on a wide tree it requests folders the reader cannot see, for as long as the scan runs. Bounding it to the viewport ends the tail. | `last_resource_ms` and `subtree_requests` down sharply; `first_row_ms` unchanged or down | **Confirmed** (exp-002). 32 requests and 1,566 KB to 0 and 517 KB per cold load at 300,000 files, on ranges that do not overlap. Expanding a folder still warms exactly its newly visible children, and the click after that costs no fetch and paints in 93 ms. Time to first row did not measurably change and is not claimed |
+| H3 | That sweep issues one request per ~800 ms, which does not follow from `SUBTREE_PREFETCH_MAX_CONCURRENT = 3` over a 32-path sweep. Something serializes it, and the policy should not be changed before that is known. | A counted sweep: paths per sweep and sweeps per second | **Unresolved** (exp-002), and the bound landed without it because H2 does not depend on it. Instrumented, the sweep does what it says: one sweep, 32 paths, all issued inside 545-690 ms — against a settled index, against a scan with 12.9 s left, and on both sides of the prefetch-tier change. The trickle was recorded when the corpus had not been served for a while and its walk took ~29 s against 2.7 s warm, so reproducing it needs a cold page cache, which needs root on macOS |
+| H4 | `/api/catalog` is 4.5 MB at 100,000 files and nothing reads it until the finder opens, so it competes for connections and main thread during the first seconds. Moving it to the on-demand tier frees that window. | `first_row_ms` down; `transferred_kb` down | **Untestable as stated** on this corpus. `/api/catalog` is 62 bytes at 300,000 `build_corpus` files, not 4.5 MB — the catalog fills from recognized file kinds, and a synthetic tree of stub `.py`/`.ts`/`.png` files produces almost none. A real repository corpus has to reproduce the size before the tier change can be measured at all. The known trap stands: `pendingChanges` in `catalog_feed.js` is unbounded, so a deferred first fetch needs a buffering policy (`mb-296z`) |
 | H5 | The root `/api/tree` answers in single-digit milliseconds when idle but took 620-721 ms while the walk was running, and it is the largest single component of time to first row. The cost is contention with the walker, not response size. | `load_tree_ms` down with server-side attribution | **Open**. Phase 3, and blocked behind H2 for the reason the ordering table gives |
 | H6 | Nav rows are gated on scan completion, so the first row waits seconds for data the browser already has. | `first_row_ms` down several-fold | **Not reproduced** as stated. On `build_corpus` at 100,000 files the first row lands at a median of 854 ms, not the 4,525 ms this plan’s Background reports from a different corpus. `renderFilesFromTree` runs as soon as `/api/tree` resolves, so the gate is that request rather than scan completion. `mb-op70` should be re-scoped to H5 unless a corpus reproduces the original number |
 | H7 | The tree renders every row it knows about, so DOM node count follows the corpus rather than the viewport. | `dom_nodes` bounded as corpus grows | **Open** (`mb-z7zb`). 3,735 nodes at 100,000 files on `build_corpus`, well under the ceiling — the shape that produced 276,789 nodes needs a wider corpus to reproduce |
+
+### The Backlog
+
+Nine more, from measuring the first two rounds rather than from reading the code.
+Ordered by the evidence behind them, not by where they sit in the stack.
+
+| # | Hypothesis | Metric that would show it | Status |
+| --- | --- | --- | --- |
+| H8 | During a scan, every root `/api/tree` pays a full navigation-tally pass. Measured: 1,567 ms scanning against 15 ms settled for the same 7,537-byte answer, and `?depth=1` (987 bytes) costs the same — so it is not payload, depth, or aggregation. The mechanism is in the code: `navigation_tallies` memoizes on the index revision (`inventory.py`), the walker moves that revision with every write, so while scanning the memo can never hit and each root request redoes the O(index) pass (~486 ms/100k per its own comment, plus an `entries()` snapshot copy per request). Serving slightly stale tallies during a scan — recompute at most every N ms, or only when files-indexed has moved by a threshold — removes ~85% of time to first row in that regime. | `load_tree_ms` and `tree_reprobe_ms` while `index_status_at_probe` is `scanning`; floor 15 ms | **Partly resolved** (exp-003). H23 was the mechanism and it landed: root `/api/tree` fell from 650 ms to 394 ms scanning and 12 ms to 6 ms settled. What the split never described, and what exp-003 makes explicit, is the *first* request of a page load — its memo is cold by construction, so `load_tree_ms` did not move. That is H20’s job, not this one. What is left for H8 itself is the GIL share taken by per-entry stores (H22) |
+| H9 | The shell fetches **74 separate JavaScript files** on every load — 33 from `static/`, 41 from built-in plugins — over HTTP/1.1, so they queue six at a time, and `app.js` cannot ask for the tree until its own chain has run. | Shell boot, as `first_row_ms` minus `load_tree_ms`; about 180 ms today | Open. Small next to H8, and it is the part a bundler would fix, which this project has decided against — so the question is whether the count can drop instead. H26 reframes the stake: localhost hides a per-request cost that `--remote` pays in RTTs |
+| H10 | Twelve render-blocking stylesheets, eight of them per-plugin, sit between the HTML and first paint. | First contentful paint | **Open.** Was blocked — paint entries return `[]` in a pane created hidden — but a recreated, fronted pane reports them, and the probe now records `fcp_ms` (null where unsupported, never 0). Needs runs where the pane is visible from the first navigation |
+| H11 | The tree re-render replaces the whole `#tab-files` panel with `innerHTML` rather than patching it, so every refresh rebuilds every row. | A long-task measure around `renderTreeNodes:root`; 52 ms at 334 rows today | Open. Cheap at this corpus, and it is the same code row windowing (H7) has to change anyway |
+| H12 | `/api/recent` is 68,748 bytes and 86 ms settled, and a recency filter puts it on the load path. | `first_row_ms` with a recency filter active | Open, low. Nothing measures the filtered load path yet |
+| H13 | The walk runs at about **43 µs per file** — 300,000 files in 12,871 ms — and nobody has attributed that number. | Walk elapsed per file, by layer | Open (`mb-kp6c`). Attribution before any change: a cap is a claim about cost |
+| H14 | Start-to-serving scales with the tree rather than with the code. | CLI start to first served request, across corpus sizes | Open (`mb-kp6c`). Ordered after H8, because a client that waits 1.5 s on a lock makes every server cost look like scan cost |
+| H15 | `INVENTORY_MAX_FILES = 500_000` truncates a larger tree and says so only in a banner. | Correctness, not speed | Open (`mb-s5p6`). Needs H13 first: replacing a cap means knowing what the cap was buying |
+| H16 | Time to first row on a real repository does not behave like time to first row on `build_corpus`, whose 972 directories are uniformly wide and whose files are stubs. | Every metric, against a checked-out repository of comparable size | **Confirmed, and worse than stated** (exp-005). A real tree has 2.4 files per directory against `build_corpus`’s 309 — a 128× difference in how often every per-directory cost is paid, invisible to every measurement before it. It surfaced H30, H31, and H32, and it showed exp-004’s headline result to be conditional on a warm index |
+| H17 | Importing `metabrowser.server` costs 390-770 ms before any walk — `python -X importtime`: kpress ~74 ms, `plugin_loader.manifest` + pydantic model construction ~60 ms, `plugin_api` ~45 ms, `classify` ~57 ms, `inventory` ~38 ms, `activity` ~30 ms — and `discover_plugins` runs at module scope (`server.py`), so manifest validation is paid at import. Deferring plugin discovery and the kpress import off the serving path cuts CLI start-to-serving by most of its fixed half. | `importtime` totals, and `bench_serving.py` start-to-serving | Open (`mb-kp6c` carries the attribution). The plan’s earlier “113 ms module import” undercounts on this machine by 3-6x |
+| H18 | The walk costs ~43 µs/file (300,000 files in 12,871 ms warm), and the structure says where: one `to_thread` per directory is cheap (972 hops), but every entry is yielded one at a time through an async generator onto the event loop, and each write updates the index and moves the rollup revision. Batching emission per directory — one loop hop per directory instead of per file — cuts walk elapsed materially, and also slows the revision churn that H8 depends on. | `inventory walker complete: elapsed=` in the server log, same corpus warm | Open (`mb-nbc6`). Attribution first (profile one walk), then the batch change as its own experiment. The structure, from reading walker.py and inventory.py: one async-generator yield per entry (300,000 loop iterations per scan), one `_store_walker_entry` per entry on the serving event loop with an O(depth) ancestor-aggregate update per file, `dataclasses.replace` copies at finalize, and one `to_thread` hop per directory. H22 is the batch-everything experiment this predicts |
+| H19 | `/api/events` blocked 3,669 ms in the original waterfall before any row appeared. Never re-observed under the fixed harness, and the original was taken in the same degenerate pane as H6, so it may be an artifact. | The events stream’s time-to-first-message during a scan, from the resource timing of the EventSource | Open (`mb-fhfh`), needs reproduction before any change |
+| H20 | The first tree paint waits for a round trip it does not need. `first_row_ms` is `DOMContentLoaded` (~180 ms) plus `loadTree` (850–1,500+ ms during a scan), yet the index handler could embed the root’s depth-1 entries as inline JSON — from the warm index, or from one synchronous `scandir` of the root, which is single-digit milliseconds — and let the client render rows at DCL and reconcile when `/api/tree` lands. The shell already server-renders the Files panel chrome for exactly this reason; the first data should ride the same vehicle. | `first_row_ms` ≈ FCP + render at every corpus size and in both scan regimes | **Confirmed** (exp-004). 1,604 ms to 242 ms at 300,000 files, non-overlapping, and `first_row_ms` now tracks `dcl_ms` almost exactly — the tree is usable at DOMContentLoaded rather than one slow round trip later. Main-thread blocking fell with it, 268 ms to 65 ms. Cost: 34 KB, being the inline payload plus the thirteen now-visible folders exp-002’s sweep correctly warms. Inline only the unfiltered default view, so filter state cannot diverge |
+| H21 | The “no persisted index” non-goal is priced wrong for a *browsing* tool, whose common case is reopening the same tree. Persist the index at walk end and load it on start, serving stale-labeled data instantly while a revalidation walk runs — the UX contract for staleness already exists (`tally_cache_status=scanning`), and fdu proved the snapshot-plus-revalidate pattern on the same machine. The plan deferred this “until the progressive path exists”; it now exists. | Start-to-usable-tree on a revisit of a 1M-file tree: seconds to sub-second. Cold first visit unchanged | Open, large (`mb-omhf`). The biggest single lever at large N. Needs an invalidation story (mtime-revalidate per directory, walk in background) and a format decision measured for load cost |
+| H22 | The walk’s ~43 µs/file is mostly per-entry Python by construction, not filesystem cost: every entry crosses an async-generator boundary one at a time, is stored by a per-entry call on the serving event loop, and updates ancestor aggregates O(depth) per *file* — while the walker already computes per-directory aggregates at finalize, so the per-file propagation is double bookkeeping. Batching the pipeline per directory (yield lists, store lists, one ancestor update per directory) removes ~300,000 loop iterations and most per-entry overhead per scan. | Walk elapsed down 2×+ at 300k; event-loop availability during scan up (measured as during-scan `/api/tree` latency with H23 already in place) | Open (`mb-tip8`). Do H18’s profile first so the before is attributed, then land as one structural experiment |
+| H23 | During a scan, every root `/api/tree` recomputes navigation tallies over the whole index because the memo keys on `rollup_revision()`, which advances on every write — at 256-entry batches and ~23k entries/s that is ~90 revisions/s, so the memo cannot hit until the walk ends. The docstring itself prices the pass at ~2 s at 400k entries. Serve tallies at bounded staleness during a scan: recompute at most once per window, single-flight, reuse between. The payload already labels them provisional. | Root `/api/tree` during a scan: 837–1,567 ms → near-settled (~15–50 ms); `first_row_ms` during scan drops by most of a second | **Confirmed** (exp-003), and it found a second O(N) cost the hypothesis missed: the route copied every index entry on the *event loop* before the pass it fed even started. Bound is `max(0.5 s, last pass cost)` — derived rather than constant, because the pass visits every entry and a constant right at 10,000 files starves the loop at a million. A fixed 0.5 s reached only 518 ms (the nav polls at 1 s, so a shorter bound can never be hit by a poller); request-triggered background warming was measured and rejected |
+| H24 | The client runs two progress channels at once through the scan — the 1 s `/api/index/progress` poll *and* the SSE stream that already pushes completion — and each poll can trigger a depth-0 tree refetch and a full re-render (H11), all landing in the window where the server is busiest. Consolidate progress onto the stream it already holds, keep the poll as a fallback only. | Requests issued during a 13 s scan; `renderTreeNodes:root` span count during scan | Open (`mb-n352`). Pairs with H11; the two together decide how often the tree redraws while scanning |
+| H25 | `/api/tree` re-serializes and re-gzips an unchanged answer for every poller and every tab; `/api/rollup` already keeps an encoded-body cache keyed by ETag for exactly this. Give the tree route the same (revision, params)-keyed body cache and validator. | Settled root `/api/tree`: ~15 ms → ~1 ms; multi-tab during scan shares one encode | Open, small and mechanical (`mb-43v7`) — worth batching with H23 since both touch the same handler |
+| H26 | The eager request count is priced at localhost, where ~110 requests over six HTTP/1.1 connections cost little; `metab --remote` tunnels the same page over SSH, where ~19 serial connection-rounds × RTT land before the first API call — at 50 ms RTT, roughly a second of shell alone. One measured `--remote` (or throttled) load would set the real stake for H9/H10, and a server-side concat of the eager `static/*.js` in tag order — no bundler, tier policy intact — is the count fix if it matters. | Shell-ready time over a ≥50 ms RTT link, before vs after count reduction | Open (`mb-f591`). Measure the stake first; the fix is only worth its complexity if the remote number says so |
+| H27 | Even with the staleness bound, the *first* root request during a scan pays the cold tally pass — `load_tree_ms` stayed near a second in exp-003/004 while the repeat-request cost fell to 394 ms — because the response couples cheap rows to an O(index) computation in one JSON body. Decouple them: the tree responds with rows immediately and the tallies arrive separately (a second cheap request, or the stream). `updateFilterTallies` already guards every field, so a payload without tallies is tolerated today. | `load_tree_ms` during a scan → tens of ms; filter counts fill in behind it | **Confirmed** (exp-007). A row request now serves tallies only from a fresh memo; `depth=0` is the channel that computes them, fetched behind the render by the `scheduleRootSummaryRefresh` that already existed. 311 ms to 2 ms on the official corpus, 777 ms to 6 ms and 67 ms to 1 ms on the two real trees, all non-overlapping. Nothing was made faster — the expensive work was moved off the path that did not need it |
+| H28 | The tree is delivered as snapshots the client re-fetches on a poll, then re-renders wholesale — while the walker already publishes `fs.change` ops on the SSE stream the page holds open, scoped to `root-depth-2`, which is exactly the rows the nav renders. Build the tree progressively from the stream: insert rows as they are discovered, and drop the poll-triggered refetch loop. Absorbs the H11 (patch-not-replace) and H24 (two progress channels) directions into the change that makes both moot. | `renderTreeNodes:root` span count during a scan → per-batch bounded inserts; snapshot refetches during a scan → 0; on a large tree the nav visibly fills in live | Open, large (`mb-ap6p`). The full streamed-delivery design revisit; do after H27 proves the decoupling on the simpler payload |
+| H29 | The shell blocks its first byte on `discover_repository_context` (a filesystem walk up plus config parse, off-thread but serial) and then ships as one buffered response — so the browser cannot start fetching CSS or JS until Python has finished building the whole page. Flush the head early and move repository context out of the pre-first-byte path. | Time from request to first stylesheet fetch; shell-ready over a ≥50 ms RTT link | Open (`mb-pk2l`). Pair with H26’s remote measurement — on localhost the whole shell is ~200 ms and the win may be invisible |
+| H30 | `build_gitignore_check` costs 19.4-23.3 s on a real 241,000-file tree, before the walk starts and therefore before any row can exist — larger than the 21.0 s walk it precedes. Nothing in this plan accounted for it, and no browser metric shows it: the page loads fine with nothing to put in it. | Time from process start to the first entry existing | **Confirmed** (exp-006). `load_gitignore` did a second full `os.walk` of the tree before the indexing one, pruning nothing. Pruning ignored subtrees and hidden directories -- both semantics, not shortcuts, since git does not read a `.gitignore` inside an ignored directory either -- took it from 21.4 s to 2.5 s on the tree that motivated it and 0.75 s to zero on the second, with compiled patterns 10,668 to 327. No verdict changed on 341,872 visible paths |
+| H31 | Watching a scan makes it twelve times slower. Measured warm on a real tree: 21.0 s unattached against 258.3 s with one client polling every 2 s. Each nav request costs a tally pass that grows with the index (0.75 s at 120,000 entries, 1.5 s at 241,000), that work competes with the walker for the GIL, the walk slows, the window lengthens, and more polls land inside it — each more expensive than the last. A real browser is a heavier client than the probe. | `walk_elapsed_ms` attached against unattached | **Partly resolved** (exp-007), from the other end than expected. Removing the per-request tally cost cut the attached walk on the real tree from 70.2 s to 50.0 s without touching the walker: the requests were not only slow, they were taking CPU the walk wanted. With exp-006 the attached walk is 258 s to 50 s. What remains is whether a real browser — heavier than the probe — still amplifies |
+| H32 | exp-004’s inline fires only when `inventory_has_data()`, and on a first open of a real tree the index is empty at page-render time — behind H30’s twenty seconds. The probe recorded `inline_rows: null`. So a result measured as 1,604 ms to 242 ms is conditional on a warm index: it helps a second load and not a first open, which is the case it was built for. | `inline_rows` non-null, and `first_row_ms`, on a *first* open of a real tree | Open (`mb-vih2`). One synchronous `scandir` of the root is ~37 µs measured, so the fallback is cheap; the question is whether it is correct while the index is still empty |
+| H33 | Ignored subtrees are usually the bulk of a real tree and the least interesting: one keeps 232,190 files under two `target` directories. Crawling everything but ordering the frontier so tracked entries are discovered and published first would give a reader a usable tree in a fraction of the total scan. Flags still control what is revealed; only the order changes. | Time until all *tracked* entries are indexed, against total walk; `first_row_ms` unchanged or better | Open, **P0** (`mb-6yh2`). Sized after exp-006: 48% of files and 59% of directory yields are ignored, and the last *tracked* file is seen at 29.94 s of a 30.06 s walk — level order interleaves the two completely, so the tracked tree is never ready early. BFS already yields a directory placeholder before enqueueing it, so the nav’s *shape* is complete long before its contents; only the descent needs reordering, into a secondary queue drained after the tracked frontier |
+| H34 | The tallies are sums over per-entry attributes, and every mutation already funnels through `_replace_index_entry` / `_pop_index_entry` under one lock. Maintaining them incrementally there makes the pass O(1) amortized and retires the whole staleness apparatus: no memo, no bound, no derived-cost heuristic, no residual GIL contention with the walker. | `srv_scanning_ms` at its floor with the memo deleted entirely | Open, **P1** (`mb-0cmt`). exp-003 and exp-007 both work around this cost; this is the fix the bound is standing in for |
+| H35 | On a git working tree, `git ls-files -co --exclude-standard -z` returns the visible set directly, in C, with git’s exact semantics — including the negation cases the current `rel_dir` prefixing gets wrong. | Time from process start to the first entry existing; and the negation cases the prefixing mis-answers | Open, **P1** (`mb-9ge2`). Could take exp-006’s remaining 2.2 s to near zero *and* fix a correctness bug, with the existing walk as the non-git fallback |
+| H36 | The tally pass still runs in a thread that is GIL-bound Python competing with the walker, just less often. Serving the last memo regardless of age while the status reports scanning — recomputing once on completion — removes the rest, and the client is already told those numbers are provisional. | `walk_elapsed_ms` attached against unattached | Open (`mb-26ey`). The cheap half of H34 |
+| H37 | `os.path.relpath(str(here / name), str(root))` builds two `Path` objects and normalizes a path for every directory the prune considers. `os.walk` is top-down, so the parent’s relative path is in hand and the child’s is a string concat. | `gitignore_build_ms` on a tree with hundreds of thousands of directories | Open (`mb-n3is`) |
+| H38 | Scroll and expand cover the two ways a reader *acts* a row into view. A window resize or a pane-splitter drag also reveals rows and re-arms nothing, so enlarging the window leaves the newly revealed folders cold until the reader scrolls. | `subtree_requests` after a resize that reveals rows | Open (`mb-r391`) |
+| H39 | What remains of the walk may be pattern *matching* rather than traversal: the ignore check runs per entry, and exp-006 cut the compiled pattern set 10,668 to 327 without anyone measuring what the matcher still costs. Price it before replacing the walker. | `walk_elapsed_ms` with and without `gitignore_check` | Open, **P0** (`mb-8yqt`). Attribution, and it gates H40: replacing a traversal that is not the bottleneck would be the expensive way to learn this |
+| H40 | A native parallel walker over ripgrep’s ignore crate would collapse the scan by an order of magnitude, because the walk is per-entry Python competing with itself under one GIL. | `walk_elapsed_ms` on the real tree | Open (`mb-nbvk`). Large, and blocked behind H39 |
+| H41 | A columnar index makes the tally pass vectorized rather than a per-entry Python loop, cheap enough to delete the memo, the bound, and the derived-cost heuristic outright. | Tally pass duration at 300,000 and 1,000,000 entries | Open (`mb-od5n`). The heavier alternative to H34 |
+| H42 | A client-side tree replica painted before the server answers makes a revisit cost no network on the critical path. | `first_row_ms` on a revisit, offline | Open (`mb-6rdn`). The browser-side counterpart to H21 |
+| H43 | Walking the viewport’s subtree first makes the visible tree correct long before the scan ends — the reader’s question is answered by a fraction of the work. | Time until the on-screen subtree stops changing | Open (`mb-w2f3`). Composes with H33, which orders tracked before ignored; this orders visible before the rest |
+| H44 | Under realistic latency, batching the subtree prefetch into one request beats every server-side win so far, because ~110 requests over six HTTP/1.1 connections is priced at localhost and paid in RTTs. | `first_row_ms` and total prefetch time at 0 ms and 120 ms RTT | Open, **P0** (`mb-ycf2`). Supersedes the framing of H26 by adding the engineering, not just the measurement |
+| H45 | Serialization is a measurable share of large tree and rollup responses, and `orjson` would show it. | Server time on `/api/tree` and `/api/rollup` at 300,000 entries | Open (`mb-0l4a`) |
+| H46 | Bulk-attribute syscalls cut the verification sweep that H21’s persisted index would depend on. | Verify-sweep duration on an unchanged 241,000-file tree | Open (`mb-19em`). Only matters once H21 exists |
+| H47 | A 64-worker executor sized for I/O waiters hurts the CPU-bound work now routed through it: under one GIL, more workers is more contention, not more throughput. | Tally and encode latency, and walk time, against pool size | Open (`mb-squq`) |
+| H48 | A free-threaded build makes the existing thread offloads actually parallel — and would surface every shared-state assumption the GIL is currently hiding, including the one the F2 finding exposed. | Attached `walk_elapsed_ms` and tally latency on 3.14t against 3.14 | Open (`mb-ltm2`) |
+| H49 | The four unmeasured regimes hide regressions the cold-load metric cannot see: interaction latency, churn recovery, resident size, and warm reopen. | Interaction latency, churn recovery, resident size, warm reopen | Open, **P0** (`mb-609b`). Every number in this plan describes one cold load of a settling tree; nothing describes using the thing |
 
 ## Reproducing the Measurements
 

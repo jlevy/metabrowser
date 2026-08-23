@@ -922,13 +922,20 @@ def _api_tree_source() -> str:
 
 def test_index_wide_tallies_stay_off_the_event_loop() -> None:
     """One O(index) pass per request, and the nav re-requests this route
-    while the walk converges."""
+    while the walk converges.
+
+    The snapshot the pass needs is O(index) too, so on the unfiltered path it
+    is taken inside the same thread rather than in the handler -- see
+    explorations/performance-loop/experiments/exp-003, where taking it on the loop cost every
+    root request a copy of all 300,000 entries before it discovered its
+    tallies were memoized."""
 
     block = _api_tree_source()
     assert "asyncio.to_thread" in block
     assert "navigation_tallies(" in block
     assert "RECENT_WINDOW_SECONDS.items()" in block
     assert "entries=tally_entries" in block
+    assert "navigation_tallies_snapshotting" in block
 
 
 def test_one_index_snapshot_serves_every_pass_a_request_makes() -> None:
@@ -945,6 +952,10 @@ def test_one_index_snapshot_serves_every_pass_a_request_makes() -> None:
     block = _api_tree_source()
     assert block.count('inventory.entries(scope="all-known")') == 1
     assert block.count("inventory.rollup_revision()") == 1
+    # And the tally path reuses it rather than taking a second one: the
+    # unfiltered path snapshots lazily inside its thread, but when a filter has
+    # already forced a snapshot, both passes read that one.
+    assert "if navigation_tallies is None and wants_tallies and index_entries is not None:" in block
     # No await between the snapshot and the two reads that must describe it.
     snapshot = block.index('index_entries = inventory.entries(scope="all-known")')
     settled = block.index("tally_cache_status = inventory_status()", snapshot)
