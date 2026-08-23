@@ -3,13 +3,15 @@ type: is
 id: is-01m0pmk1fp1pwemeahjawzn5ex
 title: "H55: the campaign's numbers span seven corpora and none of them compare"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-23T06:23:08.264Z
-updated_at: 2026-08-23T06:23:08.264Z
+updated_at: 2026-08-23T06:28:56.319Z
+closed_at: 2026-08-23T06:28:56.318Z
+close_reason: "Answered by exp-010: the retroactive sweep put all four checkpoints on the fixed corpus with one harness. It confirmed the campaign's wins (first row 1,473ms to 276, server share of the first tree fetch 1,099ms to 6, tail 28.9s to 12.3) and surfaced two regressions invisible from inside individual rounds: repaints 1 to 3, and downward shift 42px to 67px on main."
 ---
 Across 48 recorded runs the loop used seven different corpora (.bench/corpus-300000, two synthetic sizes with no corpus label, tree-585f5500, two revisions of tree-a01f4187, and tree-e167d99b). Each round measured its own control against its own candidate, which is sound per round, but it means no number in report.md can be placed on the same scale as any other, and the campaign as a whole has never been measured.
 
