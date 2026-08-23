@@ -23,6 +23,7 @@ fast -- only that it moved.
 | `first_row_ms` | 1,604 | **242** | exp-004 |
 | `gitignore_build_ms_real_tree_a` | 21,370 | **2,180** | exp-006 |
 | `srv_scanning_ms` | 311 | **2** | exp-007 |
+| `total_downward_shift_px` | 67 | **23** | exp-009 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -40,6 +41,7 @@ against one that did.
 | exp-005 | [A real tree changes the priorities](experiments/exp-005-a-real-tree-changes-the-priorities.md) | H16 | `walk_elapsed_ms` | baseline |
 | exp-006 | [The gitignore pre-walk stops traversing what it cannot use](experiments/exp-006-the-gitignore-prewalk-stops-traversing-what-it-cannot-use.md) | H30 | `gitignore_build_ms_real_tree_a` | accepted |
 | exp-007 | [Rows stop waiting for the tally pass](experiments/exp-007-rows-stop-waiting-for-the-tally-pass.md) | H27, H31 | `srv_scanning_ms` | accepted |
+| exp-009 | [The skeleton stops growing under the reader](experiments/exp-009-the-skeleton-stops-growing-under-the-reader.md) | H50 | `total_downward_shift_px` | accepted |
 
 ## Absolute numbers, per condition
 
@@ -133,6 +135,46 @@ A run loaded during a walk and a run loaded after one are different regimes.
 Walk elapsed across these runs: 208,885-208,885 ms.
 A run loaded during a walk and a run loaded after one are different regimes.
 
+### 246,282 files
+
+**What a reader gets** — browser probe
+
+| metric | reserved-skeleton (n=1) | shifting-skeleton (n=1) |
+| --- | ---: | ---: |
+| `first_row_ms` | 74 | 82 |
+| `load_tree_ms` | 29 | 33 |
+| `tree_fetch_srv_ms` | 7 | 7 |
+| `tree_fetch_wait_ms` | 14 | 15 |
+| `tree_fetch_total_ms` | 15 | 16 |
+| `tree_fetch_kb` | 2 | 2 |
+| `dcl_ms` | 75 | 83 |
+| `load_ms` | 76 | 84 |
+| `last_resource_ms` | 12,372 | 14,409 |
+| `subtree_requests` | 23 | 13 |
+| `tree_items` | 141 | 141 |
+| `lazy_stubs` | 130 | 130 |
+| `dom_nodes` | 2,475 | 2,475 |
+| `transferred_kb` | 334 | 153 |
+| `vendor_first_start_ms` | 83 | 549 |
+| `cls` | 0 | 0 |
+| `cls_shifts` | 0 | 0 |
+| `skeleton_complete` | 1 | 1 |
+| `filter_bar_shift_px` | 0 | 24 |
+| `summary_shift_px` | 23 | 43 |
+| `total_downward_shift_px` | 23 | 67 |
+| `tree_region_repaints` | 4 | 4 |
+| `long_tasks` | 1 | 1 |
+| `long_task_ms_total` | 74 | 76 |
+| `render_spans` | 4 | 4 |
+| `render_ms_total` | 24 | 25 |
+| `tree_reprobe_ms` | 7 | 6 |
+| `tree_reprobe_srv_ms` | 3 | 3 |
+| `viewport_w` | 1,280 | 1,280 |
+| `viewport_h` | 900 | 900 |
+
+Walk elapsed across these runs: 14,273-14,273 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
 ### 300,000 files
 
 **What a reader gets** — browser probe
@@ -222,6 +264,8 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-007 | rows-without-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
 | exp-008 | before-main | 2026-08-23T00:39 | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
 | exp-008 | after-branch | 2026-08-23T00:39 | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
+| exp-009 | reserved-skeleton | 2026-08-23T04:51 | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
+| exp-009 | shifting-skeleton | 2026-08-23T04:52 | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->
