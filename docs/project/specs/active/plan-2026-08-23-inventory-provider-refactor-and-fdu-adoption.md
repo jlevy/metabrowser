@@ -231,7 +231,7 @@ new filename.
 
 #### Fix the Contract and Preservation Baseline
 
-- [ ] Add the inventory-engine architecture document with the exact values, query
+- [x] Add the inventory-engine architecture document with the exact values, query
   algebra, lifecycle transitions, errors, bounds, route mapping, and invariants; link it
   from the architecture map and name the check that keeps registered projections and
   consumers aligned.

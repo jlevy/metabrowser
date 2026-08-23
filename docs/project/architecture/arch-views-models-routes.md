@@ -34,6 +34,11 @@ model, and a model never learns which route reached it.
 That is what lets one diff renderer serve a patch file, a commit, and later a pull
 request without knowing the difference.
 
+Filesystem-backed models reach these layers through the
+[Inventory Provider Contract](arch-inventory-provider.md).
+That boundary keeps routes, wire serializers, and views independent of the Python or fdu
+engine selected for the served-root session.
+
 ## Kinds and their views
 
 Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugins/`:
