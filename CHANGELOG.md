@@ -75,6 +75,13 @@ Folder Overview:
   insets sized for a track it was no longer in and read at 43rem against 48rem; and the
   narrow inset did not match the article padding it replaced.
 
+- The breakdown’s icon is on the **family** now, one per family and in that family’s
+  colour, with its extensions listed bare beneath it.
+  It used to be the other way round — an icon on every extension and none on the family
+  — and those icons disagreed with each other, because they resolved through a separate
+  extension table that knows nothing about families: `.js` matched an entry and `.mjs`,
+  `.cjs` and `.jsx` did not.
+
 - Segments of a tally bar are separated by a hairline of the page ground, so two
   families of similar hue read as two rather than as one wide band.
   It is drawn inside the segment rather than as a gap, because the widths are
@@ -123,6 +130,32 @@ Folder Overview:
   The order now comes from the combined population, and `buildFolderTotalsComposition`
   no longer accepts the flag at all, so the tally rows cannot respond to it.
 
+Navigation and the file header:
+
+- The Metabrowser wordmark moved out of the navigation column and became the title of
+  the gear menu, so the gear reads as the product’s menu and the column’s scarcest
+  resource — width — goes to the path instead of to a line that never changes.
+
+- The navigation heading shows the folder’s **name**; the main view shows the whole
+  address, as one control per component.
+  Every segment navigates, including the last: on a file it re-opens what is already
+  open, so a run of links has no dead segment in the middle of it.
+
+- A served root under your home directory renders as `~/wrk/project` rather than
+  spelling the home directory out in full on every page.
+  Display only — the API still reports the absolute root — and it falls through to the
+  absolute path where the substitution would be a guess rather than a fact.
+
+- The dimmed root prefix truncates from the **start**, so `…/wrk/github/project` keeps
+  the part nearest what you are looking at rather than the part that is identical on
+  every page. It reads at the same weight as the rest of the address; grey already says
+  “this is context”.
+
+- The two headers either side of the divider are one structure: path row, hairline, tabs
+  row, hairline, each row the same height as its opposite number.
+  The navigation header had no bottom rule at all, and the rows differed by half a
+  pixel, so the line stopped at the divider and picked up again on the other side.
+
 Navigation filters:
 
 - A filtered navigation tree now shows only folders that contain a match, and each
@@ -168,6 +201,22 @@ Design system:
   standard delayed spinner and loads itself, instead of stating that it has not loaded.
   Loads that fail — or that overrun their expected time — always reach the console with
   full detail (what was requested, which hook, elapsed milliseconds, the error).
+
+- **One tooltip, and it is Metabrowser’s own.** The navigation heading used to show two
+  at once — the app’s, anchored and styled, and the browser’s, from a `title` attribute.
+  Every tooltip the app owns now goes through its own, on focus as well as hover, which
+  a native `title` never did.
+  `devtools/check_tooltips.py` fails the build on a `title` attribute anywhere the app
+  owns the markup, because a rule with no check is how this one was lost.
+  `aria-label` is untouched: it is the accessible name, not a tooltip.
+
+- **A hover is drawn on the thing under the pointer, and on nothing else.** Hovering one
+  segment of a bar used to dim every other segment, which picks one thing out by
+  restyling fifty — and a dimmed neighbour reads as excluded, which a hover is not
+  saying. The hovered segment now grows and lifts its own colour, and its neighbours do
+  not change. It grows on the axis that carries no data: on a horizontal bar the width is
+  the value, so the segment thickens instead, centred on the bar, on a curve that
+  overshoots and settles.
 
 - Every expand/collapse now travels with one standard, short motion: bodies animate
   height on the same 150ms the chevrons rotate with — tree folders, patch containers,
@@ -345,6 +394,11 @@ Plugin SDK:
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the
   every-page path, and resolves once its globals are present.
   A loaded bundle resolves immediately and simultaneous callers share one load.
+
+- A plugin announces a short hint with `data-tip-text="…"` on any element, which the
+  host turns into its own tooltip, and rich content through `mb.tooltip.show` as before.
+  A `title` attribute in plugin markup still works — the browser draws it — but it will
+  be a second tooltip beside the host’s, which is what the rule above exists to prevent.
 
 - `metabrowser.chart()` now requires the chart bundle:
   `await metabrowser.ensureAsset("chart")` before the first call, or it throws saying
