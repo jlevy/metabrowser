@@ -239,7 +239,12 @@ def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(
         result = runner.invoke(_app, [str(tmp_path), "--no-open"])
 
     assert result.exit_code == 0, result.exception
-    assert "at http://127.0.0.1:8411/view/\n" in result.output
+    # The URL is read as a token rather than by what follows it: a checkout
+    # appends a build marker after it, and the claim here is about the URL
+    # ending at /view/ rather than about it ending the line.
+    serving = next(line for line in result.output.splitlines() if " at http" in line)
+    url = serving.split(" at ", 1)[1].split()[0]
+    assert url == "http://127.0.0.1:8411/view/"
     server_class.assert_called_once()
 
 
