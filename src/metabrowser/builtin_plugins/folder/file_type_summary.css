@@ -154,10 +154,14 @@
   display: block;
   height: 100%;
   background: var(--mb-distribution-color);
+  /* Positioned so a grown segment can lift above its neighbours; see the
+     hover rule below. */
+  position: relative;
+  transform-origin: center;
   transition:
     width 140ms ease,
-    box-shadow var(--viz-hover-duration) var(--viz-hover-ease),
-    filter var(--viz-hover-duration) var(--viz-hover-ease);
+    filter var(--viz-hover-duration) var(--viz-hover-ease),
+    transform var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
 }
 
 .folder-totals .file-type-summary-track {
@@ -182,41 +186,31 @@
 
 /* Hover is drawn on the segment under the pointer and on nothing else.
 
-   This used to dim every other segment instead. That picks the hovered one out
-   by changing fifty things around it — a far bigger visual event than pointing
-   at something earns, and a dimmed neighbour reads as excluded or inactive,
-   which is not what a hover says. See "Hover Styles the Thing Under the
-   Pointer" in docs/design-system.md; the rule is general, not local to this
-   component.
+   This dimmed every other segment once, which picks one thing out by restyling
+   fifty — a far bigger visual event than pointing at something earns, and a
+   dimmed neighbour reads as excluded, which a hover is not saying. See "Hover
+   Styles the Thing Under the Pointer" in docs/design-system.md; the rule is
+   general, not local to this component.
 
-   Outline and lift together, because on an eight-pixel track neither carries it
-   alone: the lift has almost no area to register in, and on a very narrow
-   segment the inset outline is the entire segment — which is exactly the case
-   where the lift has the least to work with. Both are relative to the segment's
-   own colour, since families no longer share one lightness.
+   It grows, and lifts its own colour. It used to take an outline as well, and
+   the outline was the wrong instrument twice running — translucent, then
+   opaque grey. A ring is drawn ON the data: it covers the colour it is meant
+   to point at, it competes with the hairline between segments, and two pixels
+   of it is a quarter of an eight-pixel track. Growth says the same thing and
+   covers nothing; the eye is already good at finding the one thing that moved.
 
-   The outline is an inset shadow rather than a border or an outline property:
-   segment widths are percentages summing to 100, so anything occupying layout
-   would push the last segment past the end of the track. */
+   scaleX rather than width, because the widths are percentages summing to 100:
+   growing one in layout would push every segment after it, and the last past
+   the end of the track. A transform grows over its neighbours instead, which
+   is why the segment lifts above them for the duration.
+
+   The growth is proportional, so a wide segment moves further than a narrow
+   one. That is the right way round — a one-pixel segment has almost no colour
+   to lift either, and its tooltip is what identifies it. */
 .folder-totals .file-type-summary-fill[data-segment-key]:hover {
   filter: var(--viz-data-mark-hover-filter);
-  box-shadow: inset 0 0 0 var(--viz-hover-outline-width) var(--viz-hover-outline);
-}
-
-/* The ring has to read the same on both sides, and the hairlines are what
-   stopped it.
-
-   Each segment draws a hairline of page ground inside its own right edge. The
-   hovered segment's ring covers the one on its right, but the hairline on its
-   left belongs to the PREVIOUS segment, which the ring cannot reach — so one
-   side came out ring-against-fill and the other ring-against-white. The
-   asymmetry read as a misaligned border rather than as an outline.
-
-   So the segment before the hovered one drops its hairline for the duration.
-   The ring is the separator while it is there, on both sides, and it is
-   thicker than the hairline it replaces. */
-.folder-totals .file-type-summary-fill:has(+ .file-type-summary-fill[data-segment-key]:hover) {
-  box-shadow: none;
+  transform: scaleX(var(--viz-hover-grow));
+  z-index: 1;
 }
 
 .file-type-summary-percent {
@@ -265,5 +259,11 @@
 
   .file-type-summary-fill {
     transition: none;
+  }
+
+  /* Without the transition above the grow would be a jump, which is worse than
+     no grow. The colour lift still answers the hover. */
+  .folder-totals .file-type-summary-fill[data-segment-key]:hover {
+    transform: none;
   }
 }

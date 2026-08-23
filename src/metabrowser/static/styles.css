@@ -693,27 +693,35 @@
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
   --viz-data-mark-hover-filter: brightness(0.78) saturate(1.3);
-  /* The outline on a hovered data mark: a flat neutral grey, dark here and
-     light on dark, at a brightness that separates it from the whole painted
-     band rather than from one assumed colour. Neutral on purpose — a hue here
-     would read as part of the data, and the families now span the wheel.
+  /* How a hovered data mark grows, and the curve it grows on.
+  
+     Motion rather than an outline, which is what this replaces twice over — a
+     translucent ring, then an opaque grey one. A ring is a mark drawn ON the
+     data: it covers the colour it is meant to point at, it competes with the
+     hairlines between segments, and on an eight-pixel track a two-pixel ring
+     is a quarter of the height. Growth is the mark answering instead. Nothing
+     is covered, and the eye is already good at spotting the one thing that
+     moved.
 
-     Opaque rather than translucent, which is what the first attempt used: a
-     translucent line takes a tint from whatever it sits on, so the same
-     outline came out a different colour on every family and read as weaker on
-     the darker ones.
+     The curve is what makes it read as an answer. It overshoots past the
+     target and settles back, so the mark goes wider than it ends up and comes
+     back — which at this duration is a flick rather than a resize. A plain
+     ease over the same distance reads as the layout being sluggish.
 
-     An outline and a lift together, because either alone is too little: a
-     distribution track is eight pixels tall, so a brightness shift has almost
-     no area to register in, and an outline on a one-pixel segment is the whole
-     segment. Both are drawn on the hovered mark and nothing is drawn on its
-     neighbours — see "Hover Styles the Thing Under the Pointer" in
-     docs/design-system.md. */
-  --viz-hover-outline: oklch(38% 0 0);
-  /* Two pixels, not one. At one pixel the ring is thinner than the hairline
-     between segments, so it read as a rendering artefact rather than as a
-     state. */
-  --viz-hover-outline-width: 2px;
+     The overshoot is worth more than the growth, and it has to be big enough
+     to see. The stock ease-out-back (y1 1.56) peaks only 0.5% past its target,
+     which on a 257px segment is 1.3px of bounce against 13px of growth — the
+     move lands but the spring does not. At y1 2.2 the peak is 2% past, so the
+     same segment overshoots by 5px and a mid-sized one by 2px. Measured, not
+     guessed: evaluate the bezier rather than adjusting it by eye, because the
+     part being tuned lasts about a tenth of a second.
+
+     Applied as a transform, never as width: the segments are percentages
+     summing to 100, so growing one in layout would push every one after it and
+     the last past the end of the track. */
+  --viz-hover-grow: 1.06;
+  --viz-hover-grow-duration: 170ms;
+  --viz-hover-grow-ease: cubic-bezier(0.34, 2.2, 0.64, 1);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -1028,17 +1036,6 @@
   /* Lift rather than deepen: the dark categorical palette is already light
      against a near-black page (see the light-theme note beside this token). */
   --viz-data-mark-hover-filter: brightness(1.22) saturate(1.2);
-  /* Light grey, but nowhere near white. The light theme's ring is darker than
-     every fill; the mirror of that here would be lighter than every fill, and
-     the fills are already light — a near-white ring came out as a white bar
-     with a sliver of colour left inside it.
-
-     What separates the ring here is that it is NEUTRAL, not that it is
-     lighter: at zero chroma it reads as a frame against a saturated fill
-     whether it lands above or below that fill's lightness. Checked against
-     both ends of the painted band, markdown at the dark end and shell at the
-     light end, which this sits between. */
-  --viz-hover-outline: oklch(72% 0 0);
 
   --viz-text: var(--text);
   --viz-text-muted: oklch(74.1% 0.019 256.7);

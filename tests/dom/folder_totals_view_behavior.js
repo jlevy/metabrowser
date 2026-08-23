@@ -248,44 +248,45 @@ global.document = { createElement: (tag) => new Element(tag) };
   // to register at all — which is why both are asserted rather than either.
   const flattened = styles.replace(/\s+/g, " ");
   check(
-    "the hovered segment carries an outline as well as the lift",
+    "the hovered segment grows and lifts its colour, and takes no outline",
     flattened.includes(
       ".folder-totals .file-type-summary-fill[data-segment-key]:hover { " +
         "filter: var(--viz-data-mark-hover-filter); " +
-        "box-shadow: inset 0 0 0 var(--viz-hover-outline-width) var(--viz-hover-outline); }",
-    ),
-    flattened.slice(0, 200),
+        "transform: scaleX(var(--viz-hover-grow)); z-index: 1; }",
+    ) && !styles.includes("--viz-hover-outline"),
+    flattened.slice(0, 240),
   );
+  // A transform, never width: the widths are percentages summing to 100, so
+  // growing one in layout pushes the last segment past the end of the track.
+  // The overshoot is the point, so assert the property rather than the spelling:
+  // a cubic-bezier overshoots exactly when a control point's y exceeds 1.
+  const easing = /--viz-hover-grow-ease:\s*cubic-bezier\(([^)]*)\)/.exec(sharedStyles);
+  const controlYs = easing
+    ? easing[1]
+        .split(",")
+        .map(Number)
+        .filter((_, i) => i % 2 === 1)
+    : [];
   check(
-    "the outline flips with the theme, dark on light and light on dark",
-    sharedStyles.indexOf("--viz-hover-outline:") < darkStart &&
-      sharedStyles.lastIndexOf("--viz-hover-outline:") > darkStart,
-    "--viz-hover-outline must be declared in both theme blocks",
+    "growth is a transform on a curve that overshoots",
+    flattened.includes("transform var(--viz-hover-grow-duration) var(--viz-hover-grow-ease)") &&
+      controlYs.length === 2 &&
+      Math.max(...controlYs) > 1,
+    `--viz-hover-grow-ease must overshoot; control y values were ${controlYs.join(", ")}`,
   );
   check(
     "no rule dims a segment to pick out one of its siblings",
     !styles.includes(":not(:hover)") && !sharedStyles.includes("--mb-distribution-segment-recede"),
     styles.slice(0, 200),
   );
-  // The ring has to read the same on both sides. Each segment draws a hairline
-  // inside its own right edge, so the hovered segment's ring covers the one on
-  // its right while the one on its left belongs to the previous segment and
-  // survives — which reads as a misaligned border rather than an outline.
+  // An instant jump is worse than no growth.
   check(
-    "the segment before the hovered one drops its hairline",
-    flattened.includes(
-      ".folder-totals .file-type-summary-fill:has(+ " +
-        ".file-type-summary-fill[data-segment-key]:hover) { box-shadow: none; }",
-    ),
-    flattened.slice(0, 240),
-  );
-  // Opaque and neutral: a translucent ring takes a tint from whatever it sits
-  // on, so one outline came out a different colour on every family.
-  check(
-    "the outline is an opaque neutral grey in both themes",
-    /--viz-hover-outline:\s*oklch\(\s*[\d.]+%\s+0\s+0\s*\)/.test(sharedStyles) &&
-      !/--viz-hover-outline:[^;]*\//.test(sharedStyles),
-    "--viz-hover-outline must be an opaque zero-chroma grey",
+    "reduced motion drops the growth rather than making it instant",
+    flattened.includes("prefers-reduced-motion") &&
+      flattened.includes(
+        ".folder-totals .file-type-summary-fill[data-segment-key]:hover { transform: none; }",
+      ),
+    flattened.slice(flattened.indexOf("prefers-reduced-motion"), 400),
   );
   // Segment widths are percentages that sum to 100, so the hairline between
   // them cannot occupy layout or the last segment leaves the track.

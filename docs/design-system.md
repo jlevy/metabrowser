@@ -332,34 +332,60 @@ can point at:
 
 | Do | Do not |
 | --- | --- |
-| Outline the hovered mark with `--viz-hover-outline`, at `--viz-hover-outline-width` | Dim, fade, or desaturate the other marks |
-| Lift its own color a step with `--viz-data-mark-hover-filter` | Change the mark’s size, position, or width |
+| Grow the hovered mark with `--viz-hover-grow`, on `--viz-hover-grow-ease` | Dim, fade, or desaturate the other marks |
+| Lift its own color a step with `--viz-data-mark-hover-filter` | Outline, ring, or border the mark |
 | Leave every other mark exactly as it was | Move the layout |
 
-Both, not either. On an eight-pixel track a brightness shift has almost no area to
-register in, and on a very narrow segment the inset outline *is* the segment — which is
-the same case where the lift has least to work with.
+**Grow, do not outline.** An outline is drawn *on* the data: it covers the color it is
+meant to point at, it competes with whatever separators the component already has
+between marks, and on a short mark it is a large fraction of the height — two pixels of
+ring is a quarter of an eight-pixel track.
+Growth says the same thing and covers nothing, and the eye is already good at finding
+the one thing that moved.
+This was tried as a translucent ring and then as an opaque grey one before landing here;
+neither is the instrument.
 
-`--viz-hover-outline` is a flat, opaque, **neutral** grey — dark on light, light on dark
-— and never a translucent overlay.
-A translucent line takes a tint from whatever it sits on, so one outline comes out a
-different color on every family and reads weakest on exactly the families that need it
-most.
+**Grow with a transform, never with layout.** Bar segments are percentages summing to
+100, so growing one in layout pushes every segment after it and the last past the end of
+the track.
+A transform grows the mark over its neighbours, so it also needs to lift above
+them for the duration.
+Scale one axis for a mark that has one — a distribution segment is a fixed height and as
+wide as its share — and both axes for a mark that is an area, like a treemap cell, where
+one axis would read as a stretch.
 
-Neutrality is what makes it read, not lightness.
-In the light theme the ring is darker than every fill; the mirror of that in dark would
-have to be lighter than fills that are already light, which renders as a near-white bar
-with a sliver of color left inside it.
-At zero chroma the ring reads as a frame against a saturated fill whether it lands above
-or below that fill’s lightness, so the dark theme’s ring sits *between* the ends of the
-painted band rather than above it.
-Check a new value against both ends of that band, not against one family.
+**The curve is what makes it read as an answer.** `--viz-hover-grow-ease` overshoots its
+target and settles back, so the mark goes further than it ends up and returns.
+At around 190ms that is a flick; the same distance on a plain ease reads as the layout
+being sluggish.
+
+Growth is proportional, so a wide mark moves further than a narrow one.
+That is the right way round: a one-pixel segment has almost no color to lift either, and
+its tooltip is what identifies it.
 
 The lift darkens on light and brightens on dark, and it is relative to the mark’s own
 color rather than a fixed overlay — file-type families no longer share one lightness,
 they sit in a band and a deviating family sits outside it, so a fixed delta lands
 differently on a pale family than on a dark one.
 See [color and theming](#color-and-theming).
+
+Under `prefers-reduced-motion` the growth is dropped rather than made instant: an
+instant jump is worse than no growth, and the color lift still answers the hover.
+
+**Where growth does not apply.** Two conditions rule it out, and the treemap meets both
+— it takes the lift alone.
+
+- *The mark’s area is its value in two dimensions.* A bar segment’s width encodes its
+  share and the overshoot settles back to it, so nothing is misstated once the motion
+  ends. A treemap cell’s area is the whole encoding, and a cell held larger states a size
+  it does not have.
+- *The mark cannot be lifted above its neighbours.* Growth needs the mark on top, and a
+  treemap flattens a nested folder and its descendants into siblings, so raising a
+  hovered container paints it over every rectangle inside it.
+  `test_treemap_hover_never_promotes_a_container_over_nested_cells` holds that.
+
+A new chart mark that meets neither condition grows.
+One that meets either keeps the lift and states why here.
 
 ### Continuing Partial Content
 

@@ -83,25 +83,25 @@
   background: var(--viz-surface);
   overflow: hidden;
   cursor: default;
-  transition:
-    filter var(--viz-hover-duration) var(--viz-hover-ease),
-    border-color var(--viz-hover-duration) var(--viz-hover-ease);
+  transition: filter var(--viz-hover-duration) var(--viz-hover-ease);
 }
 
 .tm-actionable {
   cursor: pointer;
 }
 
-/* The same treatment every data mark gets: lift the hovered cell's own colour
-   and outline it, and leave every other cell alone. See "Hover Styles the Thing
-   Under the Pointer" in docs/design-system.md.
+/* The lift, and only the lift — the documented exception to the growth every
+   other data mark gets. See "Hover Styles the Thing Under the Pointer" in
+   docs/design-system.md.
 
-   A cell already carries a 1px border, so the outline replaces its colour for
-   the duration rather than adding a second line inside it. */
+   Two reasons, and either is enough. A cell's area IS its value here, so
+   growing one states a size it does not have, where a bar segment's overshoot
+   settles back to the width it earned. And growth needs the mark to lift above
+   its neighbours, which this map cannot give it: a nested folder and its
+   descendants are flattened into siblings, so raising a hovered container
+   paints it over every rectangle inside it. */
 .tm-cell:hover {
   filter: var(--viz-data-mark-hover-filter);
-  border-color: var(--viz-hover-outline);
-  border-width: var(--viz-hover-outline-width);
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so
