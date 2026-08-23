@@ -318,84 +318,16 @@ named external consumer.
 
 ## Implementation Plan
 
-### Phase 1: Converge the Designs and Prove the Read Boundary
+The
+[inventory-provider refactor and fdu adoption plan](plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
+is the implementation spec.
+It has two independently shippable phases: extract and ship the Python reference
+provider, then implement and evaluate the fdu provider against the same contract.
 
-- [ ] Update the fdu integration plan to link this plan and adopt the same minimal
-  contract, packet handoff, read-on-dirty event shape, warm gate, and combined reducer
-  measurement.
-- [ ] Extract the exact semantic values, query and change schemas, state transitions,
-  bounds, and invariants into a Metabrowser architecture document, and register it in
-  the architecture map before starting code spikes.
-- [ ] Extend the File Rollup conformance schema and generated packet with direct logical
-  extension derivation and compound raw-versus-canonical cases.
-- [ ] Export a reviewed packet into fdu and make its parser, derivation, classifier, and
-  aggregate tests pass it unchanged.
-- [ ] Write the smallest provider-neutral contract harness and normalized values needed
-  for one root directory page plus one rollup projection.
-- [ ] Implement that bundled read in the Python reference and through an actual fdu PyO3
-  handle, returning one version, cursor, state, fingerprints, and work record.
-- [ ] Make Python rollup payload and ETag version capture atomic as part of the slice.
-- [ ] Compare normalized results and binding-copy work on small, wide, and compound
-  extension fixtures.
-- [ ] Record failures and decisions in both repositories; update both designs and rerun
-  the spike before treating the interface as proven.
-
-**Exit:** both implementations pass the revised File Rollup packet and one real
-multi-projection read crosses PyO3 without a mirror index, torn version, unbounded child
-copy, or unexplained semantic difference.
-
-### Phase 2: Prove the Live Lifecycle and Its Cost
-
-- [ ] Implement complete directory facts, maintained populations, composed subtree
-  trust, and non-directory leaf counts in the fdu spike.
-- [ ] Measure the combined reducer union on a dense real subject before fixing its final
-  storage or merge representation.
-- [ ] Open a readable handle before discovery completes; capture watch events before or
-  atomically with cold discovery and warm revalidation.
-- [ ] Implement bounded `ChangeBatch` invalidations, progress, trust transitions,
-  backpressure, cursor resume, all-dirty/reset, and read-on-dirty in both providers.
-- [ ] Prove with mutations during baseline work that each effective change appears in
-  the baseline or after its cursor, never in neither and never torn across both.
-- [ ] Exercise cancellation, overflow, poll fallback, watch failure, cache mismatch,
-  partial subtrees, and concurrent read/close interleavings.
-- [ ] Add the provider axis and minimum engine/server/browser measurements to the
-  performance loop.
-- [ ] A/B invalidation plus read against prefix entry deltas, and bulk warm load against
-  lazy blocks; add either richer mechanism only if it wins the stated end-to-end regime.
-- [ ] Update both design documents from the evidence and repeat any failed slice.
-
-**Exit:** the same mutation scenario converges through either provider with honest
-coverage and trust, a resumable bounded stream, a proved no-gap handoff, and measured
-costs for every maintained reducer and proposed event optimization.
-
-### Phase 3: Complete the Migration and Make an Evidence-Based Default
-
-- [ ] Extract the full `PythonInventoryBackend` and move all inventory-serving routes,
-  path lookups, recent-file collection, catalog delivery, rollups, diagnostics, and
-  lifecycle handling onto the coordinator.
-- [ ] Complete every bounded projection in fdu and the stateless adapter, including
-  paged catalog and directory reads, navigation tallies, recent queries with `as_of_ns`,
-  and typed issues.
-- [ ] Move active state, preview choices, and plugin labels into the sparse overlay and
-  remove their contribution to authoritative filesystem totals.
-- [ ] Build the three-oracle suite: pinned File Rollup packet, normalized observation
-  replay, and static plus stepwise-mutated filesystem scenarios.
-- [ ] Preserve or intentionally revise wire goldens, browser behavior, cache validation,
-  and plugin contracts in the same changes as their producers.
-- [ ] Package the first-party fdu dependency on supported platforms and add explicit
-  backend selection with complete diagnostics.
-- [ ] Run paired cold, warm, query, live-change, churn, recovery, concurrency, memory,
-  and browser trials on representative real corpora, including physical-floor ratios.
-- [ ] Enable fdu explicitly, resolve every correctness or product-budget regression, and
-  publish the performance review.
-- [ ] Add `auto` and make fdu its supported default only after all adoption gates pass;
-  retain Python as the reference fallback and remove obsolete singleton, walker/index,
-  rollup-cache, and event-mirroring paths.
-
-**Exit:** one backend owns each runtime inventory; both pass the same semantic suite;
-the selected backend is visible; fdu wins the intended end-to-end regimes without a
-correctness, interaction, memory, or recovery regression; and the old replacement seam
-is gone.
+This document remains authoritative for the semantic contract, cross-provider test
+oracles, performance method, and adoption gates.
+A spike that changes those decisions updates this plan, the implementation spec, and the
+linked fdu design before more code is built.
 
 ## Testing Strategy
 
