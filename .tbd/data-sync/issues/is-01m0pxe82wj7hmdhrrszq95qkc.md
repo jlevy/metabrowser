@@ -1,44 +1,39 @@
 ---
 type: is
 id: is-01m0pxe82wj7hmdhrrszq95qkc
-title: "Nav clicks feel dead during a large scan: requests queue behind the prefetch sweep"
+title: Main thread blocked a third to a half of load on a 241k-file tree, in both builds
 kind: bug
 status: open
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-08-23T08:57:48.378Z
-updated_at: 2026-08-23T17:06:07.133Z
+updated_at: 2026-08-23T17:23:48.629Z
 ---
-Reported from real use on a 241,063-file tree (~/wrk/aisw/trading, 124,750 visible + 116,313 ignored, 5.15 GB, walk 73.7s): during the initial scan, clicking nav rows appears to do nothing. Once the scan finished, expanding and collapsing worked normally. The initial load itself was fast, which is the perf work behaving.
+Reported from real use on a 241,063-file tree (~/wrk/aisw/trading, 124,750 visible + 116,313 ignored, 5.15 GB): the page feels sluggish during the initial scan, and the chevron animation itself runs slow. That last detail is what identified the cause -- a CSS animation stutters when the MAIN THREAD is blocked, which rules out network latency and rules in long tasks.
 
-TWO THEORIES DISCARDED, both mine, both wrong.
+MEASURED with a PerformanceObserver on longtask entries, observer installed ~6.5-7.4s into page life on both builds, run from page load until the index settled plus a grace period. Same tree, same machine, same browser.
 
-Not a broken expand handler. Expand and collapse work during the scan: a full pointer sequence on the chevron while scanning fetches `/api/tree?path=attic&depth=2` in 14ms and the children group goes from 1 child to 132, height 0px to auto. Three earlier probes said otherwise and all three were instrument faults -- an element-level `.click()` does not trigger the handler at all, and `offsetParent !== null` reports a `visibility: hidden` group as visible. Calibrate against the settled case before trusting a probe on the scanning case.
+                                0.6.0        main 66330af
+    time to settle              ~442 s       ~117 s          3.8x faster
+    long tasks                  325          59
+    total main-thread blocked   153.3 s      71.3 s          2.2x less
+    longest single task         7,940 ms     5,967 ms
+    tasks over 1,000 ms         43           21
+    tasks over 200 ms           119          50
+    transferred                 618 KB       598 KB
+    requests                    207          181
+    blocked share of window     31.2%        53.9%           WORSE
 
-Not the chevron hit area. I measured it at 12x12 px and proposed that a near-miss lands on the row instead, selecting rather than expanding. The reporter uses it fine normally, so this explains one of my own mis-aimed clicks and nothing about the actual report. Discarded.
+NOT A REGRESSION. main is better on every absolute count: it settles 3.8x sooner, blocks the main thread for less than half as long in total, has a fifth as many long tasks, a shorter worst task, and half as many tasks over a second. Anyone comparing the two builds end to end gets a strictly better experience from main.
 
-WHAT THE EVIDENCE STILL SUPPORTS: requests queue during the scan.
+BUT THE DENSITY IS WORSE, and that is what the reporter is feeling. main does its remaining blocking work in a much shorter window, so while it lasts, the page is unresponsive a greater fraction of the time -- 53.9% against 31.2%. The ordeal is shorter and more intense. A user who does not run a stopwatch experiences the intensity, not the duration.
 
-Issued one at a time, a subtree request while scanning is fast:
+SO THE REAL FINDING IS A UX PROBLEM PRESENT IN BOTH BUILDS: on a tree this size the page spends between a third and a half of the loading period with the main thread blocked, in tasks that individually run to six and eight seconds. A six-second task is not jank, it is a freeze -- no animation, no click response, no paint. Twenty-one of them on main and forty-three on 0.6.0.
 
-    /api/tree?path=docs&depth=2       10.9ms
-    /api/tree?path=devops&depth=2     10.9ms
-    /api/tree?path=scripts&depth=2    14.2ms
-    /api/file?path=attic              20-50ms
-    /api/rollup?path=attic&depth=1     8-40ms
+NOT EXPLAINED YET: what the long tasks are doing. It is not fetch volume -- 598 KB across 181 requests, and 0.6.0 moved slightly more in both. Candidates, in the order worth checking: rendering tree rows as `fs.change` events stream in from `/api/events` while the walker runs; recomputing the folder rollup or file-type breakdown per update; and the tally pass, since the worst tasks on main cluster at 84s, 91s, 95s, 106s and 110s, which is AFTER the walk completes. A profile with the Performance panel would name the function in one run; longtask entries only say that time was spent, not where.
 
-But a page-side capture during an expand caught five landing at IDENTICAL times:
+TWO EARLIER THEORIES DISCARDED, both mine. A broken expand handler -- expansion works, and three probes that said otherwise were instrument faults (an element-level `.click()` never reaches the handler; `offsetParent !== null` reports a `visibility: hidden` group as visible). And the chevron hit area at 12x12 px -- that explained one of my own mis-aimed clicks and nothing about the report.
 
-    /api/tree?path=attic&depth=2         14ms   (the click's own fetch, issued first)
-    /api/tree?path=__pycache__&depth=2  837ms
-    /api/tree?path=brainstorming&depth=2 837ms
-    /api/tree?path=devops&depth=2       837ms
-    /api/index/progress                 837ms
-
-Five identical figures is a queue draining as a batch, not five slow requests: roughly 830ms of queueing against an ~11ms service time. Expansion is lazy -- the children group holds a `tree-lazy-placeholder` spinner until its fetch returns -- so every expand is a round trip, and a round trip behind that batch is most of a second of spinner.
-
-Also observed, and not yet explained: page-side click handlers took 1.2-5.4s to return during the scan. That is main-thread time, not network, and it is the more likely source of a dead-feeling UI than the queue is. It was measured with the synthetic-click probe that turned out not to reach the handler, so the number may be measuring something else entirely. Re-measure before trusting it.
-
-WHAT TO DO NEXT, in order. Reproduce the queueing under controlled concurrency -- N simultaneous subtree requests during a scan against the same N settled -- since one capture of five requests establishes a direction and not a magnitude. Then measure main-thread long tasks during the scan with the committed probe.js, which reports `long_task_ms_total`, rather than by timing a click handler. Only then decide whether the fix is on the server (the sweep and the click share one queue, and the sweep is speculative while the click is not) or in the client.
+ONE MEASUREMENT WARNING for whoever picks this up. My first capture on main reported an 8,454 ms task and a 166% blocked share, which is nonsense: the observer was installed 53 s into page life with `buffered: true`, so it pulled in tasks from outside its own window. Install the observer immediately after navigation, record the install time, and report the window alongside the total -- a blocked percentage means nothing without the window it is a percentage of.
