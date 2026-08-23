@@ -433,6 +433,16 @@ Page load:
   Speculative warming — on first load, and while scrolling — still waits for idle, which
   is what idle is for.
 
+- The page shifts much less under you while it loads.
+  Two parts of the navigation pane were drawn before they had anything in them and grew
+  once they did: the filter row, which the server sends empty for the browser to fill,
+  and the counts row above the tree, which appears with the files and gets its numbers a
+  moment later. Between them the whole tree slid down 67 pixels on every load and every
+  reload; now it slides 23. Both rows hold a line of space from the start, so the filter
+  chips appear in place.
+  The counts row can still grow once, when its numbers are long enough to wrap onto a
+  second line in a narrow pane.
+
 Plugin SDK:
 
 - `metabrowser.ensureAsset(name)` loads a vendored library that the shell keeps off the

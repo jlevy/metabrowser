@@ -370,6 +370,13 @@
   --radius-circle: 50%;
   /* Space between independently bounded chips in a wrapping cluster. */
   --chip-cluster-gap: 4px;
+  /* A chip's outer height, derived from the type it contains rather than
+     measured off one: the 1.5 line box of `--ui-small-font-size`, plus 2px
+     padding and a 1px border on each edge. Derived because a filter bar has
+     to reserve this height before any chip exists (see `.nav-filter-bar`),
+     and a hardcoded number there would drift the first time the font set
+     changed. */
+  --chip-height: calc(1.5 * var(--ui-small-font-size) + 6px);
 
   /* Z-index scale — the named stacking layers. Use these tokens at use
      sites rather than ad-hoc integers so the relative order of panes,
@@ -1701,6 +1708,20 @@ html.theme-anim .menu {
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
   font-size: var(--nav-font-size);
+  /* This row is rendered before it has numbers -- the tree paints from the
+     inlined rows, and the tallies arrive on a later request -- and empty
+     cells give it no content height, so it stood 13px tall and then grew as
+     the counts landed, pushing every row below it down.
+
+     One line box is reserved, not the settled height, because the settled
+     height is not a constant: `.tree-summary-split` reports tracked and
+     ignored files separately and wraps to a second line in a narrow pane. A
+     two-line floor would fit that case and leave dead space in every other
+     one, so the wrap is tracked as H54 instead -- shape the pending row like
+     the settled one. Same derivation as `--chip-height`: the 1.5 line box of
+     the type inside -- which is this row's own `--nav-font-size` -- plus its
+     padding and bottom border. */
+  min-height: calc(1.5 * var(--nav-font-size) + 13px);
 }
 .tree-summary-split {
   flex-wrap: wrap;
@@ -2704,6 +2725,14 @@ html[data-prose-font="sans"] {
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
+  /* The server ships this element empty and filter_controls.js fills it, so
+     without a reserved height it stands 13px tall until the chips arrive and
+     then grows to 37 -- pushing the whole tree down on every load and every
+     reload. One chip, this element's 6px vertical padding, and its bottom
+     border: the same height a populated bar computes to, so nothing moves
+     when the chips land. `box-sizing` is border-box, so the padding and
+     border are inside this figure. */
+  min-height: calc(var(--chip-height) + 12px + 1px);
   position: relative;
   z-index: 1;
   transition:

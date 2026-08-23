@@ -817,9 +817,17 @@ function renderInitialTreeRows() {
   if (treeFilterKey() || filesPanelUsesRecentSource()) {
     return false;
   }
-  // No chrome: the tally row needs numbers this payload does not carry, and an
-  // empty one would flash and be replaced. Rows first, chrome with the fetch.
-  _lastTreeRender = { tree: rows, chromeHtml: "", tallyCacheStatus: "scanning" };
+  // The tally row is rendered in its pending state rather than omitted. It
+  // carries no numbers this payload can supply, but it holds a line of the
+  // height the real one needs, so the rows below it are laid out close to
+  // where they will stay. Omitting it cost 43 px of downward shift the moment
+  // the fetch returned -- a jump this inline had itself introduced, since
+  // before it there were no rows in place to push.
+  _lastTreeRender = {
+    tree: rows,
+    chromeHtml: treeSummaryHtml(null, null, null),
+    tallyCacheStatus: "scanning",
+  };
   const painted = renderFilesFromTree();
   // Not authoritative — the fetch that follows replaces this wholesale.
   _lastTreeRender = null;
@@ -828,7 +836,12 @@ function renderInitialTreeRows() {
 
 async function loadTree() {
   return _perf.measureAsync("loadTree", async () => {
-    _perf.measure("renderTreeNodes:inline", () => renderInitialTreeRows());
+    // Measured only when it paints. Wrapping the call recorded a span for the
+    // second visit too, which reports as a repaint of a region that was not
+    // touched -- and repaint count is exactly what this loop now watches.
+    if (_inlineTreeRows) {
+      _perf.measure("renderTreeNodes:inline", () => renderInitialTreeRows());
+    }
 
     /** Replace whatever is on screen with a failure the reader can act on. */
     function failTree(reason) {
