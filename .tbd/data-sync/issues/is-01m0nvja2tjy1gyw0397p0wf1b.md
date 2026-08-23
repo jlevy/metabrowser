@@ -3,14 +3,16 @@ type: is
 id: is-01m0nvja2tjy1gyw0397p0wf1b
 title: Hover a bar segment by styling it, not by dimming its neighbours
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T23:05:49.913Z
-updated_at: 2026-08-22T23:05:49.913Z
+updated_at: 2026-08-22T23:27:06.860Z
+closed_at: 2026-08-22T23:27:06.859Z
+close_reason: "Hover now outlines and lifts the hovered segment and leaves its neighbours alone. Verified in a browser: hovered segment filter+box-shadow, every sibling at opacity 1 and filter none. Rule written into docs/design-system.md as the model for any chart mark; treemap cells follow it too."
 ---
 Hovering a segment of a file-decomposition bar currently dims every OTHER segment. The hovered segment is identified by what happens to everything around it.
 

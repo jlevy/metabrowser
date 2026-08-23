@@ -3,14 +3,16 @@ type: is
 id: is-01m0nsv8y2d2m4c9jkwebjct17
 title: "Two tooltips on one element: ban native title where the app has its own tooltip"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T22:35:46.497Z
-updated_at: 2026-08-22T22:35:46.497Z
+updated_at: 2026-08-22T23:27:06.358Z
+closed_at: 2026-08-22T23:27:06.350Z
+close_reason: "One tooltip mechanism: every app-owned title became data-tip-text (or the app tooltip), the nav heading's duplicate is gone, the rule is in docs/design-system.md, and devtools/check_tooltips.py enforces it in make lint. Verified in a browser: zero elements carry a native title."
 ---
 The nav panel's heading shows two tooltips at once: the browser's native one, from a `title` attribute, and the app's own tooltip component. Two tooltips for one element, on different timers and in different places, is worse than either alone.
 

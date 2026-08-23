@@ -3,14 +3,16 @@ type: is
 id: is-01m0nt1f1h5spxhdr1qv5e9bj9
 title: "Overview breakdown: one icon per family, on the family row, not on each extension"
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
 created_at: 2026-08-22T22:39:09.360Z
-updated_at: 2026-08-22T22:39:09.360Z
+updated_at: 2026-08-22T23:55:52.501Z
+closed_at: 2026-08-22T23:55:52.500Z
+close_reason: "The icon is on the family row now, one per family, painted in the family's own colour; extensions inside a family carry none. Verified in a browser: JavaScript shows one olive icon and .js/.cjs/.mjs/.jsx expand beneath it bare. iconPath from the model is what decides, rather than the view inferring from 'does this row name an extension'. Tinting the tree's icons the same way still needs an icon per family in the registry - mb-xrh8."
 ---
 In the Overview page's File Overview breakdown, the icon is on the wrong row and resolved by the wrong taxonomy.
 
