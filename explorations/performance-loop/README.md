@@ -241,7 +241,7 @@ $UV explorations/performance-loop/run.py serve --exp exp-0NN --label before --fi
    `interaction_inputs` proves a trusted input occurred; an untouched page is not
    evidence of a responsive one, so `record` refuses it.
 3. Paste `probe.js` once the tree settles.
-   It reads exact whole-window aggregates from `webPerformanceProfiler`. If that
+   It reads exact whole-window aggregates from `metabrowser.perf`. If that
    navigation-time source is absent, the probe labels its bounded responsiveness and
    visual history `late-buffer`, and `record` refuses it rather than letting a floor
    read as a total.

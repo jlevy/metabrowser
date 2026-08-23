@@ -772,7 +772,8 @@ def test_browser_perf_reports_large_file_render_phases() -> None:
     assert "loadMoreCurrentText" in app_js
     assert "TEXT_PREVIEW_CHUNK_BYTES" in app_js
     assert "filePerfMeta" in app_js
-    assert "MetabrowserDebug" in app_js
+    assert "window.metabrowser.debug" in app_js
+    assert "MetabrowserDebug" not in app_js
     assert "slow_measure" in perf_js
     assert "setSlowThreshold" in perf_js
     assert "console.warn" in perf_js

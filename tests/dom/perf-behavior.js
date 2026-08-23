@@ -91,6 +91,8 @@ const sandbox = {
     return 1;
   },
 };
+sandbox.metabrowser = { marker: "existing namespace" };
+const metabrowserNamespace = sandbox.metabrowser;
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -118,9 +120,13 @@ function deliver(type, entries) {
 
 async function main() {
   check(
-    "generic and application profiler globals share one recorder",
-    sandbox.webPerformanceProfiler === sandbox.metabrowserPerf,
+    "profiler installs on the existing Metabrowser namespace",
+    sandbox.metabrowser === metabrowserNamespace &&
+      sandbox.metabrowser.marker === "existing namespace" &&
+      typeof sandbox.metabrowser.perf?.snapshot === "function",
   );
+  check("legacy profiler globals are absent", !("metabrowserPerf" in sandbox));
+  check("portable profiler global is absent", !("webPerformanceProfiler" in sandbox));
   await Promise.allSettled([
     sandbox.fetch("/ok"),
     sandbox.fetch("/missing"),
@@ -128,7 +134,7 @@ async function main() {
     sandbox.fetch("/network"),
     sandbox.fetch("/abort"),
   ]);
-  const fetchProfile = sandbox.metabrowserPerf.snapshot();
+  const fetchProfile = sandbox.metabrowser.perf.snapshot();
   check("fetch count survives bounded detail", fetchProfile.fetch_samples_seen === 5);
   check("non-abort fetch rejection is exact", fetchProfile.fetch_network_errors === 1);
   check("fetch abort is classified separately", fetchProfile.fetch_aborts === 1);
@@ -142,7 +148,7 @@ async function main() {
     { duration: 250, startTime: 500 },
     { duration: 700, startTime: 7_000 },
   ]);
-  let responsiveness = sandbox.metabrowserPerf.responsiveness();
+  let responsiveness = sandbox.metabrowser.perf.responsiveness();
   check("long-task count is exact", responsiveness.long_tasks === 2);
   check("long-task total is exact", responsiveness.long_task_ms_total === 950);
   check("long-task max is exact", responsiveness.long_task_max_ms === 700);
@@ -162,7 +168,7 @@ async function main() {
       styleAndLayoutStart: 630,
     },
   ]);
-  responsiveness = sandbox.metabrowserPerf.responsiveness();
+  responsiveness = sandbox.metabrowser.perf.responsiveness();
   check("animation-frame count is exact", responsiveness.animation_frames === 1);
   check("animation-frame maximum is exact", responsiveness.animation_frame_max_ms === 650);
   check("animation-frame budget count is exact", responsiveness.animation_frames_over_200ms === 1);
@@ -183,7 +189,7 @@ async function main() {
     { hadRecentInput: false, startTime: 1_700, value: 0.08 },
     { hadRecentInput: true, startTime: 1_800, value: 0.5 },
   ]);
-  const vitals = sandbox.metabrowserPerf.snapshot().vitals;
+  const vitals = sandbox.metabrowser.perf.snapshot().vitals;
   check("FCP is retained from navigation", vitals.fcp_ms === 120);
   check(
     "latest LCP is retained from navigation",
@@ -192,8 +198,8 @@ async function main() {
   check("LCP element attribution is retained", vitals.lcp_element === "MAIN.final");
   check("CLS uses the largest session window", vitals.cls === 0.08 && vitals.cls_shifts === 3);
 
-  sandbox.metabrowserPerf.measureAsync("async-span", () => 42);
-  const profile = sandbox.metabrowserPerf.snapshot();
+  sandbox.metabrowser.perf.measureAsync("async-span", () => 42);
+  const profile = sandbox.metabrowser.perf.snapshot();
   check("profile uses the reusable schema", profile.schema === "web-performance-profile/v1");
   check("async spans contribute whole-window attribution", profile.measure_samples_seen === 1);
   check(
@@ -203,16 +209,16 @@ async function main() {
     JSON.stringify(profile.label_totals),
   );
   for (let index = 0; index < 205; index += 1) {
-    sandbox.metabrowserPerf.measure(`dynamic-${index}`, () => index);
+    sandbox.metabrowser.perf.measure(`dynamic-${index}`, () => index);
   }
-  const overflowProfile = sandbox.metabrowserPerf.snapshot();
+  const overflowProfile = sandbox.metabrowser.perf.snapshot();
   check("span labels stay bounded", overflowProfile.labels_retained <= 200);
   check("span-label overflow is explicit", overflowProfile.labels_overflowed > 0);
   check("Resource Timing capacity is explicit", resourceTimingCapacity === 500);
   resourceTimingOverflowListener?.();
   check(
     "Resource Timing overflow is explicit",
-    sandbox.metabrowserPerf.snapshot().resource_timing_buffer_full === 1,
+    sandbox.metabrowser.perf.snapshot().resource_timing_buffer_full === 1,
   );
 
   // Event Timing can run for the life of the tab. Group the several DOM events
@@ -231,7 +237,7 @@ async function main() {
       startTime: 7_100 + index,
     })),
   ]);
-  responsiveness = sandbox.metabrowserPerf.responsiveness();
+  responsiveness = sandbox.metabrowser.perf.responsiveness();
   check("logical interaction count is exact", responsiveness.interactions === 700);
   check("interaction sample is bounded", responsiveness.interaction_samples_retained === 500);
   check(
@@ -250,17 +256,17 @@ async function main() {
   });
   check(
     "hidden page invalidates the active window",
-    !sandbox.metabrowserPerf.responsiveness().measurement_valid,
+    !sandbox.metabrowser.perf.responsiveness().measurement_valid,
   );
   sandbox.document.visibilityState = "visible";
   now = 10_000;
-  sandbox.metabrowserPerf.reset();
+  sandbox.metabrowser.perf.reset();
   now = 10_400;
   deliver("longtask", [
     { duration: 900, startTime: 9_900 },
     { duration: 300, startTime: 10_100 },
   ]);
-  responsiveness = sandbox.metabrowserPerf.responsiveness();
+  responsiveness = sandbox.metabrowser.perf.responsiveness();
   check(
     "reset restarts the denominator",
     responsiveness.window_ms === 400,
@@ -271,7 +277,7 @@ async function main() {
   check("reset clears interaction aggregates", responsiveness.interactions === 0);
   check("reset clears interaction coverage", responsiveness.interaction_inputs === 0);
   check("reset clears animation-frame aggregates", responsiveness.animation_frames === 0);
-  const resetProfile = sandbox.metabrowserPerf.snapshot();
+  const resetProfile = sandbox.metabrowser.perf.snapshot();
   check("reset clears navigation vitals", resetProfile.vitals.lcp_ms === null);
   check("reset clears Resource Timing overflow", resetProfile.resource_timing_buffer_full === 0);
   check(
@@ -319,6 +325,7 @@ async function main() {
       timeOrigin: 0,
       timing: {},
     },
+    metabrowser: {},
     setTimeout(callback) {
       callback();
       return 1;
@@ -328,7 +335,7 @@ async function main() {
   partialSandbox.globalThis = partialSandbox;
   vm.createContext(partialSandbox);
   vm.runInContext(source, partialSandbox, { filename: "perf-partial.js" });
-  const partialResponsiveness = partialSandbox.metabrowserPerf.responsiveness();
+  const partialResponsiveness = partialSandbox.metabrowser.perf.responsiveness();
   check(
     "unsupported required observer is explicit",
     partialResponsiveness.unsupported?.includes("longtask"),

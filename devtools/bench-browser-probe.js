@@ -20,13 +20,17 @@
 // Paste into the devtools console on an open folder view, or run it through
 // any automation that can evaluate in the page. Returns a JSON string.
 //
-//   await metabrowserBench.run()            // default: the Overview shape
-//   await metabrowserBench.run({clients: 16})
+//   await metabrowser.bench.run()            // default: the Overview shape
+//   await metabrowser.bench.run({clients: 16})
 //
 // Reported per query shape, because the folder Overview asks for several at
 // once and a shape that never coalesces is invisible in an aggregate count.
 
 (() => {
+  if (!window.metabrowser) {
+    throw new Error("Metabrowser browser probe requires window.metabrowser");
+  }
+
   // The shapes the folder view actually requests. Measuring one the browser
   // never asks for would report a cost no reader pays.
   const SHAPES = {
@@ -231,9 +235,9 @@
     // perf.js keeps a ring buffer of every fetch the app itself made, which
     // covers the requests the page issued on its own rather than the ones
     // this probe synthesized.
-    if (window.metabrowserPerf && typeof window.metabrowserPerf.snapshot === "function") {
+    if (typeof window.metabrowser.perf?.snapshot === "function") {
       try {
-        out.appFetches = window.metabrowserPerf.snapshot();
+        out.appFetches = window.metabrowser.perf.snapshot();
       } catch (error) {
         out.appFetches = { error: String(error) };
       }
@@ -241,6 +245,6 @@
     return JSON.stringify(out, null, 2);
   }
 
-  window.metabrowserBench = { run, SHAPES };
-  return "metabrowserBench.run() is ready";
+  window.metabrowser.bench = Object.freeze({ run, SHAPES });
+  return "metabrowser.bench.run() is ready";
 })();

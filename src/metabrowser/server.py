@@ -491,12 +491,6 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 
 STATIC_DIR: Path = Path(__file__).parent / "static"
 
-# perf.js is optional (only present in dev builds with the perf overlay
-# bundled). Probed at module load so the index template can skip the
-# script tag rather than emit a 404 reference.
-_PERF_JS_AVAILABLE: bool = (STATIC_DIR / "perf.js").is_file()
-
-
 _SLOW_SERVER_REQUEST_MS = int(
     os.environ.get(
         "METABROWSER_SLOW_SERVER_MS",
@@ -971,9 +965,7 @@ async def index(_request: Request) -> HTMLResponse:
     git_graph_url = _static_asset_url("git-graph.js")
     git_panel_url = _static_asset_url("git-panel.js")
     app_url = _static_asset_url("app.js")
-    perf_block = (
-        f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
-    )
+    perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
@@ -1286,7 +1278,6 @@ async def index(_request: Request) -> HTMLResponse:
        tree/readme rendering. TOML support comes from the official
        highlight.js ini.min.js grammar (`aliases:["toml"]`), vendored as
        highlight-toml.min.js. -->
-  {perf_block}
   {settings_block}
   {repository_context_block}
   {initial_tree_block}
@@ -1304,6 +1295,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{source_append_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
+  <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>
   <script src="{filter_controls_url}"></script>
   <script src="{icons_url}"></script>

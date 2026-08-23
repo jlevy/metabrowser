@@ -24,12 +24,30 @@ that make this application usable, such as its first tree row and final inventor
 | Policy | `explorations/performance-loop/performance-budgets.toml` | Declare evidence requirements, hard gates, and improvement targets without embedding them in the collector |
 | Orchestrator | `explorations/performance-loop/run.py` and `devtools/web_performance.py` | Preserve build and corpus provenance, reject invalid records, compare repeated conditions, and make budget failure a nonzero result |
 
-The recorder exposes the same instance as `window.webPerformanceProfiler` and
-`window.metabrowserPerf`. The first name is the portable API; the second is the
-application integration.
+Metabrowser exposes the recorder as `window.metabrowser.perf`, alongside the other
+supported browser and console tools.
+The recorder logic remains independent of Metabrowser routes and DOM; another
+application publishes the same API under its own stable namespace.
 Application code contributes stable labels through `measure()` and `measureAsync()`.
 Labels describe operations, never paths or other unbounded values, so whole-window
 attribution stays bounded.
+
+## Console Diagnostics
+
+The recorder is active from before application work starts, so opening the console after
+a problem does not lose the beginning of the session.
+Use these commands without loading another script:
+
+- `metabrowser.perf.report()` prints the profile and slow-operation tables;
+- `metabrowser.perf.responsiveness()` returns the current main-thread and interaction
+  summary;
+- `metabrowser.perf.copy()` copies the complete JSON profile for a bug report;
+- `metabrowser.perf.download()` saves that profile;
+- `metabrowser.perf.reset()` starts a new visible measurement window.
+
+Keep the tab visible after a reset and interact with the application before treating the
+result as responsiveness evidence.
+The profile says when visibility or observer coverage makes the measurement invalid.
 
 ## Measurement Contract
 
@@ -147,10 +165,10 @@ A metric that can only report success is not a guard.
 
 ## Integrating Another Application
 
-1. Load the recorder before application scripts and expose its portable global.
-   Size its Resource Timing capacity above the largest measured scenario and keep the
-   overflow check; do not assume the browser default or an arbitrary large buffer is
-   complete.
+1. Initialize one application console namespace, then load the recorder before
+   application work and publish it on a stable property such as `app.perf`. Size its
+   Resource Timing capacity above the largest measured scenario and keep the overflow
+   check; do not assume the browser default or an arbitrary large buffer is complete.
 2. Wrap stable operations with `measure(label, fn, metadata)` or
    `measureAsync(label, fn, metadata)`. Keep labels finite; put bounded diagnostic
    values in metadata.

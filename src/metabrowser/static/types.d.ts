@@ -282,6 +282,16 @@ type MetabrowserPerf = {
   snapshot?(): unknown;
 };
 
+type MetabrowserDebug = Readonly<{
+  clearFileCache(path?: string): void;
+  selectFile(path: string): Promise<unknown>;
+}>;
+
+type MetabrowserBench = Readonly<{
+  run(options?: { clients?: number; shapes?: Record<string, string> }): Promise<string>;
+  SHAPES: Record<string, string>;
+}>;
+
 type MetabrowserResponsiveness = {
   animation_frame_blocking_ms_max: number | null;
   animation_frame_blocking_ms_total: number | null;
@@ -709,7 +719,9 @@ type MetabrowserTreemapLayoutApi = {
 type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
   ageLabelHtml(mtimeSeconds: number | null | undefined): string;
+  bench?: MetabrowserBench;
   builtins: MetabrowserBuiltins;
+  debug?: MetabrowserDebug;
   errors: MetabrowserRequestErrorRuntime;
   directoryTotals: MetabrowserDirectoryTotalsStore;
   filters: MetabrowserFilterState;
@@ -1542,10 +1554,6 @@ declare global {
       assetLoaded(name: string): boolean;
     };
     MetabrowserCharts?: MetabrowserChartRuntime;
-    MetabrowserDebug?: {
-      clearFileCache(path?: string): void;
-      selectFile(path: string): unknown;
-    };
     MetabrowserFileTypes?: {
       classFor(path: string): string;
       iconFor(path: string): { cls: string; svg: string };
@@ -1653,8 +1661,6 @@ declare global {
     metabrowserAgentLog?: {
       mountLogEventRaw?: (rawEl: HTMLElement) => void;
     };
-    metabrowserPerf?: MetabrowserPerf;
-    webPerformanceProfiler?: MetabrowserPerf;
     toggleKindFilter?: (kind: string) => void;
   }
 }

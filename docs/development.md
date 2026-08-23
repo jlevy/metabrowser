@@ -211,7 +211,7 @@ answer.
 
 The client half is not visible from the server.
 `--browser-probe` prints `devtools/bench-browser-probe.js`; load it in an open folder
-view and call `await metabrowserBench.run({clients: 8})`. It reads the `Server-Timing`
+view and call `await metabrowser.bench.run({clients: 8})`. It reads the `Server-Timing`
 header every route already emits, because request count cannot distinguish a shared
 computation from a repeated one — N requests are N requests either way, and what differs
 is the work the server did.

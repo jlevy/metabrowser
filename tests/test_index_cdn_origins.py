@@ -196,6 +196,17 @@ def test_strict_sdk_dependencies_load_before_the_legacy_adapter() -> None:
         assert html.index(f"/static/{name}") < sdk_position
 
 
+def test_performance_recorder_uses_the_sdk_namespace_before_application_work() -> None:
+    """The console profiler must attach to the one public browser namespace."""
+    html = _index_html()
+    sdk_position = html.index("/static/plugin-sdk.js")
+    perf_position = html.index("/static/perf.js")
+    app_position = html.index("/static/app.js")
+
+    assert html.count("/static/perf.js") == 1
+    assert sdk_position < perf_position < app_position
+
+
 def test_duplicate_markdown_assets_are_absent() -> None:
     html = _index_html()
     assert "dompurify" not in html.lower()

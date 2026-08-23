@@ -27,10 +27,10 @@ const TEXT_PREVIEW_CHUNK_BYTES =
 const TEXT_PREVIEW_MAX_CHUNK_BYTES =
   window.METABROWSER_SETTINGS?.TEXT_PREVIEW_MAX_CHUNK_BYTES || 8 * 1024 * 1024;
 
-// Optional perf instrumentation. perf.js installs window.metabrowserPerf
-// with measure/measureAsync helpers and a fetch wrapper; if it isn't
-// loaded these calls fall through to plain invocation.
-var _perf = (typeof window !== "undefined" && window.metabrowserPerf) || {
+// perf.js installs window.metabrowser.perf with measure/measureAsync helpers
+// and a fetch wrapper before production application work starts. The fallback
+// keeps isolated app.js harnesses usable without recreating the recorder.
+var _perf = (typeof window !== "undefined" && window.metabrowser?.perf) || {
   measure: (_label, fn) => fn(),
   measureAsync: (_label, fn) => fn(),
 };
@@ -7191,10 +7191,10 @@ function clearBrowserFileCache(path) {
 }
 
 if (typeof window !== "undefined") {
-  window.MetabrowserDebug = {
+  window.metabrowser.debug = Object.freeze({
     clearFileCache: clearBrowserFileCache,
     selectFile: selectFile,
-  };
+  });
 
   function enhanceCurrentFileAfterOptionalAsset() {
     highlightCode();

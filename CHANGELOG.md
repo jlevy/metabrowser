@@ -34,6 +34,12 @@ Performance, validated against 0.6.0 side by side:
 
 API, observable to plugin authors:
 
+- Browser-console tools now share the existing `window.metabrowser` namespace.
+  The complete recorder is `metabrowser.perf`, shell troubleshooting helpers are under
+  `metabrowser.debug`, and the pasted serving probe installs `metabrowser.bench`. The
+  standalone `metabrowserPerf` global and this development cycle’s
+  `webPerformanceProfiler` alias are removed.
+
 - `/api/tree` answers rows and tallies as two separate requests, and only `depth=0`
   computes tallies. A request with `depth` absent or `>= 1` returns rows with the tally
   fields null unless a fresh memo happens to exist.

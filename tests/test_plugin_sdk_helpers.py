@@ -11,7 +11,7 @@ Surface checked:
 - mb.countClass, mb.sizeClass, mb.sizeHtml, mb.isLargeTextPreview
 - mb.wrapWithCopy (new in 3b)
 - mb.icons proxy (new in 3b — backed by window.MetabrowserIcons)
-- mb.perf.measure (new in 3b — wraps app.js's _mbPerf)
+- mb.perf.measure (contributes to the shared performance recorder)
 - mb.fetchKpressRender (KPress document fragment fetch + diagnostics)
 - mb.renderTextTruncationWarning (visible partial-content warning)
 """
@@ -68,7 +68,7 @@ def test_sdk_exports_file_type_icon_proxy() -> None:
 def test_sdk_exports_perf_measure() -> None:
     src = _sdk_source()
     assert "perf: perf" in src
-    assert "measure(label, fn)" in src
+    assert "measure(_label, fn)" in src
 
 
 def test_sdk_fetch_plugin_data_throws_on_degraded_plugin_error() -> None:

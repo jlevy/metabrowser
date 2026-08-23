@@ -80,8 +80,10 @@
 //                                          helpers, installed before plugins load
 //
 //   Diagnostics:
-//     perf.measure(label, fn)            — wrap a render closure with timing logs
-//     perf.measureAsync(label, fn)       — async timing wrapper
+//     perf.measure(label, fn)            — contribute a synchronous named span
+//     perf.measureAsync(label, fn)       — contribute an asynchronous named span
+//     perf.report()/responsiveness()     — inspect the active browser profile
+//     debug                              — console-only shell troubleshooting helpers
 //
 // Plugins register from index.js with code like:
 //   const mb = window.metabrowser;
@@ -1394,27 +1396,16 @@
     },
   );
 
-  // Performance probe — wraps a render closure so the perf overlay
-  // (when enabled via the perf.js gate) can show plugin render time.
-  // No-op when perf.js isn't loaded; never throws.
-  const perf = {
-    measure(label, fn) {
-      const probe =
-        global._mbPerf && typeof global._mbPerf.measure === "function" ? global._mbPerf : null;
-      if (probe) {
-        return probe.measure(label, fn);
-      }
+  // perf.js replaces this temporary facade in the next eager script, before
+  // application or plugin work starts.
+  const perf = Object.freeze({
+    measure(_label, fn) {
       return fn();
     },
-    measureAsync(label, fn) {
-      const probe =
-        global._mbPerf && typeof global._mbPerf.measureAsync === "function" ? global._mbPerf : null;
-      if (probe) {
-        return probe.measureAsync(label, fn);
-      }
+    measureAsync(_label, fn) {
       return fn();
     },
-  };
+  });
 
   // File-extension → highlight.js language id. Single source of truth so
   // every plugin uses the same `language-X` class for `.py`, `.ts`, etc.

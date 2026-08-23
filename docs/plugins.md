@@ -227,7 +227,19 @@ cutoff instead of hard-coding the limit in JavaScript.
 
 ## Browser SDK
 
-The supported API is available as `window.metabrowser`.
+The supported API is available as `window.metabrowser`. It is also the one
+browser-console entry point: diagnostics extend this object instead of creating
+additional window globals.
+
+`metabrowser.perf` is the active performance recorder.
+Use `report()` for readable tables, `responsiveness()` for the current responsiveness
+summary, and `copy()` or `download()` for a complete JSON profile suitable for a bug
+report. `metabrowser.debug` contains narrow shell troubleshooting helpers after the
+application script loads, including `clearFileCache(path?)` and `selectFile(path)`. The
+serving benchmark installs `metabrowser.bench` only after its browser probe is
+evaluated. The `debug` and `bench` tools are for interactive diagnosis, not plugin
+dependencies; plugins may use `perf.measure` and `perf.measureAsync` to contribute
+bounded, stable operation labels to the shared profile.
 
 ### Registration and Lifecycle
 

@@ -8,24 +8,25 @@
 // The recorder itself has no Metabrowser DOM assumptions. App code contributes
 // named spans and metadata through measure()/measureAsync(), while the runtime
 // owns browser-standard loading, responsiveness, and attribution signals. The
-// same instance is exposed as `webPerformanceProfiler` for reuse and as
-// `metabrowserPerf` for the application integration.
+// application publishes the recorder as `window.metabrowser.perf`.
 //
 // Activation:
 //   * Sessions automatically record samples in a small ring buffer.
-//   * Open devtools and run `metabrowserPerf.report()` to see a table.
-//   * `metabrowserPerf.copy()` puts a JSON dump on the clipboard.
-//   * `metabrowserPerf.download()` saves the JSON as a file.
+//   * Open devtools and run `metabrowser.perf.report()` to see a table.
+//   * `metabrowser.perf.copy()` puts a JSON dump on the clipboard.
+//   * `metabrowser.perf.download()` saves the JSON as a file.
 //
 // The instrumentation hooks `window.fetch` once for HTTP timings and
-// exposes `metabrowserPerf.measure(label, fn, meta)` for ad-hoc spans inside
-// existing render code. `app.js` opts in with `metabrowserPerf.measure(...)`
-// calls; if `perf.js` is missing those calls fall through to plain
-// invocation.
+// exposes `metabrowser.perf.measure(label, fn, meta)` for ad-hoc spans inside
+// existing render code. The production shell loads this recorder eagerly,
+// before `app.js` and the other measured consumers.
 
 (() => {
   if (typeof window === "undefined") {
     return;
+  }
+  if (!window.metabrowser || typeof window.metabrowser !== "object") {
+    throw new Error("performance recorder requires window.metabrowser");
   }
 
   var MAX_SAMPLES = 500;
@@ -813,7 +814,7 @@
             blocked_ms: durMs,
             at_ms: startMs,
             spans_during: _spansDuring(startMs, startMs + durMs),
-            hint: "metabrowserPerf.responsiveness() for the whole picture",
+            hint: "metabrowser.perf.responsiveness() for the whole picture",
           };
           console.warn(
             `[metabrowser perf] main thread blocked ${durMs} ms — the page could not ` +
@@ -1130,6 +1131,5 @@
     download: download,
     reset: reset,
   };
-  window.webPerformanceProfiler = profiler;
-  window.metabrowserPerf = profiler;
+  window.metabrowser.perf = Object.freeze(profiler);
 })();

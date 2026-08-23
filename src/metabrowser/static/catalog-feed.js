@@ -12,7 +12,7 @@
 (() => {
   const RETRY_BASE_MS = 2_000;
   const RETRY_MAX_MS = 60_000;
-  const perf = window.metabrowserPerf || {
+  const perf = window.metabrowser?.perf || {
     measure: (_label, fn) => fn(),
     measureAsync: (_label, fn) => fn(),
   };

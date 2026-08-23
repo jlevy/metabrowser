@@ -66,7 +66,7 @@
   }
 
   const nav = performance.getEntriesByType("navigation")[0] || {};
-  const profiler = window.webPerformanceProfiler || window.metabrowserPerf;
+  const profiler = window.metabrowser?.perf;
   const perf = profiler ? profiler.snapshot() : { raw_measure: [], label_totals: [] };
   const spans = perf.raw_measure || [];
   const labelTotals = perf.label_totals || [];
